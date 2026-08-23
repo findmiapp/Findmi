@@ -401,6 +401,39 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
     .map(({ business: { is_demo: _isDemo, ...business }, ...rest }) => ({ ...rest, business }));
 }
 
+export interface ProductWithBusiness extends Product {
+  business: { id: string; name: string; slug: string; logo_url: string | null; cover_image_url: string | null };
+}
+
+/** product.slug is unique per business, not globally (schema:
+ * unique(business_id, slug)) — with today's small catalog that's not a
+ * practical collision risk, but a route keyed on slug alone will need a
+ * business-scoped path (or a global uniqueness constraint) once enough
+ * businesses are onboarded that two of them plausibly share a slug. */
+export async function getProductBySlug(slug: string): Promise<ProductWithBusiness | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("products")
+    .select("*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo)")
+    .eq("slug", slug)
+    .eq("is_active", true);
+
+  type JoinedBusiness = ProductWithBusiness["business"] & { is_demo: boolean };
+  const match = ((data ?? []) as never[])
+    .map((row: unknown) => {
+      const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
+      const business = Array.isArray(r.business) ? r.business[0] : r.business;
+      return { ...r, business };
+    })
+    .find((item) => item.business && !item.business.is_demo);
+
+  if (!match) return null;
+  const { business, ...rest } = match;
+  const { is_demo: _isDemo, ...cleanBusiness } = business;
+  return { ...rest, business: cleanBusiness };
+}
+
 /** Other founding-member businesses sharing at least one category — used to
  * suggest alternatives when a consumer's first-choice business is booked. */
 export async function getAlternativeBusinesses(

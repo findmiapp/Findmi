@@ -5,25 +5,16 @@ import { formatPrice } from "@/lib/format";
 
 export default function ProductCard({
   product,
-  businessSlug,
 }: {
   product: Product;
+  /** @deprecated no longer used for the card's own link — kept optional so
+   * existing call sites (which still pass it) don't need updating. The
+   * card now always opens the product's own /product/[slug] page, which
+   * resolves the business itself. */
   businessSlug?: string;
 }) {
-  // Prefer sending shoppers straight to an external purchase link. Failing
-  // that, still give the card something real to do: jump to the business's
-  // own Book / Inquire section instead of sitting there inert.
-  const href = product.external_purchase_url
-    ? product.external_purchase_url
-    : businessSlug
-      ? `/business/${businessSlug}#book`
-      : null;
-  const external = Boolean(product.external_purchase_url);
-  const cta = product.external_purchase_url
-    ? "Shop Now"
-    : businessSlug
-      ? "Ask About This"
-      : null;
+  const href = `/product/${product.slug}`;
+  const cta = product.external_purchase_url ? "Shop Now" : "Ask About This";
   const badgeLabel = product.product_type === "service" ? "Service" : "Product";
   const price = formatPrice(product.price, product.price_label) || null;
 
@@ -64,16 +55,6 @@ export default function ProductCard({
       </div>
     </div>
   );
-
-  if (!href) return card;
-
-  if (external) {
-    return (
-      <a href={href} target="_blank" rel="noreferrer" className="block h-full">
-        {card}
-      </a>
-    );
-  }
 
   return (
     <Link href={href} className="block h-full">
