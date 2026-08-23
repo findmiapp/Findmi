@@ -1,10 +1,9 @@
+import Image from "next/image";
 import Link from "next/link";
-import SearchBar from "@/components/SearchBar";
-import BusinessCard from "@/components/BusinessCard";
-import EventCard from "@/components/EventCard";
 import LocationCard from "@/components/LocationCard";
 import ProductCard from "@/components/ProductCard";
 import AppearanceFeedCard from "@/components/AppearanceFeedCard";
+import HomeDiscoveryTabs from "@/components/HomeDiscoveryTabs";
 import PostCard from "@/components/PostCard";
 import Section, { HorizontalScroller } from "@/components/Section";
 import {
@@ -17,14 +16,17 @@ import {
   getUpcomingEvents,
   searchBusinesses,
 } from "@/lib/data";
-import { cityState, getTemporalLabel } from "@/lib/format";
+import { cityState, formatDateRange, getTemporalLabel } from "@/lib/format";
+import type { BusinessWithCategories, FindmiEvent } from "@/lib/types";
 
 export const revalidate = 60;
 
 export default async function HomePage() {
   const [
     categories,
-    happeningNow,
+    todayFeed,
+    weekendFeed,
+    anytimeFeed,
     nearYou,
     happeningSoon,
     findThemNext,
@@ -35,7 +37,9 @@ export default async function HomePage() {
     locations,
   ] = await Promise.all([
     getCategories(),
-    getFindMiHereFeed("today", 3),
+    getFindMiHereFeed("today", 9),
+    getFindMiHereFeed("weekend", 8),
+    getFindMiHereFeed("anytime", 8),
     searchBusinesses({}),
     getUpcomingEvents(6),
     getUpcomingAppearancesFeed(8),
@@ -46,35 +50,40 @@ export default async function HomePage() {
     getLocations(8),
   ]);
 
-  const heroAppearance = happeningNow[0];
+  // Signature card: today's first qualifying appearance, or the nearest
+  // real upcoming one if nothing is happening today — never fabricated,
+  // and getTemporalLabel tells the truth either way (it doesn't know or
+  // care which window the item came from).
+  const heroAppearance = todayFeed[0] ?? weekendFeed[0] ?? anytimeFeed[0];
   const heroLabel = heroAppearance
     ? getTemporalLabel(heroAppearance.start_at, heroAppearance.end_at)
     : null;
+  const todayRest = todayFeed.filter((i) => i.id !== heroAppearance?.id);
 
   return (
     <div>
-      {/* Compact opening — the product demonstrates itself, not a marketing
-          hero. */}
+      {/* Compact opening — headline + category chips only. Search is one
+          tap away via the header search icon (mobile) / nav search link
+          (desktop), not a giant form competing with discovery content. */}
       <section className="border-b border-black/5 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6 sm:py-6">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:px-6 sm:py-5">
           <h1 className="font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-3xl">
-            What&rsquo;s happening right now?
+            What&rsquo;s around you right now?
           </h1>
-          <SearchBar />
           {categories.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {categories.slice(0, 5).map((c) => (
                 <Link
                   key={c.id}
                   href={`/businesses?category=${c.slug}`}
-                  className="rounded-full border border-black/10 px-4 py-1.5 text-sm font-medium text-ink/70 transition hover:border-ink/30"
+                  className="rounded-full border border-black/10 px-3.5 py-1.5 text-xs font-medium text-ink/70 transition hover:border-ink/30"
                 >
                   {c.name}
                 </Link>
               ))}
               <Link
                 href="/businesses"
-                className="rounded-full border border-black/10 px-4 py-1.5 text-sm font-medium text-ink/70 transition hover:border-ink/30"
+                className="rounded-full border border-black/10 px-3.5 py-1.5 text-xs font-medium text-ink/70 transition hover:border-ink/30"
               >
                 More
               </Link>
@@ -83,17 +92,20 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Signature top experience — real temporal discovery, never faked */}
+      {/* Signature discovery — real temporal data only, never faked. A
+          landscape aspect (not the tall 3/4 story-card ratio) keeps this
+          from eating the whole first viewport. */}
       {heroAppearance && heroLabel && (
-        <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+        <section className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
           <p className="text-xs font-bold uppercase tracking-wide text-ink/40">
             {heroLabel.live ? "Happening Now" : "FindMi Here"}
           </p>
-          <div className="mt-3 max-w-sm">
+          <div className="mt-2 max-w-sm">
             <PostCard
               href={`/business/${heroAppearance.business.slug}`}
               image={heroAppearance.business.cover_image_url ?? null}
               kind="event"
+              aspect="aspect-[4/3]"
               badgeLabel={heroLabel.label}
               badgeVariant={heroLabel.live ? "live" : "default"}
               title={heroAppearance.business.name}
@@ -111,6 +123,10 @@ export default async function HomePage() {
               cta="Find Them"
             />
           </div>
+
+          {/* Immediately beneath the signature card — more than one
+              discovery visible without scrolling past a full screen. */}
+          <HomeDiscoveryTabs today={todayRest} weekend={weekendFeed} anytime={anytimeFeed} />
         </section>
       )}
 
@@ -122,8 +138,8 @@ export default async function HomePage() {
         >
           <HorizontalScroller>
             {nearYou.slice(0, 10).map((b) => (
-              <div key={b.id} className="w-64 shrink-0">
-                <BusinessCard business={b} />
+              <div key={b.id} className="w-40 shrink-0">
+                <CompactBusinessCard business={b} />
               </div>
             ))}
           </HorizontalScroller>
@@ -134,8 +150,8 @@ export default async function HomePage() {
         <Section title="Happening Soon" subtitle="Markets, pop-ups, and events coming up" viewAllHref="/events">
           <HorizontalScroller>
             {happeningSoon.map((e) => (
-              <div key={e.id} className="w-64 shrink-0">
-                <EventCard event={e} />
+              <div key={e.id} className="w-40 shrink-0">
+                <CompactEventCard event={e} />
               </div>
             ))}
           </HorizontalScroller>
@@ -158,8 +174,8 @@ export default async function HomePage() {
         <Section title="Food & Drink" viewAllHref="/businesses?category=food-drink">
           <HorizontalScroller>
             {foodAndDrink.map((b) => (
-              <div key={b.id} className="w-64 shrink-0">
-                <BusinessCard business={b} />
+              <div key={b.id} className="w-40 shrink-0">
+                <CompactBusinessCard business={b} />
               </div>
             ))}
           </HorizontalScroller>
@@ -170,8 +186,8 @@ export default async function HomePage() {
         <Section title="Markets & Pop-Ups" viewAllHref="/businesses?category=markets-pop-ups">
           <HorizontalScroller>
             {marketsAndPopUps.map((b) => (
-              <div key={b.id} className="w-64 shrink-0">
-                <BusinessCard business={b} />
+              <div key={b.id} className="w-40 shrink-0">
+                <CompactBusinessCard business={b} />
               </div>
             ))}
           </HorizontalScroller>
@@ -182,8 +198,8 @@ export default async function HomePage() {
         <Section title="Brands On The Move" subtitle="Mobile businesses that come to you">
           <HorizontalScroller>
             {brandsOnTheMove.map((b) => (
-              <div key={b.id} className="w-64 shrink-0">
-                <BusinessCard business={b} />
+              <div key={b.id} className="w-40 shrink-0">
+                <CompactBusinessCard business={b} />
               </div>
             ))}
           </HorizontalScroller>
@@ -237,5 +253,47 @@ export default async function HomePage() {
         </div>
       </section>
     </div>
+  );
+}
+
+// Homepage-only compact presentation — the shared PostCard/BusinessCard/
+// EventCard combo is a tall photo-overlay "story" card (by design, for the
+// signature moment and for /businesses, /discover, /events grids). Reusing
+// it for these dense secondary rows was what made ordinary cards consume
+// nearly a full viewport, so this is a smaller, normal-flow variant local
+// to the homepage rather than a change to those shared components.
+function CompactBusinessCard({ business }: { business: BusinessWithCategories }) {
+  const meta = [business.categories[0]?.name, cityState(business.city, business.state)]
+    .filter(Boolean)
+    .join(" · ");
+  return <CompactCard href={`/business/${business.slug}`} image={business.cover_image_url} title={business.name} meta={meta} />;
+}
+
+function CompactEventCard({ event }: { event: FindmiEvent }) {
+  const meta = [formatDateRange(event.start_at, event.end_at), cityState(event.city, event.state)]
+    .filter(Boolean)
+    .join(" · ");
+  return <CompactCard href={`/event/${event.slug}`} image={event.cover_image_url} title={event.name} meta={meta} />;
+}
+
+function CompactCard({
+  href,
+  image,
+  title,
+  meta,
+}: {
+  href: string;
+  image: string | null;
+  title: string;
+  meta: string;
+}) {
+  return (
+    <Link href={href} className="block">
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-mist">
+        {image && <Image src={image} alt={title} fill sizes="160px" className="object-cover" />}
+      </div>
+      <p className="mt-1.5 line-clamp-1 text-sm font-semibold text-ink">{title}</p>
+      {meta && <p className="line-clamp-1 text-xs text-ink/50">{meta}</p>}
+    </Link>
   );
 }
