@@ -169,7 +169,7 @@ export default async function BusinessPage({
             <p className="mt-1 text-sm text-ink/55">Upcoming appearances, soonest first.</p>
             <div className="mt-4 flex flex-col gap-3">
               {appearances.map((a) => (
-                <AppearanceCard key={a.id} appearance={a} />
+                <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
               ))}
             </div>
           </section>
@@ -181,7 +181,7 @@ export default async function BusinessPage({
             <h2 className="text-lg font-semibold tracking-tight text-ink">What You&rsquo;ll Find</h2>
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
               {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard key={p.id} product={p} businessSlug={business.slug} />
               ))}
             </div>
           </section>
@@ -215,7 +215,7 @@ export default async function BusinessPage({
         )}
 
         {/* Book / Inquire */}
-        <section className="mt-12 rounded-3xl bg-black/[0.03] p-6 sm:p-8">
+        <section id="book" className="mt-12 scroll-mt-20 rounded-3xl bg-black/[0.03] p-6 sm:p-8">
           <h2 className="text-lg font-semibold tracking-tight text-ink">Book / Inquire</h2>
           <p className="mt-2 max-w-xl text-sm text-ink/60">
             Tell {business.name} what you need — dates, location, and details — and they&rsquo;ll

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import BusinessCard from "@/components/BusinessCard";
 import EventCard from "@/components/EventCard";
-import { getCategories, getUpcomingEvents, searchBusinesses } from "@/lib/data";
+import { getCategories, getLocations, getUpcomingEvents, searchBusinesses } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Discover",
@@ -11,10 +11,11 @@ export const metadata: Metadata = {
 export const revalidate = 60;
 
 export default async function DiscoverPage() {
-  const [categories, businesses, events] = await Promise.all([
+  const [categories, businesses, events, locations] = await Promise.all([
     getCategories(),
     searchBusinesses({}),
     getUpcomingEvents(12),
+    getLocations(8),
   ]);
 
   return (
@@ -33,6 +34,14 @@ export default async function DiscoverPage() {
               {c.name}
             </Link>
           ))}
+          {locations.length > 0 && (
+            <Link
+              href="/locations"
+              className="rounded-full bg-findmi-50 px-4 py-2 text-sm font-medium text-findmi-700 transition hover:bg-findmi-100"
+            >
+              Browse Locations
+            </Link>
+          )}
         </div>
       )}
 

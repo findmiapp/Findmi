@@ -2,11 +2,14 @@ import Link from "next/link";
 import SearchBar from "@/components/SearchBar";
 import BusinessCard from "@/components/BusinessCard";
 import EventCard from "@/components/EventCard";
+import LocationCard from "@/components/LocationCard";
 import ProductCard from "@/components/ProductCard";
 import AppearanceFeedCard from "@/components/AppearanceFeedCard";
 import Section, { HorizontalScroller } from "@/components/Section";
 import {
   getFeaturedProducts,
+  getHomeStats,
+  getLocations,
   getMobileBusinesses,
   getUpcomingAppearancesFeed,
   getUpcomingEvents,
@@ -24,6 +27,8 @@ export default async function HomePage() {
     marketsAndPopUps,
     brandsOnTheMove,
     popularProducts,
+    locations,
+    stats,
   ] = await Promise.all([
     searchBusinesses({}),
     getUpcomingEvents(6),
@@ -32,23 +37,56 @@ export default async function HomePage() {
     searchBusinesses({ categorySlug: "markets-pop-ups" }),
     getMobileBusinesses(8),
     getFeaturedProducts(8),
+    getLocations(8),
+    getHomeStats(),
   ]);
 
   return (
     <div>
       {/* Hero */}
-      <section className="border-b border-black/5 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 px-6 py-16 sm:py-24">
+      <section className="relative overflow-hidden border-b border-black/5 bg-white">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-24 -top-32 h-96 w-96 rounded-full bg-findmi-300/40 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-32 top-10 h-[28rem] w-[28rem] rounded-full bg-findmi-500/20 blur-3xl"
+        />
+        <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-6 px-6 py-16 sm:py-24">
           <h1 className="max-w-2xl text-4xl font-semibold leading-[1.1] tracking-tight text-ink sm:text-5xl md:text-6xl">
             Find what you&rsquo;re looking for.
             <br />
-            And where it&rsquo;ll be next.
+            And where it&rsquo;ll be <span className="text-findmi-500">next</span>.
           </h1>
           <p className="max-w-lg text-base text-ink/60 sm:text-lg">
             Discover brands, vendors, food trucks, markets, and pop-ups — and always know
             where to find them next.
           </p>
           <SearchBar />
+
+          {(stats.businessCount > 0 || stats.upcomingCount > 0) && (
+            <div className="flex flex-wrap gap-x-6 gap-y-2 pt-2 text-sm text-ink/50">
+              {stats.businessCount > 0 && (
+                <span>
+                  <span className="font-semibold text-ink">{stats.businessCount}</span>{" "}
+                  businesses on Findmi
+                </span>
+              )}
+              {stats.upcomingCount > 0 && (
+                <span>
+                  <span className="font-semibold text-ink">{stats.upcomingCount}</span>{" "}
+                  upcoming appearances
+                </span>
+              )}
+              {stats.cityCount > 0 && (
+                <span>
+                  <span className="font-semibold text-ink">{stats.cityCount}</span>{" "}
+                  {stats.cityCount === 1 ? "city" : "cities"}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
@@ -124,12 +162,28 @@ export default async function HomePage() {
         </Section>
       )}
 
+      {locations.length > 0 && (
+        <Section
+          title="Popular Locations"
+          subtitle="See who's showing up next at each spot"
+          viewAllHref="/locations"
+        >
+          <HorizontalScroller>
+            {locations.map((l) => (
+              <div key={l.id} className="w-64 shrink-0">
+                <LocationCard location={l} />
+              </div>
+            ))}
+          </HorizontalScroller>
+        </Section>
+      )}
+
       {popularProducts.length > 0 && (
         <Section title="Popular Products">
           <HorizontalScroller>
             {popularProducts.map((p) => (
               <div key={p.id} className="w-44 shrink-0">
-                <ProductCard product={p} />
+                <ProductCard product={p} businessSlug={p.business?.slug} />
               </div>
             ))}
           </HorizontalScroller>

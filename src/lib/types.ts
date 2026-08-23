@@ -96,3 +96,14 @@ export interface Appearance {
 export interface BusinessWithCategories extends Business {
   categories: Category[];
 }
+
+export interface FindmiLocation {
+  id: string;
+  name: string;
+  slug: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}

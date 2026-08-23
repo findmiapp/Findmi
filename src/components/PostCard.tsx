@@ -55,17 +55,22 @@ export default function PostCard({
 }: PostCardProps) {
   const card = (
     <div
-      className={`group relative w-full overflow-hidden rounded-2xl bg-black/5 ${
-        aspect ?? ASPECT_BY_KIND[kind]
-      }`}
+      className={`group relative w-full overflow-hidden rounded-2xl transition duration-150 active:scale-[0.98] ${
+        image ? "bg-black/5" : "bg-gradient-to-br from-findmi-200 via-findmi-500 to-findmi-800"
+      } ${aspect ?? ASPECT_BY_KIND[kind]}`}
     >
-      {image && (
+      {image ? (
         <Image
           src={image}
           alt={title}
           fill
           sizes="(min-width: 768px) 320px, 70vw"
           className="object-cover transition duration-300 group-hover:scale-105"
+        />
+      ) : (
+        <Icon
+          name={badgeIcon ?? DEFAULT_ICON_BY_KIND[kind]}
+          className="absolute -bottom-4 -right-4 h-28 w-28 text-white/15"
         />
       )}
       {/* Legibility gradient for the white overlay text, bottom-anchored */}

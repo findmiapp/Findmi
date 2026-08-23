@@ -174,8 +174,10 @@ src/
   app/                  Routes (App Router)
     business/[slug]/    Business profile
     event/[slug]/       Event profile
+    location/[slug]/    Location profile (carousel + list of what's on there)
     businesses/         Directory + search
     events/             Event discovery
+    locations/          Location directory
     discover/           General discovery feed
     join/                Membership sales page
     join/success/        Post-checkout onboarding CTA
@@ -206,3 +208,7 @@ supabase/
 - No map SDK — event/appearance rows carry `latitude`/`longitude` and a
   "Get directions" link out to Google Maps; a map view can be layered on
   top of that data later.
+- No `location_id` foreign key yet on `events`/`appearances` — a location's
+  "Coming Up Here" feed matches on `venue_name` text (case-insensitive) as a
+  pragmatic V1 stand-in. Add the FK once venues are chosen from a picker
+  instead of typed freehand, and swap the text match for a join.

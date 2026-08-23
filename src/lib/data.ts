@@ -5,6 +5,7 @@ import type {
   BusinessWithCategories,
   Category,
   FindmiEvent,
+  FindmiLocation,
   Product,
 } from "./types";
 
@@ -45,6 +46,37 @@ async function attachCategories(businesses: Business[]): Promise<BusinessWithCat
     .in("business_id", ids);
 
   return withCategories(businesses, (data as never) ?? []);
+}
+
+export interface HomeStats {
+  businessCount: number;
+  upcomingCount: number;
+  cityCount: number;
+}
+
+/** Real, live counts for the homepage trust strip — never fabricated. */
+export async function getHomeStats(): Promise<HomeStats> {
+  const supabase = getSupabase();
+  if (!supabase) return { businessCount: 0, upcomingCount: 0, cityCount: 0 };
+
+  const [{ count: businessCount }, { count: upcomingCount }, { data: cityRows }] =
+    await Promise.all([
+      supabase.from("businesses").select("id", { count: "exact", head: true }),
+      supabase
+        .from("appearances")
+        .select("id", { count: "exact", head: true })
+        .neq("status", "canceled")
+        .gte("start_at", new Date().toISOString()),
+      supabase.from("businesses").select("city").not("city", "is", null),
+    ]);
+
+  const cityCount = new Set((cityRows ?? []).map((r) => r.city)).size;
+
+  return {
+    businessCount: businessCount ?? 0,
+    upcomingCount: upcomingCount ?? 0,
+    cityCount,
+  };
 }
 
 export async function getCategories(): Promise<Category[]> {
@@ -138,21 +170,30 @@ export async function getProductsForBusiness(businessId: string): Promise<Produc
   return data ?? [];
 }
 
+export interface AppearanceWithEventSlug extends Appearance {
+  event: { slug: string } | null;
+}
+
 export async function getUpcomingAppearancesForBusiness(
   businessId: string,
   limit = 20
-): Promise<Appearance[]> {
+): Promise<AppearanceWithEventSlug[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("appearances")
-    .select("*")
+    .select("*, event:events(slug)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .gte("start_at", new Date().toISOString())
     .order("start_at", { ascending: true })
     .limit(limit);
-  return data ?? [];
+
+  return ((data ?? []) as never[]).map((row: unknown) => {
+    const r = row as Appearance & { event: { slug: string } | { slug: string }[] | null };
+    const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
+    return { ...r, event };
+  });
 }
 
 export async function getUpcomingEvents(limit = 20): Promise<FindmiEvent[]> {
@@ -295,4 +336,95 @@ export async function getAlternativeBusinesses(
 
   const { data } = await supabase.from("businesses").select(BUSINESS_COLUMNS).in("id", ids);
   return attachCategories((data as Business[]) ?? []);
+}
+
+// ----------------------------------------------------------------------------
+// Locations
+// The schema doesn't (yet) have a foreign key from events/appearances to
+// locations — venues are stored as free text on each row. Until that FK
+// exists, "what's happening here" is a best-effort match on venue name.
+// ----------------------------------------------------------------------------
+
+export async function getLocations(limit = 20): Promise<FindmiLocation[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase.from("locations").select("*").order("name").limit(limit);
+  return data ?? [];
+}
+
+export async function getLocationBySlug(slug: string): Promise<FindmiLocation | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase.from("locations").select("*").eq("slug", slug).maybeSingle();
+  return data ?? null;
+}
+
+export interface LocationHappening {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  start_at: string;
+  end_at: string | null;
+  href: string;
+  imageUrl: string | null;
+}
+
+/** Upcoming events and standalone appearances at a location, merged into one
+ * chronological feed for that location's page. */
+export async function getUpcomingAtLocation(
+  locationName: string,
+  limit = 12
+): Promise<LocationHappening[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const nowIso = new Date().toISOString();
+
+  const [{ data: events }, { data: appearances }] = await Promise.all([
+    supabase
+      .from("events")
+      .select("id, slug, name, cover_image_url, start_at, end_at, organizer_name")
+      .ilike("venue_name", locationName)
+      .gte("start_at", nowIso)
+      .order("start_at", { ascending: true })
+      .limit(limit),
+    supabase
+      .from("appearances")
+      .select("id, title, start_at, end_at, business:businesses(slug, name, cover_image_url)")
+      .ilike("venue_name", locationName)
+      .is("event_id", null)
+      .neq("status", "canceled")
+      .gte("start_at", nowIso)
+      .order("start_at", { ascending: true })
+      .limit(limit),
+  ]);
+
+  const fromEvents: LocationHappening[] = (events ?? []).map((e) => ({
+    id: `event-${e.id}`,
+    title: e.name,
+    subtitle: e.organizer_name,
+    start_at: e.start_at,
+    end_at: e.end_at,
+    href: `/event/${e.slug}`,
+    imageUrl: e.cover_image_url,
+  }));
+
+  const fromAppearances: LocationHappening[] = (appearances ?? [])
+    .map((a) => {
+      const b = Array.isArray(a.business) ? a.business[0] : a.business;
+      if (!b) return null;
+      return {
+        id: `appearance-${a.id}`,
+        title: a.title,
+        subtitle: b.name,
+        start_at: a.start_at,
+        end_at: a.end_at,
+        href: `/business/${b.slug}`,
+        imageUrl: b.cover_image_url,
+      };
+    })
+    .filter((x): x is LocationHappening => x !== null);
+
+  return [...fromEvents, ...fromAppearances]
+    .sort((a, b) => a.start_at.localeCompare(b.start_at))
+    .slice(0, limit);
 }

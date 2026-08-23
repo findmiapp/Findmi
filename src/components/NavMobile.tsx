@@ -24,11 +24,15 @@ export default function NavMobile() {
             <Link
               key={link.href}
               href={link.href}
-              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
+              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition active:scale-95"
             >
-              <Icon
-                className={`h-5 w-5 ${active ? "text-findmi-500" : "text-ink/40"}`}
-              />
+              <span
+                className={`flex h-8 w-11 items-center justify-center rounded-full transition ${
+                  active ? "bg-findmi-50" : ""
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${active ? "text-findmi-500" : "text-ink/40"}`} />
+              </span>
               <span className={active ? "text-ink" : "text-ink/40"}>
                 {link.label}
               </span>
