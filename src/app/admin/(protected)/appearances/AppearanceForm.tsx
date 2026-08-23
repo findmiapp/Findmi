@@ -1,4 +1,4 @@
-import { CheckboxField, DateTimeField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
+import { CheckboxField, DateTimeField, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
 import { RelationField } from "@/components/admin/RelationPicker";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
@@ -94,6 +94,33 @@ export default function AppearanceForm({
             ]}
           />
           <CheckboxField label="Featured" name="is_featured" defaultChecked={appearance?.is_featured} />
+        </div>
+
+        <div className="rounded-2xl border border-black/10 p-4">
+          <p className="mb-3 text-sm font-semibold text-ink">Brand Bulletin</p>
+          <div className="flex flex-col gap-4">
+            <TextareaField
+              label="Bulletin Text"
+              name="bulletin_text"
+              defaultValue={appearance?.bulletin_text}
+              rows={2}
+              hint={'A short, human line — e.g. "Rosie is back at Minthorne this Saturday with build-your-own bouquets + cold brew." Falls back to a plain title/venue line if left blank.'}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <CheckboxField
+                label="Show on Homepage"
+                name="show_on_home"
+                defaultChecked={appearance?.show_on_home}
+                hint="Off by default — only explicitly enabled appearances appear on the homepage."
+              />
+              <NumberField
+                label="Homepage Order"
+                name="home_sort_order"
+                defaultValue={appearance?.home_sort_order ?? undefined}
+                hint="Only matters when Show on Homepage is on."
+              />
+            </div>
+          </div>
         </div>
 
         <SubmitBar cancelHref="/admin/appearances" />

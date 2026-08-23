@@ -6,7 +6,13 @@ import { formatPrice } from "@/lib/format";
 export default function ProductCard({
   product,
 }: {
-  product: Product;
+  product: Product & {
+    /** Selling brand — present on marketplace/homepage/featured product
+     * fetches (see FeaturedProduct/MarketplaceProduct in lib/data.ts), not
+     * on a business's own product list (redundant there). Purely additive
+     * to the card: no business means no brand row, nothing else changes. */
+    business?: { name: string; slug: string; logo_url?: string | null } | null;
+  };
   /** @deprecated no longer used for the card's own link — kept optional so
    * existing call sites (which still pass it) don't need updating. The
    * card now always opens the product's own /product/[slug] page, which
@@ -14,6 +20,7 @@ export default function ProductCard({
   businessSlug?: string;
 }) {
   const href = `/product/${product.slug}`;
+  const business = product.business;
   // Purchasable wins over an external link — it's the more complete,
   // FindMi-native path (real cart/fulfillment, not a redirect off-site).
   // The card always links to the product's own page either way, where the
@@ -51,6 +58,16 @@ export default function ProductCard({
         <p className="line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">
           {product.name}
         </p>
+        {business && (
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-ink/50">
+            {business.logo_url && (
+              <span className="relative h-4 w-4 shrink-0 overflow-hidden rounded-full bg-black/5">
+                <Image src={business.logo_url} alt="" fill sizes="16px" className="object-cover" />
+              </span>
+            )}
+            <span className="truncate">{business.name}</span>
+          </p>
+        )}
         {price && <p className="text-sm font-semibold text-ink/70">{price}</p>}
         {cta && (
           <span className="mt-auto flex items-center gap-1 pt-1 text-xs font-bold uppercase tracking-wide text-findmi-700">

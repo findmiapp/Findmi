@@ -7,6 +7,8 @@ const links = [
   { href: "/find", label: "FindMi Here" },
   { href: "/events", label: "Events" },
   { href: "/businesses", label: "Businesses" },
+  { href: "/marketplace", label: "Marketplace" },
+  { href: "/people", label: "People" },
   { href: "/join", label: "For Business" },
 ];
 
@@ -14,7 +16,7 @@ export default function NavDesktop() {
   return (
     <header className="sticky top-0 z-40 hidden border-b border-black/5 bg-paper/90 backdrop-blur md:block">
       <div className="mx-auto flex max-w-6xl items-center gap-8 px-6 py-4">
-        <Logo />
+        <Logo heightClassName="h-10" />
         <nav className="flex flex-1 items-center gap-6">
           {links.map((link) => (
             <Link

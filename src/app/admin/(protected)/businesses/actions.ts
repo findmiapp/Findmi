@@ -35,6 +35,7 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     service_radius_miles: num(formData, "service_radius_miles"),
     verified: bool(formData, "verified"),
     founding_member: bool(formData, "founding_member"),
+    is_featured: bool(formData, "is_featured"),
     membership_status: str(formData, "membership_status") ?? "lead",
     lead_status: str(formData, "lead_status") ?? "new",
     // Framed to the founder as "Published" — is_demo is the inverse.
@@ -72,5 +73,6 @@ export async function saveBusiness(id: string | null, formData: FormData) {
   revalidatePath("/admin/businesses");
   revalidatePath(`/business/${slug}`);
   revalidatePath("/");
+  revalidatePath("/businesses");
   redirect(`/admin/businesses/${businessId}?saved=1`);
 }

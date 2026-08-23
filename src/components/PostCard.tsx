@@ -42,6 +42,10 @@ export interface PostCardProps {
   price?: string | null;
   cta?: string | null;
   aspect?: string;
+  /** Small circular avatar overlaid bottom-right of the title block — a
+   * business's own logo, for stronger brand identity on discovery cards
+   * (Part 5D/3G). Omit entirely when there's no real logo to show. */
+  logoUrl?: string | null;
 }
 
 export default function PostCard({
@@ -57,6 +61,7 @@ export default function PostCard({
   price,
   cta,
   aspect,
+  logoUrl,
 }: PostCardProps) {
   const card = (
     <div
@@ -95,6 +100,12 @@ export default function PostCard({
           {badgeLabel}
         </span>
       </div>
+
+      {logoUrl && (
+        <div className="absolute right-3 top-3 h-9 w-9 overflow-hidden rounded-full border-2 border-white/80 bg-white shadow-sm">
+          <Image src={logoUrl} alt="" fill sizes="36px" className="object-cover" />
+        </div>
+      )}
 
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-3.5">
         {/* Bold here is a legibility need (white text over a variable photo),

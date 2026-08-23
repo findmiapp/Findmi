@@ -1,6 +1,8 @@
 import {
   CheckboxField,
+  CheckboxList,
   DateTimeField,
+  NumberField,
   TextField,
   TextareaField,
 } from "@/components/admin/Fields";
@@ -8,16 +10,21 @@ import ImageField from "@/components/admin/ImageField";
 import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import type { AdminEvent, EventParticipant } from "@/lib/admin/queries";
+import type { Category } from "@/lib/types";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveEvent } from "./actions";
 
 export default function EventForm({
   event,
   participants,
+  categories,
+  selectedCategoryIds,
   error,
 }: {
   event: AdminEvent | null;
   participants: EventParticipant[];
+  categories: Category[];
+  selectedCategoryIds: string[];
   error?: string;
 }) {
   const action = saveEvent.bind(null, event?.id ?? null);
@@ -90,11 +97,27 @@ export default function EventForm({
         />
       </div>
 
-      <CheckboxField
-        label="Featured"
-        name="is_featured"
-        defaultChecked={event?.is_featured}
-        hint="Gives this event priority in featured lists."
+      <div className="grid gap-4 sm:grid-cols-2">
+        <CheckboxField
+          label="Featured"
+          name="is_featured"
+          defaultChecked={event?.is_featured}
+          hint="Gives this event priority in featured lists."
+        />
+        <NumberField
+          label="Featured Order"
+          name="featured_sort_order"
+          defaultValue={event?.featured_sort_order ?? undefined}
+          hint="Only matters when Featured is on — lower numbers show first."
+        />
+      </div>
+
+      <CheckboxList
+        label="Categories / Experience"
+        name="category_ids"
+        defaultSelected={selectedCategoryIds}
+        options={categories.map((c) => ({ value: c.id, label: c.name }))}
+        emptyText="No categories yet — add some in /admin/categories."
       />
 
       {/* --- Consumer actions --- each toggle only ever shows on the public

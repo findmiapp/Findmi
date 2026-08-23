@@ -4,12 +4,14 @@ import { notFound } from "next/navigation";
 import AppearanceCard from "@/components/AppearanceCard";
 import BusinessCard from "@/components/BusinessCard";
 import ProductCard from "@/components/ProductCard";
+import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import { CategoryPill, VerifiedBadge } from "@/components/Badge";
 import {
   getAlternativeBusinesses,
   getBusinessBySlug,
+  getPeopleForBusiness,
   getProductsForBusiness,
   getUpcomingAppearancesForBusiness,
 } from "@/lib/data";
@@ -49,11 +51,19 @@ export default async function BusinessPage({
   const business = await getBusinessBySlug(slug);
   if (!business) notFound();
 
-  const [products, appearances, alternatives] = await Promise.all([
+  const [products, appearances, alternatives, people] = await Promise.all([
     getProductsForBusiness(business.id),
     getUpcomingAppearancesForBusiness(business.id),
     getAlternativeBusinesses(business),
+    getPeopleForBusiness(business.id),
   ]);
+
+  // "Meet the Owners" only when every configured role genuinely says so —
+  // never assumed. Any broader/mixed set of roles gets the honest generic
+  // heading instead.
+  const allOwnersOrFounders =
+    people.length > 0 && people.every((p) => /owner|founder/i.test(p.role ?? ""));
+  const peopleHeading = allOwnersOrFounders ? "Meet the Owners" : `Meet the People Behind ${business.name}`;
 
   const gallery = Array.from(
     new Set(
@@ -233,6 +243,28 @@ export default async function BusinessPage({
             <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink/70">
               {business.description}
             </p>
+          </section>
+        )}
+
+        {/* F2. People — editorial, human; single person gets a stronger
+            treatment, multiple people use a horizontal carousel. Never
+            rendered empty. */}
+        {people.length > 0 && (
+          <section className="mt-8">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">{peopleHeading}</h2>
+            {people.length === 1 ? (
+              <div className="mt-4 max-w-xs">
+                <PersonCard person={people[0]} role={people[0].role} />
+              </div>
+            ) : (
+              <div className="mt-4 -mx-6 flex gap-4 overflow-x-auto px-6 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {people.map((p) => (
+                  <div key={p.id} className="w-40 shrink-0">
+                    <PersonCard person={p} role={p.role} />
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 

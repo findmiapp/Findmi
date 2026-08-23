@@ -1,15 +1,19 @@
 import { getSupabase } from "./supabase";
-import { formatDateRange, getDiscoveryWindowBounds, type DiscoveryWindow } from "./format";
+import { formatDateRange, getDiscoveryWindowBounds, getExactDateBounds, type DiscoveryWindow } from "./format";
 import type {
   Appearance,
   Business,
+  BusinessSummary,
   BusinessWithCategories,
   Category,
+  EventWithCategories,
   FindmiEvent,
   FindmiLocation,
   FulfillmentMethod,
   Market,
   MembershipPlan,
+  Person,
+  PersonWithRole,
   Product,
 } from "./types";
 
@@ -115,13 +119,15 @@ export async function getHomeCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
+/** Founder-curated Featured Brands (businesses.is_featured — decoupled
+ * from founding_member, backfilled from it at launch). */
 export async function getFeaturedBusinesses(limit = 8): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("businesses")
     .select(BUSINESS_COLUMNS)
-    .eq("founding_member", true)
+    .eq("is_featured", true)
     .eq("is_demo", false)
     .eq("publication_status", "live")
     .order("created_at", { ascending: false })
@@ -252,6 +258,9 @@ export async function getUpcomingEvents(
   return data ?? [];
 }
 
+/** Editorial top-of-page Featured Events — is_featured first (ordered by
+ * the founder's own featured_sort_order, nulls last), then legitimate
+ * upcoming events as fallback. Never fabricated. */
 export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -261,9 +270,83 @@ export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
     .eq("is_demo", false)
     .gte("start_at", new Date().toISOString())
     .order("is_featured", { ascending: false })
+    .order("featured_sort_order", { ascending: true, nullsFirst: false })
     .order("start_at", { ascending: true })
     .limit(limit);
   return data ?? [];
+}
+
+export interface EventDiscoveryParams {
+  q?: string;
+  when?: DiscoveryWindow;
+  /** YYYY-MM-DD — overrides `when` when present (the exact-date picker). */
+  date?: string;
+  categorySlug?: string;
+  city?: string;
+  limit?: number;
+}
+
+/** Shared events query — backs /events' "All Events" browse state and
+ * every curated row on that page (This Weekend, category rows, etc.), per
+ * CLAUDE.md's "reuse architecture only where it meaningfully prevents
+ * duplication" — one query helper, not five bespoke ones. */
+export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Promise<FindmiEvent[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  let categoryEventIds: string[] | null = null;
+  if (params.categorySlug) {
+    const { data: cat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", params.categorySlug)
+      .maybeSingle();
+    if (!cat) return [];
+    const { data: links } = await supabase
+      .from("event_categories")
+      .select("event_id")
+      .eq("category_id", cat.id);
+    categoryEventIds = (links ?? []).map((l) => l.event_id);
+    if (categoryEventIds.length === 0) return [];
+  }
+
+  const bounds = params.date ? getExactDateBounds(params.date) : getDiscoveryWindowBounds(params.when ?? "anytime");
+  let query = supabase
+    .from("events")
+    .select("*")
+    .eq("is_demo", false)
+    .gte("start_at", (bounds?.start ?? new Date()).toISOString());
+  if (bounds) query = query.lt("start_at", bounds.end.toISOString());
+  if (params.q) {
+    const term = `%${params.q.trim()}%`;
+    query = query.or(`name.ilike.${term},description.ilike.${term},venue_name.ilike.${term}`);
+  }
+  if (params.city) query = query.ilike("city", `%${params.city}%`);
+  if (categoryEventIds) query = query.in("id", categoryEventIds);
+
+  const { data } = await query.order("start_at", { ascending: true }).limit(params.limit ?? 50);
+  return data ?? [];
+}
+
+/** Attaches each event's tagged categories (event_categories) — mirrors
+ * attachCategories' shape/pattern for businesses. Used where category
+ * badges/grouping are needed; plain getUpcomingEvents/getEventsDiscovery
+ * callers that don't need categories skip this extra query. */
+export async function attachEventCategories(events: FindmiEvent[]): Promise<EventWithCategories[]> {
+  const supabase = getSupabase();
+  if (!supabase || events.length === 0) return events.map((e) => ({ ...e, categories: [] }));
+  const ids = events.map((e) => e.id);
+  const { data } = await supabase
+    .from("event_categories")
+    .select("event_id, categories(id, name, slug)")
+    .in("event_id", ids);
+
+  const byEvent = new Map<string, Category[]>();
+  for (const row of (data ?? []) as { event_id: string; categories: Category | Category[] | null }[]) {
+    const cats = Array.isArray(row.categories) ? row.categories : row.categories ? [row.categories] : [];
+    byEvent.set(row.event_id, [...(byEvent.get(row.event_id) ?? []), ...cats]);
+  }
+  return events.map((e) => ({ ...e, categories: byEvent.get(e.id) ?? [] }));
 }
 
 export async function getEventBySlug(slug: string): Promise<FindmiEvent | null> {
@@ -354,40 +437,52 @@ export async function getUpcomingAppearancesFeed(limit = 8): Promise<AppearanceF
   if (!supabase) return [];
   const { data } = await supabase
     .from("appearances")
-    .select("*, business:businesses(id, name, slug, logo_url, is_demo)")
+    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
     .neq("status", "canceled")
     .gte("start_at", new Date().toISOString())
     .order("start_at", { ascending: true })
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
-  type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean };
+  type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean; publication_status: string };
   return ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Appearance & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => item.business && !item.business.is_demo)
+    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
     .slice(0, limit)
-    .map(({ business: { is_demo: _isDemo, ...business }, ...rest }) => ({ ...rest, business }));
+    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({ ...rest, business }));
 }
 
 export type FindWindow = "live" | "today" | "weekend" | "anytime";
 
 /** The FindMi Here discovery feed — real appearances across every business,
  * filtered to one of the four temporal tabs. "live" means genuinely HERE
- * NOW (start_at <= now <= end_at), not a guess. */
+ * NOW (start_at <= now <= end_at), not a guess. Optional categorySlug/city
+ * back /find's WHAT/WHERE filters — same category-then-filter-ids pattern
+ * used by searchBusinesses, applied here via business_id. */
 export async function getFindMiHereFeed(
   when: FindWindow,
-  limit = 30
+  limit = 30,
+  extra: { categorySlug?: string; city?: string } = {}
 ): Promise<AppearanceFeedItem[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const nowIso = new Date().toISOString();
 
+  let categoryBusinessIds: string[] | null = null;
+  if (extra.categorySlug) {
+    const { data: cat } = await supabase.from("categories").select("id").eq("slug", extra.categorySlug).maybeSingle();
+    if (!cat) return [];
+    const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
+    categoryBusinessIds = (links ?? []).map((l) => l.business_id);
+    if (categoryBusinessIds.length === 0) return [];
+  }
+
   let query = supabase
     .from("appearances")
-    .select("*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo)")
+    .select("*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status)")
     .neq("status", "canceled");
 
   if (when === "live") {
@@ -399,6 +494,8 @@ export async function getFindMiHereFeed(
       if (bounds) query = query.lt("start_at", bounds.end.toISOString());
     }
   }
+  if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
+  if (extra.city) query = query.ilike("city", `%${extra.city}%`);
 
   // Featured appearances (see event_businesses.featured / appearances'
   // own is_featured — an admin-set editorial flag) sort first within
@@ -411,16 +508,16 @@ export async function getFindMiHereFeed(
     .order("start_at", { ascending: true })
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
-  type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean };
+  type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean; publication_status: string };
   return ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Appearance & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => item.business && !item.business.is_demo)
+    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
     .slice(0, limit)
-    .map(({ business: { is_demo: _isDemo, ...business }, ...rest }) => ({ ...rest, business }));
+    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({ ...rest, business }));
 }
 
 /** Businesses that travel to customers rather than operate from a single
@@ -444,17 +541,22 @@ export async function getMobileBusinesses(limit = 8): Promise<BusinessWithCatego
 }
 
 export interface FeaturedProduct extends Product {
-  business: { id: string; name: string; slug: string };
+  business: { id: string; name: string; slug: string; logo_url: string | null };
 }
 
+/** Founder-curated homepage/marketplace Featured Products
+ * (products.is_featured + home_sort_order — the founder decides both
+ * which products appear and their order). */
 export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, is_demo, publication_status)")
+    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
     .eq("is_featured", true)
     .eq("is_active", true)
+    .order("home_sort_order", { ascending: true, nullsFirst: false })
+    .order("name")
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
   type JoinedBusiness = FeaturedProduct["business"] & { is_demo: boolean; publication_status: string };
@@ -563,6 +665,143 @@ export async function getFulfillmentOptionsForProduct(
       return { method: row.method, price: row.price, label, appearanceId: row.appearance_id };
     })
     .filter((o): o is FulfillmentOptionDisplay => Boolean(o));
+}
+
+export interface HomeBulletin {
+  id: string;
+  bulletinText: string;
+  startAt: string;
+  endAt: string | null;
+  business: { id: string; name: string; slug: string; logo_url: string | null; cover_image_url: string | null };
+  href: string;
+}
+
+/** Brand bulletins (Part 3F) — ONLY appearances the founder explicitly
+ * marked show_on_home=true surface here, ordered by home_sort_order. This
+ * is deliberately not "every upcoming appearance" — the homepage FindMi
+ * Here row is now a curated bulletin feed, not an automatic dump. Falls
+ * back to a plain, honest "{title} — {venue}" line when bulletin_text
+ * wasn't set, rather than skipping a founder-enabled appearance outright. */
+export async function getHomeAppearanceBulletins(limit = 6): Promise<HomeBulletin[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("appearances")
+    .select(
+      "*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(slug)"
+    )
+    .eq("show_on_home", true)
+    .neq("status", "canceled")
+    .gte("start_at", new Date().toISOString())
+    .order("home_sort_order", { ascending: true, nullsFirst: false })
+    .order("start_at", { ascending: true })
+    .limit(limit * 2);
+
+  type JoinedBusiness = HomeBulletin["business"] & { is_demo: boolean; publication_status: string };
+  type Row = Appearance & {
+    business: JoinedBusiness | JoinedBusiness[] | null;
+    event: { slug: string } | { slug: string }[] | null;
+  };
+  return ((data ?? []) as Row[])
+    .map((row) => {
+      const business = Array.isArray(row.business) ? row.business[0] : row.business;
+      const event = Array.isArray(row.event) ? row.event[0] : row.event;
+      if (!business || business.is_demo || business.publication_status !== "live") return null;
+      const { is_demo: _isDemo, publication_status: _pubStatus, ...cleanBusiness } = business;
+      return {
+        id: row.id,
+        bulletinText: row.bulletin_text?.trim() || `${row.title} at ${row.venue_name ?? "a FindMi location"}`,
+        startAt: row.start_at,
+        endAt: row.end_at,
+        business: cleanBusiness,
+        href: event ? `/event/${event.slug}` : `/business/${cleanBusiness.slug}`,
+      };
+    })
+    .filter((b): b is HomeBulletin => Boolean(b))
+    .slice(0, limit);
+}
+
+/** Bulk "next real appearance" per business — powers business cards'
+ * compact "At X Saturday" signal (Part 5D). Only genuine upcoming,
+ * non-canceled appearances; a business with nothing scheduled contributes
+ * no entry, so cards never fabricate activity. */
+export async function getNextAppearanceHints(businessIds: string[]): Promise<Map<string, { venue: string; startAt: string }>> {
+  const hints = new Map<string, { venue: string; startAt: string }>();
+  const supabase = getSupabase();
+  if (!supabase || businessIds.length === 0) return hints;
+  const { data } = await supabase
+    .from("appearances")
+    .select("business_id, venue_name, title, start_at")
+    .in("business_id", businessIds)
+    .neq("status", "canceled")
+    .gte("start_at", new Date().toISOString())
+    .order("start_at", { ascending: true });
+  for (const row of data ?? []) {
+    if (!hints.has(row.business_id)) {
+      hints.set(row.business_id, { venue: row.venue_name ?? row.title, startAt: row.start_at });
+    }
+  }
+  return hints;
+}
+
+export interface MarketplaceProduct extends Product {
+  business: { id: string; name: string; slug: string; logo_url: string | null };
+}
+
+export interface MarketplaceProductParams {
+  q?: string;
+  categorySlug?: string;
+  limit?: number;
+}
+
+/** The public product marketplace's shared query (/marketplace and the
+ * homepage's Shop FindMi row both read real purchasable/inquiry-ready
+ * catalog data through here — see getFeaturedProducts for the curated
+ * subset, this is the full active catalog). categorySlug filters by the
+ * SELLING BUSINESS's category, since products don't carry their own. */
+export async function getMarketplaceProducts(params: MarketplaceProductParams = {}): Promise<MarketplaceProduct[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  let categoryBusinessIds: string[] | null = null;
+  if (params.categorySlug) {
+    const { data: cat } = await supabase.from("categories").select("id").eq("slug", params.categorySlug).maybeSingle();
+    if (!cat) return [];
+    const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
+    categoryBusinessIds = (links ?? []).map((l) => l.business_id);
+    if (categoryBusinessIds.length === 0) return [];
+  }
+
+  const limit = params.limit ?? 40;
+  let query = supabase
+    .from("products")
+    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
+    .eq("is_active", true);
+  if (params.q) {
+    const term = `%${params.q.trim()}%`;
+    query = query.or(`name.ilike.${term},description.ilike.${term}`);
+  }
+  if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
+
+  const { data } = await query
+    .order("is_featured", { ascending: false })
+    .order("home_sort_order", { ascending: true, nullsFirst: false })
+    .order("name")
+    .limit(limit * 2); // over-fetch since some may be filtered out as demo
+
+  type JoinedBusiness = MarketplaceProduct["business"] & { is_demo: boolean; publication_status: string };
+  return ((data ?? []) as never[])
+    .map((row: unknown) => {
+      const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
+      const business = Array.isArray(r.business) ? r.business[0] : r.business;
+      return { ...r, business };
+    })
+    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
+    .slice(0, limit)
+    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
+      ...rest,
+      business,
+    }));
 }
 
 /** Other founding-member businesses sharing at least one category — used to
@@ -730,5 +969,88 @@ export async function getActiveMarkets(): Promise<Market[]> {
     .select("*")
     .eq("active", true)
     .order("sort_order");
+  return data ?? [];
+}
+
+// ----------------------------------------------------------------------------
+// People (Part 10) — founders, owners, makers, chefs, creators, operators.
+// Independent entity, many-to-many with businesses via business_people.
+// Public reads are already gated by RLS (people.is_public=true), so these
+// helpers don't need an extra is_public check beyond what's noted below.
+// ----------------------------------------------------------------------------
+
+/** People shown on one business profile — only rows the founder marked
+ * show_on_business=true, ordered by display_order. Public/private is
+ * already enforced by RLS on the people table itself. */
+export async function getPeopleForBusiness(businessId: string): Promise<PersonWithRole[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("business_people")
+    .select("role, featured, display_order, people(*)")
+    .eq("business_id", businessId)
+    .eq("show_on_business", true)
+    .order("display_order", { ascending: true, nullsFirst: false });
+
+  type Row = { role: string | null; featured: boolean; people: Person | Person[] | null };
+  return ((data ?? []) as Row[])
+    .map((row) => {
+      const person = Array.isArray(row.people) ? row.people[0] : row.people;
+      return person ? { ...person, role: row.role, featured: row.featured } : null;
+    })
+    .filter((p): p is PersonWithRole => Boolean(p));
+}
+
+export async function getPersonBySlug(slug: string): Promise<Person | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase.from("people").select("*").eq("slug", slug).eq("is_public", true).maybeSingle();
+  return data ?? null;
+}
+
+/** All PUBLIC, live businesses associated with a person — the BRANDS
+ * section of their public profile. A person can legitimately span many
+ * brands, so no limit here beyond what's real. */
+export async function getBusinessesForPerson(personId: string): Promise<BusinessSummary[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("business_people")
+    .select("businesses(id, slug, name, logo_url, cover_image_url, is_demo, publication_status)")
+    .eq("person_id", personId);
+
+  type JoinedBusiness = BusinessSummary & { is_demo: boolean; publication_status: string };
+  type Row = { businesses: JoinedBusiness | JoinedBusiness[] | null };
+  return ((data ?? []) as Row[])
+    .map((row) => (Array.isArray(row.businesses) ? row.businesses[0] : row.businesses))
+    .filter((b): b is JoinedBusiness => Boolean(b) && !b!.is_demo && b!.publication_status === "live")
+    .map(({ is_demo: _isDemo, publication_status: _pubStatus, ...b }) => b);
+}
+
+export async function getFeaturedPeople(limit = 8): Promise<Person[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("people")
+    .select("*")
+    .eq("is_public", true)
+    .eq("is_featured", true)
+    .order("name")
+    .limit(limit);
+  return data ?? [];
+}
+
+/** /people's full directory + basic search — small dataset by nature
+ * (people, not businesses), so a plain filtered list is enough; no
+ * pagination/search-picker infrastructure needed yet. */
+export async function getPublicPeople(q?: string): Promise<Person[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  let query = supabase.from("people").select("*").eq("is_public", true);
+  if (q) {
+    const term = `%${q.trim()}%`;
+    query = query.or(`name.ilike.${term},short_bio.ilike.${term},location.ilike.${term}`);
+  }
+  const { data } = await query.order("is_featured", { ascending: false }).order("name");
   return data ?? [];
 }

@@ -40,6 +40,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
     organizer_name: str(formData, "organizer_name"),
     external_url: str(formData, "external_url"),
     is_featured: bool(formData, "is_featured"),
+    featured_sort_order: num(formData, "featured_sort_order"),
     is_demo: !bool(formData, "published"),
     directions_enabled: bool(formData, "directions_enabled"),
     rsvp_enabled: bool(formData, "rsvp_enabled"),
@@ -99,8 +100,18 @@ export async function saveEvent(id: string | null, formData: FormData) {
       .in("business_id", removedIds);
   }
 
+  const categoryIds = formData.getAll("category_ids").map(String);
+  await supabase.from("event_categories").delete().eq("event_id", eventId);
+  if (categoryIds.length > 0) {
+    await supabase
+      .from("event_categories")
+      .insert(categoryIds.map((category_id) => ({ event_id: eventId, category_id })));
+  }
+
   revalidatePath("/admin/events");
   revalidatePath(`/event/${slug}`);
   revalidatePath("/");
+  revalidatePath("/events");
+  revalidatePath("/discover");
   redirect(`/admin/events/${eventId}?saved=1`);
 }

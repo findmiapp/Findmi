@@ -41,6 +41,7 @@ export async function saveProduct(id: string | null, formData: FormData) {
     product_type: str(formData, "product_type") ?? "product",
     external_purchase_url: str(formData, "external_purchase_url"),
     is_featured: bool(formData, "is_featured"),
+    home_sort_order: num(formData, "home_sort_order"),
     is_active: bool(formData, "is_active"),
     purchasable: bool(formData, "purchasable"),
     inventory_status: str(formData, "inventory_status"),
@@ -90,6 +91,7 @@ export async function saveProduct(id: string | null, formData: FormData) {
   revalidatePath("/admin/products");
   revalidatePath(`/product/${slug}`);
   revalidatePath("/");
+  revalidatePath("/marketplace");
   redirect(`/admin/products/${productId}?saved=1`);
 }
 

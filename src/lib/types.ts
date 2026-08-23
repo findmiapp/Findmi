@@ -41,6 +41,10 @@ export interface Business {
   service_radius_miles: number | null;
   verified: boolean;
   founding_member: boolean;
+  // Editorial "Featured Brands" flag — separate from founding_member (a
+  // billing/historical concept). Backfilled from founding_member so
+  // today's featured-brand set is unchanged; founder curates from here on.
+  is_featured: boolean;
   membership_status: MembershipStatus;
   lead_status: LeadStatus;
   created_at: string;
@@ -134,6 +138,9 @@ export interface Product {
   inventory_status: "in_stock" | "out_of_stock" | null;
   marketplace_fee_override_percent: number | null;
   processing_fee_payer_override: ProcessingFeePayer | null;
+  // Founder-controlled homepage/marketplace placement order among
+  // is_featured products — null sorts last, then by name.
+  home_sort_order: number | null;
 }
 
 export interface ProductFulfillmentOption {
@@ -177,6 +184,13 @@ export interface FindmiEvent {
   organizer_email: string | null;
   contact_url: string | null;
   directions_enabled: boolean;
+  // Founder-controlled ordering among is_featured events — null sorts
+  // last (still featured, just after explicitly ordered ones).
+  featured_sort_order: number | null;
+}
+
+export interface EventWithCategories extends FindmiEvent {
+  categories: Category[];
 }
 
 export type EventParticipationStatus =
@@ -202,6 +216,12 @@ export interface Appearance {
   longitude: number | null;
   status: AppearanceStatus;
   is_featured: boolean;
+  // Brand bulletin (Part 3F) — a founder-written "here's what's happening"
+  // line for this appearance. show_on_home gates homepage placement
+  // explicitly; not every appearance should flood the homepage.
+  bulletin_text: string | null;
+  show_on_home: boolean;
+  home_sort_order: number | null;
 }
 
 export interface BusinessWithCategories extends Business {
@@ -217,4 +237,45 @@ export interface FindmiLocation {
   state: string | null;
   latitude: number | null;
   longitude: number | null;
+}
+
+// People — founders, owners, makers, chefs, creators, operators. An
+// independent entity, many-to-many with businesses via business_people
+// (see lib/admin/people-queries.ts). "Public Figure" and similar are
+// editorial framing around a Person, never a separate table.
+export interface Person {
+  id: string;
+  name: string;
+  slug: string;
+  image_url: string | null;
+  short_bio: string | null;
+  location: string | null;
+  instagram_url: string | null;
+  website_url: string | null;
+  is_public: boolean;
+  is_featured: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BusinessPersonLink {
+  business_id: string;
+  person_id: string;
+  role: string | null;
+  display_order: number | null;
+  featured: boolean;
+  show_on_business: boolean;
+}
+
+export interface PersonWithRole extends Person {
+  role: string | null;
+  featured: boolean;
+}
+
+export interface BusinessSummary {
+  id: string;
+  slug: string;
+  name: string;
+  logo_url: string | null;
+  cover_image_url: string | null;
 }

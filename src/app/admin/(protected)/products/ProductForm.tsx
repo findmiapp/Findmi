@@ -95,6 +95,13 @@ export default function ProductForm({
           <CheckboxField label="Featured" name="is_featured" defaultChecked={product?.is_featured} />
         </div>
 
+        <NumberField
+          label="Homepage / Marketplace Order"
+          name="home_sort_order"
+          defaultValue={product?.home_sort_order ?? undefined}
+          hint="Only matters when Featured is on — lower numbers show first. Leave blank to sort last, by name."
+        />
+
         <div className="rounded-2xl border border-black/10 p-4">
           <p className="mb-3 text-sm font-semibold text-ink">Commerce</p>
           <div className="flex flex-col gap-4">

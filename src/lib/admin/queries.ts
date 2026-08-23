@@ -258,6 +258,13 @@ export async function getAdminEventById(
   return { event: event as AdminEvent, participants };
 }
 
+export async function getEventCategoryIds(eventId: string): Promise<string[]> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase.from("event_categories").select("category_id").eq("event_id", eventId);
+  return (data ?? []).map((c) => c.category_id);
+}
+
 /** Looks up just the one event a form already has selected (Appearance's
  * optional event link), for seeding a RelationField's initial value. */
 export async function getEventOptionById(id: string | null): Promise<SelectOption | null> {

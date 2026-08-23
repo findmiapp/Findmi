@@ -142,6 +142,13 @@ export default function BusinessForm({
         />
       </div>
 
+      <CheckboxField
+        label="Featured Brand"
+        name="is_featured"
+        defaultChecked={business?.is_featured}
+        hint="Shows in the homepage/Businesses 'Featured Brands' rows. Independent of Founding Member."
+      />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <SelectField
           label="Membership Status"

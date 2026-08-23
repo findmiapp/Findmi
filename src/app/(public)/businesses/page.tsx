@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import BusinessCard from "@/components/BusinessCard";
-import { getCategories, searchBusinesses } from "@/lib/data";
+import Section, { HorizontalScroller } from "@/components/Section";
+import { getCategories, getFeaturedBusinesses, getHomeCategories, getNextAppearanceHints, searchBusinesses } from "@/lib/data";
+import { groupByCategory } from "@/lib/curation";
 
 export const metadata: Metadata = {
   title: "Businesses",
@@ -15,10 +17,17 @@ export default async function BusinessesPage({
   searchParams: Promise<{ q?: string; category?: string; city?: string }>;
 }) {
   const params = await searchParams;
-  const [categories, businesses] = await Promise.all([
+  const filtering = Boolean(params.q || params.category || params.city);
+
+  const [categories, homeCategories, featured, businesses] = await Promise.all([
     getCategories(),
+    filtering ? Promise.resolve([]) : getHomeCategories(),
+    filtering ? Promise.resolve([]) : getFeaturedBusinesses(10),
     searchBusinesses({ q: params.q, categorySlug: params.category, city: params.city }),
   ]);
+
+  const categoryRows = filtering ? [] : groupByCategory(businesses, homeCategories, { minPerRow: 2, limitPerRow: 10 });
+  const appearanceHints = await getNextAppearanceHints(businesses.map((b) => b.id));
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -60,31 +69,75 @@ export default async function BusinessesPage({
         </button>
       </form>
 
-      {(params.q || params.category || params.city) && (
-        <p className="mt-4 text-sm text-ink/50">
-          {businesses.length} result{businesses.length === 1 ? "" : "s"}
-          {params.category && (
-            <>
-              {" "}
-              in <span className="font-medium text-ink">{params.category.replace(/-/g, " ")}</span>
-            </>
+      {filtering ? (
+        <>
+          <p className="mt-4 text-sm text-ink/50">
+            {businesses.length} result{businesses.length === 1 ? "" : "s"}
+            {params.category && (
+              <>
+                {" "}
+                in <span className="font-medium text-ink">{params.category.replace(/-/g, " ")}</span>
+              </>
+            )}
+          </p>
+          {businesses.length === 0 ? (
+            <p className="mt-10 text-sm text-ink/50">
+              No businesses matched your search.{" "}
+              <Link href="/businesses" className="font-medium text-ink underline underline-offset-2">
+                Clear filters
+              </Link>
+            </p>
+          ) : (
+            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+              {businesses.map((b) => (
+                <BusinessCard key={b.id} business={b} />
+              ))}
+            </div>
           )}
-        </p>
-      )}
-
-      {businesses.length === 0 ? (
-        <p className="mt-10 text-sm text-ink/50">
-          No businesses matched your search.{" "}
-          <Link href="/businesses" className="font-medium text-ink underline underline-offset-2">
-            Clear filters
-          </Link>
-        </p>
+        </>
       ) : (
-        <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-          {businesses.map((b) => (
-            <BusinessCard key={b.id} business={b} />
+        <>
+          {featured.length > 0 && (
+            <div className="-mx-6 mt-6">
+              <Section title="Featured Brands">
+                <HorizontalScroller>
+                  {featured.map((b) => (
+                    <div key={b.id} className="w-44 shrink-0">
+                      <BusinessCard business={b} />
+                    </div>
+                  ))}
+                </HorizontalScroller>
+              </Section>
+            </div>
+          )}
+
+          {categoryRows.map(({ category: cat, items }) => (
+            <div key={cat.id} className="-mx-6">
+              <Section title={cat.name} viewAllHref={`/businesses?category=${cat.slug}`}>
+                <HorizontalScroller>
+                  {items.map((b) => (
+                    <div key={b.id} className="w-44 shrink-0">
+                      <BusinessCard business={b} />
+                    </div>
+                  ))}
+                </HorizontalScroller>
+              </Section>
+            </div>
           ))}
-        </div>
+
+          <div className="mt-8">
+            <h2 className="font-display text-xl font-bold tracking-tight text-ink">All Businesses</h2>
+            {businesses.length === 0 ? (
+              <p className="mt-6 text-sm text-ink/50">No businesses yet — check back soon.</p>
+            ) : (
+              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+                {businesses.map((b) => (
+                  <BusinessCard key={b.id} business={b} appearanceHint={appearanceHints.get(b.id)} />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

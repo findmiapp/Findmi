@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { bool, errorRedirectUrl, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
+import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 
 export async function saveAppearance(id: string | null, formData: FormData) {
   const supabase = getAdminSupabase();
@@ -32,6 +32,9 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     state: str(formData, "state"),
     status: str(formData, "status") ?? "confirmed",
     is_featured: bool(formData, "is_featured"),
+    bulletin_text: str(formData, "bulletin_text"),
+    show_on_home: bool(formData, "show_on_home"),
+    home_sort_order: num(formData, "home_sort_order"),
   };
 
   let appearanceId = id;
@@ -53,6 +56,7 @@ export async function saveAppearance(id: string | null, formData: FormData) {
   revalidatePath("/admin/appearances");
   revalidatePath("/");
   revalidatePath("/find");
+  revalidatePath("/discover");
   redirect(`/admin/appearances/${appearanceId}?saved=1`);
 }
 

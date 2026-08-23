@@ -99,10 +99,11 @@ function getLocalDayBounds(dayOffset = 0): { start: Date; end: Date } {
   return { start: new Date(startUTC), end: new Date(endUTC) };
 }
 
-export type DiscoveryWindow = "now" | "next" | "weekend" | "anytime";
+export type DiscoveryWindow = "now" | "next" | "weekend" | "month" | "anytime";
 
-/** Findmi's discovery time filter — NOW / NEXT / THIS WEEKEND / ANYTIME —
- * resolved to real UTC bounds in APP_TIMEZONE. null means "no filter." */
+/** Findmi's discovery time filter — TODAY (now) / NEXT WEEK (next) / THIS
+ * WEEKEND / THIS MONTH / ALL EVENTS (anytime) — resolved to real UTC
+ * bounds in APP_TIMEZONE. null means "no filter." */
 export function getDiscoveryWindowBounds(
   when: DiscoveryWindow
 ): { start: Date; end: Date } | null {
@@ -110,6 +111,29 @@ export function getDiscoveryWindowBounds(
   if (when === "now") return getLocalDayBounds(0);
   if (when === "next") {
     return { start: getLocalDayBounds(1).start, end: getLocalDayBounds(7).end };
+  }
+  if (when === "month") {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: APP_TIMEZONE,
+      year: "numeric",
+      month: "2-digit",
+    }).formatToParts(new Date());
+    const y = Number(parts.find((p) => p.type === "year")?.value);
+    const m = Number(parts.find((p) => p.type === "month")?.value);
+    // First-of-next-month, in local time — computed via the same
+    // day-bounds machinery so DST/offset edge cases stay handled in one
+    // place rather than duplicated here.
+    const start = getLocalDayBounds(0).start;
+    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const now = new Date();
+    const nowDay = Number(
+      new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE, day: "2-digit" }).format(now)
+    );
+    // The exclusive upper bound is midnight on the 1st of next month —
+    // that offset's *start*, not the last day of this month's *end*
+    // (which would be one day too far).
+    const end = getLocalDayBounds(daysInMonth - nowDay + 1).start;
+    return { start, end };
   }
   // weekend: the upcoming (or current) Saturday through end of Sunday
   const weekdayShort = new Intl.DateTimeFormat("en-US", {
@@ -119,6 +143,27 @@ export function getDiscoveryWindowBounds(
   const dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekdayShort); // 0=Sun..6=Sat
   const satOffset = (6 - dow + 7) % 7;
   return { start: getLocalDayBounds(satOffset).start, end: getLocalDayBounds(satOffset + 1).end };
+}
+
+/** Bounds for one specific calendar date (YYYY-MM-DD, interpreted in
+ * APP_TIMEZONE) — backs the exact-date picker on /events. Returns null for
+ * an unparseable string rather than throwing. Computed as a whole-day
+ * offset from "today" (both taken as plain calendar dates, not instants)
+ * so it reuses the same DST-safe getLocalDayBounds machinery. */
+export function getExactDateBounds(dateStr: string): { start: Date; end: Date } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+
+  const todayKey = dateKey(new Date());
+  const [ty, tm, td] = todayKey.split("-").map(Number);
+
+  const targetUTC = Date.UTC(y, m - 1, d);
+  const todayUTC = Date.UTC(ty, tm - 1, td);
+  const dayOffset = Math.round((targetUTC - todayUTC) / 86_400_000);
+  return getLocalDayBounds(dayOffset);
 }
 
 export interface TemporalLabel {
