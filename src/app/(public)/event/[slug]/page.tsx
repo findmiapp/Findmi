@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import BusinessCard from "@/components/BusinessCard";
-import {
-  getBusinessesForEvent,
-  getEventBySlug,
-} from "@/lib/data";
+import EventBusinessRoster from "@/components/EventBusinessRoster";
+import EventFollowForm from "@/components/EventFollowForm";
+import EventSaveButton from "@/components/EventSaveButton";
+import { getBusinessesForEvent, getEventBySlug } from "@/lib/data";
 import { cityState, formatDateRange } from "@/lib/format";
 
 export const revalidate = 60;
@@ -41,9 +40,37 @@ export default async function EventPage({
 
   const businesses = await getBusinessesForEvent(event.id);
   const location = cityState(event.city, event.state);
-  const mapQuery = encodeURIComponent(
-    [event.venue_name, event.address, location].filter(Boolean).join(", ")
-  );
+  const mapQuery = [event.venue_name, event.address, location].filter(Boolean).join(", ");
+  const directionsHref = mapQuery
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
+    : null;
+
+  const vendorDeadlinePassed = event.vendor_application_deadline
+    ? new Date(event.vendor_application_deadline) < new Date()
+    : false;
+
+  // Only an action with BOTH its toggle on AND a real destination ever
+  // renders — never a disabled or dead button. The first one found becomes
+  // the single Aqua-filled primary; the rest stay compact outline pills in
+  // the same row, so multiple configured actions never turn into a wall of
+  // full-width Aqua buttons.
+  const primaryActions: { label: string; href: string }[] = [];
+  if (event.tickets_enabled && event.tickets_url) {
+    primaryActions.push({ label: "Get Tickets", href: event.tickets_url });
+  }
+  if (event.rsvp_enabled && event.rsvp_url) {
+    primaryActions.push({ label: "RSVP", href: event.rsvp_url });
+  }
+  if (event.vendor_applications_enabled && event.vendor_application_url && !vendorDeadlinePassed) {
+    primaryActions.push({ label: "Apply to Vend", href: event.vendor_application_url });
+  }
+  if (event.directions_enabled && directionsHref) {
+    primaryActions.push({ label: "Get Directions", href: directionsHref });
+  }
+
+  const contactHref = event.contact_url || (event.organizer_email ? `mailto:${event.organizer_email}` : null);
+  const showContact = event.contact_enabled && Boolean(contactHref);
+  const showFollow = event.follow_enabled;
 
   return (
     <div>
@@ -61,7 +88,7 @@ export default async function EventPage({
       </div>
 
       <div className="mx-auto max-w-4xl px-6 py-10">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
           {event.name}
         </h1>
 
@@ -80,15 +107,52 @@ export default async function EventPage({
           )}
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-3">
-          {mapQuery && (
+        {event.description && (
+          <p className="mt-4 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
+            {event.description}
+          </p>
+        )}
+
+        {/* Primary action area — only enabled, destination-having actions. */}
+        {primaryActions.length > 0 && (
+          <div className="mt-5 flex flex-wrap items-center gap-2.5">
+            {primaryActions.map((action, i) => (
+              <a
+                key={action.label}
+                href={action.href}
+                target="_blank"
+                rel="noreferrer"
+                className={
+                  i === 0
+                    ? "rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+                    : "rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                }
+              >
+                {action.label}
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* Secondary actions — compact, not competing with the primary row. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+          {showFollow && (
             <a
-              href={`https://www.google.com/maps/search/?api=1&query=${mapQuery}`}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              href="#follow"
+              className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
             >
-              Get Directions
+              Follow
+            </a>
+          )}
+          <EventSaveButton slug={event.slug} />
+          {showContact && contactHref && (
+            <a
+              href={contactHref}
+              target={contactHref.startsWith("mailto:") ? undefined : "_blank"}
+              rel="noreferrer"
+              className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+            >
+              Contact Organizer
             </a>
           )}
           {event.external_url && (
@@ -96,38 +160,40 @@ export default async function EventPage({
               href={event.external_url}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full border border-black/10 px-5 py-2.5 text-sm font-medium text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
             >
-              Event details
+              Event Details
             </a>
           )}
         </div>
 
-        {event.description && (
-          <p className="mt-6 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
-            {event.description}
-          </p>
-        )}
+        {/* Future section: "Who's Going" (public attendee identities) is
+            intentionally not built yet — this is just the reserved spot in
+            the page's hierarchy for when RSVP grows an internal model. */}
 
         <section className="mt-12">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
             Who You&rsquo;ll Find Here
           </h2>
           <p className="mt-1 text-sm text-ink/55">
             {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
           </p>
-          {businesses.length === 0 ? (
-            <p className="mt-6 text-sm text-ink/50">
-              Businesses for this event haven&rsquo;t been confirmed yet — check back soon.
-            </p>
-          ) : (
-            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-              {businesses.map((b) => (
-                <BusinessCard key={b.id} business={b} />
-              ))}
-            </div>
-          )}
+          <EventBusinessRoster businesses={businesses} />
         </section>
+
+        {showFollow && (
+          <section id="follow" className="mt-12 scroll-mt-20">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
+              Follow This Event
+            </h2>
+            <p className="mt-2 max-w-md text-sm text-ink/60">
+              We&rsquo;ll keep you posted on updates to {event.name}.
+            </p>
+            <div className="mt-4 max-w-md">
+              <EventFollowForm eventId={event.id} eventName={event.name} />
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

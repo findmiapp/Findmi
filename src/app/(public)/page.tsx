@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import CompactCard from "@/components/CompactCard";
 import LocationCard from "@/components/LocationCard";
 import ProductCard from "@/components/ProductCard";
 import AppearanceFeedCard from "@/components/AppearanceFeedCard";
@@ -7,8 +7,8 @@ import HomeDiscoveryTabs from "@/components/HomeDiscoveryTabs";
 import PostCard from "@/components/PostCard";
 import Section, { HorizontalScroller } from "@/components/Section";
 import {
-  getCategories,
   getFeaturedProducts,
+  getHomeCategories,
   getFindMiHereFeed,
   getLocations,
   getMobileBusinesses,
@@ -36,7 +36,7 @@ export default async function HomePage() {
     popularProducts,
     locations,
   ] = await Promise.all([
-    getCategories(),
+    getHomeCategories(),
     getFindMiHereFeed("today", 9),
     getFindMiHereFeed("weekend", 8),
     getFindMiHereFeed("anytime", 8),
@@ -71,21 +71,21 @@ export default async function HomePage() {
             What&rsquo;s around you right now?
           </h1>
           {categories.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {categories.slice(0, 5).map((c) => (
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {categories.map((c) => (
                 <Link
                   key={c.id}
                   href={`/businesses?category=${c.slug}`}
-                  className="rounded-full border border-black/10 px-3.5 py-1.5 text-xs font-medium text-ink/70 transition hover:border-ink/30"
+                  className="shrink-0 whitespace-nowrap rounded-full border border-black/10 px-3.5 py-1.5 text-xs font-medium text-ink/70 transition hover:border-ink/30"
                 >
                   {c.name}
                 </Link>
               ))}
               <Link
                 href="/businesses"
-                className="rounded-full border border-black/10 px-3.5 py-1.5 text-xs font-medium text-ink/70 transition hover:border-ink/30"
+                className="shrink-0 whitespace-nowrap rounded-full border border-black/10 px-3.5 py-1.5 text-xs font-medium text-ink/70 transition hover:border-ink/30"
               >
-                More
+                More →
               </Link>
             </div>
           )}
@@ -274,26 +274,4 @@ function CompactEventCard({ event }: { event: FindmiEvent }) {
     .filter(Boolean)
     .join(" · ");
   return <CompactCard href={`/event/${event.slug}`} image={event.cover_image_url} title={event.name} meta={meta} />;
-}
-
-function CompactCard({
-  href,
-  image,
-  title,
-  meta,
-}: {
-  href: string;
-  image: string | null;
-  title: string;
-  meta: string;
-}) {
-  return (
-    <Link href={href} className="block">
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-mist">
-        {image && <Image src={image} alt={title} fill sizes="160px" className="object-cover" />}
-      </div>
-      <p className="mt-1.5 line-clamp-1 text-sm font-semibold text-ink">{title}</p>
-      {meta && <p className="line-clamp-1 text-xs text-ink/50">{meta}</p>}
-    </Link>
-  );
 }

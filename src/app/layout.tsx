@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
+// Display font: Plus Jakarta Sans, not Space Grotesk. Space Grotesk's tight,
+// geometric letterforms were reading as "developer tool" rather than the
+// clean/friendly/consumer feel FindMi's original brand has — Plus Jakarta
+// Sans is warmer and less compressed while staying modern. This is the one
+// central lever (the CSS variable already wired through every heading via
+// font-display) rather than touching each component's classes.
+const displayFont = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-display" });
 
 // `||` (not `??`) so an env var that's *set but blank* — e.g. left empty in
 // a hosting dashboard — still falls back instead of producing an invalid URL.
@@ -38,7 +44,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+    <html lang="en" className={`${inter.variable} ${displayFont.variable}`}>
       <body className="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
         {children}
       </body>

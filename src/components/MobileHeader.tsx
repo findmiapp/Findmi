@@ -30,7 +30,7 @@ export default function MobileHeader() {
             </svg>
           </button>
         )}
-        <Logo heightClassName="h-6" />
+        <Logo heightClassName="h-8" />
       </div>
 
       <Link

@@ -1,25 +1,25 @@
 import {
   CheckboxField,
-  CheckboxList,
   DateTimeField,
   TextField,
   TextareaField,
 } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import SubmitBar from "@/components/admin/SubmitBar";
-import type { AdminEvent, SelectOption } from "@/lib/admin/queries";
+import ParticipationRoster from "@/components/admin/ParticipationRoster";
+import type { AdminEvent, EventParticipant, SelectOption } from "@/lib/admin/queries";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveEvent } from "./actions";
 
 export default function EventForm({
   event,
   businessOptions,
-  selectedBusinessIds,
+  participants,
   error,
 }: {
   event: AdminEvent | null;
   businessOptions: SelectOption[];
-  selectedBusinessIds: string[];
+  participants: EventParticipant[];
   error?: string;
 }) {
   const action = saveEvent.bind(null, event?.id ?? null);
@@ -88,6 +88,7 @@ export default function EventForm({
           type="url"
           defaultValue={event?.external_url}
           placeholder="https://…"
+          hint="Shown as a plain 'Event Details' link — always visible when set."
         />
       </div>
 
@@ -98,13 +99,95 @@ export default function EventForm({
         hint="Gives this event priority in featured lists."
       />
 
-      <CheckboxList
-        label="Participating Businesses"
-        name="business_ids"
-        defaultSelected={selectedBusinessIds}
-        options={businessOptions}
-        emptyText="No businesses yet — add one first."
-      />
+      {/* --- Consumer actions --- each toggle only ever shows on the public
+          page when it's on AND has a real destination. */}
+      <div className="rounded-2xl border border-black/10 p-4">
+        <p className="mb-3 text-sm font-semibold text-ink">Event Actions</p>
+        <div className="flex flex-col gap-4">
+          <div>
+            <CheckboxField
+              label="Get Directions"
+              name="directions_enabled"
+              defaultChecked={event ? event.directions_enabled : true}
+              hint="Derived automatically from the venue/address above — no link to enter."
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <CheckboxField
+              label="RSVP"
+              name="rsvp_enabled"
+              defaultChecked={event?.rsvp_enabled}
+            />
+            <TextField label="RSVP Link" name="rsvp_url" type="url" defaultValue={event?.rsvp_url} placeholder="https://…" />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <CheckboxField
+              label="Tickets"
+              name="tickets_enabled"
+              defaultChecked={event?.tickets_enabled}
+            />
+            <TextField label="Ticket Link" name="tickets_url" type="url" defaultValue={event?.tickets_url} placeholder="https://…" />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <CheckboxField
+              label="Vendor Applications"
+              name="vendor_applications_enabled"
+              defaultChecked={event?.vendor_applications_enabled}
+              hint="Shows 'Apply to Vend' — opens an external application form."
+            />
+            <TextField
+              label="Application Link"
+              name="vendor_application_url"
+              type="url"
+              defaultValue={event?.vendor_application_url}
+              placeholder="https://…"
+            />
+            <DateTimeField
+              label="Application Deadline"
+              name="vendor_application_deadline"
+              defaultValue={isoToLocalDateTime(event?.vendor_application_deadline ?? null)}
+              hint="Optional. After this, 'Apply to Vend' stops showing even if still enabled."
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <CheckboxField
+              label="Contact Organizer"
+              name="contact_enabled"
+              defaultChecked={event?.contact_enabled}
+            />
+            <TextField
+              label="Organizer Email"
+              name="organizer_email"
+              type="email"
+              defaultValue={event?.organizer_email}
+              placeholder="organizer@email.com"
+            />
+            <TextField
+              label="Or Contact Link"
+              name="contact_url"
+              type="url"
+              defaultValue={event?.contact_url}
+              placeholder="https://…"
+              hint="Used instead of email if both are set."
+            />
+          </div>
+
+          <div>
+            <CheckboxField
+              label="Follow"
+              name="follow_enabled"
+              defaultChecked={event?.follow_enabled}
+              hint="Lets consumers leave their email for updates about this event."
+            />
+          </div>
+        </div>
+      </div>
+
+      <ParticipationRoster businessOptions={businessOptions} participants={participants} />
 
       <SubmitBar cancelHref="/admin/events" />
     </form>

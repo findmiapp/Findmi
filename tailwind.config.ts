@@ -43,7 +43,7 @@ const config: Config = {
           "sans-serif",
         ],
         display: [
-          "var(--font-space-grotesk)",
+          "var(--font-display)",
           "-apple-system",
           "BlinkMacSystemFont",
           "Segoe UI",

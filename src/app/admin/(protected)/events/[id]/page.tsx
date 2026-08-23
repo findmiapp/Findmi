@@ -31,7 +31,7 @@ export default async function EditEventPage({
         <EventForm
           event={result.event}
           businessOptions={businessOptions}
-          selectedBusinessIds={result.businessIds}
+          participants={result.participants}
           error={error}
         />
       </div>

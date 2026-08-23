@@ -1,5 +1,13 @@
 import { getAdminSupabase } from "./supabase-admin";
-import type { Appearance, Business, Category, FindmiEvent, FindmiLocation, Product } from "@/lib/types";
+import type {
+  Appearance,
+  Business,
+  Category,
+  EventParticipationStatus,
+  FindmiEvent,
+  FindmiLocation,
+  Product,
+} from "@/lib/types";
 
 // Admin-only row shapes: the public types.ts interfaces don't carry
 // is_demo (public code never needs to see it directly — it just filters
@@ -20,12 +28,13 @@ export interface SelectOption {
 export async function getDashboardCounts() {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
-  const [businesses, events, locations, appearances, products] = await Promise.all([
+  const [businesses, events, locations, appearances, products, categories] = await Promise.all([
     supabase.from("businesses").select("id, is_demo", { count: "exact", head: true }),
     supabase.from("events").select("id", { count: "exact", head: true }),
     supabase.from("locations").select("id", { count: "exact", head: true }),
     supabase.from("appearances").select("id", { count: "exact", head: true }),
     supabase.from("products").select("id", { count: "exact", head: true }),
+    supabase.from("categories").select("id", { count: "exact", head: true }),
   ]);
   const [businessesPublic] = await Promise.all([
     supabase.from("businesses").select("id", { count: "exact", head: true }).eq("is_demo", false),
@@ -37,6 +46,7 @@ export async function getDashboardCounts() {
     locations: locations.count ?? 0,
     appearances: appearances.count ?? 0,
     products: products.count ?? 0,
+    categories: categories.count ?? 0,
   };
 }
 
@@ -101,20 +111,44 @@ export async function getAdminEvents(): Promise<AdminEvent[]> {
   return (data as AdminEvent[]) ?? [];
 }
 
+export interface EventParticipant {
+  business_id: string;
+  business_name: string;
+  status: EventParticipationStatus;
+  featured: boolean;
+}
+
 export async function getAdminEventById(
   id: string
-): Promise<{ event: AdminEvent; businessIds: string[] } | null> {
+): Promise<{ event: AdminEvent; participants: EventParticipant[] } | null> {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
   const [{ data: event }, { data: links }] = await Promise.all([
     supabase.from("events").select("*").eq("id", id).maybeSingle(),
-    supabase.from("event_businesses").select("business_id").eq("event_id", id),
+    supabase
+      .from("event_businesses")
+      .select("business_id, status, featured, businesses(name)")
+      .eq("event_id", id),
   ]);
   if (!event) return null;
-  return {
-    event: event as AdminEvent,
-    businessIds: (links ?? []).map((l: { business_id: string }) => l.business_id),
+
+  type LinkRow = {
+    business_id: string;
+    status: EventParticipationStatus;
+    featured: boolean;
+    businesses: { name: string } | { name: string }[] | null;
   };
+  const participants = ((links ?? []) as LinkRow[]).map((l) => {
+    const business = Array.isArray(l.businesses) ? l.businesses[0] : l.businesses;
+    return {
+      business_id: l.business_id,
+      business_name: business?.name ?? "Unknown business",
+      status: l.status,
+      featured: l.featured,
+    };
+  });
+
+  return { event: event as AdminEvent, participants };
 }
 
 export async function getEventSelectOptions(): Promise<SelectOption[]> {

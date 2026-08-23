@@ -4,6 +4,15 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { bool, errorRedirectUrl, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
+import type { EventParticipationStatus } from "@/lib/types";
+
+const VALID_STATUSES: EventParticipationStatus[] = [
+  "invited",
+  "applied",
+  "pending",
+  "approved",
+  "declined",
+];
 
 export async function saveEvent(id: string | null, formData: FormData) {
   const supabase = getAdminSupabase();
@@ -32,6 +41,18 @@ export async function saveEvent(id: string | null, formData: FormData) {
     external_url: str(formData, "external_url"),
     is_featured: bool(formData, "is_featured"),
     is_demo: !bool(formData, "published"),
+    directions_enabled: bool(formData, "directions_enabled"),
+    rsvp_enabled: bool(formData, "rsvp_enabled"),
+    rsvp_url: str(formData, "rsvp_url"),
+    tickets_enabled: bool(formData, "tickets_enabled"),
+    tickets_url: str(formData, "tickets_url"),
+    vendor_applications_enabled: bool(formData, "vendor_applications_enabled"),
+    vendor_application_url: str(formData, "vendor_application_url"),
+    vendor_application_deadline: localDateTimeToIso(str(formData, "vendor_application_deadline")),
+    contact_enabled: bool(formData, "contact_enabled"),
+    organizer_email: str(formData, "organizer_email"),
+    contact_url: str(formData, "contact_url"),
+    follow_enabled: bool(formData, "follow_enabled"),
   };
 
   let eventId = id;
@@ -44,12 +65,34 @@ export async function saveEvent(id: string | null, formData: FormData) {
     eventId = data.id;
   }
 
-  const businessIds = formData.getAll("business_ids").map(String);
-  await supabase.from("event_businesses").delete().eq("event_id", eventId);
-  if (businessIds.length > 0) {
+  // Participation roster: one status/featured pair per business in the
+  // system (see ParticipationRoster). "not_participating" means delete any
+  // existing row; anything else is an upsert on the (event_id, business_id)
+  // primary key, so this correctly handles add/update/remove in two calls
+  // regardless of what changed.
+  const allBusinessIds = formData.getAll("all_business_ids").map(String);
+  const toUpsert: { event_id: string; business_id: string; status: string; featured: boolean }[] = [];
+  const toRemove: string[] = [];
+
+  for (const businessId of allBusinessIds) {
+    const status = str(formData, `status_${businessId}`) ?? "not_participating";
+    const featured = bool(formData, `featured_${businessId}`);
+    if (status === "not_participating" || !VALID_STATUSES.includes(status as EventParticipationStatus)) {
+      toRemove.push(businessId);
+    } else {
+      toUpsert.push({ event_id: eventId as string, business_id: businessId, status, featured });
+    }
+  }
+
+  if (toUpsert.length > 0) {
+    await supabase.from("event_businesses").upsert(toUpsert, { onConflict: "event_id,business_id" });
+  }
+  if (toRemove.length > 0) {
     await supabase
       .from("event_businesses")
-      .insert(businessIds.map((business_id) => ({ event_id: eventId, business_id })));
+      .delete()
+      .eq("event_id", eventId)
+      .in("business_id", toRemove);
   }
 
   revalidatePath("/admin/events");

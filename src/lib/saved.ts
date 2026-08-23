@@ -38,3 +38,43 @@ export function toggleSaved(slug: string): boolean {
   write(next);
   return !now;
 }
+
+// Saved events — a separate key/list from saved businesses (not merged
+// into the same array: the two are looked up against different tables,
+// and a shared slug namespace would risk a business and an event with the
+// same slug shadowing each other).
+const EVENT_KEY = "findmi_saved_event_slugs";
+
+function readEvents(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(EVENT_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeEvents(slugs: string[]) {
+  try {
+    window.localStorage.setItem(EVENT_KEY, JSON.stringify(slugs));
+  } catch {
+    // Storage unavailable — fail silently, same as saved businesses.
+  }
+}
+
+export function getSavedEventSlugs(): string[] {
+  return readEvents();
+}
+
+export function isEventSaved(slug: string): boolean {
+  return readEvents().includes(slug);
+}
+
+export function toggleEventSaved(slug: string): boolean {
+  const current = readEvents();
+  const now = current.includes(slug);
+  const next = now ? current.filter((s) => s !== slug) : [...current, slug];
+  writeEvents(next);
+  return !now;
+}

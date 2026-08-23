@@ -96,6 +96,22 @@ export async function getCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
+/** Founder-controlled subset/order for the homepage category strip (see
+ * /admin/categories) — separate from getCategories() because every other
+ * caller (business forms, the /businesses filter) still needs the full
+ * list regardless of homepage visibility. */
+export async function getHomeCategories(): Promise<Category[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("show_on_home", true)
+    .order("home_sort_order", { ascending: true, nullsFirst: false })
+    .order("name");
+  return data ?? [];
+}
+
 export async function getFeaturedBusinesses(limit = 8): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -253,21 +269,36 @@ export async function getEventBySlug(slug: string): Promise<FindmiEvent | null> 
   return data ?? null;
 }
 
-export async function getBusinessesForEvent(eventId: string): Promise<BusinessWithCategories[]> {
+export interface EventBusinessListing extends BusinessWithCategories {
+  featured: boolean;
+}
+
+/** Only "approved" participants are public — "invited"/"applied"/"pending"/
+ * "declined" exist for the organizer's own workflow (see /admin) and never
+ * reach this query. featured=true businesses are still included in the
+ * full list (not a separate pool) — the event page decides how to
+ * highlight them; this just carries the flag along. */
+export async function getBusinessesForEvent(eventId: string): Promise<EventBusinessListing[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("event_businesses")
-    .select("businesses(*)")
-    .eq("event_id", eventId);
+    .select("featured, businesses(*)")
+    .eq("event_id", eventId)
+    .eq("status", "approved");
 
-  const businesses = (data ?? [])
-    .map((row: { businesses: Business | Business[] | null }) =>
-      Array.isArray(row.businesses) ? row.businesses[0] : row.businesses
-    )
-    .filter((b): b is Business => Boolean(b) && !(b as Business & { is_demo?: boolean }).is_demo);
+  type Row = { featured: boolean; businesses: Business | Business[] | null };
+  const rows = ((data ?? []) as Row[])
+    .map((row) => {
+      const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
+      return business && !(business as Business & { is_demo?: boolean }).is_demo
+        ? { business, featured: row.featured }
+        : null;
+    })
+    .filter((r): r is { business: Business; featured: boolean } => Boolean(r));
 
-  return attachCategories(businesses);
+  const withCategories = await attachCategories(rows.map((r) => r.business));
+  return withCategories.map((b, i) => ({ ...b, featured: rows[i].featured }));
 }
 
 export async function getUpcomingAppearancesForEvent(eventId: string): Promise<Appearance[]> {
