@@ -3,6 +3,7 @@ import { logout } from "../login/actions";
 
 const NAV = [
   { href: "/admin", label: "Dashboard" },
+  { href: "/admin/site", label: "Site Editor" },
   { href: "/admin/businesses", label: "Businesses" },
   { href: "/admin/people", label: "People" },
   { href: "/admin/onboarding", label: "Onboarding" },

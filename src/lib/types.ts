@@ -228,6 +228,28 @@ export interface BusinessWithCategories extends Business {
   categories: Category[];
 }
 
+// Founder Site Editor (additive) — presentation overrides for existing
+// public page sections. Never controls WHICH entity records appear (see
+// products.is_featured, events.is_featured, appearances.show_on_home,
+// businesses.is_featured) — only a section's own heading/CTA/visibility/
+// order. Any field left null falls back to the section's hardcoded
+// default; a missing row falls back entirely.
+export interface SiteSection {
+  id: string;
+  page_key: string;
+  section_key: string;
+  eyebrow: string | null;
+  heading: string | null;
+  body: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
+  is_visible: boolean;
+  sort_order: number;
+  config_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FindmiLocation {
   id: string;
   name: string;
