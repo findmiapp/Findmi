@@ -9,6 +9,8 @@ const NAV = [
   { href: "/admin/appearances", label: "Appearances" },
   { href: "/admin/products", label: "Products" },
   { href: "/admin/categories", label: "Categories" },
+  { href: "/admin/orders", label: "Orders" },
+  { href: "/admin/settlements", label: "Settlements" },
 ];
 
 export default function AdminProtectedLayout({ children }: { children: React.ReactNode }) {

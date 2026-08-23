@@ -9,6 +9,10 @@ export type ProductType = "product" | "service";
 export type AppearanceStatus = "confirmed" | "tentative" | "canceled";
 export type InquiryStatus = "new" | "contacted" | "booked" | "closed";
 
+export type ProcessingFeePayer = "vendor" | "customer";
+export type PayoutMethod = "manual" | "stripe_connect_future";
+export type FulfillmentMethod = "shipping" | "local_delivery" | "pickup" | "event_pickup";
+
 export interface Business {
   id: string;
   slug: string;
@@ -33,6 +37,15 @@ export interface Business {
   lead_status: LeadStatus;
   created_at: string;
   updated_at: string;
+  // Commerce defaults — see lib/commerce/fees.ts for how these combine
+  // with product-level overrides. Off by default so no existing business
+  // suddenly presents purchase UI (see commerce_enabled).
+  commerce_enabled: boolean;
+  marketplace_fee_percent: number;
+  processing_fee_payer: ProcessingFeePayer;
+  payout_method: PayoutMethod;
+  stripe_account_id: string | null;
+  stripe_connect_status: string | null;
 }
 
 export interface Category {
@@ -56,6 +69,21 @@ export interface Product {
   external_purchase_url: string | null;
   is_featured: boolean;
   is_active: boolean;
+  // Commerce — off by default (see purchasable). When false, the product
+  // keeps its existing inquiry/external-link behavior unchanged.
+  purchasable: boolean;
+  inventory_status: "in_stock" | "out_of_stock" | null;
+  marketplace_fee_override_percent: number | null;
+  processing_fee_payer_override: ProcessingFeePayer | null;
+}
+
+export interface ProductFulfillmentOption {
+  id: string;
+  product_id: string;
+  method: FulfillmentMethod;
+  price: number;
+  enabled: boolean;
+  appearance_id: string | null;
 }
 
 export interface FindmiEvent {

@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabase";
-import { getDiscoveryWindowBounds, type DiscoveryWindow } from "./format";
+import { formatDateRange, getDiscoveryWindowBounds, type DiscoveryWindow } from "./format";
 import type {
   Appearance,
   Business,
@@ -7,6 +7,7 @@ import type {
   Category,
   FindmiEvent,
   FindmiLocation,
+  FulfillmentMethod,
   Product,
 } from "./types";
 
@@ -448,7 +449,14 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
 }
 
 export interface ProductWithBusiness extends Product {
-  business: { id: string; name: string; slug: string; logo_url: string | null; cover_image_url: string | null };
+  business: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url: string | null;
+    cover_image_url: string | null;
+    commerce_enabled: boolean;
+  };
 }
 
 /** product.slug is unique per business, not globally (schema:
@@ -461,7 +469,7 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   if (!supabase) return null;
   const { data } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo)")
+    .select("*, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, is_demo)")
     .eq("slug", slug)
     .eq("is_active", true);
 
@@ -478,6 +486,57 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   const { business, ...rest } = match;
   const { is_demo: _isDemo, ...cleanBusiness } = business;
   return { ...rest, business: cleanBusiness };
+}
+
+export interface FulfillmentOptionDisplay {
+  method: FulfillmentMethod;
+  price: number;
+  label: string;
+  appearanceId: string | null;
+}
+
+/** Enabled fulfillment choices for one purchasable product, with an
+ * event-pickup option's label resolved from its appearance (venue + date)
+ * — feeds the product page's Add to Cart fulfillment picker. Only
+ * upcoming, non-canceled appearances are eligible (the appearances table's
+ * own RLS already excludes canceled ones); a past appearance configured
+ * for pickup quietly stops being offered rather than needing manual
+ * cleanup. */
+export async function getFulfillmentOptionsForProduct(
+  productId: string
+): Promise<FulfillmentOptionDisplay[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("product_fulfillment_options")
+    .select("method, price, appearance_id, appearances(venue_name, title, start_at, end_at)")
+    .eq("product_id", productId)
+    .eq("enabled", true);
+
+  type Row = {
+    method: FulfillmentMethod;
+    price: number;
+    appearance_id: string | null;
+    appearances: { venue_name: string | null; title: string; start_at: string; end_at: string | null } | { venue_name: string | null; title: string; start_at: string; end_at: string | null }[] | null;
+  };
+  const METHOD_LABELS: Record<FulfillmentMethod, string> = {
+    shipping: "Shipping",
+    local_delivery: "Local Delivery",
+    pickup: "Pickup",
+    event_pickup: "Event Pickup",
+  };
+
+  return ((data ?? []) as Row[])
+    .map((row) => {
+      const appearance = Array.isArray(row.appearances) ? row.appearances[0] : row.appearances;
+      if (row.method === "event_pickup" && !appearance) return null; // stale/removed appearance
+      const label =
+        row.method === "event_pickup" && appearance
+          ? `Pickup at ${appearance.venue_name ?? appearance.title} — ${formatDateRange(appearance.start_at, appearance.end_at)}`
+          : METHOD_LABELS[row.method];
+      return { method: row.method, price: row.price, label, appearanceId: row.appearance_id };
+    })
+    .filter((o): o is FulfillmentOptionDisplay => Boolean(o));
 }
 
 /** Other founding-member businesses sharing at least one category — used to

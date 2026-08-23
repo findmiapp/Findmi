@@ -1,5 +1,10 @@
 import { notFound } from "next/navigation";
-import { getAdminProductById, getBusinessOptionById } from "@/lib/admin/queries";
+import {
+  getAdminProductById,
+  getBusinessOptionById,
+  getProductFulfillmentOptions,
+  getUpcomingAppearanceOptionsForBusiness,
+} from "@/lib/admin/queries";
 import ProductForm from "../ProductForm";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +20,11 @@ export default async function EditProductPage({
   const { error, saved } = await searchParams;
   const product = await getAdminProductById(id);
   if (!product) notFound();
-  const initialBusiness = await getBusinessOptionById(product.business_id);
+  const [initialBusiness, fulfillmentOptions, appearanceOptions] = await Promise.all([
+    getBusinessOptionById(product.business_id),
+    getProductFulfillmentOptions(product.id),
+    getUpcomingAppearanceOptionsForBusiness(product.business_id),
+  ]);
 
   return (
     <div>
@@ -26,7 +35,13 @@ export default async function EditProductPage({
         </p>
       )}
       <div className="mt-5">
-        <ProductForm product={product} initialBusiness={initialBusiness} error={error} />
+        <ProductForm
+          product={product}
+          initialBusiness={initialBusiness}
+          fulfillmentOptions={fulfillmentOptions}
+          appearanceOptions={appearanceOptions}
+          error={error}
+        />
       </div>
     </div>
   );

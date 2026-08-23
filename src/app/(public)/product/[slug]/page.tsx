@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProductBySlug } from "@/lib/data";
+import { getFulfillmentOptionsForProduct, getProductBySlug } from "@/lib/data";
 import { formatPrice } from "@/lib/format";
 import { getInquiryFormUrl } from "@/lib/tally";
+import AddToCartForm from "@/components/AddToCartForm";
 
 export const revalidate = 60;
 
@@ -39,6 +40,9 @@ export default async function ProductPage({
 
   const price = formatPrice(product.price, product.price_label);
   const badgeLabel = product.product_type === "service" ? "Service" : "Product";
+
+  const canAddToCart = product.purchasable && product.business.commerce_enabled;
+  const fulfillmentOptions = canAddToCart ? await getFulfillmentOptionsForProduct(product.id) : [];
 
   const purchaseUrl = product.external_purchase_url;
   const inquiryUrl = getInquiryFormUrl(product.business, { id: product.id, name: product.name });
@@ -87,8 +91,22 @@ export default async function ProductPage({
           </p>
         )}
 
+        {canAddToCart && (
+          <div className="mt-6">
+            <AddToCartForm
+              productId={product.id}
+              options={fulfillmentOptions}
+              sourceChannel={`business:${product.business.slug}`}
+            />
+          </div>
+        )}
+
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          {purchaseUrl ? (
+          {/* When Add to Cart is available, the external purchaseUrl button
+              is redundant/conflicting and is suppressed — but inquiry stays
+              available either way, just demoted from primary to secondary
+              (Part 5: "Do not remove existing inquiry capability"). */}
+          {!canAddToCart && purchaseUrl ? (
             <a
               href={purchaseUrl}
               target="_blank"
@@ -102,14 +120,22 @@ export default async function ProductPage({
               href={inquiryUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              className={
+                canAddToCart
+                  ? "rounded-full border border-black/10 px-5 py-2.5 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                  : "rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              }
             >
               Ask About This
             </a>
           ) : (
             <Link
               href={`/business/${product.business.slug}#book`}
-              className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              className={
+                canAddToCart
+                  ? "rounded-full border border-black/10 px-5 py-2.5 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                  : "rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              }
             >
               Ask About This
             </Link>

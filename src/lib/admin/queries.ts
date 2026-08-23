@@ -28,13 +28,14 @@ export interface SelectOption {
 export async function getDashboardCounts() {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
-  const [businesses, events, locations, appearances, products, categories] = await Promise.all([
+  const [businesses, events, locations, appearances, products, categories, orders] = await Promise.all([
     supabase.from("businesses").select("id, is_demo", { count: "exact", head: true }),
     supabase.from("events").select("id", { count: "exact", head: true }),
     supabase.from("locations").select("id", { count: "exact", head: true }),
     supabase.from("appearances").select("id", { count: "exact", head: true }),
     supabase.from("products").select("id", { count: "exact", head: true }),
     supabase.from("categories").select("id", { count: "exact", head: true }),
+    supabase.from("orders").select("id", { count: "exact", head: true }).eq("payment_status", "paid"),
   ]);
   const [businessesPublic] = await Promise.all([
     supabase.from("businesses").select("id", { count: "exact", head: true }).eq("is_demo", false),
@@ -47,6 +48,7 @@ export async function getDashboardCounts() {
     appearances: appearances.count ?? 0,
     products: products.count ?? 0,
     categories: categories.count ?? 0,
+    orders: orders.count ?? 0,
   };
 }
 
@@ -385,6 +387,43 @@ export async function getAdminProductById(id: string): Promise<AdminProduct | nu
   if (!supabase) return null;
   const { data } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
   return data ?? null;
+}
+
+export interface ProductFulfillmentOptionRow {
+  id: string;
+  method: "shipping" | "local_delivery" | "pickup" | "event_pickup";
+  price: number;
+  enabled: boolean;
+  appearance_id: string | null;
+}
+
+export async function getProductFulfillmentOptions(productId: string): Promise<ProductFulfillmentOptionRow[]> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("product_fulfillment_options")
+    .select("id, method, price, enabled, appearance_id")
+    .eq("product_id", productId);
+  return (data as ProductFulfillmentOptionRow[]) ?? [];
+}
+
+/** Upcoming, non-canceled appearances for one business — the bounded pool
+ * a product's Event Pickup option can be attached to. Small enough per
+ * business that a plain list is fine; no search picker needed. */
+export async function getUpcomingAppearanceOptionsForBusiness(businessId: string): Promise<SelectOption[]> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("appearances")
+    .select("id, title, venue_name, start_at")
+    .eq("business_id", businessId)
+    .neq("status", "canceled")
+    .gte("start_at", new Date().toISOString())
+    .order("start_at", { ascending: true });
+  return (data ?? []).map((a) => ({
+    value: a.id,
+    label: `${a.venue_name ?? a.title} — ${new Date(a.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+  }));
 }
 
 /** Global slug-uniqueness check for the admin layer — the DB constraint is

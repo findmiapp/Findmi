@@ -42,6 +42,10 @@ export async function saveProduct(id: string | null, formData: FormData) {
     external_purchase_url: str(formData, "external_purchase_url"),
     is_featured: bool(formData, "is_featured"),
     is_active: bool(formData, "is_active"),
+    purchasable: bool(formData, "purchasable"),
+    inventory_status: str(formData, "inventory_status"),
+    marketplace_fee_override_percent: num(formData, "marketplace_fee_override_percent"),
+    processing_fee_payer_override: str(formData, "processing_fee_payer_override"),
   };
 
   let productId = id;
@@ -52,6 +56,35 @@ export async function saveProduct(id: string | null, formData: FormData) {
     const { data, error } = await supabase.from("products").insert(payload).select("id").single();
     if (error || !data) redirect(errorRedirectUrl(editPath, error?.message ?? "Could not create product."));
     productId = data.id;
+  }
+
+  // Fulfillment options: rebuilt from scratch on every save. This is
+  // current-config, not economic history (order_items snapshots its own
+  // fulfillment_method/fulfillment_amount independently), so
+  // delete-then-reinsert is safe and simpler than diffing.
+  await supabase.from("product_fulfillment_options").delete().eq("product_id", productId);
+  const newOptions: { product_id: string; method: string; price: number; enabled: boolean; appearance_id?: string }[] = [];
+  for (const method of ["shipping", "local_delivery", "pickup"] as const) {
+    if (bool(formData, `fulfillment_${method}_enabled`)) {
+      newOptions.push({
+        product_id: productId as string,
+        method,
+        price: num(formData, `fulfillment_${method}_price`) ?? 0,
+        enabled: true,
+      });
+    }
+  }
+  for (const appearanceId of formData.getAll("event_pickup_appearance_id").map(String)) {
+    newOptions.push({
+      product_id: productId as string,
+      method: "event_pickup",
+      price: num(formData, `event_pickup_price_${appearanceId}`) ?? 0,
+      enabled: true,
+      appearance_id: appearanceId,
+    });
+  }
+  if (newOptions.length > 0) {
+    await supabase.from("product_fulfillment_options").insert(newOptions);
   }
 
   revalidatePath("/admin/products");

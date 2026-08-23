@@ -18,6 +18,8 @@ export default async function AdminDashboardPage() {
     { href: "/admin/appearances", label: "Appearances", count: counts?.appearances },
     { href: "/admin/products", label: "Products", count: counts?.products },
     { href: "/admin/categories", label: "Homepage Categories", count: counts?.categories },
+    { href: "/admin/orders", label: "Orders (Paid)", count: counts?.orders },
+    { href: "/admin/settlements", label: "Settlements" },
   ];
 
   return (

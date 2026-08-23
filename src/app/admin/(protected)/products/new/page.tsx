@@ -13,7 +13,7 @@ export default async function NewProductPage({
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Add Product</h1>
       <div className="mt-5">
-        <ProductForm product={null} initialBusiness={null} error={error} />
+        <ProductForm product={null} initialBusiness={null} fulfillmentOptions={[]} appearanceOptions={[]} error={error} />
       </div>
     </div>
   );

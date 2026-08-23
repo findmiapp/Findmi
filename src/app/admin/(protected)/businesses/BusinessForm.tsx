@@ -1,6 +1,7 @@
 import {
   CheckboxField,
   CheckboxList,
+  NumberField,
   SelectField,
   TextField,
   TextareaField,
@@ -165,6 +166,46 @@ export default function BusinessForm({
             { value: "not_a_fit", label: "Not a Fit" },
           ]}
         />
+      </div>
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <p className="mb-3 text-sm font-semibold text-ink">Commerce</p>
+        <div className="flex flex-col gap-4">
+          <CheckboxField
+            label="Commerce Enabled"
+            name="commerce_enabled"
+            defaultChecked={business?.commerce_enabled}
+            hint="Off = every product keeps its existing inquiry/external-link behavior, regardless of the Purchasable toggle on the product itself."
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="FindMi Fee %"
+              name="marketplace_fee_percent"
+              defaultValue={business?.marketplace_fee_percent ?? 5}
+              step="0.01"
+              hint="Applies to merchandise value unless a product overrides it."
+            />
+            <SelectField
+              label="Processing Fee Paid By"
+              name="processing_fee_payer"
+              defaultValue={business?.processing_fee_payer ?? "vendor"}
+              options={[
+                { value: "vendor", label: "Vendor (default)" },
+                { value: "customer", label: "Customer (shown as a checkout fee)" },
+              ]}
+            />
+          </div>
+          <SelectField
+            label="Payout Method"
+            name="payout_method"
+            defaultValue={business?.payout_method ?? "manual"}
+            options={[
+              { value: "manual", label: "Manual (the only operational method today)" },
+              { value: "stripe_connect_future", label: "Stripe Connect — not yet connected" },
+            ]}
+            hint="Payouts are always recorded manually by the founder right now, regardless of this setting — see /admin/settlements."
+          />
+        </div>
       </div>
 
       <SubmitBar cancelHref="/admin/businesses" />

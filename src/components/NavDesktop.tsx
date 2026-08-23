@@ -1,4 +1,5 @@
 import Link from "next/link";
+import CartBadge from "./CartBadge";
 import Logo from "./Logo";
 
 const links = [
@@ -31,6 +32,7 @@ export default function NavDesktop() {
         >
           Search
         </Link>
+        <CartBadge variant="text" />
         <Link
           href="/join"
           className="rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"

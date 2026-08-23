@@ -39,6 +39,10 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     lead_status: str(formData, "lead_status") ?? "new",
     // Framed to the founder as "Published" — is_demo is the inverse.
     is_demo: !bool(formData, "published"),
+    commerce_enabled: bool(formData, "commerce_enabled"),
+    marketplace_fee_percent: num(formData, "marketplace_fee_percent") ?? 5,
+    processing_fee_payer: str(formData, "processing_fee_payer") ?? "vendor",
+    payout_method: str(formData, "payout_method") ?? "manual",
   };
 
   let businessId = id;

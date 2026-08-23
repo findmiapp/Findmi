@@ -1,18 +1,23 @@
 import { CheckboxField, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
 import { RelationField } from "@/components/admin/RelationPicker";
+import FulfillmentOptionsEditor from "@/components/admin/FulfillmentOptionsEditor";
 import ImageField from "@/components/admin/ImageField";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
-import type { AdminProduct, SelectOption } from "@/lib/admin/queries";
+import type { AdminProduct, ProductFulfillmentOptionRow, SelectOption } from "@/lib/admin/queries";
 import { saveProduct, deleteProduct } from "./actions";
 
 export default function ProductForm({
   product,
   initialBusiness,
+  fulfillmentOptions,
+  appearanceOptions,
   error,
 }: {
   product: AdminProduct | null;
   initialBusiness: SelectOption | null;
+  fulfillmentOptions: ProductFulfillmentOptionRow[];
+  appearanceOptions: SelectOption[];
   error?: string;
 }) {
   const action = saveProduct.bind(null, product?.id ?? null);
@@ -89,6 +94,54 @@ export default function ProductForm({
           />
           <CheckboxField label="Featured" name="is_featured" defaultChecked={product?.is_featured} />
         </div>
+
+        <div className="rounded-2xl border border-black/10 p-4">
+          <p className="mb-3 text-sm font-semibold text-ink">Commerce</p>
+          <div className="flex flex-col gap-4">
+            <CheckboxField
+              label="Purchasable"
+              name="purchasable"
+              defaultChecked={product?.purchasable}
+              hint="On shows Add to Cart on the product page (also requires the business's Commerce Enabled setting). Off keeps the existing inquiry/external-link behavior."
+            />
+            <SelectField
+              label="Inventory Status"
+              name="inventory_status"
+              defaultValue={product?.inventory_status ?? ""}
+              options={[
+                { value: "", label: "Not tracked" },
+                { value: "in_stock", label: "In Stock" },
+                { value: "out_of_stock", label: "Out of Stock" },
+              ]}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="FindMi Fee % Override"
+                name="marketplace_fee_override_percent"
+                defaultValue={product?.marketplace_fee_override_percent ?? undefined}
+                hint="Leave blank to use the business's fee %."
+              />
+              <SelectField
+                label="Processing Fee Override"
+                name="processing_fee_payer_override"
+                defaultValue={product?.processing_fee_payer_override ?? ""}
+                options={[
+                  { value: "", label: "Use business setting" },
+                  { value: "vendor", label: "Vendor pays" },
+                  { value: "customer", label: "Customer pays" },
+                ]}
+              />
+            </div>
+          </div>
+        </div>
+
+        {product ? (
+          <FulfillmentOptionsEditor initialOptions={fulfillmentOptions} appearanceOptions={appearanceOptions} />
+        ) : (
+          <p className="text-xs text-ink/45">
+            Save the product first, then come back to configure fulfillment methods and pricing.
+          </p>
+        )}
 
         <SubmitBar cancelHref="/admin/products" />
       </form>
