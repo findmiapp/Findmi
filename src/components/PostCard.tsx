@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import LiveDot from "./LiveDot";
 
 export type PostKind = "event" | "business" | "product" | "location" | "person";
 
@@ -33,6 +34,9 @@ export interface PostCardProps {
   kind: PostKind;
   badgeLabel: string;
   badgeIcon?: IconName;
+  /** "live" gives the badge Findmi's HERE NOW treatment — solid teal with a
+   * pulsing dot — for a card whose temporal label came back live. */
+  badgeVariant?: "default" | "live";
   title: string;
   metaLines?: PostCardMetaLine[];
   price?: string | null;
@@ -47,6 +51,7 @@ export default function PostCard({
   kind,
   badgeLabel,
   badgeIcon,
+  badgeVariant = "default",
   title,
   metaLines = [],
   price,
@@ -77,8 +82,16 @@ export default function PostCard({
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
 
       <div className="absolute left-3 top-3">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm">
-          <Icon name={badgeIcon ?? DEFAULT_ICON_BY_KIND[kind]} className="h-3.5 w-3.5" />
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white ${
+            badgeVariant === "live" ? "bg-findmi-500" : "bg-black/45 backdrop-blur-sm"
+          }`}
+        >
+          {badgeVariant === "live" ? (
+            <LiveDot className="text-white" />
+          ) : (
+            <Icon name={badgeIcon ?? DEFAULT_ICON_BY_KIND[kind]} className="h-3.5 w-3.5" />
+          )}
           {badgeLabel}
         </span>
       </div>

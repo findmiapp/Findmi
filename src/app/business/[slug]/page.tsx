@@ -139,7 +139,7 @@ export default async function BusinessPage({
                 rel="noreferrer"
                 className="rounded-full bg-findmi-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-findmi-600"
               >
-                Book / Inquire
+                Request Availability
               </a>
             )}
             <a
@@ -162,18 +162,36 @@ export default async function BusinessPage({
           </div>
         </div>
 
-        {/* Findmi Next */}
-        {appearances.length > 0 && (
-          <section className="mt-12">
-            <h2 className="text-lg font-semibold tracking-tight text-ink">Findmi Next</h2>
-            <p className="mt-1 text-sm text-ink/55">Upcoming appearances, soonest first.</p>
+        {/* Findmi Next — the signature feature. Always present, even with
+            nothing scheduled, so the concept stays visible on every profile. */}
+        <section className="mt-10 rounded-3xl border border-findmi-100 bg-findmi-50/40 p-5 sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-600">
+            Findmi Next
+          </p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-ink">
+            Where {business.name} will be
+          </h2>
+          {appearances.length > 0 ? (
             <div className="mt-4 flex flex-col gap-3">
               {appearances.map((a) => (
                 <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
               ))}
             </div>
-          </section>
-        )}
+          ) : (
+            <div className="mt-4 rounded-2xl bg-white p-5">
+              <p className="text-sm text-ink/60">
+                Nothing announced yet. Follow this business and we&rsquo;ll let you know
+                where they&rsquo;ll be next.
+              </p>
+              <a
+                href="#follow"
+                className="mt-3 inline-block rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-findmi-600"
+              >
+                Follow
+              </a>
+            </div>
+          )}
+        </section>
 
         {/* What You'll Find */}
         {products.length > 0 && (
@@ -218,8 +236,8 @@ export default async function BusinessPage({
         <section id="book" className="mt-12 scroll-mt-20 rounded-3xl bg-black/[0.03] p-6 sm:p-8">
           <h2 className="text-lg font-semibold tracking-tight text-ink">Book / Inquire</h2>
           <p className="mt-2 max-w-xl text-sm text-ink/60">
-            Tell {business.name} what you need — dates, location, and details — and they&rsquo;ll
-            follow up directly.
+            Tell us what you&rsquo;re planning and we&rsquo;ll send your request to this
+            business.
           </p>
           {inquiryUrl ? (
             <a
@@ -228,11 +246,15 @@ export default async function BusinessPage({
               rel="noreferrer"
               className="mt-4 inline-block rounded-full bg-ink px-6 py-3 text-sm font-semibold text-white transition hover:bg-findmi-600"
             >
-              Start an inquiry
+              Request Availability
             </a>
           ) : (
             <p className="mt-4 text-sm text-ink/50">Inquiries aren&rsquo;t open yet.</p>
           )}
+          <p className="mt-3 max-w-xl text-xs text-ink/45">
+            If this business is unavailable, Findmi can help match you with similar
+            businesses — only if you opt in on the request form.
+          </p>
 
           {alternatives.length > 0 && (
             <div className="mt-8 border-t border-black/5 pt-6">

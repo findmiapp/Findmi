@@ -34,6 +34,9 @@ create table if not exists businesses (
     check (membership_status in ('lead', 'active', 'past_due', 'canceled')),
   lead_status text not null default 'new'
     check (lead_status in ('new', 'contacted', 'onboarding', 'qualified', 'not_a_fit')),
+  -- true for development/demo seed rows only — every public query filters
+  -- these out. Real businesses default to false and need no extra step.
+  is_demo boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -96,6 +99,7 @@ create table if not exists events (
   organizer_name text,
   external_url text,
   is_featured boolean not null default false,
+  is_demo boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -178,7 +182,8 @@ create table if not exists locations (
   city text,
   state text,
   latitude double precision,
-  longitude double precision
+  longitude double precision,
+  is_demo boolean not null default false
 );
 
 -- ----------------------------------------------------------------------------

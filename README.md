@@ -159,6 +159,14 @@ enough for a founding cohort of businesses:
 7. Toggle `founding_member` / `verified` to `true` once a business's
    membership is confirmed, and `membership_status` to `active`.
 
+**`is_demo`** — every business, event, and location row has an `is_demo`
+column, defaulting to `false`. Every public query in `src/lib/data.ts`
+filters `is_demo = false`, so a row stays completely invisible on the live
+site until that flag is off — a fictional Austin business added for local
+dev, for instance, is `is_demo = true` and never appears in production,
+even by direct URL. Add real businesses normally; you don't need to touch
+this column for them.
+
 `inquiries` and `followers` fill in automatically from the site (public
 insert-only via RLS) — review them in Table Editor. A future step would
 be a Tally → Supabase webhook to write `inquiries` rows directly from

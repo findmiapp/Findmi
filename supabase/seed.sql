@@ -1,10 +1,18 @@
 -- ============================================================================
 -- Findmi seed data
--- Realistic, clearly-fictional sample businesses, products, events and
--- appearances so the app has something to show immediately after setup.
+--
+-- Two kinds of rows in here:
+--   1. Fictional Austin businesses/events/locations (is_demo = true) — for
+--      local development only. Every public-facing query in src/lib/data.ts
+--      filters these out, so they never appear on the live site. Their
+--      dates are relative to "now" so a fresh local seed always looks
+--      current; do not un-hide them for production — add real businesses
+--      instead (they default to is_demo = false, no extra step needed).
+--   2. The Native Rose (is_demo = false) — a real Staten Island business,
+--      with real photos and a real appearance schedule at fixed dates.
+--
 -- Safe to re-run — inserts are keyed to fixed UUIDs with ON CONFLICT DO
--- NOTHING. Dates are relative to "now" so the demo always looks current.
--- Run this AFTER schema.sql.
+-- NOTHING. Run this AFTER schema.sql.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -23,10 +31,13 @@ on conflict (id) do nothing;
 -- ----------------------------------------------------------------------------
 -- businesses
 -- ----------------------------------------------------------------------------
+-- These six are fictional Austin businesses for local development only.
+-- is_demo = true keeps them out of every public query (see data.ts).
 insert into businesses (
   id, slug, name, short_description, description, logo_url, cover_image_url,
   website_url, instagram_url, email, phone, city, state, country,
-  service_radius_miles, verified, founding_member, membership_status, lead_status
+  service_radius_miles, verified, founding_member, membership_status, lead_status,
+  is_demo
 ) values
 (
   '11111111-1111-4111-8111-111111111101',
@@ -40,7 +51,7 @@ insert into businesses (
   'https://instagram.com/bloomandbrew',
   'hello@bloomandbrew.example',
   '512-555-0101',
-  'Austin', 'TX', 'US', 25, true, true, 'active', 'qualified'
+  'Austin', 'TX', 'US', 25, true, true, 'active', 'qualified', true
 ),
 (
   '11111111-1111-4111-8111-111111111102',
@@ -54,7 +65,7 @@ insert into businesses (
   'https://instagram.com/curbsidekimchi',
   'hi@curbsidekimchi.example',
   '512-555-0102',
-  'Austin', 'TX', 'US', 40, true, true, 'active', 'qualified'
+  'Austin', 'TX', 'US', 40, true, true, 'active', 'qualified', true
 ),
 (
   '11111111-1111-4111-8111-111111111103',
@@ -68,7 +79,7 @@ insert into businesses (
   'https://instagram.com/wildflowermarketco',
   'team@wildflowermarketco.example',
   '512-555-0103',
-  'Austin', 'TX', 'US', 50, true, true, 'active', 'qualified'
+  'Austin', 'TX', 'US', 50, true, true, 'active', 'qualified', true
 ),
 (
   '11111111-1111-4111-8111-111111111104',
@@ -82,7 +93,7 @@ insert into businesses (
   'https://instagram.com/roasthousecoffee',
   'orders@roasthousecoffee.example',
   '512-555-0104',
-  'Austin', 'TX', 'US', 30, true, true, 'active', 'qualified'
+  'Austin', 'TX', 'US', 30, true, true, 'active', 'qualified', true
 ),
 (
   '11111111-1111-4111-8111-111111111105',
@@ -96,7 +107,7 @@ insert into businesses (
   'https://instagram.com/palermoleather',
   'shop@palermoleather.example',
   '512-555-0105',
-  'Austin', 'TX', 'US', 35, true, true, 'active', 'qualified'
+  'Austin', 'TX', 'US', 35, true, true, 'active', 'qualified', true
 ),
 (
   '11111111-1111-4111-8111-111111111106',
@@ -110,7 +121,7 @@ insert into businesses (
   'https://instagram.com/sunnysipkombucha',
   'hello@sunnysipkombucha.example',
   '512-555-0106',
-  'Austin', 'TX', 'US', 60, true, true, 'active', 'qualified'
+  'Austin', 'TX', 'US', 60, true, true, 'active', 'qualified', true
 )
 on conflict (id) do nothing;
 
@@ -151,15 +162,18 @@ insert into products (id, business_id, name, slug, description, image_url, price
 ('55555555-5555-4555-8555-555555555517', '11111111-1111-4111-8111-111111111107', 'Iced Coffee', 'iced-coffee', 'Cold brew and lattes, made to order from the trailer window.', '/seed/native-rose-window.jpg', 6.00, '$6', 'product', true, true)
 on conflict (id) do nothing;
 
--- Real upcoming pop-up schedule from @thenativerose.ny, shifted to stay
--- relative to "now" so it never looks stale — venue names, addresses, and
--- times are taken directly from their flyer.
+-- Real upcoming pop-up schedule from @thenativerose.ny. Exact dates/times
+-- taken directly from their flyer (America/New_York) — not relative
+-- placeholders, since these are real commitments. Faire and Flourish Market
+-- ran two separate sessions (Sat 9/12 and Sun 9/13, each 12–4pm), so it's
+-- modeled as two rows rather than one row spanning both days.
 insert into appearances (id, business_id, event_id, title, description, start_at, end_at, venue_name, address, city, state, status, is_featured) values
-('44444444-4444-4444-8444-444444444414', '11111111-1111-4111-8111-111111111107', null, 'Minthorne Market', null, now() + interval '6 days' + interval '12 hours', now() + interval '6 days' + interval '16 hours', 'Minthorne Market', 'Minthorne St', 'Staten Island', 'NY', 'confirmed', true),
-('44444444-4444-4444-8444-444444444415', '11111111-1111-4111-8111-111111111107', null, 'Luxe Spa Back-to-School Pop-Up', null, now() + interval '13 days' + interval '11 hours', now() + interval '13 days' + interval '14 hours', 'Luxe Spa', '2248 Victory Blvd', 'Staten Island', 'NY', 'confirmed', false),
-('44444444-4444-4444-8444-444444444416', '11111111-1111-4111-8111-111111111107', null, 'Faire and Flourish Market', null, now() + interval '20 days' + interval '12 hours', now() + interval '20 days' + interval '16 hours', 'Staten Island Mall (Outdoor, Main Entrance)', null, 'Staten Island', 'NY', 'confirmed', true),
-('44444444-4444-4444-8444-444444444417', '11111111-1111-4111-8111-111111111107', null, 'Piccola Pasta Shop', null, now() + interval '27 days' + interval '10 hours', now() + interval '27 days' + interval '14 hours', 'Piccola Pasta Shop', '3939 Amboy Rd', 'Staten Island', 'NY', 'confirmed', false),
-('44444444-4444-4444-8444-444444444418', '11111111-1111-4111-8111-111111111107', null, 'PS 8 Back-to-School Carnival', 'PS 8 students and families only.', now() + interval '34 days' + interval '16 hours 30 minutes', now() + interval '34 days' + interval '19 hours 30 minutes', 'PS 8', null, 'Staten Island', 'NY', 'confirmed', false)
+('44444444-4444-4444-8444-444444444414', '11111111-1111-4111-8111-111111111107', null, 'Minthorne Market', null, '2026-08-29 12:00:00-04', '2026-08-29 16:00:00-04', 'Minthorne Market', 'Minthorne St', 'Staten Island', 'NY', 'confirmed', true),
+('44444444-4444-4444-8444-444444444415', '11111111-1111-4111-8111-111111111107', null, 'Luxe Spa Back-to-School Pop-Up', null, '2026-09-06 11:00:00-04', '2026-09-06 14:00:00-04', 'Luxe Spa', '2248 Victory Blvd', 'Staten Island', 'NY', 'confirmed', false),
+('44444444-4444-4444-8444-444444444416', '11111111-1111-4111-8111-111111111107', null, 'Faire and Flourish Market', null, '2026-09-12 12:00:00-04', '2026-09-12 16:00:00-04', 'Staten Island Mall (Outdoor, Main Entrance)', null, 'Staten Island', 'NY', 'confirmed', true),
+('44444444-4444-4444-8444-444444444419', '11111111-1111-4111-8111-111111111107', null, 'Faire and Flourish Market', null, '2026-09-13 12:00:00-04', '2026-09-13 16:00:00-04', 'Staten Island Mall (Outdoor, Main Entrance)', null, 'Staten Island', 'NY', 'confirmed', false),
+('44444444-4444-4444-8444-444444444417', '11111111-1111-4111-8111-111111111107', null, 'Piccola Pasta Shop', null, '2026-09-20 10:00:00-04', '2026-09-20 14:00:00-04', 'Piccola Pasta Shop', '3939 Amboy Rd', 'Staten Island', 'NY', 'confirmed', false),
+('44444444-4444-4444-8444-444444444418', '11111111-1111-4111-8111-111111111107', null, 'PS 8 Back-to-School Carnival', 'PS 8 students and families only.', '2026-09-25 16:30:00-04', '2026-09-25 19:30:00-04', 'PS 8', null, 'Staten Island', 'NY', 'confirmed', false)
 on conflict (id) do nothing;
 
 -- ----------------------------------------------------------------------------
@@ -203,21 +217,23 @@ on conflict (id) do nothing;
 
 -- ----------------------------------------------------------------------------
 -- events
+-- These three are fictional Austin events for local development only.
+-- is_demo = true keeps them out of every public query (see data.ts).
 -- ----------------------------------------------------------------------------
-insert into events (id, slug, name, description, cover_image_url, start_at, end_at, venue_name, address, city, state, latitude, longitude, organizer_name, is_featured) values
+insert into events (id, slug, name, description, cover_image_url, start_at, end_at, venue_name, address, city, state, latitude, longitude, organizer_name, is_featured, is_demo) values
 (
   '33333333-3333-4333-8333-333333333301',
   'eastside-night-market',
   'Eastside Night Market',
   'A monthly evening market with 40+ local makers, food trucks, and live music under string lights.',
   'https://images.unsplash.com/photo-1533900298318-6b8da08a523e?w=1600&h=900&fit=crop',
-  now() + interval '6 days' + interval '18 hours',
-  now() + interval '6 days' + interval '22 hours',
+  date_trunc('day', now()) + interval '6 days' + interval '18 hours',
+  date_trunc('day', now()) + interval '6 days' + interval '22 hours',
   'Canopy Lot',
   '1224 E 5th St',
   'Austin', 'TX', 30.2632, -97.7222,
   'Wildflower Market Co.',
-  true
+  true, true
 ),
 (
   '33333333-3333-4333-8333-333333333302',
@@ -225,13 +241,13 @@ insert into events (id, slug, name, description, cover_image_url, start_at, end_
   'Sunday Farmers Market at Mueller',
   'A weekly farmers market with local coffee, flowers, produce, and prepared foods.',
   'https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=1600&h=900&fit=crop',
-  now() + interval '3 days' + interval '9 hours',
-  now() + interval '3 days' + interval '13 hours',
+  date_trunc('day', now()) + interval '3 days' + interval '9 hours',
+  date_trunc('day', now()) + interval '3 days' + interval '13 hours',
   'Mueller Lake Park',
   '4550 Mueller Blvd',
   'Austin', 'TX', 30.2989, -97.7075,
   'Mueller Market Co.',
-  true
+  true, true
 ),
 (
   '33333333-3333-4333-8333-333333333303',
@@ -239,13 +255,13 @@ insert into events (id, slug, name, description, cover_image_url, start_at, end_
   'Austin Food Truck Fest',
   'A weekend-long celebration of the city''s best food trucks, all parked in one field.',
   'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=1600&h=900&fit=crop',
-  now() + interval '13 days' + interval '11 hours',
-  now() + interval '14 days' + interval '21 hours',
+  date_trunc('day', now()) + interval '13 days' + interval '11 hours',
+  date_trunc('day', now()) + interval '14 days' + interval '21 hours',
   'Circuit of the Americas Lot C',
   '9201 Circuit of the Americas Blvd',
   'Austin', 'TX', 30.1328, -97.6411,
   'ATX Truck Collective',
-  false
+  false, true
 )
 on conflict (id) do nothing;
 
@@ -274,36 +290,38 @@ on conflict do nothing;
 -- ----------------------------------------------------------------------------
 insert into appearances (id, business_id, event_id, title, description, start_at, end_at, venue_name, address, city, state, latitude, longitude, status, is_featured) values
 -- Bloom & Brew
-('44444444-4444-4444-8444-444444444401', '11111111-1111-4111-8111-111111111101', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, now() + interval '6 days' + interval '18 hours', now() + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', true),
-('44444444-4444-4444-8444-444444444402', '11111111-1111-4111-8111-111111111101', '33333333-3333-4333-8333-333333333302', 'Sunday Farmers Market at Mueller', null, now() + interval '3 days' + interval '9 hours', now() + interval '3 days' + interval '13 hours', 'Mueller Lake Park', '4550 Mueller Blvd', 'Austin', 'TX', 30.2989, -97.7075, 'confirmed', false),
-('44444444-4444-4444-8444-444444444403', '11111111-1111-4111-8111-111111111101', null, 'Private Wedding — South Congress', 'Private booking, cart parked for a private event.', now() + interval '10 days' + interval '16 hours', now() + interval '10 days' + interval '20 hours', 'The Grackle Estate', '2100 S Congress Ave', 'Austin', 'TX', 30.2402, -97.7501, 'confirmed', false),
+('44444444-4444-4444-8444-444444444401', '11111111-1111-4111-8111-111111111101', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, date_trunc('day', now()) + interval '6 days' + interval '18 hours', date_trunc('day', now()) + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', true),
+('44444444-4444-4444-8444-444444444402', '11111111-1111-4111-8111-111111111101', '33333333-3333-4333-8333-333333333302', 'Sunday Farmers Market at Mueller', null, date_trunc('day', now()) + interval '3 days' + interval '9 hours', date_trunc('day', now()) + interval '3 days' + interval '13 hours', 'Mueller Lake Park', '4550 Mueller Blvd', 'Austin', 'TX', 30.2989, -97.7075, 'confirmed', false),
+('44444444-4444-4444-8444-444444444403', '11111111-1111-4111-8111-111111111101', null, 'Private Wedding — South Congress', 'Private booking, cart parked for a private event.', date_trunc('day', now()) + interval '10 days' + interval '16 hours', date_trunc('day', now()) + interval '10 days' + interval '20 hours', 'The Grackle Estate', '2100 S Congress Ave', 'Austin', 'TX', 30.2402, -97.7501, 'confirmed', false),
 
 -- Curbside Kimchi
-('44444444-4444-4444-8444-444444444404', '11111111-1111-4111-8111-111111111102', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, now() + interval '6 days' + interval '18 hours', now() + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', true),
-('44444444-4444-4444-8444-444444444405', '11111111-1111-4111-8111-111111111102', '33333333-3333-4333-8333-333333333303', 'Austin Food Truck Fest', null, now() + interval '13 days' + interval '11 hours', now() + interval '14 days' + interval '21 hours', 'Circuit of the Americas Lot C', '9201 Circuit of the Americas Blvd', 'Austin', 'TX', 30.1328, -97.6411, 'confirmed', false),
-('44444444-4444-4444-8444-444444444406', '11111111-1111-4111-8111-111111111102', null, 'Zilker Brewing Parked Truck Night', null, now() + interval '2 days' + interval '17 hours', now() + interval '2 days' + interval '21 hours', 'Zilker Brewing Co.', '1701 E 6th St', 'Austin', 'TX', 30.2610, -97.7247, 'confirmed', false),
+('44444444-4444-4444-8444-444444444404', '11111111-1111-4111-8111-111111111102', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, date_trunc('day', now()) + interval '6 days' + interval '18 hours', date_trunc('day', now()) + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', true),
+('44444444-4444-4444-8444-444444444405', '11111111-1111-4111-8111-111111111102', '33333333-3333-4333-8333-333333333303', 'Austin Food Truck Fest', null, date_trunc('day', now()) + interval '13 days' + interval '11 hours', date_trunc('day', now()) + interval '14 days' + interval '21 hours', 'Circuit of the Americas Lot C', '9201 Circuit of the Americas Blvd', 'Austin', 'TX', 30.1328, -97.6411, 'confirmed', false),
+('44444444-4444-4444-8444-444444444406', '11111111-1111-4111-8111-111111111102', null, 'Zilker Brewing Parked Truck Night', null, date_trunc('day', now()) + interval '2 days' + interval '17 hours', date_trunc('day', now()) + interval '2 days' + interval '21 hours', 'Zilker Brewing Co.', '1701 E 6th St', 'Austin', 'TX', 30.2610, -97.7247, 'confirmed', false),
 
 -- Wildflower Market Co.
-('44444444-4444-4444-8444-444444444407', '11111111-1111-4111-8111-111111111103', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, now() + interval '6 days' + interval '18 hours', now() + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', true),
-('44444444-4444-4444-8444-444444444408', '11111111-1111-4111-8111-111111111103', null, 'Wildflower Market: South Lamar', null, now() + interval '27 days' + interval '17 hours', now() + interval '27 days' + interval '21 hours', 'South Lamar Plaza', '1100 S Lamar Blvd', 'Austin', 'TX', 30.2564, -97.7638, 'tentative', false),
+('44444444-4444-4444-8444-444444444407', '11111111-1111-4111-8111-111111111103', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, date_trunc('day', now()) + interval '6 days' + interval '18 hours', date_trunc('day', now()) + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', true),
+('44444444-4444-4444-8444-444444444408', '11111111-1111-4111-8111-111111111103', null, 'Wildflower Market: South Lamar', null, date_trunc('day', now()) + interval '27 days' + interval '17 hours', date_trunc('day', now()) + interval '27 days' + interval '21 hours', 'South Lamar Plaza', '1100 S Lamar Blvd', 'Austin', 'TX', 30.2564, -97.7638, 'tentative', false),
 
 -- Roast House Coffee
-('44444444-4444-4444-8444-444444444409', '11111111-1111-4111-8111-111111111104', '33333333-3333-4333-8333-333333333302', 'Sunday Farmers Market at Mueller', null, now() + interval '3 days' + interval '9 hours', now() + interval '3 days' + interval '13 hours', 'Mueller Lake Park', '4550 Mueller Blvd', 'Austin', 'TX', 30.2989, -97.7075, 'confirmed', true),
-('44444444-4444-4444-8444-444444444410', '11111111-1111-4111-8111-111111111104', '33333333-3333-4333-8333-333333333303', 'Austin Food Truck Fest', null, now() + interval '13 days' + interval '11 hours', now() + interval '14 days' + interval '21 hours', 'Circuit of the Americas Lot C', '9201 Circuit of the Americas Blvd', 'Austin', 'TX', 30.1328, -97.6411, 'confirmed', false),
+('44444444-4444-4444-8444-444444444409', '11111111-1111-4111-8111-111111111104', '33333333-3333-4333-8333-333333333302', 'Sunday Farmers Market at Mueller', null, date_trunc('day', now()) + interval '3 days' + interval '9 hours', date_trunc('day', now()) + interval '3 days' + interval '13 hours', 'Mueller Lake Park', '4550 Mueller Blvd', 'Austin', 'TX', 30.2989, -97.7075, 'confirmed', true),
+('44444444-4444-4444-8444-444444444410', '11111111-1111-4111-8111-111111111104', '33333333-3333-4333-8333-333333333303', 'Austin Food Truck Fest', null, date_trunc('day', now()) + interval '13 days' + interval '11 hours', date_trunc('day', now()) + interval '14 days' + interval '21 hours', 'Circuit of the Americas Lot C', '9201 Circuit of the Americas Blvd', 'Austin', 'TX', 30.1328, -97.6411, 'confirmed', false),
 
 -- Palermo Leather Co.
-('44444444-4444-4444-8444-444444444411', '11111111-1111-4111-8111-111111111105', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, now() + interval '6 days' + interval '18 hours', now() + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', false),
+('44444444-4444-4444-8444-444444444411', '11111111-1111-4111-8111-111111111105', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, date_trunc('day', now()) + interval '6 days' + interval '18 hours', date_trunc('day', now()) + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', false),
 
 -- Sunny Sip Kombucha
-('44444444-4444-4444-8444-444444444412', '11111111-1111-4111-8111-111111111106', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, now() + interval '6 days' + interval '18 hours', now() + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', false),
-('44444444-4444-4444-8444-444444444413', '11111111-1111-4111-8111-111111111106', '33333333-3333-4333-8333-333333333302', 'Sunday Farmers Market at Mueller', null, now() + interval '3 days' + interval '9 hours', now() + interval '3 days' + interval '13 hours', 'Mueller Lake Park', '4550 Mueller Blvd', 'Austin', 'TX', 30.2989, -97.7075, 'confirmed', false)
+('44444444-4444-4444-8444-444444444412', '11111111-1111-4111-8111-111111111106', '33333333-3333-4333-8333-333333333301', 'Eastside Night Market', null, date_trunc('day', now()) + interval '6 days' + interval '18 hours', date_trunc('day', now()) + interval '6 days' + interval '22 hours', 'Canopy Lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, 'confirmed', false),
+('44444444-4444-4444-8444-444444444413', '11111111-1111-4111-8111-111111111106', '33333333-3333-4333-8333-333333333302', 'Sunday Farmers Market at Mueller', null, date_trunc('day', now()) + interval '3 days' + interval '9 hours', date_trunc('day', now()) + interval '3 days' + interval '13 hours', 'Mueller Lake Park', '4550 Mueller Blvd', 'Austin', 'TX', 30.2989, -97.7075, 'confirmed', false)
 on conflict (id) do nothing;
 
 -- ----------------------------------------------------------------------------
 -- locations
 -- ----------------------------------------------------------------------------
-insert into locations (id, name, slug, address, city, state, latitude, longitude) values
-  ('66666666-6666-4666-8666-666666666601', 'Canopy Lot', 'canopy-lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222),
-  ('66666666-6666-4666-8666-666666666602', 'Mueller Lake Park', 'mueller-lake-park', '4550 Mueller Blvd', 'Austin', 'TX', 30.2989, -97.7075),
-  ('66666666-6666-4666-8666-666666666603', 'Circuit of the Americas Lot C', 'cota-lot-c', '9201 Circuit of the Americas Blvd', 'Austin', 'TX', 30.1328, -97.6411)
+-- Fictional Austin locations for local development only; is_demo = true
+-- keeps them out of every public query (see data.ts).
+insert into locations (id, name, slug, address, city, state, latitude, longitude, is_demo) values
+  ('66666666-6666-4666-8666-666666666601', 'Canopy Lot', 'canopy-lot', '1224 E 5th St', 'Austin', 'TX', 30.2632, -97.7222, true),
+  ('66666666-6666-4666-8666-666666666602', 'Mueller Lake Park', 'mueller-lake-park', '4550 Mueller Blvd', 'Austin', 'TX', 30.2989, -97.7075, true),
+  ('66666666-6666-4666-8666-666666666603', 'Circuit of the Americas Lot C', 'cota-lot-c', '9201 Circuit of the Americas Blvd', 'Austin', 'TX', 30.1328, -97.6411, true)
 on conflict (id) do nothing;

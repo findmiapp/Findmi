@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { getDiscoveryWindowBounds, type DiscoveryWindow } from "./format";
 import type {
   Appearance,
   Business,
@@ -54,26 +55,35 @@ export interface HomeStats {
   cityCount: number;
 }
 
-/** Real, live counts for the homepage trust strip — never fabricated. */
+/**
+ * Real, live counts — never fabricated. Currently unused on the homepage
+ * (too few real listings yet for a stats strip to read as credible rather
+ * than sparse); kept here so it's a one-line re-add once there's enough
+ * production data.
+ */
 export async function getHomeStats(): Promise<HomeStats> {
   const supabase = getSupabase();
   if (!supabase) return { businessCount: 0, upcomingCount: 0, cityCount: 0 };
 
-  const [{ count: businessCount }, { count: upcomingCount }, { data: cityRows }] =
-    await Promise.all([
-      supabase.from("businesses").select("id", { count: "exact", head: true }),
-      supabase
+  const { data: realBusinesses } = await supabase
+    .from("businesses")
+    .select("id, city")
+    .eq("is_demo", false);
+  const realIds = (realBusinesses ?? []).map((b) => b.id);
+
+  const { count: upcomingCount } = realIds.length
+    ? await supabase
         .from("appearances")
         .select("id", { count: "exact", head: true })
+        .in("business_id", realIds)
         .neq("status", "canceled")
-        .gte("start_at", new Date().toISOString()),
-      supabase.from("businesses").select("city").not("city", "is", null),
-    ]);
+        .gte("start_at", new Date().toISOString())
+    : { count: 0 };
 
-  const cityCount = new Set((cityRows ?? []).map((r) => r.city)).size;
+  const cityCount = new Set((realBusinesses ?? []).map((r) => r.city).filter(Boolean)).size;
 
   return {
-    businessCount: businessCount ?? 0,
+    businessCount: realIds.length,
     upcomingCount: upcomingCount ?? 0,
     cityCount,
   };
@@ -93,6 +103,7 @@ export async function getFeaturedBusinesses(limit = 8): Promise<BusinessWithCate
     .from("businesses")
     .select(BUSINESS_COLUMNS)
     .eq("founding_member", true)
+    .eq("is_demo", false)
     .order("created_at", { ascending: false })
     .limit(limit);
   return attachCategories((data as Business[]) ?? []);
@@ -125,7 +136,7 @@ export async function searchBusinesses(params: {
     }
   }
 
-  let query = supabase.from("businesses").select(BUSINESS_COLUMNS);
+  let query = supabase.from("businesses").select(BUSINESS_COLUMNS).eq("is_demo", false);
 
   if (params.q) {
     const term = params.q.trim();
@@ -151,6 +162,7 @@ export async function getBusinessBySlug(slug: string): Promise<BusinessWithCateg
     .from("businesses")
     .select(BUSINESS_COLUMNS)
     .eq("slug", slug)
+    .eq("is_demo", false)
     .maybeSingle();
   if (!data) return null;
   const [withCats] = await attachCategories([data as Business]);
@@ -196,15 +208,22 @@ export async function getUpcomingAppearancesForBusiness(
   });
 }
 
-export async function getUpcomingEvents(limit = 20): Promise<FindmiEvent[]> {
+export async function getUpcomingEvents(
+  limit = 20,
+  when: DiscoveryWindow = "anytime"
+): Promise<FindmiEvent[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
+  const bounds = getDiscoveryWindowBounds(when);
+  let query = supabase
     .from("events")
     .select("*")
-    .gte("start_at", new Date().toISOString())
-    .order("start_at", { ascending: true })
-    .limit(limit);
+    .eq("is_demo", false)
+    .gte("start_at", (bounds?.start ?? new Date()).toISOString());
+  if (bounds) {
+    query = query.lt("start_at", bounds.end.toISOString());
+  }
+  const { data } = await query.order("start_at", { ascending: true }).limit(limit);
   return data ?? [];
 }
 
@@ -214,6 +233,7 @@ export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
   const { data } = await supabase
     .from("events")
     .select("*")
+    .eq("is_demo", false)
     .gte("start_at", new Date().toISOString())
     .order("is_featured", { ascending: false })
     .order("start_at", { ascending: true })
@@ -224,7 +244,12 @@ export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
 export async function getEventBySlug(slug: string): Promise<FindmiEvent | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data } = await supabase.from("events").select("*").eq("slug", slug).maybeSingle();
+  const { data } = await supabase
+    .from("events")
+    .select("*")
+    .eq("slug", slug)
+    .eq("is_demo", false)
+    .maybeSingle();
   return data ?? null;
 }
 
@@ -240,7 +265,7 @@ export async function getBusinessesForEvent(eventId: string): Promise<BusinessWi
     .map((row: { businesses: Business | Business[] | null }) =>
       Array.isArray(row.businesses) ? row.businesses[0] : row.businesses
     )
-    .filter(Boolean) as Business[];
+    .filter((b): b is Business => Boolean(b) && !(b as Business & { is_demo?: boolean }).is_demo);
 
   return attachCategories(businesses);
 }
@@ -267,17 +292,22 @@ export async function getUpcomingAppearancesFeed(limit = 8): Promise<AppearanceF
   if (!supabase) return [];
   const { data } = await supabase
     .from("appearances")
-    .select("*, business:businesses(id, name, slug, logo_url)")
+    .select("*, business:businesses(id, name, slug, logo_url, is_demo)")
     .neq("status", "canceled")
     .gte("start_at", new Date().toISOString())
     .order("start_at", { ascending: true })
-    .limit(limit);
+    .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
-  return ((data ?? []) as never[]).map((row: unknown) => {
-    const r = row as Appearance & { business: AppearanceFeedItem["business"] | AppearanceFeedItem["business"][] };
-    const business = Array.isArray(r.business) ? r.business[0] : r.business;
-    return { ...r, business };
-  });
+  type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean };
+  return ((data ?? []) as never[])
+    .map((row: unknown) => {
+      const r = row as Appearance & { business: JoinedBusiness | JoinedBusiness[] };
+      const business = Array.isArray(r.business) ? r.business[0] : r.business;
+      return { ...r, business };
+    })
+    .filter((item) => item.business && !item.business.is_demo)
+    .slice(0, limit)
+    .map(({ business: { is_demo: _isDemo, ...business }, ...rest }) => ({ ...rest, business }));
 }
 
 /** Businesses that travel to customers rather than operate from a single
@@ -289,6 +319,7 @@ export async function getMobileBusinesses(limit = 8): Promise<BusinessWithCatego
     .from("businesses")
     .select(BUSINESS_COLUMNS)
     .not("service_radius_miles", "is", null)
+    .eq("is_demo", false)
     .order("founding_member", { ascending: false })
     .limit(limit);
   return attachCategories((data as Business[]) ?? []);
@@ -303,16 +334,21 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
   if (!supabase) return [];
   const { data } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug)")
+    .select("*, business:businesses(id, name, slug, is_demo)")
     .eq("is_featured", true)
     .eq("is_active", true)
-    .limit(limit);
+    .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
-  return ((data ?? []) as never[]).map((row: unknown) => {
-    const r = row as Product & { business: FeaturedProduct["business"] | FeaturedProduct["business"][] };
-    const business = Array.isArray(r.business) ? r.business[0] : r.business;
-    return { ...r, business };
-  });
+  type JoinedBusiness = FeaturedProduct["business"] & { is_demo: boolean };
+  return ((data ?? []) as never[])
+    .map((row: unknown) => {
+      const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
+      const business = Array.isArray(r.business) ? r.business[0] : r.business;
+      return { ...r, business };
+    })
+    .filter((item) => item.business && !item.business.is_demo)
+    .slice(0, limit)
+    .map(({ business: { is_demo: _isDemo, ...business }, ...rest }) => ({ ...rest, business }));
 }
 
 /** Other founding-member businesses sharing at least one category — used to
@@ -334,7 +370,11 @@ export async function getAlternativeBusinesses(
   const ids = Array.from(new Set((links ?? []).map((l) => l.business_id))).slice(0, limit);
   if (ids.length === 0) return [];
 
-  const { data } = await supabase.from("businesses").select(BUSINESS_COLUMNS).in("id", ids);
+  const { data } = await supabase
+    .from("businesses")
+    .select(BUSINESS_COLUMNS)
+    .in("id", ids)
+    .eq("is_demo", false);
   return attachCategories((data as Business[]) ?? []);
 }
 
@@ -348,14 +388,24 @@ export async function getAlternativeBusinesses(
 export async function getLocations(limit = 20): Promise<FindmiLocation[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase.from("locations").select("*").order("name").limit(limit);
+  const { data } = await supabase
+    .from("locations")
+    .select("*")
+    .eq("is_demo", false)
+    .order("name")
+    .limit(limit);
   return data ?? [];
 }
 
 export async function getLocationBySlug(slug: string): Promise<FindmiLocation | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data } = await supabase.from("locations").select("*").eq("slug", slug).maybeSingle();
+  const { data } = await supabase
+    .from("locations")
+    .select("*")
+    .eq("slug", slug)
+    .eq("is_demo", false)
+    .maybeSingle();
   return data ?? null;
 }
 
@@ -384,12 +434,15 @@ export async function getUpcomingAtLocation(
       .from("events")
       .select("id, slug, name, cover_image_url, start_at, end_at, organizer_name")
       .ilike("venue_name", locationName)
+      .eq("is_demo", false)
       .gte("start_at", nowIso)
       .order("start_at", { ascending: true })
       .limit(limit),
     supabase
       .from("appearances")
-      .select("id, title, start_at, end_at, business:businesses(slug, name, cover_image_url)")
+      .select(
+        "id, title, start_at, end_at, business:businesses(slug, name, cover_image_url, is_demo)"
+      )
       .ilike("venue_name", locationName)
       .is("event_id", null)
       .neq("status", "canceled")
@@ -411,7 +464,7 @@ export async function getUpcomingAtLocation(
   const fromAppearances: LocationHappening[] = (appearances ?? [])
     .map((a) => {
       const b = Array.isArray(a.business) ? a.business[0] : a.business;
-      if (!b) return null;
+      if (!b || b.is_demo) return null;
       return {
         id: `appearance-${a.id}`,
         title: a.title,

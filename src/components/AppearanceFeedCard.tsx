@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { AppearanceFeedItem } from "@/lib/data";
-import { cityState, formatDateRange } from "@/lib/format";
+import { cityState, getTemporalLabel } from "@/lib/format";
+import LiveDot from "./LiveDot";
 
 export default function AppearanceFeedCard({
   item,
@@ -10,10 +11,14 @@ export default function AppearanceFeedCard({
 }) {
   if (!item.business) return null;
 
+  const { label: when, live } = getTemporalLabel(item.start_at, item.end_at);
+
   return (
     <Link
       href={`/business/${item.business.slug}`}
-      className="flex shrink-0 flex-col gap-3 rounded-2xl border border-black/5 bg-white p-4 transition hover:shadow-md hover:shadow-black/5"
+      className={`flex shrink-0 flex-col gap-3 rounded-2xl border p-4 transition active:scale-[0.99] ${
+        live ? "border-findmi-300 bg-findmi-50" : "border-black/5 bg-white hover:shadow-md hover:shadow-black/5"
+      }`}
     >
       <div className="flex items-center gap-3">
         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-black/5">
@@ -29,7 +34,14 @@ export default function AppearanceFeedCard({
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-ink">{item.business.name}</p>
-          <p className="text-xs text-ink/50">{formatDateRange(item.start_at, item.end_at)}</p>
+          <p
+            className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide ${
+              live ? "text-findmi-600" : "text-ink/40"
+            }`}
+          >
+            {live && <LiveDot className="text-findmi-500" />}
+            {when}
+          </p>
         </div>
       </div>
       <p className="text-sm text-ink/70">

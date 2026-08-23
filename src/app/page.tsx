@@ -8,7 +8,6 @@ import AppearanceFeedCard from "@/components/AppearanceFeedCard";
 import Section, { HorizontalScroller } from "@/components/Section";
 import {
   getFeaturedProducts,
-  getHomeStats,
   getLocations,
   getMobileBusinesses,
   getUpcomingAppearancesFeed,
@@ -28,7 +27,6 @@ export default async function HomePage() {
     brandsOnTheMove,
     popularProducts,
     locations,
-    stats,
   ] = await Promise.all([
     searchBusinesses({}),
     getUpcomingEvents(6),
@@ -38,7 +36,6 @@ export default async function HomePage() {
     getMobileBusinesses(8),
     getFeaturedProducts(8),
     getLocations(8),
-    getHomeStats(),
   ]);
 
   return (
@@ -64,34 +61,15 @@ export default async function HomePage() {
             where to find them next.
           </p>
           <SearchBar />
-
-          {(stats.businessCount > 0 || stats.upcomingCount > 0) && (
-            <div className="flex flex-wrap gap-x-6 gap-y-2 pt-2 text-sm text-ink/50">
-              {stats.businessCount > 0 && (
-                <span>
-                  <span className="font-semibold text-ink">{stats.businessCount}</span>{" "}
-                  businesses on Findmi
-                </span>
-              )}
-              {stats.upcomingCount > 0 && (
-                <span>
-                  <span className="font-semibold text-ink">{stats.upcomingCount}</span>{" "}
-                  upcoming appearances
-                </span>
-              )}
-              {stats.cityCount > 0 && (
-                <span>
-                  <span className="font-semibold text-ink">{stats.cityCount}</span>{" "}
-                  {stats.cityCount === 1 ? "city" : "cities"}
-                </span>
-              )}
-            </div>
-          )}
         </div>
       </section>
 
       {nearYou.length > 0 && (
-        <Section title="Near You" subtitle="Businesses on Findmi right now" viewAllHref="/businesses">
+        <Section
+          title="Featured Near NYC"
+          subtitle="Discover businesses on Findmi"
+          viewAllHref="/businesses"
+        >
           <HorizontalScroller>
             {nearYou.slice(0, 10).map((b) => (
               <div key={b.id} className="w-64 shrink-0">
