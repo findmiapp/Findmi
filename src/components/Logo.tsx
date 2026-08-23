@@ -16,7 +16,7 @@ export default function Logo({
     <Link href="/" className={`flex shrink-0 items-center ${className}`}>
       <Image
         src="/logo-lockup.png"
-        alt="Findmi"
+        alt="FindMi"
         width={Math.round(484 * LOCKUP_RATIO)}
         height={484}
         priority

@@ -5,7 +5,7 @@ import { getCategories, searchBusinesses } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Businesses",
-  description: "Search and browse businesses and vendors on Findmi.",
+  description: "Search and browse businesses and vendors on FindMi.",
 };
 export const revalidate = 60;
 
@@ -22,8 +22,8 @@ export default async function BusinessesPage({
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink">Businesses</h1>
-      <p className="mt-2 text-ink/60">Search Findmi&rsquo;s directory of vendors and brands.</p>
+      <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Businesses</h1>
+      <p className="mt-2 text-ink/60">Search FindMi&rsquo;s directory of vendors and brands.</p>
 
       <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
         <input
@@ -54,7 +54,7 @@ export default async function BusinessesPage({
         </select>
         <button
           type="submit"
-          className="shrink-0 rounded-xl bg-ink px-6 py-3 text-sm font-semibold text-white transition hover:bg-findmi-600"
+          className="shrink-0 rounded-xl bg-findmi px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
         >
           Search
         </button>

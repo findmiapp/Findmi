@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
   const supabase = getSupabase();
   if (!supabase) {
-    return NextResponse.json({ error: "Findmi isn't configured yet" }, { status: 503 });
+    return NextResponse.json({ error: "FindMi isn't configured yet" }, { status: 503 });
   }
 
   const { error } = await supabase

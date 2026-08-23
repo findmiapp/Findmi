@@ -61,7 +61,7 @@ export default function PostCard({
   const card = (
     <div
       className={`group relative w-full overflow-hidden rounded-2xl transition duration-150 active:scale-[0.98] ${
-        image ? "bg-black/5" : "bg-gradient-to-br from-findmi-200 via-findmi-500 to-findmi-800"
+        image ? "bg-black/5" : "bg-gradient-to-br from-stone to-ink"
       } ${aspect ?? ASPECT_BY_KIND[kind]}`}
     >
       {image ? (
@@ -75,7 +75,7 @@ export default function PostCard({
       ) : (
         <Icon
           name={badgeIcon ?? DEFAULT_ICON_BY_KIND[kind]}
-          className="absolute -bottom-4 -right-4 h-28 w-28 text-white/15"
+          className="absolute -bottom-4 -right-4 h-28 w-28 text-white/10"
         />
       )}
       {/* Legibility gradient for the white overlay text, bottom-anchored */}
@@ -83,12 +83,12 @@ export default function PostCard({
 
       <div className="absolute left-3 top-3">
         <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white ${
-            badgeVariant === "live" ? "bg-findmi-500" : "bg-black/45 backdrop-blur-sm"
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
+            badgeVariant === "live" ? "bg-findmi text-ink" : "bg-black/45 text-white backdrop-blur-sm"
           }`}
         >
           {badgeVariant === "live" ? (
-            <LiveDot className="text-white" />
+            <LiveDot className="text-ink" />
           ) : (
             <Icon name={badgeIcon ?? DEFAULT_ICON_BY_KIND[kind]} className="h-3.5 w-3.5" />
           )}
@@ -97,7 +97,7 @@ export default function PostCard({
       </div>
 
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-4">
-        <h3 className="line-clamp-2 text-base font-semibold leading-snug text-white sm:text-lg">
+        <h3 className="line-clamp-2 font-display text-base font-bold leading-snug text-white sm:text-lg">
           {title}
         </h3>
 
@@ -111,7 +111,7 @@ export default function PostCard({
         {price && <p className="text-sm font-semibold text-white">{price}</p>}
 
         {cta && (
-          <span className="mt-1 block rounded-full border border-white/40 py-2.5 text-center text-sm font-semibold text-white transition group-hover:border-white/70">
+          <span className="mt-1 block rounded-full bg-findmi py-2.5 text-center text-sm font-bold uppercase tracking-wide text-ink transition group-hover:bg-findmi-600">
             {cta}
           </span>
         )}

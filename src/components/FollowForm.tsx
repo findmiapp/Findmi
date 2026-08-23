@@ -50,7 +50,7 @@ export default function FollowForm({
       <button
         type="submit"
         disabled={status === "loading"}
-        className="shrink-0 rounded-xl bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-findmi-600 disabled:opacity-60"
+        className="shrink-0 rounded-xl bg-findmi px-5 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600 disabled:opacity-60"
       >
         {status === "loading" ? "Following…" : "Follow"}
       </button>

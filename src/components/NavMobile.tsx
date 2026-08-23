@@ -5,37 +5,49 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/discover", label: "Discover", icon: CompassIcon },
-  { href: "/events", label: "Events", icon: CalendarIcon },
-  { href: "/businesses", label: "Search", icon: SearchIcon },
-  { href: "/join", label: "Join", icon: PlusIcon },
+  { href: "/businesses", label: "Nearby", icon: PinIcon },
+  { href: "/find", label: "Find", icon: TargetIcon, center: true },
+  { href: "/saved", label: "Saved", icon: BookmarkIcon },
+  { href: "/you", label: "You", icon: PersonIcon },
 ];
 
 export default function NavMobile() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/5 bg-white/95 backdrop-blur md:hidden">
-      <div className="mx-auto flex max-w-6xl items-stretch justify-between px-2 pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/5 bg-paper/95 backdrop-blur md:hidden">
+      <div className="mx-auto flex max-w-6xl items-end justify-between px-2 pb-[env(safe-area-inset-bottom)]">
         {links.map((link) => {
-          const active =
-            pathname === link.href || pathname.startsWith(`${link.href}/`);
+          const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
           const Icon = link.icon;
+
+          if (link.center) {
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="flex flex-1 flex-col items-center gap-1 pb-1.5 pt-1 text-[11px] font-medium"
+              >
+                <span
+                  className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-findmi text-ink shadow-lg shadow-findmi/30 transition active:scale-95 ${
+                    active ? "ring-2 ring-ink/10" : ""
+                  }`}
+                >
+                  <Icon className="h-6 w-6" />
+                </span>
+                <span className={active ? "text-ink" : "text-ink/40"}>{link.label}</span>
+              </Link>
+            );
+          }
+
           return (
             <Link
               key={link.href}
               href={link.href}
               className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition active:scale-95"
             >
-              <span
-                className={`flex h-8 w-11 items-center justify-center rounded-full transition ${
-                  active ? "bg-findmi-50" : ""
-                }`}
-              >
-                <Icon className={`h-5 w-5 ${active ? "text-findmi-500" : "text-ink/40"}`} />
-              </span>
-              <span className={active ? "text-ink" : "text-ink/40"}>
-                {link.label}
-              </span>
+              <Icon className={`h-5 w-5 ${active ? "text-ink" : "text-ink/40"}`} />
+              <span className={active ? "text-ink" : "text-ink/40"}>{link.label}</span>
             </Link>
           );
         })}
@@ -58,48 +70,49 @@ function CompassIcon({ className }: { className?: string }) {
   );
 }
 
-function CalendarIcon({ className }: { className?: string }) {
+function PinIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <rect
-        x="3.5"
-        y="5"
-        width="17"
-        height="15.5"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
       <path
-        d="M3.5 9.5h17M8 3v3.5M16 3v3.5"
+        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
         stroke="currentColor"
         strokeWidth="1.8"
-        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function TargetIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function BookmarkIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
       />
     </svg>
   );
 }
 
-function SearchIcon({ className }: { className?: string }) {
+function PersonIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.8" />
       <path
-        d="M20 20l-4.5-4.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function PlusIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="M12 8v8M8 12h8"
+        d="M4.5 20c1.3-3.5 4.3-5.5 7.5-5.5s6.2 2 7.5 5.5"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"

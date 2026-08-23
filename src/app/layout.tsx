@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import NavDesktop from "@/components/NavDesktop";
 import NavMobile from "@/components/NavMobile";
+import MobileHeader from "@/components/MobileHeader";
 import Footer from "@/components/Footer";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
 
 // `||` (not `??`) so an env var that's *set but blank* — e.g. left empty in
 // a hosting dashboard — still falls back instead of producing an invalid URL.
@@ -11,16 +16,16 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://findmi.app";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Findmi — Find what you're looking for. And where it'll be next.",
-    template: "%s · Findmi",
+    default: "FindMi — Find what you're looking for. And where it'll be next.",
+    template: "%s · FindMi",
   },
   description:
-    "Findmi helps you discover brands, vendors, mobile businesses, and events — and always know where they'll be next.",
+    "FindMi helps you discover brands, vendors, mobile businesses, and events — and always know where they'll be next.",
   openGraph: {
-    title: "Findmi",
+    title: "FindMi",
     description:
       "Find what you're looking for. And where it'll be next.",
-    siteName: "Findmi",
+    siteName: "FindMi",
     type: "website",
   },
 };
@@ -31,10 +36,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="flex min-h-screen flex-col bg-[#fdfcfb] font-sans text-ink antialiased">
+    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+      <body className="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
+        <MobileHeader />
         <NavDesktop />
-        <div className="flex-1 pb-16 md:pb-0">{children}</div>
+        <div className="flex-1 pb-20 pt-14 md:pb-0 md:pt-0">{children}</div>
         <Footer />
         <NavMobile />
       </body>

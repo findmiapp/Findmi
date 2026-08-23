@@ -38,13 +38,13 @@ export default function SearchBar() {
           value={city}
           onChange={(e) => setCity(e.target.value)}
           type="text"
-          placeholder="Near me"
+          placeholder="City"
           className="w-full bg-transparent text-sm text-ink placeholder:text-ink/40 focus:outline-none"
         />
       </div>
       <button
         type="submit"
-        className="rounded-xl bg-findmi-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-findmi-600"
+        className="rounded-xl bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
       >
         Search
       </button>

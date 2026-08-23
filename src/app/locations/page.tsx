@@ -4,7 +4,7 @@ import { getLocations } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Locations",
-  description: "Markets, venues, and spots where Findmi businesses show up.",
+  description: "Markets, venues, and spots where FindMi businesses show up.",
 };
 export const revalidate = 60;
 
@@ -13,7 +13,7 @@ export default async function LocationsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink">Locations</h1>
+      <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Locations</h1>
       <p className="mt-2 text-ink/60">
         Recurring markets and venues — see who&rsquo;s showing up next.
       </p>

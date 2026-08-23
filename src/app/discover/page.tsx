@@ -6,7 +6,7 @@ import { getCategories, getLocations, getUpcomingEvents, searchBusinesses } from
 
 export const metadata: Metadata = {
   title: "Discover",
-  description: "Browse businesses, vendors, and events on Findmi.",
+  description: "Browse businesses, vendors, and events on FindMi.",
 };
 export const revalidate = 60;
 
@@ -20,8 +20,8 @@ export default async function DiscoverPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink">Discover</h1>
-      <p className="mt-2 text-ink/60">Browse everything happening on Findmi right now.</p>
+      <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Discover</h1>
+      <p className="mt-2 text-ink/60">Browse everything happening on FindMi right now.</p>
 
       {categories.length > 0 && (
         <div className="mt-6 flex flex-wrap gap-2">
@@ -37,7 +37,7 @@ export default async function DiscoverPage() {
           {locations.length > 0 && (
             <Link
               href="/locations"
-              className="rounded-full bg-findmi-50 px-4 py-2 text-sm font-medium text-findmi-700 transition hover:bg-findmi-100"
+              className="rounded-full border border-black/10 px-4 py-2 text-sm font-medium text-ink/70 transition hover:border-ink/30 hover:text-ink"
             >
               Browse Locations
             </Link>
@@ -48,7 +48,7 @@ export default async function DiscoverPage() {
       {events.length > 0 && (
         <div className="mt-12">
           <div className="flex items-end justify-between">
-            <h2 className="text-xl font-semibold tracking-tight text-ink">Upcoming events</h2>
+            <h2 className="font-display text-xl font-bold tracking-tight text-ink">Upcoming events</h2>
             <Link href="/events" className="text-sm font-medium text-ink/60 hover:text-ink">
               View all
             </Link>
@@ -63,7 +63,7 @@ export default async function DiscoverPage() {
 
       <div className="mt-12">
         <div className="flex items-end justify-between">
-          <h2 className="text-xl font-semibold tracking-tight text-ink">Businesses</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight text-ink">Businesses</h2>
           <Link href="/businesses" className="text-sm font-medium text-ink/60 hover:text-ink">
             View all
           </Link>

@@ -34,22 +34,22 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
     <Link
       href={item.href}
       className={`flex items-center gap-4 rounded-2xl border p-4 transition active:scale-[0.99] ${
-        live ? "border-findmi-300 bg-findmi-50" : "border-black/5 bg-white hover:border-black/10 hover:shadow-sm"
+        live ? "border-findmi/50 bg-findmi-50" : "border-black/5 bg-white hover:border-black/10 hover:shadow-sm"
       }`}
     >
       <div
         className={`flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-2 ${
-          live ? "bg-findmi-500 text-white" : "bg-findmi-50 text-findmi-600"
+          live ? "bg-findmi text-ink" : "bg-black/[0.04] text-ink"
         }`}
       >
         {live ? (
           <>
-            <LiveDot className="text-white" />
+            <LiveDot className="text-ink" />
             <span className="text-[11px] font-bold uppercase tracking-wide">Now</span>
           </>
         ) : (
           <>
-            <span className="text-[11px] font-semibold uppercase tracking-wide">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">
               {new Date(item.start_at).toLocaleDateString("en-US", { month: "short" })}
             </span>
             <span className="text-xl font-bold leading-none">
@@ -60,9 +60,9 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
       </div>
       <div className="min-w-0 flex-1">
         {!live && (
-          <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-600">{when}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-ink/50">{when}</p>
         )}
-        <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
+        <p className="truncate font-display text-sm font-bold text-ink">{item.title}</p>
         <p className="mt-0.5 truncate text-xs text-ink/60">
           {formatDateRange(item.start_at, item.end_at)}
         </p>
@@ -70,7 +70,9 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
           <p className="mt-0.5 truncate text-xs text-ink/50">{item.subtitle}</p>
         )}
       </div>
-      <span className="shrink-0 text-[11px] font-semibold text-findmi-600">Find Them</span>
+      <span className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink">
+        Find Them
+      </span>
     </Link>
   );
 }

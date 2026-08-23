@@ -8,8 +8,12 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Matches the Findmi mark: a teal squircle (#14B0BC) with a lighter
-        // mint leaf (~#7FE1E3).
+        // FindMi Aqua — the production brand accent (primary actions,
+        // HERE NOW / live states, active navigation, selected chips)
+        // against a black/warm-white foundation. DEFAULT (#14B0BC) is
+        // sampled directly from the real logo asset (public/logo-lockup.png)
+        // — it is the authoritative brand color, not an invented one.
+        // Used scarcely and intentionally, never as a flood background.
         findmi: {
           DEFAULT: "#14B0BC",
           50: "#EDFBFC",
@@ -24,14 +28,25 @@ const config: Config = {
           900: "#08454A",
         },
         ink: "#111111",
+        paper: "#F8F8F6",
+        mist: "#E5E5E5",
+        stone: "#666666",
       },
       fontFamily: {
         sans: [
+          "var(--font-inter)",
           "-apple-system",
           "BlinkMacSystemFont",
-          "Inter",
           "Segoe UI",
           "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+        display: [
+          "var(--font-space-grotesk)",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
           "Arial",
           "sans-serif",
         ],

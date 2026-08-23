@@ -21,7 +21,7 @@ export async function generateMetadata({
 
   return {
     title: event.name,
-    description: event.description ?? `${event.name} on Findmi.`,
+    description: event.description ?? `${event.name} on FindMi.`,
     openGraph: {
       title: event.name,
       description: event.description ?? undefined,
@@ -61,7 +61,7 @@ export default async function EventPage({
       </div>
 
       <div className="mx-auto max-w-4xl px-6 py-10">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
           {event.name}
         </h1>
 
@@ -86,9 +86,9 @@ export default async function EventPage({
               href={`https://www.google.com/maps/search/?api=1&query=${mapQuery}`}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full border border-black/10 px-5 py-2.5 text-sm font-semibold text-ink transition hover:border-ink/30"
+              className="rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
             >
-              Get directions
+              Get Directions
             </a>
           )}
           {event.external_url && (
@@ -110,8 +110,8 @@ export default async function EventPage({
         )}
 
         <section className="mt-12">
-          <h2 className="text-lg font-semibold tracking-tight text-ink">
-            Who You&rsquo;ll Find There
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
+            Who You&rsquo;ll Find Here
           </h2>
           <p className="mt-1 text-sm text-ink/55">
             {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed

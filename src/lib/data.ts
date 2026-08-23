@@ -282,7 +282,13 @@ export async function getUpcomingAppearancesForEvent(eventId: string): Promise<A
 }
 
 export interface AppearanceFeedItem extends Appearance {
-  business: { id: string; name: string; slug: string; logo_url: string | null };
+  business: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url: string | null;
+    cover_image_url?: string | null;
+  };
 }
 
 /** Upcoming appearances across all businesses, newest-first by date — powers
@@ -295,6 +301,50 @@ export async function getUpcomingAppearancesFeed(limit = 8): Promise<AppearanceF
     .select("*, business:businesses(id, name, slug, logo_url, is_demo)")
     .neq("status", "canceled")
     .gte("start_at", new Date().toISOString())
+    .order("start_at", { ascending: true })
+    .limit(limit * 2); // over-fetch since some may be filtered out as demo
+
+  type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean };
+  return ((data ?? []) as never[])
+    .map((row: unknown) => {
+      const r = row as Appearance & { business: JoinedBusiness | JoinedBusiness[] };
+      const business = Array.isArray(r.business) ? r.business[0] : r.business;
+      return { ...r, business };
+    })
+    .filter((item) => item.business && !item.business.is_demo)
+    .slice(0, limit)
+    .map(({ business: { is_demo: _isDemo, ...business }, ...rest }) => ({ ...rest, business }));
+}
+
+export type FindWindow = "live" | "today" | "weekend" | "anytime";
+
+/** The FindMi Here discovery feed — real appearances across every business,
+ * filtered to one of the four temporal tabs. "live" means genuinely HERE
+ * NOW (start_at <= now <= end_at), not a guess. */
+export async function getFindMiHereFeed(
+  when: FindWindow,
+  limit = 30
+): Promise<AppearanceFeedItem[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const nowIso = new Date().toISOString();
+
+  let query = supabase
+    .from("appearances")
+    .select("*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo)")
+    .neq("status", "canceled");
+
+  if (when === "live") {
+    query = query.lte("start_at", nowIso).gte("end_at", nowIso);
+  } else {
+    query = query.gte("start_at", nowIso);
+    if (when !== "anytime") {
+      const bounds = getDiscoveryWindowBounds(when === "today" ? "now" : "weekend");
+      if (bounds) query = query.lt("start_at", bounds.end.toISOString());
+    }
+  }
+
+  const { data } = await query
     .order("start_at", { ascending: true })
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 

@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "How Findmi collects, uses, and protects your information.",
+  description: "How FindMi collects, uses, and protects your information.",
 };
 
 export default function PrivacyPage() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+      <h1 className="font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
         Privacy Policy
       </h1>
       <p className="mt-2 text-sm text-ink/50">Last updated August 2026</p>
@@ -19,7 +19,7 @@ export default function PrivacyPage() {
           <p className="mt-2">
             When you follow a business or submit an inquiry, we collect the information you
             provide — such as your name, email, phone number, and details about your request.
-            When a business joins Findmi, we collect the business information they submit,
+            When a business joins FindMi, we collect the business information they submit,
             including contact details, location, and payment information processed securely by
             Stripe.
           </p>
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-base font-semibold text-ink">How we use it</h2>
           <p className="mt-2">
-            We use the information you provide to operate Findmi: to display business profiles
+            We use the information you provide to operate FindMi: to display business profiles
             and appearances, to route inquiries to the businesses you contact, to notify you
             when a business you follow posts a new appearance, and to communicate with
             businesses about their membership.
@@ -39,7 +39,7 @@ export default function PrivacyPage() {
             Inquiry and follow information you submit is shared with the specific business you
             contacted or followed. We use third-party service providers — including Supabase
             for our database, Stripe for payment processing, Tally for form collection, and
-            Vercel for hosting — to operate Findmi. We do not sell your personal information.
+            Vercel for hosting — to operate FindMi. We do not sell your personal information.
           </p>
         </section>
         <section>

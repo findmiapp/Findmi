@@ -6,7 +6,7 @@ import type { DiscoveryWindow } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Events",
-  description: "Browse upcoming markets, pop-ups, and events on Findmi.",
+  description: "Browse upcoming markets, pop-ups, and events on FindMi.",
 };
 
 const WINDOWS: { value: DiscoveryWindow; label: string }[] = [
@@ -30,9 +30,9 @@ export default async function EventsPage({
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink">Events</h1>
+      <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Events</h1>
       <p className="mt-2 text-ink/60">
-        Markets, pop-ups, and festivals — and who you&rsquo;ll find there.
+        Markets, pop-ups, and festivals — and who you&rsquo;ll find here.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-2">
@@ -40,9 +40,9 @@ export default async function EventsPage({
           <Link
             key={w.value}
             href={w.value === "anytime" ? "/events" : `/events?when=${w.value}`}
-            className={`rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-wide transition ${
+            className={`rounded-full px-4 py-2 text-sm font-bold uppercase tracking-wide transition ${
               when === w.value
-                ? "bg-findmi-500 text-white"
+                ? "bg-findmi text-ink"
                 : "border border-black/10 text-ink/70 hover:border-ink/30"
             }`}
           >

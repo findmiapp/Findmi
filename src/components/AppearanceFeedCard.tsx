@@ -17,7 +17,7 @@ export default function AppearanceFeedCard({
     <Link
       href={`/business/${item.business.slug}`}
       className={`flex shrink-0 flex-col gap-3 rounded-2xl border p-4 transition active:scale-[0.99] ${
-        live ? "border-findmi-300 bg-findmi-50" : "border-black/5 bg-white hover:shadow-md hover:shadow-black/5"
+        live ? "border-findmi/50 bg-findmi-50" : "border-black/5 bg-white hover:shadow-md hover:shadow-black/5"
       }`}
     >
       <div className="flex items-center gap-3">
@@ -36,10 +36,10 @@ export default function AppearanceFeedCard({
           <p className="truncate text-sm font-semibold text-ink">{item.business.name}</p>
           <p
             className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide ${
-              live ? "text-findmi-600" : "text-ink/40"
+              live ? "text-ink" : "text-ink/40"
             }`}
           >
-            {live && <LiveDot className="text-findmi-500" />}
+            {live && <LiveDot className="text-findmi-700" />}
             {when}
           </p>
         </div>
