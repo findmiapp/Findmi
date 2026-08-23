@@ -73,7 +73,8 @@ export default function EventBusinessRoster({
 }
 
 function RosterCard({ business }: { business: EventBusinessListing }) {
-  const meta = [business.categories[0]?.name, business.short_description].filter(Boolean).join(" — ");
+  const offering = business.offering_text || business.short_description;
+  const meta = [business.categories[0]?.name, offering].filter(Boolean).join(" — ");
   return (
     <CompactCard
       href={`/business/${business.slug}`}

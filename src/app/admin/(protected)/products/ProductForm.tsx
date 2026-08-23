@@ -1,4 +1,5 @@
 import { CheckboxField, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
+import { RelationField } from "@/components/admin/RelationPicker";
 import ImageField from "@/components/admin/ImageField";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
@@ -7,11 +8,11 @@ import { saveProduct, deleteProduct } from "./actions";
 
 export default function ProductForm({
   product,
-  businessOptions,
+  initialBusiness,
   error,
 }: {
   product: AdminProduct | null;
-  businessOptions: SelectOption[];
+  initialBusiness: SelectOption | null;
   error?: string;
 }) {
   const action = saveProduct.bind(null, product?.id ?? null);
@@ -25,14 +26,14 @@ export default function ProductForm({
           </p>
         )}
 
-        <SelectField
+        <RelationField
           label="Sold By"
           name="business_id"
-          defaultValue={product?.business_id}
-          options={[
-            { value: "", label: "Choose a business…" },
-            ...businessOptions.map((o) => ({ value: o.value, label: `${o.label}${o.sublabel ? ` (${o.sublabel})` : ""}` })),
-          ]}
+          entity="businesses"
+          initial={initialBusiness}
+          clearLabel={null}
+          createHref="/admin/businesses/new"
+          createLabel="New Business"
         />
 
         <div className="grid gap-4 sm:grid-cols-2">

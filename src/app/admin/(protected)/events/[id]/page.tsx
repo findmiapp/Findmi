@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAdminEventById, getBusinessSelectOptions } from "@/lib/admin/queries";
+import { getAdminEventById } from "@/lib/admin/queries";
 import EventForm from "../EventForm";
 
 export const dynamic = "force-dynamic";
@@ -13,10 +13,7 @@ export default async function EditEventPage({
 }) {
   const { id } = await params;
   const { error, saved } = await searchParams;
-  const [result, businessOptions] = await Promise.all([
-    getAdminEventById(id),
-    getBusinessSelectOptions(),
-  ]);
+  const result = await getAdminEventById(id);
   if (!result) notFound();
 
   return (
@@ -28,12 +25,7 @@ export default async function EditEventPage({
         </p>
       )}
       <div className="mt-5">
-        <EventForm
-          event={result.event}
-          businessOptions={businessOptions}
-          participants={result.participants}
-          error={error}
-        />
+        <EventForm event={result.event} participants={result.participants} error={error} />
       </div>
     </div>
   );

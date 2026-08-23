@@ -7,18 +7,16 @@ import {
 import ImageField from "@/components/admin/ImageField";
 import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
-import type { AdminEvent, EventParticipant, SelectOption } from "@/lib/admin/queries";
+import type { AdminEvent, EventParticipant } from "@/lib/admin/queries";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveEvent } from "./actions";
 
 export default function EventForm({
   event,
-  businessOptions,
   participants,
   error,
 }: {
   event: AdminEvent | null;
-  businessOptions: SelectOption[];
   participants: EventParticipant[];
   error?: string;
 }) {
@@ -187,7 +185,7 @@ export default function EventForm({
         </div>
       </div>
 
-      <ParticipationRoster businessOptions={businessOptions} participants={participants} />
+      <ParticipationRoster initialParticipants={participants} />
 
       <SubmitBar cancelHref="/admin/events" />
     </form>

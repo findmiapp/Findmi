@@ -54,11 +54,43 @@ export async function getDashboardCounts() {
 // Businesses
 // ---------------------------------------------------------------------
 
-export async function getAdminBusinesses(q?: string): Promise<AdminBusiness[]> {
+export interface BusinessListFilters {
+  q?: string;
+  categoryId?: string;
+  published?: "public" | "demo";
+}
+
+export async function getAdminBusinesses(filters: BusinessListFilters = {}): Promise<AdminBusiness[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
+
+  // The category filter needs an inner-join embed to filter server-side
+  // rather than fetching every business and checking in JS — kept as a
+  // separate query branch (not a ternary select string) so each branch's
+  // select() literal stays statically typeable.
+  if (filters.categoryId) {
+    let query = supabase
+      .from("businesses")
+      .select("*, business_categories!inner(category_id)")
+      .eq("business_categories.category_id", filters.categoryId)
+      .order("name");
+    if (filters.q) {
+      const term = `%${filters.q}%`;
+      query = query.or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`);
+    }
+    if (filters.published === "public") query = query.eq("is_demo", false);
+    if (filters.published === "demo") query = query.eq("is_demo", true);
+    const { data } = await query;
+    return ((data ?? []) as unknown as AdminBusiness[]) ?? [];
+  }
+
   let query = supabase.from("businesses").select("*").order("name");
-  if (q) query = query.ilike("name", `%${q}%`);
+  if (filters.q) {
+    const term = `%${filters.q}%`;
+    query = query.or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`);
+  }
+  if (filters.published === "public") query = query.eq("is_demo", false);
+  if (filters.published === "demo") query = query.eq("is_demo", true);
   const { data } = await query;
   return (data as AdminBusiness[]) ?? [];
 }
@@ -86,36 +118,84 @@ export async function getAllCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
-export async function getBusinessSelectOptions(): Promise<SelectOption[]> {
+/** Looks up just the one business a form already has selected, for seeding a
+ * RelationField's initial value on an edit page — never the whole table
+ * (see the /admin/api/search route for the actual picker). */
+export async function getBusinessOptionById(id: string | null): Promise<SelectOption | null> {
+  if (!id) return null;
   const supabase = getAdminSupabase();
-  if (!supabase) return [];
+  if (!supabase) return null;
   const { data } = await supabase
     .from("businesses")
-    .select("id, name, is_demo")
-    .order("name");
-  return (data ?? []).map((b: { id: string; name: string; is_demo: boolean }) => ({
-    value: b.id,
-    label: b.name,
-    sublabel: b.is_demo ? "Demo (hidden)" : "Public",
-  }));
+    .select("id, name, city, state, is_demo")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    value: data.id,
+    label: data.name,
+    sublabel:
+      [data.is_demo ? "Demo" : null, [data.city, data.state].filter(Boolean).join(", ") || null]
+        .filter(Boolean)
+        .join(" · ") || undefined,
+  };
 }
 
 // ---------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------
 
-export async function getAdminEvents(): Promise<AdminEvent[]> {
+export interface EventListFilters {
+  q?: string;
+  when?: "upcoming" | "past";
+  vendorAppsOpen?: boolean;
+  pendingApplications?: boolean;
+}
+
+export async function getAdminEvents(filters: EventListFilters = {}): Promise<AdminEvent[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  const { data } = await supabase.from("events").select("*").order("start_at", { ascending: false });
+  const nowIso = new Date().toISOString();
+
+  // Kept as a separate query branch (not a ternary select string) so each
+  // branch's select() literal stays statically typeable.
+  if (filters.pendingApplications) {
+    let query = supabase
+      .from("events")
+      .select("*, event_businesses!inner(status)")
+      .in("event_businesses.status", ["applied", "pending"]);
+    if (filters.q) {
+      const term = `%${filters.q}%`;
+      query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
+    }
+    if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
+    if (filters.when === "past") query = query.lt("start_at", nowIso);
+    if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
+    const { data } = await query.order("start_at", { ascending: false });
+    return ((data ?? []) as unknown as AdminEvent[]) ?? [];
+  }
+
+  let query = supabase.from("events").select("*");
+  if (filters.q) {
+    const term = `%${filters.q}%`;
+    query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
+  }
+  if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
+  if (filters.when === "past") query = query.lt("start_at", nowIso);
+  if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
+  const { data } = await query.order("start_at", { ascending: false });
   return (data as AdminEvent[]) ?? [];
 }
 
 export interface EventParticipant {
   business_id: string;
   business_name: string;
+  logo_url: string | null;
+  category_name: string | null;
   status: EventParticipationStatus;
   featured: boolean;
+  offering_text: string | null;
+  display_order: number | null;
 }
 
 export async function getAdminEventById(
@@ -127,8 +207,9 @@ export async function getAdminEventById(
     supabase.from("events").select("*").eq("id", id).maybeSingle(),
     supabase
       .from("event_businesses")
-      .select("business_id, status, featured, businesses(name)")
-      .eq("event_id", id),
+      .select("business_id, status, featured, offering_text, display_order, businesses(name, logo_url)")
+      .eq("event_id", id)
+      .order("display_order", { ascending: true, nullsFirst: false }),
   ]);
   if (!event) return null;
 
@@ -136,43 +217,77 @@ export async function getAdminEventById(
     business_id: string;
     status: EventParticipationStatus;
     featured: boolean;
-    businesses: { name: string } | { name: string }[] | null;
+    offering_text: string | null;
+    display_order: number | null;
+    businesses: { name: string; logo_url: string | null } | { name: string; logo_url: string | null }[] | null;
   };
-  const participants = ((links ?? []) as LinkRow[]).map((l) => {
+  const rows = (links ?? []) as LinkRow[];
+
+  // One extra bounded query for the primary category of just these
+  // businesses (a handful per event), not a full-table scan.
+  const businessIds = rows.map((l) => l.business_id);
+  const { data: catLinks } = businessIds.length
+    ? await supabase.from("business_categories").select("business_id, categories(name)").in("business_id", businessIds)
+    : { data: [] as never[] };
+  const categoryByBusiness = new Map<string, string>();
+  for (const row of (catLinks ?? []) as {
+    business_id: string;
+    categories: { name: string } | { name: string }[] | null;
+  }[]) {
+    if (categoryByBusiness.has(row.business_id)) continue;
+    const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
+    if (cat) categoryByBusiness.set(row.business_id, cat.name);
+  }
+
+  const participants = rows.map((l) => {
     const business = Array.isArray(l.businesses) ? l.businesses[0] : l.businesses;
     return {
       business_id: l.business_id,
       business_name: business?.name ?? "Unknown business",
+      logo_url: business?.logo_url ?? null,
+      category_name: categoryByBusiness.get(l.business_id) ?? null,
       status: l.status,
       featured: l.featured,
+      offering_text: l.offering_text,
+      display_order: l.display_order,
     };
   });
 
   return { event: event as AdminEvent, participants };
 }
 
-export async function getEventSelectOptions(): Promise<SelectOption[]> {
+/** Looks up just the one event a form already has selected (Appearance's
+ * optional event link), for seeding a RelationField's initial value. */
+export async function getEventOptionById(id: string | null): Promise<SelectOption | null> {
+  if (!id) return null;
   const supabase = getAdminSupabase();
-  if (!supabase) return [];
+  if (!supabase) return null;
   const { data } = await supabase
     .from("events")
-    .select("id, name, is_demo")
-    .order("name");
-  return (data ?? []).map((e: { id: string; name: string; is_demo: boolean }) => ({
-    value: e.id,
-    label: e.name,
-    sublabel: e.is_demo ? "Demo (hidden)" : "Public",
-  }));
+    .select("id, name, venue_name, is_demo")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    value: data.id,
+    label: data.name,
+    sublabel: [data.is_demo ? "Demo" : null, data.venue_name].filter(Boolean).join(" · ") || undefined,
+  };
 }
 
 // ---------------------------------------------------------------------
 // Locations
 // ---------------------------------------------------------------------
 
-export async function getAdminLocations(): Promise<AdminLocation[]> {
+export async function getAdminLocations(q?: string): Promise<AdminLocation[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  const { data } = await supabase.from("locations").select("*").order("name");
+  let query = supabase.from("locations").select("*").order("name");
+  if (q) {
+    const term = `%${q}%`;
+    query = query.or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`);
+  }
+  const { data } = await query;
   return (data as AdminLocation[]) ?? [];
 }
 
@@ -192,13 +307,30 @@ export interface AdminAppearanceRow extends AdminAppearance {
   event: { id: string; name: string } | null;
 }
 
-export async function getAdminAppearances(): Promise<AdminAppearanceRow[]> {
+export interface AppearanceListFilters {
+  q?: string;
+  when?: "upcoming" | "past";
+  businessId?: string;
+  linkage?: "event" | "standalone";
+}
+
+export async function getAdminAppearances(filters: AppearanceListFilters = {}): Promise<AdminAppearanceRow[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
+  let query = supabase
     .from("appearances")
-    .select("*, business:businesses(id, name), event:events(id, name)")
-    .order("start_at", { ascending: false });
+    .select("*, business:businesses(id, name), event:events(id, name)");
+  if (filters.q) {
+    const term = `%${filters.q}%`;
+    query = query.or(`title.ilike.${term},venue_name.ilike.${term},city.ilike.${term}`);
+  }
+  if (filters.businessId) query = query.eq("business_id", filters.businessId);
+  if (filters.linkage === "event") query = query.not("event_id", "is", null);
+  if (filters.linkage === "standalone") query = query.is("event_id", null);
+  const nowIso = new Date().toISOString();
+  if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
+  if (filters.when === "past") query = query.lt("start_at", nowIso);
+  const { data } = await query.order("start_at", { ascending: false });
   return ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as AdminAppearanceRow & {
       business: AdminAppearanceRow["business"] | AdminAppearanceRow["business"][];
@@ -227,13 +359,21 @@ export interface AdminProductRow extends AdminProduct {
   business: { id: string; name: string } | null;
 }
 
-export async function getAdminProducts(): Promise<AdminProductRow[]> {
+export interface ProductListFilters {
+  q?: string;
+  businessId?: string;
+}
+
+export async function getAdminProducts(filters: ProductListFilters = {}): Promise<AdminProductRow[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
-    .from("products")
-    .select("*, business:businesses(id, name)")
-    .order("name");
+  let query = supabase.from("products").select("*, business:businesses(id, name)");
+  if (filters.q) {
+    const term = `%${filters.q}%`;
+    query = query.or(`name.ilike.${term},slug.ilike.${term}`);
+  }
+  if (filters.businessId) query = query.eq("business_id", filters.businessId);
+  const { data } = await query.order("name");
   return ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as AdminProductRow & { business: AdminProductRow["business"] | AdminProductRow["business"][] };
     return { ...r, business: Array.isArray(r.business) ? (r.business[0] ?? null) : r.business };

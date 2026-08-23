@@ -271,34 +271,49 @@ export async function getEventBySlug(slug: string): Promise<FindmiEvent | null> 
 
 export interface EventBusinessListing extends BusinessWithCategories {
   featured: boolean;
+  /** Event-specific "what they'll have here" text (see /admin's Event
+   * editor) — falls back to the business's own short_description when not
+   * set for this event. */
+  offering_text: string | null;
 }
 
 /** Only "approved" participants are public — "invited"/"applied"/"pending"/
  * "declined" exist for the organizer's own workflow (see /admin) and never
  * reach this query. featured=true businesses are still included in the
  * full list (not a separate pool) — the event page decides how to
- * highlight them; this just carries the flag along. */
+ * highlight them; this just carries the flag along. Ordered by the
+ * founder-set display_order, nulls last, then name. */
 export async function getBusinessesForEvent(eventId: string): Promise<EventBusinessListing[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("event_businesses")
-    .select("featured, businesses(*)")
+    .select("featured, offering_text, display_order, businesses(*)")
     .eq("event_id", eventId)
-    .eq("status", "approved");
+    .eq("status", "approved")
+    .order("display_order", { ascending: true, nullsFirst: false });
 
-  type Row = { featured: boolean; businesses: Business | Business[] | null };
+  type Row = {
+    featured: boolean;
+    offering_text: string | null;
+    display_order: number | null;
+    businesses: Business | Business[] | null;
+  };
   const rows = ((data ?? []) as Row[])
     .map((row) => {
       const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
       return business && !(business as Business & { is_demo?: boolean }).is_demo
-        ? { business, featured: row.featured }
+        ? { business, featured: row.featured, offering_text: row.offering_text }
         : null;
     })
-    .filter((r): r is { business: Business; featured: boolean } => Boolean(r));
+    .filter((r): r is { business: Business; featured: boolean; offering_text: string | null } => Boolean(r));
 
   const withCategories = await attachCategories(rows.map((r) => r.business));
-  return withCategories.map((b, i) => ({ ...b, featured: rows[i].featured }));
+  return withCategories.map((b, i) => ({
+    ...b,
+    featured: rows[i].featured,
+    offering_text: rows[i].offering_text,
+  }));
 }
 
 export async function getUpcomingAppearancesForEvent(eventId: string): Promise<Appearance[]> {

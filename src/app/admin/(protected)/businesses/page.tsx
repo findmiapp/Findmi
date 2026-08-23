@@ -1,15 +1,23 @@
 import Link from "next/link";
-import { getAdminBusinesses } from "@/lib/admin/queries";
+import { getAdminBusinesses, getAllCategories } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
+
+const selectClass =
+  "rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none";
 
 export default async function AdminBusinessesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; published?: string }>;
 }) {
-  const { q } = await searchParams;
-  const businesses = await getAdminBusinesses(q);
+  const { q, category, published } = await searchParams;
+  const publishedFilter = published === "public" || published === "demo" ? published : undefined;
+
+  const [businesses, categories] = await Promise.all([
+    getAdminBusinesses({ q, categoryId: category, published: publishedFilter }),
+    getAllCategories(),
+  ]);
 
   return (
     <div>
@@ -23,14 +31,35 @@ export default async function AdminBusinessesPage({
         </Link>
       </div>
 
-      <form method="get" className="mt-4">
+      <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <input
           type="text"
           name="q"
           defaultValue={q}
-          placeholder="Search by name…"
-          className="w-full max-w-sm rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+          placeholder="Search by name, slug, or city…"
+          className="w-full min-w-0 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none sm:max-w-xs sm:flex-1"
         />
+        <div className="flex flex-wrap gap-2">
+          <select name="category" defaultValue={category ?? ""} className={selectClass}>
+            <option value="">All Categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <select name="published" defaultValue={published ?? ""} className={selectClass}>
+            <option value="">Published: All</option>
+            <option value="public">Public only</option>
+            <option value="demo">Demo/hidden only</option>
+          </select>
+          <button
+            type="submit"
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink hover:bg-black/[0.03]"
+          >
+            Filter
+          </button>
+        </div>
       </form>
 
       <div className="mt-4 flex flex-col gap-2">

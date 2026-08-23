@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { bool, errorRedirectUrl, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
+import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import type { EventParticipationStatus } from "@/lib/types";
 
 const VALID_STATUSES: EventParticipationStatus[] = [
@@ -65,34 +65,38 @@ export async function saveEvent(id: string | null, formData: FormData) {
     eventId = data.id;
   }
 
-  // Participation roster: one status/featured pair per business in the
-  // system (see ParticipationRoster). "not_participating" means delete any
-  // existing row; anything else is an upsert on the (event_id, business_id)
-  // primary key, so this correctly handles add/update/remove in two calls
-  // regardless of what changed.
-  const allBusinessIds = formData.getAll("all_business_ids").map(String);
-  const toUpsert: { event_id: string; business_id: string; status: string; featured: boolean }[] = [];
-  const toRemove: string[] = [];
+  // Participation roster: ParticipationRoster only ever renders rows for
+  // businesses actually on this event's roster (added via search, see
+  // EntitySearchAdd) plus whichever ones were just removed in the browser —
+  // never every business in the system. "participant_business_id" carries
+  // the current roster; "removed_business_id" carries anything explicitly
+  // removed this submit, so the server never needs to diff against the
+  // full businesses table to know what changed.
+  const participantIds = formData.getAll("participant_business_id").map(String);
+  const removedIds = formData.getAll("removed_business_id").map(String);
 
-  for (const businessId of allBusinessIds) {
-    const status = str(formData, `status_${businessId}`) ?? "not_participating";
-    const featured = bool(formData, `featured_${businessId}`);
-    if (status === "not_participating" || !VALID_STATUSES.includes(status as EventParticipationStatus)) {
-      toRemove.push(businessId);
-    } else {
-      toUpsert.push({ event_id: eventId as string, business_id: businessId, status, featured });
-    }
-  }
+  const toUpsert = participantIds.map((businessId) => {
+    const rawStatus = str(formData, `status_${businessId}`) ?? "invited";
+    const status = VALID_STATUSES.includes(rawStatus as EventParticipationStatus) ? rawStatus : "invited";
+    return {
+      event_id: eventId as string,
+      business_id: businessId,
+      status,
+      featured: bool(formData, `featured_${businessId}`),
+      offering_text: str(formData, `offering_text_${businessId}`),
+      display_order: num(formData, `display_order_${businessId}`),
+    };
+  });
 
   if (toUpsert.length > 0) {
     await supabase.from("event_businesses").upsert(toUpsert, { onConflict: "event_id,business_id" });
   }
-  if (toRemove.length > 0) {
+  if (removedIds.length > 0) {
     await supabase
       .from("event_businesses")
       .delete()
       .eq("event_id", eventId)
-      .in("business_id", toRemove);
+      .in("business_id", removedIds);
   }
 
   revalidatePath("/admin/events");

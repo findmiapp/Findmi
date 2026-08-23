@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import {
   getAdminAppearanceById,
-  getBusinessSelectOptions,
-  getEventSelectOptions,
+  getBusinessOptionById,
+  getEventOptionById,
 } from "@/lib/admin/queries";
 import AppearanceForm from "../AppearanceForm";
 
@@ -17,12 +17,13 @@ export default async function EditAppearancePage({
 }) {
   const { id } = await params;
   const { error, saved } = await searchParams;
-  const [appearance, businessOptions, eventOptions] = await Promise.all([
-    getAdminAppearanceById(id),
-    getBusinessSelectOptions(),
-    getEventSelectOptions(),
-  ]);
+  const appearance = await getAdminAppearanceById(id);
   if (!appearance) notFound();
+
+  const [initialBusiness, initialEvent] = await Promise.all([
+    getBusinessOptionById(appearance.business_id),
+    getEventOptionById(appearance.event_id),
+  ]);
 
   return (
     <div>
@@ -37,8 +38,8 @@ export default async function EditAppearancePage({
       <div className="mt-5">
         <AppearanceForm
           appearance={appearance}
-          businessOptions={businessOptions}
-          eventOptions={eventOptions}
+          initialBusiness={initialBusiness}
+          initialEvent={initialEvent}
           error={error}
         />
       </div>

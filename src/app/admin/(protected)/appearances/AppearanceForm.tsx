@@ -1,4 +1,5 @@
 import { CheckboxField, DateTimeField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
+import { RelationField } from "@/components/admin/RelationPicker";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
 import type { AdminAppearance, SelectOption } from "@/lib/admin/queries";
@@ -7,13 +8,13 @@ import { saveAppearance, deleteAppearance } from "./actions";
 
 export default function AppearanceForm({
   appearance,
-  businessOptions,
-  eventOptions,
+  initialBusiness,
+  initialEvent,
   error,
 }: {
   appearance: AdminAppearance | null;
-  businessOptions: SelectOption[];
-  eventOptions: SelectOption[];
+  initialBusiness: SelectOption | null;
+  initialEvent: SelectOption | null;
   error?: string;
 }) {
   const action = saveAppearance.bind(null, appearance?.id ?? null);
@@ -27,26 +28,26 @@ export default function AppearanceForm({
           </p>
         )}
 
-        <SelectField
+        <RelationField
           label="Appearing Business"
           name="business_id"
-          defaultValue={appearance?.business_id}
-          options={[
-            { value: "", label: "Choose a business…" },
-            ...businessOptions.map((o) => ({ value: o.value, label: `${o.label}${o.sublabel ? ` (${o.sublabel})` : ""}` })),
-          ]}
+          entity="businesses"
+          initial={initialBusiness}
+          clearLabel={null}
           hint="Which business is appearing."
+          createHref="/admin/businesses/new"
+          createLabel="New Business"
         />
 
-        <SelectField
+        <RelationField
           label="Related FindMi Event"
           name="event_id"
-          defaultValue={appearance?.event_id ?? ""}
-          options={[
-            { value: "", label: "None — link to Google Maps directions instead" },
-            ...eventOptions.map((o) => ({ value: o.value, label: `${o.label}${o.sublabel ? ` (${o.sublabel})` : ""}` })),
-          ]}
+          entity="events"
+          initial={initialEvent}
+          clearLabel="No event — link to Google Maps directions instead"
           hint="If set, the public appearance card links to this FindMi event page instead of Maps."
+          createHref="/admin/events/new"
+          createLabel="New Event"
         />
 
         <TextField

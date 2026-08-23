@@ -4,8 +4,13 @@ import { cityState } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminLocationsPage() {
-  const locations = await getAdminLocations();
+export default async function AdminLocationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
+  const locations = await getAdminLocations(q);
 
   return (
     <div>
@@ -18,6 +23,16 @@ export default async function AdminLocationsPage() {
           Add Location
         </Link>
       </div>
+
+      <form method="get" className="mt-4">
+        <input
+          type="text"
+          name="q"
+          defaultValue={q}
+          placeholder="Search by name, city, or address…"
+          className="w-full max-w-sm rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+        />
+      </form>
 
       <div className="mt-4 flex flex-col gap-2">
         {locations.length === 0 ? (

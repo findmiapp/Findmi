@@ -1,4 +1,3 @@
-import { getBusinessSelectOptions, getEventSelectOptions } from "@/lib/admin/queries";
 import AppearanceForm from "../AppearanceForm";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +8,6 @@ export default async function NewAppearancePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const [businessOptions, eventOptions] = await Promise.all([
-    getBusinessSelectOptions(),
-    getEventSelectOptions(),
-  ]);
 
   return (
     <div>
@@ -22,8 +17,8 @@ export default async function NewAppearancePage({
       <div className="mt-5">
         <AppearanceForm
           appearance={null}
-          businessOptions={businessOptions}
-          eventOptions={eventOptions}
+          initialBusiness={null}
+          initialEvent={null}
           error={error}
         />
       </div>

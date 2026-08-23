@@ -1,11 +1,20 @@
 import Link from "next/link";
-import { getAdminProducts } from "@/lib/admin/queries";
+import { getAdminProducts, getBusinessOptionById } from "@/lib/admin/queries";
+import { RelationField } from "@/components/admin/RelationPicker";
 import { formatPrice } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminProductsPage() {
-  const products = await getAdminProducts();
+export default async function AdminProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; business?: string }>;
+}) {
+  const { q, business } = await searchParams;
+  const [products, initialBusiness] = await Promise.all([
+    getAdminProducts({ q, businessId: business }),
+    getBusinessOptionById(business ?? null),
+  ]);
 
   return (
     <div>
@@ -18,6 +27,32 @@ export default async function AdminProductsPage() {
           Add Product
         </Link>
       </div>
+
+      <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+        <input
+          type="text"
+          name="q"
+          defaultValue={q}
+          placeholder="Search by product name or slug…"
+          className="w-full min-w-0 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none sm:max-w-xs sm:flex-1"
+        />
+        <div className="w-full sm:w-56">
+          <RelationField
+            label="Business"
+            name="business"
+            entity="businesses"
+            initial={initialBusiness}
+            clearLabel="All businesses"
+            placeholder="Filter by business…"
+          />
+        </div>
+        <button
+          type="submit"
+          className="w-full rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink hover:bg-black/[0.03] sm:w-auto"
+        >
+          Filter
+        </button>
+      </form>
 
       <div className="mt-4 flex flex-col gap-2">
         {products.length === 0 ? (

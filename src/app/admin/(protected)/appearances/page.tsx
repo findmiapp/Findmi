@@ -1,11 +1,26 @@
 import Link from "next/link";
-import { getAdminAppearances } from "@/lib/admin/queries";
+import { getAdminAppearances, getBusinessOptionById } from "@/lib/admin/queries";
+import { RelationField } from "@/components/admin/RelationPicker";
 import { formatDateRange } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminAppearancesPage() {
-  const appearances = await getAdminAppearances();
+const selectClass =
+  "rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none";
+
+export default async function AdminAppearancesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; when?: string; business?: string; linkage?: string }>;
+}) {
+  const { q, when, business, linkage } = await searchParams;
+  const whenFilter = when === "upcoming" || when === "past" ? when : undefined;
+  const linkageFilter = linkage === "event" || linkage === "standalone" ? linkage : undefined;
+
+  const [appearances, initialBusiness] = await Promise.all([
+    getAdminAppearances({ q, when: whenFilter, businessId: business, linkage: linkageFilter }),
+    getBusinessOptionById(business ?? null),
+  ]);
 
   return (
     <div>
@@ -20,6 +35,44 @@ export default async function AdminAppearancesPage() {
           Add Appearance
         </Link>
       </div>
+
+      <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+        <input
+          type="text"
+          name="q"
+          defaultValue={q}
+          placeholder="Search by title, venue, or city…"
+          className="w-full min-w-0 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none sm:max-w-xs sm:flex-1"
+        />
+        <div className="w-full sm:w-56">
+          <RelationField
+            label="Business"
+            name="business"
+            entity="businesses"
+            initial={initialBusiness}
+            clearLabel="All businesses"
+            placeholder="Filter by business…"
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <select name="when" defaultValue={when ?? ""} className={selectClass}>
+            <option value="">All Dates</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="past">Past</option>
+          </select>
+          <select name="linkage" defaultValue={linkage ?? ""} className={selectClass}>
+            <option value="">Event-linked & Standalone</option>
+            <option value="event">Event-linked only</option>
+            <option value="standalone">Standalone only</option>
+          </select>
+          <button
+            type="submit"
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink hover:bg-black/[0.03]"
+          >
+            Filter
+          </button>
+        </div>
+      </form>
 
       <div className="mt-4 flex flex-col gap-2">
         {appearances.length === 0 ? (
