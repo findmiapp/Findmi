@@ -143,7 +143,7 @@ export default async function HomePage() {
       )}
 
       {findThemNext.length > 0 && (
-        <Section title="Find Them Next" subtitle="Where FindMi businesses are showing up" viewAllHref="/find">
+        <Section title="FindMi Here" subtitle="Where FindMi businesses are showing up" viewAllHref="/find">
           <HorizontalScroller>
             {findThemNext.map((item) => (
               <div key={item.id} className="w-72 shrink-0">

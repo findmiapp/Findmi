@@ -10,7 +10,7 @@ const features = [
   "FindMi business profile",
   "Products and services",
   "Gallery",
-  "Where I'll Be Next",
+  "FindMi Here",
   "Unlimited appearance cards",
   "FindMi discovery inclusion",
   "Customer inquiry and booking forms",

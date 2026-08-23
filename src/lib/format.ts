@@ -47,6 +47,19 @@ export function formatDateRange(startIso: string, endIso?: string | null): strin
   return `${start} – ${formatDateShort(endIso)}`;
 }
 
+/** Time only, no date — for rows that already show the date on a separate
+ * date tile and shouldn't repeat it a second (or third) time. Falls back to
+ * the full date range when the appearance spans more than one day, so a
+ * multi-day span never silently loses its end date. */
+export function formatTimeRange(startIso: string, endIso?: string | null): string {
+  const startTime = formatTime(startIso);
+  if (!endIso) return startTime;
+
+  const sameDay = dateKey(new Date(startIso)) === dateKey(new Date(endIso));
+  if (sameDay) return `${startTime}–${formatTime(endIso)}`;
+  return formatDateRange(startIso, endIso);
+}
+
 export function cityState(city?: string | null, state?: string | null): string {
   return [city, state].filter(Boolean).join(", ");
 }

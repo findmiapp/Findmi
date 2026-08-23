@@ -3,7 +3,7 @@ import Logo from "./Logo";
 
 export default function Footer() {
   return (
-    <footer className="mt-16 border-t border-black/5 bg-white pb-24 pt-8 md:pb-10 md:pt-10">
+    <footer className="mt-16 border-t border-black/5 bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] pt-8 md:pb-10 md:pt-10">
       <div className="mx-auto max-w-6xl px-6">
         {/* Desktop: full footer. Mobile: bottom nav is primary navigation,
             so this stays to compact secondary links only. */}

@@ -91,10 +91,10 @@ export default async function BusinessPage({
 
       <div className="mx-auto max-w-4xl px-6">
         {/* B. Business identity */}
-        <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex items-end gap-4">
-            <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:h-28 sm:w-28">
-              {business.logo_url && (
+        {business.logo_url && (
+          <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex items-end gap-4">
+              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:h-28 sm:w-28">
                 <Image
                   src={business.logo_url}
                   alt={business.name}
@@ -102,10 +102,10 @@ export default async function BusinessPage({
                   sizes="112px"
                   className="object-cover"
                 />
-              )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="mt-4 flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -164,13 +164,26 @@ export default async function BusinessPage({
             FindMi Here
           </p>
           <h2 className="mt-1 font-display text-xl font-bold tracking-tight text-ink">
-            Where {business.name} will be
+            Find {business.name}
           </h2>
           {appearances.length > 0 ? (
             <div className="mt-4 flex flex-col gap-3">
-              {appearances.map((a) => (
+              {appearances.slice(0, 3).map((a) => (
                 <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
               ))}
+              {appearances.length > 3 && (
+                <details className="group">
+                  <summary className="flex list-none items-center justify-center gap-1 rounded-full bg-white py-2.5 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 [&::-webkit-details-marker]:hidden">
+                    View All Appearances
+                    <span className="transition group-open:hidden">→</span>
+                  </summary>
+                  <div className="mt-3 flex flex-col gap-3">
+                    {appearances.slice(3).map((a) => (
+                      <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
           ) : (
             <div className="mt-4 rounded-2xl bg-white p-5">
@@ -190,13 +203,18 @@ export default async function BusinessPage({
 
         {/* E. What You'll Find */}
         {products.length > 0 && (
-          <section className="mt-12">
+          <section className="mt-10">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">
               What You&rsquo;ll Find
             </h2>
-            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+            {/* Mobile: horizontal swipe carousel (a 2-up grid left no room
+                for the label/title/price/CTA without collisions). Desktop
+                is unchanged — a plain grid. */}
+            <div className="mt-4 -mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-1 sm:mx-0 sm:grid sm:snap-none sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 md:grid-cols-4">
               {products.map((p) => (
-                <ProductCard key={p.id} product={p} businessSlug={business.slug} />
+                <div key={p.id} className="w-[78%] shrink-0 snap-start sm:w-auto sm:shrink">
+                  <ProductCard product={p} businessSlug={business.slug} />
+                </div>
               ))}
             </div>
           </section>
@@ -204,7 +222,7 @@ export default async function BusinessPage({
 
         {/* F. About */}
         {business.description && (
-          <section className="mt-12">
+          <section className="mt-10">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">About</h2>
             <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink/70">
               {business.description}
@@ -214,7 +232,7 @@ export default async function BusinessPage({
 
         {/* G. Gallery */}
         {gallery.length > 0 && (
-          <section className="mt-12">
+          <section className="mt-10">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
             <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
               {gallery.map((src) => (
@@ -230,7 +248,7 @@ export default async function BusinessPage({
         )}
 
         {/* H. Book / Inquire */}
-        <section id="book" className="mt-12 scroll-mt-20 rounded-3xl bg-black/[0.03] p-6 sm:p-8">
+        <section id="book" className="mt-10 scroll-mt-20 rounded-3xl bg-black/[0.03] p-6 sm:p-8">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">
             Book / Inquire
           </h2>
@@ -270,7 +288,7 @@ export default async function BusinessPage({
         </section>
 
         {/* I. Follow */}
-        <section id="follow" className="mt-12 mb-16 scroll-mt-20">
+        <section id="follow" className="mt-10 mb-12 scroll-mt-20">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">
             Follow Their Moves
           </h2>

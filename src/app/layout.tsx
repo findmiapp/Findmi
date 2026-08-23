@@ -40,7 +40,10 @@ export default function RootLayout({
       <body className="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
         <MobileHeader />
         <NavDesktop />
-        <div className="flex-1 pb-20 pt-14 md:pb-0 md:pt-0">{children}</div>
+        {/* No bottom padding here: Footer (always the next element) carries
+            its own nav-clearance padding, so double-padding this div only
+            produced a dead gap between content and the footer. */}
+        <div className="flex-1 pt-14 md:pt-0">{children}</div>
         <Footer />
         <NavMobile />
       </body>
