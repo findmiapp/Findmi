@@ -6,6 +6,13 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The original FindMi site's headings read more open than Tailwind's
+   tracking-tight default (-0.025em) once paired with Inter — soften it
+   centrally here instead of touching every heading's className. */
+.font-display.tracking-tight {
+  letter-spacing: -0.006em;
+}
+
 body {
   background-color: #fdfcfb;
   color: #111111;

@@ -45,7 +45,7 @@ export default function SearchBar() {
       <button
         type="submit"
         aria-label="Search"
-        className="flex shrink-0 items-center justify-center rounded-lg bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+        className="flex shrink-0 items-center justify-center rounded-lg bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
         Search
       </button>

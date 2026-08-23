@@ -50,7 +50,7 @@ export default function EventFollowForm({
       <button
         type="submit"
         disabled={status === "loading"}
-        className="shrink-0 rounded-xl bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600 disabled:opacity-60"
+        className="shrink-0 rounded-xl bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
       >
         {status === "loading" ? "Following…" : "Follow"}
       </button>

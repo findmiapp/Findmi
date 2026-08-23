@@ -35,12 +35,12 @@ export default function AppearanceCard({
     >
       <div
         className={`flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 ${
-          live ? "bg-findmi text-ink" : "bg-black/[0.04] text-ink"
+          live ? "bg-findmi text-white" : "bg-black/[0.04] text-ink"
         }`}
       >
         {live ? (
           <>
-            <LiveDot className="text-ink" />
+            <LiveDot className="text-white" />
             <span className="text-[10px] font-bold uppercase tracking-wide">Now</span>
           </>
         ) : (
@@ -83,7 +83,7 @@ export default function AppearanceCard({
       {href && (
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi text-ink transition group-hover:bg-findmi-600"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi text-white transition group-hover:bg-findmi-600"
         >
           <ArrowGlyph className="h-3.5 w-3.5" />
         </span>

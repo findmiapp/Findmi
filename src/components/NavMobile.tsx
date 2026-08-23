@@ -29,7 +29,7 @@ export default function NavMobile() {
                 className="flex flex-1 flex-col items-center gap-1 pb-1.5 pt-1 text-[11px] font-medium"
               >
                 <span
-                  className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-findmi text-ink shadow-lg shadow-findmi/30 transition active:scale-95 ${
+                  className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-findmi text-white shadow-lg shadow-findmi/30 transition active:scale-95 ${
                     active ? "ring-2 ring-ink/10" : ""
                   }`}
                 >

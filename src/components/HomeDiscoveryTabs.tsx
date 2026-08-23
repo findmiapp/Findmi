@@ -41,7 +41,7 @@ export default function HomeDiscoveryTabs({
             onClick={() => setActive(t.key)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
               active === t.key
-                ? "bg-findmi text-ink"
+                ? "bg-findmi text-white"
                 : "border border-black/10 text-ink/60 hover:border-black/20"
             }`}
           >

@@ -54,7 +54,7 @@ export default async function BusinessesPage({
         </select>
         <button
           type="submit"
-          className="shrink-0 rounded-xl bg-findmi px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+          className="shrink-0 rounded-xl bg-findmi px-6 py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Search
         </button>

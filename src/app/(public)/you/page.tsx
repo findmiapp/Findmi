@@ -44,7 +44,7 @@ export default function YouPage() {
         <p className="text-sm font-semibold text-ink">Have a business people should find?</p>
         <Link
           href="/join"
-          className="mt-3 inline-block rounded-full bg-findmi px-5 py-2.5 text-sm font-bold text-ink transition hover:bg-findmi-600"
+          className="mt-3 inline-block rounded-full bg-findmi px-5 py-2.5 text-sm font-bold text-white transition hover:bg-findmi-600"
         >
           Join FindMi
         </Link>

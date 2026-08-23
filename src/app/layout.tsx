@@ -1,15 +1,20 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
+// One typeface for the whole app — headings included. Both prior display
+// treatments (Space Grotesk, then Plus Jakarta Sans) read as geometric/
+// SaaS-y against the original FindMi site's reference screenshots, which
+// are much closer to a plain neo-grotesk (Helvetica Neue/Avenir territory)
+// than either. Inter is exactly that lineage — a highly-legible UI grotesk
+// with open, humanist proportions, not a geometric display face — so
+// rather than reach for another trendy geometric Google Font, headings now
+// just use Inter too. This is the one central lever (the CSS variable
+// already wired through every heading via font-display) rather than
+// touching each component's classes; see globals.css for the accompanying
+// letter-spacing softening.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-// Display font: Plus Jakarta Sans, not Space Grotesk. Space Grotesk's tight,
-// geometric letterforms were reading as "developer tool" rather than the
-// clean/friendly/consumer feel FindMi's original brand has — Plus Jakarta
-// Sans is warmer and less compressed while staying modern. This is the one
-// central lever (the CSS variable already wired through every heading via
-// font-display) rather than touching each component's classes.
-const displayFont = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-display" });
+const displayFont = Inter({ subsets: ["latin"], variable: "--font-display" });
 
 // `||` (not `??`) so an env var that's *set but blank* — e.g. left empty in
 // a hosting dashboard — still falls back instead of producing an invalid URL.

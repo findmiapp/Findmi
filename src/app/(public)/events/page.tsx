@@ -42,7 +42,7 @@ export default async function EventsPage({
             href={w.value === "anytime" ? "/events" : `/events?when=${w.value}`}
             className={`rounded-full px-4 py-2 text-sm font-bold uppercase tracking-wide transition ${
               when === w.value
-                ? "bg-findmi text-ink"
+                ? "bg-findmi text-white"
                 : "border border-black/10 text-ink/70 hover:border-ink/30"
             }`}
           >

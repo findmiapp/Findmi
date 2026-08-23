@@ -50,7 +50,7 @@ export default async function CheckoutSuccessPage({
       )}
       <Link
         href="/discover"
-        className="mt-6 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600"
+        className="mt-6 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white hover:bg-findmi-600"
       >
         Keep Exploring
       </Link>

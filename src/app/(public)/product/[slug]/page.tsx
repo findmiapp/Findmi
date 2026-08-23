@@ -111,7 +111,7 @@ export default async function ProductPage({
               href={purchaseUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Shop Now
             </a>
@@ -123,7 +123,7 @@ export default async function ProductPage({
               className={
                 canAddToCart
                   ? "rounded-full border border-black/10 px-5 py-2.5 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
-                  : "rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+                  : "rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               }
             >
               Ask About This
@@ -134,7 +134,7 @@ export default async function ProductPage({
               className={
                 canAddToCart
                   ? "rounded-full border border-black/10 px-5 py-2.5 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
-                  : "rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+                  : "rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               }
             >
               Ask About This

@@ -39,12 +39,12 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
     >
       <div
         className={`flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-2 ${
-          live ? "bg-findmi text-ink" : "bg-black/[0.04] text-ink"
+          live ? "bg-findmi text-white" : "bg-black/[0.04] text-ink"
         }`}
       >
         {live ? (
           <>
-            <LiveDot className="text-ink" />
+            <LiveDot className="text-white" />
             <span className="text-[11px] font-bold uppercase tracking-wide">Now</span>
           </>
         ) : (
@@ -70,7 +70,7 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
           <p className="mt-0.5 truncate text-xs text-ink/50">{item.subtitle}</p>
         )}
       </div>
-      <span className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink">
+      <span className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
         Find Them
       </span>
     </Link>

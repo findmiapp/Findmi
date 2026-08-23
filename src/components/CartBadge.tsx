@@ -21,7 +21,7 @@ export default function CartBadge({ variant = "icon" }: { variant?: "icon" | "te
       <Link href="/cart" className="relative text-sm font-medium text-ink/70 transition hover:text-ink">
         Cart
         {count > 0 && (
-          <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-findmi px-1 text-[10px] font-bold text-ink">
+          <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-findmi px-1 text-[10px] font-bold text-white">
             {count}
           </span>
         )}
@@ -47,7 +47,7 @@ export default function CartBadge({ variant = "icon" }: { variant?: "icon" | "te
         <circle cx="17" cy="21" r="1.4" fill="currentColor" />
       </svg>
       {count > 0 && (
-        <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-findmi px-0.5 text-[9px] font-bold text-ink">
+        <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-findmi px-0.5 text-[9px] font-bold text-white">
           {count}
         </span>
       )}

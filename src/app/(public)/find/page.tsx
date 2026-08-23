@@ -47,7 +47,7 @@ export default async function FindPage({
               href={t.value === "today" ? "/find" : `/find?when=${t.value}`}
               className={`rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
                 when === t.value
-                  ? "bg-findmi text-ink"
+                  ? "bg-findmi text-white"
                   : "border border-white/15 text-white/70 hover:border-white/30"
               }`}
             >

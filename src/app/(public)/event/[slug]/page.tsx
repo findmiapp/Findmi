@@ -124,7 +124,7 @@ export default async function EventPage({
                 rel="noreferrer"
                 className={
                   i === 0
-                    ? "rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+                    ? "rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                     : "rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
                 }
               >

@@ -137,7 +137,7 @@ export default async function BusinessPage({
           <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
             <a
               href="#follow"
-              className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Follow Their Moves
             </a>
@@ -195,7 +195,7 @@ export default async function BusinessPage({
               </p>
               <a
                 href="#follow"
-                className="mt-3 inline-block rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+                className="mt-3 inline-block rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               >
                 Follow Their Moves
               </a>
@@ -263,7 +263,7 @@ export default async function BusinessPage({
               href={inquiryUrl}
               target="_blank"
               rel="noreferrer"
-              className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Request Availability
             </a>

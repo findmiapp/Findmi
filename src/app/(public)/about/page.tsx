@@ -33,7 +33,7 @@ export default function AboutPage() {
       <div className="mt-10 flex gap-3">
         <Link
           href="/discover"
-          className="rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+          className="rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Start discovering
         </Link>

@@ -80,7 +80,7 @@ export default function CartPage() {
         <p className="mt-2 text-sm text-ink/60">Find something to bring home from a FindMi vendor.</p>
         <Link
           href="/discover"
-          className="mt-6 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600"
+          className="mt-6 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white hover:bg-findmi-600"
         >
           Start Exploring
         </Link>
@@ -163,7 +163,7 @@ export default function CartPage() {
               type="button"
               onClick={handleCheckout}
               disabled={checkingOut || refreshing || quote.total <= 0}
-              className="rounded-full bg-findmi px-5 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600 disabled:opacity-50"
+              className="rounded-full bg-findmi px-5 py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50"
             >
               {checkingOut ? "Redirecting…" : "Proceed to Checkout"}
             </button>

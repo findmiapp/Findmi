@@ -62,7 +62,7 @@ export default function JoinPage() {
           {stripeLink ? (
             <a
               href={stripeLink}
-              className="rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              className="rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Join the Founding 500
             </a>

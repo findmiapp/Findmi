@@ -54,7 +54,7 @@ export default async function LocationPage({
           href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
           target="_blank"
           rel="noreferrer"
-          className="rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+          className="rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Get Directions
         </a>

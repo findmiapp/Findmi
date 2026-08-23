@@ -84,11 +84,11 @@ export default function PostCard({
       <div className="absolute left-3 top-3">
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
-            badgeVariant === "live" ? "bg-findmi text-ink" : "bg-black/45 text-white backdrop-blur-sm"
+            badgeVariant === "live" ? "bg-findmi text-white" : "bg-black/45 text-white backdrop-blur-sm"
           }`}
         >
           {badgeVariant === "live" ? (
-            <LiveDot className="text-ink" />
+            <LiveDot className="text-white" />
           ) : (
             <Icon name={badgeIcon ?? DEFAULT_ICON_BY_KIND[kind]} className="h-3.5 w-3.5" />
           )}
@@ -114,7 +114,7 @@ export default function PostCard({
         {price && <p className="text-sm font-semibold text-white">{price}</p>}
 
         {cta && (
-          <span className="mt-0.5 block rounded-full bg-findmi py-2 text-center text-xs font-bold uppercase tracking-wide text-ink transition group-hover:bg-findmi-600">
+          <span className="mt-0.5 block rounded-full bg-findmi py-2 text-center text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
             {cta}
           </span>
         )}
