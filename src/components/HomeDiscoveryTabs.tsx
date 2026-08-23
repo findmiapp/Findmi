@@ -33,6 +33,7 @@ export default function HomeDiscoveryTabs({
 
   return (
     <div className="mt-5">
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">Find them when?</p>
       <div className="flex gap-2">
         {TABS.map((t) => (
           <button

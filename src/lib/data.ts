@@ -391,7 +391,14 @@ export async function getFindMiHereFeed(
     }
   }
 
+  // Featured appearances (see event_businesses.featured / appearances'
+  // own is_featured — an admin-set editorial flag) sort first within
+  // whichever time window applies, ahead of plain chronological order.
+  // This is what lets the homepage hero legitimately favor a founder-
+  // curated appearance over whatever merely happens to start soonest —
+  // no name/business-based special-casing.
   const { data } = await query
+    .order("is_featured", { ascending: false })
     .order("start_at", { ascending: true })
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
@@ -545,12 +552,18 @@ export async function getFulfillmentOptionsForProduct(
 
 /** Other founding-member businesses sharing at least one category — used to
  * suggest alternatives when a consumer's first-choice business is booked. */
+/** Same-category alternatives, filtered to the same state — a shared
+ * category on its own isn't "similar" if the result is a thousand miles
+ * away and outside any real service area. If nothing qualifies once
+ * geography is applied, this returns empty rather than surfacing an
+ * irrelevant business just to fill the row (the caller already hides the
+ * section entirely when empty). */
 export async function getAlternativeBusinesses(
   business: BusinessWithCategories,
   limit = 4
 ): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
-  if (!supabase || business.categories.length === 0) return [];
+  if (!supabase || business.categories.length === 0 || !business.state) return [];
 
   const categoryIds = business.categories.map((c) => c.id);
   const { data: links } = await supabase
@@ -559,14 +572,16 @@ export async function getAlternativeBusinesses(
     .in("category_id", categoryIds)
     .neq("business_id", business.id);
 
-  const ids = Array.from(new Set((links ?? []).map((l) => l.business_id))).slice(0, limit);
+  const ids = Array.from(new Set((links ?? []).map((l) => l.business_id)));
   if (ids.length === 0) return [];
 
   const { data } = await supabase
     .from("businesses")
     .select(BUSINESS_COLUMNS)
     .in("id", ids)
-    .eq("is_demo", false);
+    .eq("is_demo", false)
+    .eq("state", business.state)
+    .limit(limit);
   return attachCategories((data as Business[]) ?? []);
 }
 

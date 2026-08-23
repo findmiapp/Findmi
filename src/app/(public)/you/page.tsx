@@ -26,18 +26,13 @@ export default function YouPage() {
           </div>
           <span className="text-ink/30">→</span>
         </Link>
-        <Link
-          href="/businesses"
-          className="flex items-center justify-between rounded-2xl border border-black/10 p-4 transition hover:border-black/20"
-        >
-          <div>
-            <p className="text-sm font-semibold text-ink">Following</p>
-            <p className="text-xs text-ink/50">
-              Businesses you&rsquo;ve followed for updates — check your email
-            </p>
-          </div>
-          <span className="text-ink/30">→</span>
-        </Link>
+        <div className="rounded-2xl border border-black/10 p-4">
+          <p className="text-sm font-semibold text-ink">Following</p>
+          <p className="text-xs text-ink/50">
+            When you follow a business, we email updates on where they&rsquo;ll be next — check
+            your inbox.
+          </p>
+        </div>
       </div>
 
       <div className="mt-10 rounded-2xl bg-black/[0.03] p-5">

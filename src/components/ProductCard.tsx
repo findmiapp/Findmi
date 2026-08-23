@@ -14,7 +14,12 @@ export default function ProductCard({
   businessSlug?: string;
 }) {
   const href = `/product/${product.slug}`;
-  const cta = product.external_purchase_url ? "Shop Now" : "Ask About This";
+  // Purchasable wins over an external link — it's the more complete,
+  // FindMi-native path (real cart/fulfillment, not a redirect off-site).
+  // The card always links to the product's own page either way, where the
+  // matching action (Add to Cart form, Shop Now link, or inquiry) lives —
+  // this label is just an honest preview of which one it'll be.
+  const cta = product.purchasable ? "Add to Cart" : product.external_purchase_url ? "Shop Now" : "Ask About This";
   const badgeLabel = product.product_type === "service" ? "Service" : "Product";
   const price = formatPrice(product.price, product.price_label) || null;
 

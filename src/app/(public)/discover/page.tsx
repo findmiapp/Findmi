@@ -21,7 +21,14 @@ export default async function DiscoverPage() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Discover</h1>
-      <p className="mt-2 text-ink/60">Browse everything happening on FindMi right now.</p>
+      <p className="mt-2 text-ink/60">
+        Browse businesses, events, and categories on FindMi. Looking for what&rsquo;s happening
+        right now instead? Try{" "}
+        <Link href="/find" className="font-medium text-ink underline underline-offset-2">
+          FindMi Here
+        </Link>
+        .
+      </p>
 
       {categories.length > 0 && (
         <div className="mt-6 flex flex-wrap gap-2">

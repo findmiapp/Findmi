@@ -60,6 +60,16 @@ export default async function HomePage() {
     : null;
   const todayRest = todayFeed.filter((i) => i.id !== heroAppearance?.id);
 
+  // "Top NYC Brands" is the intended launch label, but today's real public
+  // dataset is mostly Austin-based founding members — labeling that as NYC
+  // would be false. Use the honest label until there's enough real NYC
+  // data to back the specific claim; this upgrades itself automatically
+  // as real NY businesses join, no hardcoding required.
+  const nyBusinesses = nearYou.filter((b) => b.state === "NY");
+  const showNyBrands = nyBusinesses.length >= 3;
+  const topBrandsTitle = showNyBrands ? "Top NYC Brands" : "Featured Brands";
+  const topBrandsList = showNyBrands ? nyBusinesses : nearYou;
+
   return (
     <div>
       {/* Compact opening — headline + category chips only. Search is one
@@ -95,7 +105,7 @@ export default async function HomePage() {
             href="/join"
             className="self-start text-xs font-medium text-ink/45 transition hover:text-ink/70"
           >
-            For businesses & brands · Get discovered on FindMi →
+            Have a brand? Get discovered on FindMi →
           </Link>
         </div>
       </section>
@@ -162,21 +172,21 @@ export default async function HomePage() {
             >
               Join FindMi
             </Link>
-            <a href="#for-business" className="text-xs font-semibold text-ink/60 transition hover:text-ink">
+            <Link href="/join" className="text-xs font-semibold text-ink/60 transition hover:text-ink">
               See what you get →
-            </a>
+            </Link>
           </div>
         </div>
       </section>
 
       {nearYou.length > 0 && (
         <Section
-          title="Featured Near NYC"
+          title={topBrandsTitle}
           subtitle="Discover businesses on FindMi"
           viewAllHref="/businesses"
         >
           <HorizontalScroller>
-            {nearYou.slice(0, 10).map((b) => (
+            {topBrandsList.slice(0, 10).map((b) => (
               <div key={b.id} className="w-40 shrink-0">
                 <CompactBusinessCard business={b} />
               </div>

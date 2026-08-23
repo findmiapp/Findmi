@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import AppearanceCard from "@/components/AppearanceCard";
 import BusinessCard from "@/components/BusinessCard";
 import ProductCard from "@/components/ProductCard";
-import FollowForm from "@/components/FollowForm";
+import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import { CategoryPill, VerifiedBadge } from "@/components/Badge";
 import {
@@ -64,6 +64,15 @@ export default async function BusinessPage({
   ).slice(0, 8);
 
   const inquiryUrl = getInquiryFormUrl(business);
+  // If the global Tally inquiry form isn't configured, fall back to a real
+  // mailto to this specific business — only when it actually has an email
+  // on file. Never fabricated; a business with neither still correctly
+  // shows "Inquiries aren't open yet."
+  const inquiryHref =
+    inquiryUrl ||
+    (business.email
+      ? `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via FindMi — ${business.name}`)}`
+      : null);
   const socialLinks = [
     { href: business.website_url, label: "Website", icon: "link" as const },
     { href: business.instagram_url, label: "Instagram", icon: "instagram" as const },
@@ -89,7 +98,7 @@ export default async function BusinessPage({
         )}
       </div>
 
-      <div className="mx-auto max-w-4xl px-6">
+      <div className="mx-auto max-w-4xl px-6 pb-12">
         {/* B. Business identity */}
         {business.logo_url && (
           <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
@@ -133,14 +142,9 @@ export default async function BusinessPage({
             <p className="max-w-2xl text-base text-ink/65">{business.short_description}</p>
           )}
 
-          {/* C. Primary action — Follow Their Moves — plus restrained utility controls */}
+          {/* C. Primary action — Follow — plus restrained utility controls */}
           <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
-            <a
-              href="#follow"
-              className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-            >
-              Follow Their Moves
-            </a>
+            <FollowButton businessId={business.id} businessSlug={business.slug} />
             <SaveButton slug={business.slug} />
             {socialLinks.map((link) => (
               <a
@@ -190,15 +194,12 @@ export default async function BusinessPage({
           ) : (
             <div className="mt-3 rounded-2xl border border-black/5 bg-black/[0.02] p-4">
               <p className="text-sm text-ink/60">
-                Nothing announced yet. Follow their moves and we&rsquo;ll let you know
-                where to find them next.
+                Nothing announced yet. Follow and we&rsquo;ll let you know where to find them
+                next.
               </p>
-              <a
-                href="#follow"
-                className="mt-3 inline-block rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              >
-                Follow Their Moves
-              </a>
+              <div className="mt-3">
+                <FollowButton businessId={business.id} businessSlug={business.slug} />
+              </div>
             </div>
           )}
         </section>
@@ -209,13 +210,16 @@ export default async function BusinessPage({
             <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
               What You&rsquo;ll Find
             </h2>
-            {/* Mobile: horizontal swipe carousel (a 2-up grid left no room
-                for the label/title/price/CTA without collisions). Desktop
-                is unchanged — a plain grid. */}
-            <div className="mt-4 -mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-1 sm:mx-0 sm:grid sm:snap-none sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 md:grid-cols-4">
+            {/* Mobile: horizontal swipe carousel, fixed-width cards and a
+                hidden scrollbar — the same bleed-to-gutter + hide-scrollbar
+                technique used by every other carousel in the app (see
+                components/Section.tsx's HorizontalScroller), sized to this
+                page's own px-6 gutter rather than reusing that component's
+                own (different) padding. Desktop: a plain grid. */}
+            <div className="mt-4 -mx-6 flex gap-4 overflow-x-auto px-6 pb-1 sm:mx-0 sm:grid sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 sm:grid-cols-3 md:grid-cols-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {products.map((p) => (
-                <div key={p.id} className="w-[78%] shrink-0 snap-start sm:w-auto sm:shrink">
-                  <ProductCard product={p} businessSlug={business.slug} />
+                <div key={p.id} className="w-40 shrink-0 sm:w-auto sm:shrink">
+                  <ProductCard product={p} />
                 </div>
               ))}
             </div>
@@ -258,10 +262,10 @@ export default async function BusinessPage({
             Tell us what you&rsquo;re planning and we&rsquo;ll send your request to this
             business.
           </p>
-          {inquiryUrl ? (
+          {inquiryHref ? (
             <a
-              href={inquiryUrl}
-              target="_blank"
+              href={inquiryHref}
+              target={inquiryHref.startsWith("mailto:") ? undefined : "_blank"}
               rel="noreferrer"
               className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
@@ -287,19 +291,6 @@ export default async function BusinessPage({
               </div>
             </div>
           )}
-        </section>
-
-        {/* I. Follow */}
-        <section id="follow" className="mt-8 mb-12 scroll-mt-20">
-          <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
-            Follow Their Moves
-          </h2>
-          <p className="mt-2 max-w-md text-sm text-ink/60">
-            Follow {business.name} and we&rsquo;ll keep you posted on new appearances.
-          </p>
-          <div className="mt-4 max-w-md">
-            <FollowForm businessId={business.id} businessName={business.name} />
-          </div>
         </section>
       </div>
     </div>

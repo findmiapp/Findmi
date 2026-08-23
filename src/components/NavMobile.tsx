@@ -3,10 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// Discover = general browse hub (categories, events, businesses). Find =
+// FindMi's own signature time-based discovery (Now/Today/Weekend/Anytime)
+// — FindMi is built around time + place discovery, so this is the
+// flagship feature, not a redundant duplicate of Discover, and stays.
+// "Businesses" (not "Nearby") is the honest label for what /businesses
+// actually is today — a searchable directory, not geolocation-driven
+// proximity. No map yet (see MAP NEXT STEP), so no "Map" label either.
 const links = [
   { href: "/discover", label: "Discover", icon: CompassIcon },
-  { href: "/businesses", label: "Nearby", icon: PinIcon },
-  { href: "/find", label: "Find", icon: TargetIcon, center: true },
+  { href: "/businesses", label: "Businesses", icon: PinIcon },
+  { href: "/find", label: "Find", icon: TargetIcon },
   { href: "/saved", label: "Saved", icon: BookmarkIcon },
   { href: "/you", label: "You", icon: PersonIcon },
 ];
@@ -16,29 +23,10 @@ export default function NavMobile() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/5 bg-paper/95 backdrop-blur md:hidden">
-      <div className="mx-auto flex max-w-6xl items-end justify-between px-2 pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto flex max-w-6xl items-stretch justify-between px-2 pb-[env(safe-area-inset-bottom)]">
         {links.map((link) => {
           const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
           const Icon = link.icon;
-
-          if (link.center) {
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="flex flex-1 flex-col items-center gap-1 pb-1.5 pt-1 text-[11px] font-medium"
-              >
-                <span
-                  className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-findmi text-white shadow-lg shadow-findmi/30 transition active:scale-95 ${
-                    active ? "ring-2 ring-ink/10" : ""
-                  }`}
-                >
-                  <Icon className="h-6 w-6" />
-                </span>
-                <span className={active ? "text-ink" : "text-ink/40"}>{link.label}</span>
-              </Link>
-            );
-          }
 
           return (
             <Link
@@ -46,8 +34,10 @@ export default function NavMobile() {
               href={link.href}
               className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition active:scale-95"
             >
-              <Icon className={`h-5 w-5 ${active ? "text-ink" : "text-ink/40"}`} />
-              <span className={active ? "text-ink" : "text-ink/40"}>{link.label}</span>
+              <Icon className={`h-5 w-5 ${active ? "text-findmi" : "text-ink/40"}`} />
+              <span className={active ? "font-semibold text-findmi-700" : "text-ink/40"}>
+                {link.label}
+              </span>
             </Link>
           );
         })}
