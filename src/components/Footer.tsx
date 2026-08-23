@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Logo from "./Logo";
 
 export default function Footer() {
   return (
@@ -6,8 +7,8 @@ export default function Footer() {
       <div className="mx-auto max-w-6xl px-6">
         <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-lg font-semibold text-ink">Findmi</p>
-            <p className="mt-2 max-w-xs text-sm text-ink/55">
+            <Logo heightClassName="h-7" />
+            <p className="mt-3 max-w-xs text-sm text-ink/55">
               Find what you&rsquo;re looking for. And where it&rsquo;ll be next.
             </p>
           </div>

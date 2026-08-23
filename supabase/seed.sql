@@ -115,6 +115,54 @@ insert into businesses (
 on conflict (id) do nothing;
 
 -- ----------------------------------------------------------------------------
+-- The Native Rose — real Staten Island business, added from their own
+-- Instagram (@thenativerose.ny): a mobile flower bar + coffee trailer.
+-- Photos in /public/seed are cropped from their own posted photos.
+-- ----------------------------------------------------------------------------
+insert into businesses (
+  id, slug, name, short_description, description, logo_url, cover_image_url,
+  website_url, instagram_url, email, phone, city, state, country,
+  service_radius_miles, verified, founding_member, membership_status, lead_status
+) values (
+  '11111111-1111-4111-8111-111111111107',
+  'the-native-rose',
+  'The Native Rose',
+  'Mobile flower bar and coffee trailer serving Staten Island markets and pop-ups.',
+  'The Native Rose is a flowers-and-coffee trailer built out of a converted horse trailer, parked at markets and pop-ups around Staten Island. Their signature Flower Bar lets you build your own bouquet — pick a size, mix and match stems, and they wrap it beautifully on the spot — alongside iced coffee and cold brew from the window. Flowers. Coffee. Community.',
+  null,
+  '/seed/native-rose-cover.jpg',
+  null,
+  'https://instagram.com/thenativerose.ny',
+  null,
+  null,
+  'Staten Island', 'NY', 'US', 20, false, false, 'lead', 'new'
+)
+on conflict (id) do nothing;
+
+insert into business_categories (business_id, category_id) values
+  ('11111111-1111-4111-8111-111111111107', '22222222-2222-4222-8222-222222222202'), -- The Native Rose: Flowers
+  ('11111111-1111-4111-8111-111111111107', '22222222-2222-4222-8222-222222222201')  -- The Native Rose: Coffee
+on conflict do nothing;
+
+insert into products (id, business_id, name, slug, description, image_url, price, price_label, product_type, is_featured, is_active) values
+('55555555-5555-4555-8555-555555555514', '11111111-1111-4111-8111-111111111107', 'Flower Bar — Mini Bloom', 'mini-bloom', '2 focal stems + 3 filler stems, wrapped for you.', '/seed/native-rose-flowerbar.jpg', 20.00, '$20', 'product', true, true),
+('55555555-5555-4555-8555-555555555515', '11111111-1111-4111-8111-111111111107', 'Flower Bar — Signature', 'signature-bouquet', '4 focal stems + 6 filler stems — our most popular build.', null, 35.00, '$35', 'product', true, true),
+('55555555-5555-4555-8555-555555555516', '11111111-1111-4111-8111-111111111107', 'Flower Bar — Luxe Bloom', 'luxe-bloom', '6 focal stems + 4 filler stems, wrapped for a statement.', null, 55.00, '$55', 'product', false, true),
+('55555555-5555-4555-8555-555555555517', '11111111-1111-4111-8111-111111111107', 'Iced Coffee', 'iced-coffee', 'Cold brew and lattes, made to order from the trailer window.', '/seed/native-rose-window.jpg', 6.00, '$6', 'product', true, true)
+on conflict (id) do nothing;
+
+-- Real upcoming pop-up schedule from @thenativerose.ny, shifted to stay
+-- relative to "now" so it never looks stale — venue names, addresses, and
+-- times are taken directly from their flyer.
+insert into appearances (id, business_id, event_id, title, description, start_at, end_at, venue_name, address, city, state, status, is_featured) values
+('44444444-4444-4444-8444-444444444414', '11111111-1111-4111-8111-111111111107', null, 'Minthorne Market', null, now() + interval '6 days' + interval '12 hours', now() + interval '6 days' + interval '16 hours', 'Minthorne Market', 'Minthorne St', 'Staten Island', 'NY', 'confirmed', true),
+('44444444-4444-4444-8444-444444444415', '11111111-1111-4111-8111-111111111107', null, 'Luxe Spa Back-to-School Pop-Up', null, now() + interval '13 days' + interval '11 hours', now() + interval '13 days' + interval '14 hours', 'Luxe Spa', '2248 Victory Blvd', 'Staten Island', 'NY', 'confirmed', false),
+('44444444-4444-4444-8444-444444444416', '11111111-1111-4111-8111-111111111107', null, 'Faire and Flourish Market', null, now() + interval '20 days' + interval '12 hours', now() + interval '20 days' + interval '16 hours', 'Staten Island Mall (Outdoor, Main Entrance)', null, 'Staten Island', 'NY', 'confirmed', true),
+('44444444-4444-4444-8444-444444444417', '11111111-1111-4111-8111-111111111107', null, 'Piccola Pasta Shop', null, now() + interval '27 days' + interval '10 hours', now() + interval '27 days' + interval '14 hours', 'Piccola Pasta Shop', '3939 Amboy Rd', 'Staten Island', 'NY', 'confirmed', false),
+('44444444-4444-4444-8444-444444444418', '11111111-1111-4111-8111-111111111107', null, 'PS 8 Back-to-School Carnival', 'PS 8 students and families only.', now() + interval '34 days' + interval '16 hours 30 minutes', now() + interval '34 days' + interval '19 hours 30 minutes', 'PS 8', null, 'Staten Island', 'NY', 'confirmed', false)
+on conflict (id) do nothing;
+
+-- ----------------------------------------------------------------------------
 -- business_categories
 -- ----------------------------------------------------------------------------
 insert into business_categories (business_id, category_id) values

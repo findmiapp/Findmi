@@ -8,18 +8,20 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Matches the Findmi mark: a teal squircle (#14B0BC) with a lighter
+        // mint leaf (~#7FE1E3).
         findmi: {
-          DEFAULT: "#FF5A3C",
-          50: "#FFF1ED",
-          100: "#FFE1D8",
-          200: "#FFC2B1",
-          300: "#FFA389",
-          400: "#FF7C5C",
-          500: "#FF5A3C",
-          600: "#E63F20",
-          700: "#BC3018",
-          800: "#8F2513",
-          900: "#671A0D",
+          DEFAULT: "#14B0BC",
+          50: "#EDFBFC",
+          100: "#D3F5F6",
+          200: "#A8ECEE",
+          300: "#7FE1E3",
+          400: "#3FC7CE",
+          500: "#14B0BC",
+          600: "#0F8E98",
+          700: "#0C6F77",
+          800: "#0A575D",
+          900: "#08454A",
         },
         ink: "#111111",
       },

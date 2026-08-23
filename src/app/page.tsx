@@ -128,7 +128,7 @@ export default async function HomePage() {
         <Section title="Popular Products">
           <HorizontalScroller>
             {popularProducts.map((p) => (
-              <div key={p.id} className="w-40 shrink-0">
+              <div key={p.id} className="w-44 shrink-0">
                 <ProductCard product={p} />
               </div>
             ))}
