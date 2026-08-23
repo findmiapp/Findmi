@@ -4,7 +4,9 @@ import NavDesktop from "@/components/NavDesktop";
 import NavMobile from "@/components/NavMobile";
 import Footer from "@/components/Footer";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://findmi.app";
+// `||` (not `??`) so an env var that's *set but blank* — e.g. left empty in
+// a hosting dashboard — still falls back instead of producing an invalid URL.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://findmi.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
