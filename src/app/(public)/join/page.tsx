@@ -8,14 +8,15 @@ export const metadata: Metadata = {
 
 const features = [
   "FindMi business profile",
-  "Products and services",
+  "Products & services listings",
   "Gallery",
-  "FindMi Here",
-  "Unlimited appearance cards",
-  "FindMi discovery inclusion",
-  "Customer inquiry and booking forms",
-  "Eligibility for FindMi opportunities",
-  "Performance insights later",
+  "Appearance cards — where you'll be next",
+  "Event participation",
+  "FindMi Here discovery",
+  "Category & search discovery",
+  "Customer inquiry & booking forms",
+  "Followers get notified of your moves",
+  "Marketplace listing for products, where enabled",
   "Concierge profile setup",
   "Founding pricing retained while continuously subscribed",
 ];
@@ -45,7 +46,7 @@ export default function JoinPage() {
             <span className="text-ink/50">/year</span>
           </p>
           <p className="mt-1 text-sm text-ink/50">
-            Locked in for as long as your membership stays active.
+            About $8.25/month, billed annually. Locked in for as long as your membership stays active.
           </p>
 
           <ul className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -64,18 +65,21 @@ export default function JoinPage() {
               href={stripeLink}
               className="rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
-              Join the Founding 500
+              Join the Founding 500 — $99/year
             </a>
           ) : (
             <button
               disabled
               className="rounded-full bg-ink/20 px-6 py-3.5 text-center text-sm font-semibold text-white/70"
             >
-              Join the Founding 500
+              Join the Founding 500 — $99/year
             </button>
           )}
           <p className="text-center text-xs text-ink/40">
             Secure checkout via Stripe. Cancel anytime.
+          </p>
+          <p className="text-center text-xs text-ink/40">
+            We&rsquo;ll help you build your first FindMi profile after you join.
           </p>
         </div>
       </div>
@@ -88,9 +92,9 @@ export default function JoinPage() {
           </p>
         </div>
         <div>
-          <p className="text-sm font-semibold text-ink">Where you&rsquo;ll be next</p>
+          <p className="text-sm font-semibold text-ink">FindMi Here</p>
           <p className="mt-1 text-sm text-ink/60">
-            Post unlimited appearance cards so customers always know where to find you.
+            Post appearance cards and join events so customers always know where to find you next.
           </p>
         </div>
         <div>

@@ -412,12 +412,16 @@ export async function getFindMiHereFeed(
 export async function getMobileBusinesses(limit = 8): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
+  // Ordered by service radius (not founding_member, like most other
+  // homepage rows) so this row reads as its own curated take — "who
+  // travels farthest" — rather than mechanically repeating the same
+  // founding-member-first order every other section already showed.
   const { data } = await supabase
     .from("businesses")
     .select(BUSINESS_COLUMNS)
     .not("service_radius_miles", "is", null)
     .eq("is_demo", false)
-    .order("founding_member", { ascending: false })
+    .order("service_radius_miles", { ascending: false })
     .limit(limit);
   return attachCategories((data as Business[]) ?? []);
 }
