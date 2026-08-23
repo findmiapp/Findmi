@@ -199,12 +199,15 @@ create index if not exists idx_businesses_city on businesses(city);
 -- updated_at trigger for businesses
 -- ----------------------------------------------------------------------------
 create or replace function set_updated_at()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
 begin
   new.updated_at = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 drop trigger if exists trg_businesses_updated_at on businesses;
 create trigger trg_businesses_updated_at
