@@ -18,9 +18,9 @@ export default function SaveButton({ slug }: { slug: string }) {
       onClick={() => setSaved(toggleSaved(slug))}
       aria-pressed={saved}
       aria-label={saved ? "Remove from Saved" : "Save"}
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink transition active:scale-90"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink transition active:scale-90"
     >
-      <svg viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} className="h-5 w-5">
+      <svg viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} className="h-4 w-4">
         <path
           d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"
           stroke="currentColor"

@@ -33,19 +33,19 @@ export default async function FindPage({
   const heroLabel = hero ? getTemporalLabel(hero.start_at, hero.end_at) : null;
 
   return (
-    <div className="min-h-screen bg-ink pb-16">
-      <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+    <div className="min-h-screen bg-ink pb-14">
+      <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi">FindMi Here</p>
-        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
+        <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
           Where FindMi is, right now
         </h1>
 
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           {TABS.map((t) => (
             <Link
               key={t.value}
               href={t.value === "today" ? "/find" : `/find?when=${t.value}`}
-              className={`rounded-full px-4 py-2 text-sm font-bold uppercase tracking-wide transition ${
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
                 when === t.value
                   ? "bg-findmi text-ink"
                   : "border border-white/15 text-white/70 hover:border-white/30"
@@ -57,13 +57,13 @@ export default async function FindPage({
         </div>
 
         {items.length === 0 ? (
-          <p className="mt-10 text-sm text-white/50">
+          <p className="mt-8 text-sm text-white/50">
             Nothing in this window yet — try Anytime, or check back soon.
           </p>
         ) : (
           <>
             {hero && (
-              <div className="mt-8 max-w-sm">
+              <div className="mt-6 max-w-sm">
                 <PostCard
                   href={`/business/${hero.business.slug}`}
                   image={hero.business.cover_image_url ?? null}
@@ -83,11 +83,11 @@ export default async function FindPage({
             )}
 
             {rest.length > 0 && (
-              <div className="mt-8">
+              <div className="mt-6">
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
                   {when === "live" ? "Also Here Now" : "More"}
                 </p>
-                <div className="mt-3 flex flex-col gap-2">
+                <div className="mt-2.5 flex flex-col gap-2">
                   {rest.map((item) => (
                     <DarkAppearanceRow key={item.id} item={item} />
                   ))}
@@ -108,11 +108,11 @@ function DarkAppearanceRow({ item }: { item: AppearanceFeedItem }) {
   return (
     <Link
       href={`/business/${item.business.slug}`}
-      className={`flex items-center gap-3 rounded-2xl border p-3 transition active:scale-[0.99] ${
+      className={`flex items-center gap-2.5 rounded-2xl border p-2.5 transition active:scale-[0.99] ${
         live ? "border-findmi/40 bg-findmi/10" : "border-white/10 bg-white/5 hover:border-white/20"
       }`}
     >
-      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-white/10">
+      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-white/10">
         {item.business.logo_url && (
           <Image src={item.business.logo_url} alt={item.business.name} fill sizes="48px" className="object-cover" />
         )}

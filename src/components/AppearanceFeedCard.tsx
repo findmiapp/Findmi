@@ -16,7 +16,7 @@ export default function AppearanceFeedCard({
   return (
     <Link
       href={`/business/${item.business.slug}`}
-      className={`flex shrink-0 flex-col gap-3 rounded-2xl border p-4 transition active:scale-[0.99] ${
+      className={`flex shrink-0 flex-col gap-2.5 rounded-2xl border p-3.5 transition active:scale-[0.99] ${
         live ? "border-findmi/50 bg-findmi-50" : "border-black/5 bg-white hover:shadow-md hover:shadow-black/5"
       }`}
     >

@@ -52,7 +52,7 @@ export default function ProductCard({
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
         <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">{badgeLabel}</p>
-        <p className="line-clamp-2 font-display text-sm font-bold leading-snug text-ink">
+        <p className="line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">
           {product.name}
         </p>
         {price && <p className="text-sm font-semibold text-ink/70">{price}</p>}

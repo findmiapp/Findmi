@@ -96,7 +96,10 @@ export default function PostCard({
         </span>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-4">
+      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-3.5">
+        {/* Bold here is a legibility need (white text over a variable photo),
+            not a heaviness choice — kept bold deliberately, unlike headings
+            on plain surfaces elsewhere. */}
         <h3 className="line-clamp-2 font-display text-base font-bold leading-snug text-white sm:text-lg">
           {title}
         </h3>
@@ -111,7 +114,7 @@ export default function PostCard({
         {price && <p className="text-sm font-semibold text-white">{price}</p>}
 
         {cta && (
-          <span className="mt-1 block rounded-full bg-findmi py-2.5 text-center text-sm font-bold uppercase tracking-wide text-ink transition group-hover:bg-findmi-600">
+          <span className="mt-0.5 block rounded-full bg-findmi py-2 text-center text-xs font-bold uppercase tracking-wide text-ink transition group-hover:bg-findmi-600">
             {cta}
           </span>
         )}

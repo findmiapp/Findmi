@@ -19,9 +19,9 @@ export default function SearchBar() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex w-full max-w-xl flex-col gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm sm:flex-row sm:items-center"
+      className="flex w-full max-w-xl flex-col gap-1.5 rounded-xl border border-black/10 bg-white p-1.5 shadow-sm sm:flex-row sm:items-center"
     >
-      <div className="flex flex-1 items-center gap-2 px-3 py-2">
+      <div className="flex flex-1 items-center gap-2 px-2.5 py-1.5">
         <SearchGlyph />
         <input
           value={q}
@@ -31,8 +31,8 @@ export default function SearchBar() {
           className="w-full bg-transparent text-sm text-ink placeholder:text-ink/40 focus:outline-none"
         />
       </div>
-      <div className="hidden h-6 w-px bg-black/10 sm:block" />
-      <div className="flex items-center gap-2 px-3 py-2 sm:w-44">
+      <div className="hidden h-5 w-px bg-black/10 sm:block" />
+      <div className="flex items-center gap-2 px-2.5 py-1.5 sm:w-40">
         <PinGlyph />
         <input
           value={city}
@@ -44,7 +44,8 @@ export default function SearchBar() {
       </div>
       <button
         type="submit"
-        className="rounded-xl bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+        aria-label="Search"
+        className="flex shrink-0 items-center justify-center rounded-lg bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
       >
         Search
       </button>

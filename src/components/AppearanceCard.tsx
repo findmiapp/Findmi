@@ -24,77 +24,68 @@ export default function AppearanceCard({
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`
       : null;
   const external = !eventSlug && Boolean(mapsQuery);
-  const ctaLabel = eventSlug ? "View →" : "Find Them →";
 
   const content = (
     <div
-      className={`rounded-2xl border p-4 transition active:scale-[0.99] ${
+      className={`flex items-center gap-3 rounded-2xl border p-3 transition active:scale-[0.99] ${
         live
           ? "border-findmi/50 bg-findmi-50"
           : "border-black/5 bg-white hover:border-black/10 hover:shadow-sm"
       }`}
     >
-      {/* Date tile + event info share the top row — the CTA no longer
-          lives here on mobile, since a third column left almost no room
-          for the title/venue and produced truncation like "Minthorn…". */}
-      <div className="flex items-center gap-4">
-        <div
-          className={`flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-2 sm:w-16 ${
-            live ? "bg-findmi text-ink" : "bg-black/[0.04] text-ink"
-          }`}
-        >
-          {live ? (
-            <>
-              <LiveDot className="text-ink" />
-              <span className="text-[11px] font-bold uppercase tracking-wide">Now</span>
-            </>
-          ) : (
-            <>
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">
-                {new Date(appearance.start_at).toLocaleDateString("en-US", { month: "short" })}
-              </span>
-              <span className="text-xl font-bold leading-none">
-                {new Date(appearance.start_at).getDate()}
-              </span>
-            </>
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 font-display text-sm font-bold leading-snug text-ink sm:truncate">
-            {appearance.title}
-          </p>
-          {/* Time only — the date tile already covers the date, so
-              formatDateRange (which repeats it) is deliberately not used
-              here. */}
-          <p className="mt-0.5 truncate text-xs text-ink/60">
-            {formatTimeRange(appearance.start_at, appearance.end_at)}
-          </p>
-          {(appearance.venue_name || location) && (
-            <p className="mt-0.5 truncate text-xs text-ink/50">
-              {[appearance.venue_name, location].filter(Boolean).join(" · ")}
-            </p>
-          )}
-        </div>
-
-        {appearance.status === "tentative" && (
-          <span className="shrink-0 self-start rounded-full bg-black/[0.04] px-2.5 py-1 text-[11px] font-medium text-ink/50">
-            Tentative
-          </span>
-        )}
-
-        {/* Desktop keeps the original inline CTA — only mobile moves it
-            below, where it has room to be a full-width tap target. */}
-        {href && (
-          <span className="hidden shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink sm:inline-block">
-            {ctaLabel}
-          </span>
+      <div
+        className={`flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 ${
+          live ? "bg-findmi text-ink" : "bg-black/[0.04] text-ink"
+        }`}
+      >
+        {live ? (
+          <>
+            <LiveDot className="text-ink" />
+            <span className="text-[10px] font-bold uppercase tracking-wide">Now</span>
+          </>
+        ) : (
+          <>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-ink/50">
+              {new Date(appearance.start_at).toLocaleDateString("en-US", { month: "short" })}
+            </span>
+            <span className="text-lg font-bold leading-none">
+              {new Date(appearance.start_at).getDate()}
+            </span>
+          </>
         )}
       </div>
 
+      <div className="min-w-0 flex-1">
+        <p className="line-clamp-2 font-display text-sm font-semibold leading-snug text-ink sm:truncate">
+          {appearance.title}
+        </p>
+        {/* Time only — the date tile already covers the date, so
+            formatDateRange (which repeats it) is deliberately not used
+            here. */}
+        <p className="mt-0.5 truncate text-xs text-ink/55">
+          {formatTimeRange(appearance.start_at, appearance.end_at)}
+        </p>
+        {(appearance.venue_name || location) && (
+          <p className="mt-0.5 truncate text-xs text-ink/45">
+            {[appearance.venue_name, location].filter(Boolean).join(" · ")}
+          </p>
+        )}
+      </div>
+
+      {appearance.status === "tentative" && (
+        <span className="shrink-0 self-start rounded-full bg-black/[0.04] px-2 py-1 text-[10px] font-medium text-ink/50">
+          Tentative
+        </span>
+      )}
+
+      {/* A compact action, not a full-width bar — Aqua stays a small,
+          intentional touch target rather than flooding the row. */}
       {href && (
-        <span className="mt-3 block rounded-full bg-findmi py-2.5 text-center text-[11px] font-bold uppercase tracking-wide text-ink sm:hidden">
-          {ctaLabel}
+        <span
+          aria-hidden="true"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi text-ink transition group-hover:bg-findmi-600"
+        >
+          <ArrowGlyph className="h-3.5 w-3.5" />
         </span>
       )}
     </div>
@@ -102,13 +93,35 @@ export default function AppearanceCard({
 
   if (!href) return content;
 
+  // The action is icon-only now (a compact circle, not a text pill), so the
+  // link still needs a real accessible name beyond the appearance title.
+  const ctaLabel = eventSlug ? "View event" : "Get directions";
+
   if (external) {
     return (
-      <a href={href} target="_blank" rel="noreferrer">
+      <a href={href} target="_blank" rel="noreferrer" className="group block" aria-label={`${appearance.title} — ${ctaLabel}`}>
         {content}
       </a>
     );
   }
 
-  return <Link href={href}>{content}</Link>;
+  return (
+    <Link href={href} className="group block" aria-label={`${appearance.title} — ${ctaLabel}`}>
+      {content}
+    </Link>
+  );
+}
+
+function ArrowGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className}>
+      <path
+        d="M4 10h12M10.5 4.5L16 10l-5.5 5.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }

@@ -107,9 +107,9 @@ export default async function BusinessPage({
           </div>
         )}
 
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="mt-4 flex flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
               {business.name}
             </h1>
             {(business.verified || business.founding_member) && (
@@ -134,10 +134,10 @@ export default async function BusinessPage({
           )}
 
           {/* C. Primary action — Follow Their Moves — plus restrained utility controls */}
-          <div className="mt-2 flex flex-wrap items-center gap-3">
+          <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
             <a
               href="#follow"
-              className="rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
             >
               Follow Their Moves
             </a>
@@ -149,7 +149,7 @@ export default async function BusinessPage({
                 target="_blank"
                 rel="noreferrer"
                 aria-label={link.label}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
               >
                 <SocialGlyph icon={link.icon} />
               </a>
@@ -158,26 +158,28 @@ export default async function BusinessPage({
         </div>
 
         {/* D. FindMi Here — the signature feature. Always present, even with
-            nothing scheduled, so the concept stays visible on every profile. */}
-        <section className="mt-10 rounded-3xl border border-findmi/30 bg-findmi-50 p-5 sm:p-6">
+            nothing scheduled, so the concept stays visible on every profile.
+            Plain surface, not a full pale-aqua panel — Aqua stays in the
+            kicker label and the compact per-row action only. */}
+        <section className="mt-8">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">
             FindMi Here
           </p>
-          <h2 className="mt-1 font-display text-xl font-bold tracking-tight text-ink">
+          <h2 className="mt-1 font-display text-lg font-semibold tracking-tight text-ink">
             Find {business.name}
           </h2>
           {appearances.length > 0 ? (
-            <div className="mt-4 flex flex-col gap-3">
+            <div className="mt-3 flex flex-col gap-2">
               {appearances.slice(0, 3).map((a) => (
                 <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
               ))}
               {appearances.length > 3 && (
                 <details className="group">
-                  <summary className="flex list-none items-center justify-center gap-1 rounded-full bg-white py-2.5 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 [&::-webkit-details-marker]:hidden">
+                  <summary className="flex list-none items-center justify-center gap-1 rounded-full border border-black/10 py-2 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 [&::-webkit-details-marker]:hidden">
                     View All Appearances
                     <span className="transition group-open:hidden">→</span>
                   </summary>
-                  <div className="mt-3 flex flex-col gap-3">
+                  <div className="mt-2 flex flex-col gap-2">
                     {appearances.slice(3).map((a) => (
                       <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
                     ))}
@@ -186,14 +188,14 @@ export default async function BusinessPage({
               )}
             </div>
           ) : (
-            <div className="mt-4 rounded-2xl bg-white p-5">
+            <div className="mt-3 rounded-2xl border border-black/5 bg-black/[0.02] p-4">
               <p className="text-sm text-ink/60">
                 Nothing announced yet. Follow their moves and we&rsquo;ll let you know
                 where to find them next.
               </p>
               <a
                 href="#follow"
-                className="mt-3 inline-block rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+                className="mt-3 inline-block rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
               >
                 Follow Their Moves
               </a>
@@ -203,8 +205,8 @@ export default async function BusinessPage({
 
         {/* E. What You'll Find */}
         {products.length > 0 && (
-          <section className="mt-10">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">
+          <section className="mt-8">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
               What You&rsquo;ll Find
             </h2>
             {/* Mobile: horizontal swipe carousel (a 2-up grid left no room
@@ -222,8 +224,8 @@ export default async function BusinessPage({
 
         {/* F. About */}
         {business.description && (
-          <section className="mt-10">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About</h2>
+          <section className="mt-8">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">About</h2>
             <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink/70">
               {business.description}
             </p>
@@ -232,8 +234,8 @@ export default async function BusinessPage({
 
         {/* G. Gallery */}
         {gallery.length > 0 && (
-          <section className="mt-10">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
+          <section className="mt-8">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">Gallery</h2>
             <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
               {gallery.map((src) => (
                 <div
@@ -248,8 +250,8 @@ export default async function BusinessPage({
         )}
 
         {/* H. Book / Inquire */}
-        <section id="book" className="mt-10 scroll-mt-20 rounded-3xl bg-black/[0.03] p-6 sm:p-8">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
+        <section id="book" className="mt-8 scroll-mt-20 rounded-3xl bg-black/[0.03] p-5 sm:p-6">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
             Book / Inquire
           </h2>
           <p className="mt-2 max-w-xl text-sm text-ink/60">
@@ -261,7 +263,7 @@ export default async function BusinessPage({
               href={inquiryUrl}
               target="_blank"
               rel="noreferrer"
-              className="mt-4 inline-block rounded-full bg-findmi px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+              className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
             >
               Request Availability
             </a>
@@ -274,7 +276,7 @@ export default async function BusinessPage({
           </p>
 
           {alternatives.length > 0 && (
-            <div className="mt-8 border-t border-black/5 pt-6">
+            <div className="mt-6 border-t border-black/5 pt-5">
               <p className="text-sm font-medium text-ink">
                 Not available, or looking for something similar?
               </p>
@@ -288,8 +290,8 @@ export default async function BusinessPage({
         </section>
 
         {/* I. Follow */}
-        <section id="follow" className="mt-10 mb-12 scroll-mt-20">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
+        <section id="follow" className="mt-8 mb-12 scroll-mt-20">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
             Follow Their Moves
           </h2>
           <p className="mt-2 max-w-md text-sm text-ink/60">

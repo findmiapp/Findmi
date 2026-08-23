@@ -56,8 +56,8 @@ export default async function HomePage() {
       {/* Compact opening — the product demonstrates itself, not a marketing
           hero. */}
       <section className="border-b border-black/5 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-6 sm:px-6 sm:py-8">
-          <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6 sm:py-6">
+          <h1 className="font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-3xl">
             What&rsquo;s happening right now?
           </h1>
           <SearchBar />
@@ -219,18 +219,18 @@ export default async function HomePage() {
       )}
 
       {/* Business CTA */}
-      <section className="mx-auto max-w-6xl px-6 py-16">
-        <div className="flex flex-col items-start gap-5 rounded-3xl bg-ink px-8 py-12 text-white sm:px-12">
-          <h2 className="font-display max-w-lg text-2xl font-bold tracking-tight sm:text-3xl">
+      <section className="mx-auto max-w-6xl px-6 py-10">
+        <div className="flex flex-col items-start gap-4 rounded-3xl bg-ink px-6 py-8 text-white sm:px-10 sm:py-9">
+          <h2 className="font-display max-w-lg text-xl font-semibold tracking-tight sm:text-2xl">
             Have something people should find?
           </h2>
-          <p className="max-w-md text-white/70">
+          <p className="max-w-md text-sm text-white/70">
             Give your business one home for what you sell, where you&rsquo;ll be next, and
             how customers can reach you.
           </p>
           <Link
             href="/join"
-            className="rounded-full bg-findmi px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+            className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
           >
             Join FindMi
           </Link>

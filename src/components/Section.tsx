@@ -12,10 +12,10 @@ export default function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="py-8">
-      <div className="mb-4 flex items-end justify-between gap-4 px-4 sm:px-6">
+    <section className="py-6">
+      <div className="mb-3 flex items-end justify-between gap-4 px-4 sm:px-6">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight text-ink">{title}</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
           {subtitle && <p className="mt-1 text-sm text-ink/55">{subtitle}</p>}
         </div>
         {viewAllHref && (
