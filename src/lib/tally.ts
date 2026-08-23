@@ -31,7 +31,33 @@ export function getInquiryFormUrl(
   return `${INQUIRY_BASE}${separator}${params.toString()}`;
 }
 
-/** The vendor onboarding form shown after a successful Founding Membership payment. */
-export function getOnboardingFormUrl(): string {
-  return ONBOARDING_BASE;
+/**
+ * The one vendor onboarding/intake Tally form, used by both membership
+ * paths (see CLAUDE.md's onboarding pass): a paid brand lands here right
+ * after checkout (source=paid), and a founder-invited comped vendor gets
+ * the same URL pre-filled with their own membership_id (source=invited).
+ * membership_id is always required server-side by the intake webhook —
+ * see /api/webhooks/tally — so a submission can never be trusted to
+ * self-report its own plan/payment status.
+ *
+ * Required hidden fields to configure on the Tally form (Settings ->
+ * Hidden fields), matching these param keys exactly: membership_id,
+ * source, existing_business_id, plan.
+ */
+export function getOnboardingFormUrl(membership?: {
+  id: string;
+  source: "paid" | "invited";
+  planSlug?: string | null;
+  existingBusinessId?: string | null;
+}): string {
+  if (!ONBOARDING_BASE) return "";
+  if (!membership) return ONBOARDING_BASE;
+  const params = new URLSearchParams({
+    membership_id: membership.id,
+    source: membership.source,
+    ...(membership.planSlug ? { plan: membership.planSlug } : {}),
+    ...(membership.existingBusinessId ? { existing_business_id: membership.existingBusinessId } : {}),
+  });
+  const separator = ONBOARDING_BASE.includes("?") ? "&" : "?";
+  return `${ONBOARDING_BASE}${separator}${params.toString()}`;
 }

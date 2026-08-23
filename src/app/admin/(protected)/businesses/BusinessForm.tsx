@@ -37,7 +37,7 @@ export default function BusinessForm({
         label="Published"
         name="published"
         defaultChecked={business ? !business.is_demo : true}
-        hint="On = visible to the public. Off = hidden (demo/test only)."
+        hint="On = visible to the public. Off = hidden (demo/test only). A business linked to a membership also needs its onboarding approved (see the Membership section above) — a pending/rejected/paused membership keeps the profile hidden even when this is on."
       />
 
       <div className="grid gap-4 sm:grid-cols-2">

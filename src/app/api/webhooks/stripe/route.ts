@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import Stripe from "stripe";
 import { getStripe } from "@/lib/commerce/stripe";
 import { settleOrder } from "@/lib/commerce/settleOrder";
+import { activateMembership } from "@/lib/commerce/membershipActivation";
 
 // Stripe calls this directly — not gated by /admin's cookie auth, so the
 // Stripe signature itself is the only authentication. Never trust the
@@ -28,6 +29,18 @@ export async function POST(request: NextRequest) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const orderId = session.metadata?.findmi_order_id;
+    const membershipId = session.metadata?.findmi_membership_id;
+
+    // Membership billing (Part 11) is a separate system from marketplace
+    // order checkout — distinguished purely by which metadata key Stripe
+    // echoes back, both verified by the one signature check above.
+    if (membershipId) {
+      const subscriptionId =
+        typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null;
+      const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
+      await activateMembership(membershipId, { subscriptionId, customerId });
+    }
+
     if (orderId) {
       const paymentIntentId =
         typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;

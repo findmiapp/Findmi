@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getOnboardingFormUrl } from "@/lib/tally";
 
 export const metadata: Metadata = {
@@ -7,8 +8,39 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-export default function JoinSuccessPage() {
-  const onboardingUrl = getOnboardingFormUrl();
+export const dynamic = "force-dynamic";
+
+export default async function JoinSuccessPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ membership_id?: string }>;
+}) {
+  const { membership_id } = await searchParams;
+
+  let onboardingUrl = getOnboardingFormUrl();
+  if (membership_id) {
+    const supabase = getAdminSupabase();
+    if (supabase) {
+      const { data: membership } = await supabase
+        .from("memberships")
+        .select("id, billing_status, existing_business_id, plan:membership_plans(slug)")
+        .eq("id", membership_id)
+        .maybeSingle();
+      // Only build the plan-aware, membership-linked onboarding link once
+      // Stripe's webhook has actually confirmed payment (billing_status
+      // flips paid there, never trusted from the client/URL alone) — until
+      // then this quietly falls back to the generic onboarding link below.
+      if (membership && membership.billing_status === "paid") {
+        const plan = Array.isArray(membership.plan) ? membership.plan[0] : membership.plan;
+        onboardingUrl = getOnboardingFormUrl({
+          id: membership.id,
+          source: "paid",
+          planSlug: plan?.slug ?? null,
+          existingBusinessId: membership.existing_business_id,
+        });
+      }
+    }
+  }
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col items-start px-6 py-20 sm:py-28">
@@ -19,7 +51,7 @@ export default function JoinSuccessPage() {
         Welcome to FindMi.
       </h1>
       <p className="mt-4 max-w-md text-lg text-ink/60">
-        Your membership is active. Now give us what we need to build your FindMi profile.
+        Your membership is active. Now let&rsquo;s build your profile.
       </p>
 
       {onboardingUrl ? (

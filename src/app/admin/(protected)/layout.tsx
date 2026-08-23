@@ -4,6 +4,8 @@ import { logout } from "../login/actions";
 const NAV = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/businesses", label: "Businesses" },
+  { href: "/admin/onboarding", label: "Onboarding" },
+  { href: "/admin/plans", label: "Plans" },
   { href: "/admin/events", label: "Events" },
   { href: "/admin/locations", label: "Locations" },
   { href: "/admin/appearances", label: "Appearances" },

@@ -8,6 +8,8 @@ import type {
   FindmiEvent,
   FindmiLocation,
   FulfillmentMethod,
+  Market,
+  MembershipPlan,
   Product,
 } from "./types";
 
@@ -121,6 +123,7 @@ export async function getFeaturedBusinesses(limit = 8): Promise<BusinessWithCate
     .select(BUSINESS_COLUMNS)
     .eq("founding_member", true)
     .eq("is_demo", false)
+    .eq("publication_status", "live")
     .order("created_at", { ascending: false })
     .limit(limit);
   return attachCategories((data as Business[]) ?? []);
@@ -153,7 +156,11 @@ export async function searchBusinesses(params: {
     }
   }
 
-  let query = supabase.from("businesses").select(BUSINESS_COLUMNS).eq("is_demo", false);
+  let query = supabase
+    .from("businesses")
+    .select(BUSINESS_COLUMNS)
+    .eq("is_demo", false)
+    .eq("publication_status", "live");
 
   if (params.q) {
     const term = params.q.trim();
@@ -180,6 +187,7 @@ export async function getBusinessBySlug(slug: string): Promise<BusinessWithCateg
     .select(BUSINESS_COLUMNS)
     .eq("slug", slug)
     .eq("is_demo", false)
+    .eq("publication_status", "live")
     .maybeSingle();
   if (!data) return null;
   const [withCats] = await attachCategories([data as Business]);
@@ -303,8 +311,9 @@ export async function getBusinessesForEvent(eventId: string): Promise<EventBusin
   const rows = ((data ?? []) as Row[])
     .map((row) => {
       const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
-      return business && !(business as Business & { is_demo?: boolean }).is_demo
-        ? { business, featured: row.featured, offering_text: row.offering_text }
+      const b = business as (Business & { is_demo?: boolean }) | null;
+      return b && !b.is_demo && b.publication_status === "live"
+        ? { business: b, featured: row.featured, offering_text: row.offering_text }
         : null;
     })
     .filter((r): r is { business: Business; featured: boolean; offering_text: string | null } => Boolean(r));
@@ -428,6 +437,7 @@ export async function getMobileBusinesses(limit = 8): Promise<BusinessWithCatego
     .select(BUSINESS_COLUMNS)
     .not("service_radius_miles", "is", null)
     .eq("is_demo", false)
+    .eq("publication_status", "live")
     .order("service_radius_miles", { ascending: false })
     .limit(limit);
   return attachCategories((data as Business[]) ?? []);
@@ -442,21 +452,24 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
   if (!supabase) return [];
   const { data } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, is_demo)")
+    .select("*, business:businesses(id, name, slug, is_demo, publication_status)")
     .eq("is_featured", true)
     .eq("is_active", true)
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
-  type JoinedBusiness = FeaturedProduct["business"] & { is_demo: boolean };
+  type JoinedBusiness = FeaturedProduct["business"] & { is_demo: boolean; publication_status: string };
   return ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .filter((item) => item.business && !item.business.is_demo)
+    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
     .slice(0, limit)
-    .map(({ business: { is_demo: _isDemo, ...business }, ...rest }) => ({ ...rest, business }));
+    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
+      ...rest,
+      business,
+    }));
 }
 
 export interface ProductWithBusiness extends Product {
@@ -480,22 +493,24 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   if (!supabase) return null;
   const { data } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, is_demo)")
+    .select(
+      "*, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, is_demo, publication_status)"
+    )
     .eq("slug", slug)
     .eq("is_active", true);
 
-  type JoinedBusiness = ProductWithBusiness["business"] & { is_demo: boolean };
+  type JoinedBusiness = ProductWithBusiness["business"] & { is_demo: boolean; publication_status: string };
   const match = ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
-    .find((item) => item.business && !item.business.is_demo);
+    .find((item) => item.business && !item.business.is_demo && item.business.publication_status === "live");
 
   if (!match) return null;
   const { business, ...rest } = match;
-  const { is_demo: _isDemo, ...cleanBusiness } = business;
+  const { is_demo: _isDemo, publication_status: _pubStatus, ...cleanBusiness } = business;
   return { ...rest, business: cleanBusiness };
 }
 
@@ -580,6 +595,7 @@ export async function getAlternativeBusinesses(
     .select(BUSINESS_COLUMNS)
     .in("id", ids)
     .eq("is_demo", false)
+    .eq("publication_status", "live")
     .eq("state", business.state)
     .limit(limit);
   return attachCategories((data as Business[]) ?? []);
@@ -687,4 +703,32 @@ export async function getUpcomingAtLocation(
   return [...fromEvents, ...fromAppearances]
     .sort((a, b) => a.start_at.localeCompare(b.start_at))
     .slice(0, limit);
+}
+
+// ----------------------------------------------------------------------------
+// Membership plans & markets — public read (see /join). Editable by the
+// founder in /admin/plans; not hardcoded into the page itself.
+// ----------------------------------------------------------------------------
+
+export async function getPublicMembershipPlans(): Promise<MembershipPlan[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("membership_plans")
+    .select("*")
+    .eq("active", true)
+    .eq("publicly_available", true)
+    .order("sort_order");
+  return data ?? [];
+}
+
+export async function getActiveMarkets(): Promise<Market[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("markets")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order");
+  return data ?? [];
 }

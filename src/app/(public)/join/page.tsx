@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getActiveMarkets, getPublicMembershipPlans } from "@/lib/data";
+import PlanCheckoutForm from "./PlanCheckoutForm";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Join FindMi",
@@ -31,8 +35,13 @@ const audience = [
   "Pop-ups",
 ];
 
-export default function JoinPage() {
-  const stripeLink = process.env.NEXT_PUBLIC_STRIPE_FOUNDING_LINK ?? "";
+export default async function JoinPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; plan?: string; cancelled?: string }>;
+}) {
+  const { error, plan: planParam, cancelled } = await searchParams;
+  const [plans, markets] = await Promise.all([getPublicMembershipPlans(), getActiveMarkets()]);
 
   return (
     <div>
@@ -48,53 +57,44 @@ export default function JoinPage() {
           </p>
         </div>
 
-        <div className="mt-12 grid gap-8 rounded-3xl border border-black/10 bg-white p-8 sm:p-10 md:grid-cols-[1fr,auto] md:items-start">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-wide text-ink">
-              FindMi Founding 500
-            </p>
-            <p className="mt-2 flex items-baseline gap-1">
-              <span className="font-display text-4xl font-bold tracking-tight text-ink">$99</span>
-              <span className="text-ink/50">/year</span>
-            </p>
-            <p className="mt-1 text-sm text-ink/50">
-              About $8.25/month, billed annually. Founding pricing retained while your membership
-              stays continuously active.
-            </p>
+        <div id="plans" className="mt-12 rounded-3xl border border-black/10 bg-white p-8 sm:p-10">
+          <p className="text-sm font-bold uppercase tracking-wide text-ink">
+            Join FindMi
+          </p>
+          <p className="mt-1 text-sm text-ink/50">
+            Founding 500 is FindMi&rsquo;s launch plan — $99/year, the obvious place to start.
+            Growing past one market? Pro and Multi-Region are right here too.
+          </p>
 
-            <ul className="mt-8 grid gap-3 sm:grid-cols-2">
-              {features.map((f) => (
-                <li key={f} className="flex items-start gap-2 text-sm text-ink/75">
-                  <CheckGlyph />
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </p>
+          )}
+          {cancelled && !error && (
+            <p className="mt-4 rounded-xl border border-black/10 bg-mist/40 px-4 py-3 text-sm text-ink/60">
+              Checkout was cancelled — no charge was made.
+            </p>
+          )}
 
-          <div className="flex flex-col gap-3 md:w-56">
-            {stripeLink ? (
-              <a
-                href={stripeLink}
-                className="rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              >
-                Join the Founding 500 — $99/year
-              </a>
-            ) : (
-              <button
-                disabled
-                className="rounded-full bg-ink/20 px-6 py-3.5 text-center text-sm font-semibold text-white/70"
-              >
-                Join the Founding 500 — $99/year
-              </button>
-            )}
-            <p className="text-center text-xs text-ink/40">
-              Secure checkout via Stripe. Cancel anytime.
+          <ul className="mt-8 grid gap-3 sm:grid-cols-2">
+            {features.map((f) => (
+              <li key={f} className="flex items-start gap-2 text-sm text-ink/75">
+                <CheckGlyph />
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+
+          {plans.length > 0 && markets.length > 0 ? (
+            <div className="mt-8 border-t border-black/5 pt-8">
+              <PlanCheckoutForm plans={plans} markets={markets} defaultPlanSlug={planParam} />
+            </div>
+          ) : (
+            <p className="mt-8 text-sm text-ink/50">
+              Joining isn&rsquo;t open yet — check back shortly.
             </p>
-            <p className="text-center text-xs text-ink/40">
-              We&rsquo;ll help you build your first FindMi profile after you join.
-            </p>
-          </div>
+          )}
         </div>
       </div>
 
@@ -179,21 +179,12 @@ export default function JoinPage() {
             Show people what you sell. Tell them where you&rsquo;ll be. Give them one place to
             keep up with you.
           </p>
-          {stripeLink ? (
-            <a
-              href={stripeLink}
-              className="rounded-full bg-findmi px-6 py-3 text-center text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-            >
-              Join the Founding 500 — $99/year
-            </a>
-          ) : (
-            <button
-              disabled
-              className="rounded-full bg-white/20 px-6 py-3 text-center text-xs font-semibold text-white/70"
-            >
-              Join the Founding 500 — $99/year
-            </button>
-          )}
+          <a
+            href="#plans"
+            className="rounded-full bg-findmi px-6 py-3 text-center text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Join the Founding 500 — $99/year
+          </a>
         </div>
       </div>
     </div>

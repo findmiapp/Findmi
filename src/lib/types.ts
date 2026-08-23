@@ -13,6 +13,14 @@ export type ProcessingFeePayer = "vendor" | "customer";
 export type PayoutMethod = "manual" | "stripe_connect_future";
 export type FulfillmentMethod = "shipping" | "local_delivery" | "pickup" | "event_pickup";
 
+// Membership / onboarding — see lib/admin/membership-queries.ts. Kept as
+// three separate statuses on purpose: a paid membership can be
+// onboarding-incomplete and still non-public (publication_status stays
+// draft/pending_review until founder approval).
+export type BillingStatus = "comped" | "pending_payment" | "paid" | "past_due" | "cancelled";
+export type OnboardingStatus = "not_started" | "incomplete" | "submitted" | "approved";
+export type PublicationStatus = "draft" | "pending_review" | "live" | "paused" | "rejected";
+
 export interface Business {
   id: string;
   slug: string;
@@ -46,6 +54,57 @@ export interface Business {
   payout_method: PayoutMethod;
   stripe_account_id: string | null;
   stripe_connect_status: string | null;
+  // Publication gate — separate from is_demo (which hides seed/test
+  // content). A real business created via membership onboarding stays
+  // non-public until a founder approves it, regardless of payment status.
+  publication_status: PublicationStatus;
+}
+
+export interface Market {
+  id: string;
+  name: string;
+  slug: string;
+  active: boolean;
+  sort_order: number;
+}
+
+export interface MembershipPlan {
+  id: string;
+  name: string;
+  slug: string;
+  annual_price: number;
+  active: boolean;
+  publicly_available: boolean;
+  market_limit: number | null; // null = unlimited
+  description: string | null;
+  sort_order: number;
+  featured_placement_eligible: boolean;
+  enhanced_profile: boolean;
+  campaign_eligible: boolean;
+}
+
+export interface Membership {
+  id: string;
+  business_id: string | null;
+  plan_id: string | null;
+  billing_status: BillingStatus;
+  onboarding_status: OnboardingStatus;
+  publication_status: PublicationStatus;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  intended_business_name: string | null;
+  existing_business_id: string | null;
+  started_at: string | null;
+  renews_at: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_checkout_session_id: string | null;
+  founding_price_locked: boolean;
+  admin_notes: string | null;
+  invite_token: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Category {
