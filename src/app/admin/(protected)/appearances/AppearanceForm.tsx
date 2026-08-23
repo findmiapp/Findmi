@@ -1,0 +1,111 @@
+import { CheckboxField, DateTimeField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
+import SubmitBar from "@/components/admin/SubmitBar";
+import DeleteButton from "@/components/admin/DeleteButton";
+import type { AdminAppearance, SelectOption } from "@/lib/admin/queries";
+import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
+import { saveAppearance, deleteAppearance } from "./actions";
+
+export default function AppearanceForm({
+  appearance,
+  businessOptions,
+  eventOptions,
+  error,
+}: {
+  appearance: AdminAppearance | null;
+  businessOptions: SelectOption[];
+  eventOptions: SelectOption[];
+  error?: string;
+}) {
+  const action = saveAppearance.bind(null, appearance?.id ?? null);
+
+  return (
+    <div className="flex flex-col gap-5">
+      <form action={action} className="flex flex-col gap-5">
+        {error && (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
+        <SelectField
+          label="Appearing Business"
+          name="business_id"
+          defaultValue={appearance?.business_id}
+          options={[
+            { value: "", label: "Choose a business…" },
+            ...businessOptions.map((o) => ({ value: o.value, label: `${o.label}${o.sublabel ? ` (${o.sublabel})` : ""}` })),
+          ]}
+          hint="Which business is appearing."
+        />
+
+        <SelectField
+          label="Related FindMi Event"
+          name="event_id"
+          defaultValue={appearance?.event_id ?? ""}
+          options={[
+            { value: "", label: "None — link to Google Maps directions instead" },
+            ...eventOptions.map((o) => ({ value: o.value, label: `${o.label}${o.sublabel ? ` (${o.sublabel})` : ""}` })),
+          ]}
+          hint="If set, the public appearance card links to this FindMi event page instead of Maps."
+        />
+
+        <TextField
+          label="Appearance Title"
+          name="title"
+          defaultValue={appearance?.title}
+          required
+          hint="What shows on the card — e.g. 'Minthorne Market'."
+        />
+        <TextareaField label="Notes" name="description" defaultValue={appearance?.description} rows={3} />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <DateTimeField
+            label="Start Date & Time"
+            name="start_at"
+            defaultValue={isoToLocalDateTime(appearance?.start_at ?? null)}
+            required
+            hint="Eastern time (America/New_York)."
+          />
+          <DateTimeField
+            label="End Date & Time"
+            name="end_at"
+            defaultValue={isoToLocalDateTime(appearance?.end_at ?? null)}
+            hint="Optional. Also Eastern time."
+          />
+        </div>
+
+        <TextField label="Venue Name" name="venue_name" defaultValue={appearance?.venue_name} />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <TextField label="Address" name="address" defaultValue={appearance?.address} />
+          <TextField label="City" name="city" defaultValue={appearance?.city} />
+          <TextField label="State" name="state" defaultValue={appearance?.state} />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Status"
+            name="status"
+            defaultValue={appearance?.status ?? "confirmed"}
+            options={[
+              { value: "confirmed", label: "Confirmed" },
+              { value: "tentative", label: "Tentative" },
+              { value: "canceled", label: "Canceled (hidden from the public)" },
+            ]}
+          />
+          <CheckboxField label="Featured" name="is_featured" defaultChecked={appearance?.is_featured} />
+        </div>
+
+        <SubmitBar cancelHref="/admin/appearances" />
+      </form>
+
+      {appearance && (
+        <div className="border-t border-black/5 pt-5">
+          <DeleteButton
+            action={deleteAppearance.bind(null, appearance.id)}
+            confirmMessage={`Delete "${appearance.title}"? This can't be undone.`}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

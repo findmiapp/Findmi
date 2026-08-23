@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
-import NavDesktop from "@/components/NavDesktop";
-import NavMobile from "@/components/NavMobile";
-import MobileHeader from "@/components/MobileHeader";
-import Footer from "@/components/Footer";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
@@ -30,6 +26,12 @@ export const metadata: Metadata = {
   },
 };
 
+// Deliberately minimal — html/body/fonts/metadata only. The consumer
+// header/nav/footer chrome lives in (public)/layout.tsx, not here, so
+// /admin (a sibling top-level segment, not inside the (public) group)
+// doesn't inherit it. Keeping this file free of cookies()/headers() calls
+// also matters: either would force every route in the app dynamic, since
+// this layout wraps literally everything.
 export default function RootLayout({
   children,
 }: {
@@ -38,14 +40,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
       <body className="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
-        <MobileHeader />
-        <NavDesktop />
-        {/* No bottom padding here: Footer (always the next element) carries
-            its own nav-clearance padding, so double-padding this div only
-            produced a dead gap between content and the footer. */}
-        <div className="flex-1 pt-14 md:pt-0">{children}</div>
-        <Footer />
-        <NavMobile />
+        {children}
       </body>
     </html>
   );
