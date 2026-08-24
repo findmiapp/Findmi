@@ -1,9 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 import type { Market, MembershipPlan } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
 import { startMembershipCheckout } from "./actions";
+
+/** useFormStatus only reports pending state from inside the <form>, so the
+ * submit button has to be its own component. Gives the click immediate
+ * feedback while startMembershipCheckout does its (now-parallelized)
+ * server-side work, rather than the button looking inert. */
+function SubmitButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-70"
+    >
+      {pending ? "Redirecting to Stripe…" : label}
+    </button>
+  );
+}
 
 export default function PlanCheckoutForm({
   plans,
@@ -124,12 +142,7 @@ export default function PlanCheckoutForm({
         </p>
       </div>
 
-      <button
-        type="submit"
-        className="rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-      >
-        Continue to Payment — {formatCurrency(plan.annual_price)}/year
-      </button>
+      <SubmitButton label={`Continue to Payment — ${formatCurrency(plan.annual_price)}/year`} />
       <p className="text-center text-xs text-ink/40">Secure checkout via Stripe. Cancel anytime.</p>
     </form>
   );

@@ -5,7 +5,16 @@
  */
 
 const INQUIRY_BASE = process.env.NEXT_PUBLIC_TALLY_INQUIRY_URL ?? "";
-const ONBOARDING_BASE = process.env.NEXT_PUBLIC_TALLY_ONBOARDING_URL ?? "";
+
+// .env.example ships NEXT_PUBLIC_TALLY_ONBOARDING_URL with this exact
+// placeholder value. If a deployment goes live without ever replacing it,
+// treat it identically to "unset" rather than sending a paying customer to
+// a Tally form that doesn't exist (see /join/success's safe fallback).
+const ONBOARDING_PLACEHOLDER = "https://tally.so/r/your-onboarding-form-id";
+const ONBOARDING_BASE = ((): string => {
+  const raw = (process.env.NEXT_PUBLIC_TALLY_ONBOARDING_URL ?? "").trim();
+  return raw === ONBOARDING_PLACEHOLDER ? "" : raw;
+})();
 
 /**
  * Builds the consumer "Book / Inquire" Tally URL for a specific business,
