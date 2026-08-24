@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CheckboxField, TextField, TextareaField } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import { getAdminSiteSections } from "@/lib/admin/site-queries";
@@ -18,9 +19,19 @@ export default async function HomepageSiteEditorPage({
     .filter(([, def]) => def.orderable === false)
     .map(([key]) => key);
 
-  const orderedKeys = [...HOMEPAGE_ORDERABLE_KEYS].sort(
-    (a, b) => resolveSection(overrides, a, HOMEPAGE_SECTIONS[a]).order - resolveSection(overrides, b, HOMEPAGE_SECTIONS[b]).order
-  );
+  // Featured Brands, Shop Local, and the Business Showcase are no longer
+  // rendered from site_sections — the public homepage now builds those as
+  // Homepage Rows instead (see the link above), so editing these three
+  // keys here would silently do nothing. Excluded rather than left as a
+  // dead control; no data is deleted, the site_sections rows just stop
+  // being read for these keys (page.tsx no longer calls resolveSection on
+  // them either).
+  const rowDrivenKeys = new Set(["business_doorway", "shop_findmi", "featured_brands"]);
+  const orderedKeys = [...HOMEPAGE_ORDERABLE_KEYS]
+    .filter((key) => !rowDrivenKeys.has(key))
+    .sort(
+      (a, b) => resolveSection(overrides, a, HOMEPAGE_SECTIONS[a]).order - resolveSection(overrides, b, HOMEPAGE_SECTIONS[b]).order
+    );
 
   return (
     <div>
@@ -37,6 +48,20 @@ export default async function HomepageSiteEditorPage({
           Saved &ldquo;{HOMEPAGE_SECTIONS[saved]?.label ?? saved}&rdquo;.
         </p>
       )}
+
+      <Link
+        href="/admin/site/homepage/rows"
+        className="mt-5 flex items-center justify-between rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-3.5 transition hover:border-findmi/50"
+      >
+        <span>
+          <span className="block text-sm font-semibold text-findmi-700">Homepage Rows</span>
+          <span className="block text-xs text-ink/50">
+            Add, reorder, hide, or delete discovery rows (Businesses, Events, Products, or the Business
+            Showcase) — no code change needed.
+          </span>
+        </span>
+        <span className="shrink-0 text-findmi-700">→</span>
+      </Link>
 
       <p className="mt-6 text-xs font-bold uppercase tracking-wide text-ink/40">Masthead — always first</p>
       <div className="mt-2 flex flex-col gap-3">

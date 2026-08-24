@@ -102,6 +102,11 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     imageSlots: 3,
     orderable: false,
   },
+  // business_doorway: SUPERSEDED (2026 feed-builder pass) — the Business
+  // Showcase is now a founder-managed Homepage Row
+  // (content_type: "business_showcase"), hideable/reorderable there
+  // instead of pinned at a fixed site_sections position. Registry entry
+  // kept (harmless, unread) rather than deleted.
   business_doorway: {
     // Repurposed (2026 discovery-marketplace redesign) as the homepage's
     // Business Showcase — a compact swipeable carousel demonstrating real
@@ -129,16 +134,23 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     fields: ["eyebrow"],
   },
   featured_events: {
-    // Repurposed as "Upcoming Near You", the homepage's first live feed —
-    // same underlying upcoming-events concept as before, new copy/position.
+    // Homepage's first live feed. Heading is exactly "Upcoming Events Near
+    // You" per the 2026 feed-builder pass — the primary time filter
+    // (Up Next/Today/This Weekend/All Events) and secondary category chips
+    // live in HomeEventDiscovery, not here.
     label: "Featured Events",
-    heading: "Upcoming Near You",
+    heading: "Upcoming Events Near You",
     body: "Markets, pop-ups, and festivals coming up",
     ctaLabel: "View all",
     ctaUrl: "/events",
     order: 20,
     fields: ["heading", "body", "cta"],
   },
+  // shop_findmi: SUPERSEDED (2026 feed-builder pass) — Shop Local is now a
+  // founder-managed Homepage Row (content_type: "products"), not a fixed
+  // site_sections entry. Kept in the registry (harmless, unread by
+  // page.tsx/the admin editor) rather than deleted, since deleting a
+  // registry key isn't a data operation this pass needs to make.
   shop_findmi: {
     label: "Shop FindMi",
     heading: "Shop Local",
@@ -160,6 +172,10 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     order: 40,
     fields: ["heading", "body", "cta"],
   },
+  // featured_brands: SUPERSEDED (2026 feed-builder pass) — Featured Brands
+  // is now a founder-managed Homepage Row (content_type: "businesses"),
+  // not a fixed site_sections entry. Registry entry kept (harmless,
+  // unread) rather than deleted.
   featured_brands: {
     label: "Featured Brands",
     heading: "Featured Brands",
@@ -225,17 +241,18 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   },
 };
 
-// KNOWN LIMITATION (see the 2026 discovery-marketplace redesign's report):
-// page.tsx now renders the homepage's top funnel — hero through Featured
-// Brands, Business Showcase, Shop Local — in a fixed sequence mandated by
-// that redesign, not by reading each section's resolved `order`. Move
-// Up/Down in /admin/site/homepage still writes sort_order correctly and
-// still reorders sections that don't have a fixed position (Explore By
-// Category, Popular Locations, etc.), but for the fixed-position sections
-// it has no visible effect on the public page. This is a disclosed
-// tradeoff, not a bug — copy/CTA/image edits on every section below still
-// apply live; only drag-style position control is currently limited for
-// the top funnel.
+// KNOWN LIMITATION (updated — 2026 feed-builder pass): the homepage's
+// structural funnel (Hero, Search, Category pills, "Upcoming Events Near
+// You") still renders in a fixed sequence, not by reading `order` — that
+// part is intentionally protected (see the feed-builder report). What
+// used to also be fixed here — Featured Brands, Business Showcase, Shop
+// Local — is no longer part of this limitation at all: those are now
+// founder-managed Homepage Rows (see lib/homepage-rows.ts and
+// /admin/site/homepage/rows), fully reorderable/hideable/deletable, along
+// with any new row the founder adds. Explore By Category and the closing
+// CTA remain fixed-position site_sections entries below the row list;
+// Move Up/Down here still has no visible effect on those two specifically
+// (same disclosed tradeoff as before, just a smaller surface now).
 export const HOMEPAGE_ORDERABLE_KEYS = Object.entries(HOMEPAGE_SECTIONS)
   .filter(([, def]) => def.orderable !== false)
   .map(([key]) => key);

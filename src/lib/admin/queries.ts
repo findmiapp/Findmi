@@ -445,3 +445,39 @@ export async function isProductSlugTaken(slug: string, excludeId?: string): Prom
   const { data } = await query;
   return (data?.length ?? 0) > 0;
 }
+
+export interface CuratedItemPreview extends SelectOption {
+  image_url?: string | null;
+}
+
+/** Label/image lookup for a Homepage Row's already-chosen curated_ids — same
+ * result shape as /admin/api/search's per-entity results, but keyed by id
+ * list (order preserved by the caller) instead of a text search, so the
+ * founder's picker can show real names/thumbnails for a row's existing
+ * picks on page load, not raw ids. */
+export async function getCuratedItemPreviews(
+  contentType: "businesses" | "events" | "products",
+  ids: string[]
+): Promise<CuratedItemPreview[]> {
+  const supabase = getAdminSupabase();
+  if (!supabase || ids.length === 0) return [];
+
+  if (contentType === "businesses") {
+    const { data } = await supabase.from("businesses").select("id, name, city, state, logo_url").in("id", ids);
+    return (data ?? []).map((b) => ({
+      value: b.id,
+      label: b.name,
+      sublabel: [b.city, b.state].filter(Boolean).join(", ") || undefined,
+      image_url: b.logo_url,
+    }));
+  }
+  if (contentType === "events") {
+    const { data } = await supabase.from("events").select("id, name, venue_name").in("id", ids);
+    return (data ?? []).map((e) => ({ value: e.id, label: e.name, sublabel: e.venue_name ?? undefined }));
+  }
+  const { data } = await supabase.from("products").select("id, name, image_url, business:businesses(name)").in("id", ids);
+  return (data ?? []).map((p) => {
+    const business = Array.isArray(p.business) ? p.business[0] : p.business;
+    return { value: p.id, label: p.name, sublabel: business?.name, image_url: p.image_url };
+  });
+}

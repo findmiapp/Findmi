@@ -157,6 +157,102 @@ export async function getFeaturedBusinesses(limit = 8): Promise<BusinessWithCate
   return attachCategories((data as Business[]) ?? []);
 }
 
+export interface HomepageRowBusinessParams {
+  categorySlug?: string;
+  featuredOnly?: boolean;
+  limit?: number;
+}
+
+/** Dynamic-mode businesses feed for a founder-configured homepage row
+ * (see lib/homepage-rows.ts) — same category/is_featured/is_demo/
+ * publication_status shape as every other business query, just with both
+ * filters optional and combinable, since a row's filters are chosen at
+ * edit time rather than hardcoded per caller. */
+export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams = {}): Promise<BusinessWithCategories[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  let categoryBusinessIds: string[] | null = null;
+  if (params.categorySlug) {
+    const { data: cat } = await supabase.from("categories").select("id").eq("slug", params.categorySlug).maybeSingle();
+    if (!cat) return [];
+    const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
+    categoryBusinessIds = (links ?? []).map((l) => l.business_id);
+    if (categoryBusinessIds.length === 0) return [];
+  }
+
+  let query = supabase.from("businesses").select(BUSINESS_COLUMNS).eq("is_demo", false).eq("publication_status", "live");
+  if (categoryBusinessIds) query = query.in("id", categoryBusinessIds);
+  if (params.featuredOnly) query = query.eq("is_featured", true);
+
+  const { data } = await query
+    .order("is_featured", { ascending: false })
+    .order("founding_member", { ascending: false })
+    .order("name")
+    .limit(params.limit ?? 8);
+  return attachCategories((data as Business[]) ?? []);
+}
+
+/** Curated-mode fetch for any of the three homepage-row content types —
+ * .in("id", ids) doesn't preserve order, so each reorders its result to
+ * match the founder's chosen curated_ids sequence. Rows for ids that no
+ * longer exist/aren't publicly visible are silently dropped rather than
+ * erroring — a deleted/unpublished record just drops out of the row. */
+export async function getBusinessesByIds(ids: string[]): Promise<BusinessWithCategories[]> {
+  const supabase = getSupabase();
+  if (!supabase || ids.length === 0) return [];
+  const { data } = await supabase
+    .from("businesses")
+    .select(BUSINESS_COLUMNS)
+    .in("id", ids)
+    .eq("is_demo", false)
+    .eq("publication_status", "live");
+  const withCats = await attachCategories((data as Business[]) ?? []);
+  return reorderByIds(withCats, ids);
+}
+
+export async function getEventsByIds(ids: string[]): Promise<FindmiEvent[]> {
+  const supabase = getSupabase();
+  if (!supabase || ids.length === 0) return [];
+  const { data } = await supabase.from("events").select("*").in("id", ids).eq("is_demo", false);
+  return reorderByIds((data as FindmiEvent[]) ?? [], ids);
+}
+
+export async function getProductsByIds(ids: string[]): Promise<FeaturedProduct[]> {
+  const supabase = getSupabase();
+  if (!supabase || ids.length === 0) return [];
+  const { data } = await supabase
+    .from("products")
+    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
+    .in("id", ids)
+    .eq("is_active", true);
+
+  type JoinedBusiness = Omit<FeaturedProduct["business"], "categoryName"> & {
+    is_demo: boolean;
+    publication_status: string;
+  };
+  const rows = ((data ?? []) as never[])
+    .map((row: unknown) => {
+      const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
+      const business = Array.isArray(r.business) ? r.business[0] : r.business;
+      return { ...r, business };
+    })
+    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live");
+
+  const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
+  const categoryByBusiness = businessIds.length ? await getPrimaryCategoryByBusiness(supabase, businessIds) : new Map();
+  const withCategory = rows.map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
+    ...rest,
+    business: { ...business, categoryName: categoryByBusiness.get(business.id) ?? null },
+  }));
+  return reorderByIds(withCategory, ids);
+}
+
+function reorderByIds<T extends { id: string }>(items: T[], ids: string[]): T[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  return ids.map((id) => byId.get(id)).filter((item): item is T => Boolean(item));
+}
+
 export async function searchBusinesses(params: {
   q?: string;
   categorySlug?: string;
@@ -790,6 +886,7 @@ export interface MarketplaceProduct extends Product {
 export interface MarketplaceProductParams {
   q?: string;
   categorySlug?: string;
+  featuredOnly?: boolean;
   limit?: number;
 }
 
@@ -821,6 +918,7 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
     query = query.or(`name.ilike.${term},description.ilike.${term}`);
   }
   if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
+  if (params.featuredOnly) query = query.eq("is_featured", true);
 
   const { data } = await query
     .order("is_featured", { ascending: false })
@@ -841,6 +939,64 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
       ...rest,
       business,
     }));
+}
+
+/** Dynamic-mode products feed for a founder-configured homepage row (see
+ * lib/homepage-rows.ts) — same shape/columns as getMarketplaceProducts,
+ * but also attaches each selling business's primary category (like
+ * getFeaturedProducts) so a row's cards can show a real category badge
+ * instead of nothing, when one exists. */
+export async function getHomepageRowProducts(params: MarketplaceProductParams = {}): Promise<FeaturedProduct[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  let categoryBusinessIds: string[] | null = null;
+  if (params.categorySlug) {
+    const { data: cat } = await supabase.from("categories").select("id").eq("slug", params.categorySlug).maybeSingle();
+    if (!cat) return [];
+    const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
+    categoryBusinessIds = (links ?? []).map((l) => l.business_id);
+    if (categoryBusinessIds.length === 0) return [];
+  }
+
+  const limit = params.limit ?? 8;
+  let query = supabase
+    .from("products")
+    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
+    .eq("is_active", true);
+  if (params.q) {
+    const term = `%${params.q.trim()}%`;
+    query = query.or(`name.ilike.${term},description.ilike.${term}`);
+  }
+  if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
+  if (params.featuredOnly) query = query.eq("is_featured", true);
+
+  const { data } = await query
+    .order("is_featured", { ascending: false })
+    .order("home_sort_order", { ascending: true, nullsFirst: false })
+    .order("name")
+    .limit(limit * 2); // over-fetch since some may be filtered out as demo
+
+  type JoinedBusiness = Omit<FeaturedProduct["business"], "categoryName"> & {
+    is_demo: boolean;
+    publication_status: string;
+  };
+  const rows = ((data ?? []) as never[])
+    .map((row: unknown) => {
+      const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
+      const business = Array.isArray(r.business) ? r.business[0] : r.business;
+      return { ...r, business };
+    })
+    .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
+    .slice(0, limit);
+
+  const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
+  const categoryByBusiness = businessIds.length ? await getPrimaryCategoryByBusiness(supabase, businessIds) : new Map();
+
+  return rows.map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
+    ...rest,
+    business: { ...business, categoryName: categoryByBusiness.get(business.id) ?? null },
+  }));
 }
 
 /** Other founding-member businesses sharing at least one category — used to
