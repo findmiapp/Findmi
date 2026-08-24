@@ -1,4 +1,5 @@
 import Link from "next/link";
+import OnboardingCta from "./OnboardingCta";
 
 export interface OnboardingLink {
   url: string;
@@ -23,21 +24,16 @@ export function SuccessPanel({ onboarding }: { onboarding: OnboardingLink | null
       </p>
 
       {onboarding ? (
-        // Launch hotfix: bypass FormAction/iframe-embed entirely for this
-        // CTA — a shared FormAction/Tally-embed top-navigation issue kept
-        // sending paid members to a stray internal 404 (see incident
-        // history). A plain external anchor to the Form Manager–resolved
-        // absolute Tally URL can't reproduce that failure mode: there's no
-        // iframe, no internal route, nothing but a normal new-tab link.
-        // display_mode is intentionally ignored here — always external.
-        <a
-          href={onboarding.url}
-          target="_blank"
-          rel="noopener noreferrer"
+        // OnboardingCta (this page only, not shared with FormAction) reads
+        // display_mode: "external" opens the resolved absolute Tally URL
+        // in a new tab; "embed" opens it inside a FindMi modal/drawer
+        // using Tally's own supported widget script — see OnboardingCta.tsx
+        // for why a bare iframe isn't used.
+        <OnboardingCta
+          url={onboarding.url}
+          displayMode={onboarding.displayMode}
           className="mt-8 rounded-full bg-findmi px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-        >
-          Build My Profile
-        </a>
+        />
       ) : (
         <p className="mt-8 text-sm text-ink/50">
           Onboarding form coming shortly — we&rsquo;ll be in touch by email.
