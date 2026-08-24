@@ -30,12 +30,15 @@ export async function GET(request: NextRequest) {
   if (membership.billing_status !== "paid") return NextResponse.json({ status: "pending" });
 
   const plan = Array.isArray(membership.plan) ? membership.plan[0] : membership.plan;
-  const onboarding = await resolveOnboardingForm({
-    id: membership.id,
-    source: "paid",
-    planSlug: plan?.slug ?? null,
-    existingBusinessId: membership.existing_business_id,
-  });
+  const onboarding = await resolveOnboardingForm(
+    {
+      id: membership.id,
+      source: "paid",
+      planSlug: plan?.slug ?? null,
+      existingBusinessId: membership.existing_business_id,
+    },
+    "poll"
+  );
 
   return NextResponse.json({
     status: "paid",

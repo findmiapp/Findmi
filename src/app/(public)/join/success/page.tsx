@@ -35,12 +35,15 @@ export default async function JoinSuccessPage({
   // lib/commerce/membershipActivation.ts.
   if (membership.billing_status === "paid") {
     const plan = Array.isArray(membership.plan) ? membership.plan[0] : membership.plan;
-    const onboardingForm = await resolveOnboardingForm({
-      id: membership.id,
-      source: "paid",
-      planSlug: plan?.slug ?? null,
-      existingBusinessId: membership.existing_business_id,
-    });
+    const onboardingForm = await resolveOnboardingForm(
+      {
+        id: membership.id,
+        source: "paid",
+        planSlug: plan?.slug ?? null,
+        existingBusinessId: membership.existing_business_id,
+      },
+      "ssr"
+    );
     return (
       <SuccessPanel
         onboarding={onboardingForm ? { url: onboardingForm.url, displayMode: onboardingForm.displayMode } : null}

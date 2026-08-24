@@ -204,15 +204,33 @@ function isAbsoluteHttpUrl(value: string): boolean {
   }
 }
 
+/** Hostname only, for diagnostics — never logs the full URL (which carries
+ * membership_id) or a value that fails to parse as a URL at all (which is
+ * exactly the failure case this is watching for, so it must never echo
+ * that raw value into logs either, in case it's a credential). */
+function safeHostname(value: string): string | null {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Vendor onboarding — global only (no per-business/event assignment; see
  * CLAUDE.md's onboarding pass). Falls back to the existing
  * NEXT_PUBLIC_TALLY_ONBOARDING_URL env var — membership/payment/
  * publication logic and the intake webhook's server-side validation are
  * completely unchanged by this; this only selects which URL opens.
+ *
+ * `context` is a log label only ("ssr" | "poll", see /join/success's two
+ * callers) — it changes nothing about resolution, it just lets a
+ * diagnostic line be traced back to which of the two paid-success code
+ * paths produced it.
  */
 export async function resolveOnboardingForm(
-  membership?: Parameters<typeof getOnboardingFormUrl>[0]
+  membership?: Parameters<typeof getOnboardingFormUrl>[0],
+  context = "unknown"
 ): Promise<ResolvedForm | null> {
   const supabase = getSupabase();
 
@@ -228,20 +246,43 @@ export async function resolveOnboardingForm(
           }
         : {};
       const resolved = toResolvedForm(form, params);
-      if (isAbsoluteHttpUrl(resolved.url)) return resolved;
+      const ok = isAbsoluteHttpUrl(resolved.url);
+      console.log("[resolveOnboardingForm]", {
+        context,
+        branch: "DB_FORM",
+        formId: form.id,
+        formSlug: form.slug,
+        formUrlHost: safeHostname(form.form_url),
+        resolvedHost: ok ? safeHostname(resolved.url) : null,
+        absolute: ok,
+        hrefLength: resolved.url.length,
+      });
+      if (ok) return resolved;
       console.error(
         "[resolveOnboardingForm] Form Manager vendor_onboarding row resolved to a non-absolute URL — refusing to render it",
-        { formId: form.id }
+        { context, formId: form.id }
       );
       return null;
     }
   }
 
   const envUrl = getOnboardingFormUrl(membership);
-  if (!envUrl) return null;
-  if (!isAbsoluteHttpUrl(envUrl)) {
+  if (!envUrl) {
+    console.log("[resolveOnboardingForm]", { context, branch: "NONE" });
+    return null;
+  }
+  const ok = isAbsoluteHttpUrl(envUrl);
+  console.log("[resolveOnboardingForm]", {
+    context,
+    branch: "ENV_FALLBACK",
+    resolvedHost: ok ? safeHostname(envUrl) : null,
+    absolute: ok,
+    hrefLength: envUrl.length,
+  });
+  if (!ok) {
     console.error(
-      "[resolveOnboardingForm] NEXT_PUBLIC_TALLY_ONBOARDING_URL resolved to a non-absolute URL — refusing to render it"
+      "[resolveOnboardingForm] NEXT_PUBLIC_TALLY_ONBOARDING_URL resolved to a non-absolute URL — refusing to render it",
+      { context }
     );
     return null;
   }
