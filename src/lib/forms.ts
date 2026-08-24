@@ -69,14 +69,43 @@ async function getAssignedForm(
   return form ?? null;
 }
 
-async function getDefaultForm(supabase: Supabase, purpose: FormPurpose): Promise<FindmiForm | null> {
-  const { data } = await supabase
+/** `diagContext` is a log label only ("ssr" | "poll") — when present, this
+ * reports (safely) which of four things actually happened: a matching row
+ * was found, the query legitimately found zero rows, Postgres/PostgREST
+ * returned an error (RLS denial, bad auth, multiple-row .maybeSingle()
+ * conflict, etc.), or — the one this was written to stop hiding — the
+ * query previously destructured only `{ data }` and silently discarded
+ * `error`, so a permission/auth failure looked identical to "no row
+ * configured." Never logs the row's own contents beyond its id. */
+async function getDefaultForm(
+  supabase: Supabase,
+  purpose: FormPurpose,
+  diagContext?: string
+): Promise<FindmiForm | null> {
+  const { data, error } = await supabase
     .from("forms")
     .select("*")
     .eq("purpose", purpose)
     .eq("is_default", true)
     .eq("is_active", true)
     .maybeSingle();
+
+  if (diagContext) {
+    if (error) {
+      console.error("[getDefaultForm]", {
+        context: diagContext,
+        purpose,
+        result: "QUERY_ERROR",
+        errorCode: error.code ?? null,
+        errorMessage: error.message ?? null,
+      });
+    } else if (!data) {
+      console.log("[getDefaultForm]", { context: diagContext, purpose, result: "ZERO_ROWS" });
+    } else {
+      console.log("[getDefaultForm]", { context: diagContext, purpose, result: "ROW_FOUND", formId: data.id });
+    }
+  }
+
   return data ?? null;
 }
 
@@ -234,8 +263,23 @@ export async function resolveOnboardingForm(
 ): Promise<ResolvedForm | null> {
   const supabase = getSupabase();
 
-  if (supabase) {
-    const form = await getDefaultForm(supabase, "vendor_onboarding");
+  if (!supabase) {
+    console.error("[resolveOnboardingForm]", {
+      context,
+      branch: "NO_CLIENT",
+      reason: "getSupabase() returned null — NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY missing",
+    });
+  } else {
+    // Safe project identity, for comparing against the admin Form
+    // Manager's client (see lib/admin/supabase-admin.ts) — both read
+    // NEXT_PUBLIC_SUPABASE_URL, so this hostname must match whatever the
+    // admin side is proven to be using, or the two are genuinely hitting
+    // different projects.
+    console.log("[resolveOnboardingForm]", {
+      context,
+      anonClientHost: safeHostname(process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""),
+    });
+    const form = await getDefaultForm(supabase, "vendor_onboarding", context);
     if (form) {
       const params = membership
         ? {
