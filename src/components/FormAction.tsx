@@ -3,6 +3,28 @@
 import { useState } from "react";
 
 /**
+ * Tally's plain share link ("https://tally.so/r/{id}", what a founder
+ * actually copies from Tally and pastes into Form Manager) refuses to
+ * render inside a third-party iframe and top-navigates the embedding page
+ * instead of loading — the exact cause of a stray /join/eyJ... 404 after
+ * clicking an embed-mode action. Tally's dedicated "/embed/{id}" path is
+ * the one meant for iframing. Only the iframe src gets translated here —
+ * the Form Manager keeps storing the ordinary share link, and "external"
+ * (new-tab) actions are unaffected since they were never embedded.
+ */
+function toEmbedSrc(href: string): string {
+  try {
+    const url = new URL(href);
+    if (url.hostname === "tally.so" && url.pathname.startsWith("/r/")) {
+      url.pathname = url.pathname.replace(/^\/r\//, "/embed/");
+    }
+    return url.toString();
+  } catch {
+    return href;
+  }
+}
+
+/**
  * Renders one resolved Form Manager action (see lib/forms.ts). External
  * forms behave exactly like the plain links they replace — a new tab,
  * nothing else changes. Embed forms open in a bottom drawer on mobile /
@@ -53,7 +75,7 @@ export default function FormAction({
             >
               ✕
             </button>
-            <iframe src={href} title={label} className="h-full w-full border-0" />
+            <iframe src={toEmbedSrc(href)} title={label} className="h-full w-full border-0" />
           </div>
         </div>
       )}
