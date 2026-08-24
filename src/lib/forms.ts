@@ -187,6 +187,23 @@ export async function resolveEventActionForm(
   return null;
 }
 
+/** A resolved vendor-onboarding URL must be a genuine absolute http(s)
+ * URL — never something a browser could mis-resolve as a path relative to
+ * findmi.app. Guards the paid-member success page's onboarding CTA
+ * against ANY bad value reaching it as a clickable href, regardless of
+ * where that value came from (a malformed Form Manager row, a broken
+ * NEXT_PUBLIC_TALLY_ONBOARDING_URL, or anything else) — fails safe (no
+ * CTA rendered) instead. Deliberately never logs the value itself, in
+ * case it turns out to be a credential rather than an ordinary bad URL. */
+function isAbsoluteHttpUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Vendor onboarding — global only (no per-business/event assignment; see
  * CLAUDE.md's onboarding pass). Falls back to the existing
@@ -210,10 +227,23 @@ export async function resolveOnboardingForm(
             ...(membership.existingBusinessId ? { existing_business_id: membership.existingBusinessId } : {}),
           }
         : {};
-      return toResolvedForm(form, params);
+      const resolved = toResolvedForm(form, params);
+      if (isAbsoluteHttpUrl(resolved.url)) return resolved;
+      console.error(
+        "[resolveOnboardingForm] Form Manager vendor_onboarding row resolved to a non-absolute URL — refusing to render it",
+        { formId: form.id }
+      );
+      return null;
     }
   }
 
   const envUrl = getOnboardingFormUrl(membership);
-  return envUrl ? { url: envUrl, displayMode: "external", formId: null } : null;
+  if (!envUrl) return null;
+  if (!isAbsoluteHttpUrl(envUrl)) {
+    console.error(
+      "[resolveOnboardingForm] NEXT_PUBLIC_TALLY_ONBOARDING_URL resolved to a non-absolute URL — refusing to render it"
+    );
+    return null;
+  }
+  return { url: envUrl, displayMode: "external", formId: null };
 }
