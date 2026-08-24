@@ -301,6 +301,15 @@ export async function resolveOnboardingForm(
         branch: "DB_FORM",
         formId: form.id,
         formSlug: form.slug,
+        // display_mode trace: dbDisplayMode is the raw column value read
+        // from the row (proves getDefaultForm selected/returned it);
+        // resolvedDisplayMode is what toResolvedForm copied it into on
+        // the ResolvedForm this function is about to return. They must be
+        // identical — toResolvedForm does a direct, untransformed
+        // assignment (`displayMode: form.display_mode`), never renamed or
+        // coerced.
+        dbDisplayMode: form.display_mode,
+        resolvedDisplayMode: resolved.displayMode,
         formUrlHost: safeHostname(form.form_url),
         resolvedHost: ok ? safeHostname(resolved.url) : null,
         absolute: ok,

@@ -44,6 +44,14 @@ export default async function JoinSuccessPage({
       },
       "ssr"
     );
+    // display_mode trace, last server-side checkpoint: the exact value
+    // about to be handed to <SuccessPanel> as the `onboarding.displayMode`
+    // prop — from here it crosses into client-rendered JSX (OnboardingCta),
+    // which is not independently server-loggable.
+    console.log("[join/success page.tsx]", {
+      context: "ssr",
+      passedDisplayMode: onboardingForm?.displayMode ?? null,
+    });
     return (
       <SuccessPanel
         onboarding={onboardingForm ? { url: onboardingForm.url, displayMode: onboardingForm.displayMode } : null}
