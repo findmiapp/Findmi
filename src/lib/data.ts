@@ -903,7 +903,7 @@ export async function getUpcomingAtLocation(
     supabase
       .from("appearances")
       .select(
-        "id, title, start_at, end_at, business:businesses(slug, name, cover_image_url, is_demo)"
+        "id, title, start_at, end_at, business:businesses(slug, name, cover_image_url, is_demo, publication_status)"
       )
       .ilike("venue_name", locationName)
       .is("event_id", null)
@@ -926,7 +926,7 @@ export async function getUpcomingAtLocation(
   const fromAppearances: LocationHappening[] = (appearances ?? [])
     .map((a) => {
       const b = Array.isArray(a.business) ? a.business[0] : a.business;
-      if (!b || b.is_demo) return null;
+      if (!b || b.is_demo || b.publication_status !== "live") return null;
       return {
         id: `appearance-${a.id}`,
         title: a.title,

@@ -140,7 +140,12 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
       sourceChannel: line.sourceChannel ?? null,
     };
 
-    if (!product || !business || (business as Business & { is_demo?: boolean }).is_demo) {
+    if (
+      !product ||
+      !business ||
+      (business as Business & { is_demo?: boolean }).is_demo ||
+      business.publication_status !== "live"
+    ) {
       quoteLines.push({
         ...baseQuote,
         productName: "Unavailable product",
