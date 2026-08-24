@@ -7,24 +7,40 @@ import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
 import SearchBar from "@/components/SearchBar";
 import HomeEventDiscovery from "@/components/HomeEventDiscovery";
-import { attachEventCategories, getFeaturedBusinesses, getHomeCategories, getUpcomingEvents } from "@/lib/data";
+import {
+  attachEventCategories,
+  getEventCategories,
+  getFeaturedBusinesses,
+  getHomeCategories,
+  getUpcomingEvents,
+} from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
 import { getSiteSections, resolveSection, HOMEPAGE_SECTIONS } from "@/lib/site-sections";
 
 export const revalidate = 60;
 
 export default async function HomePage() {
-  const [categories, upNextRaw, todayRaw, weekendRaw, anytimeRaw, heroFallbackBrands, homepageRows, siteSections] =
-    await Promise.all([
-      getHomeCategories(),
-      getUpcomingEvents(10, "anytime"), // "Up Next" — see HomeEventDiscovery's own note on this
-      getUpcomingEvents(10, "now"),
-      getUpcomingEvents(10, "weekend"),
-      getUpcomingEvents(10, "anytime"), // "All Events" — same real chronological query as Up Next
-      getFeaturedBusinesses(3), // hero collage fallback imagery only, see below
-      getVisibleHomepageRows(),
-      getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
-    ]);
+  const [
+    categories,
+    eventCategories,
+    upNextRaw,
+    todayRaw,
+    weekendRaw,
+    anytimeRaw,
+    heroFallbackBrands,
+    homepageRows,
+    siteSections,
+  ] = await Promise.all([
+    getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
+    getEventCategories(), // EVENT categories — the event discovery filter only, see that function's note
+    getUpcomingEvents(10, "anytime"), // "Up Next" — see HomeEventDiscovery's own note on this
+    getUpcomingEvents(10, "now"),
+    getUpcomingEvents(10, "weekend"),
+    getUpcomingEvents(10, "anytime"), // "All Events" — same real chronological query as Up Next
+    getFeaturedBusinesses(3), // hero collage fallback imagery only, see below
+    getVisibleHomepageRows(),
+    getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
+  ]);
 
   const [upNextEvents, todayEvents, weekendEvents, anytimeEvents] = await Promise.all([
     attachEventCategories(upNextRaw),
@@ -111,7 +127,7 @@ export default async function HomePage() {
             today={todayEvents}
             weekend={weekendEvents}
             anytime={anytimeEvents}
-            categories={categories}
+            eventCategories={eventCategories}
           />
         </div>
       </section>
@@ -210,7 +226,7 @@ function HomepageRowSection({
       <Section title={row.title} subtitle={row.subtitle ?? undefined}>
         <HorizontalScroller>
           {resolved.items.map((b) => (
-            <div key={b.id} className="w-[85%] max-w-sm shrink-0 sm:w-96">
+            <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
               <BusinessLogoCard business={b} />
             </div>
           ))}

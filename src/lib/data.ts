@@ -141,6 +141,28 @@ export async function getHomeCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
+/** Categories actually tagged on at least one event, via event_categories
+ * — NOT business categories (see getHomeCategories above, which is
+ * business-scoped and must never be reused here — live QA correction,
+ * 2026 nav pass, Part B6/B9: events and businesses each need their own
+ * taxonomy source, even though they currently share the same underlying
+ * `categories` table/rows). event_categories has zero rows in production
+ * today, so this honestly returns [] until the founder tags a real
+ * event — callers must hide the event-category filter entirely in that
+ * case rather than falling back to an unrelated taxonomy. */
+export async function getEventCategories(): Promise<Category[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase.from("event_categories").select("categories(id, name, slug)");
+
+  const seen = new Map<string, Category>();
+  for (const row of (data ?? []) as { categories: Category | Category[] | null }[]) {
+    const cats = Array.isArray(row.categories) ? row.categories : row.categories ? [row.categories] : [];
+    for (const c of cats) if (!seen.has(c.id)) seen.set(c.id, c);
+  }
+  return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Founder-curated Featured Brands (businesses.is_featured — decoupled
  * from founding_member, backfilled from it at launch). */
 export async function getFeaturedBusinesses(limit = 8): Promise<BusinessWithCategories[]> {

@@ -37,11 +37,24 @@ export default function HomeEventCard({ event }: { event: EventWithCategories })
           className="object-cover transition duration-300 group-hover:scale-105"
         />
       ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-stone to-ink" />
+        // No fabricated event photo (live QA correction, 2026 nav pass,
+        // Part B5) — a real, currently-common case (most production
+        // events have no cover_image_url yet), so this needs to read as
+        // an intentional branded card, not a broken/black placeholder.
+        // Same watermark-icon treatment PostCard uses for its own no-
+        // image case, on a findmi-tinted diagonal instead of PostCard's
+        // neutral stone→ink one, so it still feels like FindMi rather
+        // than a generic dark box.
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-gradient-to-br from-findmi-700 to-ink">
+          <CalendarGlyph className="h-20 w-20 text-white/15" />
+        </div>
       )}
       {/* Legibility gradient for the white overlay text, bottom-anchored —
-          same treatment PostCard uses. */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
+          same treatment PostCard uses. Lighter than PostCard's own
+          (black/70 vs black/85) since this card's fallback background is
+          already darker toward the bottom-right; a heavier overlay on
+          top of it read as a solid black card. */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
 
       {(live || category) && (
         <div className="absolute left-3 top-3">

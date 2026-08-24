@@ -3,14 +3,17 @@ import Link from "next/link";
 import type { BusinessWithCategories } from "@/lib/types";
 import { cityState } from "@/lib/format";
 
-// Homepage brand card — horizontal/landscape (2026 feed-builder pass):
-// logo left (identity, square/rounded, never a tiny circular avatar) +
-// cover photo right (storytelling), so a card reads as "this business,
-// with a real photo of their space/work" rather than a random gallery
-// shot with no brand identity attached. Degrades gracefully rather than
-// faking anything: no cover -> logo pane goes full width; no logo ->
-// cover pane goes full width; neither -> the same ink/storefront fallback
-// the previous version used.
+// Homepage brand card — horizontal/landscape (2026 feed-builder pass,
+// polished per live QA in the follow-up nav pass — taller visual band +
+// stronger name hierarchy so it reads as a composed brand card rather
+// than two small images with too much white space below): logo left
+// (identity, square/rounded, never a tiny circular avatar) + cover photo
+// right (storytelling), so a card reads as "this business, with a real
+// photo of their space/work" rather than a random gallery shot with no
+// brand identity attached. Degrades gracefully rather than faking
+// anything: no cover -> logo pane goes full width; no logo -> cover pane
+// goes full width; neither -> the same ink/storefront fallback the
+// previous version used.
 export default function BusinessLogoCard({ business }: { business: BusinessWithCategories }) {
   // Only one category is ever shown — the schema has no subcategory field
   // (see the implementation report), so this never fabricates a second
@@ -32,7 +35,7 @@ export default function BusinessLogoCard({ business }: { business: BusinessWithC
       href={`/business/${business.slug}`}
       className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-white transition active:scale-[0.98]"
     >
-      <div className="relative flex h-28 w-full shrink-0 sm:h-32">
+      <div className="relative flex h-36 w-full shrink-0 sm:h-40">
         {hasLogo && (
           <div
             className={`relative h-full shrink-0 overflow-hidden bg-white ${hasCover ? "w-[34%] border-r border-black/5" : "w-full"}`}
@@ -68,9 +71,9 @@ export default function BusinessLogoCard({ business }: { business: BusinessWithC
           </span>
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-0.5 p-3">
-        <p className="line-clamp-1 font-display text-sm font-semibold text-ink">{business.name}</p>
-        {meta && <p className="line-clamp-1 text-xs text-ink/50">{meta}</p>}
+      <div className="flex flex-1 flex-col gap-1 p-3.5">
+        <p className="line-clamp-1 font-display text-base font-bold tracking-tight text-ink">{business.name}</p>
+        {meta && <p className="line-clamp-1 text-xs font-medium text-ink/55">{meta}</p>}
       </div>
     </Link>
   );

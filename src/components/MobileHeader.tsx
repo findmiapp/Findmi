@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import CartBadge from "./CartBadge";
+import HamburgerMenu from "./HamburgerMenu";
 import Logo from "./Logo";
+import type { ResolvedNavItem } from "@/lib/navigation";
 
-export default function MobileHeader() {
+export default function MobileHeader({ navItems }: { navItems: ResolvedNavItem[] }) {
   const pathname = usePathname();
   const router = useRouter();
   const isHome = pathname === "/";
@@ -46,6 +48,7 @@ export default function MobileHeader() {
           </svg>
         </Link>
         <CartBadge />
+        <HamburgerMenu items={navItems} />
       </div>
     </header>
   );

@@ -37,8 +37,8 @@ export default function HomeEventDiscovery({
   today,
   weekend,
   anytime,
-  categories,
-}: Record<TimeKey, EventWithCategories[]> & { categories: Category[] }) {
+  eventCategories,
+}: Record<TimeKey, EventWithCategories[]> & { eventCategories: Category[] }) {
   const prefetched: Record<TimeKey, EventWithCategories[]> = { upNext, today, weekend, anytime };
   const [activeTime, setActiveTime] = useState<TimeKey>("upNext");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -100,8 +100,12 @@ export default function HomeEventDiscovery({
       </div>
 
       {/* Secondary category filter — visually lighter/smaller than the
-          time pills above, using real event categories only. */}
-      {categories.length > 0 && (
+          time pills above. Sourced from getEventCategories() (events
+          actually tagged via event_categories), never business
+          categories — see that function's note. Renders nothing at all
+          (not even "All Categories") when no event has a real category
+          yet, rather than showing a filter with nothing to filter. */}
+      {eventCategories.length > 0 && (
         <div className="mt-2 flex gap-1.5 overflow-x-auto px-4 pb-0.5 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
             type="button"
@@ -112,7 +116,7 @@ export default function HomeEventDiscovery({
           >
             All Categories
           </button>
-          {categories.map((c) => (
+          {eventCategories.map((c) => (
             <button
               key={c.id}
               type="button"
