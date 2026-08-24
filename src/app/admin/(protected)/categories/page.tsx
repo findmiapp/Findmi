@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getAllCategories } from "@/lib/admin/queries";
 import SubmitBar from "@/components/admin/SubmitBar";
 import { saveHomeCategories } from "./actions";
@@ -24,6 +25,16 @@ export default async function AdminCategoriesPage({
         Choose which categories appear in the homepage&rsquo;s scrollable filter row, and in
         what order.
       </p>
+      <Link
+        href="/admin/categories/events"
+        className="mt-4 flex items-center justify-between rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-3.5 transition hover:border-findmi/50"
+      >
+        <span>
+          <span className="block text-sm font-semibold text-findmi-700">Event Categories</span>
+          <span className="block text-xs text-ink/50">Add a new category to tag onto events.</span>
+        </span>
+        <span className="shrink-0 text-findmi-700">→</span>
+      </Link>
       {saved && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           Saved.

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
-import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
+import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
@@ -12,10 +12,12 @@ import {
   getEventCategories,
   getFeaturedBusinesses,
   getHomeCategories,
+  getShowcaseBusiness,
   getUpcomingEvents,
 } from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
 import { getSiteSections, resolveSection, HOMEPAGE_SECTIONS } from "@/lib/site-sections";
+import type { Category } from "@/lib/types";
 
 export const revalidate = 60;
 
@@ -89,34 +91,12 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Category pills — compact, horizontally scrollable, one row. */}
-      {categories.length > 0 && (
-        <section className="border-b border-black/5 bg-white py-3">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {categories.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/businesses?category=${c.slug}`}
-                  className="shrink-0 whitespace-nowrap rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink/75 transition hover:border-findmi/50 hover:text-findmi-700"
-                >
-                  {c.name}
-                </Link>
-              ))}
-              <Link
-                href="/businesses"
-                className="shrink-0 whitespace-nowrap rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink/75 transition hover:border-findmi/50 hover:text-findmi-700"
-              >
-                More →
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
-
       {/* Discovery filters (Up Next default) + first live feed — heading
           is exactly "Upcoming Events Near You" (see HOMEPAGE_SECTIONS'
-          featured_events default). */}
+          featured_events default). Begins immediately after Search now
+          (live-QA correction) — the generic business-category pill row
+          that used to sit here was removed; that filter now lives on
+          Brands We Love below, where it's actually about businesses. */}
       <section className="py-5">
         <div className="mx-auto max-w-6xl">
           <div className="mb-3 px-4 sm:px-6">
@@ -138,7 +118,7 @@ export default async function HomePage() {
           without a code change, Businesses/Events/Products/Business
           Showcase, Dynamic (filtered) or Curated (hand-picked). */}
       {homepageRows.map((row, i) => (
-        <HomepageRowSection key={row.id} row={row} resolved={resolvedRows[i]} />
+        <HomepageRowSection key={row.id} row={row} resolved={resolvedRows[i]} businessCategories={categories} />
       ))}
 
       {/* Explore By Category — compact, broader entry point (categories
@@ -190,26 +170,33 @@ export default async function HomePage() {
   );
 }
 
-function HomepageRowSection({
+async function HomepageRowSection({
   row,
   resolved,
+  businessCategories,
 }: {
   row: HomepageRow;
   resolved: Awaited<ReturnType<typeof resolveHomepageRowItems>>;
+  businessCategories: Category[];
 }) {
   if (resolved.contentType === "business_showcase") {
+    // Real demo business (The Native Rose) — fetched only when a
+    // business_showcase row actually exists, not on every homepage load.
+    // Falls back to illustrative markup inside the carousel itself if
+    // this resolves to null (live-QA correction, Part 14).
+    const demo = await getShowcaseBusiness();
     return (
       <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <div className="rounded-3xl border border-black/10 bg-white p-5 sm:p-8">
-          <h2 className="font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">{row.title}</h2>
-          {row.subtitle && <p className="mt-1 text-sm text-ink/60">{row.subtitle}</p>}
-          <div className="mt-5">
-            <BusinessShowcaseCarousel />
+        <div className="overflow-hidden rounded-3xl border border-findmi/15 bg-gradient-to-br from-findmi-50 via-white to-white p-5 sm:p-9">
+          <h2 className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">{row.title}</h2>
+          {row.subtitle && <p className="mt-1.5 max-w-md text-sm text-ink/60">{row.subtitle}</p>}
+          <div className="mt-6">
+            <BusinessShowcaseCarousel demo={demo} />
           </div>
-          <div className="mt-5 flex justify-center sm:justify-start">
+          <div className="mt-6 flex justify-center sm:justify-start">
             <Link
               href="/join"
-              className="inline-flex items-center justify-center rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              className="inline-flex items-center justify-center rounded-full bg-findmi px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-findmi-600"
             >
               Join FindMi →
             </Link>
@@ -224,13 +211,7 @@ function HomepageRowSection({
   if (resolved.contentType === "businesses") {
     return (
       <Section title={row.title} subtitle={row.subtitle ?? undefined}>
-        <HorizontalScroller>
-          {resolved.items.map((b) => (
-            <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
-              <BusinessLogoCard business={b} />
-            </div>
-          ))}
-        </HorizontalScroller>
+        <HomepageBusinessRow rowId={row.id} initialItems={resolved.items} categories={businessCategories} />
       </Section>
     );
   }

@@ -4,15 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Logo from "./Logo";
 import NavIcon from "./NavIcon";
-import { groupNavItems, type ResolvedNavItem } from "@/lib/navigation";
+import type { ResolvedNavItem } from "@/lib/navigation";
 
 // Header hamburger trigger + mobile nav drawer (2026 navigation pass,
-// Part A). `items` comes from getVisibleNavItems() (founder-managed, with
-// a safe real-route fallback — see lib/navigation.ts), fetched once by
-// the server layout and passed down, so this stays a plain client island
-// rather than fetching its own data.
+// extended in the live-QA follow-up pass with one level of expandable
+// submenus). `items` comes from getVisibleNavItems() (founder-managed
+// tree, with a safe real-route fallback — see lib/navigation.ts), fetched
+// once by the server layout and passed down, so this stays a plain
+// client island rather than fetching its own data.
 export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -35,7 +37,17 @@ export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
     buttonRef.current?.focus();
   }
 
-  const groups = groupNavItems(items);
+  function toggleExpanded(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      // Multiple sections can stay open at once — a founder-organized
+      // menu is short enough that forcing an accordion (auto-collapsing
+      // siblings) would just cost an extra tap for no real benefit.
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
     <>
@@ -71,8 +83,10 @@ export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
             open ? "translate-x-0" : "translate-x-full"
           }`}
         >
-          <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-4 py-3">
-            <Logo heightClassName="h-8" />
+          {/* Compact drawer header — logo + close only, no repeated site
+              chrome (Part 20 of the live-QA pass). */}
+          <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-4 py-2.5">
+            <Logo heightClassName="h-7" />
             <button
               type="button"
               onClick={close}
@@ -85,18 +99,15 @@ export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
             </button>
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-3 py-3">
-            {groups.map((group, i) => (
-              <div key={i} className="mb-4 last:mb-0">
-                {group.label && (
-                  <p className="mb-1 px-2 text-[11px] font-bold uppercase tracking-wide text-ink/40">{group.label}</p>
-                )}
-                <div className="flex flex-col gap-0.5">
-                  {group.items.map((item) => (
-                    <NavRow key={item.id} item={item} onNavigate={close} />
-                  ))}
-                </div>
-              </div>
+          <nav className="flex-1 overflow-y-auto px-3 py-2">
+            {items.map((item) => (
+              <NavEntry
+                key={item.id}
+                item={item}
+                expanded={expanded.has(item.id)}
+                onToggle={() => toggleExpanded(item.id)}
+                onNavigate={close}
+              />
             ))}
           </nav>
         </div>
@@ -105,12 +116,70 @@ export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
   );
 }
 
-function NavRow({ item, onNavigate }: { item: ResolvedNavItem; onNavigate: () => void }) {
-  const rowClass = `flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-    item.highlight
+const linkRowClass = (highlight: boolean) =>
+  `flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
+    highlight
       ? "bg-findmi font-bold uppercase tracking-wide text-white hover:bg-findmi-600"
       : "font-medium text-ink hover:bg-black/[0.03]"
   }`;
+
+/** One top-level row — either a plain link (no children) or an
+ * expand/collapse toggle for its submenu (has children; its own href, if
+ * any, is intentionally not used as a destination — see lib/navigation's
+ * buildNavTree note). Children render as plain indented links, one level
+ * only. */
+function NavEntry({
+  item,
+  expanded,
+  onToggle,
+  onNavigate,
+}: {
+  item: ResolvedNavItem;
+  expanded: boolean;
+  onToggle: () => void;
+  onNavigate: () => void;
+}) {
+  if (item.children.length === 0) {
+    return <NavLink item={item} onNavigate={onNavigate} className={linkRowClass(item.highlight)} />;
+  }
+
+  const panelId = `nav-submenu-${item.id}`;
+  return (
+    <div className="mb-0.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-ink transition hover:bg-black/[0.03]"
+      >
+        {item.icon && <NavIcon name={item.icon} className="h-5 w-5 shrink-0" />}
+        <span className="flex-1 truncate">{item.label}</span>
+        <svg viewBox="0 0 24 24" fill="none" className={`h-4 w-4 shrink-0 text-ink/40 transition-transform ${expanded ? "rotate-180" : ""}`}>
+          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {expanded && (
+        <div id={panelId} className="ml-4 flex flex-col gap-0.5 border-l-2 border-black/5 pl-3">
+          {item.children.map((child) => (
+            <NavLink key={child.id} item={child} onNavigate={onNavigate} className={linkRowClass(child.highlight)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NavLink({
+  item,
+  onNavigate,
+  className,
+}: {
+  item: ResolvedNavItem;
+  onNavigate: () => void;
+  className: string;
+}) {
+  if (!item.href) return null; // defensive — buildNavTree already drops hrefless leaves
 
   const content = (
     <>
@@ -121,14 +190,13 @@ function NavRow({ item, onNavigate }: { item: ResolvedNavItem; onNavigate: () =>
 
   if (item.external) {
     return (
-      <a href={item.href} target="_blank" rel="noopener noreferrer" onClick={onNavigate} className={rowClass}>
+      <a href={item.href} target="_blank" rel="noopener noreferrer" onClick={onNavigate} className={className}>
         {content}
       </a>
     );
   }
-
   return (
-    <Link href={item.href} onClick={onNavigate} className={rowClass}>
+    <Link href={item.href} onClick={onNavigate} className={className}>
       {content}
     </Link>
   );

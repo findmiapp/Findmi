@@ -379,6 +379,36 @@ export async function getUpcomingAppearancesForBusiness(
   });
 }
 
+/** The one real FindMi business the homepage's "Have a business or
+ * brand?" showcase demonstrates with (live-QA correction, 2026 nav pass,
+ * Part 14) — was previously an entirely illustrative/static mockup. A
+ * single named constant, not scattered literals, so swapping the demo
+ * business later is a one-line change. */
+export const SHOWCASE_BUSINESS_SLUG = "the-native-rose";
+
+export interface ShowcaseBusinessData {
+  business: BusinessWithCategories;
+  products: Product[];
+  appearances: AppearanceWithEventSlug[];
+}
+
+/** Resolves the showcase's real business + a couple of its real products/
+ * upcoming appearances, using the exact same query functions its own
+ * public profile page and homepage rows already use — no parallel data
+ * path. Returns null (not throw) if the business is missing, unpublished,
+ * or Supabase is unreachable, so BusinessShowcaseCarousel can fail back
+ * to its illustrative markup instead of ever rendering broken/partial
+ * real data. */
+export async function getShowcaseBusiness(): Promise<ShowcaseBusinessData | null> {
+  const business = await getBusinessBySlug(SHOWCASE_BUSINESS_SLUG);
+  if (!business) return null;
+  const [products, appearances] = await Promise.all([
+    getProductsForBusiness(business.id),
+    getUpcomingAppearancesForBusiness(business.id, 3),
+  ]);
+  return { business, products, appearances };
+}
+
 export async function getUpcomingEvents(
   limit = 20,
   when: DiscoveryWindow = "anytime"

@@ -265,6 +265,35 @@ export async function getEventCategoryIds(eventId: string): Promise<string[]> {
   return (data ?? []).map((c) => c.category_id);
 }
 
+/** How many events (event_categories) and businesses (business_categories)
+ * each category is actually tagged on — powers the Event Categories admin
+ * page's usage column, so the founder can see which categories are real
+ * event taxonomy today versus only used for businesses (or unused). The
+ * `categories` table is shared by both join tables; this is read-only
+ * visibility, not a schema split. */
+export async function getCategoryUsageCounts(): Promise<Map<string, { events: number; businesses: number }>> {
+  const supabase = getAdminSupabase();
+  const counts = new Map<string, { events: number; businesses: number }>();
+  if (!supabase) return counts;
+
+  const [{ data: eventLinks }, { data: businessLinks }] = await Promise.all([
+    supabase.from("event_categories").select("category_id"),
+    supabase.from("business_categories").select("category_id"),
+  ]);
+
+  for (const row of eventLinks ?? []) {
+    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0 };
+    entry.events += 1;
+    counts.set(row.category_id, entry);
+  }
+  for (const row of businessLinks ?? []) {
+    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0 };
+    entry.businesses += 1;
+    counts.set(row.category_id, entry);
+  }
+  return counts;
+}
+
 /** Looks up just the one event a form already has selected (Appearance's
  * optional event link), for seeding a RelationField's initial value. */
 export async function getEventOptionById(id: string | null): Promise<SelectOption | null> {

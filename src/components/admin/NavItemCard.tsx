@@ -27,10 +27,15 @@ const ICON_LABELS: Record<string, string> = {
 /** One Menu Item's founder-facing editor card — same card/form/Move-Up-
  * Down/Delete pattern as HomepageRowCard, so the two admin screens feel
  * like one system. Destination Type is client-side so the right input
- * (route picker vs custom link field) shows immediately. */
+ * (route picker vs custom link field) shows immediately. Leaving the
+ * destination blank (the "No page selected" option, or an empty custom
+ * link) is intentional, not an error — that's how a parent-only header
+ * row (Part 6 of the 2026 QA pass) is made; it just expands its children
+ * instead of navigating anywhere. */
 export default function NavItemCard({
   item,
   routes,
+  parentOptions,
   saveAction,
   deleteAction,
   moveUpAction,
@@ -40,6 +45,10 @@ export default function NavItemCard({
 }: {
   item: NavItem;
   routes: PublicRouteOption[];
+  /** Other top-level items this one could be nested under — already
+   * excludes itself and anything that already has a parent (one nesting
+   * level only), computed server-side in page.tsx. */
+  parentOptions: { id: string; label: string }[];
   saveAction: (formData: FormData) => void;
   deleteAction: () => void;
   moveUpAction: () => void;
@@ -86,7 +95,8 @@ export default function NavItemCard({
         {destinationType === "route" ? (
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Page</span>
-            <select name="route_key" defaultValue={item.route_key ?? routes[0]?.key} className={selectClass}>
+            <select name="route_key" defaultValue={item.route_key ?? ""} className={selectClass}>
+              <option value="">No page selected (use as a parent header)</option>
               {routes.map((r) => (
                 <option key={r.key} value={r.key}>
                   {r.label}
@@ -99,18 +109,25 @@ export default function NavItemCard({
             label="Link"
             name="custom_href"
             defaultValue={item.custom_href}
-            placeholder="/some-path or https://example.com"
+            placeholder="/some-path or https://example.com — leave blank for a parent header"
             hint="Internal path starting with / or a link starting with https://."
           />
         )}
 
-        <TextField
-          label="Group (optional)"
-          name="group_label"
-          defaultValue={item.group_label}
-          placeholder="e.g. Explore"
-          hint="Groups adjacent items under a small heading in the menu. Leave blank for no heading."
-        />
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-ink">Parent Item</span>
+          <select name="parent_id" defaultValue={item.parent_id ?? ""} className={selectClass}>
+            <option value="">None (top-level)</option>
+            {parentOptions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-ink/45">
+            Nests this item under another as an expandable submenu — one level only.
+          </span>
+        </label>
 
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Icon (optional)</span>
