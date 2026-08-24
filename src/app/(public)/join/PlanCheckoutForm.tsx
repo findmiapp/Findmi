@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Market, MembershipPlan } from "@/lib/types";
+import { formatCurrency } from "@/lib/format";
 import { startMembershipCheckout } from "./actions";
 
 export default function PlanCheckoutForm({
@@ -46,7 +47,7 @@ export default function PlanCheckoutForm({
               />
               <p className="text-sm font-bold text-ink">{p.name}</p>
               <p className="mt-0.5 text-xs text-ink/60">
-                ${p.annual_price}/yr · {p.market_limit ? `up to ${p.market_limit} market${p.market_limit === 1 ? "" : "s"}` : "unlimited markets"}
+                {formatCurrency(p.annual_price)}/yr · {p.market_limit ? `up to ${p.market_limit} market${p.market_limit === 1 ? "" : "s"}` : "unlimited markets"}
               </p>
             </label>
           ))}
@@ -127,7 +128,7 @@ export default function PlanCheckoutForm({
         type="submit"
         className="rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
-        Continue to Payment — ${plan.annual_price}/year
+        Continue to Payment — {formatCurrency(plan.annual_price)}/year
       </button>
       <p className="text-center text-xs text-ink/40">Secure checkout via Stripe. Cancel anytime.</p>
     </form>

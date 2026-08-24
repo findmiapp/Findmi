@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { formatCurrency } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function CheckoutSuccessPage({
         <>
           <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Thanks — order confirmed!</h1>
           <p className="mt-2 text-sm text-ink/60">
-            Order {order.order_number} · ${Number(order.total_charged).toFixed(2)}
+            Order {order.order_number} · {formatCurrency(Number(order.total_charged))}
           </p>
           <p className="mt-1 text-sm text-ink/60">Confirmation sent to {order.customer_email}.</p>
         </>

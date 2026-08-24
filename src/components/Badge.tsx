@@ -1,4 +1,11 @@
-export function VerifiedBadge({ founding }: { founding?: boolean }) {
+// Split into two independent badges on purpose (Part 3 of the founder
+// edit-mode/launch-fixes pass): verified and founding_member are
+// unrelated pieces of business data — a business can be either, both, or
+// neither, and neither one's visibility should ever gate the other's
+// (they previously shared one conditional + one badge that could only
+// show a single label, which is what let founding_member silently stop
+// rendering anything once verified was also false).
+function BadgeShell({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2.5 py-1 text-[11px] font-semibold text-white">
       <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
@@ -8,9 +15,17 @@ export function VerifiedBadge({ founding }: { founding?: boolean }) {
           clipRule="evenodd"
         />
       </svg>
-      {founding ? "Founding Member" : "Verified"}
+      {children}
     </span>
   );
+}
+
+export function VerifiedBadge() {
+  return <BadgeShell>Verified</BadgeShell>;
+}
+
+export function FoundingMemberBadge() {
+  return <BadgeShell>Founding Member</BadgeShell>;
 }
 
 export function CategoryPill({ children }: { children: React.ReactNode }) {

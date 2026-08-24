@@ -64,10 +64,21 @@ export function cityState(city?: string | null, state?: string | null): string {
   return [city, state].filter(Boolean).join(", ");
 }
 
+const currencyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+/** Canonical consumer-facing money formatter — always exactly two decimal
+ * places (55 -> $55.00, 39.5 -> $39.50), with thousands separators. Every
+ * shopper-facing price/amount should go through this (directly, or via
+ * formatPrice below, which layers a product's own price_label on top of
+ * it) rather than a manual `$${n.toFixed(2)}`. */
+export function formatCurrency(value: number): string {
+  return currencyFormatter.format(value);
+}
+
 export function formatPrice(price: number | null, label: string | null): string {
   if (label) return label;
   if (price == null) return "";
-  return `$${price.toFixed(2)}`;
+  return formatCurrency(price);
 }
 
 function tzOffsetMinutes(date: Date): number {

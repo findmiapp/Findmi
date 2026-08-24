@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
 import BusinessCard from "@/components/BusinessCard";
 import ProductCard from "@/components/ProductCard";
@@ -8,7 +9,7 @@ import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import FormAction from "@/components/FormAction";
-import { CategoryPill, VerifiedBadge } from "@/components/Badge";
+import { CategoryPill, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
 import {
   getAlternativeBusinesses,
   getBusinessBySlug,
@@ -107,6 +108,7 @@ export default async function BusinessPage({
             className="object-cover"
           />
         )}
+        <AdminEditButton href={`/admin/businesses/${business.id}`} className="absolute right-3 top-3 z-10" />
       </div>
 
       <div className="mx-auto max-w-4xl px-6 pb-12">
@@ -132,9 +134,8 @@ export default async function BusinessPage({
             <h1 className="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
               {business.name}
             </h1>
-            {(business.verified || business.founding_member) && (
-              <VerifiedBadge founding={business.founding_member} />
-            )}
+            {business.verified && <VerifiedBadge />}
+            {business.founding_member && <FoundingMemberBadge />}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {business.categories.map((c) => (

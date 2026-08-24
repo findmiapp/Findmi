@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import AdminEditButton from "@/components/AdminEditButton";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventFollowForm from "@/components/EventFollowForm";
 import EventSaveButton from "@/components/EventSaveButton";
@@ -105,6 +106,7 @@ export default async function EventPage({
             className="object-cover"
           />
         )}
+        <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-10" />
       </div>
 
       <div className="mx-auto max-w-4xl px-6 py-10">

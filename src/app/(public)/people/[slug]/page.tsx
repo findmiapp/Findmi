@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import AdminEditButton from "@/components/AdminEditButton";
 import CompactCard from "@/components/CompactCard";
 import { getBusinessesForPerson, getPersonBySlug } from "@/lib/data";
 
@@ -38,7 +39,8 @@ export default async function PersonPage({
   const businesses = await getBusinessesForPerson(person.id);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
+    <div className="relative mx-auto max-w-3xl px-6 py-10">
+      <AdminEditButton href={`/admin/people/${person.id}`} className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6" />
       <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
         <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border-4 border-paper bg-mist shadow-sm sm:h-32 sm:w-32">
           {person.image_url ? (

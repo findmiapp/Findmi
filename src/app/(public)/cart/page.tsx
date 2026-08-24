@@ -10,6 +10,7 @@ import {
   updateFulfillment,
   updateQuantity,
 } from "@/lib/cart";
+import { formatCurrency } from "@/lib/format";
 import { quoteCart, startCheckout } from "./actions";
 import type { CartLine, CartLineQuote, CartQuote } from "@/lib/commerce/types";
 
@@ -129,7 +130,7 @@ export default function CartPage() {
             )}
             <div className="flex items-center justify-between border-t border-black/10 pt-2 text-base font-semibold text-ink">
               <span>Total</span>
-              <span>${quote.total.toFixed(2)}</span>
+              <span>{formatCurrency(quote.total)}</span>
             </div>
           </div>
 
@@ -178,7 +179,7 @@ function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between text-ink/70">
       <span>{label}</span>
-      <span>${value.toFixed(2)}</span>
+      <span>{formatCurrency(value)}</span>
     </div>
   );
 }
@@ -195,7 +196,7 @@ function CartLineRow({ line, onChanged }: { line: CartLineQuote; onChanged: () =
           <p className="mt-0.5 text-xs text-red-600">{line.unavailableReason}</p>
         ) : (
           <>
-            <p className="text-xs text-ink/50">${line.unitPrice.toFixed(2)} each</p>
+            <p className="text-xs text-ink/50">{formatCurrency(line.unitPrice)} each</p>
             {line.availableFulfillmentOptions.length > 1 ? (
               <select
                 value={`${line.fulfillmentMethod}:${line.appearanceId ?? ""}`}
@@ -208,7 +209,7 @@ function CartLineRow({ line, onChanged }: { line: CartLineQuote; onChanged: () =
               >
                 {line.availableFulfillmentOptions.map((o) => (
                   <option key={`${o.method}:${o.appearanceId ?? ""}`} value={`${o.method}:${o.appearanceId ?? ""}`}>
-                    {o.label} {o.price > 0 ? `— $${o.price.toFixed(2)}` : "— Free"}
+                    {o.label} {o.price > 0 ? `— ${formatCurrency(o.price)}` : "— Free"}
                   </option>
                 ))}
               </select>
@@ -258,7 +259,7 @@ function CartLineRow({ line, onChanged }: { line: CartLineQuote; onChanged: () =
       </div>
       {line.available && (
         <p className="shrink-0 text-sm font-semibold text-ink">
-          ${(line.lineMerchandiseTotal + line.fulfillmentAmount).toFixed(2)}
+          {formatCurrency(line.lineMerchandiseTotal + line.fulfillmentAmount)}
         </p>
       )}
     </div>

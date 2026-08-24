@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { addToCart } from "@/lib/cart";
+import { formatCurrency } from "@/lib/format";
 import type { FulfillmentOptionDisplay } from "@/lib/data";
 
 export default function AddToCartForm({
@@ -55,7 +56,7 @@ export default function AddToCartForm({
                     />
                     {o.label}
                   </span>
-                  <span className="shrink-0 text-ink/60">{o.price > 0 ? `$${o.price.toFixed(2)}` : "Free"}</span>
+                  <span className="shrink-0 text-ink/60">{o.price > 0 ? formatCurrency(o.price) : "Free"}</span>
                 </label>
               );
             })}

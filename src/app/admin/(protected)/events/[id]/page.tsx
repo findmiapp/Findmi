@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAdminEventById, getAllCategories, getEventCategoryIds } from "@/lib/admin/queries";
+import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import EventForm from "../EventForm";
 
 export const dynamic = "force-dynamic";
@@ -19,10 +20,14 @@ export default async function EditEventPage({
     getEventCategoryIds(id),
   ]);
   if (!result) notFound();
+  const publicHref = !result.event.is_demo ? `/event/${result.event.slug}` : null;
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Edit Event</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Edit Event</h1>
+        <ViewPublicPageLink href={publicHref} />
+      </div>
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           Saved.

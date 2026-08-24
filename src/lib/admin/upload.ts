@@ -14,6 +14,19 @@ export async function uploadImage(formData: FormData): Promise<{ url?: string; e
   if (!(file instanceof File) || file.size === 0) return { error: "No file selected." };
   if (!file.type.startsWith("image/")) return { error: "Only image files are supported." };
   if (file.size > MAX_BYTES) return { error: "Image must be under 5MB." };
+  // HEIC/HEIF (the default format for iPhone camera photos) uploads and
+  // stores fine, but almost no browser can render it in an <img>/next/image
+  // element — the previous symptom was exactly this: a real Storage URL
+  // that always shows as a broken image. Reject it here (both by the MIME
+  // type some browsers report and by extension, since many report none)
+  // rather than silently accepting a file that can never render.
+  const isHeic = /^image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+  if (isHeic) {
+    return {
+      error:
+        "HEIC/HEIF photos aren't supported (most browsers can't display them). Please use a JPG or PNG — on iPhone, Settings → Camera → Formats → \"Most Compatible\" saves new photos as JPG.",
+    };
+  }
 
   const supabase = getAdminSupabase();
   if (!supabase) return { error: "Storage isn't configured on the server." };

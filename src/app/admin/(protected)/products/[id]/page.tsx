@@ -5,6 +5,7 @@ import {
   getProductFulfillmentOptions,
   getUpcomingAppearanceOptionsForBusiness,
 } from "@/lib/admin/queries";
+import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import ProductForm from "../ProductForm";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +26,18 @@ export default async function EditProductPage({
     getProductFulfillmentOptions(product.id),
     getUpcomingAppearanceOptionsForBusiness(product.business_id),
   ]);
+  // Business demo/publication status isn't loaded here (see
+  // getBusinessOptionById) — is_active is the product's own, directly
+  // controllable gate and the common case; a business that's separately
+  // unpublished is a rarer edge left as a future refinement.
+  const publicHref = product.is_active ? `/product/${product.slug}` : null;
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Edit Product</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Edit Product</h1>
+        <ViewPublicPageLink href={publicHref} />
+      </div>
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           Saved.

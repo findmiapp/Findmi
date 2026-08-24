@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import AdminEditButton from "@/components/AdminEditButton";
 import { HappeningCard, HappeningRow } from "@/components/HappeningCard";
 import { HorizontalScroller } from "@/components/Section";
 import { getLocationBySlug, getUpcomingAtLocation } from "@/lib/data";
@@ -38,7 +39,8 @@ export default async function LocationPage({
   const mapsQuery = encodeURIComponent([location.name, fullAddress].filter(Boolean).join(", "));
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
+    <div className="relative mx-auto max-w-4xl px-6 py-10">
+      <AdminEditButton href={`/admin/locations/${location.id}`} className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6" />
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
         {location.name}
       </h1>

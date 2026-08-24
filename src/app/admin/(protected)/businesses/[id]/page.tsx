@@ -7,6 +7,7 @@ import {
   onboardingStatusLabel,
   publicationStatusLabel,
 } from "@/lib/admin/membership-queries";
+import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import BusinessForm from "../BusinessForm";
 
 export const dynamic = "force-dynamic";
@@ -26,12 +27,17 @@ export default async function EditBusinessPage({
     getMembershipForBusiness(id),
   ]);
   if (!result) notFound();
+  const { business } = result;
+  const publicHref = !business.is_demo && business.publication_status === "live" ? `/business/${business.slug}` : null;
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
-        Edit Business
-      </h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
+          Edit Business
+        </h1>
+        <ViewPublicPageLink href={publicHref} />
+      </div>
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           Saved.
