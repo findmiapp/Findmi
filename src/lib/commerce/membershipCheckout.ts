@@ -1,5 +1,6 @@
 import { getStripe } from "./stripe";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getPublicOrigin } from "@/lib/site-url";
 
 /**
  * Path B (public/paid) checkout — the smallest server-side Stripe Checkout
@@ -69,7 +70,7 @@ export async function createMembershipCheckoutSession(input: {
 
   await supabase.from("membership_markets").insert(marketIds.map((market_id) => ({ membership_id: membership.id, market_id })));
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const siteUrl = getPublicOrigin();
 
   try {
     const session = await stripe.checkout.sessions.create({

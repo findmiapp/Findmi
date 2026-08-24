@@ -4,6 +4,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getStripe } from "@/lib/commerce/stripe";
 import { computeOrderDraft } from "@/lib/commerce/quote";
 import { createPendingOrder } from "@/lib/commerce/createOrder";
+import { getPublicOrigin } from "@/lib/site-url";
 import type { CartLine, CartQuote } from "@/lib/commerce/types";
 
 /** Re-prices the cart server-side for display — the /cart page never
@@ -43,7 +44,7 @@ export async function startCheckout(
   });
   if ("error" in order) return order;
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const siteUrl = getPublicOrigin();
 
   try {
     const session = await stripe.checkout.sessions.create({
