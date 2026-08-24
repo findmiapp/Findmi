@@ -27,21 +27,33 @@ export async function saveSiteSection(sectionKey: string, formData: FormData) {
     .eq("section_key", sectionKey)
     .maybeSingle();
 
-  const { error } = await supabase.from("site_sections").upsert(
-    {
-      page_key: PAGE_KEY,
-      section_key: sectionKey,
-      eyebrow: str(formData, "eyebrow"),
-      heading: str(formData, "heading"),
-      body: str(formData, "body"),
-      cta_label: str(formData, "cta_label"),
-      cta_url: str(formData, "cta_url"),
-      is_visible: bool(formData, "is_visible"),
-      sort_order: existing?.sort_order ?? def.order,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "page_key,section_key" }
-  );
+  const payload: Record<string, unknown> = {
+    page_key: PAGE_KEY,
+    section_key: sectionKey,
+    eyebrow: str(formData, "eyebrow"),
+    heading: str(formData, "heading"),
+    body: str(formData, "body"),
+    cta_label: str(formData, "cta_label"),
+    cta_url: str(formData, "cta_url"),
+    is_visible: bool(formData, "is_visible"),
+    sort_order: existing?.sort_order ?? def.order,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Image slots (see SectionDefaults.imageSlots) save into config_json —
+  // the site_sections column that's existed since this table's original
+  // migration, not a new one. Omitted entirely for sections without
+  // imageSlots, so upsert leaves any other section's config_json alone.
+  if (def.imageSlots) {
+    const images = Array.from({ length: def.imageSlots }, (_, i) => str(formData, `image_${i + 1}`)).filter(
+      (url): url is string => Boolean(url)
+    );
+    payload.config_json = { images };
+  }
+
+  const { error } = await supabase
+    .from("site_sections")
+    .upsert(payload, { onConflict: "page_key,section_key" });
   if (error) redirect(errorRedirectUrl(EDIT_PATH, error.message));
 
   revalidatePath(EDIT_PATH);

@@ -4,19 +4,34 @@ import { useState } from "react";
 import Link from "next/link";
 import type { EventWithCategories } from "@/lib/types";
 import CompactEventCard from "./CompactEventCard";
-import { HorizontalScroller } from "./Section";
 
 // Homepage-only: the "Upcoming Near You" discovery filters + feed. All
-// four data-backed tabs are fetched server-side up front (same
-// prefetch-everything-then-swap-client-side pattern as HomeDiscoveryTabs)
-// so switching tabs never triggers a network request. "Popular" is a real
-// signal — events.is_featured, the same founder-curation flag Featured
-// Events has always used (getFeaturedEvents) — not invented. "Near Me"
-// has no real backing today: FindMi has no geolocation/distance feature,
-// so rather than fabricate a sorted feed, it's a plain link to full event
-// search instead of a fifth data tab. See the homepage implementation
-// report for this and the missing availability/attendance signal.
+// data-backed tabs are fetched server-side up front (same prefetch-then-
+// swap-client-side pattern as HomeDiscoveryTabs) so switching tabs never
+// triggers a network request.
+//
+// "Up Next" is the default tab (not "Today" — a homepage that goes quiet
+// whenever nothing's happening in the next 24h reads as dead; see the
+// implementation report). It's the exact same real, chronological,
+// unfiltered upcoming-events query "All Events" already used — nearest
+// start time first, nothing editorial/random/popularity-sorted. There
+// isn't a further legitimate distinction to draw between the two beyond
+// which one is selected by default; that overlap is intentional, not a
+// bug, and is disclosed in the report rather than papered over with a
+// fake secondary sort.
+//
+// "Popular" reuses events.is_featured — the same founder-curation signal
+// Featured Events has always used — since there's no real popularity
+// metric (view/RSVP counts) to sort by. "Near Me" has no geolocation
+// backing at all, so it's a plain link into full discovery rather than a
+// sixth data tab pretending to be distance-sorted.
+//
+// This component owns its own left/right padding (px-4 sm:px-6, no
+// negative-margin edge-bleed trick) so its alignment can't drift out of
+// sync with whatever padding its parent happens to apply — see the
+// "filter pill panned too far left" bug this replaced.
 const TABS = [
+  { key: "upNext", label: "Up Next" },
   { key: "today", label: "Today" },
   { key: "weekend", label: "This Weekend" },
   { key: "anytime", label: "All Events" },
@@ -26,18 +41,19 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function HomeEventDiscovery({
+  upNext,
   today,
   weekend,
   anytime,
   popular,
 }: Record<TabKey, EventWithCategories[]>) {
-  const lists: Record<TabKey, EventWithCategories[]> = { today, weekend, anytime, popular };
-  const [active, setActive] = useState<TabKey>("today");
+  const lists: Record<TabKey, EventWithCategories[]> = { upNext, today, weekend, anytime, popular };
+  const [active, setActive] = useState<TabKey>("upNext");
   const items = lists[active];
 
   return (
     <div>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-2 overflow-x-auto px-4 pb-0.5 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -59,16 +75,18 @@ export default function HomeEventDiscovery({
       </div>
 
       {items.length === 0 ? (
-        <p className="mt-4 px-4 text-sm text-ink/45 sm:px-6">Nothing in this window yet — check back soon.</p>
+        // Compact, honest empty state — Today especially must never
+        // silently substitute other events while staying highlighted.
+        <p className="mt-4 px-4 text-sm text-ink/45 sm:px-6">
+          {active === "today" ? "Nothing today — check This Weekend or All Events." : "Nothing in this window yet."}
+        </p>
       ) : (
-        <div className="mt-3">
-          <HorizontalScroller>
-            {items.map((event) => (
-              <div key={event.id} className="w-[42%] min-w-[148px] max-w-[172px] shrink-0 sm:w-56 sm:max-w-none">
-                <CompactEventCard event={event} />
-              </div>
-            ))}
-          </HorizontalScroller>
+        <div className="mt-3 flex gap-3 overflow-x-auto px-4 pb-1 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {items.map((event) => (
+            <div key={event.id} className="w-[38%] min-w-[132px] max-w-[160px] shrink-0 sm:w-48">
+              <CompactEventCard event={event} />
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -15,6 +15,12 @@ export interface ResolvedSection {
   ctaUrl: string | null;
   visible: boolean;
   order: number;
+  /** Founder-configured image URLs (stored in site_sections.config_json,
+   * the column that's existed since this table's original migration —
+   * not a new one) for sections with imageSlots set (see SectionDefaults).
+   * Falls back to defaults.images when nothing's configured yet, then to
+   * an empty array — never fabricated, see each caller's own fallback. */
+  images: string[];
 }
 
 export interface SectionDefaults {
@@ -24,8 +30,13 @@ export interface SectionDefaults {
   body?: string;
   ctaLabel?: string;
   ctaUrl?: string;
+  images?: string[];
   order: number;
   fields: ("eyebrow" | "heading" | "body" | "cta")[];
+  /** Renders this many admin ImageField slots (image_1..N) for the
+   * section, saved into config_json.images — see actions.ts's
+   * saveSiteSection. Omit/0 for sections with no editable imagery. */
+  imageSlots?: number;
   /** Excluded from the Move Up/Down reordering system — pinned first,
    * same spirit as header/footer staying outside it (see hero/doorway). */
   orderable?: boolean;
@@ -55,6 +66,7 @@ export function resolveSection(
   defaults: SectionDefaults
 ): ResolvedSection {
   const row = overrides.get(sectionKey);
+  const configuredImages = row?.config_json?.images;
   return {
     eyebrow: row?.eyebrow ?? defaults.eyebrow ?? null,
     heading: row?.heading ?? defaults.heading ?? null,
@@ -63,6 +75,9 @@ export function resolveSection(
     ctaUrl: row?.cta_url ?? defaults.ctaUrl ?? null,
     visible: row?.is_visible ?? true,
     order: row?.sort_order ?? defaults.order,
+    images: Array.isArray(configuredImages)
+      ? (configuredImages.filter((s): s is string => typeof s === "string" && s.length > 0) as string[])
+      : defaults.images ?? [],
   };
 }
 
@@ -74,26 +89,38 @@ export function resolveSection(
 
 export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   hero: {
+    // Heading copy itself is fixed (exact mandated copy with a styled
+    // teal accent span — not expressible as one plain-text field), but
+    // the collage imagery is fully founder-editable here. HomeHero falls
+    // back to real, non-fabricated business/appearance photos already
+    // being fetched for other sections when no slot is configured — see
+    // the homepage's own hero-image fallback logic.
     label: "Hero",
     heading: "What's around you right now?",
     order: 0,
     fields: ["heading"],
+    imageSlots: 3,
     orderable: false,
   },
   business_doorway: {
     // Repurposed (2026 discovery-marketplace redesign) as the homepage's
-    // Primary Join Banner, right after the first two discovery feeds — was
-    // previously a one-line masthead link. Key/admin card kept as-is so
-    // this stays founder-editable; only the default copy and field set
-    // changed (added body).
-    label: "Business Doorway",
+    // Business Showcase — a compact swipeable carousel demonstrating real
+    // FindMi UI patterns (profile/events/products/discovery), not the
+    // one-line masthead link this used to be. Key/admin card kept as-is
+    // so this stays founder-editable; the 4 slide captions themselves are
+    // fixed copy in BusinessShowcaseCarousel.tsx, not a new per-slide CMS.
+    label: "Business Showcase",
     heading: "Have a business or brand?",
     body: "Get discovered on FindMi.",
     ctaLabel: "Join FindMi →",
     ctaUrl: "/join",
-    order: 1,
+    order: 45,
     fields: ["heading", "body", "cta"],
-    orderable: false,
+    // No longer pinned "always first" — it renders further down the page
+    // now (after Featured Brands), same reasoning as the note on
+    // HOMEPAGE_ORDERABLE_KEYS below: making it orderable=true here at
+    // least keeps admin's grouping honest, even though Move Up/Down still
+    // can't change its actual position (see that note).
   },
   brand_spotlight: {
     label: "Brand Spotlight",
@@ -198,6 +225,17 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   },
 };
 
+// KNOWN LIMITATION (see the 2026 discovery-marketplace redesign's report):
+// page.tsx now renders the homepage's top funnel — hero through Featured
+// Brands, Business Showcase, Shop Local — in a fixed sequence mandated by
+// that redesign, not by reading each section's resolved `order`. Move
+// Up/Down in /admin/site/homepage still writes sort_order correctly and
+// still reorders sections that don't have a fixed position (Explore By
+// Category, Popular Locations, etc.), but for the fixed-position sections
+// it has no visible effect on the public page. This is a disclosed
+// tradeoff, not a bug — copy/CTA/image edits on every section below still
+// apply live; only drag-style position control is currently limited for
+// the top funnel.
 export const HOMEPAGE_ORDERABLE_KEYS = Object.entries(HOMEPAGE_SECTIONS)
   .filter(([, def]) => def.orderable !== false)
   .map(([key]) => key);

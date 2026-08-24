@@ -1,4 +1,5 @@
 import { CheckboxField, TextField, TextareaField } from "@/components/admin/Fields";
+import ImageField from "@/components/admin/ImageField";
 import { getAdminSiteSections } from "@/lib/admin/site-queries";
 import { HOMEPAGE_ORDERABLE_KEYS, HOMEPAGE_SECTIONS, resolveSection, type SectionDefaults } from "@/lib/site-sections";
 import { saveSiteSection, moveSectionDown, moveSectionUp } from "./actions";
@@ -117,6 +118,24 @@ function SectionCard({
       ) : null}
 
       <form action={action} className="mt-3 flex flex-col gap-3">
+        {def.imageSlots ? (
+          <div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {Array.from({ length: def.imageSlots }, (_, i) => (
+                <ImageField
+                  key={i}
+                  label={`Image ${i + 1}`}
+                  name={`image_${i + 1}`}
+                  defaultValue={resolved.images[i] ?? null}
+                />
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-ink/45">
+              Leave any slot blank to fall back to a real photo already on FindMi (a featured business or an
+              upcoming appearance) — never a placeholder.
+            </p>
+          </div>
+        ) : null}
         {def.fields.includes("eyebrow") && (
           <TextField label="Eyebrow" name="eyebrow" defaultValue={row?.eyebrow} placeholder={def.eyebrow} />
         )}

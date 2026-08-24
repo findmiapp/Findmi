@@ -56,6 +56,28 @@ async function attachCategories(businesses: Business[]): Promise<BusinessWithCat
   return withCategories(businesses, (data as never) ?? []);
 }
 
+/** One category name per business_id — the first linked category, same
+ * "good enough for a compact card" precedent as
+ * BusinessWithCategories.categories[0] used elsewhere (e.g. CompactCard's
+ * meta line). Used where only a single taxonomy label is needed, not the
+ * full category list attachCategories() builds. */
+async function getPrimaryCategoryByBusiness(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  businessIds: string[]
+): Promise<Map<string, string>> {
+  const { data } = await supabase
+    .from("business_categories")
+    .select("business_id, categories(name)")
+    .in("business_id", businessIds);
+  const map = new Map<string, string>();
+  for (const row of (data ?? []) as { business_id: string; categories: { name: string } | { name: string }[] }[]) {
+    if (map.has(row.business_id)) continue;
+    const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
+    if (cat?.name) map.set(row.business_id, cat.name);
+  }
+  return map;
+}
+
 export interface HomeStats {
   businessCount: number;
   upcomingCount: number;
@@ -541,7 +563,17 @@ export async function getMobileBusinesses(limit = 8): Promise<BusinessWithCatego
 }
 
 export interface FeaturedProduct extends Product {
-  business: { id: string; name: string; slug: string; logo_url: string | null };
+  business: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url: string | null;
+    /** Business's own primary category — products have no category/
+     * taxonomy field of their own in the schema today, so this is the
+     * closest real, non-fabricated classification available for a
+     * product card's eyebrow. Null when the business has no category set. */
+    categoryName: string | null;
+  };
 }
 
 /** Founder-curated homepage/marketplace Featured Products
@@ -559,19 +591,26 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
     .order("name")
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
-  type JoinedBusiness = FeaturedProduct["business"] & { is_demo: boolean; publication_status: string };
-  return ((data ?? []) as never[])
+  type JoinedBusiness = Omit<FeaturedProduct["business"], "categoryName"> & {
+    is_demo: boolean;
+    publication_status: string;
+  };
+  const rows = ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
       const business = Array.isArray(r.business) ? r.business[0] : r.business;
       return { ...r, business };
     })
     .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
-    .slice(0, limit)
-    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
-      ...rest,
-      business,
-    }));
+    .slice(0, limit);
+
+  const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
+  const categoryByBusiness = businessIds.length ? await getPrimaryCategoryByBusiness(supabase, businessIds) : new Map();
+
+  return rows.map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
+    ...rest,
+    business: { ...business, categoryName: categoryByBusiness.get(business.id) ?? null },
+  }));
 }
 
 export interface ProductWithBusiness extends Product {

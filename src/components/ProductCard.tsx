@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Product } from "@/lib/types";
-import { formatPrice } from "@/lib/format";
+import { formatCurrency, formatPrice } from "@/lib/format";
 
 export default function ProductCard({
   product,
@@ -11,7 +11,7 @@ export default function ProductCard({
      * fetches (see FeaturedProduct/MarketplaceProduct in lib/data.ts), not
      * on a business's own product list (redundant there). Purely additive
      * to the card: no business means no brand row, nothing else changes. */
-    business?: { name: string; slug: string; logo_url?: string | null } | null;
+    business?: { name: string; slug: string; logo_url?: string | null; categoryName?: string | null } | null;
   };
   /** @deprecated no longer used for the card's own link — kept optional so
    * existing call sites (which still pass it) don't need updating. The
@@ -25,10 +25,23 @@ export default function ProductCard({
   // FindMi-native path (real cart/fulfillment, not a redirect off-site).
   // The card always links to the product's own page either way, where the
   // matching action (Add to Cart form, Shop Now link, or inquiry) lives —
-  // this label is just an honest preview of which one it'll be.
-  const cta = product.purchasable ? "Add to Cart" : product.external_purchase_url ? "Shop Now" : "Ask About This";
-  const badgeLabel = product.product_type === "service" ? "Service" : "Product";
-  const price = formatPrice(product.price, product.price_label) || null;
+  // this label is just an honest preview of which one it'll be. Inquiry-
+  // only products say "View Details" (this is a discovery card, not the
+  // inquiry flow itself) rather than "Ask About This."
+  const cta = product.purchasable ? "Add to Cart" : product.external_purchase_url ? "Shop Now" : "View Details";
+  // Products have no category/taxonomy field of their own — the generic
+  // "PRODUCT"/"Service" label is replaced by the selling business's real
+  // primary category where available (see FeaturedProduct.business.
+  // categoryName in lib/data.ts), falling back to "Service" (still real —
+  // product_type) only when there's no category to show, and to nothing
+  // at all rather than a fabricated label.
+  const badgeLabel = business?.categoryName ?? (product.product_type === "service" ? "Service" : null);
+  // A real numeric price gets proper currency formatting ($68.00); a
+  // price_label only stands in when there's no numeric price at all
+  // ("starting at $450") — never lets a founder-typed shortcut like "$68"
+  // hide a perfectly formattable number. Presentation only: nothing about
+  // the stored price/price_label values changes.
+  const price = (product.price != null ? formatCurrency(product.price) : formatPrice(product.price, product.price_label)) || null;
 
   // Deliberately NOT built on PostCard's photo-overlay treatment: that
   // layout stacks badge/title/price/CTA as absolutely-positioned text over
@@ -54,7 +67,7 @@ export default function ProductCard({
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">{badgeLabel}</p>
+        {badgeLabel && <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">{badgeLabel}</p>}
         <p className="line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">
           {product.name}
         </p>
