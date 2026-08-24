@@ -82,6 +82,10 @@ async function getDefaultForm(
   purpose: FormPurpose,
   diagContext?: string
 ): Promise<FindmiForm | null> {
+  if (diagContext) {
+    console.log("[getDefaultForm]", { context: diagContext, purpose, entered_getDefaultForm: true });
+  }
+
   const { data, error } = await supabase
     .from("forms")
     .select("*")
@@ -91,19 +95,16 @@ async function getDefaultForm(
     .maybeSingle();
 
   if (diagContext) {
-    if (error) {
-      console.error("[getDefaultForm]", {
-        context: diagContext,
-        purpose,
-        result: "QUERY_ERROR",
-        errorCode: error.code ?? null,
-        errorMessage: error.message ?? null,
-      });
-    } else if (!data) {
-      console.log("[getDefaultForm]", { context: diagContext, purpose, result: "ZERO_ROWS" });
-    } else {
-      console.log("[getDefaultForm]", { context: diagContext, purpose, result: "ROW_FOUND", formId: data.id });
-    }
+    const query_result = error ? "QUERY_ERROR" : data ? "ROW_FOUND" : "ZERO_ROWS";
+    console.log("[getDefaultForm]", {
+      context: diagContext,
+      purpose,
+      query_attempted: true,
+      query_result,
+      formId: data?.id ?? null,
+      errorCode: error?.code ?? null,
+      errorMessage: error?.message ?? null,
+    });
   }
 
   return data ?? null;
@@ -262,11 +263,15 @@ export async function resolveOnboardingForm(
   context = "unknown"
 ): Promise<ResolvedForm | null> {
   const supabase = getSupabase();
+  console.log("[resolveOnboardingForm]", { context, supabase_client_available: Boolean(supabase) });
 
   if (!supabase) {
     console.error("[resolveOnboardingForm]", {
       context,
       branch: "NO_CLIENT",
+      entered_getDefaultForm: false,
+      query_attempted: false,
+      query_result: "NOT_ATTEMPTED",
       reason: "getSupabase() returned null — NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY missing",
     });
   } else {
