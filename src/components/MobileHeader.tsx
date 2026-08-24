@@ -31,7 +31,7 @@ export default function MobileHeader() {
             </svg>
           </button>
         )}
-        <Logo heightClassName="h-9" />
+        <Logo heightClassName="h-11" />
       </div>
 
       <div className="flex items-center gap-0.5">

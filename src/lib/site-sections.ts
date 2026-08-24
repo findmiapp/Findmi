@@ -81,11 +81,18 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     orderable: false,
   },
   business_doorway: {
+    // Repurposed (2026 discovery-marketplace redesign) as the homepage's
+    // Primary Join Banner, right after the first two discovery feeds — was
+    // previously a one-line masthead link. Key/admin card kept as-is so
+    // this stays founder-editable; only the default copy and field set
+    // changed (added body).
     label: "Business Doorway",
-    heading: "Have a brand? Get discovered on FindMi →",
+    heading: "Have a business or brand?",
+    body: "Get discovered on FindMi.",
+    ctaLabel: "Join FindMi →",
     ctaUrl: "/join",
     order: 1,
-    fields: ["heading", "cta"],
+    fields: ["heading", "body", "cta"],
     orderable: false,
   },
   brand_spotlight: {
@@ -95,8 +102,10 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     fields: ["eyebrow"],
   },
   featured_events: {
+    // Repurposed as "Upcoming Near You", the homepage's first live feed —
+    // same underlying upcoming-events concept as before, new copy/position.
     label: "Featured Events",
-    heading: "Featured Events",
+    heading: "Upcoming Near You",
     body: "Markets, pop-ups, and festivals coming up",
     ctaLabel: "View all",
     ctaUrl: "/events",
@@ -105,7 +114,7 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   },
   shop_findmi: {
     label: "Shop FindMi",
-    heading: "Shop FindMi",
+    heading: "Shop Local",
     body: "Real products from FindMi businesses",
     ctaLabel: "View all",
     ctaUrl: "/marketplace",
@@ -113,9 +122,12 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     fields: ["heading", "body", "cta"],
   },
   findmi_here: {
+    // Repurposed as "Around You Right Now", the homepage's second live
+    // feed — same underlying appearances/FindMi Here concept, new
+    // copy/position (was previously further down the page).
     label: "FindMi Here",
-    heading: "FindMi Here",
-    body: "What FindMi businesses are up to",
+    heading: "Around You Right Now",
+    body: "Vendors, pop-ups, and businesses showing up nearby",
     ctaLabel: "View all",
     ctaUrl: "/find",
     order: 40,
@@ -134,6 +146,12 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     label: "Curated Category Feeds",
     order: 60,
     fields: [],
+  },
+  explore_by_category: {
+    label: "Explore By Category",
+    heading: "Explore By Category",
+    order: 65,
+    fields: ["heading"],
   },
   brands_on_the_move: {
     label: "Brands On The Move",
@@ -171,8 +189,8 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   closing_cta: {
     label: "Closing CTA",
     eyebrow: "Founding 500 · $99/year",
-    heading: "Your next customer is looking for you.",
-    body: "Show people what you sell. Tell them where you'll be. Give them one place to keep up with you.",
+    heading: "More visibility.\nMore customers.\nMore growth.",
+    body: "List your business, promote events, sell products, and connect with your community.",
     ctaLabel: "Join FindMi →",
     ctaUrl: "/join",
     order: 110,
