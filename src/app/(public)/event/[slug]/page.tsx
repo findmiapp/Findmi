@@ -4,8 +4,10 @@ import { notFound } from "next/navigation";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventFollowForm from "@/components/EventFollowForm";
 import EventSaveButton from "@/components/EventSaveButton";
+import FormAction from "@/components/FormAction";
 import { getBusinessesForEvent, getEventBySlug } from "@/lib/data";
 import { cityState, formatDateRange } from "@/lib/format";
+import { resolveEventActionForm } from "@/lib/forms";
 
 export const revalidate = 60;
 
@@ -49,27 +51,45 @@ export default async function EventPage({
     ? new Date(event.vendor_application_deadline) < new Date()
     : false;
 
+  // Form Manager resolution — an assigned Form Manager form for this event
+  // outranks the event's own direct URL field; the direct URL (existing
+  // architecture) outranks the purpose's global default. Only when NONE of
+  // those exist does the action disappear. Tickets/Directions aren't
+  // form-driven purposes and keep their existing direct-URL-only behavior.
+  const [rsvpForm, vendorAppForm, contactForm] = await Promise.all([
+    event.rsvp_enabled ? resolveEventActionForm("rsvp", event, event.rsvp_url) : Promise.resolve(null),
+    event.vendor_applications_enabled && !vendorDeadlinePassed
+      ? resolveEventActionForm("vendor_application", event, event.vendor_application_url)
+      : Promise.resolve(null),
+    event.contact_enabled
+      ? resolveEventActionForm(
+          "contact_organizer",
+          event,
+          event.contact_url || (event.organizer_email ? `mailto:${event.organizer_email}` : null)
+        )
+      : Promise.resolve(null),
+  ]);
+
   // Only an action with BOTH its toggle on AND a real destination ever
   // renders — never a disabled or dead button. The first one found becomes
   // the single Aqua-filled primary; the rest stay compact outline pills in
   // the same row, so multiple configured actions never turn into a wall of
   // full-width Aqua buttons.
-  const primaryActions: { label: string; href: string }[] = [];
+  const primaryActions: { label: string; href: string; displayMode: "embed" | "external" }[] = [];
   if (event.tickets_enabled && event.tickets_url) {
-    primaryActions.push({ label: "Get Tickets", href: event.tickets_url });
+    primaryActions.push({ label: "Get Tickets", href: event.tickets_url, displayMode: "external" });
   }
-  if (event.rsvp_enabled && event.rsvp_url) {
-    primaryActions.push({ label: "RSVP", href: event.rsvp_url });
+  if (rsvpForm) {
+    primaryActions.push({ label: "RSVP", href: rsvpForm.url, displayMode: rsvpForm.displayMode });
   }
-  if (event.vendor_applications_enabled && event.vendor_application_url && !vendorDeadlinePassed) {
-    primaryActions.push({ label: "Apply to Vend", href: event.vendor_application_url });
+  if (vendorAppForm) {
+    primaryActions.push({ label: "Apply to Vend", href: vendorAppForm.url, displayMode: vendorAppForm.displayMode });
   }
   if (event.directions_enabled && directionsHref) {
-    primaryActions.push({ label: "Get Directions", href: directionsHref });
+    primaryActions.push({ label: "Get Directions", href: directionsHref, displayMode: "external" });
   }
 
-  const contactHref = event.contact_url || (event.organizer_email ? `mailto:${event.organizer_email}` : null);
-  const showContact = event.contact_enabled && Boolean(contactHref);
+  const showContact = Boolean(contactForm);
   const showFollow = event.follow_enabled;
 
   return (
@@ -117,19 +137,17 @@ export default async function EventPage({
         {primaryActions.length > 0 && (
           <div className="mt-5 flex flex-wrap items-center gap-2.5">
             {primaryActions.map((action, i) => (
-              <a
+              <FormAction
                 key={action.label}
                 href={action.href}
-                target="_blank"
-                rel="noreferrer"
+                displayMode={action.displayMode}
+                label={action.label}
                 className={
                   i === 0
                     ? "rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                     : "rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
                 }
-              >
-                {action.label}
-              </a>
+              />
             ))}
           </div>
         )}
@@ -145,15 +163,22 @@ export default async function EventPage({
             </a>
           )}
           <EventSaveButton slug={event.slug} />
-          {showContact && contactHref && (
-            <a
-              href={contactHref}
-              target={contactHref.startsWith("mailto:") ? undefined : "_blank"}
-              rel="noreferrer"
-              className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
-            >
-              Contact Organizer
-            </a>
+          {showContact && contactForm && (
+            contactForm.url.startsWith("mailto:") ? (
+              <a
+                href={contactForm.url}
+                className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              >
+                Contact Organizer
+              </a>
+            ) : (
+              <FormAction
+                href={contactForm.url}
+                displayMode={contactForm.displayMode}
+                label="Contact Organizer"
+                className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              />
+            )
           )}
           {event.external_url && (
             <a

@@ -10,7 +10,7 @@ import {
   onboardingStatusLabel,
   publicationStatusLabel,
 } from "@/lib/admin/membership-queries";
-import { getOnboardingFormUrl } from "@/lib/tally";
+import { resolveOnboardingForm } from "@/lib/forms";
 import MembershipEditForm from "./MembershipEditForm";
 import { approveMembership, markComped, pauseMembership, rejectMembership, updateMembership } from "../actions";
 
@@ -36,15 +36,16 @@ export default async function MembershipDetailPage({
     getBusinessOptionByIdForMembership(membership.existing_business_id),
   ]);
 
-  const inviteUrl =
+  const inviteForm =
     membership.billing_status === "comped"
-      ? getOnboardingFormUrl({
+      ? await resolveOnboardingForm({
           id: membership.id,
           source: "invited",
           planSlug: membership.plan?.slug,
           existingBusinessId: membership.existing_business_id,
         })
       : null;
+  const inviteUrl = inviteForm?.url ?? null;
 
   const updateAction = updateMembership.bind(null, id);
   const approveAction = approveMembership.bind(null, id);

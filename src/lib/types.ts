@@ -21,6 +21,46 @@ export type BillingStatus = "comped" | "pending_payment" | "paid" | "past_due" |
 export type OnboardingStatus = "not_started" | "incomplete" | "submitted" | "approved";
 export type PublicationStatus = "draft" | "pending_review" | "live" | "paused" | "rejected";
 
+// Founder Form Manager — see lib/forms.ts. Tally remains the form engine;
+// this just lets the founder repoint which Tally URL each FindMi action
+// uses, without a code change. FormPurpose enumerates every action that
+// can be form-driven; FormEntityType is what a specific assignment can
+// override the global default for.
+export type FormPurpose =
+  | "vendor_onboarding"
+  | "business_inquiry"
+  | "product_inquiry"
+  | "booking"
+  | "rsvp"
+  | "vendor_application"
+  | "contact_organizer";
+export type FormProvider = "tally";
+export type FormDisplayMode = "embed" | "external";
+export type FormEntityType = "business" | "event" | "product";
+
+export interface FindmiForm {
+  id: string;
+  name: string;
+  slug: string;
+  purpose: FormPurpose;
+  provider: FormProvider;
+  form_url: string;
+  display_mode: FormDisplayMode;
+  is_active: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FormAssignment {
+  id: string;
+  form_id: string;
+  entity_type: FormEntityType;
+  entity_id: string;
+  purpose: FormPurpose;
+  created_at: string;
+}
+
 export interface Business {
   id: string;
   slug: string;

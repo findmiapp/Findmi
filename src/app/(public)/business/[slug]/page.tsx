@@ -7,6 +7,7 @@ import ProductCard from "@/components/ProductCard";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
+import FormAction from "@/components/FormAction";
 import { CategoryPill, VerifiedBadge } from "@/components/Badge";
 import {
   getAlternativeBusinesses,
@@ -16,7 +17,7 @@ import {
   getUpcomingAppearancesForBusiness,
 } from "@/lib/data";
 import { cityState } from "@/lib/format";
-import { getInquiryFormUrl } from "@/lib/tally";
+import { resolveBusinessInquiryForm } from "@/lib/forms";
 
 export const revalidate = 60;
 
@@ -51,11 +52,12 @@ export default async function BusinessPage({
   const business = await getBusinessBySlug(slug);
   if (!business) notFound();
 
-  const [products, appearances, alternatives, people] = await Promise.all([
+  const [products, appearances, alternatives, people, inquiryForm] = await Promise.all([
     getProductsForBusiness(business.id),
     getUpcomingAppearancesForBusiness(business.id),
     getAlternativeBusinesses(business),
     getPeopleForBusiness(business.id),
+    resolveBusinessInquiryForm(business),
   ]);
 
   // "Meet the Owners" only when every configured role genuinely says so —
@@ -73,16 +75,15 @@ export default async function BusinessPage({
     )
   ).slice(0, 8);
 
-  const inquiryUrl = getInquiryFormUrl(business);
-  // If the global Tally inquiry form isn't configured, fall back to a real
-  // mailto to this specific business — only when it actually has an email
-  // on file. Never fabricated; a business with neither still correctly
-  // shows "Inquiries aren't open yet."
-  const inquiryHref =
-    inquiryUrl ||
-    (business.email
-      ? `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via FindMi — ${business.name}`)}`
-      : null);
+  // Resolution: business-specific booking/inquiry form -> global default
+  // -> business email fallback -> graceful unavailable state (see
+  // lib/forms.ts's resolveBusinessInquiryForm for the DB/env precedence).
+  // Never fabricated; a business with neither still correctly shows
+  // "Inquiries aren't open yet."
+  const mailtoFallback = business.email
+    ? { url: `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via FindMi — ${business.name}`)}`, displayMode: "external" as const }
+    : null;
+  const inquiryAction = inquiryForm ?? mailtoFallback;
   const socialLinks = [
     { href: business.website_url, label: "Website", icon: "link" as const },
     { href: business.instagram_url, label: "Instagram", icon: "instagram" as const },
@@ -294,15 +295,23 @@ export default async function BusinessPage({
             Tell us what you&rsquo;re planning and we&rsquo;ll send your request to this
             business.
           </p>
-          {inquiryHref ? (
-            <a
-              href={inquiryHref}
-              target={inquiryHref.startsWith("mailto:") ? undefined : "_blank"}
-              rel="noreferrer"
-              className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-            >
-              Request Availability
-            </a>
+          {inquiryAction ? (
+            inquiryAction.url.startsWith("mailto:") ? (
+              <a
+                href={inquiryAction.url}
+                rel="noreferrer"
+                className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              >
+                Request Availability
+              </a>
+            ) : (
+              <FormAction
+                href={inquiryAction.url}
+                displayMode={inquiryAction.displayMode}
+                label="Request Availability"
+                className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              />
+            )
           ) : (
             <p className="mt-4 text-sm text-ink/50">Inquiries aren&rsquo;t open yet.</p>
           )}

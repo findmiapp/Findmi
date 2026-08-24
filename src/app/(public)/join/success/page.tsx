@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { getOnboardingFormUrl } from "@/lib/tally";
+import { resolveOnboardingForm, type ResolvedForm } from "@/lib/forms";
+import FormAction from "@/components/FormAction";
 
 export const metadata: Metadata = {
   title: "Welcome to FindMi",
@@ -17,7 +18,7 @@ export default async function JoinSuccessPage({
 }) {
   const { membership_id } = await searchParams;
 
-  let onboardingUrl = getOnboardingFormUrl();
+  let onboardingForm: ResolvedForm | null = await resolveOnboardingForm();
   if (membership_id) {
     const supabase = getAdminSupabase();
     if (supabase) {
@@ -32,7 +33,7 @@ export default async function JoinSuccessPage({
       // then this quietly falls back to the generic onboarding link below.
       if (membership && membership.billing_status === "paid") {
         const plan = Array.isArray(membership.plan) ? membership.plan[0] : membership.plan;
-        onboardingUrl = getOnboardingFormUrl({
+        onboardingForm = await resolveOnboardingForm({
           id: membership.id,
           source: "paid",
           planSlug: plan?.slug ?? null,
@@ -54,15 +55,13 @@ export default async function JoinSuccessPage({
         Your membership is active. Now let&rsquo;s build your profile.
       </p>
 
-      {onboardingUrl ? (
-        <a
-          href={onboardingUrl}
-          target="_blank"
-          rel="noreferrer"
+      {onboardingForm ? (
+        <FormAction
+          href={onboardingForm.url}
+          displayMode={onboardingForm.displayMode}
+          label="Build My Profile"
           className="mt-8 rounded-full bg-findmi px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-        >
-          Build My Profile
-        </a>
+        />
       ) : (
         <p className="mt-8 text-sm text-ink/50">
           Onboarding form coming shortly — we&rsquo;ll be in touch by email.

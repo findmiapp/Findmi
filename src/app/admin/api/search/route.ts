@@ -53,5 +53,25 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  if (entity === "products") {
+    const { data } = await supabase
+      .from("products")
+      .select("id, name, slug, image_url, business:businesses(name)")
+      .or(`name.ilike.${term},slug.ilike.${term}`)
+      .order("name")
+      .limit(20);
+    return NextResponse.json({
+      results: (data ?? []).map((p) => {
+        const business = Array.isArray(p.business) ? p.business[0] : p.business;
+        return {
+          value: p.id,
+          label: p.name,
+          sublabel: business?.name,
+          image_url: p.image_url,
+        };
+      }),
+    });
+  }
+
   return NextResponse.json({ results: [] }, { status: 400 });
 }

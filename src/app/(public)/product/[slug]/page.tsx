@@ -4,8 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFulfillmentOptionsForProduct, getProductBySlug } from "@/lib/data";
 import { formatPrice } from "@/lib/format";
-import { getInquiryFormUrl } from "@/lib/tally";
+import { resolveProductInquiryForm } from "@/lib/forms";
 import AddToCartForm from "@/components/AddToCartForm";
+import FormAction from "@/components/FormAction";
 
 export const revalidate = 60;
 
@@ -45,7 +46,10 @@ export default async function ProductPage({
   const fulfillmentOptions = canAddToCart ? await getFulfillmentOptionsForProduct(product.id) : [];
 
   const purchaseUrl = product.external_purchase_url;
-  const inquiryUrl = getInquiryFormUrl(product.business, { id: product.id, name: product.name });
+  // Resolved regardless of canAddToCart — when Add to Cart is available
+  // this becomes a secondary "Ask About This" action rather than being
+  // removed (existing inquiry capability is preserved either way).
+  const inquiryAction = await resolveProductInquiryForm(product, product.business);
 
   return (
     <div>
@@ -115,19 +119,17 @@ export default async function ProductPage({
             >
               Shop Now
             </a>
-          ) : inquiryUrl ? (
-            <a
-              href={inquiryUrl}
-              target="_blank"
-              rel="noreferrer"
+          ) : inquiryAction ? (
+            <FormAction
+              href={inquiryAction.url}
+              displayMode={inquiryAction.displayMode}
+              label="Ask About This"
               className={
                 canAddToCart
                   ? "rounded-full border border-black/10 px-5 py-2.5 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
                   : "rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               }
-            >
-              Ask About This
-            </a>
+            />
           ) : (
             <Link
               href={`/business/${product.business.slug}#book`}
