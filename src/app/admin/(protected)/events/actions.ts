@@ -54,6 +54,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
     organizer_email: str(formData, "organizer_email"),
     contact_url: str(formData, "contact_url"),
     follow_enabled: bool(formData, "follow_enabled"),
+    featured_products_heading: str(formData, "featured_products_heading"),
   };
 
   let eventId = id;
@@ -98,6 +99,25 @@ export async function saveEvent(id: string | null, formData: FormData) {
       .delete()
       .eq("event_id", eventId)
       .in("business_id", removedIds);
+  }
+
+  // Featured products roster (item 15) — same "current roster + explicitly
+  // removed ids" shape as the participant roster above, so this never has
+  // to diff against the full products table either.
+  const featuredProductIds = formData.getAll("featured_product_id").map(String);
+  const removedProductIds = formData.getAll("removed_product_id").map(String);
+
+  const productsToUpsert = featuredProductIds.map((productId) => ({
+    event_id: eventId as string,
+    product_id: productId,
+    display_order: num(formData, `product_display_order_${productId}`),
+  }));
+
+  if (productsToUpsert.length > 0) {
+    await supabase.from("event_products").upsert(productsToUpsert, { onConflict: "event_id,product_id" });
+  }
+  if (removedProductIds.length > 0) {
+    await supabase.from("event_products").delete().eq("event_id", eventId).in("product_id", removedProductIds);
   }
 
   // Root cause of the "category unchecks itself" report: neither write

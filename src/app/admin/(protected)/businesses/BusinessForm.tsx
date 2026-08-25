@@ -215,6 +215,65 @@ export default function BusinessForm({
         </div>
       </div>
 
+      <div className="rounded-2xl border border-black/10 p-4">
+        <p className="mb-1 text-sm font-semibold text-ink">Inquire Button</p>
+        <p className="mb-3 text-xs text-ink/45">
+          Optional — point the profile&rsquo;s primary Inquire button at any external URL with custom
+          text, no Tally form required. Leave blank to keep the existing Form Manager/email behavior.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            label="Button Text"
+            name="inquiry_cta_label"
+            defaultValue={business?.inquiry_cta_label}
+            placeholder="Inquire"
+            hint="Defaults to “Inquire” when blank."
+          />
+          <TextField
+            label="Destination URL"
+            name="inquiry_cta_url"
+            type="url"
+            defaultValue={business?.inquiry_cta_url}
+            placeholder="https://…"
+            hint="Overrides Form Manager/email when set."
+          />
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <p className="mb-1 text-sm font-semibold text-ink">Business CTA Buttons</p>
+        <p className="mb-3 text-xs text-ink/45">
+          Up to three additional buttons shown below the business description. Each is independent —
+          off by default even when a label/URL is filled in.
+        </p>
+        <div className="flex flex-col gap-4">
+          {([1, 2, 3] as const).map((n) => (
+            <div key={n} className="flex flex-col gap-2 rounded-xl border border-black/[0.06] p-3">
+              <CheckboxField
+                label={`CTA ${n} Enabled`}
+                name={`cta_${n}_enabled`}
+                defaultChecked={business?.[`cta_${n}_enabled` as const]}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  label="Label"
+                  name={`cta_${n}_label`}
+                  defaultValue={business?.[`cta_${n}_label` as const]}
+                  placeholder="Book Us"
+                />
+                <TextField
+                  label="URL"
+                  name={`cta_${n}_url`}
+                  type="url"
+                  defaultValue={business?.[`cta_${n}_url` as const]}
+                  placeholder="https://…"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <SubmitBar cancelHref="/admin/businesses" />
     </form>
   );

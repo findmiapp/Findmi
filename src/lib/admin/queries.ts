@@ -200,20 +200,50 @@ export interface EventParticipant {
   display_order: number | null;
 }
 
+// Event Detail V2 polish pass, item 15 — a founder-picked small set of
+// EXISTING products manually associated with an event (event_products),
+// for the "Featured at This Event" carousel. Not automatic merchandising.
+export interface EventFeaturedProduct {
+  product_id: string;
+  product_name: string;
+  image_url: string | null;
+  display_order: number | null;
+}
+
 export async function getAdminEventById(
   id: string
-): Promise<{ event: AdminEvent; participants: EventParticipant[] } | null> {
+): Promise<{ event: AdminEvent; participants: EventParticipant[]; featuredProducts: EventFeaturedProduct[] } | null> {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
-  const [{ data: event }, { data: links }] = await Promise.all([
+  const [{ data: event }, { data: links }, { data: productLinks }] = await Promise.all([
     supabase.from("events").select("*").eq("id", id).maybeSingle(),
     supabase
       .from("event_businesses")
       .select("business_id, status, featured, offering_text, display_order, businesses(name, logo_url)")
       .eq("event_id", id)
       .order("display_order", { ascending: true, nullsFirst: false }),
+    supabase
+      .from("event_products")
+      .select("product_id, display_order, products(name, image_url)")
+      .eq("event_id", id)
+      .order("display_order", { ascending: true, nullsFirst: false }),
   ]);
   if (!event) return null;
+
+  type ProductLinkRow = {
+    product_id: string;
+    display_order: number | null;
+    products: { name: string; image_url: string | null } | { name: string; image_url: string | null }[] | null;
+  };
+  const featuredProducts = ((productLinks ?? []) as ProductLinkRow[]).map((l) => {
+    const product = Array.isArray(l.products) ? l.products[0] : l.products;
+    return {
+      product_id: l.product_id,
+      product_name: product?.name ?? "Unknown product",
+      image_url: product?.image_url ?? null,
+      display_order: l.display_order,
+    };
+  });
 
   type LinkRow = {
     business_id: string;
@@ -255,7 +285,7 @@ export async function getAdminEventById(
     };
   });
 
-  return { event: event as AdminEvent, participants };
+  return { event: event as AdminEvent, participants, featuredProducts };
 }
 
 export async function getEventCategoryIds(eventId: string): Promise<string[]> {

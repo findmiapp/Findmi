@@ -102,6 +102,25 @@ export interface Business {
   // content). A real business created via membership onboarding stays
   // non-public until a founder approves it, regardless of payment status.
   publication_status: PublicationStatus;
+  // Business Profile + Event Detail V2 polish pass, item 4 — an optional
+  // direct external URL for the primary Inquire action, with its own
+  // label. Checked ahead of the existing Form Manager/Tally resolution
+  // (lib/forms.ts's resolveBusinessInquiryForm) — null/empty falls through
+  // to that unchanged existing behavior.
+  inquiry_cta_label: string | null;
+  inquiry_cta_url: string | null;
+  // Item 5 — up to three additional, independently toggleable CTA buttons
+  // below the profile description. Flat per-slot columns, same convention
+  // as events' own fixed action slots (tickets_url/rsvp_url/etc).
+  cta_1_label: string | null;
+  cta_1_url: string | null;
+  cta_1_enabled: boolean;
+  cta_2_label: string | null;
+  cta_2_url: string | null;
+  cta_2_enabled: boolean;
+  cta_3_label: string | null;
+  cta_3_url: string | null;
+  cta_3_enabled: boolean;
 }
 
 export interface Market {
@@ -227,6 +246,10 @@ export interface FindmiEvent {
   // Founder-controlled ordering among is_featured events — null sorts
   // last (still featured, just after explicitly ordered ones).
   featured_sort_order: number | null;
+  // Event Detail V2 polish pass, item 15 — optional override for the
+  // "Featured at This Event" product carousel's heading. Null falls back
+  // to the hardcoded default, same pattern as site_sections overrides.
+  featured_products_heading: string | null;
 }
 
 export interface EventWithCategories extends FindmiEvent {

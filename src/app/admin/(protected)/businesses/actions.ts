@@ -44,6 +44,18 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     marketplace_fee_percent: num(formData, "marketplace_fee_percent") ?? 5,
     processing_fee_payer: str(formData, "processing_fee_payer") ?? "vendor",
     payout_method: str(formData, "payout_method") ?? "manual",
+    // Business Profile V2 polish pass, item 4/5.
+    inquiry_cta_label: str(formData, "inquiry_cta_label"),
+    inquiry_cta_url: str(formData, "inquiry_cta_url"),
+    cta_1_label: str(formData, "cta_1_label"),
+    cta_1_url: str(formData, "cta_1_url"),
+    cta_1_enabled: bool(formData, "cta_1_enabled"),
+    cta_2_label: str(formData, "cta_2_label"),
+    cta_2_url: str(formData, "cta_2_url"),
+    cta_2_enabled: bool(formData, "cta_2_enabled"),
+    cta_3_label: str(formData, "cta_3_label"),
+    cta_3_url: str(formData, "cta_3_url"),
+    cta_3_enabled: bool(formData, "cta_3_enabled"),
   };
 
   let businessId = id;

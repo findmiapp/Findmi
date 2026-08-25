@@ -13,19 +13,26 @@ export default function Section({
 }) {
   return (
     <section className="py-6">
-      <div className="mb-3 flex items-end justify-between gap-4 px-4 sm:px-6">
-        <div>
+      {/* Launch-polish follow-up: View All used to sit inside the same
+          items-end row as the title+subtitle stack, so with a subtitle
+          present it bottom-aligned to the SUBTITLE line, not the title —
+          reading as if it belonged with the filter pills underneath. The
+          title/View All pair is now its own row (items-center, so View
+          All vertically centers against the title specifically), with the
+          subtitle continuing on its own line below either way. */}
+      <div className="mb-3 px-4 sm:px-6">
+        <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
-          {subtitle && <p className="mt-1 text-sm text-ink/55">{subtitle}</p>}
+          {viewAllHref && (
+            <Link
+              href={viewAllHref}
+              className="shrink-0 text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
+            >
+              View all
+            </Link>
+          )}
         </div>
-        {viewAllHref && (
-          <Link
-            href={viewAllHref}
-            className="shrink-0 text-sm font-medium text-ink/60 hover:text-ink"
-          >
-            View all
-          </Link>
-        )}
+        {subtitle && <p className="mt-1 text-sm text-ink/55">{subtitle}</p>}
       </div>
       {children}
     </section>

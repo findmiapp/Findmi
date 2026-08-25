@@ -37,6 +37,7 @@ export default async function EditEventPage({
         <EventForm
           event={result.event}
           participants={result.participants}
+          featuredProducts={result.featuredProducts}
           categories={categories}
           selectedCategoryIds={selectedCategoryIds}
           error={error}

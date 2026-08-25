@@ -9,7 +9,8 @@ import {
 import ImageField from "@/components/admin/ImageField";
 import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
-import type { AdminEvent, EventParticipant } from "@/lib/admin/queries";
+import EventProductsRoster from "@/components/admin/EventProductsRoster";
+import type { AdminEvent, EventFeaturedProduct, EventParticipant } from "@/lib/admin/queries";
 import type { Category } from "@/lib/types";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveEvent } from "./actions";
@@ -17,12 +18,14 @@ import { saveEvent } from "./actions";
 export default function EventForm({
   event,
   participants,
+  featuredProducts,
   categories,
   selectedCategoryIds,
   error,
 }: {
   event: AdminEvent | null;
   participants: EventParticipant[];
+  featuredProducts: EventFeaturedProduct[];
   categories: Category[];
   selectedCategoryIds: string[];
   error?: string;
@@ -209,6 +212,19 @@ export default function EventForm({
       </div>
 
       <ParticipationRoster initialParticipants={participants} />
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <TextField
+          label="Featured Products Heading"
+          name="featured_products_heading"
+          defaultValue={event?.featured_products_heading}
+          placeholder="Featured at This Event"
+          hint="Optional — defaults to “Featured at This Event” when blank."
+        />
+        <div className="mt-4">
+          <EventProductsRoster initialProducts={featuredProducts} />
+        </div>
+      </div>
 
       <SubmitBar cancelHref="/admin/events" />
     </form>

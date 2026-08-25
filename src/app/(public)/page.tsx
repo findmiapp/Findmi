@@ -100,18 +100,13 @@ export default async function HomePage() {
           (live-QA correction) — the generic business-category pill row
           that used to sit here was removed; that filter now lives on
           Brands We Love below, where it's actually about businesses. */}
-      <section className="py-5">
-        <div className="mx-auto max-w-6xl">
-          {/* Launch-polish pass item 2 — a real, existing canonical
-              destination (/events, Discovery/Archive V2) already exists,
-              so it gets the same understated View All treatment as the
-              other rows below. */}
-          <div className="mb-3 flex items-end justify-between gap-4 px-4 sm:px-6">
-            <h2 className="text-lg font-semibold tracking-tight text-ink">{upcomingSec.heading}</h2>
-            <Link href="/events" className="shrink-0 text-sm font-medium text-ink/60 hover:text-ink">
-              View all
-            </Link>
-          </div>
+      {/* Business Profile + Event Detail V2 polish pass, item 1: reuses
+          Section's own header (title left, View All same line/vertically
+          centered to it, smaller/underlined, subtitle-free here) instead
+          of a page-specific hand-rolled header — the shared architecture
+          this item asked for, not a one-off. */}
+      <div className="mx-auto max-w-6xl">
+        <Section title={upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!} viewAllHref="/events">
           <HomeEventDiscovery
             upNext={upNextEvents}
             today={todayEvents}
@@ -119,8 +114,8 @@ export default async function HomePage() {
             anytime={anytimeEvents}
             eventCategories={eventCategories}
           />
-        </div>
-      </section>
+        </Section>
+      </div>
 
       {/* Founder-managed Homepage Rows — the central architectural change
           of this pass. Each row is a real database record (see

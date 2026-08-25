@@ -4,12 +4,13 @@ import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
-import ProductCard from "@/components/ProductCard";
+import BusinessShopSection from "@/components/BusinessShopSection";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import FormAction from "@/components/FormAction";
-import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
+import { FeaturedBadge, FoundingMemberBadge, NewBadge, VerifiedBadge } from "@/components/Badge";
+import type { Business } from "@/lib/types";
 import {
   getAlternativeBusinesses,
   getBusinessBySlug,
@@ -82,17 +83,25 @@ export default async function BusinessPage({
     people.length > 0 && people.every((p) => /owner|founder/i.test(p.role ?? ""));
   const peopleHeading = allOwnersOrFounders ? "Meet the Owners" : `Meet the People Behind ${business.name}`;
 
-  // Resolution: business-specific booking/inquiry form -> global default ->
+  // Resolution (Business Profile V2 polish pass, item 4 — a new tier
+  // added AHEAD of the existing chain): business's own custom Inquiry
+  // CTA (inquiry_cta_url, any external URL — no Tally form required) ->
+  // business-specific booking/inquiry form -> global default form ->
   // business email fallback -> graceful unavailable state (see
-  // lib/forms.ts's resolveBusinessInquiryForm for the DB/env precedence).
-  // Never fabricated; a business with neither still correctly shows no CTA.
+  // lib/forms.ts's resolveBusinessInquiryForm for that existing DB/env
+  // precedence, untouched). Never fabricated; a business with none of
+  // these still correctly shows no CTA. The label is independently
+  // overridable (inquiry_cta_label) regardless of which URL tier resolves,
+  // defaulting to "Inquire" exactly as before when unset.
   const mailtoFallback = business.email
     ? {
         url: `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via FindMi — ${business.name}`)}`,
         displayMode: "external" as const,
       }
     : null;
-  const inquiryAction = inquiryForm ?? mailtoFallback;
+  const customInquiryUrl = isSafeExternalUrl(business.inquiry_cta_url) ? business.inquiry_cta_url : null;
+  const inquiryAction = customInquiryUrl ? { url: customInquiryUrl, displayMode: "external" as const } : (inquiryForm ?? mailtoFallback);
+  const inquiryLabel = business.inquiry_cta_label?.trim() || "Inquire";
 
   const location = cityState(business.city, business.state);
   // categories[0] is the same "good enough for a compact label" primary-
@@ -102,6 +111,9 @@ export default async function BusinessPage({
   // (Business Profile V2, Part 4).
   const primaryCategory = business.categories[0] ?? null;
   const extraCategoryCount = Math.max(0, business.categories.length - 1);
+  // Same rule as BusinessLogoCard's own "New" badge — not editorially
+  // featured, created within the last 30 days. Reused, not reinvented.
+  const isNew = !business.is_featured && Date.now() - new Date(business.created_at).getTime() < 30 * 24 * 60 * 60 * 1000;
 
   // Compact icon row — website gets its own globe glyph (UI cleanup pass
   // item 5; the old generic chain-link icon read as "some vague URL," not
@@ -203,12 +215,20 @@ export default async function BusinessPage({
           )}
 
           <div className="mt-4 flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
-              {business.verified && <VerifiedBadge />}
-              {business.founding_member && <FoundingMemberBadge />}
-              {business.is_featured && <FeaturedBadge />}
-            </div>
+            {/* Item 2 — badges moved OFF the name's own line (they used to
+                sit inline with h1, crowding it as soon as 2-3 stacked up)
+                onto their own compact, wrapping row underneath. New reuses
+                the exact recency rule BusinessLogoCard's own badge already
+                uses (not featured, created <30 days) — not a new signal. */}
+            <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
+            {(business.verified || business.founding_member || business.is_featured || isNew) && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {business.verified && <VerifiedBadge />}
+                {business.founding_member && <FoundingMemberBadge />}
+                {business.is_featured && <FeaturedBadge />}
+                {isNew && <NewBadge />}
+              </div>
+            )}
             <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
               {primaryCategory && <span className="font-semibold text-ink/70">{primaryCategory.name}</span>}
               {primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
@@ -221,6 +241,16 @@ export default async function BusinessPage({
               )}
             </p>
             {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
+
+            {/* Item 3 — Follow moved up into the identity block itself: a
+                higher, more social position, visually separate from the
+                Inquire/Save action row below (which is about the
+                customizable business CTA, not social following). Same
+                FollowButton component/behavior, just narrowed to its
+                natural compact width instead of stretching full-row. */}
+            <div className="mt-1 w-40">
+              <FollowButton businessId={business.id} businessSlug={business.slug} />
+            </div>
           </div>
         </div>
       </div>
@@ -230,34 +260,32 @@ export default async function BusinessPage({
             only) the details/contact block — written first in the DOM so
             it naturally lands right after identity on mobile too. */}
         <div className="mt-6 lg:order-2 lg:sticky lg:top-20 lg:mt-0">
-          {/* UI cleanup pass item 1: proportional widths via flex-basis
-              wrappers (Inquire ~58%, Follow ~32%, Save fixed icon) instead
-              of Inquire's old flex-1, which let it swallow the whole row
-              and reduce Follow to an afterthought next to it. */}
+          {/* Item 3: Follow no longer lives in this row (moved up into the
+              identity block) — this is now purely the customizable-CTA-
+              adjacent action row: Inquire (the primary, most-configurable
+              action, item 4) takes the full width, Save stays as the
+              supporting utility action beside it. */}
           <div className="flex items-center gap-2.5">
             {inquiryAction && (
-              <div className="min-w-0 flex-[58]">
+              <div className="min-w-0 flex-1">
                 {inquiryAction.url.startsWith("mailto:") ? (
                   <a
                     href={inquiryAction.url}
                     rel="noreferrer"
                     className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   >
-                    Inquire
+                    {inquiryLabel}
                   </a>
                 ) : (
                   <FormAction
                     href={inquiryAction.url}
                     displayMode={inquiryAction.displayMode}
-                    label="Inquire"
+                    label={inquiryLabel}
                     className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   />
                 )}
               </div>
             )}
-            <div className={`min-w-0 ${inquiryAction ? "flex-[32]" : "flex-1"}`}>
-              <FollowButton businessId={business.id} businessSlug={business.slug} />
-            </div>
             <SaveButton slug={business.slug} />
           </div>
 
@@ -298,18 +326,22 @@ export default async function BusinessPage({
           )}
 
           {/* Products — hidden entirely with none, same rule as every other
-              optional section on this page. */}
+              optional section on this page. Item 6: now split by real
+              purchasable state (BusinessShopSection), and `business` is
+              passed through so ProductCard's Add to Cart gate checks the
+              real commerce_enabled flag instead of falling back to
+              purchasable alone. */}
           {products.length > 0 && (
-            <section className="mt-8">
-              <h2 className="font-display text-lg font-bold tracking-tight text-ink">Shop {business.name}</h2>
-              <div className="mt-4 -mx-4 flex gap-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 sm:grid-cols-3 md:grid-cols-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {products.map((p) => (
-                  <div key={p.id} className="w-40 shrink-0 sm:w-auto sm:shrink">
-                    <ProductCard product={p} />
-                  </div>
-                ))}
-              </div>
-            </section>
+            <BusinessShopSection
+              businessName={business.name}
+              products={products}
+              business={{
+                name: business.name,
+                slug: business.slug,
+                logo_url: business.logo_url,
+                commerce_enabled: business.commerce_enabled,
+              }}
+            />
           )}
 
           {business.description && (
@@ -318,6 +350,12 @@ export default async function BusinessPage({
               <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{business.description}</p>
             </section>
           )}
+
+          {/* Item 5 — up to three additional, business-specific CTAs,
+              distinct from Follow (identity block above) and Inquire
+              (primary action row above) — never rendered empty, never
+              tied to Follow. */}
+          <BusinessCtaRow business={business} />
 
           {/* People — editorial, human; single person gets a stronger
               treatment, multiple people use a horizontal carousel. Never
@@ -373,6 +411,45 @@ export default async function BusinessPage({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Business Profile V2 polish pass, item 5 — up to three founder-editable
+ * CTA buttons (cta_1/2/3 _label/_url/_enabled on businesses), each
+ * independently toggleable. Never renders a slot that's disabled, unlabeled,
+ * or missing a safe external URL — and renders nothing at all (no divider
+ * either) when none qualify, same "never empty" rule as every other
+ * optional section on this page. Natural-width pills in a wrapping flex
+ * row: correct for 1 (sits at its own content width), 2, or 3 (wraps
+ * cleanly on narrow mobile, never overflows). */
+function BusinessCtaRow({ business }: { business: Business }) {
+  const ctas = [
+    { label: business.cta_1_label, url: business.cta_1_url, enabled: business.cta_1_enabled },
+    { label: business.cta_2_label, url: business.cta_2_url, enabled: business.cta_2_enabled },
+    { label: business.cta_3_label, url: business.cta_3_url, enabled: business.cta_3_enabled },
+  ].filter(
+    (c): c is { label: string; url: string; enabled: true } =>
+      c.enabled && Boolean(c.label?.trim()) && isSafeExternalUrl(c.url)
+  );
+
+  if (ctas.length === 0) return null;
+
+  return (
+    <section className="mt-8 border-t border-black/[0.06] pt-6">
+      <div className="flex flex-wrap gap-2.5">
+        {ctas.map((cta, i) => (
+          <a
+            key={i}
+            href={cta.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-11 items-center justify-center rounded-full border border-black/10 px-5 text-sm font-bold uppercase tracking-wide text-ink transition hover:border-ink/30 hover:bg-black/[0.02]"
+          >
+            {cta.label}
+          </a>
+        ))}
+      </div>
+    </section>
   );
 }
 

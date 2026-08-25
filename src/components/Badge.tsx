@@ -11,10 +11,14 @@
 // not a headline), Featured uses restrained FindMi Aqua (editorial
 // curation, distinct from both).
 
+// Business Profile V2 polish pass, item 2: shrunk from px-2.5/py-1/
+// text-[11px] to px-2/py-0.5/text-[10px] — up to 4 of these can now sit in
+// one compact row without reading as giant pills or competing with the
+// business name above them.
 export function FoundingMemberBadge() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2.5 py-1 text-[11px] font-semibold text-white">
-      <StarGlyph className="h-3 w-3" />
+    <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 text-[10px] font-semibold text-white">
+      <StarGlyph className="h-2.5 w-2.5" />
       Founding Member
     </span>
   );
@@ -22,8 +26,8 @@ export function FoundingMemberBadge() {
 
 export function VerifiedBadge() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-black/15 bg-white px-2.5 py-1 text-[11px] font-semibold text-ink/60">
-      <CheckGlyph className="h-3 w-3" />
+    <span className="inline-flex items-center gap-1 rounded-full border border-black/15 bg-white px-2 py-0.5 text-[10px] font-semibold text-ink/60">
+      <CheckGlyph className="h-2.5 w-2.5" />
       Verified
     </span>
   );
@@ -32,9 +36,20 @@ export function VerifiedBadge() {
 // Editorial curation flag (businesses.is_featured).
 export function FeaturedBadge() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-findmi px-2.5 py-1 text-[11px] font-semibold text-white">
-      <StarGlyph className="h-3 w-3" />
+    <span className="inline-flex items-center gap-1 rounded-full bg-findmi px-2 py-0.5 text-[10px] font-semibold text-white">
+      <StarGlyph className="h-2.5 w-2.5" />
       Featured
+    </span>
+  );
+}
+
+// Recency signal — same rule BusinessLogoCard's own badge already uses
+// (not featured, created within 30 days): a business created recently and
+// not yet editorially featured. Reused here, not a new concept.
+export function NewBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-findmi/30 bg-findmi-50 px-2 py-0.5 text-[10px] font-semibold text-findmi-700">
+      New
     </span>
   );
 }

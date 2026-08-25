@@ -1152,6 +1152,42 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
     }));
 }
 
+/** Event Detail V2 polish pass, item 15 — the small, founder-picked set of
+ * EXISTING products manually associated with one event (event_products),
+ * for the "Featured at This Event" carousel. Same two-step shape/filters
+ * as getMarketplaceProducts (is_active, real/live selling business) —
+ * never automatic vendor merchandising, and a product hidden from public
+ * display (is_active=false) never leaks through here even if still linked. */
+export async function getEventProducts(eventId: string): Promise<MarketplaceProduct[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("event_products")
+    .select(
+      "display_order, product:products(*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status))"
+    )
+    .eq("event_id", eventId)
+    .order("display_order", { ascending: true, nullsFirst: false });
+
+  type JoinedBusiness = MarketplaceProduct["business"] & { is_demo: boolean; publication_status: string };
+  type Row = { product: (Product & { business: JoinedBusiness | JoinedBusiness[] }) | null };
+
+  return ((data ?? []) as unknown as Row[])
+    .map((row) => {
+      if (!row.product) return null;
+      const business = Array.isArray(row.product.business) ? row.product.business[0] : row.product.business;
+      return { ...row.product, business };
+    })
+    .filter(
+      (item): item is Product & { business: JoinedBusiness } =>
+        Boolean(item) && item!.is_active && Boolean(item!.business) && !item!.business.is_demo && item!.business.publication_status === "live"
+    )
+    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
+      ...rest,
+      business,
+    }));
+}
+
 /** Dynamic-mode products feed for a founder-configured homepage row (see
  * lib/homepage-rows.ts) — same shape/columns as getMarketplaceProducts,
  * but also attaches each selling business's primary category (like
