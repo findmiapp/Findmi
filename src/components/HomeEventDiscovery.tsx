@@ -58,7 +58,13 @@ export default function HomeEventDiscovery({
 
   async function loadCombo(timeKey: TimeKey, categorySlug: string) {
     const key = `${timeKey}:${categorySlug}`;
-    if (cache[key]) return;
+    // `cache[key]` alone isn't the right guard — a genuinely empty result
+    // (`[]`, which is truthy) would short-circuit here forever, even
+    // after the underlying data changes (e.g. a founder assigns a
+    // category to an event after this combo was already queried once
+    // this session). Only skip the refetch when we already have real
+    // results to show; an empty combo always gets a fresh look.
+    if (cache[key]?.length) return;
     setLoading(true);
     setFailedKey(null);
     try {
