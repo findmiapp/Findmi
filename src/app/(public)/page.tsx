@@ -84,7 +84,7 @@ export default async function HomePage() {
 
   return (
     <div>
-      <HomeHero images={heroImages} description={heroSec.body} />
+      <HomeHero images={heroImages} heading={heroSec.heading} description={heroSec.body} />
 
       {/* Search — immediately after the hero, live typeahead. */}
       <section className="border-b border-black/5 bg-white px-4 py-3 sm:px-6 sm:py-4">

@@ -34,8 +34,31 @@ import Link from "next/link";
 // "Get discovered." remains the hard backstop either way. sm:/md: sizes
 // (text-3xl/text-4xl) are unchanged from the prior pass — this item's
 // ask was weight/line-height/mobile-size, not the larger breakpoints.
-export default function HomeHero({ images, description }: { images: string[]; description: string | null }) {
+const DEFAULT_HEADING_LINES = ["Find what's", "around you.", "Get discovered."];
+
+export default function HomeHero({
+  images,
+  heading,
+  description,
+}: {
+  images: string[];
+  /** Founder-editable via Site Editor → Hero → Heading (Discovery/
+   * Archive V2 Part 18) — newlines control the visual lines, same as
+   * closing_cta's heading already does elsewhere on this page. Rendered
+   * as plain React text (never dangerouslySetInnerHTML), so raw HTML in
+   * a founder's input is never interpreted, only ever displayed as
+   * literal text. */
+  heading: string | null;
+  description: string | null;
+}) {
   const [a, b, c] = images;
+  // Real lines only, capped at 3 — the hero's compact height (and the
+  // last-line accent treatment below) is designed around exactly that
+  // many; extra lines are silently dropped rather than blowing up the
+  // masthead or erroring on unexpected founder input.
+  const lines = (heading?.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 3) ?? []);
+  const headingLines = lines.length > 0 ? lines : DEFAULT_HEADING_LINES;
+  const lastIndex = headingLines.length - 1;
 
   return (
     <section className="border-b border-black/5 bg-white">
@@ -43,11 +66,12 @@ export default function HomeHero({ images, description }: { images: string[]; de
         <div className="flex items-center gap-3 sm:gap-12">
           <div className="min-w-0 flex-1">
             <h1 className="font-display text-[clamp(1.15rem,5.1vw,1.4rem)] font-bold leading-[0.96] tracking-tight text-ink sm:text-3xl md:text-4xl">
-              Find what&rsquo;s
-              <br />
-              around you.
-              <br />
-              <span className="whitespace-nowrap text-findmi-600">Get discovered.</span>
+              {headingLines.map((line, i) => (
+                <span key={i}>
+                  {i === lastIndex ? <span className="whitespace-nowrap text-findmi-600">{line}</span> : line}
+                  {i < lastIndex && <br />}
+                </span>
+              ))}
             </h1>
             {/* Founder-editable via Site Editor → Hero → Body (UI cleanup
                 pass item 3) — falls back to this same default copy when

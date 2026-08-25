@@ -1,150 +1,171 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import EventCard from "@/components/EventCard";
-import Section, { HorizontalScroller } from "@/components/Section";
-import { attachEventCategories, getEventsDiscovery, getFeaturedEvents, getHomeCategories } from "@/lib/data";
-import { groupByCategory } from "@/lib/curation";
-import type { DiscoveryWindow } from "@/lib/format";
+import HomeEventCard from "@/components/HomeEventCard";
+import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
+import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
+import EventFilters from "@/components/discover/EventFilters";
+import FilterSheet from "@/components/discover/FilterSheet";
+import { attachEventCategories, getEventCategories, getEventsDiscovery } from "@/lib/data";
+import { WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Events",
   description: "Browse upcoming markets, pop-ups, and events on FindMi.",
 };
+export const revalidate = 60;
 
-const WINDOWS: { value: DiscoveryWindow; label: string }[] = [
-  { value: "now", label: "Today" },
-  { value: "weekend", label: "This Weekend" },
-  { value: "next", label: "Next Week" },
-  { value: "month", label: "This Month" },
-  { value: "anytime", label: "All Events" },
+const PAGE_SIZE = 24;
+const TIME_TABS: { key: DiscoveryTimeKey; label: string }[] = [
+  { key: "upNext", label: "Up Next" },
+  { key: "today", label: "Today" },
+  { key: "weekend", label: "This Weekend" },
+  { key: "anytime", label: "All Events" },
 ];
 
-export default async function EventsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ when?: string; date?: string; q?: string; category?: string }>;
-}) {
-  const { when: whenParam, date, q, category } = await searchParams;
-  const when: DiscoveryWindow = WINDOWS.some((w) => w.value === whenParam) ? (whenParam as DiscoveryWindow) : "anytime";
-  const filtering = Boolean(date || q || category || whenParam);
+interface Params {
+  when?: string;
+  q?: string;
+  category?: string;
+  location?: string;
+  limit?: string;
+}
 
-  const [featured, results, categories] = await Promise.all([
-    filtering ? Promise.resolve([]) : getFeaturedEvents(8),
-    getEventsDiscovery({ when, date, q, categorySlug: category, limit: 60 }),
-    getHomeCategories(),
+export default async function EventsPage({ searchParams }: { searchParams: Promise<Params> }) {
+  const params = await searchParams;
+  const timeKey: DiscoveryTimeKey = TIME_TABS.some((t) => t.key === params.when) ? (params.when as DiscoveryTimeKey) : "upNext";
+  // Reuses the exact same time-window mapping/logic the homepage's
+  // HomeEventDiscovery already proved out (WINDOW_BY_TIME_KEY ->
+  // getDiscoveryWindowBounds) — not a second interpretation of "weekend."
+  const when = WINDOW_BY_TIME_KEY[timeKey];
+  const limit = Math.min(Math.max(Number(params.limit) || PAGE_SIZE, PAGE_SIZE), 240);
+
+  // Event category options are EVENT taxonomy only (event_categories via
+  // getEventCategories()) — never business categories (Discovery/Archive
+  // V2 Part 9). Already scoped to categories that can return a real,
+  // live, upcoming event — see that function's own note.
+  const [eventCategories, fetchedRaw] = await Promise.all([
+    getEventCategories(),
+    getEventsDiscovery({
+      when,
+      q: params.q,
+      categorySlug: params.category,
+      location: params.location,
+      limit: limit + 1,
+    }),
   ]);
+  const hasMore = fetchedRaw.length > limit;
+  const events = await attachEventCategories(fetchedRaw.slice(0, limit));
 
-  // Curated rows only render once the founder has tagged real events with
-  // real categories — event_categories starts empty, so these naturally
-  // stay hidden until that happens (no fabricated taxonomy).
-  const categoryRows = filtering
-    ? []
-    : groupByCategory(await attachEventCategories(results), categories, { minPerRow: 2, limitPerRow: 8 });
+  const baseParams = new URLSearchParams();
+  if (timeKey !== "upNext") baseParams.set("when", timeKey);
+  if (params.q) baseParams.set("q", params.q);
+  if (params.category) baseParams.set("category", params.category);
+  if (params.location) baseParams.set("location", params.location);
+
+  const categoryName = eventCategories.find((c) => c.slug === params.category)?.name;
+  const chips: ActiveFilterChip[] = [];
+  const withoutParam = (key: string) => {
+    const p = new URLSearchParams(baseParams);
+    p.delete(key);
+    return `/events${p.toString() ? `?${p.toString()}` : ""}`;
+  };
+  if (params.q) chips.push({ label: `"${params.q}"`, href: withoutParam("q") });
+  if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
+  if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
+
+  const sheetFilterCount = [params.category, params.location].filter(Boolean).length;
+  const filtering = chips.length > 0 || timeKey !== "upNext";
+
+  const loadMoreHref = (() => {
+    const p = new URLSearchParams(baseParams);
+    p.set("limit", String(limit + PAGE_SIZE));
+    return `/events?${p.toString()}`;
+  })();
+
+  const timeHref = (key: DiscoveryTimeKey) => {
+    const p = new URLSearchParams(baseParams);
+    if (key === "upNext") p.delete("when");
+    else p.set("when", key);
+    p.delete("limit");
+    return `/events${p.toString() ? `?${p.toString()}` : ""}`;
+  };
+
+  const emptyLabel =
+    params.q || params.category || params.location
+      ? `No events matched${categoryName ? ` ${categoryName}` : ""}${params.location ? ` in ${params.location}` : ""}${params.q ? ` for "${params.q}"` : ""}.`
+      : timeKey === "today"
+        ? "Nothing today — try This Weekend or All Events."
+        : timeKey === "weekend"
+          ? "Nothing this weekend yet — try All Events."
+          : "No upcoming events yet — check back soon.";
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Events</h1>
-      <p className="mt-2 text-ink/60">Markets, pop-ups, and festivals — and who you&rsquo;ll find here.</p>
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Events</h1>
+      <p className="mt-1.5 text-sm text-ink/60 sm:text-base">
+        Markets, pop-ups, and festivals — and who you&rsquo;ll find here.
+      </p>
 
-      <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="Search events"
-          className="flex-1 rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
-        />
-        <input
-          type="date"
-          name="date"
-          defaultValue={date}
-          className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-ink focus:border-ink/30 focus:outline-none sm:w-44"
-        />
-        {categories.length > 0 && (
-          <select
-            name="category"
-            defaultValue={category ?? ""}
-            className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-ink focus:border-ink/30 focus:outline-none sm:w-48"
-          >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.slug}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <button
-          type="submit"
-          className="shrink-0 rounded-xl bg-findmi px-6 py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-        >
-          Search
-        </button>
+      <form method="get" className="mt-5 flex flex-col gap-3">
+        <ArchiveSearchField defaultValue={params.q} placeholder="Search events" />
+
+        {/* Time is the primary axis for event discovery — same tabs, same
+            underlying window logic, as the homepage. */}
+        <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {TIME_TABS.map((t) => (
+            <Link
+              key={t.key}
+              href={timeHref(t.key)}
+              className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+                timeKey === t.key ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              }`}
+            >
+              {t.label}
+            </Link>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <FilterSheet activeCount={sheetFilterCount}>
+            <EventFilters categories={eventCategories} defaultCategory={params.category} defaultLocation={params.location} />
+          </FilterSheet>
+        </div>
+        {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref={timeKey === "upNext" ? "/events" : `/events?when=${timeKey}`} />}
       </form>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {WINDOWS.map((w) => (
-          <Link
-            key={w.value}
-            href={w.value === "anytime" ? "/events" : `/events?when=${w.value}`}
-            className={`rounded-full px-4 py-2 text-sm font-bold uppercase tracking-wide transition ${
-              when === w.value && !date && !q && !category
-                ? "bg-findmi text-white"
-                : "border border-black/10 text-ink/70 hover:border-ink/30"
-            }`}
-          >
-            {w.label}
-          </Link>
-        ))}
-      </div>
+      <p className="mt-5 text-sm text-ink/50">
+        {events.length === 0 && !hasMore ? 0 : `${events.length}${hasMore ? "+" : ""}`} event{events.length === 1 && !hasMore ? "" : "s"}
+        {timeKey === "weekend" ? " this weekend" : timeKey === "today" ? " today" : ""}
+      </p>
 
-      {!filtering && featured.length > 0 && (
-        <div className="-mx-6 mt-6">
-          <Section title="Featured Events">
-            <HorizontalScroller>
-              {featured.map((e) => (
-                <div key={e.id} className="w-64 shrink-0">
-                  <EventCard event={e} />
-                </div>
-              ))}
-            </HorizontalScroller>
-          </Section>
+      {events.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
+          <p className="text-sm text-ink/60">{emptyLabel}</p>
+          {filtering && (
+            <Link href="/events" className="mt-2 inline-block text-sm font-semibold text-findmi-700 underline underline-offset-2">
+              Clear filters
+            </Link>
+          )}
         </div>
-      )}
-
-      {!filtering &&
-        categoryRows.map(({ category: cat, items }) => (
-          <div key={cat.id} className="-mx-6">
-            <Section title={cat.name} viewAllHref={`/events?category=${cat.slug}`}>
-              <HorizontalScroller>
-                {items.map((e) => (
-                  <div key={e.id} className="w-64 shrink-0">
-                    <EventCard event={e} />
-                  </div>
-                ))}
-              </HorizontalScroller>
-            </Section>
-          </div>
-        ))}
-
-      <div className="mt-8">
-        <h2 className="font-display text-xl font-bold tracking-tight text-ink">
-          {filtering ? "Results" : "All Events"}
-        </h2>
-        {results.length === 0 ? (
-          <p className="mt-6 text-sm text-ink/50">
-            {when === "anytime" && !q && !date && !category
-              ? "No upcoming events yet — check back soon."
-              : "Nothing matched — try All Events."}
-          </p>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-            {results.map((e) => (
-              <EventCard key={e.id} event={e} />
+      ) : (
+        <>
+          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {events.map((e) => (
+              <HomeEventCard key={e.id} event={e} />
             ))}
           </div>
-        )}
-      </div>
+          {hasMore && (
+            <div className="mt-6 flex justify-center">
+              <Link
+                href={loadMoreHref}
+                className="flex h-11 items-center justify-center rounded-full border border-black/10 px-6 text-sm font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              >
+                Load More
+              </Link>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

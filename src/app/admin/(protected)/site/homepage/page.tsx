@@ -165,7 +165,17 @@ function SectionCard({
           <TextField label="Eyebrow" name="eyebrow" defaultValue={row?.eyebrow} placeholder={def.eyebrow} />
         )}
         {def.fields.includes("heading") && (
-          <TextField label="Heading" name="heading" defaultValue={row?.heading} placeholder={def.heading} />
+          // Textarea, not a single-line TextField (Discovery/Archive V2
+          // Part 18) — the Hero's heading (and closing_cta's, which
+          // already had embedded newlines in its own default) needs real
+          // line breaks the founder can actually type, not just paste.
+          <TextareaField
+            label="Heading"
+            name="heading"
+            defaultValue={row?.heading}
+            rows={3}
+            hint={def.heading ? `Default: "${def.heading.replace(/\n/g, " / ")}" — press Enter for a new line.` : "Press Enter for a new line."}
+          />
         )}
         {def.fields.includes("body") && (
           <TextareaField

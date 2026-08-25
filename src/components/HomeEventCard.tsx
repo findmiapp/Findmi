@@ -50,11 +50,10 @@ export default function HomeEventCard({ event }: { event: EventWithCategories })
         </div>
       )}
       {/* Legibility gradient for the white overlay text, bottom-anchored —
-          same treatment PostCard uses. Lighter than PostCard's own
-          (black/70 vs black/85) since this card's fallback background is
-          already darker toward the bottom-right; a heavier overlay on
-          top of it read as a solid black card. */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+          same treatment PostCard uses (darkened in the visual-polish
+          pass for the same reason: via/10 was too light by the time the
+          gradient reached the text block against a bright photo). */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
 
       {(live || category) && (
         <div className="absolute left-3 top-3">

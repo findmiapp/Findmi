@@ -327,11 +327,34 @@ function reorderByIds<T extends { id: string }>(items: T[], ids: string[]): T[] 
   return ids.map((id) => byId.get(id)).filter((item): item is T => Boolean(item));
 }
 
-export async function searchBusinesses(params: {
+export type BusinessSort = "recommended" | "newest" | "az";
+
+export interface SearchBusinessesParams {
   q?: string;
   categorySlug?: string;
+  /** Free-text match against city OR state — the only location data the
+   * schema actually has (no structured place/geo table for businesses).
+   * Discovery + Archive V2 Part 5/6. */
+  location?: string;
+  /** @deprecated use `location` — kept so existing callers (homepage
+   * search, marketplace) that still pass `city` keep working unchanged. */
   city?: string;
-}): Promise<BusinessWithCategories[]> {
+  featuredOnly?: boolean;
+  foundingMemberOnly?: boolean;
+  /** "recommended" (default) = is_featured desc, founding_member desc,
+   * newest first — a transparent, deterministic ordering built entirely
+   * from real founder-set/timestamp fields, never a fabricated popularity
+   * score. "newest" = created_at desc. "az" = name asc. */
+  sort?: BusinessSort;
+  limit?: number;
+  offset?: number;
+}
+
+/** Real total isn't computed via a separate COUNT query (avoids doubling
+ * every archive request) — callers that need "is there more to load"
+ * fetch `limit + 1` and slice, the same pattern getEventsDiscovery's
+ * caller below uses. */
+export async function searchBusinesses(params: SearchBusinessesParams = {}): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
@@ -366,14 +389,33 @@ export async function searchBusinesses(params: {
       `name.ilike.%${term}%,short_description.ilike.%${term}%,city.ilike.%${term}%`
     );
   }
-  if (params.city) {
-    query = query.ilike("city", `%${params.city}%`);
+  const location = params.location ?? params.city;
+  if (location) {
+    const term = location.trim();
+    query = query.or(`city.ilike.%${term}%,state.ilike.%${term}%`);
   }
+  if (params.featuredOnly) query = query.eq("is_featured", true);
+  if (params.foundingMemberOnly) query = query.eq("founding_member", true);
   if (categoryBusinessIds) {
     query = query.in("id", categoryBusinessIds);
   }
 
-  const { data } = await query.order("founding_member", { ascending: false }).order("name");
+  if (params.sort === "newest") {
+    query = query.order("created_at", { ascending: false }).order("name");
+  } else if (params.sort === "az") {
+    query = query.order("name", { ascending: true });
+  } else {
+    query = query
+      .order("is_featured", { ascending: false })
+      .order("founding_member", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("name");
+  }
+
+  if (params.offset) query = query.range(params.offset, params.offset + (params.limit ?? 24) - 1);
+  else if (params.limit) query = query.limit(params.limit);
+
+  const { data } = await query;
   return attachCategories((data as Business[]) ?? []);
 }
 
@@ -504,8 +546,13 @@ export interface EventDiscoveryParams {
   /** YYYY-MM-DD — overrides `when` when present (the exact-date picker). */
   date?: string;
   categorySlug?: string;
+  /** Free-text match against city OR state — same real-data-only
+   * location filter as searchBusinesses (Discovery + Archive V2 Part
+   * 10). `city` alone is kept for existing callers. */
   city?: string;
+  location?: string;
   limit?: number;
+  offset?: number;
 }
 
 /** Shared events query — backs /events' "All Events" browse state and
@@ -544,9 +591,18 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
     query = query.or(`name.ilike.${term},description.ilike.${term},venue_name.ilike.${term}`);
   }
   if (params.city) query = query.ilike("city", `%${params.city}%`);
+  const location = params.location;
+  if (location) {
+    const term = location.trim();
+    query = query.or(`city.ilike.%${term}%,state.ilike.%${term}%`);
+  }
   if (categoryEventIds) query = query.in("id", categoryEventIds);
 
-  const { data } = await query.order("start_at", { ascending: true }).limit(params.limit ?? 50);
+  query = query.order("start_at", { ascending: true });
+  if (params.offset) query = query.range(params.offset, params.offset + (params.limit ?? 50) - 1);
+  else query = query.limit(params.limit ?? 50);
+
+  const { data } = await query;
   return data ?? [];
 }
 

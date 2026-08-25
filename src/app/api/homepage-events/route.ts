@@ -1,15 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { attachEventCategories, getEventsDiscovery } from "@/lib/data";
-import type { DiscoveryWindow } from "@/lib/format";
+import { WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
-
-const WINDOW_BY_TIME_KEY: Record<string, DiscoveryWindow> = {
-  upNext: "anytime", // same real chronological query as All Events — see HomeEventDiscovery's note
-  today: "now",
-  weekend: "weekend",
-  anytime: "anytime",
-};
 
 /**
  * Homepage event discovery's live combine query — Time × Category. The
@@ -23,7 +16,7 @@ const WINDOW_BY_TIME_KEY: Record<string, DiscoveryWindow> = {
 export async function GET(request: NextRequest) {
   const timeKey = request.nextUrl.searchParams.get("when") ?? "upNext";
   const category = request.nextUrl.searchParams.get("category")?.trim() || undefined;
-  const when = WINDOW_BY_TIME_KEY[timeKey] ?? "anytime";
+  const when = WINDOW_BY_TIME_KEY[timeKey as DiscoveryTimeKey] ?? "anytime";
 
   const events = await getEventsDiscovery({ when, categorySlug: category, limit: 20 });
   const withCategories = await attachEventCategories(events);

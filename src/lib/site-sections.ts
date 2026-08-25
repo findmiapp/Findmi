@@ -89,17 +89,23 @@ export function resolveSection(
 
 export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   hero: {
-    // Heading copy itself is fixed (exact mandated copy with a styled
-    // teal accent span — not expressible as one plain-text field), but
-    // the collage imagery is fully founder-editable here. HomeHero falls
-    // back to real, non-fabricated business/appearance photos already
-    // being fetched for other sections when no slot is configured — see
-    // the homepage's own hero-image fallback logic. The description line
-    // under the headline (`body`) became founder-editable in the UI
-    // cleanup pass — same generic body-field machinery every other
-    // section already used, just not turned on here before.
+    // Discovery/Archive V2 Part 18: the heading became founder-editable
+    // too, on the same generic heading-field machinery every other
+    // section already uses — HomeHero now actually consumes
+    // `heroSec.heading` (it didn't before; this default sat unused).
+    // Newlines control the three visual lines, and the LAST line keeps
+    // the established teal-accent/no-wrap treatment regardless of how
+    // many lines are entered (see HomeHero's own note). This default is
+    // the exact current copy, so an unconfigured hero renders byte-
+    // identical to before. The collage imagery is separately founder-
+    // editable here too. HomeHero falls back to real, non-fabricated
+    // business/appearance photos already being fetched for other
+    // sections when no image slot is configured — see the homepage's own
+    // hero-image fallback logic. The description line under the headline
+    // (`body`) was made founder-editable in the UI cleanup pass — same
+    // generic body-field machinery every other section already used.
     label: "Hero",
-    heading: "What's around you right now?",
+    heading: "Find what's\naround you.\nGet discovered.",
     body: "Discover local businesses, events, pop-ups, products, and more — all in one place.",
     order: 0,
     fields: ["heading", "body"],

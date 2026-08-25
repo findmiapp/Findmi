@@ -112,6 +112,22 @@ function getLocalDayBounds(dayOffset = 0): { start: Date; end: Date } {
 
 export type DiscoveryWindow = "now" | "next" | "weekend" | "month" | "anytime";
 
+/** The four primary time tabs shared by the homepage's event discovery
+ * (HomeEventDiscovery.tsx, untouched — excluded system) and the /events
+ * archive (Discovery/Archive V2 Part 8) — "Up Next" maps to the exact
+ * same real, unfiltered chronological query "All Events" already uses
+ * (see HomeEventDiscovery's own note on that intentional overlap), not a
+ * second interpretation of it. Extracted here (was a private const
+ * inside /api/homepage-events/route.ts) so both callers import the same
+ * mapping instead of each defining their own copy. */
+export type DiscoveryTimeKey = "upNext" | "today" | "weekend" | "anytime";
+export const WINDOW_BY_TIME_KEY: Record<DiscoveryTimeKey, DiscoveryWindow> = {
+  upNext: "anytime",
+  today: "now",
+  weekend: "weekend",
+  anytime: "anytime",
+};
+
 /** Findmi's discovery time filter — TODAY (now) / NEXT WEEK (next) / THIS
  * WEEKEND / THIS MONTH / ALL EVENTS (anytime) — resolved to real UTC
  * bounds in APP_TIMEZONE. null means "no filter." */
