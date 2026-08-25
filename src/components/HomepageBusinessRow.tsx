@@ -6,13 +6,18 @@ import type { BusinessWithCategories, Category } from "@/lib/types";
 
 /** Brands We Love (and any other "businesses" Homepage Row) gets its own
  * compact business-category filter directly beneath the row's title —
- * Part 11/12 of the live-QA pass. Real business categories only (same
- * list the homepage already fetches via getHomeCategories — no separate
- * query). The default ("All") state is exactly what the server already
- * rendered; selecting a category re-fetches from
- * /api/homepage-business-row, which keeps a curated row's results within
- * its own curated set (see that route's own note) rather than ever
- * expanding to the global businesses table. */
+ * Part 11/12 of the live-QA pass. `categories` is scoped to THIS row's
+ * own filters (see page.tsx's getCategoriesForDynamicBusinessRow /
+ * dedupeCategories) — never the generic homepage-wide category list —
+ * so a shown chip can never be a guaranteed dead end. The default ("All")
+ * state is exactly what the server already rendered; selecting a
+ * category re-fetches from /api/homepage-business-row, which keeps a
+ * curated row's results within its own curated set (see that route's own
+ * note) rather than ever expanding to the global businesses table.
+ *
+ * A fetch failure is tracked separately from "the combo genuinely has no
+ * businesses" (live-QA fix pass) — previously indistinguishable, so a
+ * transient failure silently read as "the filter is broken." */
 export default function HomepageBusinessRow({
   rowId,
   initialItems,
@@ -25,24 +30,32 @@ export default function HomepageBusinessRow({
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, BusinessWithCategories[]>>({});
   const [loading, setLoading] = useState(false);
+  const [failedCategory, setFailedCategory] = useState<string | null>(null);
 
   const items = activeCategory ? (cache[activeCategory] ?? []) : initialItems;
+  const failed = activeCategory !== null && failedCategory === activeCategory;
 
-  async function selectCategory(slug: string | null) {
-    setActiveCategory(slug);
-    if (!slug || cache[slug]) return;
+  async function loadCategory(slug: string) {
+    if (cache[slug]) return;
     setLoading(true);
+    setFailedCategory(null);
     try {
       const res = await fetch(`/api/homepage-business-row?rowId=${rowId}&category=${encodeURIComponent(slug)}`, {
         cache: "no-store",
       });
+      if (!res.ok) throw new Error(`homepage-business-row ${res.status}`);
       const data: { businesses: BusinessWithCategories[] } = await res.json();
       setCache((prev) => ({ ...prev, [slug]: data.businesses }));
     } catch {
-      // Leave cache unset — items falls back to an empty (honest) list.
+      setFailedCategory(slug);
     } finally {
       setLoading(false);
     }
+  }
+
+  function selectCategory(slug: string | null) {
+    setActiveCategory(slug);
+    if (slug) loadCategory(slug);
   }
 
   return (
@@ -75,8 +88,19 @@ export default function HomepageBusinessRow({
 
       {loading ? (
         <p className="px-4 text-sm text-ink/45 sm:px-6">Loading…</p>
+      ) : failed ? (
+        <div className="px-4 sm:px-6">
+          <p className="text-sm text-ink/45">Couldn&rsquo;t load this — try again.</p>
+          <button
+            type="button"
+            onClick={() => activeCategory && loadCategory(activeCategory)}
+            className="mt-1.5 text-xs font-bold uppercase tracking-wide text-findmi-700 hover:underline"
+          >
+            Retry
+          </button>
+        </div>
       ) : items.length === 0 ? (
-        <p className="px-4 text-sm text-ink/45 sm:px-6">Nothing in this category yet.</p>
+        <p className="px-4 text-sm text-ink/45 sm:px-6">No brands in this category yet.</p>
       ) : (
         <div className="flex gap-4 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {items.map((b) => (

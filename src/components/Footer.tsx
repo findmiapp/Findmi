@@ -3,10 +3,13 @@ import Logo from "./Logo";
 
 export default function Footer() {
   return (
-    <footer className="mt-16 border-t border-black/5 bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] pt-8 md:pb-10 md:pt-10">
+    <footer className="mt-16 border-t border-black/5 bg-white pb-[calc(2rem+env(safe-area-inset-bottom))] pt-8 md:pb-10 md:pt-10">
       <div className="mx-auto max-w-6xl px-6">
-        {/* Desktop: full footer. Mobile: bottom nav is primary navigation,
-            so this stays to compact secondary links only. */}
+        {/* Desktop: full footer. Mobile: the hamburger drawer is primary
+            navigation (the fixed bottom nav was removed — live-QA fix
+            pass, Part 9), so this stays to compact secondary links only.
+            The extra bottom padding this footer used to reserve for that
+            bar's height is gone too, down to just the safe-area inset. */}
         <div className="hidden md:flex md:flex-row md:items-start md:justify-between md:gap-8">
           <div>
             <Logo heightClassName="h-7" />

@@ -10,24 +10,26 @@ import Image from "next/image";
 // available, this renders however many real ones there are, and with
 // zero it renders no collage at all rather than a placeholder.
 //
-// Headline is three deliberate lines (live QA correction, 2026 nav pass;
-// refined in the follow-up QA pass below). Each line is its own `block`
-// span rather than text separated by <br/> — the first pass used <br/>,
-// but at the narrowest phone widths (~360px) the third line ("Get
-// discovered.") was long enough, at the same size as the other two
-// lines, to internally wrap into "Get" / "discovered." — exactly the bug
-// this component exists to prevent. Fixed two ways together: the third
-// line gets its own smaller, fluid clamp() size on mobile only (sm:/md:
-// still match lines 1-2 exactly, since the wrapping risk was mobile-
-// only) — a deliberate "slight" reduction (~clamp(16px, 4.5vw, 20px) vs
-// lines 1-2's 24px), not the dramatic shrink the correction explicitly
-// ruled out — plus `whitespace-nowrap` as a hard guarantee it can never
-// silently re-wrap even at an unusually narrow width. font-extrabold is
-// a deliberate one-off step up from font-bold (the strongest weight used
-// anywhere else in the app) for this one headline specifically — Inter
-// loads as a variable font (no fixed `weight` in next/font/google's
-// config), so every weight up to 900 renders natively, not browser-
-// synthesized.
+// Headline is three deliberate lines, all at the SAME size (second
+// live-QA correction — the previous pass gave the third line its own
+// smaller size to stop it wrapping, which fixed the wrap but produced a
+// new, worse problem: an inconsistent, "startup-ish" hierarchy where the
+// business payoff line read as visually secondary). This version instead
+// finds the single largest mobile size at which the LONGEST line ("Get
+// discovered.") still fits on one line, and uses that size everywhere —
+// so the constraint is solved by sizing the whole headline around it,
+// not by shrinking one line in isolation. `whitespace-nowrap` on that
+// line remains as a hard guarantee. Line-height is tightened to 0.98
+// (was 1.1) for the tighter, more confident/editorial feel that was
+// asked for — loose 1.1+ leading on a 3-line headline is what reads as
+// "stacked." font-extrabold is a deliberate one-off step up from
+// font-bold (the strongest weight used anywhere else in the app) for
+// this one headline specifically — Inter loads as a variable font (no
+// fixed `weight` in next/font/google's config), so every weight up to
+// 900 renders natively, not browser-synthesized. sm:/md: sizes are more
+// conservative than the previous pass (text-3xl/text-4xl, not
+// text-4xl/text-5xl) for the same one-line-guarantee reason, now applied
+// at every breakpoint instead of only on mobile.
 export default function HomeHero({ images }: { images: string[] }) {
   const [a, b, c] = images;
 
@@ -36,12 +38,12 @@ export default function HomeHero({ images }: { images: string[] }) {
       <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-10">
         <div className="flex items-center gap-3 sm:gap-12">
           <div className="min-w-0 flex-1">
-            <h1 className="font-display font-extrabold leading-[1.1] tracking-tight text-ink">
-              <span className="block text-2xl sm:text-4xl md:text-5xl">Find what&rsquo;s</span>
-              <span className="block text-2xl sm:text-4xl md:text-5xl">around you.</span>
-              <span className="block whitespace-nowrap text-[clamp(1rem,4.5vw,1.25rem)] text-findmi-600 sm:text-4xl md:text-5xl">
-                Get discovered.
-              </span>
+            <h1 className="font-display text-[clamp(1.1rem,5vw,1.375rem)] font-extrabold leading-[0.98] tracking-tight text-ink sm:text-3xl md:text-4xl">
+              Find what&rsquo;s
+              <br />
+              around you.
+              <br />
+              <span className="whitespace-nowrap text-findmi-600">Get discovered.</span>
             </h1>
             <p className="mt-2.5 max-w-[26ch] text-xs text-ink/60 sm:mt-4 sm:max-w-md sm:text-base">
               Discover local businesses, events, pop-ups, products, and more — all in one place.

@@ -9,6 +9,7 @@ import SearchBar from "@/components/SearchBar";
 import HomeEventDiscovery from "@/components/HomeEventDiscovery";
 import {
   attachEventCategories,
+  getCategoriesForDynamicBusinessRow,
   getEventCategories,
   getFeaturedBusinesses,
   getHomeCategories,
@@ -118,7 +119,7 @@ export default async function HomePage() {
           without a code change, Businesses/Events/Products/Business
           Showcase, Dynamic (filtered) or Curated (hand-picked). */}
       {homepageRows.map((row, i) => (
-        <HomepageRowSection key={row.id} row={row} resolved={resolvedRows[i]} businessCategories={categories} />
+        <HomepageRowSection key={row.id} row={row} resolved={resolvedRows[i]} />
       ))}
 
       {/* Explore By Category — compact, broader entry point (categories
@@ -173,11 +174,9 @@ export default async function HomePage() {
 async function HomepageRowSection({
   row,
   resolved,
-  businessCategories,
 }: {
   row: HomepageRow;
   resolved: Awaited<ReturnType<typeof resolveHomepageRowItems>>;
-  businessCategories: Category[];
 }) {
   if (resolved.contentType === "business_showcase") {
     // Real demo business (The Native Rose) — fetched only when a
@@ -190,10 +189,10 @@ async function HomepageRowSection({
         <div className="overflow-hidden rounded-3xl border border-findmi/15 bg-gradient-to-br from-findmi-50 via-white to-white p-5 sm:p-9">
           <h2 className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">{row.title}</h2>
           {row.subtitle && <p className="mt-1.5 max-w-md text-sm text-ink/60">{row.subtitle}</p>}
-          <div className="mt-6">
+          <div className="mt-5">
             <BusinessShowcaseCarousel demo={demo} />
           </div>
-          <div className="mt-6 flex justify-center sm:justify-start">
+          <div className="mt-5 flex justify-center sm:justify-start">
             <Link
               href="/join"
               className="inline-flex items-center justify-center rounded-full bg-findmi px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-findmi-600"
@@ -209,9 +208,20 @@ async function HomepageRowSection({
   if (resolved.items.length === 0) return null;
 
   if (resolved.contentType === "businesses") {
+    // Chip list is scoped to THIS row's own filters — never the generic
+    // homepage-wide category list — so a shown chip can never be a dead
+    // end (live-QA fix pass; see getCategoriesForDynamicBusinessRow's own
+    // note for the proven root cause this replaces). Curated rows derive
+    // chips straight from the businesses actually in the row; dynamic
+    // rows ask which categories have a business that would survive this
+    // row's own featured_only/is_demo/publication_status rules.
+    const rowCategories =
+      row.mode === "curated"
+        ? dedupeCategories(resolved.items.flatMap((b) => b.categories))
+        : await getCategoriesForDynamicBusinessRow(row.featured_only);
     return (
       <Section title={row.title} subtitle={row.subtitle ?? undefined}>
-        <HomepageBusinessRow rowId={row.id} initialItems={resolved.items} categories={businessCategories} />
+        <HomepageBusinessRow rowId={row.id} initialItems={resolved.items} categories={rowCategories} />
       </Section>
     );
   }
@@ -242,4 +252,10 @@ async function HomepageRowSection({
       </HorizontalScroller>
     </Section>
   );
+}
+
+function dedupeCategories(categories: Category[]): Category[] {
+  const seen = new Map<string, Category>();
+  for (const c of categories) if (!seen.has(c.id)) seen.set(c.id, c);
+  return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
 }

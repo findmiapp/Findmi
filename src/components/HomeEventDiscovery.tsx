@@ -23,6 +23,12 @@ import HomeEventCard from "./HomeEventCard";
 // more categories get used — see that route's own note. Results are
 // cached per (time, category) combo for the life of the page so flipping
 // between already-seen filters doesn't re-fetch.
+//
+// A fetch failure is tracked separately from "the combo genuinely has no
+// events" (live-QA fix pass) — the two used to be indistinguishable (a
+// caught error just left the cache empty, so it rendered the same
+// "Nothing in this category" copy a real empty result would), which
+// meant a transient failure silently read as "your filters are broken."
 const TIME_TABS = [
   { key: "upNext", label: "Up Next" },
   { key: "today", label: "Today" },
@@ -44,42 +50,40 @@ export default function HomeEventDiscovery({
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, EventWithCategories[]>>({});
   const [loading, setLoading] = useState(false);
+  const [failedKey, setFailedKey] = useState<string | null>(null);
 
   const cacheKey = `${activeTime}:${activeCategory ?? ""}`;
   const items = activeCategory ? (cache[cacheKey] ?? []) : prefetched[activeTime];
+  const failed = activeCategory ? failedKey === cacheKey : false;
 
-  async function selectCategory(slug: string | null) {
-    setActiveCategory(slug);
-    if (!slug || cache[`${activeTime}:${slug}`]) return;
+  async function loadCombo(timeKey: TimeKey, categorySlug: string) {
+    const key = `${timeKey}:${categorySlug}`;
+    if (cache[key]) return;
     setLoading(true);
+    setFailedKey(null);
     try {
-      const res = await fetch(`/api/homepage-events?when=${activeTime}&category=${encodeURIComponent(slug)}`, {
+      const res = await fetch(`/api/homepage-events?when=${timeKey}&category=${encodeURIComponent(categorySlug)}`, {
         cache: "no-store",
       });
+      if (!res.ok) throw new Error(`homepage-events ${res.status}`);
       const data: { events: EventWithCategories[] } = await res.json();
-      setCache((prev) => ({ ...prev, [`${activeTime}:${slug}`]: data.events }));
+      setCache((prev) => ({ ...prev, [key]: data.events }));
     } catch {
-      // Leave cache unset — items falls back to an empty (honest) list.
+      // Distinct from a genuinely empty result — see the file's own note.
+      setFailedKey(key);
     } finally {
       setLoading(false);
     }
   }
 
-  async function selectTime(key: TimeKey) {
+  function selectCategory(slug: string | null) {
+    setActiveCategory(slug);
+    if (slug) loadCombo(activeTime, slug);
+  }
+
+  function selectTime(key: TimeKey) {
     setActiveTime(key);
-    if (!activeCategory || cache[`${key}:${activeCategory}`]) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/homepage-events?when=${key}&category=${encodeURIComponent(activeCategory)}`, {
-        cache: "no-store",
-      });
-      const data: { events: EventWithCategories[] } = await res.json();
-      setCache((prev) => ({ ...prev, [`${key}:${activeCategory}`]: data.events }));
-    } catch {
-      // Same fallback as above.
-    } finally {
-      setLoading(false);
-    }
+    if (activeCategory) loadCombo(key, activeCategory);
   }
 
   return (
@@ -101,10 +105,11 @@ export default function HomeEventDiscovery({
 
       {/* Secondary category filter — visually lighter/smaller than the
           time pills above. Sourced from getEventCategories() (events
-          actually tagged via event_categories), never business
-          categories — see that function's note. Renders nothing at all
-          (not even "All Categories") when no event has a real category
-          yet, rather than showing a filter with nothing to filter. */}
+          actually tagged via event_categories on a real, upcoming event
+          — see that function's note), never business categories.
+          Renders nothing at all (not even "All Categories") when no
+          event has a real category yet, rather than showing a filter
+          with nothing to filter. */}
       {eventCategories.length > 0 && (
         <div className="mt-2 flex gap-1.5 overflow-x-auto px-4 pb-0.5 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
@@ -133,6 +138,17 @@ export default function HomeEventDiscovery({
 
       {loading ? (
         <p className="mt-4 px-4 text-sm text-ink/45 sm:px-6">Loading…</p>
+      ) : failed ? (
+        <div className="mt-4 px-4 sm:px-6">
+          <p className="text-sm text-ink/45">Couldn&rsquo;t load this — try again.</p>
+          <button
+            type="button"
+            onClick={() => activeCategory && loadCombo(activeTime, activeCategory)}
+            className="mt-1.5 text-xs font-bold uppercase tracking-wide text-findmi-700 hover:underline"
+          >
+            Retry
+          </button>
+        </div>
       ) : items.length === 0 ? (
         // Compact, honest empty state — Today especially must never
         // silently substitute other events while staying highlighted.
@@ -140,7 +156,7 @@ export default function HomeEventDiscovery({
           {activeTime === "today"
             ? "Nothing today — check This Weekend or All Events."
             : activeCategory
-              ? "Nothing in this category for this time window yet."
+              ? "No events here yet. Try another date or category."
               : "Nothing in this window yet."}
         </p>
       ) : (

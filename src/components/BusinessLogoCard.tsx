@@ -17,11 +17,19 @@ import { cityState } from "@/lib/format";
 // cover-only skips the overlap entirely; neither falls back to the same
 // ink/storefront treatment as before.
 //
-// The image sub-block owns its own overflow-hidden/rounded-t-2xl (for
+// The image sub-block owns its own overflow-hidden/rounded-t-3xl (for
 // the cover photo's clipping) — the outer wrapper deliberately does NOT
 // clip, so the overlapping logo tile (positioned relative to that outer
 // wrapper) can extend past the image's bottom edge instead of being cut
-// off by it.
+// off by it. rounded-3xl (not -2xl) on the outer card AND matched
+// exactly on both the image's top corners and the info area's bottom
+// corners — live-QA finishing pass: previously the image's own radius
+// didn't match the card's outer shell, so the cover photo looked like it
+// had a slightly different/awkward edge relationship with the white
+// card underneath it, rather than one continuous rounded shape. The logo
+// tile itself also grew substantially (64px → 96px) per the same pass —
+// large enough to unmistakably read as the identity mark, not overpower
+// the business name below it.
 export default function BusinessLogoCard({ business }: { business: BusinessWithCategories }) {
   // Only one category is ever shown — the schema has no subcategory field
   // (see the implementation report), so this never fabricates a second
@@ -41,10 +49,10 @@ export default function BusinessLogoCard({ business }: { business: BusinessWithC
   return (
     <Link
       href={`/business/${business.slug}`}
-      className="block w-full rounded-2xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]"
+      className="block w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]"
     >
       <div className="relative">
-        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-2xl bg-mist">
+        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-3xl bg-mist">
           {hasCover ? (
             <Image
               src={business.cover_image_url!}
@@ -81,13 +89,13 @@ export default function BusinessLogoCard({ business }: { business: BusinessWithC
         </div>
 
         {overlap && (
-          <div className="absolute -bottom-6 left-4 h-16 w-16 overflow-hidden rounded-2xl border-[3px] border-white bg-white shadow-md">
-            <Image src={business.logo_url!} alt={business.name} fill sizes="64px" className="object-contain p-1.5" />
+          <div className="absolute -bottom-10 left-5 h-24 w-24 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-md">
+            <Image src={business.logo_url!} alt={business.name} fill sizes="96px" className="object-contain p-2" />
           </div>
         )}
       </div>
 
-      <div className={`flex flex-col gap-1 rounded-b-2xl p-4 ${overlap ? "pt-8" : "pt-3.5"}`}>
+      <div className={`flex flex-col gap-1 rounded-b-3xl p-4 ${overlap ? "pt-12" : "pt-3.5"}`}>
         <p className="line-clamp-1 font-display text-base font-bold tracking-tight text-ink">{business.name}</p>
         {meta && <p className="line-clamp-1 text-xs font-medium text-ink/55">{meta}</p>}
       </div>

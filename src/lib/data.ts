@@ -141,22 +141,40 @@ export async function getHomeCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
-/** Categories actually tagged on at least one event, via event_categories
- * — NOT business categories (see getHomeCategories above, which is
- * business-scoped and must never be reused here — live QA correction,
- * 2026 nav pass, Part B6/B9: events and businesses each need their own
- * taxonomy source, even though they currently share the same underlying
- * `categories` table/rows). event_categories has zero rows in production
- * today, so this honestly returns [] until the founder tags a real
- * event — callers must hide the event-category filter entirely in that
- * case rather than falling back to an unrelated taxonomy. */
+/** Categories actually tagged on at least one REAL, still-upcoming event,
+ * via event_categories — NOT business categories (see getHomeCategories
+ * above, which is business-scoped and must never be reused here — live
+ * QA correction, 2026 nav pass, Part B6/B9). event_categories can have
+ * zero rows in production, so this honestly returns [] until the founder
+ * tags a real event — callers must hide the event-category filter
+ * entirely in that case rather than falling back to an unrelated
+ * taxonomy.
+ *
+ * The is_demo/upcoming scoping (live-QA fix pass, root cause below) is
+ * not optional: without it, a category tagged only on a demo event or a
+ * past event still renders as a selectable chip that can never return a
+ * result in any time window — a "chip exists, always empty" bug that
+ * reads as broken filtering when the filter logic itself is fine. The
+ * concrete proof for this exact failure mode is on the business side
+ * (see getCategoriesForDynamicBusinessRow's own note) — this applies the
+ * same fix proactively to events before it's independently observed
+ * there too. */
 export async function getEventCategories(): Promise<Category[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase.from("event_categories").select("categories(id, name, slug)");
 
+  const { data: realEvents } = await supabase
+    .from("events")
+    .select("id")
+    .eq("is_demo", false)
+    .gte("start_at", new Date().toISOString());
+  const realEventIds = new Set((realEvents ?? []).map((e) => e.id));
+  if (realEventIds.size === 0) return [];
+
+  const { data } = await supabase.from("event_categories").select("event_id, categories(id, name, slug)");
   const seen = new Map<string, Category>();
-  for (const row of (data ?? []) as { categories: Category | Category[] | null }[]) {
+  for (const row of (data ?? []) as { event_id: string; categories: Category | Category[] | null }[]) {
+    if (!realEventIds.has(row.event_id)) continue;
     const cats = Array.isArray(row.categories) ? row.categories : row.categories ? [row.categories] : [];
     for (const c of cats) if (!seen.has(c.id)) seen.set(c.id, c);
   }
@@ -213,6 +231,40 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
     .order("name")
     .limit(params.limit ?? 8);
   return attachCategories((data as Business[]) ?? []);
+}
+
+/** Categories that can actually return a business from a specific
+ * DYNAMIC "businesses" homepage row — the live-QA fix pass's proven
+ * root cause for "I select a category and get nothing, even though a
+ * business is assigned to it": Brands We Love's category chips were
+ * sourced from getHomeCategories() (every show_on_home category,
+ * homepage-wide), not scoped to this row's own featured_only/is_demo/
+ * publication_status rules. Concrete example: "Markets & Pop-Ups" IS
+ * attached to a real business_categories row (Wildflower Market Co.),
+ * so the chip correctly appeared — but that business has is_demo=true,
+ * which every public business query (rightly) excludes, so selecting
+ * that chip could only ever return zero results. This scopes the chip
+ * list itself to categories with at least one business that would
+ * actually survive this row's own filters, so a shown chip is never a
+ * dead end. */
+export async function getCategoriesForDynamicBusinessRow(featuredOnly: boolean): Promise<Category[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  let query = supabase.from("businesses").select("id").eq("is_demo", false).eq("publication_status", "live");
+  if (featuredOnly) query = query.eq("is_featured", true);
+  const { data: eligible } = await query;
+  const eligibleIds = new Set((eligible ?? []).map((b) => b.id));
+  if (eligibleIds.size === 0) return [];
+
+  const { data } = await supabase.from("business_categories").select("business_id, categories(id, name, slug)");
+  const seen = new Map<string, Category>();
+  for (const row of (data ?? []) as { business_id: string; categories: Category | Category[] | null }[]) {
+    if (!eligibleIds.has(row.business_id)) continue;
+    const cats = Array.isArray(row.categories) ? row.categories : row.categories ? [row.categories] : [];
+    for (const c of cats) if (!seen.has(c.id)) seen.set(c.id, c);
+  }
+  return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Curated-mode fetch for any of the three homepage-row content types —
