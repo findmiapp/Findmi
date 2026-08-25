@@ -1,5 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
-import { formatDateRange } from "@/lib/format";
+import { formatAppearanceDateRange } from "@/lib/format";
 import {
   estimateProcessingFee,
   resolveMarketplaceFeePercent,
@@ -109,7 +109,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
         const appearance = o.appearance_id ? appearanceById.get(o.appearance_id) : null;
         const label =
           o.method === "event_pickup" && appearance
-            ? `Pickup at ${appearance.venue_name ?? appearance.title} — ${formatDateRange(appearance.start_at, appearance.end_at)}`
+            ? `Pickup at ${appearance.venue_name ?? appearance.title} — ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
             : FULFILLMENT_LABELS[o.method as FulfillmentMethod];
         return {
           method: o.method as FulfillmentMethod,
@@ -235,7 +235,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
     const eventId = appearance?.event_id ?? null;
 
     const appearanceLabel = appearance
-      ? `${appearance.venue_name ?? appearance.title} — ${formatDateRange(appearance.start_at, appearance.end_at)}`
+      ? `${appearance.venue_name ?? appearance.title} — ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
       : null;
 
     quoteLines.push({

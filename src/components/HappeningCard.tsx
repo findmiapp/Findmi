@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { LocationHappening } from "@/lib/data";
-import { formatDateRange, getTemporalLabel } from "@/lib/format";
+import { formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import LiveDot from "./LiveDot";
 import PostCard from "./PostCard";
 
@@ -18,7 +18,7 @@ export function HappeningCard({ item }: { item: LocationHappening }) {
       title={item.title}
       metaLines={[
         ...(item.subtitle ? [{ icon: "tag" as const, text: item.subtitle }] : []),
-        { icon: "calendar", text: formatDateRange(item.start_at, item.end_at) },
+        { icon: "calendar", text: formatAppearanceDateRange(item.start_at, item.end_at, item.description) },
       ]}
       cta="Find Them"
     />
@@ -64,7 +64,7 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
         )}
         <p className="truncate font-display text-sm font-bold text-ink">{item.title}</p>
         <p className="mt-0.5 truncate text-xs text-ink/60">
-          {formatDateRange(item.start_at, item.end_at)}
+          {formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
         </p>
         {item.subtitle && (
           <p className="mt-0.5 truncate text-xs text-ink/50">{item.subtitle}</p>

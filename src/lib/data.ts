@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabase";
-import { formatDateRange, getDiscoveryWindowBounds, getExactDateBounds, type DiscoveryWindow } from "./format";
+import { formatAppearanceDateRange, getDiscoveryWindowBounds, getExactDateBounds, type DiscoveryWindow } from "./format";
 import type {
   Appearance,
   Business,
@@ -958,7 +958,7 @@ export async function getFulfillmentOptionsForProduct(
   if (!supabase) return [];
   const { data } = await supabase
     .from("product_fulfillment_options")
-    .select("method, price, appearance_id, appearances(venue_name, title, start_at, end_at)")
+    .select("method, price, appearance_id, appearances(venue_name, title, start_at, end_at, description)")
     .eq("product_id", productId)
     .eq("enabled", true);
 
@@ -966,7 +966,10 @@ export async function getFulfillmentOptionsForProduct(
     method: FulfillmentMethod;
     price: number;
     appearance_id: string | null;
-    appearances: { venue_name: string | null; title: string; start_at: string; end_at: string | null } | { venue_name: string | null; title: string; start_at: string; end_at: string | null }[] | null;
+    appearances:
+      | { venue_name: string | null; title: string; start_at: string; end_at: string | null; description: string | null }
+      | { venue_name: string | null; title: string; start_at: string; end_at: string | null; description: string | null }[]
+      | null;
   };
   const METHOD_LABELS: Record<FulfillmentMethod, string> = {
     shipping: "Shipping",
@@ -979,9 +982,13 @@ export async function getFulfillmentOptionsForProduct(
     .map((row) => {
       const appearance = Array.isArray(row.appearances) ? row.appearances[0] : row.appearances;
       if (row.method === "event_pickup" && !appearance) return null; // stale/removed appearance
+      // formatAppearanceDateRange shows "Time TBD" instead of a formatted
+      // time when this appearance's real time is genuinely unknown (see
+      // lib/format.ts) — a checkout-facing pickup label must never claim
+      // a confirmed pickup time that was actually just a placeholder.
       const label =
         row.method === "event_pickup" && appearance
-          ? `Pickup at ${appearance.venue_name ?? appearance.title} — ${formatDateRange(appearance.start_at, appearance.end_at)}`
+          ? `Pickup at ${appearance.venue_name ?? appearance.title} — ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
           : METHOD_LABELS[row.method];
       return { method: row.method, price: row.price, label, appearanceId: row.appearance_id };
     })
@@ -1349,6 +1356,10 @@ export interface LocationHappening {
   end_at: string | null;
   href: string;
   imageUrl: string | null;
+  /** Always null for an event (no such placeholder-time concept there);
+   * a real appearance's own description, read by formatAppearanceTime/
+   * formatAppearanceDateRange to detect an imported "time TBD" row. */
+  description: string | null;
 }
 
 /** Upcoming events and standalone appearances at a location, merged into one
@@ -1373,7 +1384,7 @@ export async function getUpcomingAtLocation(
     supabase
       .from("appearances")
       .select(
-        "id, title, start_at, end_at, business:businesses(slug, name, cover_image_url, is_demo, publication_status)"
+        "id, title, start_at, end_at, description, business:businesses(slug, name, cover_image_url, is_demo, publication_status)"
       )
       .ilike("venue_name", locationName)
       .is("event_id", null)
@@ -1391,6 +1402,7 @@ export async function getUpcomingAtLocation(
     end_at: e.end_at,
     href: `/event/${e.slug}`,
     imageUrl: e.cover_image_url,
+    description: null,
   }));
 
   const fromAppearances: LocationHappening[] = (appearances ?? [])
@@ -1405,6 +1417,7 @@ export async function getUpcomingAtLocation(
         end_at: a.end_at,
         href: `/business/${b.slug}`,
         imageUrl: b.cover_image_url,
+        description: a.description,
       };
     })
     .filter((x): x is LocationHappening => x !== null);

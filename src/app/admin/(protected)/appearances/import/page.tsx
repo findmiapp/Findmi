@@ -3,6 +3,15 @@ import { isAnthropicConfigured } from "@/lib/admin/appearance-import";
 import ImportForm from "./ImportForm";
 
 export const dynamic = "force-dynamic";
+// Hardening pass, item 3 — Claude Vision analysis of pasted text plus
+// several images can genuinely take longer than a serverless function's
+// default execution budget. This raises it for the Server Actions this
+// route invokes (analyzeAppearances/createAppearancesBulk); the
+// Anthropic client's own 55s per-request timeout (see
+// lib/admin/appearance-import.ts) stays comfortably under this, so a
+// real Anthropic-side hang fails with a clean, caught error instead of
+// the whole function being killed first.
+export const maxDuration = 60;
 
 export default async function ImportAppearancesPage({
   searchParams,

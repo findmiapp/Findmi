@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Appearance } from "@/lib/types";
-import { cityState, formatTimeRange, getTemporalLabel } from "@/lib/format";
+import { cityState, formatAppearanceTime, getTemporalLabel } from "@/lib/format";
 import LiveDot from "./LiveDot";
 
 export default function AppearanceCard({
@@ -61,9 +61,11 @@ export default function AppearanceCard({
         </p>
         {/* Time only — the date tile already covers the date, so
             formatDateRange (which repeats it) is deliberately not used
-            here. */}
+            here. formatAppearanceTime shows "Time TBD" instead of a
+            formatted time for an imported appearance whose real time is
+            genuinely unknown — see lib/format.ts's own note. */}
         <p className="mt-0.5 truncate text-xs text-ink/55">
-          {formatTimeRange(appearance.start_at, appearance.end_at)}
+          {formatAppearanceTime(appearance.start_at, appearance.end_at, appearance.description)}
         </p>
         {(appearance.venue_name || location) && (
           <p className="mt-0.5 truncate text-xs text-ink/45">

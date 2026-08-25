@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { cityState, formatDateRange, getTemporalLabel } from "@/lib/format";
+import { cityState, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import { getCategories, getEventsDiscovery, getFindMiHereFeed, type AppearanceFeedItem, type FindWindow } from "@/lib/data";
 import PostCard from "@/components/PostCard";
 import EventCard from "@/components/EventCard";
@@ -191,7 +191,7 @@ function DarkAppearanceRow({ item }: { item: AppearanceFeedItem }) {
         <p className="truncate text-sm font-semibold text-white">{item.business.name}</p>
         <p className="truncate text-xs text-white/50">
           {item.title}
-          {location && ` · ${location}`} · {formatDateRange(item.start_at, item.end_at)}
+          {location && ` · ${location}`} · {formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
         </p>
       </div>
       <span className="shrink-0 text-[11px] font-bold uppercase text-findmi">Find Them</span>

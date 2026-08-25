@@ -108,6 +108,23 @@ function getClient(): Anthropic | null {
   return cachedClient;
 }
 
+// Hardening pass, item 2 — the model is set in exactly this one place in
+// the whole app. ANTHROPIC_APPEARANCE_MODEL is an optional, server-only
+// override (never read client-side — this file is "server only" and
+// nothing here is exported to a client component) for swapping models
+// without a code change/redeploy; unset, it falls back to this default.
+const DEFAULT_MODEL = "claude-opus-5";
+function getModel(): string {
+  return process.env.ANTHROPIC_APPEARANCE_MODEL?.trim() || DEFAULT_MODEL;
+}
+
+// A genuine Anthropic-side hang should fail cleanly (a caught
+// APIConnectionTimeoutError, item 3) well before Vercel's own function
+// timeout kills the whole request with no useful error at all — see the
+// `maxDuration` export on the import route, which gives this enough
+// budget to actually finish within that window.
+const REQUEST_TIMEOUT_MS = 55_000;
+
 // ---------------------------------------------------------------------
 // Extraction
 // ---------------------------------------------------------------------
@@ -181,13 +198,16 @@ export async function extractAppearancesFromSource(input: ExtractAppearancesInpu
   });
 
   try {
-    const response = await client.messages.parse({
-      model: "claude-opus-5",
-      max_tokens: 16000,
-      system: buildSystemPrompt(input.businessName, input.businessCity, input.businessState),
-      messages: [{ role: "user", content }],
-      output_config: { format: zodOutputFormat(ExtractionSchema) },
-    });
+    const response = await client.messages.parse(
+      {
+        model: getModel(),
+        max_tokens: 16000,
+        system: buildSystemPrompt(input.businessName, input.businessCity, input.businessState),
+        messages: [{ role: "user", content }],
+        output_config: { format: zodOutputFormat(ExtractionSchema) },
+      },
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
 
     if (!response.parsed_output) {
       return { drafts: [], error: "Claude's response didn't match the expected structure. Try again, or simplify the input." };
@@ -205,10 +225,24 @@ export async function extractAppearancesFromSource(input: ExtractAppearancesInpu
     });
     return { drafts };
   } catch (err) {
-    // client.messages.parse() throws (rather than returning a null
-    // parsed_output) when the response fails schema validation — surface
-    // that distinctly from a real network/API error so a retry is the
-    // obvious next step either way.
+    // Hardening pass, item 3 — a most-specific-first chain, so the admin
+    // gets a useful, human-readable reason (never a raw stack trace or
+    // provider error dump) for each real failure mode: bad/missing key,
+    // rate limit, timeout, unreachable network, or (from
+    // client.messages.parse() itself, which throws rather than returning
+    // a null parsed_output on a schema mismatch) a malformed response.
+    if (err instanceof Anthropic.AuthenticationError) {
+      return { drafts: [], error: "Claude rejected the API key — check that ANTHROPIC_API_KEY is set correctly, then try again." };
+    }
+    if (err instanceof Anthropic.RateLimitError) {
+      return { drafts: [], error: "Claude is rate-limited right now — wait a moment and try again." };
+    }
+    if (err instanceof Anthropic.APIConnectionTimeoutError) {
+      return { drafts: [], error: "The request to Claude timed out — try again, or with less source material (fewer/smaller images) at once." };
+    }
+    if (err instanceof Anthropic.APIConnectionError) {
+      return { drafts: [], error: "Couldn't reach Claude's API — check network connectivity and try again." };
+    }
     if (err instanceof Anthropic.APIError) {
       return { drafts: [], error: `Claude API error (${err.status ?? "unknown"}): ${err.message}` };
     }

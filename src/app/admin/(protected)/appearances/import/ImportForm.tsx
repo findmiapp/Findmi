@@ -87,8 +87,28 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
   const needsReviewCount = rows?.filter((r) => r.needs_review).length ?? 0;
   const selectedCount = rows?.filter((r) => r.selected).length ?? 0;
 
+  // Hardening pass, item 5 — the Possible Event Match / Possible Duplicate
+  // banners are computed once, at analysis time, from a row's date/title/
+  // venue. If the admin corrects one of those (a wrong date, a typo)
+  // afterward, the banner would otherwise keep showing a suggestion based
+  // on the OLD, now-wrong values — materially misleading rather than just
+  // outdated. Editing any of those three fields clears both banners
+  // (never automatically re-suggests one); it never touches event_id/
+  // eventInitial, so an event the admin already explicitly picked stays
+  // picked.
+  const STALE_ON_CHANGE: (keyof EditableRow)[] = ["date", "title", "venue_name"];
   function updateRow(key: string, patch: Partial<EditableRow>) {
-    setRows((prev) => prev?.map((r) => (r.key === key ? { ...r, ...patch } : r)) ?? null);
+    setRows((prev) =>
+      prev?.map((r) => {
+        if (r.key !== key) return r;
+        const changedStaleField = STALE_ON_CHANGE.some((field) => field in patch && patch[field] !== r[field]);
+        return {
+          ...r,
+          ...patch,
+          ...(changedStaleField ? { eventMatch: null, duplicateMatch: null } : {}),
+        };
+      }) ?? null
+    );
   }
 
   function removeRow(key: string) {

@@ -60,6 +60,54 @@ export function formatTimeRange(startIso: string, endIso?: string | null): strin
   return formatDateRange(startIso, endIso);
 }
 
+// Appearance Import hardening pass, item 1 — appearances.start_at is
+// NOT NULL, so a "time TBD" appearance from the importer still needs some
+// real timestamp to satisfy the schema (see appearances/import/actions.ts,
+// which defaults it to noon on the correct date rather than leaving the
+// row uncreatable). That placeholder must never be displayed as if it
+// were a real confirmed time.
+//
+// This pass was explicitly told not to add a schema column for it, so
+// instead of a new field, the importer writes this exact, deliberately
+// non-natural-language marker into the appearance's own `description`
+// (an admin-only field, never rendered publicly on its own) for TBD rows
+// only. This is a real, symmetric, single-writer/single-reader protocol —
+// not a heuristic guessing from the time value itself, which a genuine
+// noon appearance could legitimately also have. isTimeUnknown() is the
+// one place that checks for it; every appearance time display in the app
+// should go through formatAppearanceTime/formatAppearanceDateRange below
+// rather than calling formatTime/formatDateRange directly on an
+// Appearance's own start_at/end_at.
+export const TIME_UNKNOWN_MARKER = "[findmi:time-tbd]";
+
+export function isTimeUnknown(description: string | null | undefined): boolean {
+  return typeof description === "string" && description.includes(TIME_UNKNOWN_MARKER);
+}
+
+/** Time-only display for an Appearance — use this instead of
+ * formatTimeRange wherever the date is already shown separately (a date
+ * tile, etc.). Only ever known to be an Appearance (not an Event, which
+ * has no such placeholder-time concept) via the description param. */
+export function formatAppearanceTime(
+  startIso: string,
+  endIso: string | null | undefined,
+  description: string | null | undefined
+): string {
+  if (isTimeUnknown(description)) return "Time TBD";
+  return formatTimeRange(startIso, endIso);
+}
+
+/** Date+time display for an Appearance — use this instead of
+ * formatDateRange directly on an Appearance's start_at/end_at. */
+export function formatAppearanceDateRange(
+  startIso: string,
+  endIso: string | null | undefined,
+  description: string | null | undefined
+): string {
+  if (isTimeUnknown(description)) return `${formatDateShort(startIso)} · Time TBD`;
+  return formatDateRange(startIso, endIso);
+}
+
 export function cityState(city?: string | null, state?: string | null): string {
   return [city, state].filter(Boolean).join(", ");
 }

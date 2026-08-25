@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getAdminAppearances, getBusinessOptionById } from "@/lib/admin/queries";
 import { RelationField } from "@/components/admin/RelationPicker";
-import { formatDateRange } from "@/lib/format";
+import { formatAppearanceDateRange } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +103,7 @@ export default async function AdminAppearancesPage({
                   {a.business?.name ?? "—"} → {a.title}
                 </p>
                 <p className="truncate text-xs text-ink/45">
-                  {formatDateRange(a.start_at, a.end_at)}
+                  {formatAppearanceDateRange(a.start_at, a.end_at, a.description)}
                   {a.event ? ` · Event: ${a.event.name}` : " · No event (Maps fallback)"}
                 </p>
               </div>
