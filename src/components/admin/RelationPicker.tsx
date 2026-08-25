@@ -74,6 +74,7 @@ export function RelationField({
   createHref,
   createLabel,
   clearLabel = "None",
+  onSelect,
 }: {
   label: string;
   name: string;
@@ -86,8 +87,17 @@ export function RelationField({
   /** Shown as the selectable "no relationship" option, e.g. for Appearance's
    * optional event link. Omit for a required relationship. */
   clearLabel?: string | null;
+  /** Optional — lets a parent that isn't a plain `<form action>` (e.g. a
+   * multi-step client wizard building its own FormData) track the current
+   * selection too, instead of only the hidden input this already renders.
+   * Every existing caller omits this; behavior for them is unchanged. */
+  onSelect?: (value: SearchResult | null) => void;
 }) {
-  const [selected, setSelected] = useState<SearchResult | null>(initial);
+  const [selected, setSelectedState] = useState<SearchResult | null>(initial);
+  const setSelected = (value: SearchResult | null) => {
+    setSelectedState(value);
+    onSelect?.(value);
+  };
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const { results, loading } = useAdminSearch(entity, query);

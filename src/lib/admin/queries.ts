@@ -413,7 +413,10 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
   const nowIso = new Date().toISOString();
   if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
   if (filters.when === "past") query = query.lt("start_at", nowIso);
-  const { data } = await query.order("start_at", { ascending: false });
+  // Upcoming reads soonest-first (ascending) — "what's happening next" is
+  // what you want at the top. Past keeps the existing most-recent-first
+  // (descending), and so does the default "All Dates" view, unchanged.
+  const { data } = await query.order("start_at", { ascending: filters.when === "upcoming" });
   return ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as AdminAppearanceRow & {
       business: AdminAppearanceRow["business"] | AdminAppearanceRow["business"][];

@@ -32,11 +32,25 @@ export default async function EditBusinessPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
           Edit Business
         </h1>
-        <ViewPublicPageLink href={publicHref} />
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={`/admin/appearances?business=${business.id}`}
+            className="text-xs font-semibold text-ink/60 hover:text-ink"
+          >
+            View Appearances
+          </Link>
+          <Link
+            href={`/admin/appearances/import?business=${business.id}`}
+            className="text-xs font-semibold text-ink/60 hover:text-ink"
+          >
+            Import Appearances
+          </Link>
+          <ViewPublicPageLink href={publicHref} />
+        </div>
       </div>
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">

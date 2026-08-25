@@ -11,9 +11,9 @@ const selectClass =
 export default async function AdminAppearancesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; when?: string; business?: string; linkage?: string }>;
+  searchParams: Promise<{ q?: string; when?: string; business?: string; linkage?: string; imported?: string }>;
 }) {
-  const { q, when, business, linkage } = await searchParams;
+  const { q, when, business, linkage, imported } = await searchParams;
   const whenFilter = when === "upcoming" || when === "past" ? when : undefined;
   const linkageFilter = linkage === "event" || linkage === "standalone" ? linkage : undefined;
 
@@ -28,13 +28,27 @@ export default async function AdminAppearancesPage({
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
           Appearances
         </h1>
-        <Link
-          href="/admin/appearances/new"
-          className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600"
-        >
-          Add Appearance
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href="/admin/appearances/import"
+            className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:border-black/20"
+          >
+            Import Appearances
+          </Link>
+          <Link
+            href="/admin/appearances/new"
+            className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:bg-findmi-600"
+          >
+            Add Appearance
+          </Link>
+        </div>
       </div>
+
+      {imported && (
+        <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          Imported {imported} appearance{imported === "1" ? "" : "s"}.
+        </p>
+      )}
 
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
         <input
