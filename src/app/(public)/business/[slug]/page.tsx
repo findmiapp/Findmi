@@ -3,7 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
-import BusinessCard from "@/components/BusinessCard";
+import BusinessLogoCard from "@/components/BusinessLogoCard";
 import ProductCard from "@/components/ProductCard";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
@@ -103,15 +103,17 @@ export default async function BusinessPage({
   const primaryCategory = business.categories[0] ?? null;
   const extraCategoryCount = Math.max(0, business.categories.length - 1);
 
-  // Compact icon row — facebook/tiktok reuse the generic "link" glyph
-  // rather than fabricating brand-specific icons that didn't exist before
-  // this pass either.
+  // Compact icon row — website gets its own globe glyph (UI cleanup pass
+  // item 5; the old generic chain-link icon read as "some vague URL," not
+  // recognizably "this business's website"). Facebook/tiktok still reuse
+  // the generic "link" glyph, unchanged this pass — out of this item's
+  // explicit scope, not an oversight.
   const socialLinks = [
-    { href: business.website_url, label: "Website", icon: "link" as const },
+    { href: business.website_url, label: "Website", icon: "globe" as const },
     { href: business.instagram_url, label: "Instagram", icon: "instagram" as const },
     { href: business.facebook_url, label: "Facebook", icon: "link" as const },
     { href: business.tiktok_url, label: "TikTok", icon: "link" as const },
-  ].filter((l): l is { href: string; label: string; icon: "link" | "instagram" } => isSafeExternalUrl(l.href));
+  ].filter((l): l is { href: string; label: string; icon: "link" | "instagram" | "globe" } => isSafeExternalUrl(l.href));
 
   const hasDetails = Boolean(
     location || business.service_radius_miles || business.phone || business.email || socialLinks.length > 0
@@ -185,34 +187,41 @@ export default async function BusinessPage({
           above the two-column split below rather than living inside the
           sticky right rail, which would otherwise overlap the cover on
           its right edge instead of centered under it. */}
+      {/* UI cleanup pass item 2/3: pl-3/sm:pl-4 keeps the overlapping logo
+          (and everything under it) off the viewport edge instead of flush
+          with the page's own gutter, and max-w-xl keeps the whole
+          logo+name+badges+category block reading as one compact identity
+          section instead of sprawling across the full desktop width. */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        {business.logo_url && (
-          <div className="-mt-10 flex sm:-mt-12">
-            <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:h-28 sm:w-28">
-              <Image src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
+        <div className="max-w-xl pl-3 sm:pl-4">
+          {business.logo_url && (
+            <div className="-mt-10 flex sm:-mt-12">
+              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:h-28 sm:w-28">
+                <Image src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <div className="mt-4 flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
-            {business.verified && <VerifiedBadge />}
-            {business.founding_member && <FoundingMemberBadge />}
-            {business.is_featured && <FeaturedBadge />}
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
+              {business.verified && <VerifiedBadge />}
+              {business.founding_member && <FoundingMemberBadge />}
+              {business.is_featured && <FeaturedBadge />}
+            </div>
+            <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
+              {primaryCategory && <span className="font-semibold text-ink/70">{primaryCategory.name}</span>}
+              {primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
+              {primaryCategory && location && <span aria-hidden="true">·</span>}
+              {location && (
+                <span>
+                  {location}
+                  {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
+                </span>
+              )}
+            </p>
+            {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
           </div>
-          <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
-            {primaryCategory && <span className="font-semibold text-ink/70">{primaryCategory.name}</span>}
-            {primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
-            {primaryCategory && location && <span aria-hidden="true">·</span>}
-            {location && (
-              <span>
-                {location}
-                {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
-              </span>
-            )}
-          </p>
-          {business.short_description && <p className="max-w-2xl text-base text-ink/65">{business.short_description}</p>}
         </div>
       </div>
 
@@ -221,25 +230,34 @@ export default async function BusinessPage({
             only) the details/contact block — written first in the DOM so
             it naturally lands right after identity on mobile too. */}
         <div className="mt-6 lg:order-2 lg:sticky lg:top-20 lg:mt-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            {inquiryAction &&
-              (inquiryAction.url.startsWith("mailto:") ? (
-                <a
-                  href={inquiryAction.url}
-                  rel="noreferrer"
-                  className="flex h-12 flex-1 items-center justify-center rounded-full bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:flex-none"
-                >
-                  Inquire
-                </a>
-              ) : (
-                <FormAction
-                  href={inquiryAction.url}
-                  displayMode={inquiryAction.displayMode}
-                  label="Inquire"
-                  className="flex h-12 flex-1 items-center justify-center rounded-full bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:flex-none"
-                />
-              ))}
-            <FollowButton businessId={business.id} businessSlug={business.slug} />
+          {/* UI cleanup pass item 1: proportional widths via flex-basis
+              wrappers (Inquire ~58%, Follow ~32%, Save fixed icon) instead
+              of Inquire's old flex-1, which let it swallow the whole row
+              and reduce Follow to an afterthought next to it. */}
+          <div className="flex items-center gap-2.5">
+            {inquiryAction && (
+              <div className="min-w-0 flex-[58]">
+                {inquiryAction.url.startsWith("mailto:") ? (
+                  <a
+                    href={inquiryAction.url}
+                    rel="noreferrer"
+                    className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  >
+                    Inquire
+                  </a>
+                ) : (
+                  <FormAction
+                    href={inquiryAction.url}
+                    displayMode={inquiryAction.displayMode}
+                    label="Inquire"
+                    className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  />
+                )}
+              </div>
+            )}
+            <div className={`min-w-0 ${inquiryAction ? "flex-[32]" : "flex-1"}`}>
+              <FollowButton businessId={business.id} businessSlug={business.slug} />
+            </div>
             <SaveButton slug={business.slug} />
           </div>
 
@@ -333,12 +351,17 @@ export default async function BusinessPage({
 
           {hasDetails && <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-8 lg:hidden" />}
 
+          {/* UI cleanup pass item 6: rebuilt on BusinessLogoCard (the same
+              cover+overlapping-logo brand-preview card Brands We Love
+              uses) instead of BusinessCard's dark PostCard poster style,
+              which read as visually disconnected from the rest of the
+              profile. */}
           {alternatives.length > 0 && (
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Discover More Like This</h2>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {alternatives.map((alt) => (
-                  <BusinessCard key={alt.id} business={alt} />
+                  <BusinessLogoCard key={alt.id} business={alt} />
                 ))}
               </div>
             </section>
@@ -363,60 +386,73 @@ function DetailsBlock({
 }: {
   business: { phone: string | null; email: string | null; service_radius_miles: number | null };
   location: string;
-  socialLinks: { href: string; label: string; icon: "link" | "instagram" }[];
+  socialLinks: { href: string; label: string; icon: "link" | "instagram" | "globe" }[];
   className: string;
 }) {
   return (
     <section className={className}>
       <h2 className="font-display text-sm font-bold uppercase tracking-wide text-ink/40">Details</h2>
-      <div className="mt-3 flex flex-col gap-2.5 text-sm text-ink/70">
-        {location && (
-          <p className="flex items-center gap-2">
-            <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-            {location}
-            {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
-          </p>
-        )}
-        {business.phone && (
-          <a href={`tel:${business.phone}`} className="flex items-center gap-2 hover:text-ink">
-            <PhoneGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-            {business.phone}
-          </a>
-        )}
-        {business.email && (
-          <a href={`mailto:${business.email}`} className="flex items-center gap-2 hover:text-ink">
-            <MailGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-            {business.email}
-          </a>
+      {/* UI cleanup pass item 4: wrapped in a real card (white, thin
+          border, soft shadow) instead of plain text floating on the page. */}
+      <div className="mt-3 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <div className="flex flex-col gap-2.5 text-sm text-ink/70">
+          {location && (
+            <p className="flex items-center gap-2">
+              <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+              {location}
+              {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
+            </p>
+          )}
+          {business.phone && (
+            <a href={`tel:${business.phone}`} className="flex items-center gap-2 hover:text-ink">
+              <PhoneGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+              {business.phone}
+            </a>
+          )}
+          {business.email && (
+            <a href={`mailto:${business.email}`} className="flex items-center gap-2 hover:text-ink">
+              <MailGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+              {business.email}
+            </a>
+          )}
+        </div>
+        {socialLinks.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/[0.06] pt-3">
+            {socialLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={link.label}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              >
+                <SocialGlyph icon={link.icon} />
+              </a>
+            ))}
+          </div>
         )}
       </div>
-      {socialLinks.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {socialLinks.map((link) => (
-            <a
-              key={link.label}
-              href={link.href}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={link.label}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
-            >
-              <SocialGlyph icon={link.icon} />
-            </a>
-          ))}
-        </div>
-      )}
     </section>
   );
 }
 
-function SocialGlyph({ icon }: { icon: "link" | "instagram" }) {
+function SocialGlyph({ icon }: { icon: "link" | "instagram" | "globe" }) {
   if (icon === "instagram") {
     return (
       <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
         <rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="currentColor" strokeWidth="1.6" />
         <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.6" />
         <circle cx="17" cy="7" r="1" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (icon === "globe") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+        <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.6" />
+        <ellipse cx="12" cy="12" rx="3.4" ry="8.5" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M3.5 12h17" stroke="currentColor" strokeWidth="1.6" />
       </svg>
     );
   }

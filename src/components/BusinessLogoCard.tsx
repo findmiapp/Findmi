@@ -30,7 +30,21 @@ import { cityState } from "@/lib/format";
 // tile itself also grew substantially (64px → 96px) per the same pass —
 // large enough to unmistakably read as the identity mark, not overpower
 // the business name below it.
-export default function BusinessLogoCard({ business }: { business: BusinessWithCategories }) {
+export default function BusinessLogoCard({
+  business,
+  /** UI cleanup pass item 6: this card is now also reused for "Discover
+   * More Like This" (business profile) and the event roster's brand
+   * preview, both of which want their own CTA copy/destination instead of
+   * the Brands We Love default — accepted here rather than hardcoded so
+   * neither caller has to fork the card. Defaults preserve exactly what
+   * Brands We Love already showed. */
+  ctaLabel = "View Profile",
+  ctaHref,
+}: {
+  business: BusinessWithCategories;
+  ctaLabel?: string;
+  ctaHref?: string;
+}) {
   // Only one category is ever shown — the schema has no subcategory field
   // (see the implementation report), so this never fabricates a second
   // taxonomy level just to fill the "category • category" pattern.
@@ -38,6 +52,7 @@ export default function BusinessLogoCard({ business }: { business: BusinessWithC
   const hasLogo = Boolean(business.logo_url);
   const hasCover = Boolean(business.cover_image_url);
   const overlap = hasLogo && hasCover;
+  const href = ctaHref ?? `/business/${business.slug}`;
 
   // Real, non-fabricated contextual badge: Featured wins (founder-curated
   // editorial signal, same is_featured flag Featured Brands/Brands We
@@ -48,7 +63,7 @@ export default function BusinessLogoCard({ business }: { business: BusinessWithC
 
   return (
     <Link
-      href={`/business/${business.slug}`}
+      href={href}
       className="block w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]"
     >
       <div className="relative">
@@ -89,15 +104,20 @@ export default function BusinessLogoCard({ business }: { business: BusinessWithC
         </div>
 
         {overlap && (
-          <div className="absolute -bottom-10 left-5 h-24 w-24 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-md">
+          <div className="absolute -bottom-9 left-5 h-24 w-24 overflow-hidden rounded-2xl border-[3px] border-white bg-white shadow-md">
             <Image src={business.logo_url!} alt={business.name} fill sizes="96px" className="object-contain p-2" />
           </div>
         )}
       </div>
 
-      <div className={`flex flex-col gap-1 rounded-b-3xl p-4 ${overlap ? "pt-12" : "pt-3.5"}`}>
+      {/* UI cleanup pass item 9: trimmed frame (p-4→p-3.5, pt-12→pt-10.5)
+          and a real CTA line — this used to be dead white space under the
+          overlapping logo, now it's a compact identity block that ends
+          with the same "Label →" pattern every other FindMi card uses. */}
+      <div className={`flex flex-col gap-1 rounded-b-3xl p-3.5 ${overlap ? "pt-[42px]" : "pt-3"}`}>
         <p className="line-clamp-1 font-display text-base font-bold tracking-tight text-ink">{business.name}</p>
         {meta && <p className="line-clamp-1 text-xs font-medium text-ink/55">{meta}</p>}
+        <p className="mt-1 text-xs font-bold uppercase tracking-wide text-findmi-700">{ctaLabel} →</p>
       </div>
     </Link>
   );

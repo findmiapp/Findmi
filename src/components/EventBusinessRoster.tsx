@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import CompactCard from "./CompactCard";
+import BusinessLogoCard from "./BusinessLogoCard";
 import type { EventBusinessListing } from "@/lib/data";
 
 export default function EventBusinessRoster({
@@ -36,7 +36,7 @@ export default function EventBusinessRoster({
       {featured.length > 0 && (
         <div className="mb-6">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Featured Here</p>
-          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {featured.map((b) => (
               <RosterCard key={b.id} business={b} />
             ))}
@@ -63,7 +63,7 @@ export default function EventBusinessRoster({
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((b) => (
           <RosterCard key={b.id} business={b} />
         ))}
@@ -72,16 +72,11 @@ export default function EventBusinessRoster({
   );
 }
 
+// UI cleanup pass item 11: reuses the same cover+overlapping-logo brand-
+// preview card as Brands We Love / Discover More Like This, rather than
+// CompactCard's small generic image tile — "Find Them" is passed through
+// as the roster's own CTA copy via BusinessLogoCard's now-configurable
+// ctaLabel (item 6).
 function RosterCard({ business }: { business: EventBusinessListing }) {
-  const offering = business.offering_text || business.short_description;
-  const meta = [business.categories[0]?.name, offering].filter(Boolean).join(" — ");
-  return (
-    <CompactCard
-      href={`/business/${business.slug}`}
-      image={business.cover_image_url ?? business.logo_url}
-      title={business.name}
-      meta={meta}
-      cta="Find Them"
-    />
-  );
+  return <BusinessLogoCard business={business} ctaLabel="Find Them" />;
 }

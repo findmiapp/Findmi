@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CartBadge from "./CartBadge";
+import HeaderSearch from "./HeaderSearch";
 import Logo from "./Logo";
 import type { ResolvedNavItem } from "@/lib/navigation";
 
@@ -31,9 +32,7 @@ export default function NavDesktop({ navItems }: { navItems: ResolvedNavItem[] }
             <NavLink key={item.id} item={item} className="text-sm font-medium text-ink/70 transition hover:text-ink" />
           ))}
         </nav>
-        <Link href="/businesses" className="text-sm font-medium text-ink/70 transition hover:text-ink">
-          Search
-        </Link>
+        <HeaderSearch variant="text" />
         <CartBadge variant="text" />
         {highlighted.map((item) => (
           <NavLink

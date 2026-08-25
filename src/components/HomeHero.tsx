@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 // The homepage's masthead — deliberately short (mobile target ~200-240px,
 // not a giant intro screen). Copy left, a staggered collage right, even
@@ -47,6 +48,14 @@ export default function HomeHero({ images }: { images: string[] }) {
             </h1>
             <p className="mt-2.5 max-w-[26ch] text-xs text-ink/60 sm:mt-4 sm:max-w-md sm:text-base">
               Discover local businesses, events, pop-ups, products, and more — all in one place.
+            </p>
+            {/* UI cleanup pass item 8 — understated, not another CTA
+                block: small italic text, only the last few words link. */}
+            <p className="mt-1.5 text-[11px] italic text-ink/40 sm:mt-2 sm:text-sm">
+              Have a business?{" "}
+              <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
+                Join FindMi today.
+              </Link>
             </p>
           </div>
 

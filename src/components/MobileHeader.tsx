@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import CartBadge from "./CartBadge";
 import HamburgerMenu from "./HamburgerMenu";
+import HeaderSearch from "./HeaderSearch";
 import Logo from "./Logo";
 import type { ResolvedNavItem } from "@/lib/navigation";
 
@@ -37,16 +37,7 @@ export default function MobileHeader({ navItems }: { navItems: ResolvedNavItem[]
       </div>
 
       <div className="flex items-center gap-0.5">
-        <Link
-          href="/businesses"
-          aria-label="Search"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink transition active:scale-90"
-        >
-          <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
-            <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-            <path d="M20 20l-4.5-4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </Link>
+        <HeaderSearch variant="icon" />
         <CartBadge />
         <HamburgerMenu items={navItems} />
       </div>

@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
+import { CategoryPill } from "@/components/Badge";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventFollowForm from "@/components/EventFollowForm";
 import EventSaveButton from "@/components/EventSaveButton";
 import FormAction from "@/components/FormAction";
-import { getBusinessesForEvent, getEventBySlug } from "@/lib/data";
+import { attachEventCategories, getBusinessesForEvent, getEventBySlug } from "@/lib/data";
 import { cityState, formatDateRange } from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
 
@@ -41,7 +42,11 @@ export default async function EventPage({
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const businesses = await getBusinessesForEvent(event.id);
+  const [businesses, [eventWithCategories]] = await Promise.all([
+    getBusinessesForEvent(event.id),
+    attachEventCategories([event]),
+  ]);
+  const category = eventWithCategories.categories[0] ?? null;
   const location = cityState(event.city, event.state);
   const mapQuery = [event.venue_name, event.address, location].filter(Boolean).join(", ");
   const directionsHref = mapQuery
@@ -95,33 +100,47 @@ export default async function EventPage({
 
   return (
     <div>
-      <div className="relative h-56 w-full overflow-hidden bg-black/5 sm:h-72 md:h-96">
-        {event.cover_image_url && (
-          <Image
-            src={event.cover_image_url}
-            alt={event.name}
-            fill
-            priority
-            sizes="100vw"
-            className="object-cover"
-          />
-        )}
-        <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-10" />
+      {/* UI cleanup pass item 11: contained rounded hero, matching Product/
+          Business Detail's treatment instead of a full-bleed rectangle, so
+          the event page feels like the same app as the rest of the site. */}
+      <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6 sm:pt-6">
+        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm sm:aspect-[21/9]">
+          {event.cover_image_url ? (
+            <Image
+              src={event.cover_image_url}
+              alt={event.name}
+              fill
+              priority
+              sizes="(min-width: 1024px) 1024px, 100vw"
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-ink">
+              <CalendarGlyph className="h-12 w-12 text-white/15" />
+            </div>
+          )}
+          <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-10" />
+        </div>
       </div>
 
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+        {category && (
+          <div className="mb-2">
+            <CategoryPill>{category.name}</CategoryPill>
+          </div>
+        )}
+        <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
           {event.name}
         </h1>
 
-        <div className="mt-4 flex flex-col gap-2 text-sm text-ink/65">
+        <div className="mt-3 flex flex-col gap-2 text-sm text-ink/65">
           <div className="flex items-center gap-2">
-            <CalendarGlyph />
-            <span>{formatDateRange(event.start_at, event.end_at)}</span>
+            <CalendarGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            <span className="font-medium text-ink/80">{formatDateRange(event.start_at, event.end_at)}</span>
           </div>
           {(event.venue_name || location) && (
             <div className="flex items-center gap-2">
-              <PinGlyph />
+              <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
               <span>
                 {[event.venue_name, event.address, location].filter(Boolean).join(" · ")}
               </span>
@@ -146,8 +165,8 @@ export default async function EventPage({
                 label={action.label}
                 className={
                   i === 0
-                    ? "rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                    ? "flex h-11 items-center justify-center rounded-full bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    : "flex h-11 items-center justify-center rounded-full border border-black/10 px-5 text-sm font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
                 }
               />
             ))}
@@ -199,7 +218,7 @@ export default async function EventPage({
             the page's hierarchy for when RSVP grows an internal model. */}
 
         <section className="mt-12">
-          <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
             Who You&rsquo;ll Find Here
           </h2>
           <p className="mt-1 text-sm text-ink/55">
@@ -210,7 +229,7 @@ export default async function EventPage({
 
         {showFollow && (
           <section id="follow" className="mt-12 scroll-mt-20">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">
               Follow This Event
             </h2>
             <p className="mt-2 max-w-md text-sm text-ink/60">
@@ -226,18 +245,18 @@ export default async function EventPage({
   );
 }
 
-function CalendarGlyph() {
+function CalendarGlyph({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-ink/40">
+    <svg viewBox="0 0 24 24" fill="none" className={className ?? "h-4 w-4 shrink-0 text-ink/40"}>
       <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
       <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }
 
-function PinGlyph() {
+function PinGlyph({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-ink/40">
+    <svg viewBox="0 0 24 24" fill="none" className={className ?? "h-4 w-4 shrink-0 text-ink/40"}>
       <path
         d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
         stroke="currentColor"

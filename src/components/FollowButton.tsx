@@ -45,9 +45,13 @@ export default function FollowButton({
     }
   }
 
+  // w-full/h-12 on every state (this component has exactly one caller —
+  // the business profile's primary action row, UI cleanup pass item 1) so
+  // Follow reads as a real, proportioned secondary CTA next to Inquire
+  // instead of a small content-sized pill lost in the row.
   if (following) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white">
+      <span className="flex h-12 w-full items-center justify-center gap-1.5 rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white">
         <CheckGlyph /> Following
       </span>
     );
@@ -55,7 +59,7 @@ export default function FollowButton({
 
   if (capturing) {
     return (
-      <form onSubmit={handleSubmit} className="flex items-center gap-1.5">
+      <form onSubmit={handleSubmit} className="flex h-12 w-full items-center gap-1.5">
         <input
           type="email"
           required
@@ -63,17 +67,17 @@ export default function FollowButton({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@email.com"
-          className="w-40 rounded-full border border-black/10 bg-white px-3.5 py-2 text-xs text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
+          className="h-full min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3.5 text-xs text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
         />
         <button
           type="submit"
           disabled={status === "loading"}
-          className="shrink-0 rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+          className="h-full shrink-0 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
         >
           {status === "loading" ? "…" : "Follow"}
         </button>
         {status === "error" && (
-          <span className="text-xs text-red-600">Try again</span>
+          <span className="shrink-0 text-xs text-red-600">Try again</span>
         )}
       </form>
     );
@@ -83,7 +87,7 @@ export default function FollowButton({
     <button
       type="button"
       onClick={() => setCapturing(true)}
-      className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+      className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
     >
       Follow
     </button>
