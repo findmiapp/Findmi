@@ -124,11 +124,25 @@ export default function HeaderSearch({ variant }: { variant: "icon" | "text" }) 
         </button>
       )}
 
+      {/* Visual polish pass item 5: the icon (mobile) variant used to be
+          `absolute right-0` + `w-[92vw]` relative to the trigger's own
+          small container — but that container isn't at the viewport's
+          right edge (CartBadge/HamburgerMenu sit to its right in
+          MobileHeader), so a vw-wide panel anchored there overflowed off
+          the LEFT edge of the viewport by ~50-60px at 360-430px widths.
+          Fixed positioning with explicit left/right insets anchors the
+          panel to the viewport itself instead of the trigger, guaranteeing
+          it always stays within a real gutter regardless of where the
+          trigger sits in the header. The text (desktop) variant is
+          unaffected — that one isn't the reported bug and desktop
+          viewports have enough room for the trigger-relative approach. */}
       {open && (
         <div
-          className={`absolute right-0 top-full z-50 mt-2 rounded-2xl border border-black/10 bg-white p-3 shadow-lg ${
-            variant === "icon" ? "w-[92vw] max-w-sm" : "w-96"
-          }`}
+          className={
+            variant === "icon"
+              ? "fixed left-3 right-3 top-[calc(3.5rem+env(safe-area-inset-top)+0.5rem)] z-50 rounded-2xl border border-black/10 bg-white p-3 shadow-lg"
+              : "absolute right-0 top-full z-50 mt-2 w-96 rounded-2xl border border-black/10 bg-white p-3 shadow-lg"
+          }
         >
           <form
             onSubmit={handleSubmit}

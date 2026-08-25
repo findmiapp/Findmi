@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import BusinessLogoCard from "./BusinessLogoCard";
+import type { NextAppearanceHint } from "@/lib/data";
 import type { BusinessWithCategories, Category } from "@/lib/types";
 
 /** Brands We Love (and any other "businesses" Homepage Row) gets its own
@@ -22,17 +23,25 @@ export default function HomepageBusinessRow({
   rowId,
   initialItems,
   categories,
+  appearanceHints,
 }: {
   rowId: string;
   initialItems: BusinessWithCategories[];
   categories: Category[];
+  /** Bulk-fetched server-side, one call per row (visual polish pass item
+   * 2) — never one query per card. Keyed by business id; a business with
+   * nothing upcoming just has no entry, so BusinessLogoCard's NEXT UP
+   * module correctly omits itself rather than fabricating anything. */
+  appearanceHints: Record<string, NextAppearanceHint>;
 }) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, BusinessWithCategories[]>>({});
+  const [hintsCache, setHintsCache] = useState<Record<string, Record<string, NextAppearanceHint>>>({});
   const [loading, setLoading] = useState(false);
   const [failedCategory, setFailedCategory] = useState<string | null>(null);
 
   const items = activeCategory ? (cache[activeCategory] ?? []) : initialItems;
+  const hints = activeCategory ? (hintsCache[activeCategory] ?? {}) : appearanceHints;
   const failed = activeCategory !== null && failedCategory === activeCategory;
 
   async function loadCategory(slug: string) {
@@ -44,8 +53,10 @@ export default function HomepageBusinessRow({
         cache: "no-store",
       });
       if (!res.ok) throw new Error(`homepage-business-row ${res.status}`);
-      const data: { businesses: BusinessWithCategories[] } = await res.json();
+      const data: { businesses: BusinessWithCategories[]; appearanceHints: Record<string, NextAppearanceHint> } =
+        await res.json();
       setCache((prev) => ({ ...prev, [slug]: data.businesses }));
+      setHintsCache((prev) => ({ ...prev, [slug]: data.appearanceHints }));
     } catch {
       setFailedCategory(slug);
     } finally {
@@ -105,7 +116,7 @@ export default function HomepageBusinessRow({
         <div className="flex gap-4 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {items.map((b) => (
             <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
-              <BusinessLogoCard business={b} />
+              <BusinessLogoCard business={b} nextAppearance={hints[b.id]} />
             </div>
           ))}
         </div>

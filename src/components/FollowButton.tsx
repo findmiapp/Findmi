@@ -58,28 +58,38 @@ export default function FollowButton({
   }
 
   if (capturing) {
+    // Visual polish pass item 6: the error label used to sit as a THIRD
+    // item inside the input+button row, squeezing the email input and
+    // reading as another competing action next to Inquire/Follow/Save.
+    // It's now a contextual line under the Follow control instead — the
+    // form row itself always stays exactly input+button, so it never
+    // shoves or resizes its siblings. Same retry mechanism as before (the
+    // form stays open/editable — this was always a status label, not its
+    // own retry button), just presented correctly.
     return (
-      <form onSubmit={handleSubmit} className="flex h-12 w-full items-center gap-1.5">
-        <input
-          type="email"
-          required
-          autoFocus
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@email.com"
-          className="h-full min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3.5 text-xs text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={status === "loading"}
-          className="h-full shrink-0 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
-        >
-          {status === "loading" ? "…" : "Follow"}
-        </button>
+      <div className="w-full">
+        <form onSubmit={handleSubmit} className="flex h-12 w-full items-center gap-1.5">
+          <input
+            type="email"
+            required
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@email.com"
+            className="h-full min-w-0 flex-1 rounded-full border border-black/10 bg-white px-3.5 text-xs text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={status === "loading"}
+            className="h-full shrink-0 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+          >
+            {status === "loading" ? "…" : "Follow"}
+          </button>
+        </form>
         {status === "error" && (
-          <span className="shrink-0 text-xs text-red-600">Try again</span>
+          <p className="mt-1.5 px-1 text-xs text-red-600">Couldn&rsquo;t follow — try again.</p>
         )}
-      </form>
+      </div>
     );
   }
 

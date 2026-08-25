@@ -13,6 +13,7 @@ import {
   getEventCategories,
   getFeaturedBusinesses,
   getHomeCategories,
+  getNextAppearanceHints,
   getShowcaseBusiness,
   getUpcomingEvents,
 } from "@/lib/data";
@@ -219,9 +220,22 @@ async function HomepageRowSection({
       row.mode === "curated"
         ? dedupeCategories(resolved.items.flatMap((b) => b.categories))
         : await getCategoriesForDynamicBusinessRow(row.featured_only);
+    // Bulk-fetched once per row (not once per card) via the same
+    // appearances architecture /businesses already uses for its own card
+    // hint (getNextAppearanceHints) — BusinessLogoCard's NEXT UP module,
+    // visual polish pass item 2. Converted to a plain object since a Map
+    // isn't how props normally cross the server/client boundary here.
+    const appearanceHints = Object.fromEntries(
+      await getNextAppearanceHints(resolved.items.map((b) => b.id))
+    );
     return (
       <Section title={row.title} subtitle={row.subtitle ?? undefined}>
-        <HomepageBusinessRow rowId={row.id} initialItems={resolved.items} categories={rowCategories} />
+        <HomepageBusinessRow
+          rowId={row.id}
+          initialItems={resolved.items}
+          categories={rowCategories}
+          appearanceHints={appearanceHints}
+        />
       </Section>
     );
   }

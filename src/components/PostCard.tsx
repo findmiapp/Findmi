@@ -90,8 +90,14 @@ export default function PostCard({
           className="absolute -bottom-4 -right-4 h-28 w-28 text-white/10"
         />
       )}
-      {/* Legibility gradient for the white overlay text, bottom-anchored */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+      {/* Legibility gradient for the white overlay text, bottom-anchored.
+          Visual polish pass item 4: from-black/85 via-black/10 left the
+          text block (title/metaLines/price/cta, roughly the lower ~40% of
+          the card) sitting on a fairly light overlay against a bright
+          photo — via/10 was too light by the point the gradient reached
+          that content. Darkened both stops; still fully transparent at
+          the top so the photo itself stays visible. */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
 
       <div className="absolute left-3 top-3">
         <span

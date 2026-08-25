@@ -978,25 +978,48 @@ export async function getHomeAppearanceBulletins(limit = 6): Promise<HomeBulleti
     .slice(0, limit);
 }
 
+export interface NextAppearanceHint {
+  venue: string;
+  startAt: string;
+  /** Canonical link for this appearance — the real FindMi event page when
+   * it belongs to one, null otherwise (there's no public /appearance/[id]
+   * route, so a standalone appearance has no canonical destination of its
+   * own to link to — never fabricated). Added for BusinessLogoCard's
+   * "NEXT UP" module (visual polish pass, item 2); existing callers that
+   * only destructure {venue, startAt} are unaffected. */
+  href: string | null;
+}
+
 /** Bulk "next real appearance" per business — powers business cards'
- * compact "At X Saturday" signal (Part 5D). Only genuine upcoming,
- * non-canceled appearances; a business with nothing scheduled contributes
- * no entry, so cards never fabricate activity. */
-export async function getNextAppearanceHints(businessIds: string[]): Promise<Map<string, { venue: string; startAt: string }>> {
-  const hints = new Map<string, { venue: string; startAt: string }>();
+ * compact "At X Saturday" signal (Part 5D) and the NEXT UP module. Only
+ * genuine upcoming, non-canceled appearances; a business with nothing
+ * scheduled contributes no entry, so cards never fabricate activity. */
+export async function getNextAppearanceHints(businessIds: string[]): Promise<Map<string, NextAppearanceHint>> {
+  const hints = new Map<string, NextAppearanceHint>();
   const supabase = getSupabase();
   if (!supabase || businessIds.length === 0) return hints;
   const { data } = await supabase
     .from("appearances")
-    .select("business_id, venue_name, title, start_at")
+    .select("business_id, venue_name, title, start_at, event:events(slug)")
     .in("business_id", businessIds)
     .neq("status", "canceled")
     .gte("start_at", new Date().toISOString())
     .order("start_at", { ascending: true });
-  for (const row of data ?? []) {
-    if (!hints.has(row.business_id)) {
-      hints.set(row.business_id, { venue: row.venue_name ?? row.title, startAt: row.start_at });
-    }
+  for (const row of (data ?? []) as never[]) {
+    const r = row as {
+      business_id: string;
+      venue_name: string | null;
+      title: string;
+      start_at: string;
+      event: { slug: string } | { slug: string }[] | null;
+    };
+    if (hints.has(r.business_id)) continue;
+    const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
+    hints.set(r.business_id, {
+      venue: r.venue_name ?? r.title,
+      startAt: r.start_at,
+      href: event ? `/event/${event.slug}` : null,
+    });
   }
   return hints;
 }

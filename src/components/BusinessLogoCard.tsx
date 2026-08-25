@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { BusinessWithCategories } from "@/lib/types";
-import { cityState } from "@/lib/format";
+import type { NextAppearanceHint } from "@/lib/data";
+import { cityState, formatDateShort } from "@/lib/format";
 
 // Homepage brand card — full landscape composition (live-QA redesign,
 // 2026 nav pass, Part 9/10): the earlier 1/3-logo | 2/3-cover split read
@@ -17,33 +18,39 @@ import { cityState } from "@/lib/format";
 // cover-only skips the overlap entirely; neither falls back to the same
 // ink/storefront treatment as before.
 //
-// The image sub-block owns its own overflow-hidden/rounded-t-3xl (for
-// the cover photo's clipping) — the outer wrapper deliberately does NOT
-// clip, so the overlapping logo tile (positioned relative to that outer
-// wrapper) can extend past the image's bottom edge instead of being cut
-// off by it. rounded-3xl (not -2xl) on the outer card AND matched
-// exactly on both the image's top corners and the info area's bottom
-// corners — live-QA finishing pass: previously the image's own radius
-// didn't match the card's outer shell, so the cover photo looked like it
-// had a slightly different/awkward edge relationship with the white
-// card underneath it, rather than one continuous rounded shape. The logo
-// tile itself also grew substantially (64px → 96px) per the same pass —
-// large enough to unmistakably read as the identity mark, not overpower
-// the business name below it.
+// Visual polish pass rebuild: the card is no longer one big <Link> —
+// it's a <div> with a stretched, invisible Link covering the whole card
+// (item 3's default View Profile / ctaHref action), plus an optional
+// NEXT UP link (item 2) nested inside it at a higher z-index so it can
+// point somewhere different (the real event) without illegal nested
+// <a> tags. Both are plain absolutely/relatively positioned Links in one
+// stacking context — the NEXT UP link's z-20 simply wins over the
+// stretched link's z-10 within its own small footprint; everywhere else
+// on the card still goes to the main href.
 export default function BusinessLogoCard({
   business,
-  /** UI cleanup pass item 6: this card is now also reused for "Discover
-   * More Like This" (business profile) and the event roster's brand
-   * preview, both of which want their own CTA copy/destination instead of
-   * the Brands We Love default — accepted here rather than hardcoded so
-   * neither caller has to fork the card. Defaults preserve exactly what
-   * Brands We Love already showed. */
+  /** UI cleanup pass item 6 (prior pass): this card is now also reused for
+   * "Discover More Like This" (business profile) and the event roster's
+   * brand preview, both of which want their own CTA copy/destination
+   * instead of the Brands We Love default — accepted here rather than
+   * hardcoded so neither caller has to fork the card. Defaults preserve
+   * exactly what Brands We Love already showed. */
   ctaLabel = "View Profile",
   ctaHref,
+  /** Compact "NEXT UP" signal — visual polish pass item 2. Bulk-fetched by
+   * the caller (lib/data.ts's getNextAppearanceHints — the same existing
+   * appearances architecture /businesses already uses for its own card
+   * hint) to avoid N+1 querying per card in a row. Only ever real,
+   * already-scheduled data; omitted entirely (not fabricated) when a
+   * business has nothing upcoming, or when a caller doesn't pass it at
+   * all (Discover More Like This / event roster don't wire this up this
+   * pass — see the report). */
+  nextAppearance,
 }: {
   business: BusinessWithCategories;
   ctaLabel?: string;
   ctaHref?: string;
+  nextAppearance?: NextAppearanceHint | null;
 }) {
   // Only one category is ever shown — the schema has no subcategory field
   // (see the implementation report), so this never fabricates a second
@@ -54,18 +61,25 @@ export default function BusinessLogoCard({
   const overlap = hasLogo && hasCover;
   const href = ctaHref ?? `/business/${business.slug}`;
 
-  // Real, non-fabricated contextual badge: Featured wins (founder-curated
-  // editorial signal, same is_featured flag Featured Brands/Brands We
-  // Love has always used); otherwise New if the business joined within
-  // the last 30 days (real created_at, not a guess).
-  const isNew = !business.is_featured && Date.now() - new Date(business.created_at).getTime() < 30 * 24 * 60 * 60 * 1000;
-  const badge = business.is_featured ? "Featured" : isNew ? "New" : null;
+  // Visual polish pass item 1: "Featured" dropped entirely from this
+  // component's own badge logic — it's redundant the moment this card is
+  // already sitting inside a founder-curated/featured row (Brands We
+  // Love), and this component has no way to know it's in a DIFFERENT,
+  // non-curated context where it might not be. Verified and Founding
+  // Member are real, context-independent trust signals, so they take
+  // priority over the recency-based New signal.
+  const badge = business.verified
+    ? "Verified"
+    : business.founding_member
+      ? "Founding Member"
+      : !business.is_featured && Date.now() - new Date(business.created_at).getTime() < 30 * 24 * 60 * 60 * 1000
+        ? "New"
+        : null;
 
   return (
-    <Link
-      href={href}
-      className="block w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]"
-    >
+    <div className="group relative w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]">
+      <Link href={href} aria-label={`${business.name} — ${ctaLabel}`} className="absolute inset-0 z-10 rounded-3xl" />
+
       <div className="relative">
         <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-3xl bg-mist">
           {hasCover ? (
@@ -104,22 +118,65 @@ export default function BusinessLogoCard({
         </div>
 
         {overlap && (
-          <div className="absolute -bottom-9 left-5 h-24 w-24 overflow-hidden rounded-2xl border-[3px] border-white bg-white shadow-md">
-            <Image src={business.logo_url!} alt={business.name} fill sizes="96px" className="object-contain p-2" />
+          // border-[3px] → border-2 ("a subtle keyline, not a thick white
+          // block") and the image's own inner padding p-2 → p-1.5 — most
+          // of what read as a "thick white frame" wasn't the border at
+          // all, it was the dead white margin between the object-contain
+          // logo and the tile's clipped edge. Shrinking that margin also
+          // fixes the "still reads square/sharp" complaint: with less
+          // padding, the logo's own pixels reach the tile's rounded clip
+          // instead of floating in the middle of an oversized white box.
+          <div className="absolute -bottom-9 left-5 h-24 w-24 overflow-hidden rounded-2xl border-2 border-white bg-white shadow-md">
+            <Image src={business.logo_url!} alt={business.name} fill sizes="96px" className="object-contain p-1.5" />
           </div>
         )}
       </div>
 
-      {/* UI cleanup pass item 9: trimmed frame (p-4→p-3.5, pt-12→pt-10.5)
-          and a real CTA line — this used to be dead white space under the
-          overlapping logo, now it's a compact identity block that ends
-          with the same "Label →" pattern every other FindMi card uses. */}
-      <div className={`flex flex-col gap-1 rounded-b-3xl p-3.5 ${overlap ? "pt-[42px]" : "pt-3"}`}>
+      <div className={`relative flex flex-col gap-1 rounded-b-3xl p-3.5 ${overlap ? "pt-[42px]" : "pt-3"}`}>
         <p className="line-clamp-1 font-display text-base font-bold tracking-tight text-ink">{business.name}</p>
         {meta && <p className="line-clamp-1 text-xs font-medium text-ink/55">{meta}</p>}
+
+        {/* NEXT UP — z-20 beats the stretched link's z-10 within this
+            module's own footprint only; everywhere else on the card still
+            goes to `href`. Compact (one row), never fabricated. */}
+        {nextAppearance &&
+          (nextAppearance.href ? (
+            <Link
+              href={nextAppearance.href}
+              className="relative z-20 mt-1 flex items-center gap-1.5 rounded-lg bg-findmi-50 px-2 py-1.5 transition hover:bg-findmi-100"
+            >
+              <NextUpLabel venue={nextAppearance.venue} startAt={nextAppearance.startAt} />
+            </Link>
+          ) : (
+            <div className="relative mt-1 flex items-center gap-1.5 rounded-lg bg-findmi-50 px-2 py-1.5">
+              <NextUpLabel venue={nextAppearance.venue} startAt={nextAppearance.startAt} />
+            </div>
+          ))}
+
         <p className="mt-1 text-xs font-bold uppercase tracking-wide text-findmi-700">{ctaLabel} →</p>
       </div>
-    </Link>
+    </div>
+  );
+}
+
+function NextUpLabel({ venue, startAt }: { venue: string; startAt: string }) {
+  return (
+    <>
+      <CalendarGlyph className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+      <span className="min-w-0 flex-1 truncate text-xs text-ink">
+        <span className="mr-1.5 font-bold uppercase tracking-wide text-findmi-700">Next Up</span>
+        <span className="font-semibold">{venue}</span> · {formatDateShort(startAt)}
+      </span>
+    </>
+  );
+}
+
+function CalendarGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
 }
 
