@@ -297,7 +297,7 @@ export async function getProductsByIds(ids: string[]): Promise<FeaturedProduct[]
   if (!supabase || ids.length === 0) return [];
   const { data } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
+    .select("*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)")
     .in("id", ids)
     .eq("is_active", true);
 
@@ -768,6 +768,11 @@ export interface FeaturedProduct extends Product {
     name: string;
     slug: string;
     logo_url: string | null;
+    /** Master commerce switch (see businesses.commerce_enabled) — needed
+     * here so ProductCard's CTA label can use the same purchase-
+     * eligibility rule as the product detail page, instead of guessing
+     * from `purchasable` alone (commerce-audit fix). */
+    commerce_enabled: boolean;
     /** Business's own primary category — products have no category/
      * taxonomy field of their own in the schema today, so this is the
      * closest real, non-fabricated classification available for a
@@ -784,7 +789,7 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
   if (!supabase) return [];
   const { data } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
+    .select("*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)")
     .eq("is_featured", true)
     .eq("is_active", true)
     .order("home_sort_order", { ascending: true, nullsFirst: false })
@@ -997,7 +1002,7 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
 }
 
 export interface MarketplaceProduct extends Product {
-  business: { id: string; name: string; slug: string; logo_url: string | null };
+  business: { id: string; name: string; slug: string; logo_url: string | null; commerce_enabled: boolean };
 }
 
 export interface MarketplaceProductParams {
@@ -1028,7 +1033,7 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
   const limit = params.limit ?? 40;
   let query = supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
+    .select("*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)")
     .eq("is_active", true);
   if (params.q) {
     const term = `%${params.q.trim()}%`;
@@ -1079,7 +1084,7 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
   const limit = params.limit ?? 8;
   let query = supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
+    .select("*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)")
     .eq("is_active", true);
   if (params.q) {
     const term = `%${params.q.trim()}%`;

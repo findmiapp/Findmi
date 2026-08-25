@@ -10,7 +10,9 @@ import { getSavedSlugs, getSavedEventSlugs, getSavedProductSlugs } from "@/lib/s
 import { cityState, formatDateRange } from "@/lib/format";
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
 
-type SavedProduct = Product & { business: { name: string; slug: string; logo_url: string | null } | null };
+type SavedProduct = Product & {
+  business: { name: string; slug: string; logo_url: string | null; commerce_enabled: boolean } | null;
+};
 
 export default function SavedPage() {
   const [businesses, setBusinesses] = useState<BusinessWithCategories[] | null>(null);
@@ -54,7 +56,7 @@ export default function SavedPage() {
     } else {
       supabase
         .from("products")
-        .select("*, business:businesses(name, slug, logo_url)")
+        .select("*, business:businesses(name, slug, logo_url, commerce_enabled)")
         .in("slug", productSlugs)
         .eq("is_active", true)
         .then(({ data }) => {

@@ -11,7 +11,21 @@ export default function ProductCard({
      * fetches (see FeaturedProduct/MarketplaceProduct in lib/data.ts), not
      * on a business's own product list (redundant there). Purely additive
      * to the card: no business means no brand row, nothing else changes. */
-    business?: { name: string; slug: string; logo_url?: string | null; categoryName?: string | null } | null;
+    business?: {
+      name: string;
+      slug: string;
+      logo_url?: string | null;
+      categoryName?: string | null;
+      /** Master commerce switch (businesses.commerce_enabled) — optional
+       * because a caller that doesn't pass `business` at all (e.g. a
+       * business's own product list) has nothing to gate on either.
+       * Required here, though, whenever `business` IS passed, so this
+       * label can't claim "Add to Cart" for a business that hasn't
+       * enabled commerce (commerce-audit fix — this used to check
+       * `purchasable` alone, disagreeing with the product detail page's
+       * real CTA gate: purchasable && commerce_enabled). */
+      commerce_enabled?: boolean | null;
+    } | null;
   };
   /** @deprecated no longer used for the card's own link — kept optional so
    * existing call sites (which still pass it) don't need updating. The
@@ -28,7 +42,14 @@ export default function ProductCard({
   // this label is just an honest preview of which one it'll be. Inquiry-
   // only products say "View Details" (this is a discovery card, not the
   // inquiry flow itself) rather than "Ask About This."
-  const cta = product.purchasable ? "Add to Cart" : product.external_purchase_url ? "Shop Now" : "View Details";
+  //
+  // canAddToCart mirrors the product detail page's real gate exactly
+  // (purchasable && business.commerce_enabled) — a card that doesn't carry
+  // a `business` (e.g. a business's own product list, where commerce_enabled
+  // isn't fetched) falls back to `purchasable` alone rather than assuming
+  // false, since that context has no commerce_enabled to check.
+  const canAddToCart = product.purchasable && (business ? business.commerce_enabled === true : true);
+  const cta = canAddToCart ? "Add to Cart" : product.external_purchase_url ? "Shop Now" : "View Details";
   // Products have no category/taxonomy field of their own — the generic
   // "PRODUCT"/"Service" label is replaced by the selling business's real
   // primary category where available (see FeaturedProduct.business.
