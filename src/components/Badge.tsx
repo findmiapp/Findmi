@@ -28,6 +28,14 @@ export function FoundingMemberBadge() {
   return <BadgeShell>Founding Member</BadgeShell>;
 }
 
+// Editorial curation flag (businesses.is_featured) — independent of both
+// badges above for the exact same reason they're independent of each
+// other: a business can be Featured with or without also being Verified
+// or a Founding Member (Business Profile V2, Part 23).
+export function FeaturedBadge() {
+  return <BadgeShell>Featured</BadgeShell>;
+}
+
 export function CategoryPill({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full bg-black/[0.04] px-2.5 py-1 text-xs font-medium text-ink/70">

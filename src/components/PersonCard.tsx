@@ -10,6 +10,7 @@ export default function PersonCard({ person, role }: { person: Person; role?: st
       badgeLabel={role ?? "FindMi"}
       title={person.name}
       metaLines={person.location ? [{ icon: "pin", text: person.location }] : []}
+      excerpt={person.short_bio}
       cta="View Profile"
     />
   );

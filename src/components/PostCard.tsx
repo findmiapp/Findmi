@@ -46,6 +46,12 @@ export interface PostCardProps {
    * business's own logo, for stronger brand identity on discovery cards
    * (Part 5D/3G). Omit entirely when there's no real logo to show. */
   logoUrl?: string | null;
+  /** Short real excerpt (e.g. a person's short_bio) shown beneath the meta
+   * lines — Business Profile V2's people cards. Optional and additive:
+   * every other PostCard caller leaves this unset, so nothing about their
+   * layout changes. Clamped to 2 lines — this is a card teaser, not a bio
+   * section. */
+  excerpt?: string | null;
 }
 
 export default function PostCard({
@@ -62,6 +68,7 @@ export default function PostCard({
   cta,
   aspect,
   logoUrl,
+  excerpt,
 }: PostCardProps) {
   const card = (
     <div
@@ -121,6 +128,8 @@ export default function PostCard({
             <span className="truncate">{line.text}</span>
           </p>
         ))}
+
+        {excerpt && <p className="line-clamp-2 text-xs text-white/80">{excerpt}</p>}
 
         {price && <p className="text-sm font-semibold text-white">{price}</p>}
 

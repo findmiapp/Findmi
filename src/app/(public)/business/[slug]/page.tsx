@@ -9,7 +9,7 @@ import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import FormAction from "@/components/FormAction";
-import { CategoryPill, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
+import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
 import {
   getAlternativeBusinesses,
   getBusinessBySlug,
@@ -19,8 +19,13 @@ import {
 } from "@/lib/data";
 import { cityState } from "@/lib/format";
 import { resolveBusinessInquiryForm } from "@/lib/forms";
+import { getPublicOrigin } from "@/lib/site-url";
 
 export const revalidate = 60;
+
+function isSafeExternalUrl(url: string | null | undefined): url is string {
+  return typeof url === "string" && /^https?:\/\//i.test(url);
+}
 
 export async function generateMetadata({
   params,
@@ -31,15 +36,24 @@ export async function generateMetadata({
   const business = await getBusinessBySlug(slug);
   if (!business) return { title: "Business not found" };
 
+  const location = cityState(business.city, business.state);
+  const description =
+    business.description?.trim().slice(0, 160) ||
+    business.short_description?.trim().slice(0, 160) ||
+    [business.categories[0]?.name, location].filter(Boolean).join(" · ") ||
+    `Discover ${business.name} on FindMi.`;
+  const ogImage = business.cover_image_url ?? business.logo_url ?? undefined;
+  const url = `${getPublicOrigin()}/business/${business.slug}`;
+
   return {
-    title: business.name,
-    description:
-      business.short_description ??
-      `Discover ${business.name} on FindMi — see what they offer and where they'll be next.`,
+    title: `${business.name} | FindMi`,
+    description,
+    alternates: { canonical: url },
     openGraph: {
-      title: business.name,
-      description: business.short_description ?? undefined,
-      images: business.cover_image_url ? [business.cover_image_url] : undefined,
+      title: `${business.name} | FindMi`,
+      description,
+      images: ogImage ? [ogImage] : undefined,
+      url,
     },
   };
 }
@@ -68,274 +82,331 @@ export default async function BusinessPage({
     people.length > 0 && people.every((p) => /owner|founder/i.test(p.role ?? ""));
   const peopleHeading = allOwnersOrFounders ? "Meet the Owners" : `Meet the People Behind ${business.name}`;
 
-  const gallery = Array.from(
-    new Set(
-      [business.cover_image_url, ...products.map((p) => p.image_url)].filter(
-        (v): v is string => Boolean(v)
-      )
-    )
-  ).slice(0, 8);
-
-  // Resolution: business-specific booking/inquiry form -> global default
-  // -> business email fallback -> graceful unavailable state (see
+  // Resolution: business-specific booking/inquiry form -> global default ->
+  // business email fallback -> graceful unavailable state (see
   // lib/forms.ts's resolveBusinessInquiryForm for the DB/env precedence).
-  // Never fabricated; a business with neither still correctly shows
-  // "Inquiries aren't open yet."
+  // Never fabricated; a business with neither still correctly shows no CTA.
   const mailtoFallback = business.email
-    ? { url: `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via FindMi — ${business.name}`)}`, displayMode: "external" as const }
+    ? {
+        url: `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via FindMi — ${business.name}`)}`,
+        displayMode: "external" as const,
+      }
     : null;
   const inquiryAction = inquiryForm ?? mailtoFallback;
+
+  const location = cityState(business.city, business.state);
+  // categories[0] is the same "good enough for a compact label" primary-
+  // category convention already used elsewhere (BusinessCard, CompactCard)
+  // — not a new taxonomy concept. Anything beyond the first is folded into
+  // a plain "+N" count rather than flooding the identity block with pills
+  // (Business Profile V2, Part 4).
+  const primaryCategory = business.categories[0] ?? null;
+  const extraCategoryCount = Math.max(0, business.categories.length - 1);
+
+  // Compact icon row — facebook/tiktok reuse the generic "link" glyph
+  // rather than fabricating brand-specific icons that didn't exist before
+  // this pass either.
   const socialLinks = [
     { href: business.website_url, label: "Website", icon: "link" as const },
     { href: business.instagram_url, label: "Instagram", icon: "instagram" as const },
     { href: business.facebook_url, label: "Facebook", icon: "link" as const },
     { href: business.tiktok_url, label: "TikTok", icon: "link" as const },
-  ].filter((l): l is { href: string; label: string; icon: "link" | "instagram" } =>
-    Boolean(l.href)
+  ].filter((l): l is { href: string; label: string; icon: "link" | "instagram" } => isSafeExternalUrl(l.href));
+
+  const hasDetails = Boolean(
+    location || business.service_radius_miles || business.phone || business.email || socialLinks.length > 0
   );
+
+  const canonicalUrl = `${getPublicOrigin()}/business/${business.slug}`;
+
+  // Truthful LocalBusiness JSON-LD — every field is a real, already-public
+  // column; nothing here is inferred or fabricated (no ratings, priceRange,
+  // geo coordinates, or hours — none of those are modeled in the schema).
+  // address only includes locality/region since businesses has no street-
+  // address field to draw from.
+  const sameAs = [business.website_url, business.instagram_url, business.facebook_url, business.tiktok_url].filter(
+    isSafeExternalUrl
+  );
+  const jsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: business.name,
+    url: canonicalUrl,
+    ...(business.cover_image_url || business.logo_url
+      ? { image: [business.cover_image_url, business.logo_url].filter((v): v is string => Boolean(v)) }
+      : {}),
+    ...(business.description || business.short_description
+      ? { description: business.description ?? business.short_description }
+      : {}),
+    ...(business.phone ? { telephone: business.phone } : {}),
+    ...(sameAs.length > 0 ? { sameAs } : {}),
+    ...(business.city || business.state
+      ? {
+          address: {
+            "@type": "PostalAddress",
+            ...(business.city ? { addressLocality: business.city } : {}),
+            ...(business.state ? { addressRegion: business.state } : {}),
+          },
+        }
+      : {}),
+  };
 
   return (
     <div>
-      {/* A. Immersive cover */}
-      <div className="relative h-52 w-full overflow-hidden bg-black/5 sm:h-64 md:h-80">
-        {business.cover_image_url && (
-          <Image
-            src={business.cover_image_url}
-            alt={business.name}
-            fill
-            priority
-            sizes="100vw"
-            className="object-cover"
-          />
-        )}
-        <AdminEditButton href={`/admin/businesses/${business.id}`} className="absolute right-3 top-3 z-10" />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+
+      {/* Cover / brand hero — a contained, rounded landscape image (not a
+          full-bleed banner), matching Product Detail V2's hero treatment
+          so the two page types feel like one app. No fabricated imagery:
+          a business with no cover just gets the same branded dark
+          placeholder used on the product page. */}
+      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6 sm:pt-6">
+        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm sm:aspect-[21/9]">
+          {business.cover_image_url ? (
+            <Image
+              src={business.cover_image_url}
+              alt={business.name}
+              fill
+              priority
+              sizes="(min-width: 1024px) 1024px, 100vw"
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-ink">
+              <StorefrontGlyph className="h-12 w-12 text-white/15" />
+            </div>
+          )}
+          <AdminEditButton href={`/admin/businesses/${business.id}`} className="absolute right-3 top-3 z-10" />
+        </div>
       </div>
 
-      <div className="mx-auto max-w-4xl px-6 pb-12">
-        {/* B. Business identity */}
+      {/* Identity — full width, directly under the cover, so the logo can
+          overlap its bottom edge the same way on every breakpoint. Stays
+          above the two-column split below rather than living inside the
+          sticky right rail, which would otherwise overlap the cover on
+          its right edge instead of centered under it. */}
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
         {business.logo_url && (
-          <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex items-end gap-4">
-              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:h-28 sm:w-28">
-                <Image
-                  src={business.logo_url}
-                  alt={business.name}
-                  fill
-                  sizes="112px"
-                  className="object-cover"
-                />
-              </div>
+          <div className="-mt-10 flex sm:-mt-12">
+            <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:h-28 sm:w-28">
+              <Image src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
             </div>
           </div>
         )}
 
-        <div className="mt-4 flex flex-col gap-2.5">
+        <div className="mt-4 flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-              {business.name}
-            </h1>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
             {business.verified && <VerifiedBadge />}
             {business.founding_member && <FoundingMemberBadge />}
+            {business.is_featured && <FeaturedBadge />}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {business.categories.map((c) => (
-              <CategoryPill key={c.id}>{c.name}</CategoryPill>
-            ))}
-            {cityState(business.city, business.state) && (
-              <span className="text-sm text-ink/50">
-                {cityState(business.city, business.state)}
-                {business.service_radius_miles
-                  ? ` · serves within ${business.service_radius_miles} mi`
-                  : ""}
+          <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
+            {primaryCategory && <span className="font-semibold text-ink/70">{primaryCategory.name}</span>}
+            {primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
+            {primaryCategory && location && <span aria-hidden="true">·</span>}
+            {location && (
+              <span>
+                {location}
+                {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
               </span>
             )}
-          </div>
-          {business.short_description && (
-            <p className="max-w-2xl text-base text-ink/65">{business.short_description}</p>
-          )}
+          </p>
+          {business.short_description && <p className="max-w-2xl text-base text-ink/65">{business.short_description}</p>}
+        </div>
+      </div>
 
-          {/* C. Primary action — Follow — plus restrained utility controls */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+      <div className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-10">
+        {/* Right rail on desktop: primary action + Follow/Save, and (desktop
+            only) the details/contact block — written first in the DOM so
+            it naturally lands right after identity on mobile too. */}
+        <div className="mt-6 lg:order-2 lg:sticky lg:top-20 lg:mt-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {inquiryAction &&
+              (inquiryAction.url.startsWith("mailto:") ? (
+                <a
+                  href={inquiryAction.url}
+                  rel="noreferrer"
+                  className="flex h-12 flex-1 items-center justify-center rounded-full bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:flex-none"
+                >
+                  Inquire
+                </a>
+              ) : (
+                <FormAction
+                  href={inquiryAction.url}
+                  displayMode={inquiryAction.displayMode}
+                  label="Inquire"
+                  className="flex h-12 flex-1 items-center justify-center rounded-full bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:flex-none"
+                />
+              ))}
             <FollowButton businessId={business.id} businessSlug={business.slug} />
             <SaveButton slug={business.slug} />
-            {socialLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={link.label}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
-              >
-                <SocialGlyph icon={link.icon} />
-              </a>
-            ))}
           </div>
+
+          {hasDetails && <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-6 hidden lg:block" />}
         </div>
 
-        {/* D. FindMi Here — the signature feature. Always present, even with
-            nothing scheduled, so the concept stays visible on every profile.
-            Plain surface, not a full pale-aqua panel — Aqua stays in the
-            kicker label and the compact per-row action only. */}
-        <section className="mt-8">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">
-            FindMi Here
-          </p>
-          <h2 className="mt-1 font-display text-lg font-semibold tracking-tight text-ink">
-            Find {business.name}
-          </h2>
-          {appearances.length > 0 ? (
-            <div className="mt-3 flex flex-col gap-2">
-              {appearances.slice(0, 3).map((a) => (
-                <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
-              ))}
-              {appearances.length > 3 && (
-                <details className="group">
-                  <summary className="flex list-none items-center justify-center gap-1 rounded-full border border-black/10 py-2 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 [&::-webkit-details-marker]:hidden">
-                    View All Appearances
-                    <span className="transition group-open:hidden">→</span>
-                  </summary>
-                  <div className="mt-2 flex flex-col gap-2">
-                    {appearances.slice(3).map((a) => (
-                      <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
-          ) : (
-            <div className="mt-3 rounded-2xl border border-black/5 bg-black/[0.02] p-4">
-              <p className="text-sm text-ink/60">
-                Nothing announced yet. Follow and we&rsquo;ll let you know where to find them
-                next.
-              </p>
-              <div className="mt-3">
-                <FollowButton businessId={business.id} businessSlug={business.slug} />
+        <div className="lg:order-1">
+          {/* FindMi Here — the signature feature. Hidden entirely (not an
+              empty placeholder) when nothing's scheduled, per Business
+              Profile V2 Part 9/32. */}
+          {appearances.length > 0 && (
+            <section className="mt-2 lg:mt-0">
+              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Here</p>
+              <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Find {business.name} Here</h2>
+              <div className="mt-3 flex flex-col gap-2">
+                {appearances.slice(0, 3).map((a) => (
+                  <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
+                ))}
+                {appearances.length > 3 && (
+                  <details className="group">
+                    <summary className="flex list-none items-center justify-center gap-1 rounded-full border border-black/10 py-2 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 [&::-webkit-details-marker]:hidden">
+                      View All Appearances
+                      <span className="transition group-open:hidden">→</span>
+                    </summary>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {appearances.slice(3).map((a) => (
+                        <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
+                      ))}
+                    </div>
+                  </details>
+                )}
               </div>
-            </div>
+            </section>
           )}
-        </section>
 
-        {/* E. What You'll Find */}
-        {products.length > 0 && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
-              What You&rsquo;ll Find
-            </h2>
-            {/* Mobile: horizontal swipe carousel, fixed-width cards and a
-                hidden scrollbar — the same bleed-to-gutter + hide-scrollbar
-                technique used by every other carousel in the app (see
-                components/Section.tsx's HorizontalScroller), sized to this
-                page's own px-6 gutter rather than reusing that component's
-                own (different) padding. Desktop: a plain grid. */}
-            <div className="mt-4 -mx-6 flex gap-4 overflow-x-auto px-6 pb-1 sm:mx-0 sm:grid sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 sm:grid-cols-3 md:grid-cols-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {products.map((p) => (
-                <div key={p.id} className="w-40 shrink-0 sm:w-auto sm:shrink">
-                  <ProductCard product={p} />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* F. About */}
-        {business.description && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">About</h2>
-            <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink/70">
-              {business.description}
-            </p>
-          </section>
-        )}
-
-        {/* F2. People — editorial, human; single person gets a stronger
-            treatment, multiple people use a horizontal carousel. Never
-            rendered empty. */}
-        {people.length > 0 && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">{peopleHeading}</h2>
-            {people.length === 1 ? (
-              <div className="mt-4 max-w-xs">
-                <PersonCard person={people[0]} role={people[0].role} />
-              </div>
-            ) : (
-              <div className="mt-4 -mx-6 flex gap-4 overflow-x-auto px-6 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {people.map((p) => (
-                  <div key={p.id} className="w-40 shrink-0">
-                    <PersonCard person={p} role={p.role} />
+          {/* Products — hidden entirely with none, same rule as every other
+              optional section on this page. */}
+          {products.length > 0 && (
+            <section className="mt-8">
+              <h2 className="font-display text-lg font-bold tracking-tight text-ink">Shop {business.name}</h2>
+              <div className="mt-4 -mx-4 flex gap-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 sm:grid-cols-3 md:grid-cols-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {products.map((p) => (
+                  <div key={p.id} className="w-40 shrink-0 sm:w-auto sm:shrink">
+                    <ProductCard product={p} />
                   </div>
                 ))}
               </div>
-            )}
-          </section>
-        )}
-
-        {/* G. Gallery */}
-        {gallery.length > 0 && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-ink">Gallery</h2>
-            <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {gallery.map((src) => (
-                <div
-                  key={src}
-                  className="relative aspect-square overflow-hidden rounded-xl bg-black/5"
-                >
-                  <Image src={src} alt={business.name} fill sizes="200px" className="object-cover" />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* H. Book / Inquire */}
-        <section id="book" className="mt-8 scroll-mt-20 rounded-3xl bg-black/[0.03] p-5 sm:p-6">
-          <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
-            Book / Inquire
-          </h2>
-          <p className="mt-2 max-w-xl text-sm text-ink/60">
-            Tell us what you&rsquo;re planning and we&rsquo;ll send your request to this
-            business.
-          </p>
-          {inquiryAction ? (
-            inquiryAction.url.startsWith("mailto:") ? (
-              <a
-                href={inquiryAction.url}
-                rel="noreferrer"
-                className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              >
-                Request Availability
-              </a>
-            ) : (
-              <FormAction
-                href={inquiryAction.url}
-                displayMode={inquiryAction.displayMode}
-                label="Request Availability"
-                className="mt-4 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              />
-            )
-          ) : (
-            <p className="mt-4 text-sm text-ink/50">Inquiries aren&rsquo;t open yet.</p>
+            </section>
           )}
-          <p className="mt-3 max-w-xl text-xs text-ink/45">
-            If this business is unavailable, FindMi can help match you with similar
-            businesses — only if you opt in on the request form.
-          </p>
+
+          {business.description && (
+            <section className="mt-8">
+              <h2 className="font-display text-lg font-bold tracking-tight text-ink">About {business.name}</h2>
+              <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{business.description}</p>
+            </section>
+          )}
+
+          {/* People — editorial, human; single person gets a stronger
+              treatment, multiple people use a horizontal carousel. Never
+              rendered empty. */}
+          {people.length > 0 && (
+            <section className="mt-8">
+              <h2 className="font-display text-lg font-bold tracking-tight text-ink">{peopleHeading}</h2>
+              {people.length === 1 ? (
+                <div className="mt-4 max-w-xs">
+                  <PersonCard person={people[0]} role={people[0].role} />
+                </div>
+              ) : (
+                <div className="mt-4 -mx-4 flex gap-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {people.map((p) => (
+                    <div key={p.id} className="w-40 shrink-0">
+                      <PersonCard person={p} role={p.role} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Note: no standalone Gallery section this pass. The only real,
+              non-product business media in the current schema is a single
+              cover_image_url (already shown as the hero above) plus
+              logo_url (already shown in identity) — there's no dedicated
+              gallery/media field or table. Building a "gallery" here would
+              mean either repeating the cover image or repeating the exact
+              product photos already shown in Shop [Business] immediately
+              above, which is the literal duplication this pass was asked
+              to avoid. Per Business Profile V2 Part 35: documented as
+              deferred future work (a real gallery/media architecture),
+              not faked with what exists today. */}
+
+          {hasDetails && <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-8 lg:hidden" />}
 
           {alternatives.length > 0 && (
-            <div className="mt-6 border-t border-black/5 pt-5">
-              <p className="text-sm font-medium text-ink">
-                Not available, or looking for something similar?
-              </p>
+            <section className="mt-8">
+              <h2 className="font-display text-lg font-bold tracking-tight text-ink">Discover More Like This</h2>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {alternatives.map((alt) => (
                   <BusinessCard key={alt.id} business={alt} />
                 ))}
               </div>
-            </div>
+            </section>
           )}
-        </section>
+        </div>
       </div>
     </div>
+  );
+}
+
+/** Compact "Details" block — Business Profile V2 Part 14/8. Rendered twice
+ * (once for mobile's later position in the page, once inside the desktop
+ * sticky rail) via the `className` prop rather than duplicated markup —
+ * each call site just toggles which breakpoint it's visible on. Only
+ * fields that are actually set ever render; the whole block is skipped by
+ * its caller (`hasDetails`) when nothing real exists. */
+function DetailsBlock({
+  business,
+  location,
+  socialLinks,
+  className,
+}: {
+  business: { phone: string | null; email: string | null; service_radius_miles: number | null };
+  location: string;
+  socialLinks: { href: string; label: string; icon: "link" | "instagram" }[];
+  className: string;
+}) {
+  return (
+    <section className={className}>
+      <h2 className="font-display text-sm font-bold uppercase tracking-wide text-ink/40">Details</h2>
+      <div className="mt-3 flex flex-col gap-2.5 text-sm text-ink/70">
+        {location && (
+          <p className="flex items-center gap-2">
+            <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            {location}
+            {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
+          </p>
+        )}
+        {business.phone && (
+          <a href={`tel:${business.phone}`} className="flex items-center gap-2 hover:text-ink">
+            <PhoneGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            {business.phone}
+          </a>
+        )}
+        {business.email && (
+          <a href={`mailto:${business.email}`} className="flex items-center gap-2 hover:text-ink">
+            <MailGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            {business.email}
+          </a>
+        )}
+      </div>
+      {socialLinks.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {socialLinks.map((link) => (
+            <a
+              key={link.label}
+              href={link.href}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={link.label}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+            >
+              <SocialGlyph icon={link.icon} />
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -353,6 +424,56 @@ function SocialGlyph({ icon }: { icon: "link" | "instagram" }) {
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
       <path
         d="M9 15l6-6M11 6.5l1.5-1.5a3.2 3.2 0 014.5 4.5L15.5 11M13 17.5L11.5 19a3.2 3.2 0 01-4.5-4.5L8.5 13"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PinGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function PhoneGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M6.5 4h3l1.5 4-2 1.5a11 11 0 005.5 5.5L16 13l4 1.5v3a2 2 0 01-2.2 2A16 16 0 014.5 6.2 2 2 0 016.5 4z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MailGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M4.5 7l7.5 6 7.5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function StorefrontGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M4 9.5L5 4h14l1 5.5M4 9.5a2.2 2.2 0 004.3.7M4 9.5a2.2 2.2 0 004.3.7m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.3-.7M5 10v9.5a1 1 0 001 1h5v-6h2v6h5a1 1 0 001-1V10"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
