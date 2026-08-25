@@ -269,7 +269,11 @@ export default async function BusinessPage({
               empty placeholder) when nothing's scheduled, per Business
               Profile V2 Part 9/32. */}
           {appearances.length > 0 && (
-            <section className="mt-2 lg:mt-0">
+            // UI cleanup pass item 6: mt-2 → mt-6 on mobile — the Follow/
+            // Save action row and the FINDMI HERE eyebrow were reading as
+            // one run-together block; desktop is unaffected (lg:mt-0,
+            // separated by the column layout instead).
+            <section className="mt-6 lg:mt-0">
               <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Here</p>
               <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Find {business.name} Here</h2>
               <div className="mt-3 flex flex-col gap-2">

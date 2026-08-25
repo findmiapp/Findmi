@@ -94,11 +94,15 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // the collage imagery is fully founder-editable here. HomeHero falls
     // back to real, non-fabricated business/appearance photos already
     // being fetched for other sections when no slot is configured — see
-    // the homepage's own hero-image fallback logic.
+    // the homepage's own hero-image fallback logic. The description line
+    // under the headline (`body`) became founder-editable in the UI
+    // cleanup pass — same generic body-field machinery every other
+    // section already used, just not turned on here before.
     label: "Hero",
     heading: "What's around you right now?",
+    body: "Discover local businesses, events, pop-ups, products, and more — all in one place.",
     order: 0,
-    fields: ["heading"],
+    fields: ["heading", "body"],
     imageSlots: 3,
     orderable: false,
   },

@@ -112,16 +112,12 @@ export default function AppearanceCard({
   );
 }
 
+// UI cleanup pass item 7: a plain chevron (no horizontal stem) — cleaner
+// inside a small circular button than the old long arrow with a tail.
 function ArrowGlyph({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className={className}>
-      <path
-        d="M4 10h12M10.5 4.5L16 10l-5.5 5.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

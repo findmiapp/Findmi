@@ -76,11 +76,11 @@ export default async function EventPage({
       : Promise.resolve(null),
   ]);
 
+  // UI cleanup pass item 2: three real tiers instead of one flat row where
+  // Directions/RSVP/Tickets/Vendor all competed at the same visual weight.
   // Only an action with BOTH its toggle on AND a real destination ever
-  // renders — never a disabled or dead button. The first one found becomes
-  // the single Aqua-filled primary; the rest stay compact outline pills in
-  // the same row, so multiple configured actions never turn into a wall of
-  // full-width Aqua buttons.
+  // renders — never a disabled or dead button — that rule is unchanged,
+  // just which tier each action lands in.
   const primaryActions: { label: string; href: string; displayMode: "embed" | "external" }[] = [];
   if (event.tickets_enabled && event.tickets_url) {
     primaryActions.push({ label: "Get Tickets", href: event.tickets_url, displayMode: "external" });
@@ -88,15 +88,10 @@ export default async function EventPage({
   if (rsvpForm) {
     primaryActions.push({ label: "RSVP", href: rsvpForm.url, displayMode: rsvpForm.displayMode });
   }
-  if (vendorAppForm) {
-    primaryActions.push({ label: "Apply to Vend", href: vendorAppForm.url, displayMode: vendorAppForm.displayMode });
-  }
-  if (event.directions_enabled && directionsHref) {
-    primaryActions.push({ label: "Get Directions", href: directionsHref, displayMode: "external" });
-  }
 
   const showContact = Boolean(contactForm);
   const showFollow = event.follow_enabled;
+  const showDirections = event.directions_enabled && Boolean(directionsHref);
 
   return (
     <div>
@@ -154,31 +149,51 @@ export default async function EventPage({
           </p>
         )}
 
-        {/* Primary action area — only enabled, destination-having actions. */}
+        {/* Primary row — RSVP/Tickets, the strongest action(s) on the page. */}
         {primaryActions.length > 0 && (
           <div className="mt-5 flex flex-wrap items-center gap-2.5">
-            {primaryActions.map((action, i) => (
+            {primaryActions.map((action) => (
               <FormAction
                 key={action.label}
                 href={action.href}
                 displayMode={action.displayMode}
                 label={action.label}
-                className={
-                  i === 0
-                    ? "flex h-11 items-center justify-center rounded-full bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-11 items-center justify-center rounded-full border border-black/10 px-5 text-sm font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
-                }
+                className="flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               />
             ))}
           </div>
         )}
 
-        {/* Secondary actions — compact, not competing with the primary row. */}
-        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+        {/* Secondary — Apply to Vend, one tier down from RSVP/Tickets but
+            still a real, deliberate action, not a supporting utility. */}
+        {vendorAppForm && (
+          <div className="mt-2.5">
+            <FormAction
+              href={vendorAppForm.url}
+              displayMode={vendorAppForm.displayMode}
+              label="Apply to Vend"
+              className="flex h-10 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+            />
+          </div>
+        )}
+
+        {/* Supporting actions — compact and visually quiet, not competing
+            with the two tiers above. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {showDirections && (
+            <a
+              href={directionsHref!}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+            >
+              Directions
+            </a>
+          )}
           {showFollow && (
             <a
               href="#follow"
-              className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
             >
               Follow
             </a>
@@ -188,7 +203,7 @@ export default async function EventPage({
             contactForm.url.startsWith("mailto:") ? (
               <a
                 href={contactForm.url}
-                className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
               >
                 Contact Organizer
               </a>
@@ -197,7 +212,7 @@ export default async function EventPage({
                 href={contactForm.url}
                 displayMode={contactForm.displayMode}
                 label="Contact Organizer"
-                className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
               />
             )
           )}
@@ -206,7 +221,7 @@ export default async function EventPage({
               href={event.external_url}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
             >
               Event Details
             </a>

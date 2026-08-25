@@ -100,15 +100,29 @@ export async function saveEvent(id: string | null, formData: FormData) {
       .in("business_id", removedIds);
   }
 
+  // Root cause of the "category unchecks itself" report: neither write
+  // below checked its own error, so a failed delete/insert (RLS, a bad
+  // id, a transient error — anything) silently left event_categories
+  // however it happened to be, then redirected to a "saved" page anyway.
+  // Now a real failure surfaces as the same visible error banner every
+  // other field's save failure already uses, instead of vanishing.
   const categoryIds = formData.getAll("category_ids").map(String);
-  await supabase.from("event_categories").delete().eq("event_id", eventId);
+  const { error: catDeleteError } = await supabase.from("event_categories").delete().eq("event_id", eventId);
+  if (catDeleteError) redirect(errorRedirectUrl(editPath, `Categories: ${catDeleteError.message}`));
   if (categoryIds.length > 0) {
-    await supabase
+    const { error: catInsertError } = await supabase
       .from("event_categories")
       .insert(categoryIds.map((category_id) => ({ event_id: eventId, category_id })));
+    if (catInsertError) redirect(errorRedirectUrl(editPath, `Categories: ${catInsertError.message}`));
   }
 
   revalidatePath("/admin/events");
+  // The exact page this redirects back to — missing before, which meant
+  // Next's client router cache could keep serving the pre-save RSC
+  // payload for this same URL (identical `?saved=1` on every save) after
+  // a redirect, showing stale checkbox/field state even though the write
+  // itself had already succeeded.
+  revalidatePath(editPath);
   revalidatePath(`/event/${slug}`);
   revalidatePath("/");
   revalidatePath("/events");

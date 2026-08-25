@@ -20,18 +20,21 @@ import Link from "next/link";
 // discovered.") still fits on one line, and uses that size everywhere —
 // so the constraint is solved by sizing the whole headline around it,
 // not by shrinking one line in isolation. `whitespace-nowrap` on that
-// line remains as a hard guarantee. Line-height is tightened to 0.98
-// (was 1.1) for the tighter, more confident/editorial feel that was
-// asked for — loose 1.1+ leading on a 3-line headline is what reads as
-// "stacked." font-extrabold is a deliberate one-off step up from
-// font-bold (the strongest weight used anywhere else in the app) for
-// this one headline specifically — Inter loads as a variable font (no
-// fixed `weight` in next/font/google's config), so every weight up to
-// 900 renders natively, not browser-synthesized. sm:/md: sizes are more
-// conservative than the previous pass (text-3xl/text-4xl, not
-// text-4xl/text-5xl) for the same one-line-guarantee reason, now applied
-// at every breakpoint instead of only on mobile.
-export default function HomeHero({ images }: { images: string[] }) {
+// line remains as a hard guarantee.
+//
+// 2nd cleanup pass (item 8): font-bold (was font-extrabold — a lighter,
+// narrower weight at the same size), leading tightened to 0.96 (was
+// 0.98), and the mobile clamp nudged up slightly (1.1rem/5vw/1.375rem →
+// 1.15rem/5.1vw/1.4rem). The lighter weight's narrower glyph advance
+// roughly offsets the slightly larger size, which is why the min bound
+// only moved ~2% (1.1rem→1.15rem) despite the size read as more
+// noticeably "up" at normal viewing distance — the one-line guarantee at
+// 360px was the hard constraint the whole adjustment was sized around,
+// not just this line's own size in isolation. `whitespace-nowrap` on
+// "Get discovered." remains the hard backstop either way. sm:/md: sizes
+// (text-3xl/text-4xl) are unchanged from the prior pass — this item's
+// ask was weight/line-height/mobile-size, not the larger breakpoints.
+export default function HomeHero({ images, description }: { images: string[]; description: string | null }) {
   const [a, b, c] = images;
 
   return (
@@ -39,22 +42,27 @@ export default function HomeHero({ images }: { images: string[] }) {
       <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-10">
         <div className="flex items-center gap-3 sm:gap-12">
           <div className="min-w-0 flex-1">
-            <h1 className="font-display text-[clamp(1.1rem,5vw,1.375rem)] font-extrabold leading-[0.98] tracking-tight text-ink sm:text-3xl md:text-4xl">
+            <h1 className="font-display text-[clamp(1.15rem,5.1vw,1.4rem)] font-bold leading-[0.96] tracking-tight text-ink sm:text-3xl md:text-4xl">
               Find what&rsquo;s
               <br />
               around you.
               <br />
               <span className="whitespace-nowrap text-findmi-600">Get discovered.</span>
             </h1>
-            <p className="mt-2.5 max-w-[26ch] text-xs text-ink/60 sm:mt-4 sm:max-w-md sm:text-base">
-              Discover local businesses, events, pop-ups, products, and more — all in one place.
-            </p>
+            {/* Founder-editable via Site Editor → Hero → Body (UI cleanup
+                pass item 3) — falls back to this same default copy when
+                unconfigured, via resolveSection/HOMEPAGE_SECTIONS. */}
+            {description && (
+              <p className="mt-2.5 max-w-[26ch] text-xs text-ink/60 sm:mt-4 sm:max-w-md sm:text-base">
+                {description}
+              </p>
+            )}
             {/* UI cleanup pass item 8 — understated, not another CTA
                 block: small italic text, only the last few words link. */}
             <p className="mt-1.5 text-[11px] italic text-ink/40 sm:mt-2 sm:text-sm">
               Have a business?{" "}
               <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
-                Join FindMi today.
+                Join FindMi.
               </Link>
             </p>
           </div>

@@ -26,11 +26,23 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
           <Link href="/admin" className="font-display text-sm font-bold tracking-tight text-ink">
             FindMi Admin
           </Link>
-          <form action={logout}>
-            <button type="submit" className="text-xs font-semibold text-ink/50 hover:text-ink">
-              Sign Out
-            </button>
-          </form>
+          {/* Shared admin shell (item 5) — one link here covers every
+              admin page rather than each page implementing its own. */}
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-semibold text-ink/50 hover:text-ink"
+            >
+              View Homepage
+            </Link>
+            <form action={logout}>
+              <button type="submit" className="text-xs font-semibold text-ink/50 hover:text-ink">
+                Sign Out
+              </button>
+            </form>
+          </div>
         </div>
         <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {NAV.map((item) => (
