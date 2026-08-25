@@ -10,9 +10,17 @@ import { isFollowed, markFollowed } from "@/lib/followed";
 export default function FollowButton({
   businessId,
   businessSlug,
+  /** Final refinement pass, item 1 — Follow moved into a compact Follow +
+   * Save row right under the description, no longer the large primary-
+   * looking button it was when it shared the row with Inquire. "compact"
+   * is purely a sizing/typography variant (h-9/text-xs vs h-12/text-sm) —
+   * every state, every behavior (follow/unfollow, email capture, error
+   * handling) is byte-identical between the two sizes. */
+  size = "default",
 }: {
   businessId: string;
   businessSlug: string;
+  size?: "default" | "compact";
 }) {
   const [following, setFollowing] = useState(false);
   const [capturing, setCapturing] = useState(false);
@@ -45,13 +53,13 @@ export default function FollowButton({
     }
   }
 
-  // w-full/h-12 on every state (this component has exactly one caller —
-  // the business profile's primary action row, UI cleanup pass item 1) so
-  // Follow reads as a real, proportioned secondary CTA next to Inquire
-  // instead of a small content-sized pill lost in the row.
+  const compact = size === "compact";
+  const h = compact ? "h-9" : "h-12";
+  const text = compact ? "text-xs" : "text-sm";
+
   if (following) {
     return (
-      <span className="flex h-12 w-full items-center justify-center gap-1.5 rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white">
+      <span className={`flex ${h} w-full items-center justify-center gap-1.5 rounded-full bg-findmi ${text} font-bold uppercase tracking-wide text-white`}>
         <CheckGlyph /> Following
       </span>
     );
@@ -68,7 +76,7 @@ export default function FollowButton({
     // own retry button), just presented correctly.
     return (
       <div className="w-full">
-        <form onSubmit={handleSubmit} className="flex h-12 w-full items-center gap-1.5">
+        <form onSubmit={handleSubmit} className={`flex ${h} w-full items-center gap-1.5`}>
           <input
             type="email"
             required
@@ -97,7 +105,7 @@ export default function FollowButton({
     <button
       type="button"
       onClick={() => setCapturing(true)}
-      className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+      className={`flex ${h} w-full items-center justify-center rounded-full bg-findmi ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
     >
       Follow
     </button>

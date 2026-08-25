@@ -56,6 +56,10 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     cta_3_label: str(formData, "cta_3_label"),
     cta_3_url: str(formData, "cta_3_url"),
     cta_3_enabled: bool(formData, "cta_3_enabled"),
+    // Final refinement pass, item 4.
+    bulletin_enabled: bool(formData, "bulletin_enabled"),
+    bulletin_heading: str(formData, "bulletin_heading"),
+    bulletin_body: str(formData, "bulletin_body"),
   };
 
   let businessId = id;

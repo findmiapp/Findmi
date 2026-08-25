@@ -121,6 +121,13 @@ export interface Business {
   cta_3_label: string | null;
   cta_3_url: string | null;
   cta_3_enabled: boolean;
+  // Final refinement pass, item 4 — optional Bulletin/Announcement module.
+  // Shared pattern with events (see the Bulletin component) — enabled +
+  // body must both be truthy for it to render publicly; heading is
+  // optional even when enabled.
+  bulletin_enabled: boolean;
+  bulletin_heading: string | null;
+  bulletin_body: string | null;
 }
 
 export interface Market {
@@ -200,6 +207,11 @@ export interface Product {
   // Founder-controlled homepage/marketplace placement order among
   // is_featured products — null sorts last, then by name.
   home_sort_order: number | null;
+  // Final refinement pass, item 5 — separate, business-profile-specific
+  // ordering (see getProductsForBusiness). Deliberately independent of
+  // home_sort_order, which is documented/used only for the homepage/
+  // marketplace featured rows — a different placement, not this one.
+  profile_sort_order: number | null;
 }
 
 export interface ProductFulfillmentOption {
@@ -250,6 +262,19 @@ export interface FindmiEvent {
   // "Featured at This Event" product carousel's heading. Null falls back
   // to the hardcoded default, same pattern as site_sections overrides.
   featured_products_heading: string | null;
+  // Final refinement pass, item 8 — same shared Bulletin pattern as
+  // businesses (see the Bulletin component).
+  bulletin_enabled: boolean;
+  bulletin_heading: string | null;
+  bulletin_body: string | null;
+}
+
+export interface EventImage {
+  id: string;
+  event_id: string;
+  kind: "event" | "venue";
+  url: string;
+  display_order: number | null;
 }
 
 export interface EventWithCategories extends FindmiEvent {

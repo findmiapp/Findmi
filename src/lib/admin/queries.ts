@@ -210,12 +210,16 @@ export interface EventFeaturedProduct {
   display_order: number | null;
 }
 
-export async function getAdminEventById(
-  id: string
-): Promise<{ event: AdminEvent; participants: EventParticipant[]; featuredProducts: EventFeaturedProduct[] } | null> {
+export async function getAdminEventById(id: string): Promise<{
+  event: AdminEvent;
+  participants: EventParticipant[];
+  featuredProducts: EventFeaturedProduct[];
+  galleryImages: string[];
+  venueImages: string[];
+} | null> {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
-  const [{ data: event }, { data: links }, { data: productLinks }] = await Promise.all([
+  const [{ data: event }, { data: links }, { data: productLinks }, { data: imageRows }] = await Promise.all([
     supabase.from("events").select("*").eq("id", id).maybeSingle(),
     supabase
       .from("event_businesses")
@@ -227,8 +231,19 @@ export async function getAdminEventById(
       .select("product_id, display_order, products(name, image_url)")
       .eq("event_id", id)
       .order("display_order", { ascending: true, nullsFirst: false }),
+    supabase
+      .from("event_images")
+      .select("url, kind")
+      .eq("event_id", id)
+      .order("display_order", { ascending: true, nullsFirst: false }),
   ]);
   if (!event) return null;
+
+  const galleryImages: string[] = [];
+  const venueImages: string[] = [];
+  for (const row of (imageRows ?? []) as { url: string; kind: "event" | "venue" }[]) {
+    (row.kind === "venue" ? venueImages : galleryImages).push(row.url);
+  }
 
   type ProductLinkRow = {
     product_id: string;
@@ -285,7 +300,7 @@ export async function getAdminEventById(
     };
   });
 
-  return { event: event as AdminEvent, participants, featuredProducts };
+  return { event: event as AdminEvent, participants, featuredProducts, galleryImages, venueImages };
 }
 
 export async function getEventCategoryIds(eventId: string): Promise<string[]> {

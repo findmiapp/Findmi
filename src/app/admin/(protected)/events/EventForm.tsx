@@ -7,6 +7,7 @@ import {
   TextareaField,
 } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
+import GalleryField from "@/components/admin/GalleryField";
 import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
@@ -19,6 +20,8 @@ export default function EventForm({
   event,
   participants,
   featuredProducts,
+  galleryImages,
+  venueImages,
   categories,
   selectedCategoryIds,
   error,
@@ -26,6 +29,8 @@ export default function EventForm({
   event: AdminEvent | null;
   participants: EventParticipant[];
   featuredProducts: EventFeaturedProduct[];
+  galleryImages: string[];
+  venueImages: string[];
   categories: Category[];
   selectedCategoryIds: string[];
   error?: string;
@@ -61,6 +66,15 @@ export default function EventForm({
       <TextareaField label="Description" name="description" defaultValue={event?.description} />
       <ImageField label="Cover Photo" name="cover_image_url" defaultValue={event?.cover_image_url} />
 
+      <div className="rounded-2xl border border-black/10 p-4">
+        <GalleryField
+          label="Event Gallery"
+          name="gallery_image_url"
+          initialUrls={galleryImages}
+          hint="Additional photos shown in a compact strip below the cover, opening a swipeable lightbox. The Cover Photo above stays separate and always shows first."
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <DateTimeField
           label="Start Date & Time"
@@ -82,6 +96,15 @@ export default function EventForm({
         <TextField label="Address" name="address" defaultValue={event?.address} />
         <TextField label="City" name="city" defaultValue={event?.city} />
         <TextField label="State" name="state" defaultValue={event?.state} />
+      </div>
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <GalleryField
+          label="About the Venue — Gallery"
+          name="venue_image_url"
+          initialUrls={venueImages}
+          hint="Optional photos of the venue itself, shown under About the Venue. Events don't have a real FindMi Location relationship yet, so this stays event-specific for now."
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -122,6 +145,30 @@ export default function EventForm({
         options={categories.map((c) => ({ value: c.id, label: c.name }))}
         emptyText="No categories yet — add some in /admin/categories."
       />
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <p className="mb-1 text-sm font-semibold text-ink">Bulletin / Announcement</p>
+        <p className="mb-3 text-xs text-ink/45">
+          Same shared component as Business Profile — e.g. &ldquo;Rain or shine&rdquo; or &ldquo;Parking
+          available in Lot B.&rdquo; Renders nothing publicly unless enabled AND the body has real content.
+        </p>
+        <div className="flex flex-col gap-4">
+          <CheckboxField label="Bulletin Enabled" name="bulletin_enabled" defaultChecked={event?.bulletin_enabled} />
+          <TextField
+            label="Heading (optional)"
+            name="bulletin_heading"
+            defaultValue={event?.bulletin_heading}
+            placeholder="Rain or shine"
+          />
+          <TextareaField
+            label="Body"
+            name="bulletin_body"
+            defaultValue={event?.bulletin_body}
+            rows={3}
+            hint="e.g. This event happens rain or shine — dress accordingly."
+          />
+        </div>
+      </div>
 
       {/* --- Consumer actions --- each toggle only ever shows on the public
           page when it's on AND has a real destination. */}

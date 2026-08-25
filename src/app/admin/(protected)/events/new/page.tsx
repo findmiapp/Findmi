@@ -19,6 +19,8 @@ export default async function NewEventPage({
           event={null}
           participants={[]}
           featuredProducts={[]}
+          galleryImages={[]}
+          venueImages={[]}
           categories={categories}
           selectedCategoryIds={[]}
           error={error}

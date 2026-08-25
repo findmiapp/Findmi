@@ -101,6 +101,12 @@ export default function ProductForm({
           defaultValue={product?.home_sort_order ?? undefined}
           hint="Only matters when Featured is on — lower numbers show first. Leave blank to sort last, by name."
         />
+        <NumberField
+          label="Business Profile Order"
+          name="profile_sort_order"
+          defaultValue={product?.profile_sort_order ?? undefined}
+          hint="Where this shows up in Shop [Business] on its own profile — lower numbers show first, independent of the Homepage/Marketplace order above. Leave blank to sort last, by Featured then name."
+        />
 
         <div className="rounded-2xl border border-black/10 p-4">
           <p className="mb-3 text-sm font-semibold text-ink">Commerce</p>

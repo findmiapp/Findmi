@@ -434,6 +434,13 @@ export async function getBusinessBySlug(slug: string): Promise<BusinessWithCateg
   return withCats;
 }
 
+/** BEFORE this pass: order was is_featured desc, then name — no manual
+ * control at all, and no explicit tiebreak beyond that (never
+ * database-return order, but also nothing a business could adjust).
+ * AFTER: profile_sort_order (nulls last) takes priority — a business/
+ * founder can now pin an explicit order — falling back to the same
+ * is_featured/name behavior for anything left unordered, so the sort stays
+ * fully deterministic either way (final refinement pass, item 5). */
 export async function getProductsForBusiness(businessId: string): Promise<Product[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -442,6 +449,7 @@ export async function getProductsForBusiness(businessId: string): Promise<Produc
     .select("*")
     .eq("business_id", businessId)
     .eq("is_active", true)
+    .order("profile_sort_order", { ascending: true, nullsFirst: false })
     .order("is_featured", { ascending: false })
     .order("name");
   return data ?? [];
@@ -1150,6 +1158,26 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
       ...rest,
       business,
     }));
+}
+
+/** Final refinement pass, items 9/10 — real event gallery + venue gallery
+ * images (event_images, kind-partitioned). One query, split client-side
+ * by kind rather than two round trips, since both are always needed
+ * together on the event page. */
+export async function getEventImages(eventId: string): Promise<{ gallery: string[]; venue: string[] }> {
+  const supabase = getSupabase();
+  if (!supabase) return { gallery: [], venue: [] };
+  const { data } = await supabase
+    .from("event_images")
+    .select("url, kind")
+    .eq("event_id", eventId)
+    .order("display_order", { ascending: true, nullsFirst: false });
+  const gallery: string[] = [];
+  const venue: string[] = [];
+  for (const row of (data ?? []) as { url: string; kind: "event" | "venue" }[]) {
+    (row.kind === "venue" ? venue : gallery).push(row.url);
+  }
+  return { gallery, venue };
 }
 
 /** Event Detail V2 polish pass, item 15 — the small, founder-picked set of

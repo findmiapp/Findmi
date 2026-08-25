@@ -5,6 +5,7 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShopSection from "@/components/BusinessShopSection";
+import Bulletin from "@/components/Bulletin";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
@@ -242,14 +243,19 @@ export default async function BusinessPage({
             </p>
             {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
 
-            {/* Item 3 — Follow moved up into the identity block itself: a
-                higher, more social position, visually separate from the
-                Inquire/Save action row below (which is about the
-                customizable business CTA, not social following). Same
-                FollowButton component/behavior, just narrowed to its
-                natural compact width instead of stretching full-row. */}
-            <div className="mt-1 w-40">
-              <FollowButton businessId={business.id} businessSlug={business.slug} />
+            {/* Final refinement pass, item 1 — Follow + Save now sit
+                together as a compact secondary-action row immediately
+                after the description: Follow uses FollowButton's new
+                "compact" size (same component/behavior, just
+                significantly smaller than the old full h-12 button) so
+                neither competes with the Inquire/custom CTA buttons
+                below. Follow takes the available width, Save stays its
+                usual fixed-width icon beside it. */}
+            <div className="mt-1 flex items-center gap-2">
+              <div className="w-32">
+                <FollowButton businessId={business.id} businessSlug={business.slug} size="compact" />
+              </div>
+              <SaveButton slug={business.slug} />
             </div>
           </div>
         </div>
@@ -260,47 +266,50 @@ export default async function BusinessPage({
             only) the details/contact block — written first in the DOM so
             it naturally lands right after identity on mobile too. */}
         <div className="mt-6 lg:order-2 lg:sticky lg:top-20 lg:mt-0">
-          {/* Item 3: Follow no longer lives in this row (moved up into the
-              identity block) — this is now purely the customizable-CTA-
-              adjacent action row: Inquire (the primary, most-configurable
-              action, item 4) takes the full width, Save stays as the
-              supporting utility action beside it. */}
-          <div className="flex items-center gap-2.5">
-            {inquiryAction && (
-              <div className="min-w-0 flex-1">
-                {inquiryAction.url.startsWith("mailto:") ? (
-                  <a
-                    href={inquiryAction.url}
-                    rel="noreferrer"
-                    className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                  >
-                    {inquiryLabel}
-                  </a>
-                ) : (
-                  <FormAction
-                    href={inquiryAction.url}
-                    displayMode={inquiryAction.displayMode}
-                    label={inquiryLabel}
-                    className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                  />
-                )}
-              </div>
-            )}
-            <SaveButton slug={business.slug} />
-          </div>
+          {/* Item 1: Follow + Save both now live in the identity block
+              above — this row is purely Inquire, the single most-
+              configurable primary action (item 4's custom URL/label). */}
+          {inquiryAction && (
+            <div className="min-w-0">
+              {inquiryAction.url.startsWith("mailto:") ? (
+                <a
+                  href={inquiryAction.url}
+                  rel="noreferrer"
+                  className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  {inquiryLabel}
+                </a>
+              ) : (
+                <FormAction
+                  href={inquiryAction.url}
+                  displayMode={inquiryAction.displayMode}
+                  label={inquiryLabel}
+                  className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                />
+              )}
+            </div>
+          )}
 
           {hasDetails && <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-6 hidden lg:block" />}
         </div>
 
         <div className="lg:order-1">
+          {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin
+              now open the main content column (right after Inquire on
+              mobile), well before FindMi Here/Shop/About, instead of
+              appearing far down the page after About. */}
+          <BusinessCtaRow business={business} />
+          <div className="mt-8">
+            <Bulletin heading={business.bulletin_heading} body={business.bulletin_enabled ? business.bulletin_body : null} />
+          </div>
           {/* FindMi Here — the signature feature. Hidden entirely (not an
               empty placeholder) when nothing's scheduled, per Business
               Profile V2 Part 9/32. */}
           {appearances.length > 0 && (
-            // UI cleanup pass item 6: mt-2 → mt-6 on mobile — the Follow/
-            // Save action row and the FINDMI HERE eyebrow were reading as
-            // one run-together block; desktop is unaffected (lg:mt-0,
-            // separated by the column layout instead).
+            // mt-6 keeps a clear break from whatever renders above it
+            // (CTA row/Bulletin when present, otherwise Inquire itself on
+            // mobile); desktop is unaffected (lg:mt-0, separated by the
+            // column layout instead).
             <section className="mt-6 lg:mt-0">
               <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Here</p>
               <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Find {business.name} Here</h2>
@@ -350,12 +359,6 @@ export default async function BusinessPage({
               <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{business.description}</p>
             </section>
           )}
-
-          {/* Item 5 — up to three additional, business-specific CTAs,
-              distinct from Follow (identity block above) and Inquire
-              (primary action row above) — never rendered empty, never
-              tied to Follow. */}
-          <BusinessCtaRow business={business} />
 
           {/* People — editorial, human; single person gets a stronger
               treatment, multiple people use a horizontal carousel. Never
@@ -434,8 +437,12 @@ function BusinessCtaRow({ business }: { business: Business }) {
 
   if (ctas.length === 0) return null;
 
+  // No top divider here anymore (final refinement pass, item 2 moved this
+  // row from "below the description, with a divider separating it from
+  // About" to the top of the main content column) — a border with nothing
+  // above it in that column read as a stray floating line.
   return (
-    <section className="mt-8 border-t border-black/[0.06] pt-6">
+    <section className="mb-8">
       <div className="flex flex-wrap gap-2.5">
         {ctas.map((cta, i) => (
           <a

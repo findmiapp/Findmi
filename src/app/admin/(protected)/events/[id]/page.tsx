@@ -38,6 +38,8 @@ export default async function EditEventPage({
           event={result.event}
           participants={result.participants}
           featuredProducts={result.featuredProducts}
+          galleryImages={result.galleryImages}
+          venueImages={result.venueImages}
           categories={categories}
           selectedCategoryIds={selectedCategoryIds}
           error={error}

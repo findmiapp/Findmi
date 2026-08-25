@@ -55,6 +55,10 @@ export async function saveEvent(id: string | null, formData: FormData) {
     contact_url: str(formData, "contact_url"),
     follow_enabled: bool(formData, "follow_enabled"),
     featured_products_heading: str(formData, "featured_products_heading"),
+    // Final refinement pass, item 8.
+    bulletin_enabled: bool(formData, "bulletin_enabled"),
+    bulletin_heading: str(formData, "bulletin_heading"),
+    bulletin_body: str(formData, "bulletin_body"),
   };
 
   let eventId = id;
@@ -118,6 +122,24 @@ export async function saveEvent(id: string | null, formData: FormData) {
   }
   if (removedProductIds.length > 0) {
     await supabase.from("event_products").delete().eq("event_id", eventId).in("product_id", removedProductIds);
+  }
+
+  // Event gallery + venue gallery (items 9/10) — event_images is
+  // current-config, not economic/historical data (nothing else references
+  // a specific row), so each kind is simply replaced wholesale on every
+  // save: delete the kind's existing rows, reinsert the submitted list in
+  // its current (already-reordered) DOM order. Same reasoning already used
+  // for product_fulfillment_options in saveProduct.
+  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  const venueUrls = formData.getAll("venue_image_url").map(String).filter(Boolean);
+  await supabase.from("event_images").delete().eq("event_id", eventId).eq("kind", "event");
+  await supabase.from("event_images").delete().eq("event_id", eventId).eq("kind", "venue");
+  const imageRows = [
+    ...galleryUrls.map((url, i) => ({ event_id: eventId as string, kind: "event" as const, url, display_order: i })),
+    ...venueUrls.map((url, i) => ({ event_id: eventId as string, kind: "venue" as const, url, display_order: i })),
+  ];
+  if (imageRows.length > 0) {
+    await supabase.from("event_images").insert(imageRows);
   }
 
   // Root cause of the "category unchecks itself" report: neither write

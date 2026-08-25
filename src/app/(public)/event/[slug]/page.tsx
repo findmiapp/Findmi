@@ -3,15 +3,17 @@ import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import { CategoryPill } from "@/components/Badge";
+import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import EventFollowForm from "@/components/EventFollowForm";
 import EventSaveButton from "@/components/EventSaveButton";
 import EventShareButton from "@/components/EventShareButton";
 import FormAction from "@/components/FormAction";
+import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ProductCard from "@/components/ProductCard";
 import { HorizontalScroller } from "@/components/Section";
-import { attachEventCategories, getBusinessesForEvent, getEventBySlug, getEventProducts } from "@/lib/data";
+import { attachEventCategories, getBusinessesForEvent, getEventBySlug, getEventImages, getEventProducts } from "@/lib/data";
 import { cityState, formatDateRange } from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -47,10 +49,11 @@ export default async function EventPage({
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts] = await Promise.all([
+  const [businesses, [eventWithCategories], featuredProducts, images] = await Promise.all([
     getBusinessesForEvent(event.id),
     attachEventCategories([event]),
     getEventProducts(event.id),
+    getEventImages(event.id),
   ]);
   const category = eventWithCategories.categories[0] ?? null;
   const location = cityState(event.city, event.state);
@@ -60,6 +63,12 @@ export default async function EventPage({
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
     : null;
   const canonicalUrl = `${getPublicOrigin()}/event/${event.slug}`;
+
+  // Item 9 — cover first (when it exists), then the real gallery images.
+  // With no gallery, this is just [cover] and EventCoverLightbox behaves
+  // exactly like the previous single-image version; with no cover either,
+  // it's empty and the branded fallback below renders instead.
+  const coverAndGallery = [event.cover_image_url, ...images.gallery].filter((v): v is string => Boolean(v));
 
   const vendorDeadlinePassed = event.vendor_application_deadline
     ? new Date(event.vendor_application_deadline) < new Date()
@@ -84,12 +93,11 @@ export default async function EventPage({
       : Promise.resolve(null),
   ]);
 
-  // Event Detail V2 polish pass, item 8 — collapsed to exactly two tiers.
-  // Tier A (customCtas) reuses the event's existing Tickets/RSVP/Apply to
-  // Vend fields — up to three organizer CTAs — rather than building a
-  // second, parallel "custom CTA" system on top of them. Tier B is the
+  // Two tiers: Tier A (customCtas) reuses the event's existing
+  // Tickets/RSVP/Apply to Vend fields — up to three organizer CTAs —
+  // rather than a second, parallel "custom CTA" system. Tier B is the
   // supporting utility row. Only an action with BOTH its toggle on AND a
-  // real destination ever renders — unchanged rule.
+  // real destination ever renders.
   const customCtas: { label: string; href: string; displayMode: "embed" | "external"; weight: "solid" | "outline" }[] = [];
   if (event.tickets_enabled && event.tickets_url) {
     customCtas.push({ label: "Get Tickets", href: event.tickets_url, displayMode: "external", weight: "solid" });
@@ -105,26 +113,27 @@ export default async function EventPage({
   const showFollow = event.follow_enabled;
   const showDirections = event.directions_enabled && Boolean(directionsHref);
 
-  // Item 12 — Run By. events has no organizer->Business/Person
+  // Item 18 (Run By) — events has no organizer->Business/Person
   // relationship today (organizer_name is plain text) — see the pass
   // report. Rendered as plain text only; never a fabricated profile link.
   const hasOrganizer = Boolean(event.organizer_name?.trim());
 
-  // Item 11 — Venue. events has no location_id/FindMi Location
+  // Item 17 (Venue) — events has no location_id/FindMi Location
   // relationship today either — every event currently falls in the
   // "not linked" case, so this only ever shows the real stored venue
-  // fields, never a fabricated Location link (see the pass report).
+  // fields (+ the event-specific venue gallery), never a fabricated
+  // Location link (see the pass report).
   const hasVenueDetails = Boolean(event.venue_name || event.address || location);
 
   return (
     <div>
-      {/* Item 14: the cover becomes a lightbox trigger when a real photo
-          exists — see EventCoverLightbox's own note on why this is a
-          single-image lightbox, not a fabricated multi-image gallery. */}
+      {/* Item 9: the cover becomes a lightbox/slider trigger through every
+          real image (cover + gallery) when at least one exists — see
+          EventCoverLightbox's own note. */}
       <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6 sm:pt-6">
         <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm sm:aspect-[21/9]">
-          {event.cover_image_url ? (
-            <EventCoverLightbox src={event.cover_image_url} alt={event.name} />
+          {coverAndGallery.length > 0 ? (
+            <EventCoverLightbox images={coverAndGallery} alt={event.name} />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-ink">
               <CalendarGlyph className="h-12 w-12 text-white/15" />
@@ -132,6 +141,15 @@ export default async function EventPage({
           )}
           <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-10" />
         </div>
+
+        {/* Item 9 — compact gallery preview strip. Only renders with real
+            gallery images beyond the cover (ImageGalleryStrip's own
+            length<2 guard), never a placeholder wall of tiles. */}
+        {images.gallery.length > 0 && (
+          <div className="mt-2.5">
+            <ImageGalleryStrip images={coverAndGallery} alt={event.name} />
+          </div>
+        )}
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
@@ -181,9 +199,11 @@ export default async function EventPage({
         )}
 
         {/* Tier B — supporting utility actions, visually quiet, grouped
-            together and separate from Tier A above. Add to Calendar/Share
-            (items 9/10) always function (real start_at/title/canonical URL
-            always exist), so they always render. */}
+            together (item 6: Save now matches every sibling pill's exact
+            treatment instead of a mismatched fixed-size icon square) and
+            separate from Tier A above. Add to Calendar/Share always
+            function (real start_at/title/canonical URL always exist), so
+            they always render. */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {showDirections && (
             <a
@@ -241,9 +261,15 @@ export default async function EventPage({
           )}
         </div>
 
-        {/* Item 13 — events only have one description field today (no
-            separate short/long), so this is the single "About This Event"
-            section rather than duplicating the same text twice. */}
+        {/* Item 8 — optional Bulletin, same shared component as Business
+            Profile, right after the utility row and before About. */}
+        <div className="mt-5">
+          <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
+        </div>
+
+        {/* Events only have one description field today (no separate
+            short/long), so this is the single "About This Event" section
+            rather than duplicating the same text twice. */}
         {event.description && (
           <section className="mt-8">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
@@ -253,34 +279,25 @@ export default async function EventPage({
           </section>
         )}
 
-        {/* Item 11 — Venue. No FindMi Location relationship exists on
-            events today (see the pass report), so this always renders the
-            real stored venue fields as plain text, never a fabricated
-            Location link. */}
-        {hasVenueDetails && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About the Venue</h2>
-            <div className="mt-3 flex flex-col gap-1 text-sm text-ink/70">
-              {event.venue_name && <p className="font-semibold text-ink">{event.venue_name}</p>}
-              {(event.address || location) && <p>{[event.address, location].filter(Boolean).join(", ")}</p>}
-            </div>
-          </section>
-        )}
+        {/* Item 7 (content order) — Who You'll Find Here now comes right
+            after About, BEFORE Featured Products and About the Venue, per
+            this pass's explicit ordering requirement. Preserves the
+            existing participating-business logic/taxonomy untouched. */}
+        <section className="mt-8">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
+            Who You&rsquo;ll Find Here
+          </h2>
+          <p className="mt-1 text-sm text-ink/55">
+            {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
+          </p>
+          <EventBusinessRoster businesses={businesses} />
+        </section>
 
-        {/* Item 12 — Run By. No organizer->Business/Person relationship
-            exists on events today, so this stays plain text — never a
-            fabricated profile link (see the pass report). */}
-        {hasOrganizer && (
-          <section className="mt-8">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Run By</p>
-            <p className="mt-1 text-base font-semibold text-ink">{event.organizer_name}</p>
-          </section>
-        )}
-
-        {/* Item 15 — a founder-picked small set of real, existing products
-            (event_products) — omitted entirely when none are assigned,
-            never automatic merchandising. Real purchasable/view-only
-            behavior via ProductCard, unchanged. */}
+        {/* Item 11 — a founder-picked small set of real, existing products
+            (event_products), moved to right after Who You'll Find Here.
+            Omitted entirely when none are assigned, never automatic
+            merchandising. Real purchasable/view-only behavior via
+            ProductCard, unchanged. */}
         {featuredProducts.length > 0 && (
           <div className="mt-8 -mx-4 sm:mx-0">
             <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
@@ -296,19 +313,35 @@ export default async function EventPage({
           </div>
         )}
 
-        {/* Item 16 — mt-12 read as an empty missing section between the
-            actions above and the roster; tightened to mt-8 (matching every
-            other section's own spacing on this page) while still reading
-            as a clear break from what's above. */}
-        <section className="mt-8">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
-            Who You&rsquo;ll Find Here
-          </h2>
-          <p className="mt-1 text-sm text-ink/55">
-            {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
-          </p>
-          <EventBusinessRoster businesses={businesses} />
-        </section>
+        {/* Item 10 — Venue, now with its own optional compact gallery.
+            events has no FindMi Location relationship today (see the pass
+            report), so this always renders the real stored venue fields
+            as plain text plus this event's own venue_image gallery rows,
+            never a fabricated Location link. */}
+        {hasVenueDetails && (
+          <section className="mt-8">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About the Venue</h2>
+            <div className="mt-3 flex flex-col gap-1 text-sm text-ink/70">
+              {event.venue_name && <p className="font-semibold text-ink">{event.venue_name}</p>}
+              {(event.address || location) && <p>{[event.address, location].filter(Boolean).join(", ")}</p>}
+            </div>
+            {images.venue.length > 0 && (
+              <div className="mt-3">
+                <ImageGalleryStrip images={images.venue} alt={event.venue_name ?? "Venue"} />
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Run By — no organizer->Business/Person relationship exists on
+            events today, so this stays plain text — never a fabricated
+            profile link (see the pass report). */}
+        {hasOrganizer && (
+          <section className="mt-8">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Run By</p>
+            <p className="mt-1 text-base font-semibold text-ink">{event.organizer_name}</p>
+          </section>
+        )}
 
         {showFollow && (
           <section id="follow" className="mt-12 scroll-mt-20">

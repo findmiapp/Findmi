@@ -42,6 +42,7 @@ export async function saveProduct(id: string | null, formData: FormData) {
     external_purchase_url: str(formData, "external_purchase_url"),
     is_featured: bool(formData, "is_featured"),
     home_sort_order: num(formData, "home_sort_order"),
+    profile_sort_order: num(formData, "profile_sort_order"),
     is_active: bool(formData, "is_active"),
     purchasable: bool(formData, "purchasable"),
     inventory_status: str(formData, "inventory_status"),
