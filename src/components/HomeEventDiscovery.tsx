@@ -58,13 +58,19 @@ export default function HomeEventDiscovery({
 
   async function loadCombo(timeKey: TimeKey, categorySlug: string) {
     const key = `${timeKey}:${categorySlug}`;
-    // `cache[key]` alone isn't the right guard — a genuinely empty result
-    // (`[]`, which is truthy) would short-circuit here forever, even
-    // after the underlying data changes (e.g. a founder assigns a
-    // category to an event after this combo was already queried once
-    // this session). Only skip the refetch when we already have real
-    // results to show; an empty combo always gets a fresh look.
-    if (cache[key]?.length) return;
+    // No "already cached, skip" guard here on purpose (removed both the
+    // original `if (cache[key]) return;` and the later `?.length` version
+    // that only fixed the empty-result half of the problem). Either form
+    // let a result — empty OR non-empty — stick in memory for the rest of
+    // the page's life once fetched once, with no expiry: a founder editing
+    // an event's categories in another tab while this tab stays open
+    // would leave this combo showing what was true at the FIRST click,
+    // not what's true now. Category assignments can change at any time
+    // via admin, so this always refetches fresh instead of trusting
+    // in-memory state that has no way to know it's gone stale. The one
+    // cost is a redundant network round trip on re-clicking an
+    // already-seen combo within the same session — correctness here
+    // matters more than saving that one request.
     setLoading(true);
     setFailedKey(null);
     try {
