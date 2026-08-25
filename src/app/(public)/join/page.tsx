@@ -40,11 +40,23 @@ export default async function JoinPage() {
   const cards = allCards.filter((c) => c.visible);
   const whatYouGet = resolveJoinWhatYouGet(overrides);
 
+  // Every section admin can hide (all three cards, then "What you get") is
+  // optional, so whichever section actually renders last needs to own the
+  // page's closing bottom padding itself — otherwise hiding the lower
+  // section(s) leaves the page ending abruptly with no space before the
+  // footer. Neither section carries bottom padding by default (so the gap
+  // between two visible sections stays a single, intentional amount).
+  const hasOptions = cards.length > 0;
+  const optionsIsLastSection = hasOptions && !whatYouGet.visible;
+  const heroIsLastSection = !hasOptions && !whatYouGet.visible;
+
   return (
     <div>
       {/* Hero — short, one core message, not a long pitch before the
           actual options. */}
-      <div className="mx-auto max-w-4xl px-6 pt-14 sm:pt-16">
+      <div
+        className={`mx-auto max-w-4xl px-6 pt-14 sm:pt-16 ${heroIsLastSection ? "pb-16 sm:pb-20" : ""}`}
+      >
         <div className="max-w-xl">
           <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
             {hero.heading}
@@ -56,8 +68,11 @@ export default async function JoinPage() {
       {/* The options — appear early, not buried under marketing copy.
           Layout adapts to however many cards are currently enabled so a
           hidden card never leaves a blank column. */}
-      {cards.length > 0 && (
-        <div id="options" className="mx-auto max-w-5xl px-4 pt-8 sm:px-6 sm:pt-10">
+      {hasOptions && (
+        <div
+          id="options"
+          className={`mx-auto max-w-5xl px-4 pt-8 sm:px-6 sm:pt-10 ${optionsIsLastSection ? "pb-16 sm:pb-20" : ""}`}
+        >
           <CardGrid cards={cards} />
 
           {/* Not hiding pricing, just being upfront that this step doesn't
@@ -120,7 +135,7 @@ export default async function JoinPage() {
 function CardGrid({ cards }: { cards: ResolvedJoinCard[] }) {
   if (cards.length === 1) {
     return (
-      <div className="mx-auto max-w-sm">
+      <div className="mx-auto max-w-md">
         <PlanCard card={cards[0]} />
       </div>
     );
@@ -162,8 +177,12 @@ function PlanCard({ card }: { card: ResolvedJoinCard }) {
       <p className="mt-2.5 text-sm text-ink/60">{tagline}</p>
 
       <ul className="mt-4 flex flex-col gap-2">
-        {features.map((f) => (
-          <li key={f} className="flex items-start gap-2 text-sm text-ink/70">
+        {features.map((f, i) => (
+          // Index in the key too — feature bullets are founder-edited free
+          // text now, so two identical lines are possible (a duplicate
+          // paste, a typo), unlike the old hardcoded list where text was
+          // guaranteed unique.
+          <li key={`${i}-${f}`} className="flex items-start gap-2 text-sm text-ink/70">
             <CheckGlyph />
             <span>{f}</span>
           </li>

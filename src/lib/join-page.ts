@@ -192,7 +192,7 @@ export function resolveJoinCard(
     tagline: row?.body ?? defaults.tagline,
     features: features.length > 0 ? features : defaults.features,
     ctaLabel: row?.cta_label ?? defaults.ctaLabel,
-    ctaUrl: row?.cta_url || globalCtaUrl,
+    ctaUrl: row?.cta_url ?? globalCtaUrl,
     emphasis: typeof cfg.emphasis === "boolean" ? cfg.emphasis : defaults.emphasis,
   };
 }
