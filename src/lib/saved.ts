@@ -78,3 +78,43 @@ export function toggleEventSaved(slug: string): boolean {
   writeEvents(next);
   return !now;
 }
+
+// Saved products — same per-device pattern as businesses/events above, its
+// own key/list for the same reason (Product Detail V2: Save didn't exist
+// for products at all until this pass — the existing bookmark
+// architecture is extended here, not replaced or duplicated).
+const PRODUCT_KEY = "findmi_saved_product_slugs";
+
+function readProducts(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PRODUCT_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeProducts(slugs: string[]) {
+  try {
+    window.localStorage.setItem(PRODUCT_KEY, JSON.stringify(slugs));
+  } catch {
+    // Storage unavailable — fail silently, same as saved businesses/events.
+  }
+}
+
+export function getSavedProductSlugs(): string[] {
+  return readProducts();
+}
+
+export function isProductSaved(slug: string): boolean {
+  return readProducts().includes(slug);
+}
+
+export function toggleProductSaved(slug: string): boolean {
+  const current = readProducts();
+  const now = current.includes(slug);
+  const next = now ? current.filter((s) => s !== slug) : [...current, slug];
+  writeProducts(next);
+  return !now;
+}

@@ -821,6 +821,15 @@ export interface ProductWithBusiness extends Product {
     logo_url: string | null;
     cover_image_url: string | null;
     commerce_enabled: boolean;
+    city: string | null;
+    state: string | null;
+    /** Seller's real primary category (business_categories), attached the
+     * same way getFeaturedProducts/getMarketplaceProducts already do —
+     * products have no taxonomy of their own. This is SELLER identity
+     * data (shown next to the seller's name/location on the product
+     * page), never presented as a product category — see Product Detail
+     * V2's report for why the two are kept explicitly distinct. */
+    categoryName: string | null;
   };
 }
 
@@ -835,12 +844,15 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   const { data } = await supabase
     .from("products")
     .select(
-      "*, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, is_demo, publication_status)"
+      "*, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, is_demo, publication_status)"
     )
     .eq("slug", slug)
     .eq("is_active", true);
 
-  type JoinedBusiness = ProductWithBusiness["business"] & { is_demo: boolean; publication_status: string };
+  type JoinedBusiness = Omit<ProductWithBusiness["business"], "categoryName"> & {
+    is_demo: boolean;
+    publication_status: string;
+  };
   const match = ((data ?? []) as never[])
     .map((row: unknown) => {
       const r = row as Product & { business: JoinedBusiness | JoinedBusiness[] };
@@ -852,7 +864,8 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   if (!match) return null;
   const { business, ...rest } = match;
   const { is_demo: _isDemo, publication_status: _pubStatus, ...cleanBusiness } = business;
-  return { ...rest, business: cleanBusiness };
+  const categoryMap = await getPrimaryCategoryByBusiness(supabase, [business.id]);
+  return { ...rest, business: { ...cleanBusiness, categoryName: categoryMap.get(business.id) ?? null } };
 }
 
 export interface FulfillmentOptionDisplay {

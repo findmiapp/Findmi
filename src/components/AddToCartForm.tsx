@@ -65,12 +65,12 @@ export default function AddToCartForm({
       )}
 
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={() => setQuantity((q) => Math.max(1, q - 1))}
             aria-label="Decrease quantity"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-black/10 text-ink"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-black/10 text-ink"
           >
             −
           </button>
@@ -79,12 +79,17 @@ export default function AddToCartForm({
             type="button"
             onClick={() => setQuantity((q) => q + 1)}
             aria-label="Increase quantity"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-black/10 text-ink"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-black/10 text-ink"
           >
             +
           </button>
         </div>
 
+        {/* flex-1 (product-detail-page-only visual tweak — this component
+            has no other caller) so the primary purchase action reads as
+            strong/full-width rather than a small pill squeezed next to
+            the quantity stepper. The addToCart() call/cart mechanism
+            itself is unchanged. */}
         <button
           type="button"
           onClick={() => {
@@ -97,7 +102,7 @@ export default function AddToCartForm({
             });
             setAdded(true);
           }}
-          className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          className="h-11 flex-1 rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Add to Cart
         </button>
