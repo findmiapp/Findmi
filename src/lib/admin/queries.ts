@@ -99,17 +99,19 @@ export async function getAdminBusinesses(filters: BusinessListFilters = {}): Pro
 
 export async function getAdminBusinessById(
   id: string
-): Promise<{ business: AdminBusiness; categoryIds: string[] } | null> {
+): Promise<{ business: AdminBusiness; categoryIds: string[]; galleryImages: string[] } | null> {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
-  const [{ data: business }, { data: cats }] = await Promise.all([
+  const [{ data: business }, { data: cats }, { data: images }] = await Promise.all([
     supabase.from("businesses").select("*").eq("id", id).maybeSingle(),
     supabase.from("business_categories").select("category_id").eq("business_id", id),
+    supabase.from("business_images").select("url").eq("business_id", id).order("display_order", { ascending: true, nullsFirst: false }),
   ]);
   if (!business) return null;
   return {
     business: business as AdminBusiness,
     categoryIds: (cats ?? []).map((c: { category_id: string }) => c.category_id),
+    galleryImages: (images ?? []).map((i: { url: string }) => i.url),
   };
 }
 

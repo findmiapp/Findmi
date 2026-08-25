@@ -101,6 +101,7 @@ export default async function EditBusinessPage({
           business={result.business}
           categories={categories}
           selectedCategoryIds={result.categoryIds}
+          galleryImages={result.galleryImages}
           error={error}
         />
       </div>

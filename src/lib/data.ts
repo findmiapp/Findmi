@@ -441,6 +441,20 @@ export async function getBusinessBySlug(slug: string): Promise<BusinessWithCateg
  * founder can now pin an explicit order — falling back to the same
  * is_featured/name behavior for anything left unordered, so the sort stays
  * fully deterministic either way (final refinement pass, item 5). */
+/** Business Profile V2 — the business-level gallery (business_images),
+ * same normalized-child-rows pattern as event_images. Ordered, public,
+ * read-only. */
+export async function getBusinessGalleryImages(businessId: string): Promise<string[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("business_images")
+    .select("url")
+    .eq("business_id", businessId)
+    .order("display_order", { ascending: true, nullsFirst: false });
+  return (data ?? []).map((row) => row.url);
+}
+
 export async function getProductsForBusiness(businessId: string): Promise<Product[]> {
   const supabase = getSupabase();
   if (!supabase) return [];

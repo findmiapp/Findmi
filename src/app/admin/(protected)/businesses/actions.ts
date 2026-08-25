@@ -86,6 +86,20 @@ export async function saveBusiness(id: string | null, formData: FormData) {
       .insert(categoryIds.map((category_id) => ({ business_id: businessId, category_id })));
   }
 
+  // Business Profile V2 — gallery is current-config, not economic/
+  // historical data (nothing else references a specific row), so it's
+  // simply replaced wholesale on every save: delete existing rows,
+  // reinsert the submitted list in its current (already-reordered) DOM
+  // order. Same reasoning already used for event_images/product
+  // fulfillment options.
+  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  await supabase.from("business_images").delete().eq("business_id", businessId);
+  if (galleryUrls.length > 0) {
+    await supabase
+      .from("business_images")
+      .insert(galleryUrls.map((url, i) => ({ business_id: businessId, url, display_order: i })));
+  }
+
   revalidatePath("/admin/businesses");
   revalidatePath(`/business/${slug}`);
   revalidatePath("/");

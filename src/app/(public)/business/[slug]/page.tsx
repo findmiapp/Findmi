@@ -6,6 +6,7 @@ import AppearanceCard from "@/components/AppearanceCard";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShopSection from "@/components/BusinessShopSection";
 import Bulletin from "@/components/Bulletin";
+import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
@@ -15,6 +16,7 @@ import type { Business } from "@/lib/types";
 import {
   getAlternativeBusinesses,
   getBusinessBySlug,
+  getBusinessGalleryImages,
   getPeopleForBusiness,
   getProductsForBusiness,
   getUpcomingAppearancesForBusiness,
@@ -69,12 +71,13 @@ export default async function BusinessPage({
   const business = await getBusinessBySlug(slug);
   if (!business) notFound();
 
-  const [products, appearances, alternatives, people, inquiryForm] = await Promise.all([
+  const [products, appearances, alternatives, people, inquiryForm, galleryImages] = await Promise.all([
     getProductsForBusiness(business.id),
     getUpcomingAppearancesForBusiness(business.id),
     getAlternativeBusinesses(business),
     getPeopleForBusiness(business.id),
     resolveBusinessInquiryForm(business),
+    getBusinessGalleryImages(business.id),
   ]);
 
   // "Meet the Owners" only when every configured role genuinely says so —
@@ -318,10 +321,18 @@ export default async function BusinessPage({
                   <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
                 ))}
                 {appearances.length > 3 && (
+                  // Business Profile V2 — same zero-JS <details> disclosure
+                  // (native, keyboard-accessible, no client component
+                  // needed for a business with 15-20+ Appearances), but
+                  // with the standardized stem-less chevron (matching
+                  // AppearanceCard/BusinessLogoCard/ProductCard elsewhere)
+                  // that actually rotates open/closed instead of vanishing,
+                  // and a count so "how many more" is clear before opening.
                   <details className="group">
-                    <summary className="flex list-none items-center justify-center gap-1 rounded-full border border-black/10 py-2 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 [&::-webkit-details-marker]:hidden">
-                      View All Appearances
-                      <span className="transition group-open:hidden">→</span>
+                    <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 rounded-full border border-black/10 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/30 [&::-webkit-details-marker]:hidden">
+                      <span className="group-open:hidden">Show {appearances.length - 3} More</span>
+                      <span className="hidden group-open:inline">Show Less</span>
+                      <ChevronGlyph className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-open:rotate-90" />
                     </summary>
                     <div className="mt-2 flex flex-col gap-2">
                       {appearances.slice(3).map((a) => (
@@ -353,6 +364,23 @@ export default async function BusinessPage({
             />
           )}
 
+          {/* Gallery — Business Profile V2. A real business_images gallery
+              (new this pass, same normalized-child-rows pattern as
+              event_images), not a repeat of the cover/logo/product photos
+              already shown above. ImageGalleryStrip already hides itself
+              with fewer than 2 images (nothing to browse), so a business
+              with 0-1 gallery photos correctly shows nothing here. Same
+              shared lightbox (prev/next, keyboard, close) as everywhere
+              else it's used. */}
+          {galleryImages.length > 1 && (
+            <section className="mt-8">
+              <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
+              <div className="mt-4">
+                <ImageGalleryStrip images={galleryImages} alt={business.name} />
+              </div>
+            </section>
+          )}
+
           {business.description && (
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">About {business.name}</h2>
@@ -381,18 +409,6 @@ export default async function BusinessPage({
               )}
             </section>
           )}
-
-          {/* Note: no standalone Gallery section this pass. The only real,
-              non-product business media in the current schema is a single
-              cover_image_url (already shown as the hero above) plus
-              logo_url (already shown in identity) — there's no dedicated
-              gallery/media field or table. Building a "gallery" here would
-              mean either repeating the cover image or repeating the exact
-              product photos already shown in Shop [Business] immediately
-              above, which is the literal duplication this pass was asked
-              to avoid. Per Business Profile V2 Part 35: documented as
-              deferred future work (a real gallery/media architecture),
-              not faked with what exists today. */}
 
           {hasDetails && <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-8 lg:hidden" />}
 
@@ -589,6 +605,14 @@ function MailGlyph({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" strokeWidth="1.6" />
       <path d="M4.5 7l7.5 6 7.5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

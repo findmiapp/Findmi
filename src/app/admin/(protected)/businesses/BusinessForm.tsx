@@ -7,6 +7,7 @@ import {
   TextareaField,
 } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
+import GalleryField from "@/components/admin/GalleryField";
 import SubmitBar from "@/components/admin/SubmitBar";
 import type { AdminBusiness } from "@/lib/admin/queries";
 import type { Category } from "@/lib/types";
@@ -16,11 +17,13 @@ export default function BusinessForm({
   business,
   categories,
   selectedCategoryIds,
+  galleryImages,
   error,
 }: {
   business: AdminBusiness | null;
   categories: Category[];
   selectedCategoryIds: string[];
+  galleryImages: string[];
   error?: string;
 }) {
   const action = saveBusiness.bind(null, business?.id ?? null);
@@ -70,6 +73,15 @@ export default function BusinessForm({
           label="Cover Photo"
           name="cover_image_url"
           defaultValue={business?.cover_image_url}
+        />
+      </div>
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <GalleryField
+          label="Gallery"
+          name="gallery_image_url"
+          initialUrls={galleryImages}
+          hint="Additional photos shown on the public profile, below Shop/Products, in a compact strip that opens a lightbox. The Logo and Cover Photo above stay separate."
         />
       </div>
 
