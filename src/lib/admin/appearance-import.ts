@@ -36,10 +36,23 @@ const AppearanceDraftSchema = z.object({
     .nullable()
     .describe("24-hour HH:MM end time. Null if the source gives no end time — never guess one."),
   time_tbd: z.boolean().describe("True if the source explicitly says the time is TBD, or states no time at all."),
-  venue_name: z.string().nullable().describe("Venue/market name exactly as written in the source, or null if none is given."),
+  venue_name: z
+    .string()
+    .nullable()
+    .describe(
+      "Venue/local-area name exactly as written in the source, or null if none is given. When the source names an actual venue (e.g. 'Empire Outlets'), use that. When the source instead gives a neighborhood/local-area name immediately followed by a larger city/borough (e.g. 'Rossville Staten Island') and no more specific venue is stated, the neighborhood/local-area name belongs here — never drop it just because it isn't a formal business name."
+    ),
   address: z.string().nullable().describe("Street address only if the source actually states one — never inferred or guessed."),
-  city: z.string().nullable(),
-  state: z.string().nullable(),
+  city: z
+    .string()
+    .nullable()
+    .describe(
+      "The city/borough, from what the source actually states (e.g. 'Staten Island' in 'Rossville Staten Island') or a same-business soft hint per the geography rule — never from your own general knowledge of a named venue's real-world location without flagging it (see needs_review)."
+    ),
+  state: z
+    .string()
+    .nullable()
+    .describe("The state, under the same rule as city — source-stated or a soft hint, not silently inferred from general knowledge."),
   notes: z
     .string()
     .nullable()
@@ -164,7 +177,9 @@ Rules — follow all of these exactly:
 2. Treat recurring dates (e.g. a weekly bread drop repeated every week) as separate individual rows, one per date — never collapse them into one row or a recurrence rule.
 3. Normalize dates to YYYY-MM-DD. Resolve a month/day with no year to the closest real occurrence at or after today (${todayNY}) — if that month/day has already passed this year, use next year instead. Words like "thirtieth" mean the 30th.
 4. Normalize recognizable times to 24-hour HH:MM (e.g. "5-6pm" → start_time "17:00", end_time "18:00"). Only set end_time when the source clearly states an end time — otherwise leave it null. Never invent a time. If the source says "time TBD" or gives no time at all, set time_tbd true and leave start_time/end_time null.
-5. Extract venue_name/address/city/state only when the source actually supports them. Never fabricate an address, city, state, or any coordinate — leave the field null instead. You may use the business's own city/state (${businessLocation || "not given"}) as a soft hint ONLY when the source is genuinely ambiguous or silent about location — never to override what the source actually says.
+5. Extract venue_name/address/city/state only when the source actually supports them. Never fabricate an address or any coordinate — leave address null instead.
+5a. Venue vs. neighborhood: when the source names an actual specific venue (e.g. "Empire Outlets", "Hilton"), that's venue_name. When the source instead gives a neighborhood/local-area name immediately followed by a larger city/borough (e.g. "Rossville Staten Island", "Tottenville Staten Island") and states no more specific venue, the neighborhood/local-area name IS the venue_name (e.g. "Rossville") and the larger place is city (e.g. "Staten Island") — never drop the neighborhood just because it isn't a formal business/venue name. Preserve both pieces.
+5b. Geography must be source-grounded, not enriched. You may use the business's own city/state (${businessLocation || "not given"}) as a soft hint ONLY when the source is genuinely silent about location for that row — never to override what the source actually says. Beyond that soft hint, do NOT reach for your own general real-world knowledge of where a named venue actually is (e.g. inferring "Staten Island, NY" for "Empire Outlets" purely because you know that venue's real location, independent of the source or the business's own location) to silently fill city/state. If you're confident enough to fill it in anyway, you MUST set needs_review true and say so plainly in review_reason (e.g. "City/state inferred from the venue name, not stated in the source — please confirm."). Otherwise leave city/state null rather than guess.
 6. Never invent, name, or reference a FindMi Event. You are only extracting appearances; a separate step (outside your job) decides whether one might match an existing event.
 7. Ignore pure noise like "flyer coming soon" — don't extract it as a field or a fake row.
 8. Do NOT silently correct spelling, typos, or uncertain proper nouns (e.g. a venue or event name that looks misspelled or inconsistent with other lines). Keep the source's own wording in the relevant field, and instead set needs_review true with a review_reason explaining what looks uncertain and what it might actually be.
