@@ -35,9 +35,15 @@ export default function CartBadge({ variant = "icon" }: { variant?: "icon" | "te
       aria-label="Cart"
       className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink transition active:scale-90"
     >
+      {/* Launch-polish pass item 1: the previous single-path silhouette
+          read as an odd, slightly "AI-generated" shape (an off-center
+          basket with no clear front edge). This is the conventional
+          handle+basket+wheels cart glyph used across the industry —
+          immediately recognizable at a glance, same stroke weight as the
+          other header icons. */}
       <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
         <path
-          d="M4 6h2l1.2 10.4A2 2 0 009.2 18h7.6a2 2 0 002-1.7L20 8H7"
+          d="M3 4h2l.3 1.6M5.3 5.6h14.2l-1.6 8a2 2 0 01-2 1.6H8.9a2 2 0 01-2-1.65L5.3 5.6z"
           stroke="currentColor"
           strokeWidth="1.8"
           strokeLinecap="round"

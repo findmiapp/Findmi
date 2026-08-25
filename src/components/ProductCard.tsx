@@ -104,9 +104,19 @@ export default function ProductCard({
         )}
         {price && <p className="text-sm font-semibold text-ink/70">{price}</p>}
         {cta && (
-          <span className="mt-auto flex items-center gap-1 pt-1 text-xs font-bold uppercase tracking-wide text-findmi-700">
-            {cta} <span aria-hidden="true">→</span>
-          </span>
+          // Launch-polish pass item 5: a hairline divider separates the
+          // product info above from the action row, and the CTA itself is
+          // now a compact pill (not loose text) so it reads as a distinct
+          // action rather than running into the price/title above it. No
+          // change to actual cart/checkout behavior — this card still only
+          // ever links to the product's own page. Chevron matches the
+          // stem-less style standardized this pass (item 4).
+          <div className="mt-auto flex items-center border-t border-black/5 pt-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-findmi-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-findmi-700">
+              {cta}
+              <ChevronGlyph className="h-2.5 w-2.5" />
+            </span>
+          </div>
         )}
       </div>
     </div>
@@ -116,6 +126,14 @@ export default function ProductCard({
     <Link href={href} className="block h-full">
       {card}
     </Link>
+  );
+}
+
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

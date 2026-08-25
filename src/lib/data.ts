@@ -1056,7 +1056,7 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
   if (!supabase || businessIds.length === 0) return hints;
   const { data } = await supabase
     .from("appearances")
-    .select("business_id, venue_name, title, start_at, event:events(slug)")
+    .select("business_id, venue_name, title, start_at, event:events(slug, is_demo)")
     .in("business_id", businessIds)
     .neq("status", "canceled")
     .gte("start_at", new Date().toISOString())
@@ -1067,14 +1067,24 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
       venue_name: string | null;
       title: string;
       start_at: string;
-      event: { slug: string } | { slug: string }[] | null;
+      event: { slug: string; is_demo: boolean } | { slug: string; is_demo: boolean }[] | null;
     };
     if (hints.has(r.business_id)) continue;
     const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
+    // Launch-polish pass item 6 — the actual 404 root cause: this was the
+    // only appearances→events join in the file with no is_demo filter
+    // (every other event/business query in this file excludes is_demo —
+    // see getEventBySlug etc.), so a NEXT UP hint could point to a demo
+    // event's slug, which getEventBySlug then correctly refuses to
+    // resolve (its own is_demo=false filter), producing a 404. The
+    // appearance itself is still real, so the hint isn't dropped
+    // entirely — only its href is nulled, which is exactly what makes
+    // BusinessLogoCard render it as static (non-clickable) text instead
+    // of a dead link.
     hints.set(r.business_id, {
       venue: r.venue_name ?? r.title,
       startAt: r.start_at,
-      href: event ? `/event/${event.slug}` : null,
+      href: event && !event.is_demo ? `/event/${event.slug}` : null,
     });
   }
   return hints;

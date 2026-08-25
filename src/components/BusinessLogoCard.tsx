@@ -118,21 +118,29 @@ export default function BusinessLogoCard({
         </div>
 
         {overlap && (
-          // border-[3px] → border-2 ("a subtle keyline, not a thick white
-          // block") and the image's own inner padding p-2 → p-1.5 — most
-          // of what read as a "thick white frame" wasn't the border at
-          // all, it was the dead white margin between the object-contain
-          // logo and the tile's clipped edge. Shrinking that margin also
-          // fixes the "still reads square/sharp" complaint: with less
-          // padding, the logo's own pixels reach the tile's rounded clip
-          // instead of floating in the middle of an oversized white box.
-          <div className="absolute -bottom-9 left-5 h-24 w-24 overflow-hidden rounded-2xl border-2 border-white bg-white shadow-md">
-            <Image src={business.logo_url!} alt={business.name} fill sizes="96px" className="object-contain p-1.5" />
+          // Launch-polish pass item 3 — real fix, not another border-width
+          // tweak: the previous version's p-1.5 inset on the Image kept the
+          // logo's own pixels away from the tile's rounded clip, so
+          // whatever the source file's actual edge looked like (very often
+          // an opaque/near-white square canvas around the mark) stayed
+          // fully visible, reading as "a square logo pasted into a big
+          // rounded frame." Padding is removed entirely here so the tile's
+          // rounded-2xl clip cuts directly into the image itself — the
+          // rounding is now genuinely applied to the logo, not just to an
+          // outer box around it. The frame is also thinned from a solid
+          // border-2 to a hairline ring (no separate bg-white plate behind
+          // it), and the tile itself is smaller (h-24→h-20), which
+          // together removes most of the dead white space this was flagged
+          // for. object-contain is kept (not object-cover) so no logo is
+          // ever cropped or distorted — transparent-background logos still
+          // read cleanly against the tile's own white fill.
+          <div className="absolute -bottom-7 left-5 h-20 w-20 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-white">
+            <Image src={business.logo_url!} alt={business.name} fill sizes="80px" className="object-contain" />
           </div>
         )}
       </div>
 
-      <div className={`relative flex flex-col gap-1 rounded-b-3xl p-3.5 ${overlap ? "pt-[42px]" : "pt-3"}`}>
+      <div className={`relative flex flex-col gap-1 rounded-b-3xl p-3.5 ${overlap ? "pt-8" : "pt-3"}`}>
         <p className="line-clamp-1 font-display text-base font-bold tracking-tight text-ink">{business.name}</p>
         {meta && <p className="line-clamp-1 text-xs font-medium text-ink/55">{meta}</p>}
 
@@ -153,7 +161,10 @@ export default function BusinessLogoCard({
             </div>
           ))}
 
-        <p className="mt-1 text-xs font-bold uppercase tracking-wide text-findmi-700">{ctaLabel} →</p>
+        <p className="mt-1 flex items-center gap-0.5 text-xs font-bold uppercase tracking-wide text-findmi-700">
+          {ctaLabel}
+          <ChevronGlyph className="h-3 w-3" />
+        </p>
       </div>
     </div>
   );
@@ -176,6 +187,16 @@ function CalendarGlyph({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
       <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Launch-polish pass item 4 — the same stem-less chevron already
+// established in AppearanceCard's ArrowGlyph, standardized here too.
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

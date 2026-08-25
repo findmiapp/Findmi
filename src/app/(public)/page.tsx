@@ -5,6 +5,7 @@ import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
+import Logo from "@/components/Logo";
 import SearchBar from "@/components/SearchBar";
 import HomeEventDiscovery from "@/components/HomeEventDiscovery";
 import {
@@ -101,8 +102,15 @@ export default async function HomePage() {
           Brands We Love below, where it's actually about businesses. */}
       <section className="py-5">
         <div className="mx-auto max-w-6xl">
-          <div className="mb-3 px-4 sm:px-6">
+          {/* Launch-polish pass item 2 — a real, existing canonical
+              destination (/events, Discovery/Archive V2) already exists,
+              so it gets the same understated View All treatment as the
+              other rows below. */}
+          <div className="mb-3 flex items-end justify-between gap-4 px-4 sm:px-6">
             <h2 className="text-lg font-semibold tracking-tight text-ink">{upcomingSec.heading}</h2>
+            <Link href="/events" className="shrink-0 text-sm font-medium text-ink/60 hover:text-ink">
+              View all
+            </Link>
           </div>
           <HomeEventDiscovery
             upNext={upNextEvents}
@@ -188,6 +196,11 @@ async function HomepageRowSection({
     return (
       <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <div className="overflow-hidden rounded-3xl border border-findmi/15 bg-gradient-to-br from-findmi-50 via-white to-white p-5 sm:p-9">
+          {/* Launch-polish pass item 7 — restrained FindMi brand mark on
+              the business/brand promotional section, using the existing
+              logo asset/component (no new asset, no full Homepage Builder
+              editability). */}
+          <Logo heightClassName="h-6" className="mb-3" />
           <h2 className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">{row.title}</h2>
           {row.subtitle && <p className="mt-1.5 max-w-md text-sm text-ink/60">{row.subtitle}</p>}
           <div className="mt-5">
@@ -229,7 +242,10 @@ async function HomepageRowSection({
       await getNextAppearanceHints(resolved.items.map((b) => b.id))
     );
     return (
-      <Section title={row.title} subtitle={row.subtitle ?? undefined}>
+      // Launch-polish pass item 2 — /businesses (Discovery/Archive V2) is
+      // a real canonical destination regardless of this row's own
+      // curated/dynamic filters, so every "businesses" row gets View All.
+      <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref="/businesses">
         <HomepageBusinessRow
           rowId={row.id}
           initialItems={resolved.items}
@@ -242,7 +258,7 @@ async function HomepageRowSection({
 
   if (resolved.contentType === "events") {
     return (
-      <Section title={row.title} subtitle={row.subtitle ?? undefined}>
+      <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref="/events">
         <HorizontalScroller>
           {resolved.items.map((e) => (
             <div key={e.id} className="w-[74vw] max-w-[320px] shrink-0 sm:w-72">
@@ -256,7 +272,7 @@ async function HomepageRowSection({
 
   // products
   return (
-    <Section title={row.title} subtitle={row.subtitle ?? undefined}>
+    <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref="/marketplace">
       <HorizontalScroller>
         {resolved.items.map((p) => (
           <div key={p.id} className="w-[42%] min-w-[150px] max-w-[176px] shrink-0 sm:w-44">
