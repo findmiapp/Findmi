@@ -235,7 +235,12 @@ export default async function BusinessPage({
               className={`ml-auto flex shrink-0 items-center gap-2 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
             >
               <div className="w-24">
-                <FollowButton businessId={business.id} businessSlug={business.slug} size="compact" />
+                <FollowButton
+                  businessId={business.id}
+                  businessSlug={business.slug}
+                  businessName={business.name}
+                  size="compact"
+                />
               </div>
               <SaveButton slug={business.slug} />
             </div>
