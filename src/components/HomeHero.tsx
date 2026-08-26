@@ -145,14 +145,21 @@ export default function HomeHero({
             </div>
           )}
 
-          {/* CTA — spacing micro-fix: mt-3 (12px) → mt-3.5 (14px), the
-              collage→CTA gap target's low end. Combined with the collage
-              container's own resize above (which removed the real source
-              of excess space here), the visible gap above the CTA drops
-              from ~39px to ~14px. Text/link/styling otherwise unchanged. */}
-          <p className="mt-3.5 text-[16px] italic leading-[1.3] text-ink/40">
+          {/* CTA — font-size micro pass: text-[16px]→text-[8px] (~50%
+              smaller visible size), italic/underline/wording/link/mt-3.5
+              spacing all unchanged. The "Join FindMi." link gets padding
+              + matching negative margins (inline-block, -my/-mx cancel
+              the added py/px) so its actual clickable rectangle stays
+              close to its pre-shrink size even though the glyphs
+              themselves are half as tall/wide — the visual line doesn't
+              shift, only the tap target keeps some margin around the
+              now-smaller text. */}
+          <p className="mt-3.5 text-[8px] italic leading-[1.3] text-ink/40">
             Have a business?{" "}
-            <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
+            <Link
+              href="/join"
+              className="not-italic -my-[5px] -mx-1 inline-block px-1 py-[5px] font-medium text-ink/60 underline underline-offset-2 hover:text-ink"
+            >
               Join FindMi.
             </Link>
           </p>

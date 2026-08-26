@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
@@ -98,6 +99,14 @@ export default async function HomePage() {
   // founder hasn't configured any.
   const discoveryTopics = resolveDiscoveryTopics(siteSections);
 
+  // Homepage order pass: Discovery Topics now mounts immediately after
+  // the "Brands We Love" business carousel — identified by content
+  // type (the first "businesses" Homepage Row), not by its founder-
+  // editable title text, since that title isn't a stable key. Falls
+  // back to rendering after every row if no businesses row exists at
+  // all (e.g. the founder deleted it), so this never silently vanishes.
+  const brandsRowIndex = homepageRows.findIndex((row) => row.content_type === "businesses");
+
   // Weather / Local Context — founder-configurable city (see
   // lib/site-sections.ts's resolveWeatherConfig); only fetched when the
   // founder has the module on, and lib/weather.ts fails soft (returns
@@ -116,19 +125,11 @@ export default async function HomePage() {
 
       <HomeHero images={heroImages} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Search — immediately after the hero, live typeahead. */}
-      <section className="border-b border-black/5 bg-white px-4 py-3 sm:px-6 sm:py-4">
-        <div className="mx-auto max-w-6xl">
-          <SearchBar />
-        </div>
-      </section>
-
       {/* Discovery filters (Up Next default) + first live feed — heading
           is exactly "Upcoming Events Near You" (see HOMEPAGE_SECTIONS'
-          featured_events default). Begins immediately after Search now
-          (live-QA correction) — the generic business-category pill row
-          that used to sit here was removed; that filter now lives on
-          Brands We Love below, where it's actually about businesses. */}
+          featured_events default). Begins immediately after the Hero now
+          (homepage order pass) — Search moved below this complete
+          section (see below), so event cards are visible sooner. */}
       {/* Business Profile + Event Detail V2 polish pass, item 1: reuses
           Section's own header (title left, View All same line/vertically
           centered to it, smaller/underlined, subtitle-free here) instead
@@ -146,21 +147,32 @@ export default async function HomePage() {
         </Section>
       </div>
 
-      {/* Discovery Topics — position-only move: now sits after the
-          complete Upcoming Events section (was between Search and it).
-          Compact shortcut row, founder-editable navigation items only
-          (see DiscoveryTopics.tsx) — not a cross-content taxonomy;
-          functionality/behavior unchanged. */}
-      <DiscoveryTopics topics={discoveryTopics} />
+      {/* Search — homepage order pass: moved from right after the Hero
+          to right after the complete Upcoming Events section (heading,
+          filters, and event feed all above this now). Component/
+          behavior/styling untouched. */}
+      <section className="border-b border-black/5 bg-white px-4 py-3 sm:px-6 sm:py-4">
+        <div className="mx-auto max-w-6xl">
+          <SearchBar />
+        </div>
+      </section>
 
       {/* Founder-managed Homepage Rows — the central architectural change
           of this pass. Each row is a real database record (see
           /admin/site/homepage/rows): add/rename/edit/hide/reorder/delete
           without a code change, Businesses/Events/Products/Business
-          Showcase, Dynamic (filtered) or Curated (hand-picked). */}
+          Showcase, Dynamic (filtered) or Curated (hand-picked).
+          Discovery Topics (homepage order pass) mounts immediately after
+          the "Brands We Love" businesses row specifically — not after
+          the whole list — via brandsRowIndex above; falls back to
+          rendering after every row if no businesses row exists. */}
       {homepageRows.map((row, i) => (
-        <HomepageRowSection key={row.id} row={row} resolved={resolvedRows[i]} />
+        <Fragment key={row.id}>
+          <HomepageRowSection row={row} resolved={resolvedRows[i]} />
+          {i === brandsRowIndex && <DiscoveryTopics topics={discoveryTopics} />}
+        </Fragment>
       ))}
+      {brandsRowIndex === -1 && <DiscoveryTopics topics={discoveryTopics} />}
 
       {/* Explore By Category — compact, broader entry point (categories
           already appeared near the hero, so this stays small). */}
