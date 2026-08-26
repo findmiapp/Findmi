@@ -3,16 +3,14 @@ import Link from "next/link";
 
 // The homepage's masthead.
 //
-// Mobile geometry, several passes in: below sm:, the hero is one
-// `relative` canvas — copy sits in normal flow at its top-left, and all
-// three images are absolutely positioned within that SAME canvas
-// (percentages of its width/height, so the composition scales cleanly
-// across 360–430px without hiding anything or reverting to a stack).
-// The copy and collage occupy overlapping VERTICAL bands of that canvas
-// (Image 2 starts alongside the copy's lower region, not after it) while
-// staying clear of the text HORIZONTALLY — narrowing the body column is
-// what actually opens the room for that, not pushing images down below
-// all the text. See the mobile branch below for the exact numbers.
+// Mobile geometry, several passes in: below sm:, copy sits in normal
+// flow at the top, and the 3-image collage is a normal-flow block that
+// starts right after it — its start position is always correct for
+// whatever the text actually renders as (heading line count, body wrap),
+// never an estimate. Within its own box, the images are absolutely
+// positioned/overlapped in a staggered diagonal composition (percentages
+// of that box, so 360–430px scales cleanly). See the mobile branch below
+// for the exact numbers and the collision root-cause this fixed.
 // From sm: up, this file renders the UNCHANGED existing desktop
 // markup (own flex-row, own collage box) — the two are simply two
 // sibling branches (`sm:hidden` / `hidden sm:flex`) rather than one
@@ -65,44 +63,44 @@ export default function HomeHero({
   return (
     <section className="border-b border-black/5 bg-white">
       <div className="mx-auto max-w-6xl">
-        {/* ================= MOBILE (<640px) — reference geometry match ================
-            Reference-literal rebuild: the prior pass fixed collisions by
-            waiting for ALL images until after the full text block ended,
-            which produced the "text block, then image block" layout the
-            reference explicitly rejects. This version instead narrows the
-            body copy (its own target width, ~58%) so Image 2 fits in the
-            newly-open space BESIDE it — overlapping the copy's vertical
-            band without ever crossing into body's horizontal footprint
-            (body's right edge sits ~15px left of Image 2's left edge).
-            Coordinates below are converted from the supplied 390px-wide
-            reference (24px inner padding either side, 342px usable canvas)
-            into percentages of this canvas, so 360–430px scales
-            proportionally without hiding anything. One deliberate
-            deviation from the literal reference numbers: Image 2's `top`
-            is nudged down from the reference's ~158px-canvas-relative to
-            ~219px — just past the CTA's own row — because the CTA is
-            intentionally left unconstrained-width (see below) and the
-            literal higher position would have let a full-width CTA line
-            visually run under it. Canvas h-[414px] + pt-8/pb-6/px-6
-            framing lands the whole Hero at ~470px, within the 460–490px
-            target (was ~510px). */}
-        <div className="relative h-[414px] px-6 pb-6 pt-8 sm:hidden">
+        {/* ================= MOBILE (<640px) — CTA collision fix ================
+            ROOT CAUSE of the live clipping: the previous pass absolutely-
+            positioned all 3 images against a FIXED-height outer canvas,
+            with each image's `top` chosen from an ESTIMATED text-block
+            height. That estimate was too short for the actual rendered
+            text (in particular, the body paragraph wraps to more lines
+            at its narrow ~58% width than assumed) — so Image 1's
+            estimated-safe top (57.5% of the fixed canvas) actually landed
+            ON TOP of the CTA line. Because Image 1 is `position: absolute`
+            and the text block is plain static flow, the image painted
+            above the text wherever they overlapped, regardless of
+            z-index — static content is always below positioned content
+            in paint order.
+            THE FIX: the collage is no longer positioned against a fixed
+            canvas at all. It's now a normal-flow block that starts AFTER
+            the text div ends (a small mt-3 gap, no negative margin) — so
+            its vertical start position is always correct, by construction,
+            for whatever the text actually renders as (2-line or 3-line
+            heading, however many lines the body wraps to). This is a
+            structural guarantee, not another height estimate. Images are
+            then absolutely positioned/overlapped WITHIN that collage's own
+            box (h-[175px], not the whole hero) — same diagonal composition
+            as before, Image 1 shifted slightly right, Image 2 moved up
+            relative to Image 1 and kept far right, Image 3 unchanged
+            relative to Image 1. For the current 2-line-heading copy this
+            lands the whole Hero at ~476px (within "approximately 470px");
+            a founder-configured 3-line heading would push it somewhat
+            taller — still zero collision, just not exactly 470px in that
+            edge case, which this pass treats as the correct trade-off per
+            "text first, CTA fully visible, then position images." */}
+        <div className="px-6 pb-5 pt-8 sm:hidden">
           <div>
             <h1 className="max-w-[90%] font-display text-[clamp(1.7rem,8.2vw,2rem)] font-bold leading-[0.97] tracking-tight text-ink">
               {headingContent}
             </h1>
-            {/* ~58% width (was ~60%, still the "narrower on purpose"
-                target) — this is what actually opens up the right-hand
-                space for Image 2 to sit beside it instead of below it. */}
             {description && (
               <p className="mt-8 max-w-[58%] text-[17px] leading-[1.425] text-ink/60">{description}</p>
             )}
-            {/* Unconstrained width, per spec ("do not constrain it to a
-                narrow column") — reads as one line at 390px+. Image 2 is
-                positioned to start just after this line ends (see its
-                own note below), so there's nothing here for it to
-                collide with regardless of the line's exact rendered
-                width. */}
             <p className="mt-6 text-[16px] italic leading-[1.3] text-ink/40">
               Have a business?{" "}
               <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
@@ -112,30 +110,33 @@ export default function HomeHero({
           </div>
 
           {a && (
-            // Image 1 — dominant landscape, the collage's anchor. Begins
-            // left-of-center and extends right — clearly the largest
-            // tile, but nowhere near full hero width.
-            <div className="absolute left-[14%] top-[57.5%] h-[35%] w-[69%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
-              <Image src={a} alt="" fill sizes="69vw" className="object-cover" />
-            </div>
-          )}
-          {b && (
-            // Image 2 — upper-right support, sitting beside the copy's
-            // lower region (body ends at ~58% width; this starts at
-            // 60%, clearing it) rather than waiting for the whole text
-            // block to finish. Overlaps Image 1's upper-right corner
-            // (z-10, on top). See the file-level note above re: its top
-            // offset vs. the literal reference number.
-            <div className="absolute left-[60%] top-[53%] z-10 h-[35%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-              <Image src={b} alt="" fill sizes="37vw" className="object-cover" />
-            </div>
-          )}
-          {c && (
-            // Image 3 — lower-right support, overlapping Image 1's
-            // lower-right corner, extending nearly to the canvas's own
-            // right edge (matches the reference's near-flush placement).
-            <div className="absolute left-[60%] top-[73%] z-10 h-[25%] w-[40%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-              <Image src={c} alt="" fill sizes="40vw" className="object-cover" />
+            // Collage box — normal flow, starts after the CTA with a
+            // small fixed gap. Images below are positioned relative to
+            // THIS box (percentages of 342×175 reference), not the hero.
+            <div className="relative mt-3 h-[175px] w-full">
+              {/* Image 1 — dominant/anchor. Shifted right (left: 17%,
+                  was 14%) per the requested composition. */}
+              <div className="absolute left-[17%] top-[22%] h-[68%] w-[66%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
+                <Image src={a} alt="" fill sizes="66vw" className="object-cover" />
+              </div>
+              {b && (
+                // Image 2 — upper-right support. Starts at the collage's
+                // own top (top: 0), i.e. above/before Image 1 (top: 22%)
+                // — "moved up relative to Image 1" — and stays far right
+                // (right: 2%). Entirely inside the collage box, which
+                // itself only begins after the CTA, so it can never
+                // reach the text regardless of its position here.
+                <div className="absolute right-[2%] top-0 z-10 h-[55%] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                  <Image src={b} alt="" fill sizes="36vw" className="object-cover" />
+                </div>
+              )}
+              {c && (
+                // Image 3 — lower-right support, same position relative
+                // to Image 1 as before (overlapping its lower-right).
+                <div className="absolute right-[3%] top-[58%] z-10 h-[42%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                  <Image src={c} alt="" fill sizes="37vw" className="object-cover" />
+                </div>
+              )}
             </div>
           )}
         </div>
