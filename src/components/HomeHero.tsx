@@ -104,11 +104,15 @@ export default function HomeHero({
             // untouched — all the size increase below comes from height,
             // per "prioritize taller."
             <div className="relative mt-1 h-[160px] w-full">
-              {/* Image 1 — dominant/anchor. Height 75%→71% of the now-
-                  taller box = ~16.5% more visual area; width/position
-                  otherwise unchanged. */}
-              <div className="absolute left-[17%] top-[12%] h-[71%] w-[66%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
-                <Image src={a} alt="" fill sizes="66vw" className="object-cover" />
+              {/* Image 1 — dominant/anchor (bread). Width-only micro
+                  pass: w-[66%]→w-[82.5%] (exactly ×1.25). left (17%) and
+                  height (71%) unchanged, so the extra width extends
+                  rightward only — left edge, top edge, and height all
+                  stay put. 17%+82.5%=99.5% of the collage width, so it
+                  reaches nearly to the canvas's right edge without
+                  overflowing it. */}
+              <div className="absolute left-[17%] top-[12%] h-[71%] w-[82.5%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
+                <Image src={a} alt="" fill sizes="82vw" className="object-cover" />
               </div>
               {b && (
                 // Image 2 — height-only micro pass: h-[67%]→h-[161px]
@@ -129,10 +133,19 @@ export default function HomeHero({
                 </div>
               )}
               {c && (
-                // Image 3 — same size/position as before, expressed
-                // relative to the taller box so it lands at the same
-                // absolute spot overlapping Image 1's lower-right.
-                <div className="absolute right-[3%] top-[46%] z-10 h-[36%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                // Image 3 — pizza. h-[36%]→h-[72%] (exactly ×2, "100%
+                // taller"). Bottom edge preserved (old top 46% + height
+                // 36% = 82% bottom → new top 10% + height 72% = 82%
+                // bottom, same spot), so all the added height grows
+                // upward, not down past the collage. right-[3%]→
+                // right-[2.6%] (3% ÷ 1.15) moves it a small, controlled
+                // step FARTHER toward the right edge — a smaller `right`
+                // offset means less gap from the edge, i.e. more right;
+                // multiplying the offset itself by 1.15 would have moved
+                // it the opposite (wrong) way, so the stated factor is
+                // applied as a reduction here to match the explicit
+                // "move farther right" intent. Width (37%) unchanged.
+                <div className="absolute right-[2.6%] top-[10%] z-10 h-[72%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
                   <Image src={c} alt="" fill sizes="37vw" className="object-cover" />
                 </div>
               )}
