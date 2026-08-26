@@ -321,6 +321,34 @@ export function resolveDiscoveryTopics(overrides: Map<string, SiteSection>): Dis
     .sort((a, b) => a.order - b.order);
 }
 
+// ---------------------------------------------------------------------
+// Weather / Local Context — a compact module between Hero and Search
+// (Homepage Local Weather Context V1 pass). FindMi has no existing
+// active-location/current-city context to reuse (audited: the
+// `locations` table models physical business locations/venues, not a
+// homepage-wide "current city"), so this is the founder-configurable V1
+// fallback the task calls for — one more site_sections row (page_key
+// "homepage", section_key "weather"), reusing `is_visible` for the
+// founder's "Show weather" toggle and config_json for the city string, so
+// no new table. The city below is a data-layer default (same pattern as
+// every other homepage section's default copy) — NOT hardcoded into the
+// component, and the founder can change or hide it at /admin/site/homepage.
+// ---------------------------------------------------------------------
+
+export const DEFAULT_WEATHER_CITY = "Staten Island, NY";
+
+export interface WeatherModuleConfig {
+  city: string;
+  show: boolean;
+}
+
+export function resolveWeatherConfig(overrides: Map<string, SiteSection>): WeatherModuleConfig {
+  const row = overrides.get("weather");
+  const configuredCity = row?.config_json?.city;
+  const city = typeof configuredCity === "string" && configuredCity.trim() ? configuredCity.trim() : DEFAULT_WEATHER_CITY;
+  return { city, show: row?.is_visible ?? true };
+}
+
 // KNOWN LIMITATION (updated — 2026 feed-builder pass): the homepage's
 // structural funnel (Hero, Search, Category pills, "Upcoming Events Near
 // You") still renders in a fixed sequence, not by reading `order` — that

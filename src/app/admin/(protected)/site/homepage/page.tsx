@@ -8,9 +8,10 @@ import {
   HOMEPAGE_ORDERABLE_KEYS,
   HOMEPAGE_SECTIONS,
   resolveSection,
+  resolveWeatherConfig,
   type SectionDefaults,
 } from "@/lib/site-sections";
-import { saveSiteSection, saveDiscoveryTopics, moveSectionDown, moveSectionUp } from "./actions";
+import { saveSiteSection, saveDiscoveryTopics, saveWeatherConfig, moveSectionDown, moveSectionUp } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function HomepageSiteEditorPage({
       )}
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          Saved &ldquo;{saved === "discovery_topics" ? "Discovery Topics" : HOMEPAGE_SECTIONS[saved]?.label ?? saved}&rdquo;.
+          Saved &ldquo;{savedSectionLabel(saved)}&rdquo;.
         </p>
       )}
 
@@ -78,6 +79,13 @@ export default async function HomepageSiteEditorPage({
       </div>
 
       <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">
+        Weather / Local Context — between Hero and Search
+      </p>
+      <div className="mt-2 flex flex-col gap-3">
+        <WeatherCard overrides={overrides} />
+      </div>
+
+      <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">
         Discovery Topics — shortcut row after Search
       </p>
       <div className="mt-2 flex flex-col gap-3">
@@ -97,6 +105,43 @@ export default async function HomepageSiteEditorPage({
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function savedSectionLabel(saved: string): string {
+  if (saved === "discovery_topics") return "Discovery Topics";
+  if (saved === "weather") return "Weather / Local Context";
+  return HOMEPAGE_SECTIONS[saved]?.label ?? saved;
+}
+
+function WeatherCard({ overrides }: { overrides: Awaited<ReturnType<typeof getAdminSiteSections>> }) {
+  const config = resolveWeatherConfig(overrides);
+
+  return (
+    <div className="rounded-2xl border border-black/10 bg-white p-4">
+      <p className="font-display text-sm font-semibold tracking-tight text-ink">Weather / Local Context</p>
+      <p className="mt-1 text-xs text-ink/45">
+        The small icon + temperature + city + local date/time strip below the Hero. Weather is looked up
+        server-side from this city name — no API keys or coordinates to manage here.
+      </p>
+
+      <form action={saveWeatherConfig} className="mt-3 flex flex-col gap-3">
+        <TextField
+          label="Weather location"
+          name="weather_city"
+          defaultValue={config.city}
+          placeholder="City, State"
+          hint="A city name FindMi can look up, e.g. &quot;Staten Island, NY&quot;."
+        />
+        <CheckboxField label="Show weather" name="weather_show" defaultChecked={config.show} />
+        <button
+          type="submit"
+          className="self-start rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+        >
+          Save
+        </button>
+      </form>
     </div>
   );
 }

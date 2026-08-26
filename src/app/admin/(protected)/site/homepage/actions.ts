@@ -7,6 +7,7 @@ import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import { validateCustomDestination } from "@/lib/navigation";
 import {
   DEFAULT_DISCOVERY_TOPICS,
+  DEFAULT_WEATHER_CITY,
   HOMEPAGE_ORDERABLE_KEYS,
   HOMEPAGE_SECTIONS,
   resolveSection,
@@ -121,6 +122,35 @@ export async function saveDiscoveryTopics(formData: FormData) {
   revalidatePath(EDIT_PATH);
   revalidatePath("/");
   redirect(`${EDIT_PATH}?saved=discovery_topics`);
+}
+
+// Weather / Local Context — two founder-facing fields only (Section 8:
+// "Do not expose API internals"). "Show weather" reuses the existing
+// is_visible column rather than a second config flag; the city string is
+// resolved server-side by lib/weather.ts (geocoded, current conditions
+// fetched) — nothing here talks to the weather provider directly.
+export async function saveWeatherConfig(formData: FormData) {
+  const supabase = getAdminSupabase();
+  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+
+  const city = str(formData, "weather_city") ?? DEFAULT_WEATHER_CITY;
+  const show = bool(formData, "weather_show");
+
+  const { error } = await supabase.from("site_sections").upsert(
+    {
+      page_key: PAGE_KEY,
+      section_key: "weather",
+      is_visible: show,
+      config_json: { city },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "page_key,section_key" }
+  );
+  if (error) redirect(errorRedirectUrl(EDIT_PATH, error.message));
+
+  revalidatePath(EDIT_PATH);
+  revalidatePath("/");
+  redirect(`${EDIT_PATH}?saved=weather`);
 }
 
 async function ensureSectionRow(

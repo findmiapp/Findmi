@@ -4,6 +4,7 @@ import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import DiscoveryTopics from "@/components/DiscoveryTopics";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
+import HomeWeather from "@/components/HomeWeather";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
 import Logo from "@/components/Logo";
@@ -20,8 +21,15 @@ import {
   getUpcomingEvents,
 } from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
-import { getSiteSections, resolveSection, resolveDiscoveryTopics, HOMEPAGE_SECTIONS } from "@/lib/site-sections";
+import {
+  getSiteSections,
+  resolveSection,
+  resolveDiscoveryTopics,
+  resolveWeatherConfig,
+  HOMEPAGE_SECTIONS,
+} from "@/lib/site-sections";
 import type { Category } from "@/lib/types";
+import { getWeatherContext } from "@/lib/weather";
 
 export const revalidate = 60;
 
@@ -90,9 +98,21 @@ export default async function HomePage() {
   // founder hasn't configured any.
   const discoveryTopics = resolveDiscoveryTopics(siteSections);
 
+  // Weather / Local Context — founder-configurable city (see
+  // lib/site-sections.ts's resolveWeatherConfig); only fetched when the
+  // founder has the module on, and lib/weather.ts fails soft (returns
+  // null, or a result with `conditions: null`) rather than throwing, so a
+  // provider outage never breaks the homepage.
+  const weatherConfig = resolveWeatherConfig(siteSections);
+  const weatherContext = weatherConfig.show ? await getWeatherContext(weatherConfig.city) : null;
+
   return (
     <div>
       <HomeHero images={heroImages} heading={heroSec.heading} description={heroSec.body} />
+
+      {/* Weather / Local Context — sits between Hero and Search. Renders
+          nothing on its own if weather is off or unavailable. */}
+      <HomeWeather context={weatherContext} />
 
       {/* Search — immediately after the hero, live typeahead. */}
       <section className="border-b border-black/5 bg-white px-4 py-3 sm:px-6 sm:py-4">
