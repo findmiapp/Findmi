@@ -66,9 +66,16 @@ export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
       </button>
 
       {/* Always mounted (not conditionally rendered) so open/close animate
-          via CSS transform/opacity instead of a mount/unmount jump. */}
+          via CSS transform/opacity instead of a mount/unmount jump.
+          z-[60] — one tier above every transient header popover (e.g.
+          HeaderSearch's mobile results panel, which is z-50) so a modal
+          drawer can never end up stacking-ambiguous with, or hidden
+          behind, another same-z-index overlay opened in the same header
+          row; same-z-index elements paint in DOM order, which is normally
+          fine, but a modal has no business depending on sibling order to
+          stay on top. */}
       <div
-        className={`fixed inset-0 z-50 ${open ? "pointer-events-auto" : "pointer-events-none"}`}
+        className={`fixed inset-0 z-[60] ${open ? "pointer-events-auto" : "pointer-events-none"}`}
         aria-hidden={!open}
       >
         <div
@@ -100,15 +107,33 @@ export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
           </div>
 
           <nav className="flex-1 overflow-y-auto px-3 py-2">
-            {items.map((item) => (
-              <NavEntry
-                key={item.id}
-                item={item}
-                expanded={expanded.has(item.id)}
-                onToggle={() => toggleExpanded(item.id)}
-                onNavigate={close}
-              />
-            ))}
+            {items.length > 0 ? (
+              items.map((item) => (
+                <NavEntry
+                  key={item.id}
+                  item={item}
+                  expanded={expanded.has(item.id)}
+                  onToggle={() => toggleExpanded(item.id)}
+                  onNavigate={close}
+                />
+              ))
+            ) : (
+              // Defensive only — getVisibleNavItems() already guarantees a
+              // non-empty tree (falling back to FALLBACK_NAV_ITEMS itself
+              // when nav_items resolves to nothing), so `items` reaching
+              // here should never actually be empty. Still: a drawer that
+              // opens to a blank body is exactly the failure mode this
+              // audit was called in for, so this never silently renders
+              // nothing — it always leaves at least a real way back to the
+              // site instead.
+              <Link
+                href="/"
+                onClick={close}
+                className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-ink transition hover:bg-black/[0.03]"
+              >
+                Browse FindMi
+              </Link>
+            )}
           </nav>
         </div>
       </div>
