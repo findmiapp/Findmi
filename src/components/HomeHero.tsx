@@ -85,13 +85,19 @@ export default function HomeHero({
             top, which is still ~70-90px higher than the previous pass's
             Image 1 position simply because there's no CTA + its margins
             sitting between body and the collage anymore. */}
-        <div className="px-6 pb-3.5 pt-8 sm:hidden">
+        <div className="px-6 pb-3 pt-8 sm:hidden">
           <div>
             <h1 className="max-w-[90%] font-display text-[clamp(1.7rem,8.2vw,2rem)] font-bold leading-[0.97] tracking-tight text-ink">
               {headingContent}
             </h1>
+            {/* Description micro pass: max-w-[58%]→[60%] (still clear of
+                the coffee image's left edge at 61%, ~3-4px margin at
+                every width since both are % of the same canvas) plus
+                text-[17px]→[16px] — together aiming to reflow ~5 lines
+                down to ~4 without shrinking the type noticeably. Color
+                (text-ink/60) and leading ratio (1.425) unchanged. */}
             {description && (
-              <p className="mt-8 max-w-[58%] text-[17px] leading-[1.425] text-ink/60">{description}</p>
+              <p className="mt-8 max-w-[60%] text-[16px] leading-[1.425] text-ink/60">{description}</p>
             )}
           </div>
 
@@ -145,22 +151,20 @@ export default function HomeHero({
             </div>
           )}
 
-          {/* CTA — font-size micro pass: text-[16px]→text-[8px] (~50%
-              smaller visible size), italic/underline/wording/link/mt-3.5
-              spacing all unchanged. The "Join FindMi." link gets padding
-              + matching negative margins (inline-block, -my/-mx cancel
-              the added py/px) so its actual clickable rectangle stays
-              close to its pre-shrink size even though the glyphs
-              themselves are half as tall/wide — the visual line doesn't
-              shift, only the tap target keeps some margin around the
-              now-smaller text. */}
-          <p className="mt-3.5 text-[8px] italic leading-[1.3] text-ink/40">
+          {/* CTA — copy + spacing micro pass: link label "Join FindMi."→
+              "Get discovered." (same /join destination, no new route);
+              mt-3.5→mt-3 (12px, was 14px) moves it slightly closer to
+              the image above; the wrapper's own pb-3.5→pb-3 above trims
+              the gap below it before the Hero ends. Font size, italic
+              treatment, underline, and the padding/negative-margin tap-
+              target preservation are all otherwise unchanged. */}
+          <p className="mt-3 text-[8px] italic leading-[1.3] text-ink/40">
             Have a business?{" "}
             <Link
               href="/join"
               className="not-italic -my-[5px] -mx-1 inline-block px-1 py-[5px] font-medium text-ink/60 underline underline-offset-2 hover:text-ink"
             >
-              Join FindMi.
+              Get discovered.
             </Link>
           </p>
         </div>
@@ -172,10 +176,13 @@ export default function HomeHero({
               {headingContent}
             </h1>
             {description && <p className="mt-4 max-w-md text-base text-ink/60">{description}</p>}
+            {/* CTA copy micro pass: label "Join FindMi."→"Get discovered."
+                (same /join destination) — desktop spacing/typography/
+                layout otherwise untouched. */}
             <p className="mt-2 text-sm italic text-ink/40">
               Have a business?{" "}
               <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
-                Join FindMi.
+                Get discovered.
               </Link>
             </p>
           </div>
