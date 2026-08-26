@@ -104,49 +104,36 @@ export default function HomeHero({
             // untouched — all the size increase below comes from height,
             // per "prioritize taller."
             <div className="relative mt-1 h-[160px] w-full">
-              {/* Image 1 — dominant/anchor (bread). Width-only micro
-                  pass: w-[66%]→w-[82.5%] (exactly ×1.25). left (17%) and
-                  height (71%) unchanged, so the extra width extends
-                  rightward only — left edge, top edge, and height all
-                  stay put. 17%+82.5%=99.5% of the collage width, so it
-                  reaches nearly to the canvas's right edge without
-                  overflowing it. */}
-              <div className="absolute left-[17%] top-[12%] h-[71%] w-[82.5%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
+              {/* Image 1 — dominant/anchor (bread). Two-image
+                  simplification pass: left-[17%]→left-0, moved all the
+                  way to the collage's own left edge (which already lines
+                  up with the Hero's own px-6 padding boundary) — the
+                  lower-left anchor now that Image 3 is gone from mobile.
+                  Width (82.5%), height (71%), and top (12%) unchanged —
+                  no downward move, no resize. */}
+              <div className="absolute left-0 top-[12%] h-[71%] w-[82.5%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
                 <Image src={a} alt="" fill sizes="82vw" className="object-cover" />
               </div>
               {b && (
-                // Image 2 — coffee. Balance pass: width-only reduction,
-                // w-[36%]→w-[30%] (~16.7% narrower, within 15–20%), plus
-                // a small extra rightward nudge (right-[2%]→right-[1.5%])
-                // beyond what the narrower box already gains from being
-                // right-anchored. Height (161px) and top (-119px)
-                // unchanged — still the tall upper-right accent, still
-                // clear of body's 58%-capped column (now with MORE
-                // horizontal margin than before, since it's narrower).
-                <div className="absolute right-[1.5%] top-[-119px] z-10 h-[161px] w-[30%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <Image src={b} alt="" fill sizes="30vw" className="object-cover" />
+                // Image 2 — coffee, the only support image left on
+                // mobile. Width-only increase: w-[30%]→w-[37.5%]
+                // (exactly ×1.25). Height (161px), top (-119px), and
+                // right-offset (1.5%) unchanged — still anchored
+                // upper-right, still clear of body's 58%-capped column
+                // (new left edge ~61%, still safely right of it), with a
+                // bit more overlap onto bread as its left edge extends
+                // further left — expected/acceptable per spec.
+                <div className="absolute right-[1.5%] top-[-119px] z-10 h-[161px] w-[37.5%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                  <Image src={b} alt="" fill sizes="38vw" className="object-cover" />
                 </div>
               )}
-              {c && (
-                // Image 3 — pizza. Balance pass: height cut substantially
-                // from the previous h-[72%] down to h-[50%] — measured
-                // against the PRE-double-height baseline (h-[36%], i.e.
-                // 57.6px) this is ~38.9% taller, within the requested
-                // 35–45% (not the previous pass's 100%). Width (37%)
-                // unchanged, so at 126.5w×80h it's clearly landscape.
-                // right-[2.6%]→right-[0.5%] moves it much closer to the
-                // true right edge — noticeably farther right than Image
-                // 2's own right edge, so the two no longer share the
-                // same right boundary. top-[10%]→top-[28%] moves it
-                // lower, clearing Image 2's bottom instead of touching
-                // it, so the three read as separate diagonal tiles
-                // (coffee upper-right, bread anchor, pizza lower-right)
-                // rather than coffee+pizza forming one vertical column.
-                // Still solidly inside bread's own lower-right region.
-                <div className="absolute right-[0.5%] top-[28%] z-10 h-[50%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <Image src={c} alt="" fill sizes="37vw" className="object-cover" />
-                </div>
-              )}
+              {/* Image 3 (pizza) intentionally not rendered on mobile —
+                  two-image simplification pass. Its founder/admin field,
+                  stored URL, and desktop rendering below are untouched;
+                  `c` stays available to restore this block later without
+                  any data/schema change. The resulting blank lower-right
+                  space (below/right of bread, below coffee) is
+                  intentional — do not fill it. */}
             </div>
           )}
 
