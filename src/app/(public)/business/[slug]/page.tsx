@@ -211,43 +211,35 @@ export default async function BusinessPage({
           section instead of sprawling across the full desktop width. */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="max-w-xl pl-3 sm:pl-4">
-          {/* Follow/Save positioning micro-fix — the identity strip's own
-              box height is now exactly the logo's EXPOSED (below-cover)
-              height, not its full height: h-14 (56px) = 96px logo minus
-              its 40px overlap offset (mobile); h-16 (64px) = 112px logo
-              minus its 48px offset (sm+) — the logo is absolutely
-              positioned and pulled up from inside this box, so it can
-              still overlap the cover exactly as before, but it no longer
-              inflates the box's own footprint the way a normal-flow
-              negative-margined flex item did. Follow/Save, absolutely
-              positioned to span this box's full (exposed-only) height and
-              centered within it, therefore can never sit above y:0 of
-              this box — which is the cover's bottom edge — so they can
-              never overlap the cover, and read as vertically centered in
-              the exposed white strip beside the logo rather than
-              centered against the logo's full (partly-hidden) height. */}
-          {business.logo_url ? (
-            <div className="relative h-14 sm:h-16">
-              <div className="absolute -top-10 left-0 h-24 w-24 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-top-12 sm:h-28 sm:w-28">
+          {/* Follow/Save micro-fix (normal-flow only — no absolute
+              positioning, no negative translation on Follow/Save itself).
+              Only the LOGO carries the negative margin that overlaps the
+              cover; items-start on the row means Follow/Save (no margin
+              of their own) align to that same unshifted top line, which
+              is exactly the cover's bottom edge — they can never render
+              above it, full stop, by ordinary box-model construction, not
+              by containment math. A small positive top margin (mt-2.5 /
+              10px mobile, matching the 96px logo's 40px overlap → 56px
+              exposed strip; sm:mt-3.5 / 14px, matching the 112px logo's
+              48px overlap → 64px exposed strip) nudges Follow/Save down
+              from that top edge to sit centered in the exposed white
+              strip beside the logo's lower portion, same reasoning as
+              before, just without the absolute-positioning machinery. */}
+          <div className="flex items-start gap-2">
+            {business.logo_url && (
+              <div className="-mt-10 h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-28 sm:w-28">
                 <Image src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
               </div>
-              <div className="absolute inset-y-0 right-0 flex items-center gap-2">
-                <div className="w-24">
-                  <FollowButton businessId={business.id} businessSlug={business.slug} size="compact" />
-                </div>
-                <SaveButton slug={business.slug} />
-              </div>
-            </div>
-          ) : (
-            // No logo — no cover-overlap concept applies. Follow/Save just
-            // sit in normal flow, right-aligned, same controls/sizing.
-            <div className="flex items-center justify-end gap-2">
+            )}
+            <div
+              className={`ml-auto flex shrink-0 items-center gap-2 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
+            >
               <div className="w-24">
                 <FollowButton businessId={business.id} businessSlug={business.slug} size="compact" />
               </div>
               <SaveButton slug={business.slug} />
             </div>
-          )}
+          </div>
 
           <div className="mt-4 flex flex-col gap-2">
             {/* Item 2 — badges moved OFF the name's own line (they used to
