@@ -111,11 +111,14 @@ export default function HomeHero({
                 <Image src={a} alt="" fill sizes="66vw" className="object-cover" />
               </div>
               {b && (
-                // Image 2 — height 62%→55% of the taller box = ~9% more
-                // area; width/right-offset/top-offset unchanged, so its
-                // overlap with Image 1 and clearance from body are
-                // preserved exactly as before.
-                <div className="absolute right-[2%] top-[-45px] z-10 h-[55%] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                // Image 2 — height-only micro pass: h-[55%]→h-[67%] of
+                // the (unchanged) 160px collage box, ~21.8% taller.
+                // top moved -45px→-65px so the extra height extends
+                // UPWARD (its bottom edge stays ~42px into the collage,
+                // same as before) rather than growing the collage
+                // downward. Width (36%) and right-offset (2%) untouched
+                // — same horizontal clearance from body as before.
+                <div className="absolute right-[2%] top-[-65px] z-10 h-[67%] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
                   <Image src={b} alt="" fill sizes="36vw" className="object-cover" />
                 </div>
               )}
