@@ -123,11 +123,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Discovery Topics — compact shortcut row, bridging Search and the
-          discovery feed below. Founder-editable navigation items only
-          (see DiscoveryTopics.tsx) — not a cross-content taxonomy. */}
-      <DiscoveryTopics topics={discoveryTopics} />
-
       {/* Discovery filters (Up Next default) + first live feed — heading
           is exactly "Upcoming Events Near You" (see HOMEPAGE_SECTIONS'
           featured_events default). Begins immediately after Search now
@@ -150,6 +145,13 @@ export default async function HomePage() {
           />
         </Section>
       </div>
+
+      {/* Discovery Topics — position-only move: now sits after the
+          complete Upcoming Events section (was between Search and it).
+          Compact shortcut row, founder-editable navigation items only
+          (see DiscoveryTopics.tsx) — not a cross-content taxonomy;
+          functionality/behavior unchanged. */}
+      <DiscoveryTopics topics={discoveryTopics} />
 
       {/* Founder-managed Homepage Rows — the central architectural change
           of this pass. Each row is a real database record (see

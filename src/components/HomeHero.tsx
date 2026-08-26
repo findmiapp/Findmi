@@ -3,14 +3,15 @@ import Link from "next/link";
 
 // The homepage's masthead.
 //
-// Mobile geometry, several passes in: below sm:, copy sits in normal
-// flow at the top, and the 3-image collage is a normal-flow block that
-// starts right after it — its start position is always correct for
-// whatever the text actually renders as (heading line count, body wrap),
-// never an estimate. Within its own box, the images are absolutely
-// positioned/overlapped in a staggered diagonal composition (percentages
-// of that box, so 360–430px scales cleanly). See the mobile branch below
-// for the exact numbers and the collision root-cause this fixed.
+// Mobile geometry, several passes in: below sm:, copy (headline + body
+// only — the CTA now lives BELOW the collage, not between body and it)
+// sits in normal flow at the top, and the 3-image collage is a
+// normal-flow block that starts right after body — its start position is
+// always correct for whatever body actually renders as, never an
+// estimate. Image 2 additionally reaches up above the collage's own top,
+// into the open space beside body's lower rows, which is safe because
+// it's confined to the right side clear of body's own width cap. See the
+// mobile branch below for the exact numbers.
 // From sm: up, this file renders the UNCHANGED existing desktop
 // markup (own flex-row, own collage box) — the two are simply two
 // sibling branches (`sm:hidden` / `hidden sm:flex`) rather than one
@@ -63,36 +64,27 @@ export default function HomeHero({
   return (
     <section className="border-b border-black/5 bg-white">
       <div className="mx-auto max-w-6xl">
-        {/* ================= MOBILE (<640px) — CTA collision fix ================
-            ROOT CAUSE of the live clipping: the previous pass absolutely-
-            positioned all 3 images against a FIXED-height outer canvas,
-            with each image's `top` chosen from an ESTIMATED text-block
-            height. That estimate was too short for the actual rendered
-            text (in particular, the body paragraph wraps to more lines
-            at its narrow ~58% width than assumed) — so Image 1's
-            estimated-safe top (57.5% of the fixed canvas) actually landed
-            ON TOP of the CTA line. Because Image 1 is `position: absolute`
-            and the text block is plain static flow, the image painted
-            above the text wherever they overlapped, regardless of
-            z-index — static content is always below positioned content
-            in paint order.
-            THE FIX: the collage is no longer positioned against a fixed
-            canvas at all. It's now a normal-flow block that starts AFTER
-            the text div ends (a small mt-3 gap, no negative margin) — so
-            its vertical start position is always correct, by construction,
-            for whatever the text actually renders as (2-line or 3-line
-            heading, however many lines the body wraps to). This is a
-            structural guarantee, not another height estimate. Images are
-            then absolutely positioned/overlapped WITHIN that collage's own
-            box (h-[175px], not the whole hero) — same diagonal composition
-            as before, Image 1 shifted slightly right, Image 2 moved up
-            relative to Image 1 and kept far right, Image 3 unchanged
-            relative to Image 1. For the current 2-line-heading copy this
-            lands the whole Hero at ~476px (within "approximately 470px");
-            a founder-configured 3-line heading would push it somewhat
-            taller — still zero collision, just not exactly 470px in that
-            edge case, which this pass treats as the correct trade-off per
-            "text first, CTA fully visible, then position images." */}
+        {/* ================= MOBILE (<640px) — collage rises, CTA moves below ================
+            Text block is now Headline + Body ONLY — the CTA moved out
+            (see below), which is what actually makes the safe upward move
+            possible: body has a hard max-w-[58%] cap, so EVERY line it
+            ever wraps to is guaranteed to stay left of x:58%, regardless
+            of body's real rendered height. That guarantee is what the
+            unconstrained-width CTA never had (its natural width could
+            exceed any assumed boundary) — CTA was the actual source of
+            the earlier collision, not body.
+            The collage is a normal-flow block starting right after body
+            (mt-1 — correct by construction for whatever body's real
+            height is, never an estimate) sized to h-[130px]. Image 2
+            additionally reaches UP above the collage's own top via a
+            small negative `top` offset, into the open space beside
+            body's lower rows — safe regardless of body's actual height
+            because it's anchored at right:2%/width:36%, i.e. left edge
+            ≈62%, always clear of body's 58% cap. Image 1/3 are NOT
+            pulled negative — they start at the collage's own (flow-safe)
+            top, which is still ~70-90px higher than the previous pass's
+            Image 1 position simply because there's no CTA + its margins
+            sitting between body and the collage anymore. */}
         <div className="px-6 pb-5 pt-8 sm:hidden">
           <div>
             <h1 className="max-w-[90%] font-display text-[clamp(1.7rem,8.2vw,2rem)] font-bold leading-[0.97] tracking-tight text-ink">
@@ -101,44 +93,46 @@ export default function HomeHero({
             {description && (
               <p className="mt-8 max-w-[58%] text-[17px] leading-[1.425] text-ink/60">{description}</p>
             )}
-            <p className="mt-6 text-[16px] italic leading-[1.3] text-ink/40">
-              Have a business?{" "}
-              <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
-                Join FindMi.
-              </Link>
-            </p>
           </div>
 
           {a && (
-            // Collage box — normal flow, starts after the CTA with a
-            // small fixed gap. Images below are positioned relative to
-            // THIS box (percentages of 342×175 reference), not the hero.
-            <div className="relative mt-3 h-[175px] w-full">
-              {/* Image 1 — dominant/anchor. Shifted right (left: 17%,
-                  was 14%) per the requested composition. */}
-              <div className="absolute left-[17%] top-[22%] h-[68%] w-[66%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
+            <div className="relative mt-1 h-[130px] w-full">
+              {/* Image 1 — dominant/anchor, at the collage's own (flow-
+                  safe) top. */}
+              <div className="absolute left-[17%] top-[15%] h-[75%] w-[66%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
                 <Image src={a} alt="" fill sizes="66vw" className="object-cover" />
               </div>
               {b && (
-                // Image 2 — upper-right support. Starts at the collage's
-                // own top (top: 0), i.e. above/before Image 1 (top: 22%)
-                // — "moved up relative to Image 1" — and stays far right
-                // (right: 2%). Entirely inside the collage box, which
-                // itself only begins after the CTA, so it can never
-                // reach the text regardless of its position here.
-                <div className="absolute right-[2%] top-0 z-10 h-[55%] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                // Image 2 — reaches above the collage box into the open
+                // space beside body's lower rows (see file note above for
+                // why this is safe regardless of body's actual height).
+                // Overlaps Image 1's upper area, stays far right.
+                <div className="absolute right-[2%] top-[-45px] z-10 h-[62%] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
                   <Image src={b} alt="" fill sizes="36vw" className="object-cover" />
                 </div>
               )}
               {c && (
-                // Image 3 — lower-right support, same position relative
-                // to Image 1 as before (overlapping its lower-right).
-                <div className="absolute right-[3%] top-[58%] z-10 h-[42%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                // Image 3 — unchanged position relative to Image 1
+                // (overlapping its lower-right corner).
+                <div className="absolute right-[3%] top-[56%] z-10 h-[44%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
                   <Image src={c} alt="" fill sizes="37vw" className="object-cover" />
                 </div>
               )}
             </div>
           )}
+
+          {/* CTA — moved below the dominant image/collage (was above it,
+              between body and the collage). Same text/link/behavior,
+              just relocated and tightened into a small caption-like
+              spacing (mt-3) instead of the old mt-6. This is also what
+              removes the collision risk at its root — nothing
+              unconstrained-width sits beside the collage anymore. */}
+          <p className="mt-3 text-[16px] italic leading-[1.3] text-ink/40">
+            Have a business?{" "}
+            <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
+              Join FindMi.
+            </Link>
+          </p>
         </div>
 
         {/* ================= DESKTOP (sm:+) — unchanged from the prior pass ================ */}
