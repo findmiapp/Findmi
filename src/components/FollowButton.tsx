@@ -109,9 +109,18 @@ export default function FollowButton({
   const text = compact ? "text-xs" : "text-sm";
 
   if (following) {
+    // "✓ Following" no longer fits the compact 96px-wide button without
+    // crowding it — collapsed to a checkmark-only state (still aqua,
+    // same button footprint) with the meaning carried by aria-label/
+    // title instead of visible text, rather than widening the button.
     return (
-      <span className={`flex ${h} w-full items-center justify-center gap-1.5 rounded-full bg-findmi ${text} font-bold uppercase tracking-wide text-white`}>
-        <CheckGlyph /> Following
+      <span
+        role="status"
+        aria-label="Following"
+        title="Following"
+        className={`flex ${h} w-full items-center justify-center rounded-full bg-findmi text-white`}
+      >
+        <CheckGlyph className="h-4 w-4" />
       </span>
     );
   }
@@ -191,9 +200,9 @@ export default function FollowButton({
   );
 }
 
-function CheckGlyph() {
+function CheckGlyph({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
+    <svg viewBox="0 0 20 20" fill="none" className={className}>
       <path
         d="M4 10.5l3.5 3.5L16 6"
         stroke="currentColor"

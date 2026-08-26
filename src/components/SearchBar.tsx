@@ -83,9 +83,8 @@ export default function SearchBar() {
     <div ref={containerRef} className="relative w-full">
       <form
         onSubmit={handleSubmit}
-        className="flex w-full items-center gap-2 rounded-full border border-black/10 bg-white py-2.5 pl-4 pr-1.5 shadow-sm transition focus-within:border-ink/25"
+        className="flex w-full items-center gap-2 rounded-full border border-black/10 bg-white py-1.5 pl-4 pr-1.5 shadow-sm transition focus-within:border-ink/25"
       >
-        <SearchGlyph />
         <input
           value={q}
           onChange={(e) => {
@@ -107,9 +106,9 @@ export default function SearchBar() {
         <button
           type="submit"
           aria-label="Search"
-          className="shrink-0 rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-findmi text-white transition hover:bg-findmi-600"
         >
-          Search
+          <SearchGlyph className="h-5 w-5" />
         </button>
       </form>
 
@@ -176,9 +175,9 @@ function ResultGroup({
   );
 }
 
-function SearchGlyph() {
+function SearchGlyph({ className = "h-4 w-4 shrink-0 text-ink/40" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-ink/40">
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
       <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.8" />
       <path d="M20 20l-4.5-4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
