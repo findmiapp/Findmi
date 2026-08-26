@@ -115,37 +115,35 @@ export default function HomeHero({
                 <Image src={a} alt="" fill sizes="82vw" className="object-cover" />
               </div>
               {b && (
-                // Image 2 — height-only micro pass: h-[67%]→h-[161px]
-                // (1.5× its prior ~107.2px rendered height, per exact
-                // spec). top moved -65px→-119px so ALL of the added
-                // height extends UPWARD — its bottom edge stays at the
-                // same ~42px into the collage as before, unchanged.
-                // Width (36%) and right-offset (2%) untouched. Safe
-                // because it's still confined to the collage's right
-                // side, clear of body's 58%-capped column horizontally,
-                // and its extended reach (per the current default hero
-                // copy's real rendered height) lands in the empty
-                // headline↔body gap rather than on either line of text —
-                // see the file-level note for the general safety
-                // argument this relies on.
-                <div className="absolute right-[2%] top-[-119px] z-10 h-[161px] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <Image src={b} alt="" fill sizes="36vw" className="object-cover" />
+                // Image 2 — coffee. Balance pass: width-only reduction,
+                // w-[36%]→w-[30%] (~16.7% narrower, within 15–20%), plus
+                // a small extra rightward nudge (right-[2%]→right-[1.5%])
+                // beyond what the narrower box already gains from being
+                // right-anchored. Height (161px) and top (-119px)
+                // unchanged — still the tall upper-right accent, still
+                // clear of body's 58%-capped column (now with MORE
+                // horizontal margin than before, since it's narrower).
+                <div className="absolute right-[1.5%] top-[-119px] z-10 h-[161px] w-[30%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                  <Image src={b} alt="" fill sizes="30vw" className="object-cover" />
                 </div>
               )}
               {c && (
-                // Image 3 — pizza. h-[36%]→h-[72%] (exactly ×2, "100%
-                // taller"). Bottom edge preserved (old top 46% + height
-                // 36% = 82% bottom → new top 10% + height 72% = 82%
-                // bottom, same spot), so all the added height grows
-                // upward, not down past the collage. right-[3%]→
-                // right-[2.6%] (3% ÷ 1.15) moves it a small, controlled
-                // step FARTHER toward the right edge — a smaller `right`
-                // offset means less gap from the edge, i.e. more right;
-                // multiplying the offset itself by 1.15 would have moved
-                // it the opposite (wrong) way, so the stated factor is
-                // applied as a reduction here to match the explicit
-                // "move farther right" intent. Width (37%) unchanged.
-                <div className="absolute right-[2.6%] top-[10%] z-10 h-[72%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                // Image 3 — pizza. Balance pass: height cut substantially
+                // from the previous h-[72%] down to h-[50%] — measured
+                // against the PRE-double-height baseline (h-[36%], i.e.
+                // 57.6px) this is ~38.9% taller, within the requested
+                // 35–45% (not the previous pass's 100%). Width (37%)
+                // unchanged, so at 126.5w×80h it's clearly landscape.
+                // right-[2.6%]→right-[0.5%] moves it much closer to the
+                // true right edge — noticeably farther right than Image
+                // 2's own right edge, so the two no longer share the
+                // same right boundary. top-[10%]→top-[28%] moves it
+                // lower, clearing Image 2's bottom instead of touching
+                // it, so the three read as separate diagonal tiles
+                // (coffee upper-right, bread anchor, pizza lower-right)
+                // rather than coffee+pizza forming one vertical column.
+                // Still solidly inside bread's own lower-right region.
+                <div className="absolute right-[0.5%] top-[28%] z-10 h-[50%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
                   <Image src={c} alt="" fill sizes="37vw" className="object-cover" />
                 </div>
               )}
