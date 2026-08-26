@@ -181,7 +181,7 @@ export default async function EventPage({
 
         {/* Tier A — the strongest, organizer-configured actions. */}
         {customCtas.length > 0 && (
-          <div className="mt-5 flex flex-wrap items-center gap-2.5">
+          <div className="mt-4 flex flex-wrap items-center gap-2.5">
             {customCtas.map((action) => (
               <FormAction
                 key={action.label}
@@ -199,71 +199,89 @@ export default async function EventPage({
         )}
 
         {/* Tier B — supporting utility actions, visually quiet, grouped
-            together (item 6: Save now matches every sibling pill's exact
-            treatment instead of a mismatched fixed-size icon square) and
-            separate from Tier A above. Add to Calendar/Share always
-            function (real start_at/title/canonical URL always exist), so
-            they always render. */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {showDirections && (
-            <a
-              href={directionsHref!}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-            >
-              Directions
-            </a>
-          )}
-          <AddToCalendarButton
-            title={event.name}
-            description={event.description}
-            location={venueLine || null}
-            startAt={event.start_at}
-            endAt={event.end_at}
-          />
-          <EventShareButton title={event.name} url={canonicalUrl} />
-          {showFollow && (
-            <a
-              href="#follow"
-              className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-            >
-              Follow
-            </a>
-          )}
-          <EventSaveButton slug={event.slug} />
-          {showContact && contactForm && (
-            contactForm.url.startsWith("mailto:") ? (
+            together and separate from Tier A above. Add to Calendar/
+            Share always function (real start_at/title/canonical URL
+            always exist), so they always render.
+            Mobile layout pass: a single non-wrapping, horizontally
+            scrollable row (Save → Directions → Add to Calendar → Share
+            → Contact Organizer, then Follow/Event Details when present)
+            instead of flex-wrap — every action/icon/link/behavior is
+            unchanged, only the row's own layout. The three sub-components
+            (EventSaveButton/AddToCalendarButton/EventShareButton) render
+            their own root element with no className prop, so each gets a
+            shrink-0 wrapper; the plain <a>/FormAction pills take
+            shrink-0 directly. -mx-4/px-4 (sm:-mx-6/sm:px-6) bleeds the
+            scroll track to the same edges as the padded content around
+            it, and overflow-x-auto contains all overflow within this one
+            element — it can't cause page-level horizontal scroll. */}
+        <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max items-center gap-2">
+            <div className="shrink-0">
+              <EventSaveButton slug={event.slug} />
+            </div>
+            {showDirections && (
               <a
-                href={contactForm.url}
-                className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+                href={directionsHref!}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
               >
-                Contact Organizer
+                Directions
               </a>
-            ) : (
-              <FormAction
-                href={contactForm.url}
-                displayMode={contactForm.displayMode}
-                label="Contact Organizer"
-                className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+            )}
+            <div className="shrink-0">
+              <AddToCalendarButton
+                title={event.name}
+                description={event.description}
+                location={venueLine || null}
+                startAt={event.start_at}
+                endAt={event.end_at}
               />
-            )
-          )}
-          {event.external_url && (
-            <a
-              href={event.external_url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-            >
-              Event Details
-            </a>
-          )}
+            </div>
+            <div className="shrink-0">
+              <EventShareButton title={event.name} url={canonicalUrl} />
+            </div>
+            {showContact && contactForm && (
+              contactForm.url.startsWith("mailto:") ? (
+                <a
+                  href={contactForm.url}
+                  className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+                >
+                  Contact Organizer
+                </a>
+              ) : (
+                <FormAction
+                  href={contactForm.url}
+                  displayMode={contactForm.displayMode}
+                  label="Contact Organizer"
+                  className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+                />
+              )
+            )}
+            {showFollow && (
+              <a
+                href="#follow"
+                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              >
+                Follow
+              </a>
+            )}
+            {event.external_url && (
+              <a
+                href={event.external_url}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              >
+                Event Details
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Item 8 — optional Bulletin, same shared component as Business
             Profile, right after the utility row and before About. */}
-        <div className="mt-5">
+        <div className="mt-3">
           <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
         </div>
 
@@ -271,7 +289,7 @@ export default async function EventPage({
             short/long), so this is the single "About This Event" section
             rather than duplicating the same text twice. */}
         {event.description && (
-          <section className="mt-8">
+          <section className="mt-5">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
             <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
               {event.description}
@@ -283,7 +301,7 @@ export default async function EventPage({
             after About, BEFORE Featured Products and About the Venue, per
             this pass's explicit ordering requirement. Preserves the
             existing participating-business logic/taxonomy untouched. */}
-        <section className="mt-8">
+        <section className="mt-5">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">
             Who You&rsquo;ll Find Here
           </h2>
