@@ -1,15 +1,25 @@
 import Image from "next/image";
 import Link from "next/link";
 
-// The homepage's masthead — deliberately short (mobile target ~200-240px,
-// not a giant intro screen). Copy left, a staggered collage right, even
-// on mobile: side-by-side (not stacked) is what keeps this compact, since
-// the section's height is driven by the taller of the two, not their
-// sum. `images` are real cover photos already fetched for other homepage
+// The homepage's masthead. Editorial-collage pass: rebuilt around an
+// approved mobile reference mockup (decorative background scribbles from
+// that reference explicitly excluded — out of scope). Copy sits upper-
+// left with a full, comfortable reading width; the image collage sits
+// BELOW and to the right of it (stacked on mobile, side-by-side from
+// sm: up), built around one dominant landscape image with two smaller
+// images staggered/overlapping its top-right and bottom-right corners —
+// not three same-weight thumbnails. All three real images stay visible
+// at every width; nothing is hidden on mobile purely to simplify the
+// layout (previous pass hid the third tile on mobile — this one doesn't).
+// `images` are real cover photos already fetched for other homepage
 // sections (featured businesses / the live appearances feed) — never
-// stock/decorative photography, and never fabricated: with fewer than 3
+// stock/decorative photography, never fabricated: with fewer than 3
 // available, this renders however many real ones there are, and with
-// zero it renders no collage at all rather than a placeholder.
+// zero it renders no collage at all.
+//
+// Geometry changed; editability didn't — heading/body/CTA and all three
+// image slots are still the same founder-editable Site Editor fields
+// (Hero → Heading/Body/Image 1-3), untouched by this pass.
 //
 // Headline is three deliberate lines, all at the SAME size (second
 // live-QA correction — the previous pass gave the third line its own
@@ -21,19 +31,6 @@ import Link from "next/link";
 // so the constraint is solved by sizing the whole headline around it,
 // not by shrinking one line in isolation. `whitespace-nowrap` on that
 // line remains as a hard guarantee.
-//
-// 2nd cleanup pass (item 8): font-bold (was font-extrabold — a lighter,
-// narrower weight at the same size), leading tightened to 0.96 (was
-// 0.98), and the mobile clamp nudged up slightly (1.1rem/5vw/1.375rem →
-// 1.15rem/5.1vw/1.4rem). The lighter weight's narrower glyph advance
-// roughly offsets the slightly larger size, which is why the min bound
-// only moved ~2% (1.1rem→1.15rem) despite the size read as more
-// noticeably "up" at normal viewing distance — the one-line guarantee at
-// 360px was the hard constraint the whole adjustment was sized around,
-// not just this line's own size in isolation. `whitespace-nowrap` on
-// "Get discovered." remains the hard backstop either way. sm:/md: sizes
-// (text-3xl/text-4xl) are unchanged from the prior pass — this item's
-// ask was weight/line-height/mobile-size, not the larger breakpoints.
 const DEFAULT_HEADING_LINES = ["Find what's", "around you.", "Get discovered."];
 
 export default function HomeHero({
@@ -62,19 +59,16 @@ export default function HomeHero({
 
   return (
     <section className="border-b border-black/5 bg-white">
-      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-10">
-        {/* Hero polish pass: the copy column used to be an unconstrained
-            flex-1, which meant it silently claimed every pixel of leftover
-            row width — pushing the collage to hug the container's far
-            right edge, with the "gap" between them being whatever
-            leftover space happened to remain rather than a fixed amount.
-            Capping the copy column (sm:max-w-md) means it stops growing
-            once it's comfortably readable; the collage then sits right
-            after it with a real, fixed gap, and any true leftover space
-            lands at the outer edge instead of between them. gap-3/sm:gap-8
-            replaces the old sm:gap-12 now that it's no longer the only
-            thing separating the two. */}
-        <div className="flex items-center gap-3 sm:gap-8">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+        {/* Stacked (copy, then collage below-right of it) on mobile —
+            NOT two tiny side-by-side columns. From sm: up, the same two
+            elements sit in a row: copy is capped (sm:max-w-md) so it
+            stops growing once comfortably readable, letting the collage
+            sit right after it with a real, fixed gap rather than hugging
+            the container's far-right edge. items-center is sm-only —
+            unset on mobile so the stacked copy block stretches to its
+            full natural width instead of shrinking to content width. */}
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-8">
           <div className="min-w-0 flex-1 sm:max-w-md">
             <h1 className="font-display text-[clamp(1.15rem,5.1vw,1.4rem)] font-bold leading-[0.96] tracking-tight text-ink sm:text-3xl md:text-4xl">
               {headingLines.map((line, i) => (
@@ -88,7 +82,7 @@ export default function HomeHero({
                 pass item 3) — falls back to this same default copy when
                 unconfigured, via resolveSection/HOMEPAGE_SECTIONS. */}
             {description && (
-              <p className="mt-2.5 max-w-[26ch] text-xs text-ink/60 sm:mt-4 sm:max-w-md sm:text-base">
+              <p className="mt-2.5 max-w-[30ch] text-xs text-ink/60 sm:mt-4 sm:max-w-md sm:text-base">
                 {description}
               </p>
             )}
@@ -103,40 +97,45 @@ export default function HomeHero({
           </div>
 
           {a && (
-            // Desktop: noticeably larger than before (256×288 → 320×288 at
-            // tablet, 384×320 at full desktop) and, combined with the copy
-            // cap above, brought inward rather than hugging the edge —
-            // without growing taller than the old height (h-72 stays the
-            // sm floor; the increase is mostly width). Mobile: this used
-            // to overlap THREE tiles in a ~[42vw] box, which read as
-            // cramped; the small top-right tile ("b") now only appears at
-            // sm+ where there's room for it, leaving a simpler two-photo
-            // stagger (a + c) on narrow screens — same real photos, just
-            // fewer shown at once, per Section 1's explicit allowance.
-            // Tile sizes stay percentage-based (not fixed px) so they
-            // scale with the container at every breakpoint automatically.
-            <div className="relative h-36 w-[46vw] max-w-[200px] shrink-0 sm:h-72 sm:w-80 lg:h-80 lg:w-96">
-              <div className="absolute left-0 top-1 z-10 h-[62%] w-[62%] overflow-hidden rounded-xl shadow-sm ring-2 ring-white sm:rounded-2xl sm:ring-4">
+            // Editorial collage: one dominant landscape image (top-left,
+            // ~72%×70% of this box) with two smaller images staggered
+            // over its top-right and bottom-right corners — all
+            // percentage-sized so they scale with the box at every
+            // breakpoint without per-tile breakpoint math. ml-auto on
+            // mobile pushes the whole collage toward the right, under
+            // the copy, per the approved reference ("below and to the
+            // right of copy," not a narrow column beside it); sm:ml-0
+            // resets that once copy/collage sit side-by-side in a row.
+            // Sizes grow from a genuinely large mobile presence (not a
+            // thumbnail) up through a substantially bigger desktop one.
+            <div className="relative ml-auto h-60 w-[84%] shrink-0 sm:ml-0 sm:h-72 sm:w-[22rem] lg:h-96 lg:w-[28rem] xl:h-[26rem] xl:w-[32rem]">
+              <div className="absolute left-0 top-0 h-[70%] w-[72%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white sm:rounded-3xl sm:ring-4">
                 <Image
                   src={a}
                   alt=""
                   fill
-                  sizes="(min-width: 1024px) 238px, (min-width: 640px) 198px, 30vw"
+                  sizes="(min-width: 1024px) 330px, (min-width: 640px) 253px, 60vw"
                   className="object-cover"
                 />
               </div>
               {b && (
-                <div className="absolute right-0 top-0 hidden h-[38%] w-[38%] overflow-hidden rounded-xl shadow-sm ring-4 ring-white sm:block">
-                  <Image src={b} alt="" fill sizes="(min-width: 1024px) 146px, 122px" className="object-cover" />
+                <div className="absolute right-0 top-0 z-10 h-[38%] w-[40%] overflow-hidden rounded-xl shadow-md ring-2 ring-white sm:rounded-2xl sm:ring-4">
+                  <Image
+                    src={b}
+                    alt=""
+                    fill
+                    sizes="(min-width: 1024px) 190px, (min-width: 640px) 141px, 34vw"
+                    className="object-cover"
+                  />
                 </div>
               )}
               {c && (
-                <div className="absolute bottom-0 right-[14%] z-10 h-[44%] w-[44%] overflow-hidden rounded-lg shadow-sm ring-2 ring-white sm:rounded-xl sm:ring-4">
+                <div className="absolute bottom-0 right-[4%] z-10 h-[40%] w-[42%] overflow-hidden rounded-xl shadow-md ring-2 ring-white sm:rounded-2xl sm:ring-4">
                   <Image
                     src={c}
                     alt=""
                     fill
-                    sizes="(min-width: 1024px) 169px, (min-width: 640px) 141px, 20vw"
+                    sizes="(min-width: 1024px) 195px, (min-width: 640px) 148px, 35vw"
                     className="object-cover"
                   />
                 </div>
