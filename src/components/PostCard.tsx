@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import LiveDot from "./LiveDot";
@@ -70,19 +73,29 @@ export default function PostCard({
   logoUrl,
   excerpt,
 }: PostCardProps) {
+  // A stored image URL can still fail to load (deleted from storage, a
+  // dead external link, etc.) — next/image doesn't retry or fall back on
+  // its own, so without this the browser's native broken-image icon shows
+  // instead of a photo. Once a load fails, treat it exactly like having
+  // no image at all: same icon/gradient placeholder used below, never a
+  // broken-image glyph.
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = Boolean(image) && !imageFailed;
+
   const card = (
     <div
       className={`group relative w-full overflow-hidden rounded-2xl transition duration-150 active:scale-[0.98] ${
-        image ? "bg-black/5" : "bg-gradient-to-br from-stone to-ink"
+        showImage ? "bg-black/5" : "bg-gradient-to-br from-stone to-ink"
       } ${aspect ?? ASPECT_BY_KIND[kind]}`}
     >
-      {image ? (
+      {showImage ? (
         <Image
-          src={image}
+          src={image as string}
           alt={title}
           fill
           sizes="(min-width: 768px) 320px, 70vw"
           className="object-cover transition duration-300 group-hover:scale-105"
+          onError={() => setImageFailed(true)}
         />
       ) : (
         <Icon

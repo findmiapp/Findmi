@@ -73,5 +73,22 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  if (entity === "people") {
+    const { data } = await supabase
+      .from("people")
+      .select("id, name, slug, image_url, location, is_public")
+      .or(`name.ilike.${term},slug.ilike.${term},location.ilike.${term}`)
+      .order("name")
+      .limit(20);
+    return NextResponse.json({
+      results: (data ?? []).map((p) => ({
+        value: p.id,
+        label: p.name,
+        sublabel: [p.is_public ? null : "Hidden", p.location].filter(Boolean).join(" · ") || undefined,
+        image_url: p.image_url,
+      })),
+    });
+  }
+
   return NextResponse.json({ results: [] }, { status: 400 });
 }

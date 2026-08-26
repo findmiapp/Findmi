@@ -395,7 +395,13 @@ export default async function BusinessPage({
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">{peopleHeading}</h2>
               {people.length === 1 ? (
-                <div className="mt-4 max-w-xs">
+                // Narrower on small screens — PersonCard's photo card
+                // keeps a fixed aspect ratio, so at the old max-w-xs
+                // (320px) this single-card treatment stood nearly full
+                // viewport width on mobile (~400px tall) for what's a
+                // supplementary bio, not the page's main content. Full
+                // max-w-xs comes back at sm: and up, unchanged from before.
+                <div className="mt-4 max-w-[220px] sm:max-w-xs">
                   <PersonCard person={people[0]} role={people[0].role} />
                 </div>
               ) : (

@@ -13,7 +13,7 @@ export interface SearchResult {
  * relationship picker so typing never fires a request per keystroke and a
  * stale response can't clobber a newer one. Returns at most ~20 results;
  * never the whole table (see Part I — bounded relationship search). */
-export function useAdminSearch(entity: "businesses" | "events" | "products", query: string) {
+export function useAdminSearch(entity: "businesses" | "events" | "products" | "people", query: string) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 

@@ -20,6 +20,7 @@ export default async function NewBusinessPage({
           categories={categories}
           selectedCategoryIds={[]}
           galleryImages={[]}
+          people={[]}
           error={error}
         />
       </div>

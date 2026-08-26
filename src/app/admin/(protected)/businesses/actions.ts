@@ -100,9 +100,42 @@ export async function saveBusiness(id: string | null, formData: FormData) {
       .insert(galleryUrls.map((url, i) => ({ business_id: businessId, url, display_order: i })));
   }
 
+  // People roster (business_people) — reverse of savePerson's business
+  // roster below: business_id fixed, person_id varies. "Remove" here only
+  // deletes the one relationship row for THIS business; the person's own
+  // profile (and their other business relationships) is untouched.
+  const personIds = formData.getAll("person_id").map(String);
+  const removedPersonIds = formData.getAll("removed_person_id").map(String);
+
+  const peopleToUpsert = personIds.map((personId) => ({
+    business_id: businessId as string,
+    person_id: personId,
+    role: str(formData, `role_${personId}`),
+    display_order: num(formData, `display_order_${personId}`),
+    featured: bool(formData, `featured_${personId}`),
+    show_on_business: bool(formData, `show_on_business_${personId}`),
+  }));
+  if (peopleToUpsert.length > 0) {
+    await supabase.from("business_people").upsert(peopleToUpsert, { onConflict: "business_id,person_id" });
+  }
+  if (removedPersonIds.length > 0) {
+    await supabase.from("business_people").delete().eq("business_id", businessId).in("person_id", removedPersonIds);
+  }
+
   revalidatePath("/admin/businesses");
   revalidatePath(`/business/${slug}`);
   revalidatePath("/");
   revalidatePath("/businesses");
+
+  // A person's own public profile also shows the businesses they're
+  // attached to (see lib/data.ts's getBusinessesForPerson) — so anyone
+  // added to or removed from this roster needs their profile refreshed
+  // too, not just this business's page.
+  const affectedPersonIds = [...new Set([...personIds, ...removedPersonIds])];
+  if (affectedPersonIds.length > 0) {
+    const { data: affectedPeople } = await supabase.from("people").select("slug").in("id", affectedPersonIds);
+    for (const p of affectedPeople ?? []) revalidatePath(`/people/${p.slug}`);
+  }
+
   redirect(`/admin/businesses/${businessId}?saved=1`);
 }

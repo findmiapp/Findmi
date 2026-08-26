@@ -6,9 +6,9 @@ export const dynamic = "force-dynamic";
 export default async function AdminPeoplePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; error?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, error } = await searchParams;
   const people = await getAdminPeople({ q });
 
   return (
@@ -25,6 +25,9 @@ export default async function AdminPeoplePage({
       <p className="mt-1 text-sm text-ink/50">
         Founders, owners, makers, chefs, creators, operators — the people behind FindMi brands.
       </p>
+      {error && (
+        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      )}
 
       <form method="get" className="mt-4 flex gap-2">
         <input

@@ -81,7 +81,7 @@ export function RelationField({
   hint?: string;
   placeholder?: string;
   initial: SearchResult | null;
-  entity: "businesses" | "events" | "products";
+  entity: "businesses" | "events" | "products" | "people";
   createHref?: string;
   createLabel?: string;
   /** Shown as the selectable "no relationship" option, e.g. for Appearance's
@@ -182,7 +182,7 @@ export function EntitySearchAdd({
   excludeIds,
   onAdd,
 }: {
-  entity: "businesses" | "events" | "products";
+  entity: "businesses" | "events" | "products" | "people";
   placeholder: string;
   excludeIds: Set<string>;
   onAdd: (r: SearchResult) => void;

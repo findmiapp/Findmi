@@ -9,7 +9,9 @@ import {
 import ImageField from "@/components/admin/ImageField";
 import GalleryField from "@/components/admin/GalleryField";
 import SubmitBar from "@/components/admin/SubmitBar";
+import BusinessPeopleRoster from "@/components/admin/BusinessPeopleRoster";
 import type { AdminBusiness } from "@/lib/admin/queries";
+import type { BusinessPersonRow } from "@/lib/admin/people-queries";
 import type { Category } from "@/lib/types";
 import { saveBusiness } from "./actions";
 
@@ -18,12 +20,14 @@ export default function BusinessForm({
   categories,
   selectedCategoryIds,
   galleryImages,
+  people,
   error,
 }: {
   business: AdminBusiness | null;
   categories: Category[];
   selectedCategoryIds: string[];
   galleryImages: string[];
+  people: BusinessPersonRow[];
   error?: string;
 }) {
   const action = saveBusiness.bind(null, business?.id ?? null);
@@ -83,6 +87,10 @@ export default function BusinessForm({
           initialUrls={galleryImages}
           hint="Additional photos shown on the public profile, below Shop/Products, in a compact strip that opens a lightbox. The Logo and Cover Photo above stay separate."
         />
+      </div>
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <BusinessPeopleRoster initialPeople={people} />
       </div>
 
       <CheckboxList

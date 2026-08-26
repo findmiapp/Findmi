@@ -65,14 +65,50 @@ export async function savePerson(id: string | null, formData: FormData) {
   revalidatePath("/people");
   revalidatePath(`/people/${slug}`);
   revalidatePath("/");
+
+  // Every business this person was added to or removed from shows this
+  // roster on its own public profile — refresh those pages too, not just
+  // this person's own. Without this, a business profile can keep showing
+  // a stale "Meet the People Behind..." section for up to this route's
+  // ISR window after an edit made here.
+  const affectedBusinessIds = [...new Set([...businessIds, ...removedIds])];
+  if (affectedBusinessIds.length > 0) {
+    const { data: affectedBusinesses } = await supabase.from("businesses").select("slug").in("id", affectedBusinessIds);
+    for (const b of affectedBusinesses ?? []) revalidatePath(`/business/${b.slug}`);
+  }
+
   redirect(`/admin/people/${personId}?saved=1`);
 }
 
 export async function deletePerson(id: string) {
   const supabase = getAdminSupabase();
   if (!supabase) redirect(errorRedirectUrl("/admin/people", "Server isn't configured for writes."));
-  await supabase.from("people").delete().eq("id", id);
+
+  // Capture what this person was attached to BEFORE deleting — the
+  // person_id foreign key on business_people cascades on delete, so every
+  // business_people row for this person is gone the instant the delete
+  // below succeeds, and there'd be nothing left to look up afterward.
+  const [{ data: person }, { data: links }] = await Promise.all([
+    supabase.from("people").select("slug").eq("id", id).maybeSingle(),
+    supabase.from("business_people").select("businesses(slug)").eq("person_id", id),
+  ]);
+
+  const { error } = await supabase.from("people").delete().eq("id", id);
+  if (error) redirect(errorRedirectUrl("/admin/people", error.message));
+
   revalidatePath("/admin/people");
   revalidatePath("/people");
+  if (person?.slug) revalidatePath(`/people/${person.slug}`);
+
+  // Same reasoning as savePerson above — a deleted person can no longer
+  // legitimately appear on any business profile they were attached to, so
+  // every one of those pages needs to stop serving its stale cached HTML
+  // right away rather than waiting out the ISR window.
+  type LinkRow = { businesses: { slug: string } | { slug: string }[] | null };
+  for (const row of (links ?? []) as LinkRow[]) {
+    const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
+    if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  }
+
   redirect("/admin/people");
 }
