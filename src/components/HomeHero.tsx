@@ -111,14 +111,20 @@ export default function HomeHero({
                 <Image src={a} alt="" fill sizes="66vw" className="object-cover" />
               </div>
               {b && (
-                // Image 2 — height-only micro pass: h-[55%]→h-[67%] of
-                // the (unchanged) 160px collage box, ~21.8% taller.
-                // top moved -45px→-65px so the extra height extends
-                // UPWARD (its bottom edge stays ~42px into the collage,
-                // same as before) rather than growing the collage
-                // downward. Width (36%) and right-offset (2%) untouched
-                // — same horizontal clearance from body as before.
-                <div className="absolute right-[2%] top-[-65px] z-10 h-[67%] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                // Image 2 — height-only micro pass: h-[67%]→h-[161px]
+                // (1.5× its prior ~107.2px rendered height, per exact
+                // spec). top moved -65px→-119px so ALL of the added
+                // height extends UPWARD — its bottom edge stays at the
+                // same ~42px into the collage as before, unchanged.
+                // Width (36%) and right-offset (2%) untouched. Safe
+                // because it's still confined to the collage's right
+                // side, clear of body's 58%-capped column horizontally,
+                // and its extended reach (per the current default hero
+                // copy's real rendered height) lands in the empty
+                // headline↔body gap rather than on either line of text —
+                // see the file-level note for the general safety
+                // argument this relies on.
+                <div className="absolute right-[2%] top-[-119px] z-10 h-[161px] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
                   <Image src={b} alt="" fill sizes="36vw" className="object-cover" />
                 </div>
               )}
