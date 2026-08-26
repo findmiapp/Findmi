@@ -11,7 +11,7 @@ import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import FormAction from "@/components/FormAction";
-import { FeaturedBadge, FoundingMemberBadge, NewBadge, VerifiedBadge } from "@/components/Badge";
+import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
 import type { Business } from "@/lib/types";
 import {
   getAlternativeBusinesses,
@@ -116,9 +116,6 @@ export default async function BusinessPage({
   // (Business Profile V2, Part 4).
   const primaryCategory = business.categories[0] ?? null;
   const extraCategoryCount = Math.max(0, business.categories.length - 1);
-  // Same rule as BusinessLogoCard's own "New" badge — not editorially
-  // featured, created within the last 30 days. Reused, not reinvented.
-  const isNew = !business.is_featured && Date.now() - new Date(business.created_at).getTime() < 30 * 24 * 60 * 60 * 1000;
 
   // Compact icon row — website gets its own globe glyph (UI cleanup pass
   // item 5; the old generic chain-link icon read as "some vague URL," not
@@ -249,16 +246,16 @@ export default async function BusinessPage({
           <div className="mt-4 flex flex-col gap-2">
             {/* Item 2 — badges moved OFF the name's own line (they used to
                 sit inline with h1, crowding it as soon as 2-3 stacked up)
-                onto their own compact, wrapping row underneath. New reuses
-                the exact recency rule BusinessLogoCard's own badge already
-                uses (not featured, created <30 days) — not a new signal. */}
+                onto their own compact, wrapping row underneath. Recency
+                "New" badge removed (public presentation pass) — the
+                remaining badges close the space naturally; no empty
+                placeholder when none apply. */}
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
-            {(business.verified || business.founding_member || business.is_featured || isNew) && (
+            {(business.verified || business.founding_member || business.is_featured) && (
               <div className="flex flex-wrap items-center gap-1.5">
                 {business.verified && <VerifiedBadge />}
                 {business.founding_member && <FoundingMemberBadge />}
                 {business.is_featured && <FeaturedBadge />}
-                {isNew && <NewBadge />}
               </div>
             )}
             <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
