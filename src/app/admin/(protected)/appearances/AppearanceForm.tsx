@@ -1,4 +1,5 @@
 import { CheckboxField, DateTimeField, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
+import ImageField from "@/components/admin/ImageField";
 import { RelationField } from "@/components/admin/RelationPicker";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
@@ -49,6 +50,24 @@ export default function AppearanceForm({
           createHref="/admin/events/new"
           createLabel="New Event"
         />
+
+        <div className="rounded-2xl border border-black/10 p-4">
+          <p className="mb-1 text-sm font-semibold text-ink">Card Click Behavior</p>
+          <p className="mb-3 text-xs text-ink/50">
+            Click priority: Related Event → External Link → Flyer → Directions. Only the highest one set
+            actually wins on the card — the others still save, they just won&rsquo;t be the click target.
+          </p>
+          <div className="flex flex-col gap-4">
+            <TextField
+              label="External Link (optional)"
+              name="external_url"
+              defaultValue={appearance?.external_url}
+              placeholder="https://… or /a-findmi-page"
+              hint="Used only when no Related Event is set above."
+            />
+            <ImageField label="Flyer / Image (optional)" name="flyer_image_url" defaultValue={appearance?.flyer_image_url} />
+          </div>
+        </div>
 
         <TextField
           label="Appearance Title"

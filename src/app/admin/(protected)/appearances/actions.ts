@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
+import { validateCustomDestination } from "@/lib/navigation";
 
 export async function saveAppearance(id: string | null, formData: FormData) {
   const supabase = getAdminSupabase();
@@ -18,6 +19,17 @@ export async function saveAppearance(id: string | null, formData: FormData) {
   }
 
   const eventId = str(formData, "event_id"); // "" means "no event" — the select's blank option
+
+  // Same internal-path-or-https:// validation every other founder-entered
+  // destination on the site uses (see businesses/actions.ts's bulletin_url)
+  // — never a second, parallel URL-safety check.
+  const externalUrlRaw = str(formData, "external_url");
+  let externalUrl: string | null = null;
+  if (externalUrlRaw) {
+    const result = validateCustomDestination(externalUrlRaw);
+    if (!result.ok) redirect(errorRedirectUrl(editPath, `External Link: ${result.error}`));
+    externalUrl = result.value;
+  }
 
   const payload = {
     business_id: businessId,
@@ -35,6 +47,8 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     bulletin_text: str(formData, "bulletin_text"),
     show_on_home: bool(formData, "show_on_home"),
     home_sort_order: num(formData, "home_sort_order"),
+    external_url: externalUrl,
+    flyer_image_url: str(formData, "flyer_image_url"),
   };
 
   let appearanceId = id;

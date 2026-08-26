@@ -317,6 +317,12 @@ export interface Appearance {
   bulletin_text: string | null;
   show_on_home: boolean;
   home_sort_order: number | null;
+  // Appearances — Click Behavior pass. Both optional; the public card's
+  // click priority is Related Event > external_url > flyer_image_url >
+  // GPS directions (from venue/address/city/state above) > non-clickable.
+  // See AppearanceCard.tsx.
+  external_url: string | null;
+  flyer_image_url: string | null;
 }
 
 export interface BusinessWithCategories extends Business {
