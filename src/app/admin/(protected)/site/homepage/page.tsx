@@ -1,9 +1,16 @@
 import Link from "next/link";
-import { CheckboxField, TextField, TextareaField } from "@/components/admin/Fields";
+import { CheckboxField, NumberField, TextField, TextareaField } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import { getAdminSiteSections } from "@/lib/admin/site-queries";
-import { HOMEPAGE_ORDERABLE_KEYS, HOMEPAGE_SECTIONS, resolveSection, type SectionDefaults } from "@/lib/site-sections";
-import { saveSiteSection, moveSectionDown, moveSectionUp } from "./actions";
+import {
+  DEFAULT_DISCOVERY_TOPICS,
+  getDiscoveryTopicsRaw,
+  HOMEPAGE_ORDERABLE_KEYS,
+  HOMEPAGE_SECTIONS,
+  resolveSection,
+  type SectionDefaults,
+} from "@/lib/site-sections";
+import { saveSiteSection, saveDiscoveryTopics, moveSectionDown, moveSectionUp } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +52,7 @@ export default async function HomepageSiteEditorPage({
       )}
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          Saved &ldquo;{HOMEPAGE_SECTIONS[saved]?.label ?? saved}&rdquo;.
+          Saved &ldquo;{saved === "discovery_topics" ? "Discovery Topics" : HOMEPAGE_SECTIONS[saved]?.label ?? saved}&rdquo;.
         </p>
       )}
 
@@ -70,6 +77,13 @@ export default async function HomepageSiteEditorPage({
         ))}
       </div>
 
+      <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">
+        Discovery Topics — shortcut row after Search
+      </p>
+      <div className="mt-2 flex flex-col gap-3">
+        <DiscoveryTopicsCard overrides={overrides} />
+      </div>
+
       <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">Homepage sections — in order</p>
       <div className="mt-2 flex flex-col gap-3">
         {orderedKeys.map((key, i) => (
@@ -83,6 +97,52 @@ export default async function HomepageSiteEditorPage({
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function DiscoveryTopicsCard({ overrides }: { overrides: Awaited<ReturnType<typeof getAdminSiteSections>> }) {
+  const topics = getDiscoveryTopicsRaw(overrides);
+
+  return (
+    <div className="rounded-2xl border border-black/10 bg-white p-4">
+      <p className="font-display text-sm font-semibold tracking-tight text-ink">Discovery Topics</p>
+      <p className="mt-1 text-xs text-ink/45">
+        The compact chip row between Search and Upcoming Events. Each topic is a plain link — not a
+        cross-content filter. Leave a Destination blank to hide that topic rather than link somewhere broken.
+      </p>
+
+      <form action={saveDiscoveryTopics} className="mt-3 flex flex-col gap-3">
+        {topics.map((topic, i) => {
+          const n = i + 1;
+          const def = DEFAULT_DISCOVERY_TOPICS[i];
+          return (
+            <div key={n} className="rounded-xl border border-black/5 bg-black/[0.015] p-3">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">Topic {n}</p>
+              <div className="grid gap-3 sm:grid-cols-[2fr_3fr_1fr]">
+                <TextField label="Label" name={`topic_${n}_label`} defaultValue={topic.label} placeholder={def.label} />
+                <TextField
+                  label="Destination"
+                  name={`topic_${n}_url`}
+                  defaultValue={topic.url}
+                  placeholder={def.url || "/businesses?category=…"}
+                  hint="Internal path (/…) or https://"
+                />
+                <NumberField label="Order" name={`topic_${n}_order`} defaultValue={topic.order} step="1" />
+              </div>
+              <div className="mt-2">
+                <CheckboxField label="Visible" name={`topic_${n}_visible`} defaultChecked={topic.visible} />
+              </div>
+            </div>
+          );
+        })}
+        <button
+          type="submit"
+          className="self-start rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600"
+        >
+          Save
+        </button>
+      </form>
     </div>
   );
 }

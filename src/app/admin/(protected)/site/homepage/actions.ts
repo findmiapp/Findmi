@@ -3,8 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
-import { HOMEPAGE_ORDERABLE_KEYS, HOMEPAGE_SECTIONS, resolveSection } from "@/lib/site-sections";
+import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
+import { validateCustomDestination } from "@/lib/navigation";
+import {
+  DEFAULT_DISCOVERY_TOPICS,
+  HOMEPAGE_ORDERABLE_KEYS,
+  HOMEPAGE_SECTIONS,
+  resolveSection,
+  type DiscoveryTopic,
+} from "@/lib/site-sections";
 import type { SiteSection } from "@/lib/types";
 
 const PAGE_KEY = "homepage";
@@ -59,6 +66,61 @@ export async function saveSiteSection(sectionKey: string, formData: FormData) {
   revalidatePath(EDIT_PATH);
   revalidatePath("/");
   redirect(`${EDIT_PATH}?saved=${sectionKey}`);
+}
+
+// Discovery Topics — fixed six slots (position-matched to
+// DEFAULT_DISCOVERY_TOPICS), each independently editable: label,
+// destination, visible, and display order. No add/remove — the task this
+// shipped for only asked for editing the initial six without a code
+// change, not a general repeater. An invalid or blank URL is saved as
+// empty rather than a broken link — resolveDiscoveryTopics() already
+// hides any topic with no URL, so that topic just won't render until a
+// real destination is entered.
+export async function saveDiscoveryTopics(formData: FormData) {
+  const supabase = getAdminSupabase();
+  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+
+  const topics: DiscoveryTopic[] = DEFAULT_DISCOVERY_TOPICS.map((def, i) => {
+    const n = i + 1;
+    const label = str(formData, `topic_${n}_label`) ?? def.label;
+    const rawUrl = str(formData, `topic_${n}_url`);
+    const visible = bool(formData, `topic_${n}_visible`);
+    const order = num(formData, `topic_${n}_order`) ?? def.order;
+
+    let url = "";
+    if (rawUrl) {
+      const check = validateCustomDestination(rawUrl);
+      if (check.ok) url = check.value;
+      // Invalid input is silently dropped rather than failing the whole
+      // form — same "no dead links" outcome as leaving it blank.
+    }
+
+    return { label, url, visible, order };
+  });
+
+  const { data: existing } = await supabase
+    .from("site_sections")
+    .select("sort_order")
+    .eq("page_key", PAGE_KEY)
+    .eq("section_key", "discovery_topics")
+    .maybeSingle();
+
+  const { error } = await supabase.from("site_sections").upsert(
+    {
+      page_key: PAGE_KEY,
+      section_key: "discovery_topics",
+      is_visible: true,
+      sort_order: existing?.sort_order ?? 5,
+      config_json: { topics },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "page_key,section_key" }
+  );
+  if (error) redirect(errorRedirectUrl(EDIT_PATH, error.message));
+
+  revalidatePath(EDIT_PATH);
+  revalidatePath("/");
+  redirect(`${EDIT_PATH}?saved=discovery_topics`);
 }
 
 async function ensureSectionRow(

@@ -63,8 +63,19 @@ export default function HomeHero({
   return (
     <section className="border-b border-black/5 bg-white">
       <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-10">
-        <div className="flex items-center gap-3 sm:gap-12">
-          <div className="min-w-0 flex-1">
+        {/* Hero polish pass: the copy column used to be an unconstrained
+            flex-1, which meant it silently claimed every pixel of leftover
+            row width — pushing the collage to hug the container's far
+            right edge, with the "gap" between them being whatever
+            leftover space happened to remain rather than a fixed amount.
+            Capping the copy column (sm:max-w-md) means it stops growing
+            once it's comfortably readable; the collage then sits right
+            after it with a real, fixed gap, and any true leftover space
+            lands at the outer edge instead of between them. gap-3/sm:gap-8
+            replaces the old sm:gap-12 now that it's no longer the only
+            thing separating the two. */}
+        <div className="flex items-center gap-3 sm:gap-8">
+          <div className="min-w-0 flex-1 sm:max-w-md">
             <h1 className="font-display text-[clamp(1.15rem,5.1vw,1.4rem)] font-bold leading-[0.96] tracking-tight text-ink sm:text-3xl md:text-4xl">
               {headingLines.map((line, i) => (
                 <span key={i}>
@@ -92,18 +103,42 @@ export default function HomeHero({
           </div>
 
           {a && (
-            <div className="relative h-32 w-[42vw] max-w-[190px] shrink-0 sm:h-72 sm:w-64">
-              <div className="absolute left-0 top-1 z-10 h-[62%] w-[62%] overflow-hidden rounded-xl shadow-sm ring-2 ring-white sm:h-44 sm:w-44 sm:rounded-2xl sm:ring-4">
-                <Image src={a} alt="" fill sizes="(min-width: 640px) 176px, 30vw" className="object-cover" />
+            // Desktop: noticeably larger than before (256×288 → 320×288 at
+            // tablet, 384×320 at full desktop) and, combined with the copy
+            // cap above, brought inward rather than hugging the edge —
+            // without growing taller than the old height (h-72 stays the
+            // sm floor; the increase is mostly width). Mobile: this used
+            // to overlap THREE tiles in a ~[42vw] box, which read as
+            // cramped; the small top-right tile ("b") now only appears at
+            // sm+ where there's room for it, leaving a simpler two-photo
+            // stagger (a + c) on narrow screens — same real photos, just
+            // fewer shown at once, per Section 1's explicit allowance.
+            // Tile sizes stay percentage-based (not fixed px) so they
+            // scale with the container at every breakpoint automatically.
+            <div className="relative h-36 w-[46vw] max-w-[200px] shrink-0 sm:h-72 sm:w-80 lg:h-80 lg:w-96">
+              <div className="absolute left-0 top-1 z-10 h-[62%] w-[62%] overflow-hidden rounded-xl shadow-sm ring-2 ring-white sm:rounded-2xl sm:ring-4">
+                <Image
+                  src={a}
+                  alt=""
+                  fill
+                  sizes="(min-width: 1024px) 238px, (min-width: 640px) 198px, 30vw"
+                  className="object-cover"
+                />
               </div>
               {b && (
-                <div className="absolute right-0 top-0 h-[38%] w-[38%] overflow-hidden rounded-lg shadow-sm ring-2 ring-white sm:h-28 sm:w-28 sm:rounded-xl sm:ring-4">
-                  <Image src={b} alt="" fill sizes="(min-width: 640px) 112px, 18vw" className="object-cover" />
+                <div className="absolute right-0 top-0 hidden h-[38%] w-[38%] overflow-hidden rounded-xl shadow-sm ring-4 ring-white sm:block">
+                  <Image src={b} alt="" fill sizes="(min-width: 1024px) 146px, 122px" className="object-cover" />
                 </div>
               )}
               {c && (
-                <div className="absolute bottom-0 right-[14%] z-10 h-[44%] w-[44%] overflow-hidden rounded-lg shadow-sm ring-2 ring-white sm:bottom-0 sm:right-8 sm:h-32 sm:w-32 sm:rounded-xl sm:ring-4">
-                  <Image src={c} alt="" fill sizes="(min-width: 640px) 128px, 20vw" className="object-cover" />
+                <div className="absolute bottom-0 right-[14%] z-10 h-[44%] w-[44%] overflow-hidden rounded-lg shadow-sm ring-2 ring-white sm:rounded-xl sm:ring-4">
+                  <Image
+                    src={c}
+                    alt=""
+                    fill
+                    sizes="(min-width: 1024px) 169px, (min-width: 640px) 141px, 20vw"
+                    className="object-cover"
+                  />
                 </div>
               )}
             </div>

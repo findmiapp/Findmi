@@ -251,6 +251,76 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   },
 };
 
+// ---------------------------------------------------------------------
+// Discovery Topics — a compact homepage navigation row (Homepage Hero
+// Polish pass), sitting between Search and "Upcoming Events Near You".
+// These are NAVIGATION ITEMS ONLY: no cross-content Discovery taxonomy
+// exists yet, so a topic is nothing more than a founder-configured label
+// + destination URL — the same shape as a Custom Link nav item, not a
+// category filter that understands events/products/appearances. Stored
+// as one more site_sections row (page_key "homepage", section_key
+// "discovery_topics"), reusing the config_json column every imaged
+// section already writes to rather than a new table. Defaults below only
+// point at real, currently-existing destinations (an actual business
+// category filter, or /discover) — any topic with no honest destination
+// yet ships hidden, per the explicit "do not create dead links" rule,
+// until the founder configures one in /admin/site/homepage.
+// ---------------------------------------------------------------------
+
+export interface DiscoveryTopic {
+  label: string;
+  url: string;
+  visible: boolean;
+  order: number;
+}
+
+export const DEFAULT_DISCOVERY_TOPICS: DiscoveryTopic[] = [
+  // "Food & Drink" is a real business category (slug "food-drink").
+  { label: "Food + Drink", url: "/businesses?category=food-drink", visible: true, order: 0 },
+  // No "Workshops" category exists yet — hidden by default rather than
+  // linking somewhere dishonest.
+  { label: "Workshops", url: "", visible: false, order: 1 },
+  // "Markets & Pop-Ups" is the closest real business category.
+  { label: "Markets + Fairs", url: "/businesses?category=markets-pop-ups", visible: true, order: 2 },
+  // No "Apparel" category exists yet.
+  { label: "Apparel", url: "", visible: false, order: 3 },
+  // No "Kids" category exists yet.
+  { label: "Kids", url: "", visible: false, order: 4 },
+  // /discover is FindMi's existing general mixed-discovery page — the
+  // most honest "View All" destination available today.
+  { label: "View All", url: "/discover", visible: true, order: 5 },
+];
+
+/** Raw, admin-facing list — every configured (or default) topic
+ * regardless of visibility, so the editor can still show and re-enable a
+ * hidden one. Always returns exactly DEFAULT_DISCOVERY_TOPICS.length rows,
+ * position-matched to the defaults, since the admin form edits fixed
+ * slots rather than adding/removing rows. */
+export function getDiscoveryTopicsRaw(overrides: Map<string, SiteSection>): DiscoveryTopic[] {
+  const row = overrides.get("discovery_topics");
+  const configured = row?.config_json?.topics;
+  if (!Array.isArray(configured)) return DEFAULT_DISCOVERY_TOPICS;
+  return DEFAULT_DISCOVERY_TOPICS.map((def, i) => {
+    const t = configured[i] as Record<string, unknown> | undefined;
+    if (!t || typeof t !== "object") return def;
+    return {
+      label: typeof t.label === "string" && t.label.trim() ? t.label : def.label,
+      url: typeof t.url === "string" ? t.url : "",
+      visible: typeof t.visible === "boolean" ? t.visible : def.visible,
+      order: typeof t.order === "number" && Number.isFinite(t.order) ? t.order : def.order,
+    };
+  });
+}
+
+/** Public-facing list — visible topics with a real destination only,
+ * sorted by founder-controlled order. A topic with an empty URL never
+ * renders regardless of its visible flag (no dead links). */
+export function resolveDiscoveryTopics(overrides: Map<string, SiteSection>): DiscoveryTopic[] {
+  return getDiscoveryTopicsRaw(overrides)
+    .filter((t) => t.visible && t.url.trim().length > 0)
+    .sort((a, b) => a.order - b.order);
+}
+
 // KNOWN LIMITATION (updated — 2026 feed-builder pass): the homepage's
 // structural funnel (Hero, Search, Category pills, "Upcoming Events Near
 // You") still renders in a fixed sequence, not by reading `order` — that

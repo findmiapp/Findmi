@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
+import DiscoveryTopics from "@/components/DiscoveryTopics";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
 import Section, { HorizontalScroller } from "@/components/Section";
@@ -19,7 +20,7 @@ import {
   getUpcomingEvents,
 } from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
-import { getSiteSections, resolveSection, HOMEPAGE_SECTIONS } from "@/lib/site-sections";
+import { getSiteSections, resolveSection, resolveDiscoveryTopics, HOMEPAGE_SECTIONS } from "@/lib/site-sections";
 import type { Category } from "@/lib/types";
 
 export const revalidate = 60;
@@ -83,6 +84,12 @@ export default async function HomePage() {
     (src): src is string => Boolean(src)
   );
 
+  // Discovery Topics — navigation-only shortcut row, founder-editable at
+  // /admin/site/homepage (see lib/site-sections.ts). Already filtered to
+  // visible topics with a real destination; renders nothing if the
+  // founder hasn't configured any.
+  const discoveryTopics = resolveDiscoveryTopics(siteSections);
+
   return (
     <div>
       <HomeHero images={heroImages} heading={heroSec.heading} description={heroSec.body} />
@@ -93,6 +100,11 @@ export default async function HomePage() {
           <SearchBar />
         </div>
       </section>
+
+      {/* Discovery Topics — compact shortcut row, bridging Search and the
+          discovery feed below. Founder-editable navigation items only
+          (see DiscoveryTopics.tsx) — not a cross-content taxonomy. */}
+      <DiscoveryTopics topics={discoveryTopics} />
 
       {/* Discovery filters (Up Next default) + first live feed — heading
           is exactly "Upcoming Events Near You" (see HOMEPAGE_SECTIONS'
