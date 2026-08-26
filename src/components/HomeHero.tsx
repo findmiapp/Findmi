@@ -96,25 +96,34 @@ export default function HomeHero({
           </div>
 
           {a && (
-            <div className="relative mt-1 h-[130px] w-full">
-              {/* Image 1 — dominant/anchor, at the collage's own (flow-
-                  safe) top. */}
-              <div className="absolute left-[17%] top-[15%] h-[75%] w-[66%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
+            // Image-scale micro pass: collage container grew 130→160px
+            // (within the allowed 25–35px) purely to fit larger images
+            // safely — geometry/concept otherwise unchanged. Image 1's
+            // width (66%) and Image 2's width (36%, so its left edge
+            // stays at the same safe ~62% clear of body's 58% cap) are
+            // untouched — all the size increase below comes from height,
+            // per "prioritize taller."
+            <div className="relative mt-1 h-[160px] w-full">
+              {/* Image 1 — dominant/anchor. Height 75%→71% of the now-
+                  taller box = ~16.5% more visual area; width/position
+                  otherwise unchanged. */}
+              <div className="absolute left-[17%] top-[12%] h-[71%] w-[66%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
                 <Image src={a} alt="" fill sizes="66vw" className="object-cover" />
               </div>
               {b && (
-                // Image 2 — reaches above the collage box into the open
-                // space beside body's lower rows (see file note above for
-                // why this is safe regardless of body's actual height).
-                // Overlaps Image 1's upper area, stays far right.
-                <div className="absolute right-[2%] top-[-45px] z-10 h-[62%] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                // Image 2 — height 62%→55% of the taller box = ~9% more
+                // area; width/right-offset/top-offset unchanged, so its
+                // overlap with Image 1 and clearance from body are
+                // preserved exactly as before.
+                <div className="absolute right-[2%] top-[-45px] z-10 h-[55%] w-[36%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
                   <Image src={b} alt="" fill sizes="36vw" className="object-cover" />
                 </div>
               )}
               {c && (
-                // Image 3 — unchanged position relative to Image 1
-                // (overlapping its lower-right corner).
-                <div className="absolute right-[3%] top-[56%] z-10 h-[44%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
+                // Image 3 — same size/position as before, expressed
+                // relative to the taller box so it lands at the same
+                // absolute spot overlapping Image 1's lower-right.
+                <div className="absolute right-[3%] top-[46%] z-10 h-[36%] w-[37%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
                   <Image src={c} alt="" fill sizes="37vw" className="object-cover" />
                 </div>
               )}
