@@ -227,7 +227,7 @@ export default async function BusinessPage({
               before, just without the absolute-positioning machinery. */}
           <div className="flex items-start gap-2">
             {business.logo_url && (
-              <div className="-mt-10 h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-28 sm:w-28">
+              <div className="relative -mt-10 h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-28 sm:w-28">
                 <Image src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
               </div>
             )}
