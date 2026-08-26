@@ -128,6 +128,13 @@ export interface Business {
   bulletin_enabled: boolean;
   bulletin_heading: string | null;
   bulletin_body: string | null;
+  // Business Profile polish pass — founder-editable label (defaults to
+  // "Announcement" when blank, computed at the call site rather than
+  // stored as the default itself) and an optional destination that makes
+  // the whole announcement block clickable. Businesses-only — events'
+  // own bulletin fields above are untouched.
+  bulletin_label: string | null;
+  bulletin_url: string | null;
 }
 
 export interface Market {

@@ -295,26 +295,40 @@ export default function BusinessForm({
       </div>
 
       <div className="rounded-2xl border border-black/10 p-4">
-        <p className="mb-1 text-sm font-semibold text-ink">Bulletin / Announcement</p>
+        <p className="mb-1 text-sm font-semibold text-ink">Announcement</p>
         <p className="mb-3 text-xs text-ink/45">
-          A small, restrained notice shown on the profile — e.g. &ldquo;Booking fall events now&rdquo; or
-          &ldquo;Sold out this weekend.&rdquo; Renders nothing publicly unless enabled AND the body has
-          real content.
+          A small, timely notice shown near the top of your profile — a flash sale, a booking update,
+          &ldquo;Sold out this weekend,&rdquo; anything current. Renders nothing publicly unless Show
+          announcement is on and Message has real content.
         </p>
         <div className="flex flex-col gap-4">
-          <CheckboxField label="Bulletin Enabled" name="bulletin_enabled" defaultChecked={business?.bulletin_enabled} />
+          <CheckboxField label="Show announcement" name="bulletin_enabled" defaultChecked={business?.bulletin_enabled} />
           <TextField
-            label="Heading (optional)"
+            label="Label"
+            name="bulletin_label"
+            defaultValue={business?.bulletin_label}
+            placeholder="Announcement"
+            hint={'Shown above the heading — e.g. "Flash Sale," "Now Booking," "Update." Defaults to "Announcement" when blank.'}
+          />
+          <TextField
+            label="Heading"
             name="bulletin_heading"
             defaultValue={business?.bulletin_heading}
             placeholder="Sold out this weekend"
           />
           <TextareaField
-            label="Body"
+            label="Message"
             name="bulletin_body"
             defaultValue={business?.bulletin_body}
             rows={3}
             hint="e.g. We'll be back at the market next Saturday."
+          />
+          <TextField
+            label="Link (optional)"
+            name="bulletin_url"
+            defaultValue={business?.bulletin_url}
+            placeholder="https://… or /a-findmi-page"
+            hint="Makes the whole announcement clickable. Leave blank for a static notice."
           />
         </div>
       </div>

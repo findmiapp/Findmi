@@ -23,6 +23,7 @@ import {
 } from "@/lib/data";
 import { cityState } from "@/lib/format";
 import { resolveBusinessInquiryForm } from "@/lib/forms";
+import { validateCustomDestination } from "@/lib/navigation";
 import { getPublicOrigin } from "@/lib/site-url";
 
 export const revalidate = 60;
@@ -210,13 +211,29 @@ export default async function BusinessPage({
           section instead of sprawling across the full desktop width. */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="max-w-xl pl-3 sm:pl-4">
-          {business.logo_url && (
-            <div className="-mt-10 flex sm:-mt-12">
+          {/* Business Profile polish pass, item 1 — Follow + Save moved
+              into the row beside the overlapping logo (previously a large
+              unused white area on mobile), vertically centered against it
+              via items-center. Negative margin (the cover-overlap effect)
+              only applies when there's an actual logo to overlap with —
+              a logo-less business still gets Follow/Save here, just in
+              normal flow, never pulled up onto the cover image. ml-auto
+              keeps the controls pinned to the right whether or not the
+              logo is present, so this never depends on a second flex
+              child existing. */}
+          <div className={`flex items-center gap-3 ${business.logo_url ? "-mt-10 sm:-mt-12" : ""}`}>
+            {business.logo_url && (
               <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:h-28 sm:w-28">
                 <Image src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
               </div>
+            )}
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <div className="w-32">
+                <FollowButton businessId={business.id} businessSlug={business.slug} size="compact" />
+              </div>
+              <SaveButton slug={business.slug} />
             </div>
-          )}
+          </div>
 
           <div className="mt-4 flex flex-col gap-2">
             {/* Item 2 — badges moved OFF the name's own line (they used to
@@ -245,21 +262,6 @@ export default async function BusinessPage({
               )}
             </p>
             {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
-
-            {/* Final refinement pass, item 1 — Follow + Save now sit
-                together as a compact secondary-action row immediately
-                after the description: Follow uses FollowButton's new
-                "compact" size (same component/behavior, just
-                significantly smaller than the old full h-12 button) so
-                neither competes with the Inquire/custom CTA buttons
-                below. Follow takes the available width, Save stays its
-                usual fixed-width icon beside it. */}
-            <div className="mt-1 flex items-center gap-2">
-              <div className="w-32">
-                <FollowButton businessId={business.id} businessSlug={business.slug} size="compact" />
-              </div>
-              <SaveButton slug={business.slug} />
-            </div>
           </div>
         </div>
       </div>
@@ -303,7 +305,12 @@ export default async function BusinessPage({
               appearing far down the page after About. */}
           <BusinessCtaRow business={business} />
           <div className="mt-8">
-            <Bulletin heading={business.bulletin_heading} body={business.bulletin_enabled ? business.bulletin_body : null} />
+            <Bulletin
+              label={business.bulletin_label?.trim() || "Announcement"}
+              heading={business.bulletin_heading}
+              body={business.bulletin_enabled ? business.bulletin_body : null}
+              url={business.bulletin_url && validateCustomDestination(business.bulletin_url).ok ? business.bulletin_url : null}
+            />
           </div>
           {/* FindMi Here — the signature feature. Hidden entirely (not an
               empty placeholder) when nothing's scheduled, per Business
@@ -444,9 +451,17 @@ export default async function BusinessPage({
  * independently toggleable. Never renders a slot that's disabled, unlabeled,
  * or missing a safe external URL — and renders nothing at all (no divider
  * either) when none qualify, same "never empty" rule as every other
- * optional section on this page. Natural-width pills in a wrapping flex
- * row: correct for 1 (sits at its own content width), 2, or 3 (wraps
- * cleanly on narrow mobile, never overflows). */
+ * optional section on this page.
+ *
+ * Business Profile polish pass — restyled from large uppercase pills to
+ * compact utility boxes (white, thin border, modest rounded corners,
+ * smaller dark-gray text) so up to 3 read as secondary actions, not
+ * competing with Inquire. Still natural-width in a wrapping flex row
+ * (never centered, never stretched/equal-width) — 1 or 2 sit left-aligned
+ * at their own content width, and 3 reasonable labels stay on one row at
+ * common mobile widths since each button is now meaningfully narrower;
+ * `flex-wrap` only breaks a button to its own line when the actual text
+ * genuinely can't fit. */
 function BusinessCtaRow({ business }: { business: Business }) {
   const ctas = [
     { label: business.cta_1_label, url: business.cta_1_url, enabled: business.cta_1_enabled },
@@ -465,14 +480,14 @@ function BusinessCtaRow({ business }: { business: Business }) {
   // above it in that column read as a stray floating line.
   return (
     <section className="mb-8">
-      <div className="flex flex-wrap gap-2.5">
+      <div className="flex flex-wrap gap-2">
         {ctas.map((cta, i) => (
           <a
             key={i}
             href={cta.url}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-11 items-center justify-center rounded-full border border-black/10 px-5 text-sm font-bold uppercase tracking-wide text-ink transition hover:border-ink/30 hover:bg-black/[0.02]"
+            className="inline-flex items-center justify-center rounded-lg border border-black/10 bg-white px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:border-black/20 hover:bg-black/[0.03] hover:text-ink"
           >
             {cta.label}
           </a>

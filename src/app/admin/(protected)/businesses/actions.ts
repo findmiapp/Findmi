@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
+import { validateCustomDestination } from "@/lib/navigation";
 
 export async function saveBusiness(id: string | null, formData: FormData) {
   const supabase = getAdminSupabase();
@@ -14,6 +15,18 @@ export async function saveBusiness(id: string | null, formData: FormData) {
   const slug = str(formData, "slug");
   if (!name || !slug) {
     redirect(errorRedirectUrl(editPath, "Name and slug are required."));
+  }
+
+  // Announcement link — optional, but if the founder entered something it
+  // has to be a safe destination. Same internal/external validation
+  // nav_items' Custom Link already uses (an internal /path, or a full
+  // https:// URL) — never javascript:/data:/etc., never an admin path.
+  const bulletinUrlRaw = str(formData, "bulletin_url");
+  let bulletin_url: string | null = null;
+  if (bulletinUrlRaw) {
+    const result = validateCustomDestination(bulletinUrlRaw);
+    if (!result.ok) redirect(errorRedirectUrl(editPath, `Announcement link: ${result.error}`));
+    bulletin_url = result.value;
   }
 
   const payload = {
@@ -56,10 +69,13 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     cta_3_label: str(formData, "cta_3_label"),
     cta_3_url: str(formData, "cta_3_url"),
     cta_3_enabled: bool(formData, "cta_3_enabled"),
-    // Final refinement pass, item 4.
+    // Final refinement pass, item 4; label/url added in the Business
+    // Profile polish pass. bulletin_url was already validated above.
     bulletin_enabled: bool(formData, "bulletin_enabled"),
+    bulletin_label: str(formData, "bulletin_label"),
     bulletin_heading: str(formData, "bulletin_heading"),
     bulletin_body: str(formData, "bulletin_body"),
+    bulletin_url,
   };
 
   let businessId = id;
