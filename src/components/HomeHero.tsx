@@ -59,7 +59,7 @@ export default function HomeHero({
 
   return (
     <section className="border-b border-black/5 bg-white">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-10">
         {/* Stacked (copy, then collage below-right of it) on mobile —
             NOT two tiny side-by-side columns. From sm: up, the same two
             elements sit in a row: copy is capped (sm:max-w-md) so it
@@ -67,8 +67,12 @@ export default function HomeHero({
             sit right after it with a real, fixed gap rather than hugging
             the container's far-right edge. items-center is sm-only —
             unset on mobile so the stacked copy block stretches to its
-            full natural width instead of shrinking to content width. */}
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-8">
+            full natural width instead of shrinking to content width.
+            Mobile micro-fix: gap-2 (was gap-5) — the collage's own
+            -mt-3 (below) does the real work of tucking it right up
+            against the CTA line instead of leaving a big dead gap; sm:
+            is untouched. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8">
           <div className="min-w-0 flex-1 sm:max-w-md">
             <h1 className="font-display text-[clamp(1.15rem,5.1vw,1.4rem)] font-bold leading-[0.96] tracking-tight text-ink sm:text-3xl md:text-4xl">
               {headingLines.map((line, i) => (
@@ -108,7 +112,16 @@ export default function HomeHero({
             // resets that once copy/collage sit side-by-side in a row.
             // Sizes grow from a genuinely large mobile presence (not a
             // thumbnail) up through a substantially bigger desktop one.
-            <div className="relative ml-auto h-60 w-[84%] shrink-0 sm:ml-0 sm:h-72 sm:w-[22rem] lg:h-96 lg:w-[28rem] xl:h-[26rem] xl:w-[32rem]">
+            //
+            // Mobile positioning micro-fix: -mt-3 (paired with the
+            // parent's gap-2 above) tucks the whole box up snug against
+            // the CTA line instead of after a big dead gap — a small,
+            // safe overlap since "a"/"c" sit well clear of the (already
+            // narrow, ~30ch-capped) body/CTA text horizontally. h-52
+            // (was h-60) trims a modest amount of height without
+            // shrinking toward "tiny thumbnail" territory. sm:mt-0/
+            // sm:h-72 reset both — tablet/desktop sizing is untouched.
+            <div className="relative -mt-3 ml-auto h-52 w-[84%] shrink-0 sm:mt-0 sm:ml-0 sm:h-72 sm:w-[22rem] lg:h-96 lg:w-[28rem] xl:h-[26rem] xl:w-[32rem]">
               <div className="absolute left-0 top-0 h-[70%] w-[72%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white sm:rounded-3xl sm:ring-4">
                 <Image
                   src={a}
@@ -119,7 +132,14 @@ export default function HomeHero({
                 />
               </div>
               {b && (
-                <div className="absolute right-0 top-0 z-10 h-[38%] w-[40%] overflow-hidden rounded-xl shadow-md ring-2 ring-white sm:rounded-2xl sm:ring-4">
+                // Rises independently ABOVE the box's own top on mobile
+                // only (top-[-3.5rem], reset to top-0 at sm:) — this is
+                // the "upper supporting image rises alongside the lower
+                // text/CTA area" requirement. Safe because it's confined
+                // to the box's own right 40%, and body/CTA copy is
+                // already capped well short of that width (see the
+                // 30ch max-width on the body paragraph above).
+                <div className="absolute right-0 top-[-3.5rem] z-10 h-[38%] w-[40%] overflow-hidden rounded-xl shadow-md ring-2 ring-white sm:top-0 sm:rounded-2xl sm:ring-4">
                   <Image
                     src={b}
                     alt=""
