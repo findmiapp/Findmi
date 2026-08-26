@@ -85,7 +85,7 @@ export default function HomeHero({
             top, which is still ~70-90px higher than the previous pass's
             Image 1 position simply because there's no CTA + its margins
             sitting between body and the collage anymore. */}
-        <div className="px-6 pb-5 pt-8 sm:hidden">
+        <div className="px-6 pb-3.5 pt-8 sm:hidden">
           <div>
             <h1 className="max-w-[90%] font-display text-[clamp(1.7rem,8.2vw,2rem)] font-bold leading-[0.97] tracking-tight text-ink">
               {headingContent}
@@ -103,15 +103,23 @@ export default function HomeHero({
             // stays at the same safe ~62% clear of body's 58% cap) are
             // untouched — all the size increase below comes from height,
             // per "prioritize taller."
-            <div className="relative mt-1 h-[160px] w-full">
-              {/* Image 1 — dominant/anchor (bread). Two-image
-                  simplification pass: left-[17%]→left-0, moved all the
-                  way to the collage's own left edge (which already lines
-                  up with the Hero's own px-6 padding boundary) — the
-                  lower-left anchor now that Image 3 is gone from mobile.
-                  Width (82.5%), height (71%), and top (12%) unchanged —
-                  no downward move, no resize. */}
-              <div className="absolute left-0 top-[12%] h-[71%] w-[82.5%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
+            <div className="relative mt-1 h-[133px] w-full">
+              {/* Image 1 — dominant/anchor (bread). Spacing micro-fix:
+                  now that Image 3 no longer exists on mobile, the
+                  collage container's old h-[160px] left ~27px of
+                  invisible dead space below bread's actual bottom edge
+                  (bread's own top/height were percentages OF that
+                  160px box, and only reached 83% of it) — that dead
+                  space, not the CTA's own margin, was most of the
+                  excess whitespace above the CTA. Container is now
+                  h-[133px], matching bread's real bottom exactly.
+                  Bread itself switched from percentage (top-[12%]
+                  h-[71%], i.e. 19.2px/113.6px of the old 160px box) to
+                  the equivalent FIXED pixels (top-[19.2px]
+                  h-[113.6px]) so it renders at the exact same size/
+                  position as before — unaffected by the container
+                  resize, left edge (0) also unchanged. */}
+              <div className="absolute left-0 top-[19.2px] h-[113.6px] w-[82.5%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
                 <Image src={a} alt="" fill sizes="82vw" className="object-cover" />
               </div>
               {b && (
@@ -137,13 +145,12 @@ export default function HomeHero({
             </div>
           )}
 
-          {/* CTA — moved below the dominant image/collage (was above it,
-              between body and the collage). Same text/link/behavior,
-              just relocated and tightened into a small caption-like
-              spacing (mt-3) instead of the old mt-6. This is also what
-              removes the collision risk at its root — nothing
-              unconstrained-width sits beside the collage anymore. */}
-          <p className="mt-3 text-[16px] italic leading-[1.3] text-ink/40">
+          {/* CTA — spacing micro-fix: mt-3 (12px) → mt-3.5 (14px), the
+              collage→CTA gap target's low end. Combined with the collage
+              container's own resize above (which removed the real source
+              of excess space here), the visible gap above the CTA drops
+              from ~39px to ~14px. Text/link/styling otherwise unchanged. */}
+          <p className="mt-3.5 text-[16px] italic leading-[1.3] text-ink/40">
             Have a business?{" "}
             <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
               Join FindMi.
