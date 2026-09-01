@@ -85,7 +85,8 @@ export default function EventForm({
           label="End Date & Time"
           name="end_at"
           defaultValue={isoToLocalDateTime(event?.end_at ?? null)}
-          hint="Optional. Also Eastern time."
+          required
+          hint="Required — must be after the start time. Also Eastern time. Used to keep the event visible on the site for its whole real duration, not just until it starts."
         />
       </div>
 

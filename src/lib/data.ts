@@ -201,11 +201,15 @@ export async function getEventCategories(): Promise<Category[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  // "Real" here means still discoverable — hasn't ended yet, not merely
+  // "hasn't started yet" (see the active-event visibility bug fix; an
+  // event's end_at is required now, so this is a plain comparison, no
+  // fallback needed).
   const { data: realEvents } = await supabase
     .from("events")
     .select("id")
     .eq("is_demo", false)
-    .gte("start_at", new Date().toISOString());
+    .gt("end_at", new Date().toISOString());
   const realEventIds = new Set((realEvents ?? []).map((e) => e.id));
   if (realEventIds.size === 0) return [];
 
@@ -533,12 +537,18 @@ export async function getUpcomingAppearancesForBusiness(
 ): Promise<AppearanceWithEventSlug[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
+  // Same active-duration principle as events: end_at, not start_at,
+  // decides eligibility. end_at is now required on new/edited appearances
+  // (admin validation), so this is a plain comparison — a null end_at is
+  // NOT treated as open-ended (a handful of legacy rows still have one;
+  // they're excluded here until backfilled — see this pass's report).
+  const nowIso = new Date().toISOString();
   const { data } = await supabase
     .from("appearances")
     .select("*, event:events(slug)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
-    .gte("start_at", new Date().toISOString())
+    .gt("end_at", nowIso)
     .order("start_at", { ascending: true })
     .limit(limit);
 
@@ -586,13 +596,20 @@ export async function getUpcomingEvents(
   const supabase = getSupabase();
   if (!supabase) return [];
   const bounds = getDiscoveryWindowBounds(when);
-  let query = supabase
-    .from("events")
-    .select("*")
-    .eq("is_demo", false)
-    .gte("start_at", (bounds?.start ?? new Date()).toISOString());
+  let query = supabase.from("events").select("*").eq("is_demo", false);
   if (bounds) {
-    query = query.lt("start_at", bounds.end.toISOString());
+    // Duration overlap, not a start-time check: an event is eligible for
+    // this window when it starts before the window ends AND ends after
+    // the window starts. This is what keeps a currently-active,
+    // overnight, or multi-day event visible for its whole real duration
+    // instead of only up to the moment it starts (the active-event
+    // visibility bug fix). end_at is required on every event now, so no
+    // null-handling/fallback is needed here.
+    query = query.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString());
+  } else {
+    // "anytime" — no window to overlap against, so eligibility is simply
+    // "hasn't ended yet" (previously, incorrectly, "hasn't started yet").
+    query = query.gt("end_at", new Date().toISOString());
   }
   const { data } = await query.order("start_at", { ascending: true }).limit(limit);
   return data ?? [];
@@ -600,7 +617,9 @@ export async function getUpcomingEvents(
 
 /** Editorial top-of-page Featured Events — is_featured first (ordered by
  * the founder's own featured_sort_order, nulls last), then legitimate
- * upcoming events as fallback. Never fabricated. */
+ * upcoming events as fallback. Never fabricated. "Upcoming" here means
+ * "hasn't ended yet" (end_at > now), not "hasn't started yet" — see the
+ * active-event visibility bug fix. */
 export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -608,7 +627,7 @@ export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
     .from("events")
     .select("*")
     .eq("is_demo", false)
-    .gte("start_at", new Date().toISOString())
+    .gt("end_at", new Date().toISOString())
     .order("is_featured", { ascending: false })
     .order("featured_sort_order", { ascending: true, nullsFirst: false })
     .order("start_at", { ascending: true })
@@ -657,12 +676,18 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
   }
 
   const bounds = params.date ? getExactDateBounds(params.date) : getDiscoveryWindowBounds(params.when ?? "anytime");
-  let query = supabase
-    .from("events")
-    .select("*")
-    .eq("is_demo", false)
-    .gte("start_at", (bounds?.start ?? new Date()).toISOString());
-  if (bounds) query = query.lt("start_at", bounds.end.toISOString());
+  let query = supabase.from("events").select("*").eq("is_demo", false);
+  if (bounds) {
+    // Duration overlap (active-event visibility bug fix): eligible for
+    // this window when it starts before the window ends AND ends after
+    // the window starts — keeps a currently-active, overnight, or
+    // multi-day event visible for its whole real duration, not just up
+    // to the moment it starts. end_at is required on every event now.
+    query = query.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString());
+  } else {
+    // "anytime" — eligibility is simply "hasn't ended yet".
+    query = query.gt("end_at", new Date().toISOString());
+  }
   if (params.q) {
     const term = `%${params.q.trim()}%`;
     query = query.or(`name.ilike.${term},description.ilike.${term},venue_name.ilike.${term}`);
@@ -787,15 +812,20 @@ export interface AppearanceFeedItem extends Appearance {
 }
 
 /** Upcoming appearances across all businesses, newest-first by date — powers
- * the homepage "Find Them Next" feed. */
+ * the homepage "Find Them Next" feed. Eligibility is end_at-based (still
+ * active or in the future), same active-duration principle as events.
+ * end_at is required on new/edited appearances now, so a null end_at is
+ * NOT treated as open-ended — a handful of legacy rows still have one and
+ * are excluded here until backfilled (see this pass's report). */
 export async function getUpcomingAppearancesFeed(limit = 8): Promise<AppearanceFeedItem[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
+  const nowIso = new Date().toISOString();
   const { data } = await supabase
     .from("appearances")
     .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
     .neq("status", "canceled")
-    .gte("start_at", new Date().toISOString())
+    .gt("end_at", nowIso)
     .order("start_at", { ascending: true })
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
 
@@ -815,7 +845,12 @@ export type FindWindow = "live" | "today" | "weekend" | "anytime";
 
 /** The FindMi Here discovery feed — real appearances across every business,
  * filtered to one of the four temporal tabs. "live" means genuinely HERE
- * NOW (start_at <= now <= end_at), not a guess. Optional categorySlug/city
+ * NOW (start_at <= now <= end_at), not a guess. The other tabs use the
+ * same active-duration/overlap principle as events (end_at-based, not
+ * start_at-only). end_at is required on new/edited appearances now, so
+ * every tab here treats a null end_at the same way: NOT open-ended — a
+ * handful of legacy rows still have one and are excluded across every tab
+ * until backfilled (see this pass's report). Optional categorySlug/city
  * back /find's WHAT/WHERE filters — same category-then-filter-ids pattern
  * used by searchBusinesses, applied here via business_id. */
 export async function getFindMiHereFeed(
@@ -848,11 +883,16 @@ export async function getFindMiHereFeed(
 
   if (when === "live") {
     query = query.lte("start_at", nowIso).gte("end_at", nowIso);
+  } else if (when === "anytime") {
+    query = query.gt("end_at", nowIso);
   } else {
-    query = query.gte("start_at", nowIso);
-    if (when !== "anytime") {
-      const bounds = getDiscoveryWindowBounds(when === "today" ? "now" : "weekend");
-      if (bounds) query = query.lt("start_at", bounds.end.toISOString());
+    const bounds = getDiscoveryWindowBounds(when === "today" ? "now" : "weekend");
+    if (bounds) {
+      // Duration overlap, same as the events fix: starts before the
+      // window ends, and ends after the window starts.
+      query = query.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString());
+    } else {
+      query = query.gt("end_at", nowIso);
     }
   }
   if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
@@ -1101,6 +1141,11 @@ export interface HomeBulletin {
 export async function getHomeAppearanceBulletins(limit = 6): Promise<HomeBulletin[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
+  // Same active-duration principle as events (end_at-based, not
+  // start_at-only). end_at is required on new/edited appearances now, so
+  // a null end_at is NOT treated as open-ended — a handful of legacy rows
+  // still have one and are excluded here until backfilled (see this
+  // pass's report).
   const { data } = await supabase
     .from("appearances")
     .select(
@@ -1108,7 +1153,7 @@ export async function getHomeAppearanceBulletins(limit = 6): Promise<HomeBulleti
     )
     .eq("show_on_home", true)
     .neq("status", "canceled")
-    .gte("start_at", new Date().toISOString())
+    .gt("end_at", new Date().toISOString())
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("start_at", { ascending: true })
     .limit(limit * 2);
@@ -1157,12 +1202,13 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
   const hints = new Map<string, NextAppearanceHint>();
   const supabase = getSupabase();
   if (!supabase || businessIds.length === 0) return hints;
+  // Same active-duration principle as events — see getHomeAppearanceBulletins.
   const { data } = await supabase
     .from("appearances")
     .select("business_id, venue_name, title, start_at, event:events(slug, is_demo)")
     .in("business_id", businessIds)
     .neq("status", "canceled")
-    .gte("start_at", new Date().toISOString())
+    .gt("end_at", new Date().toISOString())
     .order("start_at", { ascending: true });
   for (const row of (data ?? []) as never[]) {
     const r = row as {
@@ -1479,13 +1525,19 @@ export async function getUpcomingAtLocation(
   if (!supabase) return [];
   const nowIso = new Date().toISOString();
 
+  // Same active-duration principle as the rest of this pass: eligibility
+  // is end_at-based (still active or in the future), not start_at-only.
+  // end_at is required on new/edited events and appearances now, so both
+  // are plain comparisons — a null end_at is NOT treated as open-ended (a
+  // handful of legacy appearances still have one and are excluded here
+  // until backfilled — see this pass's report).
   const [{ data: events }, { data: appearances }] = await Promise.all([
     supabase
       .from("events")
       .select("id, slug, name, cover_image_url, start_at, end_at, organizer_name")
       .ilike("venue_name", locationName)
       .eq("is_demo", false)
-      .gte("start_at", nowIso)
+      .gt("end_at", nowIso)
       .order("start_at", { ascending: true })
       .limit(limit),
     supabase
@@ -1496,7 +1548,7 @@ export async function getUpcomingAtLocation(
       .ilike("venue_name", locationName)
       .is("event_id", null)
       .neq("status", "canceled")
-      .gte("start_at", nowIso)
+      .gt("end_at", nowIso)
       .order("start_at", { ascending: true })
       .limit(limit),
   ]);

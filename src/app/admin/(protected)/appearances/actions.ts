@@ -13,8 +13,22 @@ export async function saveAppearance(id: string | null, formData: FormData) {
   const businessId = str(formData, "business_id");
   const title = str(formData, "title");
   const startLocal = str(formData, "start_at");
+  const endLocal = str(formData, "end_at");
   if (!businessId || !title || !startLocal) {
     redirect(errorRedirectUrl(editPath, "Business, title, and start date/time are required."));
+  }
+  // End Date & Time is required, not optional — same active-duration
+  // policy as events (see the active-event visibility bug fix). Without a
+  // real end time the app has no honest way to know an appearance is
+  // still happening, so a missing/invalid end can't be silently defaulted
+  // or guessed here; it has to block the save with a clear message.
+  if (!endLocal) {
+    redirect(errorRedirectUrl(editPath, "End date/time is required — FindMi uses it to know when the appearance is over."));
+  }
+  const startIso = localDateTimeToIso(startLocal);
+  const endIso = localDateTimeToIso(endLocal);
+  if (!startIso || !endIso || new Date(endIso) <= new Date(startIso)) {
+    redirect(errorRedirectUrl(editPath, "End date/time must be after the start date/time."));
   }
 
   const eventId = str(formData, "event_id"); // "" means "no event" — the select's blank option
@@ -35,8 +49,8 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     event_id: eventId,
     title,
     description: str(formData, "description"),
-    start_at: localDateTimeToIso(startLocal),
-    end_at: localDateTimeToIso(str(formData, "end_at")),
+    start_at: startIso,
+    end_at: endIso,
     venue_name: str(formData, "venue_name"),
     address: str(formData, "address"),
     city: str(formData, "city"),
