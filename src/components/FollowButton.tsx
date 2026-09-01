@@ -3,13 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isFollowed, markFollowed } from "@/lib/followed";
+import { getAccountSession } from "@/lib/accountSession";
 
 // The single Follow action for a business profile — Follow / Following.
-// No accounts exist yet, so "following" still needs an email the first
-// time. Write path is unchanged from before this pass: POST /api/follow
-// -> Supabase `followers`, upsert on (business_id, email) — see that
-// route for the actual persistence; this component only decides how the
-// email is collected.
+// Guest write path is unchanged from before this pass: POST /api/follow
+// -> Supabase `followers`, upsert on (business_id, email), still needs an
+// email the first time since there's no account to identify a guest by —
+// see that route for the actual persistence; this component only decides
+// how the email is collected. A signed-in visitor skips all of that: the
+// account already carries an identity, so Follow writes straight to
+// account_followed_businesses (POST /api/account/follow) with no email
+// prompt at all. Both write paths keep the same resting "Follow"/
+// "✓ Following" shape — only how a first Follow click is fulfilled
+// differs.
 //
 // Clean V1 email-capture UX pass — email collection moved out of an
 // inline expansion beside the logo (which used to distort the identity
@@ -36,6 +42,7 @@ export default function FollowButton({
   size?: "default" | "compact";
 }) {
   const [following, setFollowing] = useState(false);
+  const [authed, setAuthed] = useState(false);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -45,6 +52,21 @@ export default function FollowButton({
 
   useEffect(() => {
     setFollowing(isFollowed(businessSlug));
+
+    let cancelled = false;
+    getAccountSession().then((isAuthed) => {
+      if (cancelled || !isAuthed) return;
+      setAuthed(true);
+      fetch(`/api/account/follow?slug=${encodeURIComponent(businessSlug)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { following?: boolean } | null) => {
+          if (!cancelled && data) setFollowing(Boolean(data.following));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [businessSlug]);
 
   useEffect(() => setMounted(true), []);
@@ -104,6 +126,25 @@ export default function FollowButton({
     }
   }
 
+  // Signed-in path — no email needed, the account already identifies who's
+  // following. Writes to account_followed_businesses via /api/account/follow,
+  // entirely separate from the guest `followers` table above.
+  async function handleAuthedFollow() {
+    try {
+      const res = await fetch("/api/account/follow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: businessSlug }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { following?: boolean };
+        setFollowing(Boolean(data.following));
+      }
+    } catch {
+      // Best-effort — button just stays in its current state on failure.
+    }
+  }
+
   const compact = size === "compact";
   const h = compact ? "h-9" : "h-12";
   const text = compact ? "text-xs" : "text-sm";
@@ -130,9 +171,9 @@ export default function FollowButton({
       <button
         ref={buttonRef}
         type="button"
-        onClick={openModal}
-        aria-haspopup="dialog"
-        aria-expanded={open}
+        onClick={authed ? handleAuthedFollow : openModal}
+        aria-haspopup={authed ? undefined : "dialog"}
+        aria-expanded={authed ? undefined : open}
         className={`flex ${h} w-full items-center justify-center rounded-full bg-findmi ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
       >
         Follow

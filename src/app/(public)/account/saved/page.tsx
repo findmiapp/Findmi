@@ -1,72 +1,74 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { redirect } from "next/navigation";
 import BusinessCard from "@/components/BusinessCard";
 import CompactCard from "@/components/CompactCard";
 import ProductCard from "@/components/ProductCard";
-import { getSavedSlugs, getSavedEventSlugs, getSavedProductSlugs } from "@/lib/saved";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { cityState, formatDateRange } from "@/lib/format";
+import { PUBLIC_BUSINESS_COLUMNS, PUBLIC_PRODUCT_COLUMNS } from "@/lib/data";
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
 import AccountNav from "../AccountNav";
+
+export const metadata: Metadata = {
+  title: "Saved",
+  robots: { index: false },
+};
+// Authenticated, per-user content — must never be statically or
+// ISR-cached; every response here is specific to whoever is signed in.
+export const dynamic = "force-dynamic";
 
 type SavedProduct = Product & {
   business: { name: string; slug: string; logo_url: string | null; commerce_enabled: boolean } | null;
 };
 
-/** Same per-device saved list and /api/saved lookup the public /saved page
- * uses (see that page/route) — reused here, not re-architected, just
- * presented inside the account shell. Saved items still aren't tied to
- * the signed-in account; the copy below stays honest about that. */
-export default function AccountSavedPage() {
-  const [businesses, setBusinesses] = useState<BusinessWithCategories[] | null>(null);
-  const [events, setEvents] = useState<FindmiEvent[] | null>(null);
-  const [products, setProducts] = useState<SavedProduct[] | null>(null);
+/** Account-backed Saved — every visitor here is already authenticated
+ * (middleware gates all of /account/*), so unlike the public /saved page
+ * this reads directly from account_saved_businesses/events/products
+ * (RLS-scoped to auth.uid()) instead of localStorage + /api/saved. Public
+ * Save controls (SaveButton/EventSaveButton/ProductSaveButton, via
+ * lib/useAccountSaved.ts) write to these same tables once a visitor is
+ * signed in, so what shows here is exactly what those buttons show as
+ * saved everywhere else. */
+export default async function AccountSavedPage() {
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login?next=/account/saved");
 
-  useEffect(() => {
-    const businessSlugs = getSavedSlugs();
-    const eventSlugs = getSavedEventSlugs();
-    const productSlugs = getSavedProductSlugs();
+  const [{ data: savedBusinesses }, { data: savedEvents }, { data: savedProducts }] = await Promise.all([
+    supabase.from("account_saved_businesses").select(`business:businesses(${PUBLIC_BUSINESS_COLUMNS})`).eq("user_id", user.id),
+    supabase.from("account_saved_events").select("event:events(*)").eq("user_id", user.id),
+    supabase
+      .from("account_saved_products")
+      .select(`product:products(${PUBLIC_PRODUCT_COLUMNS}, business:businesses(name, slug, logo_url, commerce_enabled))`)
+      .eq("user_id", user.id),
+  ]);
 
-    if (businessSlugs.length === 0 && eventSlugs.length === 0 && productSlugs.length === 0) {
-      setBusinesses([]);
-      setEvents([]);
-      setProducts([]);
-      return;
-    }
+  const businesses = ((savedBusinesses ?? []) as unknown as { business: BusinessWithCategories | null }[])
+    .map((row) => row.business)
+    .filter((b): b is BusinessWithCategories => Boolean(b))
+    .map((b) => ({ ...b, categories: [] }));
 
-    const params = new URLSearchParams();
-    if (businessSlugs.length) params.set("business", businessSlugs.join(","));
-    if (eventSlugs.length) params.set("event", eventSlugs.join(","));
-    if (productSlugs.length) params.set("product", productSlugs.join(","));
+  const events = ((savedEvents ?? []) as unknown as { event: FindmiEvent | null }[])
+    .map((row) => row.event)
+    .filter((e): e is FindmiEvent => Boolean(e));
 
-    fetch(`/api/saved?${params.toString()}`)
-      .then((res) => res.json())
-      .then((data: { businesses: BusinessWithCategories[]; events: FindmiEvent[]; products: SavedProduct[] }) => {
-        setBusinesses(data.businesses ?? []);
-        setEvents(data.events ?? []);
-        setProducts(data.products ?? []);
-      })
-      .catch(() => {
-        setBusinesses([]);
-        setEvents([]);
-        setProducts([]);
-      });
-  }, []);
+  const products = ((savedProducts ?? []) as unknown as { product: SavedProduct | null }[])
+    .map((row) => row.product)
+    .filter((p): p is SavedProduct => Boolean(p));
 
-  const loading = businesses === null || events === null || products === null;
-  const empty = !loading && businesses.length === 0 && events.length === 0 && products.length === 0;
+  const empty = businesses.length === 0 && events.length === 0 && products.length === 0;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
 
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Saved</h1>
-      <p className="mt-1.5 text-sm text-ink/50">
-        Kept on this device — tap the bookmark on a business, event, or product to save it here.
-      </p>
+      <p className="mt-1.5 text-sm text-ink/50">Businesses, events, and products you&rsquo;ve saved to your account.</p>
 
-      {loading ? null : empty ? (
+      {empty ? (
         <div className="mt-8 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm">
           <p className="text-sm font-semibold text-ink">Nothing saved yet</p>
           <p className="mt-1 text-sm text-ink/50">

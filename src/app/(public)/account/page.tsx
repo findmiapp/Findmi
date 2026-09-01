@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import NavIcon from "@/components/NavIcon";
 import type { Profile } from "@/lib/types";
+import AccountSync from "./AccountSync";
 
 export const metadata: Metadata = {
   title: "My FindMi",
@@ -34,6 +35,7 @@ export default async function AccountHomePage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
+      <AccountSync />
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">My FindMi</p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">
         Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}

@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { syncLocalToAccountOnce } from "@/lib/accountSync";
 
 const TABS = [
   { href: "/account", label: "Home" },
@@ -20,6 +22,14 @@ const TABS = [
  * treatments — no new pattern invented. */
 export default function AccountNav() {
   const pathname = usePathname();
+
+  // Every page that renders this tab strip is already an authenticated
+  // /account/* route — piggyback the one-time local→account import here
+  // (see AccountSync on the Home page, which doesn't render this nav) so
+  // it also fires on Saved/Following/Orders/Profile, not just Home.
+  useEffect(() => {
+    syncLocalToAccountOnce();
+  }, []);
 
   return (
     <nav aria-label="Account" className="-mx-4 mb-6 flex gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">

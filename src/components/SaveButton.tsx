@@ -1,21 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { isSaved, toggleSaved } from "@/lib/saved";
+import { useAccountSaved } from "@/lib/useAccountSaved";
 
 export default function SaveButton({ slug }: { slug: string }) {
-  const [saved, setSaved] = useState(false);
-
-  // Read after mount only — localStorage isn't available during SSR, and
-  // reading it during render would mismatch the server-rendered markup.
-  useEffect(() => {
-    setSaved(isSaved(slug));
-  }, [slug]);
+  const { saved, toggle } = useAccountSaved("business", slug);
 
   return (
     <button
       type="button"
-      onClick={() => setSaved(toggleSaved(slug))}
+      onClick={toggle}
       aria-pressed={saved}
       aria-label={saved ? "Remove from Saved" : "Save"}
       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink transition active:scale-90"
