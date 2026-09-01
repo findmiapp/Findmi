@@ -15,13 +15,15 @@ export async function updateProfile(formData: FormData) {
   if (!user) redirect("/login");
 
   const displayNameRaw = String(formData.get("display_name") ?? "").trim();
-  const avatarUrlRaw = String(formData.get("avatar_url") ?? "").trim();
 
+  // avatar_url is intentionally not part of this form — the field is
+  // hidden from the UI for now (no upload flow yet), so this update must
+  // not touch it, or every save would silently null out any existing
+  // value.
   const { error } = await supabase
     .from("profiles")
     .update({
       display_name: displayNameRaw || null,
-      avatar_url: avatarUrlRaw || null,
     })
     .eq("id", user.id);
 

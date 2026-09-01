@@ -35,7 +35,7 @@ export default async function AccountPage({
   return (
     <div className="mx-auto max-w-md px-6 py-14">
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi account</p>
-      <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Account</h1>
+      <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Profile</h1>
       <p className="mt-2 text-sm text-ink/50">{user.email}</p>
 
       {error && (
@@ -43,7 +43,7 @@ export default async function AccountPage({
       )}
       {saved && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          Saved.
+          Profile updated.
         </p>
       )}
 
@@ -54,16 +54,6 @@ export default async function AccountPage({
             type="text"
             name="display_name"
             defaultValue={profile?.display_name ?? ""}
-            className={inputClass}
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">Avatar URL</span>
-          <input
-            type="text"
-            name="avatar_url"
-            defaultValue={profile?.avatar_url ?? ""}
-            placeholder="https://…"
             className={inputClass}
           />
         </label>
