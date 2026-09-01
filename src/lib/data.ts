@@ -20,7 +20,48 @@ import type {
 // All helpers fail soft (return empty arrays / null) when Supabase isn't
 // configured yet, so the app renders cleanly before env vars are set.
 
-const BUSINESS_COLUMNS = "*";
+// Production regression fix (Sept 1) — every public/anon-client read in
+// this file used to select("*"). Security Pass 1
+// (supabase/migrations/20260831000000_restrict_internal_commerce_columns.sql)
+// revoked anon/authenticated's table-level SELECT on businesses/products
+// and replaced it with an explicit column-level grant — so a bare
+// select("*") now expands to every column, including the ones that
+// migration deliberately excludes, and Postgres rejects the WHOLE query
+// (not just the missing columns) with "permission denied for table ...".
+// Every getSupabase()-backed (anon) read of businesses/products — direct
+// or embedded via another table's select() — must use one of these two
+// constants instead of "*", kept in exact sync with that migration's
+// grant lists. getAdminSupabase() (service-role) reads are unaffected by
+// any of this and are intentionally left alone.
+export const PUBLIC_BUSINESS_COLUMNS =
+  "id, slug, name, short_description, description, logo_url, cover_image_url, " +
+  "website_url, instagram_url, facebook_url, tiktok_url, email, phone, city, " +
+  "state, country, service_radius_miles, verified, founding_member, " +
+  "membership_status, created_at, updated_at, is_demo, commerce_enabled, " +
+  "publication_status, is_featured, inquiry_cta_label, inquiry_cta_url, " +
+  "cta_1_label, cta_1_url, cta_1_enabled, cta_2_label, cta_2_url, " +
+  "cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled, " +
+  "bulletin_heading, bulletin_body, bulletin_label, bulletin_url";
+// Intentionally excluded (matches the migration exactly — never add these
+// back here without also widening the grant): lead_status,
+// marketplace_fee_percent, processing_fee_payer, payout_method,
+// stripe_account_id, stripe_connect_status.
+
+export const PUBLIC_PRODUCT_COLUMNS =
+  "id, business_id, name, slug, description, image_url, price, price_label, " +
+  "product_type, external_purchase_url, is_featured, is_active, purchasable, " +
+  "inventory_status, home_sort_order, profile_sort_order";
+// Intentionally excluded: marketplace_fee_override_percent,
+// processing_fee_payer_override.
+
+/** Logs a Supabase query failure server-side with enough context to
+ * diagnose it, without ever putting the raw database error in front of a
+ * browser — every affected public helper below calls this instead of
+ * silently treating `error` the same as a legitimate empty result. */
+function logPublicQueryError(context: string, error: { message: string; code?: string } | null): void {
+  if (!error) return;
+  console.error(`[public-data] ${context} failed`, { message: error.message, code: error.code });
+}
 
 function withCategories(
   businesses: Business[],
@@ -231,15 +272,16 @@ export async function getEventCategories(): Promise<Category[]> {
 export async function getFeaturedBusinesses(limit = 8): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("businesses")
-    .select(BUSINESS_COLUMNS)
+    .select(PUBLIC_BUSINESS_COLUMNS)
     .eq("is_featured", true)
     .eq("is_demo", false)
     .eq("publication_status", "live")
     .order("created_at", { ascending: false })
     .limit(limit);
-  return attachCategories((data as Business[]) ?? []);
+  logPublicQueryError("getFeaturedBusinesses", error);
+  return attachCategories((data as unknown as Business[]) ?? []);
 }
 
 export interface HomepageRowBusinessParams {
@@ -271,16 +313,17 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
     if (categoryBusinessIds.length === 0) return [];
   }
 
-  let query = supabase.from("businesses").select(BUSINESS_COLUMNS).eq("is_demo", false).eq("publication_status", "live");
+  let query = supabase.from("businesses").select(PUBLIC_BUSINESS_COLUMNS).eq("is_demo", false).eq("publication_status", "live");
   if (categoryBusinessIds) query = query.in("id", categoryBusinessIds);
   if (params.featuredOnly) query = query.eq("is_featured", true);
 
-  const { data } = await query
+  const { data, error } = await query
     .order("is_featured", { ascending: false })
     .order("founding_member", { ascending: false })
     .order("name")
     .limit(params.limit ?? 8);
-  return attachCategories((data as Business[]) ?? []);
+  logPublicQueryError("getHomepageRowBusinesses", error);
+  return attachCategories((data as unknown as Business[]) ?? []);
 }
 
 /** Categories that can actually return a business from a specific
@@ -328,13 +371,14 @@ export async function getCategoriesForDynamicBusinessRow(featuredOnly: boolean):
 export async function getBusinessesByIds(ids: string[]): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase || ids.length === 0) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("businesses")
-    .select(BUSINESS_COLUMNS)
+    .select(PUBLIC_BUSINESS_COLUMNS)
     .in("id", ids)
     .eq("is_demo", false)
     .eq("publication_status", "live");
-  const withCats = await attachCategories((data as Business[]) ?? []);
+  logPublicQueryError("getBusinessesByIds", error);
+  const withCats = await attachCategories((data as unknown as Business[]) ?? []);
   return reorderByIds(withCats, ids);
 }
 
@@ -348,11 +392,12 @@ export async function getEventsByIds(ids: string[]): Promise<FindmiEvent[]> {
 export async function getProductsByIds(ids: string[]): Promise<FeaturedProduct[]> {
   const supabase = getSupabase();
   if (!supabase || ids.length === 0) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)")
+    .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
     .in("id", ids)
     .eq("is_active", true);
+  logPublicQueryError("getProductsByIds", error);
 
   type JoinedBusiness = Omit<FeaturedProduct["business"], "categoryName"> & {
     is_demo: boolean;
@@ -437,7 +482,7 @@ export async function searchBusinesses(params: SearchBusinessesParams = {}): Pro
 
   let query = supabase
     .from("businesses")
-    .select(BUSINESS_COLUMNS)
+    .select(PUBLIC_BUSINESS_COLUMNS)
     .eq("is_demo", false)
     .eq("publication_status", "live");
 
@@ -473,22 +518,24 @@ export async function searchBusinesses(params: SearchBusinessesParams = {}): Pro
   if (params.offset) query = query.range(params.offset, params.offset + (params.limit ?? 24) - 1);
   else if (params.limit) query = query.limit(params.limit);
 
-  const { data } = await query;
-  return attachCategories((data as Business[]) ?? []);
+  const { data, error } = await query;
+  logPublicQueryError("searchBusinesses", error);
+  return attachCategories((data as unknown as Business[]) ?? []);
 }
 
 export async function getBusinessBySlug(slug: string): Promise<BusinessWithCategories | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("businesses")
-    .select(BUSINESS_COLUMNS)
+    .select(PUBLIC_BUSINESS_COLUMNS)
     .eq("slug", slug)
     .eq("is_demo", false)
     .eq("publication_status", "live")
     .maybeSingle();
+  logPublicQueryError("getBusinessBySlug", error);
   if (!data) return null;
-  const [withCats] = await attachCategories([data as Business]);
+  const [withCats] = await attachCategories([data as unknown as Business]);
   return withCats;
 }
 
@@ -516,15 +563,16 @@ export async function getBusinessGalleryImages(businessId: string): Promise<stri
 export async function getProductsForBusiness(businessId: string): Promise<Product[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select(PUBLIC_PRODUCT_COLUMNS)
     .eq("business_id", businessId)
     .eq("is_active", true)
     .order("profile_sort_order", { ascending: true, nullsFirst: false })
     .order("is_featured", { ascending: false })
     .order("name");
-  return data ?? [];
+  logPublicQueryError("getProductsForBusiness", error);
+  return (data as unknown as Product[]) ?? [];
 }
 
 export interface AppearanceWithEventSlug extends Appearance {
@@ -759,12 +807,13 @@ export interface EventBusinessListing extends BusinessWithCategories {
 export async function getBusinessesForEvent(eventId: string): Promise<EventBusinessListing[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("event_businesses")
-    .select("featured, offering_text, display_order, businesses(*)")
+    .select(`featured, offering_text, display_order, businesses(${PUBLIC_BUSINESS_COLUMNS})`)
     .eq("event_id", eventId)
     .eq("status", "approved")
     .order("display_order", { ascending: true, nullsFirst: false });
+  logPublicQueryError("getBusinessesForEvent", error);
 
   type Row = {
     featured: boolean;
@@ -772,7 +821,7 @@ export async function getBusinessesForEvent(eventId: string): Promise<EventBusin
     display_order: number | null;
     businesses: Business | Business[] | null;
   };
-  const rows = ((data ?? []) as Row[])
+  const rows = ((data ?? []) as unknown as Row[])
     .map((row) => {
       const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
       const b = business as (Business & { is_demo?: boolean }) | null;
@@ -930,15 +979,16 @@ export async function getMobileBusinesses(limit = 8): Promise<BusinessWithCatego
   // homepage rows) so this row reads as its own curated take — "who
   // travels farthest" — rather than mechanically repeating the same
   // founding-member-first order every other section already showed.
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("businesses")
-    .select(BUSINESS_COLUMNS)
+    .select(PUBLIC_BUSINESS_COLUMNS)
     .not("service_radius_miles", "is", null)
     .eq("is_demo", false)
     .eq("publication_status", "live")
     .order("service_radius_miles", { ascending: false })
     .limit(limit);
-  return attachCategories((data as Business[]) ?? []);
+  logPublicQueryError("getMobileBusinesses", error);
+  return attachCategories((data as unknown as Business[]) ?? []);
 }
 
 export interface FeaturedProduct extends Product {
@@ -966,14 +1016,15 @@ export interface FeaturedProduct extends Product {
 export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)")
+    .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
     .eq("is_featured", true)
     .eq("is_active", true)
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("name")
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
+  logPublicQueryError("getFeaturedProducts", error);
 
   type JoinedBusiness = Omit<FeaturedProduct["business"], "categoryName"> & {
     is_demo: boolean;
@@ -1029,13 +1080,14 @@ export interface ProductWithBusiness extends Product {
 export async function getProductBySlug(slug: string): Promise<ProductWithBusiness | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("products")
     .select(
-      "*, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, is_demo, publication_status)"
+      `${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, is_demo, publication_status)`
     )
     .eq("slug", slug)
     .eq("is_active", true);
+  logPublicQueryError("getProductBySlug", error);
 
   type JoinedBusiness = Omit<ProductWithBusiness["business"], "categoryName"> & {
     is_demo: boolean;
@@ -1281,7 +1333,7 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
   const limit = params.limit ?? 40;
   let query = supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)")
+    .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
     .eq("is_active", true);
   if (params.q) {
     const term = `%${params.q.trim()}%`;
@@ -1290,11 +1342,12 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
   if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
   if (params.featuredOnly) query = query.eq("is_featured", true);
 
-  const { data } = await query
+  const { data, error } = await query
     .order("is_featured", { ascending: false })
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("name")
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
+  logPublicQueryError("getMarketplaceProducts", error);
 
   type JoinedBusiness = MarketplaceProduct["business"] & { is_demo: boolean; publication_status: string };
   return ((data ?? []) as never[])
@@ -1340,13 +1393,14 @@ export async function getEventImages(eventId: string): Promise<{ gallery: string
 export async function getEventProducts(eventId: string): Promise<MarketplaceProduct[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("event_products")
     .select(
-      "display_order, product:products(*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status))"
+      `display_order, product:products(${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status))`
     )
     .eq("event_id", eventId)
     .order("display_order", { ascending: true, nullsFirst: false });
+  logPublicQueryError("getEventProducts", error);
 
   type JoinedBusiness = MarketplaceProduct["business"] & { is_demo: boolean; publication_status: string };
   type Row = { product: (Product & { business: JoinedBusiness | JoinedBusiness[] }) | null };
@@ -1393,7 +1447,7 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
   const limit = params.limit ?? 8;
   let query = supabase
     .from("products")
-    .select("*, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)")
+    .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
     .eq("is_active", true);
   if (params.q) {
     const term = `%${params.q.trim()}%`;
@@ -1402,11 +1456,12 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
   if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
   if (params.featuredOnly) query = query.eq("is_featured", true);
 
-  const { data } = await query
+  const { data, error } = await query
     .order("is_featured", { ascending: false })
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("name")
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
+  logPublicQueryError("getHomepageRowProducts", error);
 
   type JoinedBusiness = Omit<FeaturedProduct["business"], "categoryName"> & {
     is_demo: boolean;
@@ -1459,15 +1514,16 @@ export async function getAlternativeBusinesses(
   const ids = Array.from(new Set((links ?? []).map((l) => l.business_id)));
   if (ids.length === 0) return [];
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("businesses")
-    .select(BUSINESS_COLUMNS)
+    .select(PUBLIC_BUSINESS_COLUMNS)
     .in("id", ids)
     .eq("is_demo", false)
     .eq("publication_status", "live")
     .eq("state", business.state)
     .limit(limit);
-  return attachCategories((data as Business[]) ?? []);
+  logPublicQueryError("getAlternativeBusinesses", error);
+  return attachCategories((data as unknown as Business[]) ?? []);
 }
 
 // ----------------------------------------------------------------------------

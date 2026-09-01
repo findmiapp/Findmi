@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import BusinessCard from "@/components/BusinessCard";
 import CompactCard from "@/components/CompactCard";
 import ProductCard from "@/components/ProductCard";
-import { getSupabase } from "@/lib/supabase";
 import { getSavedSlugs, getSavedEventSlugs, getSavedProductSlugs } from "@/lib/saved";
 import { cityState, formatDateRange } from "@/lib/format";
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
@@ -20,54 +19,38 @@ export default function SavedPage() {
   const [products, setProducts] = useState<SavedProduct[] | null>(null);
 
   useEffect(() => {
-    const supabase = getSupabase();
-
     const businessSlugs = getSavedSlugs();
-    if (businessSlugs.length === 0 || !supabase) {
-      setBusinesses([]);
-    } else {
-      supabase
-        .from("businesses")
-        .select("*")
-        .in("slug", businessSlugs)
-        .eq("is_demo", false)
-        .then(({ data }) => {
-          setBusinesses((data ?? []).map((b) => ({ ...b, categories: [] })));
-        });
-    }
-
     const eventSlugs = getSavedEventSlugs();
-    if (eventSlugs.length === 0 || !supabase) {
+    const productSlugs = getSavedProductSlugs();
+
+    if (businessSlugs.length === 0 && eventSlugs.length === 0 && productSlugs.length === 0) {
+      setBusinesses([]);
       setEvents([]);
-    } else {
-      supabase
-        .from("events")
-        .select("*")
-        .in("slug", eventSlugs)
-        .eq("is_demo", false)
-        .then(({ data }) => {
-          setEvents((data as FindmiEvent[]) ?? []);
-        });
+      setProducts([]);
+      return;
     }
 
-    const productSlugs = getSavedProductSlugs();
-    if (productSlugs.length === 0 || !supabase) {
-      setProducts([]);
-    } else {
-      supabase
-        .from("products")
-        .select("*, business:businesses(name, slug, logo_url, commerce_enabled)")
-        .in("slug", productSlugs)
-        .eq("is_active", true)
-        .then(({ data }) => {
-          const rows = ((data ?? []) as never[]).map((row: unknown) => {
-            const r = row as Product & { business: SavedProduct["business"] | SavedProduct["business"][] };
-            const business = Array.isArray(r.business) ? (r.business[0] ?? null) : r.business;
-            return { ...r, business };
-          });
-          setProducts(rows);
-        });
-    }
+    // Saved slugs live in localStorage, so this lookup is inherently
+    // browser-driven — resolved via a same-origin API route (like
+    // /api/homepage-search) rather than calling Supabase directly from
+    // the client, which the CSP's connect-src 'self' doesn't allow.
+    const params = new URLSearchParams();
+    if (businessSlugs.length) params.set("business", businessSlugs.join(","));
+    if (eventSlugs.length) params.set("event", eventSlugs.join(","));
+    if (productSlugs.length) params.set("product", productSlugs.join(","));
+
+    fetch(`/api/saved?${params.toString()}`)
+      .then((res) => res.json())
+      .then((data: { businesses: BusinessWithCategories[]; events: FindmiEvent[]; products: SavedProduct[] }) => {
+        setBusinesses(data.businesses ?? []);
+        setEvents(data.events ?? []);
+        setProducts(data.products ?? []);
+      })
+      .catch(() => {
+        setBusinesses([]);
+        setEvents([]);
+        setProducts([]);
+      });
   }, []);
 
   const loading = businesses === null || events === null || products === null;
