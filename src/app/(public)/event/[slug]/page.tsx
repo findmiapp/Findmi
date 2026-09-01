@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import { CategoryPill } from "@/components/Badge";
+import ClaimButton from "@/components/ClaimButton";
 import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
@@ -374,6 +375,11 @@ export default async function EventPage({
             </div>
           </section>
         )}
+
+        {/* Claim foundation pass — deliberately last, small, and muted. */}
+        <div className="mt-8">
+          <ClaimButton type="event" slug={event.slug} entityName={event.name} />
+        </div>
       </div>
     </div>
   );

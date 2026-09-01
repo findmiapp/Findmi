@@ -11,6 +11,7 @@ import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
+import ClaimButton from "@/components/ClaimButton";
 import FormAction from "@/components/FormAction";
 import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
 import type { Business } from "@/lib/types";
@@ -449,6 +450,12 @@ export default async function BusinessPage({
               </div>
             </section>
           )}
+
+          {/* Claim foundation pass — deliberately last, small, and muted;
+              never competing with Inquire/Follow/Save. */}
+          <div className="mt-8">
+            <ClaimButton type="business" slug={business.slug} entityName={business.name} />
+          </div>
         </div>
       </div>
     </div>
