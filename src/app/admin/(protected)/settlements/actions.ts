@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { round2 } from "@/lib/commerce/fees";
 import { computeAllocationStatus } from "@/lib/commerce/ledger";
 import { errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
@@ -14,9 +14,8 @@ import { errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
  * not applied further (kept as a note case — the UI clamps to what's
  * outstanding, so this only matters if the founder overrides the total). */
 export async function recordSettlementPayment(businessId: string, formData: FormData) {
-  const supabase = getAdminSupabase();
   const path = `/admin/settlements/${businessId}`;
-  if (!supabase) redirect(errorRedirectUrl(path, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const allocationIds = formData.getAll("allocation_id").map(String);
   const amount = num(formData, "amount");

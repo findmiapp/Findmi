@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 
 const EDIT_PATH = "/admin/categories/events";
@@ -14,8 +14,7 @@ const EDIT_PATH = "/admin/categories/events";
  * EventForm's existing "Categories / Experience" checklist — assignment
  * already worked, creation didn't). */
 export async function createCategory(formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
   const slug = str(formData, "slug");

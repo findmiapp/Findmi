@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { getStripe } from "@/lib/commerce/stripe";
 import { round2 } from "@/lib/commerce/fees";
 import { computeAllocationStatus } from "@/lib/commerce/ledger";
@@ -14,8 +14,7 @@ import { errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
  * already issued elsewhere), then always records the accounting entries so
  * the ledger stays the source of truth regardless of Stripe's outcome. */
 export async function issueRefund(orderItemId: string, formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/orders", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const { data: item } = await supabase.from("order_items").select("*").eq("id", orderItemId).maybeSingle();
   if (!item) redirect(errorRedirectUrl("/admin/orders", "Order item not found."));
@@ -107,8 +106,7 @@ export async function issueRefund(orderItemId: string, formData: FormData) {
 }
 
 export async function toggleItemFulfilled(orderItemId: string, orderId: string, fulfilled: boolean) {
-  const supabase = getAdminSupabase();
-  if (!supabase) return;
+  const supabase = await requireAdminSupabase();
   await supabase
     .from("order_items")
     .update({ fulfillment_status: fulfilled ? "fulfilled" : "unfulfilled" })

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import type { HomepageRowContentType, HomepageRowMode, HomepageRowTimeWindow } from "@/lib/homepage-rows";
 
@@ -34,8 +34,7 @@ function readRowFields(formData: FormData) {
 }
 
 export async function createHomepageRow(formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const { data: existing } = await supabase.from("homepage_rows").select("sort_order").order("sort_order", { ascending: false }).limit(1);
   const nextOrder = (existing?.[0]?.sort_order ?? 0) + 10;
@@ -56,8 +55,7 @@ export async function createHomepageRow(formData: FormData) {
 }
 
 export async function saveHomepageRow(id: string, formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const fields = readRowFields(formData);
   const { error } = await supabase
@@ -72,17 +70,19 @@ export async function saveHomepageRow(id: string, formData: FormData) {
 }
 
 export async function deleteHomepageRow(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   await supabase.from("homepage_rows").delete().eq("id", id);
   revalidatePath(EDIT_PATH);
   revalidatePath("/");
   redirect(EDIT_PATH);
 }
 
+// Not exported itself, but both callers below (moveHomepageRowUp,
+// moveHomepageRowDown) ARE exported Server Actions with no other check of
+// their own — the auth check has to live here, the one place both funnel
+// through.
 async function moveRow(id: string, direction: "up" | "down") {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const { data } = await supabase.from("homepage_rows").select("id, sort_order").order("sort_order", { ascending: true });
   const rows = data ?? [];

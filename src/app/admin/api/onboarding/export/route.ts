@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminMemberships } from "@/lib/admin/membership-queries";
 
 // CSV export — the concrete, minimal answer to the "spreadsheet-friendly
 // workflow" requirement. Supabase stays the source of truth; this is a
 // point-in-time snapshot for operational use, never depended on by the
-// admin UI itself. Gated by src/middleware.ts's existing "/admin/:path*"
-// cookie check — no separate auth needed.
+// admin UI itself. src/middleware.ts's existing "/admin/:path*" cookie
+// check remains the first perimeter; requireAdmin() below is Security Pass
+// 4's second, independent layer — this route has its own directly-
+// fetchable URL (it returns a CSV of contact emails/phones/admin notes),
+// so it must not rely solely on "middleware already gated the page that
+// links here."
 function csvCell(value: string): string {
   if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
   return value;
 }
 
 export async function GET() {
+  try {
+    await requireAdmin();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const memberships = await getAdminMemberships({});
 
   const header = [

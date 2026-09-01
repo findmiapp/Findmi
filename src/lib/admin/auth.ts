@@ -94,3 +94,29 @@ export async function isAdminSession(): Promise<boolean> {
   const token = jar.get(COOKIE_NAME)?.value;
   return verifyToken(token);
 }
+
+/**
+ * Security Pass 4 — the independent authorization primitive every
+ * privileged admin Server Action / API route handler / upload helper calls
+ * BEFORE touching getAdminSupabase(). src/middleware.ts remains the first
+ * perimeter (it stops an unauthenticated request from ever reaching an
+ * admin page or action); this is the second, independent layer for the
+ * specific case middleware alone can't cover — a Server Action gets its
+ * own POST-able reference regardless of which page currently renders a
+ * form pointing at it, so it must not trust "some page rendered me" as
+ * proof of authorization.
+ *
+ * Deliberately reuses isAdminSession() → verifyToken() → verify(), the
+ * EXACT SAME cookie-signature check middleware performs — not a second,
+ * parallel auth implementation. Fails closed: any missing/invalid/expired
+ * token throws a generic Error (never the password, signing material, or
+ * any token/session detail) before the caller can do anything else. This
+ * file is only ever importable from server-side code (it calls
+ * next/headers' cookies(), which Next.js itself refuses to bundle into a
+ * Client Component), so requireAdmin() carries that same guarantee.
+ */
+export async function requireAdmin(): Promise<void> {
+  if (!(await isAdminSession())) {
+    throw new Error("Unauthorized");
+  }
+}

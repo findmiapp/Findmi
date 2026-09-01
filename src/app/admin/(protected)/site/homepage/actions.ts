@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import { validateCustomDestination } from "@/lib/navigation";
 import {
@@ -19,8 +20,7 @@ const PAGE_KEY = "homepage";
 const EDIT_PATH = "/admin/site/homepage";
 
 export async function saveSiteSection(sectionKey: string, formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const def = HOMEPAGE_SECTIONS[sectionKey];
   if (!def) redirect(errorRedirectUrl(EDIT_PATH, "Unknown section."));
@@ -78,8 +78,7 @@ export async function saveSiteSection(sectionKey: string, formData: FormData) {
 // hides any topic with no URL, so that topic just won't render until a
 // real destination is entered.
 export async function saveDiscoveryTopics(formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const topics: DiscoveryTopic[] = DEFAULT_DISCOVERY_TOPICS.map((def, i) => {
     const n = i + 1;
@@ -130,8 +129,7 @@ export async function saveDiscoveryTopics(formData: FormData) {
 // resolved server-side by lib/weather.ts (geocoded, current conditions
 // fetched) — nothing here talks to the weather provider directly.
 export async function saveWeatherConfig(formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const city = str(formData, "weather_city") ?? DEFAULT_WEATHER_CITY;
   const show = bool(formData, "weather_show");
@@ -154,7 +152,7 @@ export async function saveWeatherConfig(formData: FormData) {
 }
 
 async function ensureSectionRow(
-  supabase: NonNullable<ReturnType<typeof getAdminSupabase>>,
+  supabase: SupabaseClient,
   sectionKey: string
 ): Promise<SiteSection> {
   const { data: existing } = await supabase
@@ -174,9 +172,12 @@ async function ensureSectionRow(
   return created as SiteSection;
 }
 
+// Not exported itself, but both callers below (moveSectionUp,
+// moveSectionDown) ARE exported Server Actions with no other check of
+// their own — the auth check has to live here, the one place both funnel
+// through.
 async function moveSection(sectionKey: string, direction: "up" | "down") {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const { data } = await supabase.from("site_sections").select("*").eq("page_key", PAGE_KEY);
   const overrides = new Map<string, SiteSection>();

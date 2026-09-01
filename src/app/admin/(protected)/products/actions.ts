@@ -2,14 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { isProductSlugTaken } from "@/lib/admin/queries";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 
 export async function saveProduct(id: string | null, formData: FormData) {
-  const supabase = getAdminSupabase();
   const editPath = id ? `/admin/products/${id}` : "/admin/products/new";
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const businessId = str(formData, "business_id");
   const name = str(formData, "name");
@@ -97,8 +96,7 @@ export async function saveProduct(id: string | null, formData: FormData) {
 }
 
 export async function deleteProduct(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/products", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   await supabase.from("products").delete().eq("id", id);
   revalidatePath("/admin/products");
   revalidatePath("/");

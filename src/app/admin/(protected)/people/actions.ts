@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 
 export async function savePerson(id: string | null, formData: FormData) {
-  const supabase = getAdminSupabase();
   const editPath = id ? `/admin/people/${id}` : "/admin/people/new";
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
   const slug = str(formData, "slug");
@@ -81,8 +80,7 @@ export async function savePerson(id: string | null, formData: FormData) {
 }
 
 export async function deletePerson(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/people", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   // Capture what this person was attached to BEFORE deleting — the
   // person_id foreign key on business_people cascades on delete, so every

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 
 function marketIdsFromForm(formData: FormData): string[] {
@@ -22,8 +23,7 @@ async function syncMarkets(membershipId: string, marketIds: string[]) {
  * and hands back its detail page, which shows the generated private
  * intake link (lib/tally.ts's getOnboardingFormUrl with source=invited). */
 export async function createInviteMembership(formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/onboarding/new", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const businessName = str(formData, "intended_business_name");
   const contactName = str(formData, "contact_name");
@@ -63,9 +63,8 @@ export async function createInviteMembership(formData: FormData) {
 }
 
 export async function updateMembership(id: string, formData: FormData) {
-  const supabase = getAdminSupabase();
   const editPath = `/admin/onboarding/${id}`;
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const planId = str(formData, "plan_id");
   const { data: plan } = planId
@@ -97,8 +96,7 @@ export async function updateMembership(id: string, formData: FormData) {
 /** APPROVE moves the business live (Part 13/15) — the one gate that makes
  * a profile public, independent of billing status. */
 export async function approveMembership(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(`/admin/onboarding/${id}`, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const { data: membership } = await supabase.from("memberships").select("business_id").eq("id", id).maybeSingle();
   if (!membership?.business_id) {
@@ -121,9 +119,12 @@ export async function approveMembership(id: string) {
   redirect(`/admin/onboarding/${id}?saved=1`);
 }
 
+// Not exported itself, but both callers below (rejectMembership,
+// pauseMembership) ARE exported Server Actions with no other check of
+// their own — the auth check has to live here, the one place both funnel
+// through, rather than being duplicated in each thin wrapper.
 async function setPublicationStatus(id: string, status: "rejected" | "paused" | "draft") {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(`/admin/onboarding/${id}`, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const { data: membership } = await supabase.from("memberships").select("business_id").eq("id", id).maybeSingle();
   await supabase.from("memberships").update({ publication_status: status, updated_at: new Date().toISOString() }).eq("id", id);
@@ -147,8 +148,7 @@ export async function pauseMembership(id: string) {
 }
 
 export async function markComped(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(`/admin/onboarding/${id}`, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   await supabase.from("memberships").update({ billing_status: "comped", updated_at: new Date().toISOString() }).eq("id", id);
   revalidatePath(`/admin/onboarding/${id}`);
   redirect(`/admin/onboarding/${id}?saved=1`);

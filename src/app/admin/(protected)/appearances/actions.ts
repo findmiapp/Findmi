@@ -2,14 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { validateCustomDestination } from "@/lib/navigation";
 
 export async function saveAppearance(id: string | null, formData: FormData) {
-  const supabase = getAdminSupabase();
   const editPath = id ? `/admin/appearances/${id}` : "/admin/appearances/new";
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const businessId = str(formData, "business_id");
   const title = str(formData, "title");
@@ -75,8 +74,7 @@ export async function saveAppearance(id: string | null, formData: FormData) {
 }
 
 export async function deleteAppearance(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/appearances", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   await supabase.from("appearances").delete().eq("id", id);
   revalidatePath("/admin/appearances");
   revalidatePath("/");

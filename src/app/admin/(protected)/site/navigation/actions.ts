@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import { NAV_ICON_KEYS, validateCustomDestination, type NavDestinationType } from "@/lib/navigation";
 import { findPublicRoute } from "@/lib/public-routes";
@@ -65,7 +66,7 @@ function readAndValidate(formData: FormData): { fields: Record<string, unknown> 
  * an item that already has its own children can't be given a parent
  * (that would make it a child-with-children — two levels deep). */
 async function validateParent(
-  supabase: NonNullable<ReturnType<typeof getAdminSupabase>>,
+  supabase: SupabaseClient,
   itemId: string | null,
   parentId: string | null
 ): Promise<string | null> {
@@ -86,8 +87,7 @@ async function validateParent(
 }
 
 export async function createNavItem(formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const label = str(formData, "label") ?? "New Item";
   const { data: existing } = await supabase.from("nav_items").select("sort_order").order("sort_order", { ascending: false }).limit(1);
@@ -110,8 +110,7 @@ export async function createNavItem(formData: FormData) {
 }
 
 export async function saveNavItem(id: string, formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const result = readAndValidate(formData);
   if ("error" in result) redirect(errorRedirectUrl(EDIT_PATH, result.error));
@@ -135,8 +134,7 @@ export async function saveNavItem(id: string, formData: FormData) {
  * still worth stating plainly rather than leaving it a silent side
  * effect. */
 export async function deleteNavItem(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   await supabase.from("nav_items").delete().eq("id", id);
   revalidatePath(EDIT_PATH);
   revalidatePath("/", "layout");
@@ -146,9 +144,12 @@ export async function deleteNavItem(id: string) {
 /** Move Up/Down reorders among SIBLINGS only (same parent_id) — a child
  * only ever renders nested under its one parent, so reordering it against
  * unrelated top-level items wouldn't correspond to anything visible. */
+// Not exported itself, but both callers below (moveNavItemUp,
+// moveNavItemDown) ARE exported Server Actions with no other check of
+// their own — the auth check has to live here, the one place both funnel
+// through.
 async function moveItem(id: string, direction: "up" | "down") {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const { data: current } = await supabase.from("nav_items").select("id, parent_id").eq("id", id).maybeSingle();
   if (!current) redirect(EDIT_PATH);

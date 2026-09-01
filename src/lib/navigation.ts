@@ -130,7 +130,16 @@ export async function getVisibleNavItems(): Promise<ResolvedNavItem[]> {
 }
 
 /** All items (visible or not), for the admin Menu Builder — service role,
- * bypasses RLS. */
+ * bypasses RLS.
+ *
+ * Security Pass 4 note: deliberately NOT switched to requireAdminSupabase()
+ * — this file is shared with a Client Component (AppearanceCard.tsx uses
+ * other exports from it), and requireAdminSupabase() transitively imports
+ * next/headers, which taints the whole module for every importer and
+ * breaks the build. This function's only caller is the middleware-gated
+ * /admin/site/navigation Server Component page (verified — see this
+ * pass's report), which remains its protection; it is not an independent
+ * Server Action/API route boundary the way the actions.ts files are. */
 export async function getAdminNavItems(): Promise<NavItem[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];

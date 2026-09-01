@@ -2,14 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import { validateCustomDestination } from "@/lib/navigation";
 
 export async function saveBusiness(id: string | null, formData: FormData) {
-  const supabase = getAdminSupabase();
   const editPath = id ? `/admin/businesses/${id}` : "/admin/businesses/new";
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
   const slug = str(formData, "slug");

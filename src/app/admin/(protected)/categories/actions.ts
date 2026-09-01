@@ -2,12 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { bool, errorRedirectUrl, num } from "@/lib/admin/form-helpers";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
+import { bool, num } from "@/lib/admin/form-helpers";
 
 export async function saveHomeCategories(formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/categories", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const allCategoryIds = formData.getAll("all_category_ids").map(String);
 

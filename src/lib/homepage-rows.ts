@@ -43,7 +43,16 @@ export interface HomepageRow {
 }
 
 /** All rows (visible or not), for the admin Homepage Rows editor — service
- * role, bypasses RLS. */
+ * role, bypasses RLS.
+ *
+ * Security Pass 4 note: deliberately NOT switched to requireAdminSupabase()
+ * — same reasoning as lib/navigation.ts's getAdminNavItems(): this file is
+ * shared with public code paths (getSupabase()-based public fetches below),
+ * and requireAdminSupabase() transitively importing next/headers risks
+ * tainting the whole module for any Client Component that ever imports a
+ * type or public helper from here. This function's only caller is the
+ * middleware-gated /admin/site/homepage/rows Server Component page
+ * (verified — see this pass's report), which remains its protection. */
 export async function getAdminHomepageRows(): Promise<HomepageRow[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];

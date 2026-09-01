@@ -2,12 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
+import { bool, num, str } from "@/lib/admin/form-helpers";
 
 export async function savePlans(formData: FormData) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/plans", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const allPlanIds = formData.getAll("all_plan_ids").map(String);
 

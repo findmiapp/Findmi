@@ -2,14 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import type { FormEntityType, FormPurpose } from "@/lib/types";
 
 export async function saveForm(id: string | null, formData: FormData) {
-  const supabase = getAdminSupabase();
   const editPath = id ? `/admin/forms/${id}` : "/admin/forms/new";
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
   const slug = str(formData, "slug");
@@ -58,17 +57,15 @@ export async function saveForm(id: string | null, formData: FormData) {
 }
 
 export async function deleteForm(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/forms", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   await supabase.from("forms").delete().eq("id", id); // form_assignments cascade
   revalidatePath("/admin/forms");
   redirect("/admin/forms");
 }
 
 export async function addAssignment(formId: string, formData: FormData) {
-  const supabase = getAdminSupabase();
   const editPath = `/admin/forms/${formId}`;
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const entityType = str(formData, "entity_type") as FormEntityType | null;
   const entityId = str(formData, "entity_id");
@@ -93,9 +90,8 @@ export async function addAssignment(formId: string, formData: FormData) {
 }
 
 export async function removeAssignment(formId: string, assignmentId: string) {
-  const supabase = getAdminSupabase();
   const editPath = `/admin/forms/${formId}`;
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   await supabase.from("form_assignments").delete().eq("id", assignmentId);
   revalidatePath(editPath);
   redirect(editPath);

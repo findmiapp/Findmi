@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { errorRedirectUrl, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { TIME_UNKNOWN_MARKER } from "@/lib/format";
 import {
@@ -45,16 +45,19 @@ export async function analyzeAppearances(formData: FormData): Promise<AnalyzeRes
     return { rows: [], error: "Choose a business first." };
   }
 
+  // Independent admin-session check before any privileged read — see
+  // requireAdminSupabase()'s own doc comment. Deliberately outside the
+  // try/catch below: an unauthorized call should fail closed with a plain
+  // thrown error, not get papered over as "something went wrong analyzing".
+  const supabase = await requireAdminSupabase();
+
   // Hardening pass, item 3 — everything below can throw for reasons that
   // have nothing to do with Claude (a DB hiccup, a malformed upload, etc).
   // Wrapped so the admin always gets back a plain, readable error and
   // stays on the import screen with their source material intact, never
   // an uncaught exception / raw error dump in the browser.
   try {
-    const supabase = getAdminSupabase();
-    const { data: business } = supabase
-      ? await supabase.from("businesses").select("name, city, state").eq("id", businessId).maybeSingle()
-      : { data: null };
+    const { data: business } = await supabase.from("businesses").select("name, city, state").eq("id", businessId).maybeSingle();
     if (!business) {
       return { rows: [], error: "Couldn't find the selected business — try choosing it again." };
     }
@@ -144,9 +147,8 @@ function normalizeForDupeCheck(value: string): string {
 }
 
 export async function createAppearancesBulk(businessId: string, rows: CreateRowInput[]) {
-  const supabase = getAdminSupabase();
   const businessPath = businessId ? `${IMPORT_PATH}?business=${businessId}` : IMPORT_PATH;
-  if (!supabase) redirect(errorRedirectUrl(businessPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   if (!businessId) redirect(errorRedirectUrl(IMPORT_PATH, "Choose a business first."));
   if (rows.length === 0) redirect(errorRedirectUrl(businessPath, "Select at least one appearance to create."));
 

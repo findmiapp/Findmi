@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import { JOIN_CARD_KEYS, type JoinCardKey } from "@/lib/join-page";
 
@@ -10,9 +10,12 @@ const PAGE_KEY = "join";
 const EDIT_PATH = "/admin/site/join";
 const PUBLIC_PATH = "/join";
 
+// Not exported itself, but every caller below (saveJoinHero, saveJoinGlobal,
+// saveJoinCard, saveJoinWhatYouGet) IS an exported Server Action with no
+// other check of its own — the auth check has to live here, the one place
+// all four funnel through.
 async function upsertSection(sectionKey: string, payload: Record<string, unknown>) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl(EDIT_PATH, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const { error } = await supabase
     .from("site_sections")

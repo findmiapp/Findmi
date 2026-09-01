@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 
 export async function saveLocation(id: string | null, formData: FormData) {
-  const supabase = getAdminSupabase();
   const editPath = id ? `/admin/locations/${id}` : "/admin/locations/new";
-  if (!supabase) redirect(errorRedirectUrl(editPath, "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
   const slug = str(formData, "slug");
@@ -45,8 +44,7 @@ export async function saveLocation(id: string | null, formData: FormData) {
 }
 
 export async function deleteLocation(id: string) {
-  const supabase = getAdminSupabase();
-  if (!supabase) redirect(errorRedirectUrl("/admin/locations", "Server isn't configured for writes."));
+  const supabase = await requireAdminSupabase();
   await supabase.from("locations").delete().eq("id", id);
   revalidatePath("/admin/locations");
   revalidatePath("/locations");

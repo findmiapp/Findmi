@@ -1,5 +1,6 @@
 "use server";
 
+import { requireAdmin } from "./auth";
 import { getAdminSupabase } from "./supabase-admin";
 
 const BUCKET = "findmi-media";
@@ -8,8 +9,21 @@ const MAX_BYTES = 5 * 1024 * 1024;
 /** Uploads one image to the public findmi-media bucket and returns its
  * public URL — the same kind of URL string every image_url/logo_url/
  * cover_image_url field already stores, so no other code needs to change
- * to consume it. */
+ * to consume it.
+ *
+ * Security Pass 4 — this is a "use server" export like any admin Server
+ * Action (its own importers, GalleryField.tsx/ImageField.tsx, are
+ * currently admin-only, but this function has no way to know that at
+ * runtime), so it independently verifies an admin session before touching
+ * Storage, rather than trusting that only an already-gated admin page
+ * would ever call it. */
 export async function uploadImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Unauthorized." };
+  }
+
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "No file selected." };
   if (!file.type.startsWith("image/")) return { error: "Only image files are supported." };

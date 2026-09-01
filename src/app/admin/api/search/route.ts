@@ -1,13 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 
 // Server-side search for admin relationship pickers (see
 // components/admin/RelationPicker.tsx). Lives under /admin/api/... so
 // src/middleware.ts's existing "/admin/:path*" matcher gates it with the
-// same founder-session cookie check as every other admin route — no new
-// auth code needed. Bounded to 20 rows per query; never returns the full
-// table.
+// same founder-session cookie check as every other admin route — that
+// remains the first perimeter. requireAdmin() below is Security Pass 4's
+// second, independent layer: this route has its own directly-fetchable
+// URL, so it must not rely solely on "middleware already gated the page
+// that renders my caller." Bounded to 20 rows per query; never returns the
+// full table.
 export async function GET(request: NextRequest) {
+  try {
+    await requireAdmin();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const entity = searchParams.get("entity");
   const q = (searchParams.get("q") ?? "").trim();
