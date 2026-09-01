@@ -28,11 +28,11 @@ export async function updateProfile(formData: FormData) {
     .eq("id", user.id);
 
   if (error) {
-    redirect(`/account?error=${encodeURIComponent(error.message)}`);
+    redirect(`/account/profile?error=${encodeURIComponent(error.message)}`);
   }
 
-  revalidatePath("/account");
-  redirect("/account?saved=1");
+  revalidatePath("/account/profile");
+  redirect("/account/profile?saved=1");
 }
 
 export async function signOut() {

@@ -30,6 +30,14 @@ export function isFollowed(slug: string): boolean {
   return read().includes(slug);
 }
 
+// The full per-device list — used by /account/following to resolve
+// "which businesses has this device followed" into real business
+// records, the same trivial slug-list-in/records-out shape
+// lib/saved.ts's getSavedSlugs() already serves /saved and /account/saved.
+export function getFollowedSlugs(): string[] {
+  return read();
+}
+
 export function markFollowed(slug: string): void {
   const current = read();
   if (!current.includes(slug)) write([...current, slug]);
