@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
+import { toJsonLdScript } from "@/lib/jsonLd";
 import AppearanceCard from "@/components/AppearanceCard";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShopSection from "@/components/BusinessShopSection";
@@ -169,7 +170,7 @@ export default async function BusinessPage({
 
   return (
     <div>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toJsonLdScript(jsonLd) }} />
 
       {/* Cover / brand hero — a contained, rounded landscape image (not a
           full-bleed banner), matching Product Detail V2's hero treatment
