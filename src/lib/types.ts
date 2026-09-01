@@ -418,3 +418,16 @@ export interface BusinessSummary {
   logo_url: string | null;
   cover_image_url: string | null;
 }
+
+/** The private FindMi account profile (see the account foundation pass) —
+ * one row per auth.users row, id shared with it. Distinct from `Person`
+ * above: this is private account data, never publicly readable, and
+ * carries no bio/editorial fields. No email/password here — those live
+ * only in Supabase Auth (auth.users), reachable via the session. */
+export interface Profile {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
