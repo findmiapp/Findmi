@@ -272,3 +272,33 @@ create policy "Public insert followers" on followers for insert with check (true
 -- Note: inquiries/followers have no public select policy, so anon reads
 -- return zero rows. Use the service role key (server-side only) or the
 -- Supabase dashboard to review submissions.
+
+-- ----------------------------------------------------------------------------
+-- Security Pass 1 — restrict internal-only commerce columns from anon/
+-- authenticated (see migrations/20260831000000_restrict_internal_commerce_columns.sql
+-- for the full rationale). RLS above still governs row-level visibility;
+-- this layer additionally restricts which COLUMNS anon/authenticated can
+-- read on businesses/products, since RLS alone does not.
+-- ----------------------------------------------------------------------------
+revoke select on businesses from anon, authenticated;
+grant select (
+  id, slug, name, short_description, description, logo_url, cover_image_url,
+  website_url, instagram_url, facebook_url, tiktok_url, email, phone, city,
+  state, country, service_radius_miles, verified, founding_member,
+  membership_status, created_at, updated_at, is_demo, commerce_enabled,
+  publication_status, is_featured, inquiry_cta_label, inquiry_cta_url,
+  cta_1_label, cta_1_url, cta_1_enabled, cta_2_label, cta_2_url,
+  cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled,
+  bulletin_heading, bulletin_body, bulletin_label, bulletin_url
+) on businesses to anon, authenticated;
+-- Internal-only, not granted: lead_status, marketplace_fee_percent,
+-- processing_fee_payer, payout_method, stripe_account_id, stripe_connect_status
+
+revoke select on products from anon, authenticated;
+grant select (
+  id, business_id, name, slug, description, image_url, price, price_label,
+  product_type, external_purchase_url, is_featured, is_active, purchasable,
+  inventory_status, home_sort_order, profile_sort_order
+) on products to anon, authenticated;
+-- Internal-only, not granted: marketplace_fee_override_percent,
+-- processing_fee_payer_override

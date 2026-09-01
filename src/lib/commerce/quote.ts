@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabase";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { formatAppearanceDateRange } from "@/lib/format";
 import {
   estimateProcessingFee,
@@ -66,9 +66,16 @@ type ProductRow = Product & {
  * prices, fees, or fulfillment amounts from the client. Used both to
  * render the /cart page (display only) and, identically, to build the
  * order about to be persisted at checkout, so what the customer sees is
- * exactly what gets charged. */
+ * exactly what gets charged.
+ *
+ * Uses the service-role client, not the public anon client — this is the
+ * one legitimate reader of businesses.marketplace_fee_percent/
+ * processing_fee_payer and products.marketplace_fee_override_percent/
+ * processing_fee_payer_override (Security Pass 1 revoked anon/authenticated
+ * SELECT on those internal columns; this function already only ever runs
+ * server-side, from "use server" Server Actions, never from the browser). */
 export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> {
-  const supabase = getSupabase();
+  const supabase = getAdminSupabase();
   const emptyQuote: CartQuote = {
     lines: [],
     merchandiseSubtotal: 0,
