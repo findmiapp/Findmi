@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getAdminOrderById } from "@/lib/admin/commerce-queries";
 import FulfillmentStatusToggle from "@/components/admin/FulfillmentStatusToggle";
+import RefundForm from "@/components/admin/RefundForm";
 import { issueRefund } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -128,28 +129,15 @@ export default async function AdminOrderDetailPage({
                         {item.refunded_amount > 0 && ` · Refunded $${item.refunded_amount.toFixed(2)}`}
                       </p>
 
-                      {refundable > 0.005 && (
-                        <form action={issueRefund.bind(null, item.id)} className="mt-2 flex flex-wrap items-center gap-2">
-                          <input
-                            type="number"
-                            name="amount"
-                            step="0.01"
-                            min="0.01"
-                            max={refundable}
-                            placeholder={`Up to $${refundable.toFixed(2)}`}
-                            required
-                            className="w-32 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs text-ink"
-                          />
-                          <input
-                            type="text"
-                            name="reason"
-                            placeholder="Reason (optional)"
-                            className="min-w-0 flex-1 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs text-ink"
-                          />
-                          <button type="submit" className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink hover:bg-black/[0.03]">
-                            Refund
-                          </button>
-                        </form>
+                      {/* Refund is only ever offered for a genuinely paid
+                          order — payment_status/stripe_payment_intent_id
+                          both come from Stripe's own confirmed-payment
+                          webhook (settleOrder), never from client input.
+                          Hiding it here is a UX convenience only; the
+                          authoritative check is server-side in
+                          issueRefund(). */}
+                      {order.payment_status === "paid" && refundable > 0.005 && (
+                        <RefundForm action={issueRefund.bind(null, item.id)} refundable={refundable} />
                       )}
                     </div>
                   );

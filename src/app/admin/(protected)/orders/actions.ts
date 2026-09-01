@@ -20,6 +20,22 @@ export async function issueRefund(orderItemId: string, formData: FormData) {
   if (!item) redirect(errorRedirectUrl("/admin/orders", "Order item not found."));
 
   const orderPath = `/admin/orders/${item!.order_id}`;
+
+  const { data: order } = await supabase.from("orders").select("*").eq("id", item!.order_id).maybeSingle();
+  if (!order) redirect(errorRedirectUrl(orderPath, "Order not found."));
+
+  // Authoritative server-side eligibility check — the UI's decision to
+  // show/hide the Refund control is never trusted on its own. A refund can
+  // only be issued against money Stripe actually confirmed as captured;
+  // without both a "paid" order and a real PaymentIntent id, there is
+  // nothing to refund — proceeding would just fabricate a `refunds` row
+  // and a `refunded_amount` bump for money that was never collected
+  // (the exact production bug this check exists to close). Checked before
+  // any Stripe call or write below.
+  if (order!.payment_status !== "paid" || !order!.stripe_payment_intent_id) {
+    redirect(errorRedirectUrl(orderPath, "This order hasn't been paid — there's nothing to refund."));
+  }
+
   const amount = num(formData, "amount");
   const reason = str(formData, "reason");
   const refundable = round2(item!.line_merchandise_total + item!.fulfillment_amount - item!.refunded_amount);
@@ -28,7 +44,6 @@ export async function issueRefund(orderItemId: string, formData: FormData) {
     redirect(errorRedirectUrl(orderPath, `Can't refund more than the remaining $${refundable.toFixed(2)} on this item.`));
   }
 
-  const { data: order } = await supabase.from("orders").select("*").eq("id", item!.order_id).maybeSingle();
   const { data: allocation } = await supabase
     .from("vendor_order_allocations")
     .select("*")
@@ -39,10 +54,10 @@ export async function issueRefund(orderItemId: string, formData: FormData) {
   let stripeRefundId: string | null = null;
   let stripeError: string | null = null;
   const stripe = getStripe();
-  if (stripe && order?.stripe_payment_intent_id) {
+  if (stripe && order!.stripe_payment_intent_id) {
     try {
       const refund = await stripe.refunds.create({
-        payment_intent: order.stripe_payment_intent_id,
+        payment_intent: order!.stripe_payment_intent_id,
         amount: Math.round(amount! * 100),
       });
       stripeRefundId = refund.id;
