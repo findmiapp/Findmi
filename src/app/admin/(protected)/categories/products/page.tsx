@@ -2,21 +2,22 @@ import Link from "next/link";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import { getAllCategories, getCategoryUsageCounts } from "@/lib/admin/queries";
-import { createCategory, saveEventCategories } from "./actions";
+import { createCategory, saveProductCategories } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-// Event Categories — event-kind rows in the shared `categories` table
-// (see the taxonomy foundation pass: kind now separates business/event/
-// product taxonomy, though all three still live in one physical table).
-// This screen only ever shows/creates/edits kind='event' rows.
-export default async function EventCategoriesPage({
+// Product Categories — first-class product taxonomy (taxonomy foundation
+// pass). Separate from a product's selling business's category: a product
+// with its own product-category assignment shows that instead of the
+// seller's business category on cards/detail pages (see lib/data.ts's
+// getPrimaryCategoryByProduct).
+export default async function ProductCategoriesPage({
   searchParams,
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const [categories, usage] = await Promise.all([getAllCategories("event"), getCategoryUsageCounts()]);
+  const [categories, usage] = await Promise.all([getAllCategories("product"), getCategoryUsageCounts()]);
   const sorted = [...categories].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
@@ -26,13 +27,13 @@ export default async function EventCategoriesPage({
           Categories
         </Link>
         <span>/</span>
-        <span>Event Categories</span>
+        <span>Product Categories</span>
       </div>
-      <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">Event Categories</h1>
+      <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">Product Categories</h1>
       <p className="mt-1 max-w-xl text-sm text-ink/50">
-        Create categories here, then assign them to a specific event from that event&rsquo;s own edit
-        page (Categories / Experience). Event categories are their own taxonomy now — separate from
-        Business Categories, even though both used to share one undifferentiated list.
+        Create categories here, then assign them to a specific product from that product&rsquo;s own
+        edit page. A product can have more than one. Separate from Business Categories and Event
+        Categories — its own taxonomy.
       </p>
 
       {error && (
@@ -48,7 +49,7 @@ export default async function EventCategoriesPage({
         <p className="text-sm font-semibold text-ink">Add Category</p>
         <form action={createCategory} className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <NameSlugFields isNew slugLabel="Slug" slugHint="Used in filter URLs — auto-generated from the name." />
+            <NameSlugFields isNew slugLabel="Slug" slugHint="Auto-generated from the name." />
           </div>
           <button
             type="submit"
@@ -59,7 +60,7 @@ export default async function EventCategoriesPage({
         </form>
       </div>
 
-      <form action={saveEventCategories} className="mt-6 flex flex-col gap-5">
+      <form action={saveProductCategories} className="mt-6 flex flex-col gap-5">
         <p className="text-xs font-bold uppercase tracking-wide text-ink/40">All Categories</p>
         {sorted.length === 0 ? (
           <p className="text-sm text-ink/45">No categories yet — add one above.</p>
@@ -87,7 +88,7 @@ export default async function EventCategoriesPage({
                     />
                   </div>
                   <span className="text-xs text-ink/45">
-                    {count.events} event{count.events === 1 ? "" : "s"}
+                    {count.products} product{count.products === 1 ? "" : "s"}
                   </span>
                 </div>
               );

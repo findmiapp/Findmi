@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
+import { isSlugTaken } from "@/lib/admin/queries";
 import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
+import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import type { EventParticipationStatus } from "@/lib/types";
 
 const VALID_STATUSES: EventParticipationStatus[] = [
@@ -19,11 +21,21 @@ export async function saveEvent(id: string | null, formData: FormData) {
   const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
-  const slug = str(formData, "slug");
   const startLocal = str(formData, "start_at");
-  if (!name || !slug || !startLocal) {
-    redirect(errorRedirectUrl(editPath, "Name, slug, and start date/time are required."));
+  if (!name || !startLocal) {
+    redirect(errorRedirectUrl(editPath, "Name and start date/time are required."));
   }
+
+  // Slug safety can't depend on client JS having run: normalize whatever
+  // was submitted, fall back to generating one from the name if it's
+  // blank, then resolve any collision with a deterministic -2/-3 suffix.
+  const baseSlug = resolveSlugInput(str(formData, "slug"), name);
+  if (!baseSlug) {
+    redirect(errorRedirectUrl(editPath, "Name is required to generate a slug."));
+  }
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) =>
+    isSlugTaken("events", candidate, id ?? undefined)
+  );
 
   const payload = {
     name,

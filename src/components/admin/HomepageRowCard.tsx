@@ -29,9 +29,11 @@ const iconButtonClass =
  * curated picker) show immediately, without a page reload — everything
  * still submits through the one Server Action passed in via saveAction,
  * same pattern as every other admin form on FindMi. */
+type CategoryOption = { slug: string; name: string };
+
 export default function HomepageRowCard({
   row,
-  categories,
+  categoriesByKind,
   curatedPreview,
   saveAction,
   deleteAction,
@@ -41,7 +43,12 @@ export default function HomepageRowCard({
   canMoveDown,
 }: {
   row: HomepageRow;
-  categories: { slug: string; name: string }[];
+  /** Kept split by kind (taxonomy foundation pass) — a row's Category
+   * dropdown must only ever offer categories that its own content type
+   * could actually match (getHomepageRowBusinesses/Events/Products are
+   * all kind-scoped now), never every domain's categories mixed
+   * together. */
+  categoriesByKind: { business: CategoryOption[]; event: CategoryOption[]; product: CategoryOption[] };
   curatedPreview: SearchResult[];
   saveAction: (formData: FormData) => void;
   deleteAction: () => void;
@@ -54,6 +61,8 @@ export default function HomepageRowCard({
   const [mode, setMode] = useState<HomepageRowMode>(row.mode);
 
   const isShowcase = contentType === "business_showcase";
+  const categories =
+    contentType === "events" ? categoriesByKind.event : contentType === "products" ? categoriesByKind.product : categoriesByKind.business;
 
   return (
     <div className="rounded-2xl border border-black/10 bg-white p-4">

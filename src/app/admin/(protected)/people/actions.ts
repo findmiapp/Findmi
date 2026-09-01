@@ -3,17 +3,29 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
+import { isSlugTaken } from "@/lib/admin/queries";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
+import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 
 export async function savePerson(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/people/${id}` : "/admin/people/new";
   const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
-  const slug = str(formData, "slug");
-  if (!name || !slug) {
-    redirect(errorRedirectUrl(editPath, "Name and slug are required."));
+  if (!name) {
+    redirect(errorRedirectUrl(editPath, "Name is required."));
   }
+
+  // Slug safety can't depend on client JS having run: normalize whatever
+  // was submitted, fall back to generating one from the name if it's
+  // blank, then resolve any collision with a deterministic -2/-3 suffix.
+  const baseSlug = resolveSlugInput(str(formData, "slug"), name);
+  if (!baseSlug) {
+    redirect(errorRedirectUrl(editPath, "Name is required to generate a slug."));
+  }
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) =>
+    isSlugTaken("people", candidate, id ?? undefined)
+  );
 
   const payload = {
     name,

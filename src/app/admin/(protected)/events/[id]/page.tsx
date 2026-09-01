@@ -16,7 +16,7 @@ export default async function EditEventPage({
   const { error, saved } = await searchParams;
   const [result, categories, selectedCategoryIds] = await Promise.all([
     getAdminEventById(id),
-    getAllCategories(),
+    getAllCategories("event"),
     getEventCategoryIds(id),
   ]);
   if (!result) notFound();

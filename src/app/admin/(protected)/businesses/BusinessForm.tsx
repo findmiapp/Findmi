@@ -8,6 +8,7 @@ import {
 } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import GalleryField from "@/components/admin/GalleryField";
+import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import BusinessPeopleRoster from "@/components/admin/BusinessPeopleRoster";
 import type { AdminBusiness } from "@/lib/admin/queries";
@@ -47,16 +48,13 @@ export default function BusinessForm({
         hint="On = visible to the public. Off = hidden (demo/test only). A business linked to a membership also needs its onboarding approved (see the Membership section above) — a pending/rejected/paused membership keeps the profile hidden even when this is on."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField label="Business Name" name="name" defaultValue={business?.name} required />
-        <TextField
-          label="URL Slug"
-          name="slug"
-          defaultValue={business?.slug}
-          required
-          hint="Used in the public URL: /business/your-slug"
-        />
-      </div>
+      <NameSlugFields
+        isNew={!business}
+        nameLabel="Business Name"
+        defaultName={business?.name}
+        defaultSlug={business?.slug}
+        slugHint="Used in the public URL: /business/your-slug"
+      />
 
       <TextField
         label="Short Description"

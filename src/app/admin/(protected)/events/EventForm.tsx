@@ -8,6 +8,7 @@ import {
 } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import GalleryField from "@/components/admin/GalleryField";
+import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
@@ -52,16 +53,13 @@ export default function EventForm({
         hint="On = visible to the public. Off = hidden (demo/test only)."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField label="Event Name" name="name" defaultValue={event?.name} required />
-        <TextField
-          label="URL Slug"
-          name="slug"
-          defaultValue={event?.slug}
-          required
-          hint="Used in the public URL: /event/your-slug"
-        />
-      </div>
+      <NameSlugFields
+        isNew={!event}
+        nameLabel="Event Name"
+        defaultName={event?.name}
+        defaultSlug={event?.slug}
+        slugHint="Used in the public URL: /event/your-slug"
+      />
 
       <TextareaField label="Description" name="description" defaultValue={event?.description} />
       <ImageField label="Cover Photo" name="cover_image_url" defaultValue={event?.cover_image_url} />

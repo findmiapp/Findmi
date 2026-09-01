@@ -9,7 +9,7 @@ export default async function NewBusinessPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const categories = await getAllCategories();
+  const categories = await getAllCategories("business");
 
   return (
     <div>

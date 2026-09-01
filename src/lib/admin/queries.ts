@@ -4,6 +4,7 @@ import type {
   Appearance,
   Business,
   Category,
+  CategoryKind,
   EventParticipationStatus,
   FindmiEvent,
   FindmiLocation,
@@ -118,10 +119,19 @@ export async function getAdminBusinessById(
   };
 }
 
-export async function getAllCategories(): Promise<Category[]> {
+/** All categories, or just one kind's when `kind` is passed. Every caller
+ * that assigns categories onto a specific entity (BusinessForm,
+ * EventForm, ProductForm) MUST pass its own kind — an omitted kind
+ * returns every domain's rows mixed together, which is only appropriate
+ * for a screen that genuinely needs the whole table (there isn't one
+ * today; kept optional for flexibility, not as an invitation to skip
+ * scoping). */
+export async function getAllCategories(kind?: CategoryKind): Promise<Category[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  const { data } = await supabase.from("categories").select("*").order("name");
+  let query = supabase.from("categories").select("*");
+  if (kind) query = query.eq("kind", kind);
+  const { data } = await query.order("name");
   return data ?? [];
 }
 
@@ -315,33 +325,64 @@ export async function getEventCategoryIds(eventId: string): Promise<string[]> {
   return (data ?? []).map((c) => c.category_id);
 }
 
-/** How many events (event_categories) and businesses (business_categories)
- * each category is actually tagged on — powers the Event Categories admin
- * page's usage column, so the founder can see which categories are real
- * event taxonomy today versus only used for businesses (or unused). The
- * `categories` table is shared by both join tables; this is read-only
- * visibility, not a schema split. */
-export async function getCategoryUsageCounts(): Promise<Map<string, { events: number; businesses: number }>> {
+/** Same shape as getEventCategoryIds above, for a product's
+ * product_categories assignments — seeds ProductForm's category checklist
+ * on an edit page. */
+export async function getProductCategoryIds(productId: string): Promise<string[]> {
   const supabase = getAdminSupabase();
-  const counts = new Map<string, { events: number; businesses: number }>();
+  if (!supabase) return [];
+  const { data } = await supabase.from("product_categories").select("category_id").eq("product_id", productId);
+  return (data ?? []).map((c) => c.category_id);
+}
+
+/** How many events (event_categories), businesses (business_categories),
+ * and products (product_categories) each category is actually tagged on —
+ * powers each kind-specific admin category screen's usage column, so the
+ * founder can see which categories are real taxonomy today versus unused.
+ * The `categories` table is shared by all three join tables; this is
+ * read-only visibility, not a schema split. */
+export async function getCategoryUsageCounts(): Promise<Map<string, { events: number; businesses: number; products: number }>> {
+  const supabase = getAdminSupabase();
+  const counts = new Map<string, { events: number; businesses: number; products: number }>();
   if (!supabase) return counts;
 
-  const [{ data: eventLinks }, { data: businessLinks }] = await Promise.all([
+  const [{ data: eventLinks }, { data: businessLinks }, { data: productLinks }] = await Promise.all([
     supabase.from("event_categories").select("category_id"),
     supabase.from("business_categories").select("category_id"),
+    supabase.from("product_categories").select("category_id"),
   ]);
 
   for (const row of eventLinks ?? []) {
-    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0 };
+    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0, products: 0 };
     entry.events += 1;
     counts.set(row.category_id, entry);
   }
   for (const row of businessLinks ?? []) {
-    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0 };
+    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0, products: 0 };
     entry.businesses += 1;
     counts.set(row.category_id, entry);
   }
+  for (const row of productLinks ?? []) {
+    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0, products: 0 };
+    entry.products += 1;
+    counts.set(row.category_id, entry);
+  }
   return counts;
+}
+
+/** Slug-uniqueness check for categories, scoped by kind — the migration
+ * changed categories' uniqueness from a single global slug to unique
+ * (kind, slug), so e.g. "markets-pop-ups" can validly exist once for
+ * business and once for event. Separate from the generic isSlugTaken
+ * above because categories are the one entity whose uniqueness scope is
+ * per-kind rather than table-wide. */
+export async function isCategorySlugTaken(kind: CategoryKind, slug: string, excludeId?: string): Promise<boolean> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return false;
+  let query = supabase.from("categories").select("id").eq("kind", kind).eq("slug", slug);
+  if (excludeId) query = query.neq("id", excludeId);
+  const { data } = await query;
+  return (data?.length ?? 0) > 0;
 }
 
 /** Looks up just the one event a form already has selected (Appearance's
@@ -523,6 +564,26 @@ export async function isProductSlugTaken(slug: string, excludeId?: string): Prom
   const supabase = getAdminSupabase();
   if (!supabase) return false;
   let query = supabase.from("products").select("id").eq("slug", slug);
+  if (excludeId) query = query.neq("id", excludeId);
+  const { data } = await query;
+  return (data?.length ?? 0) > 0;
+}
+
+/** Same shape as isProductSlugTaken above, parameterized by table — for
+ * every other entity with a globally-unique slug column (businesses,
+ * events, locations, people). Categories are NOT included here — their
+ * uniqueness is scoped per-kind, not table-wide, so they use the
+ * dedicated isCategorySlugTaken above instead. Used by each entity's
+ * Server Action, together with lib/slug's ensureUniqueSlug, so a saved
+ * slug is never blank and never collides with an existing row. */
+export async function isSlugTaken(
+  table: "businesses" | "events" | "locations" | "people",
+  slug: string,
+  excludeId?: string
+): Promise<boolean> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return false;
+  let query = supabase.from(table).select("id").eq("slug", slug);
   if (excludeId) query = query.neq("id", excludeId);
   const { data } = await query;
   return (data?.length ?? 0) > 0;

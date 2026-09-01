@@ -1,10 +1,12 @@
-import { CheckboxField, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
+import { CheckboxField, CheckboxList, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
 import { RelationField } from "@/components/admin/RelationPicker";
 import FulfillmentOptionsEditor from "@/components/admin/FulfillmentOptionsEditor";
 import ImageField from "@/components/admin/ImageField";
+import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
 import type { AdminProduct, ProductFulfillmentOptionRow, SelectOption } from "@/lib/admin/queries";
+import type { Category } from "@/lib/types";
 import { saveProduct, deleteProduct } from "./actions";
 
 export default function ProductForm({
@@ -12,12 +14,16 @@ export default function ProductForm({
   initialBusiness,
   fulfillmentOptions,
   appearanceOptions,
+  categories,
+  selectedCategoryIds,
   error,
 }: {
   product: AdminProduct | null;
   initialBusiness: SelectOption | null;
   fulfillmentOptions: ProductFulfillmentOptionRow[];
   appearanceOptions: SelectOption[];
+  categories: Category[];
+  selectedCategoryIds: string[];
   error?: string;
 }) {
   const action = saveProduct.bind(null, product?.id ?? null);
@@ -41,19 +47,24 @@ export default function ProductForm({
           createLabel="New Business"
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Product Name" name="name" defaultValue={product?.name} required />
-          <TextField
-            label="URL Slug"
-            name="slug"
-            defaultValue={product?.slug}
-            required
-            hint="Used in the public URL: /product/your-slug — must be unique across all products."
-          />
-        </div>
+        <NameSlugFields
+          isNew={!product}
+          nameLabel="Product Name"
+          defaultName={product?.name}
+          defaultSlug={product?.slug}
+          slugHint="Used in the public URL: /product/your-slug — must be unique across all products."
+        />
 
         <TextareaField label="Description" name="description" defaultValue={product?.description} rows={4} />
         <ImageField label="Product Image" name="image_url" defaultValue={product?.image_url} />
+
+        <CheckboxList
+          label="Categories"
+          name="category_ids"
+          defaultSelected={selectedCategoryIds}
+          options={categories.map((c) => ({ value: c.id, label: c.name }))}
+          emptyText="No product categories yet — add some in /admin/categories/products."
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberField label="Price" name="price" defaultValue={product?.price} step="0.01" />

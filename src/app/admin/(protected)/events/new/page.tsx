@@ -9,7 +9,7 @@ export default async function NewEventPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const categories = await getAllCategories();
+  const categories = await getAllCategories("event");
 
   return (
     <div>

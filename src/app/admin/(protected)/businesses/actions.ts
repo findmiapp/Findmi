@@ -5,16 +5,29 @@ import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import { validateCustomDestination } from "@/lib/navigation";
+import { isSlugTaken } from "@/lib/admin/queries";
+import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 
 export async function saveBusiness(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/businesses/${id}` : "/admin/businesses/new";
   const supabase = await requireAdminSupabase();
 
   const name = str(formData, "name");
-  const slug = str(formData, "slug");
-  if (!name || !slug) {
-    redirect(errorRedirectUrl(editPath, "Name and slug are required."));
+  if (!name) {
+    redirect(errorRedirectUrl(editPath, "Name is required."));
   }
+
+  // Slug safety can't depend on the client-side auto-fill having actually
+  // run: normalize whatever was submitted, fall back to generating one
+  // from the name if it's blank, then resolve any collision with a
+  // deterministic -2/-3 suffix — never a blank or colliding slug.
+  const baseSlug = resolveSlugInput(str(formData, "slug"), name);
+  if (!baseSlug) {
+    redirect(errorRedirectUrl(editPath, "Name is required to generate a slug."));
+  }
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) =>
+    isSlugTaken("businesses", candidate, id ?? undefined)
+  );
 
   // Announcement link — optional, but if the founder entered something it
   // has to be a safe destination. Same internal/external validation

@@ -23,7 +23,7 @@ export default async function EditBusinessPage({
   const { error, saved } = await searchParams;
   const [result, categories, membership] = await Promise.all([
     getAdminBusinessById(id),
-    getAllCategories(),
+    getAllCategories("business"),
     getMembershipForBusiness(id),
   ]);
   if (!result) notFound();

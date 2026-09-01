@@ -16,7 +16,7 @@ export default async function AdminBusinessesPage({
 
   const [businesses, categories] = await Promise.all([
     getAdminBusinesses({ q, categoryId: category, published: publishedFilter }),
-    getAllCategories(),
+    getAllCategories("business"),
   ]);
 
   return (

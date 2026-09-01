@@ -1,5 +1,6 @@
 import { CheckboxField, TextField, TextareaField } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
+import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
 import PersonBusinessRoster from "@/components/admin/PersonBusinessRoster";
@@ -34,16 +35,12 @@ export default function PersonForm({
           hint="Off keeps this person completely hidden from /people and every business profile — draft mode."
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Name" name="name" defaultValue={person?.name} required />
-          <TextField
-            label="URL Slug"
-            name="slug"
-            defaultValue={person?.slug}
-            required
-            hint="Used in the public URL: /people/your-slug"
-          />
-        </div>
+        <NameSlugFields
+          isNew={!person}
+          defaultName={person?.name}
+          defaultSlug={person?.slug}
+          slugHint="Used in the public URL: /people/your-slug"
+        />
 
         <ImageField label="Portrait" name="image_url" defaultValue={person?.image_url} />
         <TextareaField label="Short Bio" name="short_bio" defaultValue={person?.short_bio} rows={4} />

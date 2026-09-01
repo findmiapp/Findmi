@@ -48,9 +48,15 @@ async function attachCategories(businesses: Business[]): Promise<BusinessWithCat
     return businesses.map((b) => ({ ...b, categories: [] }));
   }
   const ids = businesses.map((b) => b.id);
+  // .eq("categories.kind", "business") — defense in depth: business_categories
+  // should only ever point at business-kind rows (the admin checklist is
+  // kind-scoped), but categories is still one shared table, so this is
+  // explicit rather than assumed. Requires !inner so the filter actually
+  // applies to the embedded resource instead of being ignored.
   const { data } = await supabase
     .from("business_categories")
-    .select("business_id, categories(id, name, slug)")
+    .select("business_id, categories!inner(id, name, slug)")
+    .eq("categories.kind", "business")
     .in("business_id", ids);
 
   return withCategories(businesses, (data as never) ?? []);
@@ -67,13 +73,39 @@ async function getPrimaryCategoryByBusiness(
 ): Promise<Map<string, string>> {
   const { data } = await supabase
     .from("business_categories")
-    .select("business_id, categories(name)")
+    .select("business_id, categories!inner(name)")
+    .eq("categories.kind", "business")
     .in("business_id", businessIds);
   const map = new Map<string, string>();
   for (const row of (data ?? []) as { business_id: string; categories: { name: string } | { name: string }[] }[]) {
     if (map.has(row.business_id)) continue;
     const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
     if (cat?.name) map.set(row.business_id, cat.name);
+  }
+  return map;
+}
+
+/** One category name per product_id — the product's own first-class
+ * category (product_categories), taking priority over the seller's
+ * business category wherever a product actually has one. Same "good
+ * enough for a compact card" shape as getPrimaryCategoryByBusiness above;
+ * callers fall back to that business category only when a product has no
+ * product-category assignment of its own yet. */
+async function getPrimaryCategoryByProduct(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  productIds: string[]
+): Promise<Map<string, string>> {
+  if (productIds.length === 0) return new Map();
+  const { data } = await supabase
+    .from("product_categories")
+    .select("product_id, categories!inner(name)")
+    .eq("categories.kind", "product")
+    .in("product_id", productIds);
+  const map = new Map<string, string>();
+  for (const row of (data ?? []) as { product_id: string; categories: { name: string } | { name: string }[] }[]) {
+    if (map.has(row.product_id)) continue;
+    const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
+    if (cat?.name) map.set(row.product_id, cat.name);
   }
   return map;
 }
@@ -118,23 +150,29 @@ export async function getHomeStats(): Promise<HomeStats> {
   };
 }
 
+/** Business-kind categories — used by the public business filter
+ * (/businesses, /discover, /find). Categories are now split by kind
+ * (business/event/product — see the taxonomy migration); this must never
+ * return event- or product-kind rows even though they share one table. */
 export async function getCategories(): Promise<Category[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase.from("categories").select("*").order("name");
+  const { data } = await supabase.from("categories").select("*").eq("kind", "business").order("name");
   return data ?? [];
 }
 
 /** Founder-controlled subset/order for the homepage category strip (see
  * /admin/categories) — separate from getCategories() because every other
  * caller (business forms, the /businesses filter) still needs the full
- * list regardless of homepage visibility. */
+ * list regardless of homepage visibility. Business-kind only, same
+ * reasoning as getCategories() above. */
 export async function getHomeCategories(): Promise<Category[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("categories")
     .select("*")
+    .eq("kind", "business")
     .eq("show_on_home", true)
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("name");
@@ -171,7 +209,10 @@ export async function getEventCategories(): Promise<Category[]> {
   const realEventIds = new Set((realEvents ?? []).map((e) => e.id));
   if (realEventIds.size === 0) return [];
 
-  const { data } = await supabase.from("event_categories").select("event_id, categories(id, name, slug)");
+  const { data } = await supabase
+    .from("event_categories")
+    .select("event_id, categories!inner(id, name, slug)")
+    .eq("categories.kind", "event");
   const seen = new Map<string, Category>();
   for (const row of (data ?? []) as { event_id: string; categories: Category | Category[] | null }[]) {
     if (!realEventIds.has(row.event_id)) continue;
@@ -214,7 +255,12 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
 
   let categoryBusinessIds: string[] | null = null;
   if (params.categorySlug) {
-    const { data: cat } = await supabase.from("categories").select("id").eq("slug", params.categorySlug).maybeSingle();
+    const { data: cat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", params.categorySlug)
+      .eq("kind", "business")
+      .maybeSingle();
     if (!cat) return [];
     const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
     categoryBusinessIds = (links ?? []).map((l) => l.business_id);
@@ -257,7 +303,10 @@ export async function getCategoriesForDynamicBusinessRow(featuredOnly: boolean):
   const eligibleIds = new Set((eligible ?? []).map((b) => b.id));
   if (eligibleIds.size === 0) return [];
 
-  const { data } = await supabase.from("business_categories").select("business_id, categories(id, name, slug)");
+  const { data } = await supabase
+    .from("business_categories")
+    .select("business_id, categories!inner(id, name, slug)")
+    .eq("categories.kind", "business");
   const seen = new Map<string, Category>();
   for (const row of (data ?? []) as { business_id: string; categories: Category | Category[] | null }[]) {
     if (!eligibleIds.has(row.business_id)) continue;
@@ -314,10 +363,14 @@ export async function getProductsByIds(ids: string[]): Promise<FeaturedProduct[]
     .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live");
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
-  const categoryByBusiness = businessIds.length ? await getPrimaryCategoryByBusiness(supabase, businessIds) : new Map();
+  const productIds = rows.map((r) => r.id);
+  const [categoryByBusiness, categoryByProduct] = await Promise.all([
+    businessIds.length ? getPrimaryCategoryByBusiness(supabase, businessIds) : new Map<string, string>(),
+    getPrimaryCategoryByProduct(supabase, productIds),
+  ]);
   const withCategory = rows.map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
     ...rest,
-    business: { ...business, categoryName: categoryByBusiness.get(business.id) ?? null },
+    business: { ...business, categoryName: categoryByProduct.get(rest.id) ?? categoryByBusiness.get(business.id) ?? null },
   }));
   return reorderByIds(withCategory, ids);
 }
@@ -364,6 +417,7 @@ export async function searchBusinesses(params: SearchBusinessesParams = {}): Pro
       .from("categories")
       .select("id")
       .eq("slug", params.categorySlug)
+      .eq("kind", "business")
       .maybeSingle();
     if (cat) {
       const { data: links } = await supabase
@@ -591,6 +645,7 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
       .from("categories")
       .select("id")
       .eq("slug", params.categorySlug)
+      .eq("kind", "event")
       .maybeSingle();
     if (!cat) return [];
     const { data: links } = await supabase
@@ -638,7 +693,8 @@ export async function attachEventCategories(events: FindmiEvent[]): Promise<Even
   const ids = events.map((e) => e.id);
   const { data } = await supabase
     .from("event_categories")
-    .select("event_id, categories(id, name, slug)")
+    .select("event_id, categories!inner(id, name, slug)")
+    .eq("categories.kind", "event")
     .in("event_id", ids);
 
   const byEvent = new Map<string, Category[]>();
@@ -773,7 +829,12 @@ export async function getFindMiHereFeed(
 
   let categoryBusinessIds: string[] | null = null;
   if (extra.categorySlug) {
-    const { data: cat } = await supabase.from("categories").select("id").eq("slug", extra.categorySlug).maybeSingle();
+    const { data: cat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", extra.categorySlug)
+      .eq("kind", "business")
+      .maybeSingle();
     if (!cat) return [];
     const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
     categoryBusinessIds = (links ?? []).map((l) => l.business_id);
@@ -851,10 +912,10 @@ export interface FeaturedProduct extends Product {
      * eligibility rule as the product detail page, instead of guessing
      * from `purchasable` alone (commerce-audit fix). */
     commerce_enabled: boolean;
-    /** Business's own primary category — products have no category/
-     * taxonomy field of their own in the schema today, so this is the
-     * closest real, non-fabricated classification available for a
-     * product card's eyebrow. Null when the business has no category set. */
+    /** The product's own first-class category (product_categories) when
+     * it has one; otherwise the selling business's primary category as a
+     * fallback (see getPrimaryCategoryByProduct/getPrimaryCategoryByBusiness).
+     * Null only when neither exists. */
     categoryName: string | null;
   };
 }
@@ -888,11 +949,15 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
     .slice(0, limit);
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
-  const categoryByBusiness = businessIds.length ? await getPrimaryCategoryByBusiness(supabase, businessIds) : new Map();
+  const productIds = rows.map((r) => r.id);
+  const [categoryByBusiness, categoryByProduct] = await Promise.all([
+    businessIds.length ? getPrimaryCategoryByBusiness(supabase, businessIds) : new Map<string, string>(),
+    getPrimaryCategoryByProduct(supabase, productIds),
+  ]);
 
   return rows.map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
     ...rest,
-    business: { ...business, categoryName: categoryByBusiness.get(business.id) ?? null },
+    business: { ...business, categoryName: categoryByProduct.get(rest.id) ?? categoryByBusiness.get(business.id) ?? null },
   }));
 }
 
@@ -947,8 +1012,17 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   if (!match) return null;
   const { business, ...rest } = match;
   const { is_demo: _isDemo, publication_status: _pubStatus, ...cleanBusiness } = business;
-  const categoryMap = await getPrimaryCategoryByBusiness(supabase, [business.id]);
-  return { ...rest, business: { ...cleanBusiness, categoryName: categoryMap.get(business.id) ?? null } };
+  const [categoryMap, productCategoryMap] = await Promise.all([
+    getPrimaryCategoryByBusiness(supabase, [business.id]),
+    getPrimaryCategoryByProduct(supabase, [rest.id]),
+  ]);
+  return {
+    ...rest,
+    business: {
+      ...cleanBusiness,
+      categoryName: productCategoryMap.get(rest.id) ?? categoryMap.get(business.id) ?? null,
+    },
+  };
 }
 
 export interface FulfillmentOptionDisplay {
@@ -1134,14 +1208,24 @@ export interface MarketplaceProductParams {
  * homepage's Shop FindMi row both read real purchasable/inquiry-ready
  * catalog data through here — see getFeaturedProducts for the curated
  * subset, this is the full active catalog). categorySlug filters by the
- * SELLING BUSINESS's category, since products don't carry their own. */
+ * SELLING BUSINESS's category — this filter/grouping system stays
+ * business-category-based even now that products have their own
+ * first-class taxonomy (product_categories); switching the marketplace's
+ * own filter/grouping to real product categories is a bigger change left
+ * for a future pass. Only the product-card/detail LABEL prefers a real
+ * product category when one exists — see getPrimaryCategoryByProduct. */
 export async function getMarketplaceProducts(params: MarketplaceProductParams = {}): Promise<MarketplaceProduct[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
   let categoryBusinessIds: string[] | null = null;
   if (params.categorySlug) {
-    const { data: cat } = await supabase.from("categories").select("id").eq("slug", params.categorySlug).maybeSingle();
+    const { data: cat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", params.categorySlug)
+      .eq("kind", "business")
+      .maybeSingle();
     if (!cat) return [];
     const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
     categoryBusinessIds = (links ?? []).map((l) => l.business_id);
@@ -1248,7 +1332,12 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
 
   let categoryBusinessIds: string[] | null = null;
   if (params.categorySlug) {
-    const { data: cat } = await supabase.from("categories").select("id").eq("slug", params.categorySlug).maybeSingle();
+    const { data: cat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", params.categorySlug)
+      .eq("kind", "business")
+      .maybeSingle();
     if (!cat) return [];
     const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
     categoryBusinessIds = (links ?? []).map((l) => l.business_id);
@@ -1287,11 +1376,15 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
     .slice(0, limit);
 
   const businessIds = Array.from(new Set(rows.map((r) => r.business.id)));
-  const categoryByBusiness = businessIds.length ? await getPrimaryCategoryByBusiness(supabase, businessIds) : new Map();
+  const productIds = rows.map((r) => r.id);
+  const [categoryByBusiness, categoryByProduct] = await Promise.all([
+    businessIds.length ? getPrimaryCategoryByBusiness(supabase, businessIds) : new Map<string, string>(),
+    getPrimaryCategoryByProduct(supabase, productIds),
+  ]);
 
   return rows.map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
     ...rest,
-    business: { ...business, categoryName: categoryByBusiness.get(business.id) ?? null },
+    business: { ...business, categoryName: categoryByProduct.get(rest.id) ?? categoryByBusiness.get(business.id) ?? null },
   }));
 }
 

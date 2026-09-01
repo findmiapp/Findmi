@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { isProductSlugTaken } from "@/lib/admin/queries";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
+import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 
 export async function saveProduct(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/products/${id}` : "/admin/products/new";
@@ -12,22 +13,23 @@ export async function saveProduct(id: string | null, formData: FormData) {
 
   const businessId = str(formData, "business_id");
   const name = str(formData, "name");
-  const slug = str(formData, "slug");
-  if (!businessId || !name || !slug) {
-    redirect(errorRedirectUrl(editPath, "Business, name, and slug are required."));
+  if (!businessId || !name) {
+    redirect(errorRedirectUrl(editPath, "Business and name are required."));
   }
 
   // The DB constraint is only unique(business_id, slug) — /product/[slug]
   // resolves on the slug alone, so the admin enforces global uniqueness
-  // here rather than letting two businesses collide.
-  if (await isProductSlugTaken(slug, id ?? undefined)) {
-    redirect(
-      errorRedirectUrl(
-        editPath,
-        `The slug "${slug}" is already used by another product. Choose a different one.`
-      )
-    );
+  // here rather than letting two businesses collide. Slug safety can't
+  // depend on client JS having run: normalize/generate it server-side,
+  // then resolve any collision with a deterministic -2/-3 suffix instead
+  // of rejecting the save outright.
+  const baseSlug = resolveSlugInput(str(formData, "slug"), name);
+  if (!baseSlug) {
+    redirect(errorRedirectUrl(editPath, "Name is required to generate a slug."));
   }
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) =>
+    isProductSlugTaken(candidate, id ?? undefined)
+  );
 
   const payload = {
     business_id: businessId,
@@ -86,6 +88,18 @@ export async function saveProduct(id: string | null, formData: FormData) {
   }
   if (newOptions.length > 0) {
     await supabase.from("product_fulfillment_options").insert(newOptions);
+  }
+
+  // Product categories (product_categories) — same "current-config, not
+  // economic history" reasoning as fulfillment options above: nothing
+  // else references a specific row, so delete-then-reinsert the submitted
+  // set is safe and simpler than diffing.
+  const categoryIds = formData.getAll("category_ids").map(String);
+  await supabase.from("product_categories").delete().eq("product_id", productId);
+  if (categoryIds.length > 0) {
+    await supabase
+      .from("product_categories")
+      .insert(categoryIds.map((category_id) => ({ product_id: productId, category_id })));
   }
 
   revalidatePath("/admin/products");

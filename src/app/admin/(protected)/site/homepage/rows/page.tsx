@@ -13,7 +13,13 @@ export default async function HomepageRowsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const [rows, categories] = await Promise.all([getAdminHomepageRows(), getAllCategories()]);
+  const [rows, businessCategories, eventCategories, productCategories] = await Promise.all([
+    getAdminHomepageRows(),
+    getAllCategories("business"),
+    getAllCategories("event"),
+    getAllCategories("product"),
+  ]);
+  const categoriesByKind = { business: businessCategories, event: eventCategories, product: productCategories };
 
   // Curated previews only make sense for content types the search picker
   // supports (business_showcase rows never have curated_ids) — fetched
@@ -74,7 +80,7 @@ export default async function HomepageRowsPage({
             <HomepageRowCard
               key={row.id}
               row={row}
-              categories={categories}
+              categoriesByKind={categoriesByKind}
               curatedPreview={previews[i]}
               saveAction={saveHomepageRow.bind(null, row.id)}
               deleteAction={deleteHomepageRow.bind(null, row.id)}

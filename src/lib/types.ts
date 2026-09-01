@@ -184,10 +184,26 @@ export interface Membership {
   updated_at: string;
 }
 
+/** Taxonomy foundation pass: categories are split into three explicit,
+ * non-overlapping domains sharing one physical table (kept for the
+ * existing business_categories/event_categories join patterns rather than
+ * splitting into three tables). Every read path scopes by kind — see
+ * lib/data.ts and lib/admin/queries.ts — so a business category can never
+ * leak into an event picker or vice versa. */
+export type CategoryKind = "business" | "event" | "product";
+
 export interface Category {
   id: string;
   name: string;
   slug: string;
+  kind: CategoryKind;
+  /** One level of subcategory only — a parent's own parent_id is always
+   * null, enforced server-side (see the taxonomy migration's trigger). A
+   * child always shares its parent's kind. Not yet exposed in any admin
+   * UI — structural prep for a future pass. */
+  parent_id?: string | null;
+  /** Business-kind only — the homepage category strip's visibility/order.
+   * Meaningless (and unused) for event/product-kind rows. */
   show_on_home?: boolean;
   home_sort_order?: number | null;
 }

@@ -1,4 +1,5 @@
 import { CheckboxField, TextField } from "@/components/admin/Fields";
+import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
 import type { AdminLocation } from "@/lib/admin/queries";
@@ -29,16 +30,13 @@ export default function LocationForm({
           hint="On = visible to the public. Off = hidden (demo/test only)."
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Location Name" name="name" defaultValue={location?.name} required />
-          <TextField
-            label="URL Slug"
-            name="slug"
-            defaultValue={location?.slug}
-            required
-            hint="Used in the public URL: /location/your-slug"
-          />
-        </div>
+        <NameSlugFields
+          isNew={!location}
+          nameLabel="Location Name"
+          defaultName={location?.name}
+          defaultSlug={location?.slug}
+          slugHint="Used in the public URL: /location/your-slug"
+        />
 
         <TextField label="Address" name="address" defaultValue={location?.address} />
         <div className="grid gap-4 sm:grid-cols-2">
