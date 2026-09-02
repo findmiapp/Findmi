@@ -173,8 +173,31 @@ export default function ClaimButton({
     // mount effect above resolves "guest" client-side; the initial
     // server-rendered pass is always "loading" (renders null).
     const next = `${window.location.pathname}?claim=1`;
+    const signInHref = `/login?next=${encodeURIComponent(next)}`;
+
+    // Claim auth gate (business only — event claims below are
+    // unchanged): no claim form fields for a logged-out visitor, just
+    // this message and the existing /login entry point. next= preserves
+    // this exact business URL, and ?claim=1 is what already reopens the
+    // claim flow automatically once they're back and signed in (see the
+    // mount effect above).
+    if (type === "business") {
+      const prompt = (
+        <div className={variant === "card" ? "rounded-2xl border border-black/10 bg-white p-5 sm:p-6" : ""}>
+          <p className="text-sm text-ink/60">Create your free FindMi account to claim and manage this business.</p>
+          <a
+            href={signInHref}
+            className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Sign In
+          </a>
+        </div>
+      );
+      return prompt;
+    }
+
     const link = (
-      <a href={`/login?next=${encodeURIComponent(next)}`} className="text-xs font-semibold text-ink/40 hover:text-ink/70">
+      <a href={signInHref} className="text-xs font-semibold text-ink/40 hover:text-ink/70">
         Claim this {noun}
       </a>
     );

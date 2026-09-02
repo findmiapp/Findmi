@@ -61,6 +61,27 @@ export default async function AccountHomePage({
     })
     .filter((b): b is { id: string; name: string } => Boolean(b));
 
+  // Pending BUSINESS claims this user submitted — same RLS-scoped
+  // (auth.uid() = user_id) select_own policy business_members already
+  // relies on above, just against business_claim_requests. Event claims
+  // are intentionally not queried/shown here.
+  const { data: pendingClaimRows } = await supabase
+    .from("business_claim_requests")
+    .select("id, business_id, businesses(name, slug)")
+    .eq("user_id", user.id)
+    .eq("status", "pending");
+  type PendingClaimRow = {
+    id: string;
+    business_id: string;
+    businesses: { name: string; slug: string } | { name: string; slug: string }[] | null;
+  };
+  const myPendingClaims = ((pendingClaimRows ?? []) as PendingClaimRow[])
+    .map((c) => {
+      const business = Array.isArray(c.businesses) ? c.businesses[0] : c.businesses;
+      return business ? { id: c.id, name: business.name, slug: business.slug } : null;
+    })
+    .filter((c): c is { id: string; name: string; slug: string } => Boolean(c));
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountSync />
@@ -109,6 +130,27 @@ export default async function AccountHomePage({
             description="Manage this business"
             icon={<NavIcon name="storefront" className="h-5 w-5" />}
           />
+        ))}
+
+        {myPendingClaims.map((c) => (
+          <div
+            key={c.id}
+            className="col-span-2 flex flex-col gap-3 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5"
+          >
+            <Link href={`/business/${c.slug}`} className="flex flex-col gap-1">
+              <p className="text-sm font-bold text-ink">{c.name}</p>
+              <p className="text-xs font-semibold text-findmi-700">Claim under review</p>
+              <p className="text-xs text-ink/50">Typically reviewed within 48–72 hours.</p>
+            </Link>
+            <a
+              href="https://tally.so/r/0QR7LN"
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-9 w-fit items-center justify-center rounded-full bg-findmi px-4 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            >
+              Upgrade to Pro
+            </a>
+          </div>
         ))}
       </div>
     </div>
