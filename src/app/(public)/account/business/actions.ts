@@ -325,3 +325,136 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
 
   redirect(`${redirectPath}?saved=1`);
 }
+
+// ── Pro FindMi Here — Phase 1: request/withdraw participation on an
+// EXISTING event/occurrence only ──────────────────────────────────────────
+//
+// Deliberately narrow: this never writes to `appearances` (the table that
+// actually drives public FindMi Here rendering — untouched by this pass),
+// never edits `events`/`event_occurrences` themselves, and never grants
+// access on its own. It only ever creates/removes ONE row this business's
+// own membership authorizes, in the SAME event_businesses/
+// event_occurrence_businesses tables and EventParticipationStatus the
+// founder admin's existing ParticipationRoster/OccurrenceVendorManager
+// already reviews — approval remains entirely founder-controlled there,
+// unchanged.
+//
+// Both actions share the same authorize-then-elevate shape as every other
+// action in this file: requireBusinessMember(businessId) first (real
+// session-scoped membership, business_id never trusted from the client
+// beyond that check), then a fresh service-role read of plan_tier —
+// re-checked on every call, never cached/assumed — gates the whole
+// feature to Pro.
+
+async function requireProBusinessMember(businessId: string, redirectPath: string) {
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (!user) redirect(`/login?next=${encodeURIComponent(redirectPath)}`);
+
+  try {
+    await requireBusinessMember(businessId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "You don't have access to this business.";
+    redirect(errorRedirectUrl(redirectPath, message));
+  }
+
+  const admin = getAdminSupabase();
+  if (!admin) redirect(errorRedirectUrl(redirectPath, "Server isn't configured."));
+
+  const { data: business } = await admin.from("businesses").select("id, plan_tier").eq("id", businessId).maybeSingle();
+  if (!business) redirect(errorRedirectUrl(redirectPath, "Business not found."));
+  if (!isBusinessPro(business)) {
+    redirect(errorRedirectUrl(redirectPath, "Upgrade to Pro to manage FindMi Here participation."));
+  }
+
+  return admin;
+}
+
+/** Requests participation in an existing event, or a specific occurrence
+ * of a recurring event. `target` is one of:
+ *   "event:<eventId>"               -> event_businesses row
+ *   "occ:<eventId>:<occurrenceId>"  -> event_occurrence_businesses row
+ * Always inserts status: 'applied' — never accepted from the form, never
+ * anything else. Duplicate requests are a silent no-op (ignoreDuplicates,
+ * same idiom admin's addOccurrenceVendor already uses for this exact
+ * table) so a resubmission can never downgrade an already-approved row
+ * back to 'applied'. For an occurrence request, the occurrence is
+ * re-verified to actually belong to the submitted event before anything
+ * is written — a mismatched/tampered pair matches no row and is rejected. */
+export async function requestEventParticipation(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}`;
+  const admin = await requireProBusinessMember(businessId, redirectPath);
+
+  const target = str(formData, "target");
+  if (!target) redirect(errorRedirectUrl(redirectPath, "Choose an event to request."));
+
+  const [kind, a, b] = target.split(":");
+
+  if (kind === "event") {
+    const eventId = a;
+    const { data: event } = await admin.from("events").select("id").eq("id", eventId).eq("is_demo", false).maybeSingle();
+    if (!event) redirect(errorRedirectUrl(redirectPath, "That event is no longer available."));
+
+    const { error } = await admin
+      .from("event_businesses")
+      .upsert(
+        { event_id: eventId, business_id: businessId, status: "applied" },
+        { onConflict: "event_id,business_id", ignoreDuplicates: true }
+      );
+    if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't submit that request. Please try again."));
+  } else if (kind === "occ") {
+    const eventId = a;
+    const occurrenceId = b;
+    const { data: occurrence } = await admin
+      .from("event_occurrences")
+      .select("id")
+      .eq("id", occurrenceId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+    if (!occurrence) redirect(errorRedirectUrl(redirectPath, "That date is no longer available."));
+
+    const { error } = await admin
+      .from("event_occurrence_businesses")
+      .upsert(
+        { occurrence_id: occurrenceId, business_id: businessId, status: "applied" },
+        { onConflict: "occurrence_id,business_id", ignoreDuplicates: true }
+      );
+    if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't submit that request. Please try again."));
+  } else {
+    redirect(errorRedirectUrl(redirectPath, "Choose a valid event or date."));
+  }
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?participation_updated=1`);
+}
+
+/** Withdraws this business's OWN request — only while it's still
+ * 'applied' or 'pending'. The `.in("status", [...])` guard means an
+ * approved row (or a tampered/mismatched key) simply matches zero rows
+ * and nothing is deleted — approved participation can never be withdrawn
+ * or otherwise touched through this action. */
+export async function withdrawEventParticipation(businessId: string, kind: "event" | "occurrence", key: string) {
+  const redirectPath = `/account/business/${businessId}`;
+  const admin = await requireProBusinessMember(businessId, redirectPath);
+
+  if (kind === "event") {
+    await admin
+      .from("event_businesses")
+      .delete()
+      .eq("business_id", businessId)
+      .eq("event_id", key)
+      .in("status", ["applied", "pending"]);
+  } else {
+    await admin
+      .from("event_occurrence_businesses")
+      .delete()
+      .eq("business_id", businessId)
+      .eq("id", key)
+      .in("status", ["applied", "pending"]);
+  }
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?participation_updated=1`);
+}

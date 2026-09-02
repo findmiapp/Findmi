@@ -7,9 +7,11 @@ import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { getCategories } from "@/lib/data";
 import AccountNav from "../../AccountNav";
-import { updateMemberBusiness } from "../actions";
+import { requestEventParticipation, updateMemberBusiness, withdrawEventParticipation } from "../actions";
 import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
+import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
+import type { EventParticipationStatus } from "@/lib/types";
 
 export const metadata: Metadata = {
   title: "Manage Business",
@@ -117,6 +119,115 @@ export default async function ManageBusinessPage({
   const selectableCategories = categories.filter(
     (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || c.id === currentCategoryId
   );
+
+  // Pro FindMi Here — Phase 1 (request/withdraw participation only; see
+  // ../actions.ts for the write side). Reads the same event_businesses/
+  // event_occurrence_businesses tables the founder admin's own
+  // ParticipationRoster/OccurrenceVendorManager already use — both are
+  // public-SELECT-readable, so no extra grant is needed to display this
+  // business's own rows. Never touches `appearances`.
+  type ParticipationRow = {
+    withdrawKind: "event" | "occurrence";
+    withdrawKey: string;
+    eventName: string;
+    eventSlug: string | null;
+    occurrenceLabel: string | null;
+    status: EventParticipationStatus;
+  };
+  let participation: ParticipationRow[] = [];
+  let requestOptions: { value: string; label: string }[] = [];
+
+  if (pro) {
+    type EventRef = { name: string; slug: string } | { name: string; slug: string }[] | null;
+    const [{ data: ebRows }, { data: eobRows }] = await Promise.all([
+      admin.from("event_businesses").select("event_id, status, events(name, slug)").eq("business_id", id),
+      admin
+        .from("event_occurrence_businesses")
+        .select("id, occurrence_id, status, event_occurrences(start_at, timezone, event_id, events(name, slug))")
+        .eq("business_id", id),
+    ]);
+
+    const requestedEventIds = new Set<string>();
+    const requestedOccurrenceIds = new Set<string>();
+
+    const eventRows: ParticipationRow[] = (
+      (ebRows ?? []) as { event_id: string; status: EventParticipationStatus; events: EventRef }[]
+    ).map((r) => {
+      requestedEventIds.add(r.event_id);
+      const event = Array.isArray(r.events) ? r.events[0] : r.events;
+      return {
+        withdrawKind: "event",
+        withdrawKey: r.event_id,
+        eventName: event?.name ?? "Unknown event",
+        eventSlug: event?.slug ?? null,
+        occurrenceLabel: null,
+        status: r.status,
+      };
+    });
+
+    type OccurrenceRef = {
+      start_at: string;
+      timezone: string;
+      event_id: string;
+      events: EventRef;
+    } | { start_at: string; timezone: string; event_id: string; events: EventRef }[] | null;
+
+    const occurrenceRows: ParticipationRow[] = (
+      (eobRows ?? []) as { id: string; occurrence_id: string; status: EventParticipationStatus; event_occurrences: OccurrenceRef }[]
+    ).map((r) => {
+      requestedOccurrenceIds.add(r.occurrence_id);
+      const occ = Array.isArray(r.event_occurrences) ? r.event_occurrences[0] : r.event_occurrences;
+      const event = occ ? (Array.isArray(occ.events) ? occ.events[0] : occ.events) : null;
+      return {
+        withdrawKind: "occurrence",
+        withdrawKey: r.id,
+        eventName: event?.name ?? "Unknown event",
+        eventSlug: event?.slug ?? null,
+        occurrenceLabel: occ
+          ? `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeInZone(occ.start_at, occ.timezone)}`
+          : null,
+        status: r.status,
+      };
+    });
+
+    participation = [...eventRows, ...occurrenceRows];
+
+    // Picker: upcoming, non-demo events. An event with occurrences is only
+    // ever offered per-date (never as a bare event-level request) — a
+    // recurring event is requested at the occurrence level, correctly.
+    const nowIso = new Date().toISOString();
+    const [{ data: events }, { data: occurrences }] = await Promise.all([
+      admin.from("events").select("id, name, is_demo, start_at, end_at").eq("is_demo", false),
+      admin.from("event_occurrences").select("id, event_id, start_at, timezone").gt("start_at", nowIso).order("start_at"),
+    ]);
+
+    const occurrencesByEvent = new Map<string, { id: string; start_at: string; timezone: string }[]>();
+    for (const occ of occurrences ?? []) {
+      const list = occurrencesByEvent.get(occ.event_id) ?? [];
+      list.push(occ);
+      occurrencesByEvent.set(occ.event_id, list);
+    }
+
+    for (const ev of events ?? []) {
+      const evOccurrences = occurrencesByEvent.get(ev.id) ?? [];
+      if (evOccurrences.length > 0) {
+        for (const occ of evOccurrences) {
+          if (requestedOccurrenceIds.has(occ.id)) continue;
+          requestOptions.push({
+            value: `occ:${ev.id}:${occ.id}`,
+            label: `${ev.name} — ${formatDateShortInZone(occ.start_at, occ.timezone)}`,
+          });
+        }
+      } else {
+        const upcoming = ev.end_at ? new Date(ev.end_at) > new Date() : ev.start_at ? new Date(ev.start_at) > new Date() : false;
+        if (!upcoming || requestedEventIds.has(ev.id)) continue;
+        requestOptions.push({ value: `event:${ev.id}`, label: ev.name });
+      }
+    }
+  }
+
+  const requestParticipation = requestEventParticipation.bind(null, id);
+  const WITHDRAWABLE: EventParticipationStatus[] = ["applied", "pending"];
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
@@ -346,6 +457,68 @@ export default async function ManageBusinessPage({
             </button>
           </form>
         </div>
+
+        {/* Pro FindMi Here — Phase 1: request/withdraw only. Approval stays
+            entirely founder-controlled (existing admin Participation
+            Roster / Occurrence Vendor Manager, unchanged); an approved row
+            here does not yet create a public appearance — see ../actions.ts. */}
+        {pro && (
+          <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">FindMi Here</p>
+
+            {participation.length > 0 ? (
+              <ul className="mt-3 flex flex-col gap-2">
+                {participation.map((row) => (
+                  <li
+                    key={`${row.withdrawKind}-${row.withdrawKey}`}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{row.eventName}</p>
+                      {row.occurrenceLabel && <p className="text-xs text-ink/50">{row.occurrenceLabel}</p>}
+                      <p className="text-xs uppercase tracking-wide text-ink/45">{row.status}</p>
+                    </div>
+                    {WITHDRAWABLE.includes(row.status) && (
+                      <form action={withdrawEventParticipation.bind(null, id, row.withdrawKind, row.withdrawKey)}>
+                        <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                          Withdraw
+                        </button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-ink/50">No FindMi Here requests yet.</p>
+            )}
+
+            <div className="mt-4 border-t border-black/10 pt-4">
+              <p className="mb-1.5 text-sm font-medium text-ink">Request an Appearance</p>
+              {requestOptions.length > 0 ? (
+                <form action={requestParticipation} className="flex flex-wrap items-center gap-2">
+                  <select name="target" required className={inputClass} defaultValue="">
+                    <option value="" disabled>
+                      Choose an event…
+                    </option>
+                    {requestOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  >
+                    Request
+                  </button>
+                </form>
+              ) : (
+                <p className="text-sm text-ink/50">No upcoming FindMi events available to request right now.</p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
