@@ -1526,6 +1526,10 @@ export async function getHomeAppearanceBulletins(limit = 6): Promise<HomeBulleti
 }
 
 export interface NextAppearanceHint {
+  /** Quick UI fix — Next Up appearance title: despite the field name
+   * (kept as-is to minimize the change's surface), this is the
+   * appearance's own title, falling back to its related event's name
+   * when the title is blank — never the venue/location name. */
   venue: string;
   startAt: string;
   /** Canonical link for this appearance — the real FindMi event page when
@@ -1548,7 +1552,7 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
   // Same active-duration principle as events — see getHomeAppearanceBulletins.
   const { data } = await supabase
     .from("appearances")
-    .select("business_id, venue_name, title, start_at, event:events(slug, is_demo)")
+    .select("business_id, title, start_at, event:events(slug, is_demo, name)")
     .in("business_id", businessIds)
     .neq("status", "canceled")
     .gt("end_at", new Date().toISOString())
@@ -1556,10 +1560,9 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
   for (const row of (data ?? []) as never[]) {
     const r = row as {
       business_id: string;
-      venue_name: string | null;
       title: string;
       start_at: string;
-      event: { slug: string; is_demo: boolean } | { slug: string; is_demo: boolean }[] | null;
+      event: { slug: string; is_demo: boolean; name: string } | { slug: string; is_demo: boolean; name: string }[] | null;
     };
     if (hints.has(r.business_id)) continue;
     const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
@@ -1573,8 +1576,17 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
     // entirely — only its href is nulled, which is exactly what makes
     // BusinessLogoCard render it as static (non-clickable) text instead
     // of a dead link.
+    //
+    // Quick UI fix — Next Up appearance title: this used to show
+    // venue_name (falling back to title only when venue_name was blank).
+    // The appearance's own title is the field meant to identify it — the
+    // "field" property below is still named venue for now (kept as the
+    // smallest possible change; nothing about its consuming components'
+    // styling/layout changed), but its value is the appearance title,
+    // falling back to the related event's name when the appearance title
+    // itself is blank.
     hints.set(r.business_id, {
-      venue: r.venue_name ?? r.title,
+      venue: r.title || event?.name || "",
       startAt: r.start_at,
       href: event && !event.is_demo ? `/event/${event.slug}` : null,
     });
