@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { AdminEventOccurrence, AdminLocation, AdminOccurrenceVendor } from "@/lib/admin/queries";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
+import { formatDateShort, formatTime } from "@/lib/format";
 import OccurrenceVendorManager from "./OccurrenceVendorManager";
 
 const inputClass =
@@ -61,6 +62,13 @@ function addDaysToLocalDateTime(value: string, days: number): string {
 
 const MAX_REPEAT_WEEKS = 26;
 
+/** Compact label for one saved occurrence in the Copy Vendors source
+ * picker — reuses the existing formatters purely for display, doesn't
+ * touch date/time formatting logic itself. */
+function occurrenceLabel(o: AdminEventOccurrence): string {
+  return `${formatDateShort(o.start_at)} · ${formatTime(o.start_at)}`;
+}
+
 /** Occurrence (concrete date/time/location) editor for one event, nested
  * inside the event's own big <form action={saveEvent}> — same
  * hidden-input-rows pattern as ParticipationRoster/EventProductsRoster:
@@ -100,6 +108,22 @@ export default function EventOccurrencesEditor({
   const addOccurrence = () => setRows((prev) => [...prev, emptyRow()]);
 
   const removeOccurrence = (id: string, isExisting: boolean) => {
+    // Occurrence delete warning — an unsaved row (isExisting false) has no
+    // real event_occurrence_businesses rows to lose (its id doesn't exist
+    // in the database yet), so it keeps the original one-click removal.
+    // An existing/saved occurrence with vendors on it gets a hard stop:
+    // deleting it (once the event form is actually saved — this button
+    // only marks it for removal here) cascades to that date's whole
+    // vendor roster via the table's own FK, and that's not reversible.
+    if (isExisting) {
+      const vendorCount = vendorRostersByOccurrence[id]?.length ?? 0;
+      if (vendorCount > 0) {
+        const ok = window.confirm(
+          `This date has ${vendorCount} vendor${vendorCount === 1 ? "" : "s"} on its roster. Removing this date will also remove that date's entire vendor roster once you save this event — this can't be undone. Remove anyway?`
+        );
+        if (!ok) return;
+      }
+    }
     setRows((prev) => prev.filter((r) => r.id !== id));
     if (isExisting) setRemovedIds((prev) => [...prev, id]);
     setOpenVendorsFor((prev) => (prev === id ? null : prev));
@@ -268,6 +292,9 @@ export default function EventOccurrencesEditor({
                   eventId={eventId}
                   occurrenceId={row.id}
                   vendors={vendorRostersByOccurrence[row.id] ?? []}
+                  copySources={initialOccurrences
+                    .filter((o) => o.id !== row.id)
+                    .map((o) => ({ id: o.id, label: occurrenceLabel(o) }))}
                 />
               )}
             </div>

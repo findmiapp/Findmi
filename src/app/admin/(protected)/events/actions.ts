@@ -354,3 +354,53 @@ export async function removeOccurrenceVendor(eventId: string, occurrenceId: stri
   }
   revalidatePath(`/admin/events/${eventId}`);
 }
+
+/** Copy Vendors — clone another saved occurrence's own roster
+ * (business_id, status, featured) into this one. An explicit, one-time
+ * founder action from Manage Vendors only — never runs automatically
+ * (not on "repeat weekly" generation, which only ever clones a Row's
+ * date/time/location fields client-side and has no vendor data to copy in
+ * the first place), and never touches event_businesses. Existing rows
+ * already on the target are left untouched and never duplicated — same
+ * ignoreDuplicates upsert idiom addOccurrenceVendor already uses, just
+ * for a whole roster at once. Both occurrence ids are verified to belong
+ * to this same event before anything is read/written, so a
+ * tampered/mismatched pair can never pull in (or write to) another
+ * event's roster. */
+export async function copyOccurrenceVendors(eventId: string, targetOccurrenceId: string, sourceOccurrenceId: string) {
+  if (targetOccurrenceId === sourceOccurrenceId) {
+    redirect(errorRedirectUrl(`/admin/events/${eventId}`, "Choose a different date to copy from."));
+  }
+  const supabase = await requireAdminSupabase();
+
+  const { data: occRows, error: occError } = await supabase
+    .from("event_occurrences")
+    .select("id")
+    .eq("event_id", eventId)
+    .in("id", [targetOccurrenceId, sourceOccurrenceId]);
+  if (occError || (occRows ?? []).length !== 2) {
+    redirect(errorRedirectUrl(`/admin/events/${eventId}`, occError?.message ?? "Both dates must belong to this event."));
+  }
+
+  const { data: sourceRows, error: sourceError } = await supabase
+    .from("event_occurrence_businesses")
+    .select("business_id, status, featured")
+    .eq("occurrence_id", sourceOccurrenceId);
+  if (sourceError) redirect(errorRedirectUrl(`/admin/events/${eventId}`, sourceError.message));
+
+  const rows = (sourceRows ?? []) as { business_id: string; status: EventParticipationStatus; featured: boolean }[];
+  if (rows.length > 0) {
+    const toUpsert = rows.map((r) => ({
+      occurrence_id: targetOccurrenceId,
+      business_id: r.business_id,
+      status: r.status,
+      featured: r.featured,
+    }));
+    const { error: upsertError } = await supabase
+      .from("event_occurrence_businesses")
+      .upsert(toUpsert, { onConflict: "occurrence_id,business_id", ignoreDuplicates: true });
+    if (upsertError) redirect(errorRedirectUrl(`/admin/events/${eventId}`, upsertError.message));
+  }
+
+  revalidatePath(`/admin/events/${eventId}`);
+}

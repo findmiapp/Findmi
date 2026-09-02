@@ -1,11 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Avatar, EntitySearchAdd, type SearchResult } from "./RelationPicker";
 import type { AdminOccurrenceVendor } from "@/lib/admin/queries";
 import type { EventParticipationStatus } from "@/lib/types";
 import {
   addOccurrenceVendor,
+  copyOccurrenceVendors,
   removeOccurrenceVendor,
   updateOccurrenceVendorFeatured,
   updateOccurrenceVendorStatus,
@@ -40,12 +41,17 @@ export default function OccurrenceVendorManager({
   eventId,
   occurrenceId,
   vendors,
+  copySources,
 }: {
   eventId: string;
   occurrenceId: string;
   vendors: AdminOccurrenceVendor[];
+  /** Other already-saved occurrences on this same event, for Copy
+   * Vendors — never includes this occurrence itself. */
+  copySources: { id: string; label: string }[];
 }) {
   const [isPending, startTransition] = useTransition();
+  const [copyFrom, setCopyFrom] = useState("");
 
   return (
     <div className="mt-2.5 rounded-lg border border-dashed border-black/15 bg-black/[0.015] p-2.5">
@@ -54,6 +60,39 @@ export default function OccurrenceVendorManager({
         This date&rsquo;s own roster — separate from &ldquo;Participating Businesses&rdquo; below, and never copied
         from it.
       </p>
+
+      {copySources.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <select
+            value={copyFrom}
+            disabled={isPending}
+            onChange={(e) => setCopyFrom(e.target.value)}
+            className={inputClass}
+            aria-label="Copy vendors from another date"
+          >
+            <option value="">Copy vendors from…</option>
+            {copySources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={isPending || !copyFrom}
+            onClick={() => {
+              const sourceId = copyFrom;
+              startTransition(() => {
+                copyOccurrenceVendors(eventId, occurrenceId, sourceId);
+              });
+            }}
+            className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-black/[0.02] disabled:opacity-50"
+          >
+            Copy
+          </button>
+          <span className="text-[11px] text-ink/40">Adds missing vendors only — never overwrites this date&rsquo;s own rows.</span>
+        </div>
+      )}
 
       <EntitySearchAdd
         entity="businesses"
