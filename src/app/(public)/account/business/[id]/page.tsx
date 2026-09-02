@@ -147,19 +147,24 @@ export default async function ManageBusinessPage({
 
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <form action={action} className="flex flex-col gap-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Business Basics</p>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
               <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
             </label>
-
-            <MemberImageField businessId={id} label="Logo" name="logo_url" defaultValue={business.logo_url} />
-            <MemberImageField
-              businessId={id}
-              label="Cover image"
-              name="cover_image_url"
-              defaultValue={business.cover_image_url}
-            />
-
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Category</span>
+              <select name="category_id" required defaultValue={currentCategoryId} className={inputClass}>
+                <option value="" disabled>
+                  Choose a category…
+                </option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Short description</span>
               <textarea
@@ -169,6 +174,13 @@ export default async function ManageBusinessPage({
                 className={inputClass}
               />
             </label>
+            <MemberImageField businessId={id} label="Logo" name="logo_url" defaultValue={business.logo_url} />
+            <MemberImageField
+              businessId={id}
+              label="Cover image"
+              name="cover_image_url"
+              defaultValue={business.cover_image_url}
+            />
 
             {/* Pro-only fields — the additional businesses columns
                 (existing schema, admin already edits every one of these)
@@ -181,6 +193,7 @@ export default async function ManageBusinessPage({
                 form) silently drops them. */}
             {pro && (
               <>
+                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink">About / full description</span>
                   <textarea
@@ -191,6 +204,7 @@ export default async function ManageBusinessPage({
                   />
                 </label>
 
+                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
@@ -206,17 +220,7 @@ export default async function ManageBusinessPage({
                   </label>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
-                    <input type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
-                    <input type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
-                  </label>
-                </div>
-
+                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink">Website</span>
                   <input
@@ -227,7 +231,16 @@ export default async function ManageBusinessPage({
                     className={inputClass}
                   />
                 </label>
-
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
+                    <input type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
+                    <input type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
+                  </label>
+                </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-ink">Instagram</span>
@@ -261,6 +274,10 @@ export default async function ManageBusinessPage({
                   </label>
                 </div>
 
+                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
+                <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
+
+                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Announcement</p>
                 <div className="rounded-2xl border border-black/10 p-4">
                   <label className="flex items-center gap-2 text-sm font-medium text-ink">
                     <input type="checkbox" name="bulletin_enabled" defaultChecked={business.bulletin_enabled} />
@@ -307,24 +324,8 @@ export default async function ManageBusinessPage({
                     </label>
                   </div>
                 </div>
-
-                <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
               </>
             )}
-
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Category</span>
-              <select name="category_id" required defaultValue={currentCategoryId} className={inputClass}>
-                <option value="" disabled>
-                  Choose a category…
-                </option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
 
             <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
               Save Changes

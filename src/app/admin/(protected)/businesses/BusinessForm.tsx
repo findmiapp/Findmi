@@ -41,10 +41,18 @@ export default function BusinessForm({
         </p>
       )}
 
-      {/* Plan Tier moved to the very top — this is the same Free/Pro
-          control referenced by the Access & Plan section above the form;
-          keeping it first here makes it the first thing the founder edits,
-          not buried among unrelated fields further down. */}
+      {/* STATUS — Published, Plan Tier (the same Free/Pro control the
+          Access & Plan summary above this form refers to), and every
+          other existing admin classification/status toggle on the
+          business record. Kept first so the founder sees/sets these
+          before touching public-facing content below. */}
+      <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Status</p>
+      <CheckboxField
+        label="Published"
+        name="published"
+        defaultChecked={business ? !business.is_demo : true}
+        hint="On = visible to the public. Off = hidden (demo/test only). A business linked to a Founding Membership record also needs its onboarding approved (see Legacy Membership / Onboarding below) — a pending/rejected/paused membership keeps the profile hidden even when this is on."
+      />
       <SelectField
         label="Plan Tier"
         name="plan_tier"
@@ -54,14 +62,54 @@ export default function BusinessForm({
           { value: "pro", label: "Pro" },
         ]}
       />
-
+      <div className="grid gap-4 sm:grid-cols-2">
+        <CheckboxField
+          label="Verified"
+          name="verified"
+          defaultChecked={business?.verified}
+          hint="Shows the verified badge on the profile."
+        />
+        <CheckboxField
+          label="Founding Member"
+          name="founding_member"
+          defaultChecked={business?.founding_member}
+          hint="Shows the Founding Member badge instead."
+        />
+      </div>
       <CheckboxField
-        label="Published"
-        name="published"
-        defaultChecked={business ? !business.is_demo : true}
-        hint="On = visible to the public. Off = hidden (demo/test only). A business linked to a Founding Membership record also needs its onboarding approved (see Legacy Membership / Onboarding below) — a pending/rejected/paused membership keeps the profile hidden even when this is on."
+        label="Featured Brand"
+        name="is_featured"
+        defaultChecked={business?.is_featured}
+        hint="Shows in the homepage/Businesses 'Featured Brands' rows. Independent of Founding Member."
       />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SelectField
+          label="Membership Status"
+          name="membership_status"
+          defaultValue={business?.membership_status ?? "lead"}
+          options={[
+            { value: "lead", label: "Lead" },
+            { value: "active", label: "Active" },
+            { value: "past_due", label: "Past Due" },
+            { value: "canceled", label: "Canceled" },
+          ]}
+        />
+        <SelectField
+          label="Lead Status"
+          name="lead_status"
+          defaultValue={business?.lead_status ?? "new"}
+          options={[
+            { value: "new", label: "New" },
+            { value: "contacted", label: "Contacted" },
+            { value: "onboarding", label: "Onboarding" },
+            { value: "qualified", label: "Qualified" },
+            { value: "not_a_fit", label: "Not a Fit" },
+          ]}
+        />
+      </div>
 
+      {/* BUSINESS BASICS */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Business Basics</p>
       <NameSlugFields
         isNew={!business}
         nameLabel="Business Name"
@@ -69,20 +117,21 @@ export default function BusinessForm({
         defaultSlug={business?.slug}
         slugHint="Used in the public URL: /business/your-slug"
       />
-
+      <CheckboxList
+        label="Categories"
+        name="category_ids"
+        defaultSelected={selectedCategoryIds}
+        options={categories.map((c) => ({ value: c.id, label: c.name }))}
+      />
       <TextField
         label="Short Description"
         name="short_description"
         defaultValue={business?.short_description}
         hint="One line — shown on cards and search results."
       />
-      <TextareaField
-        label="Full Description"
-        name="description"
-        defaultValue={business?.description}
-        rows={5}
-      />
 
+      {/* BRANDING */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Branding</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <ImageField label="Logo Image" name="logo_url" defaultValue={business?.logo_url} />
         <ImageField
@@ -92,26 +141,17 @@ export default function BusinessForm({
         />
       </div>
 
-      <div className="rounded-2xl border border-black/10 p-4">
-        <GalleryField
-          label="Gallery"
-          name="gallery_image_url"
-          initialUrls={galleryImages}
-          hint="Additional photos shown on the public profile, below Shop/Products, in a compact strip that opens a lightbox. The Logo and Cover Photo above stay separate."
-        />
-      </div>
-
-      <div className="rounded-2xl border border-black/10 p-4">
-        <BusinessPeopleRoster initialPeople={people} />
-      </div>
-
-      <CheckboxList
-        label="Categories"
-        name="category_ids"
-        defaultSelected={selectedCategoryIds}
-        options={categories.map((c) => ({ value: c.id, label: c.name }))}
+      {/* ABOUT */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
+      <TextareaField
+        label="Full Description"
+        name="description"
+        defaultValue={business?.description}
+        rows={5}
       />
 
+      {/* LOCATION */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
       <div className="grid gap-4 sm:grid-cols-3">
         <TextField label="City" name="city" defaultValue={business?.city} />
         <TextField label="State" name="state" defaultValue={business?.state} />
@@ -124,6 +164,8 @@ export default function BusinessForm({
         hint="Leave blank if not a mobile/service-area business."
       />
 
+      {/* CONTACT & LINKS */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField label="Email" name="email" type="email" defaultValue={business?.email} />
         <TextField label="Phone" name="phone" type="tel" defaultValue={business?.phone} />
@@ -159,52 +201,66 @@ export default function BusinessForm({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CheckboxField
-          label="Verified"
-          name="verified"
-          defaultChecked={business?.verified}
-          hint="Shows the verified badge on the profile."
-        />
-        <CheckboxField
-          label="Founding Member"
-          name="founding_member"
-          defaultChecked={business?.founding_member}
-          hint="Shows the Founding Member badge instead."
+      {/* GALLERY */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
+      <div className="rounded-2xl border border-black/10 p-4">
+        <GalleryField
+          label="Gallery"
+          name="gallery_image_url"
+          initialUrls={galleryImages}
+          hint="Additional photos shown on the public profile, below Shop/Products, in a compact strip that opens a lightbox. The Logo and Cover Photo above stay separate."
         />
       </div>
 
-      <CheckboxField
-        label="Featured Brand"
-        name="is_featured"
-        defaultChecked={business?.is_featured}
-        hint="Shows in the homepage/Businesses 'Featured Brands' rows. Independent of Founding Member."
-      />
+      {/* ANNOUNCEMENT / BULLETIN */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Announcement</p>
+      <div className="rounded-2xl border border-black/10 p-4">
+        <p className="mb-3 text-xs text-ink/45">
+          A small, timely notice shown near the top of your profile — a flash sale, a booking update,
+          &ldquo;Sold out this weekend,&rdquo; anything current. Renders nothing publicly unless Show
+          announcement is on and Message has real content.
+        </p>
+        <div className="flex flex-col gap-4">
+          <CheckboxField label="Show announcement" name="bulletin_enabled" defaultChecked={business?.bulletin_enabled} />
+          <TextField
+            label="Label"
+            name="bulletin_label"
+            defaultValue={business?.bulletin_label}
+            placeholder="Announcement"
+            hint={'Shown above the heading — e.g. "Flash Sale," "Now Booking," "Update." Defaults to "Announcement" when blank.'}
+          />
+          <TextField
+            label="Heading"
+            name="bulletin_heading"
+            defaultValue={business?.bulletin_heading}
+            placeholder="Sold out this weekend"
+          />
+          <TextareaField
+            label="Message"
+            name="bulletin_body"
+            defaultValue={business?.bulletin_body}
+            rows={3}
+            hint="e.g. We'll be back at the market next Saturday."
+          />
+          <TextField
+            label="Link (optional)"
+            name="bulletin_url"
+            defaultValue={business?.bulletin_url}
+            placeholder="https://… or /a-findmi-page"
+            hint="Makes the whole announcement clickable. Leave blank for a static notice."
+          />
+        </div>
+      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <SelectField
-          label="Membership Status"
-          name="membership_status"
-          defaultValue={business?.membership_status ?? "lead"}
-          options={[
-            { value: "lead", label: "Lead" },
-            { value: "active", label: "Active" },
-            { value: "past_due", label: "Past Due" },
-            { value: "canceled", label: "Canceled" },
-          ]}
-        />
-        <SelectField
-          label="Lead Status"
-          name="lead_status"
-          defaultValue={business?.lead_status ?? "new"}
-          options={[
-            { value: "new", label: "New" },
-            { value: "contacted", label: "Contacted" },
-            { value: "onboarding", label: "Onboarding" },
-            { value: "qualified", label: "Qualified" },
-            { value: "not_a_fit", label: "Not a Fit" },
-          ]}
-        />
+      {/* OTHER EXISTING BUSINESS FIELDS — settings that don't fit the
+          named sections above: the people roster, marketplace/commerce
+          settings, and the custom Inquire/CTA button overrides. Grouped
+          here rather than left scattered; each keeps its own existing
+          sub-heading/box. */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Other Business Settings</p>
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <BusinessPeopleRoster initialPeople={people} />
       </div>
 
       <div className="rounded-2xl border border-black/10 p-4">
@@ -303,45 +359,6 @@ export default function BusinessForm({
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-black/10 p-4">
-        <p className="mb-1 text-sm font-semibold text-ink">Announcement</p>
-        <p className="mb-3 text-xs text-ink/45">
-          A small, timely notice shown near the top of your profile — a flash sale, a booking update,
-          &ldquo;Sold out this weekend,&rdquo; anything current. Renders nothing publicly unless Show
-          announcement is on and Message has real content.
-        </p>
-        <div className="flex flex-col gap-4">
-          <CheckboxField label="Show announcement" name="bulletin_enabled" defaultChecked={business?.bulletin_enabled} />
-          <TextField
-            label="Label"
-            name="bulletin_label"
-            defaultValue={business?.bulletin_label}
-            placeholder="Announcement"
-            hint={'Shown above the heading — e.g. "Flash Sale," "Now Booking," "Update." Defaults to "Announcement" when blank.'}
-          />
-          <TextField
-            label="Heading"
-            name="bulletin_heading"
-            defaultValue={business?.bulletin_heading}
-            placeholder="Sold out this weekend"
-          />
-          <TextareaField
-            label="Message"
-            name="bulletin_body"
-            defaultValue={business?.bulletin_body}
-            rows={3}
-            hint="e.g. We'll be back at the market next Saturday."
-          />
-          <TextField
-            label="Link (optional)"
-            name="bulletin_url"
-            defaultValue={business?.bulletin_url}
-            placeholder="https://… or /a-findmi-page"
-            hint="Makes the whole announcement clickable. Leave blank for a static notice."
-          />
         </div>
       </div>
 
