@@ -12,6 +12,7 @@ import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceCard from "@/components/EventOccurrenceCard";
 import EventSaveButton from "@/components/EventSaveButton";
 import EventScheduleActions from "@/components/EventScheduleActions";
+import EventScheduleCtas from "@/components/EventScheduleCtas";
 import EventScheduleSummary from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
 import FormAction from "@/components/FormAction";
@@ -185,23 +186,38 @@ export default async function EventPage({
         )}
       </div>
 
-      {/* Tier A — the strongest, organizer-configured actions. */}
-      {customCtas.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-2.5">
-          {customCtas.map((action) => (
-            <FormAction
-              key={action.label}
-              href={action.href}
-              displayMode={action.displayMode}
-              label={action.label}
-              className={
-                action.weight === "solid"
-                  ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                  : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-              }
-            />
-          ))}
-        </div>
+      {/* Tier A — the strongest, organizer-configured actions. For a
+          recurring event, the selected occurrence's own RSVP/ticket/
+          vendor-apply override (if any) wins over the parent's resolved
+          action — see EventScheduleCtas; a legacy event keeps the exact
+          original server-resolved customCtas rendering below. */}
+      {hasOccurrences ? (
+        <EventScheduleCtas
+          ticketsEnabled={event.tickets_enabled}
+          ticketsUrl={event.tickets_url}
+          rsvpEnabled={event.rsvp_enabled}
+          rsvp={rsvpForm}
+          vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
+          vendorApplication={vendorAppForm}
+        />
+      ) : (
+        customCtas.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2.5">
+            {customCtas.map((action) => (
+              <FormAction
+                key={action.label}
+                href={action.href}
+                displayMode={action.displayMode}
+                label={action.label}
+                className={
+                  action.weight === "solid"
+                    ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                }
+              />
+            ))}
+          </div>
+        )
       )}
 
       {/* Tier B — supporting utility actions, visually quiet, grouped
