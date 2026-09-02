@@ -168,3 +168,88 @@ export async function saveBusiness(id: string | null, formData: FormData) {
 
   redirect(`/admin/businesses/${businessId}?saved=1`);
 }
+
+// ── Owner/member assignment (Admin Business Owner pass) ─────────────────────
+// Deliberately separate from saveBusiness above and from the claims page's
+// own membership actions (src/app/admin/(protected)/claims/actions.ts,
+// untouched by this pass) — same business_members table and the same
+// "never touch an owner row from a generic action" guard those already
+// use, just scoped to this page's own redirect target instead of
+// /admin/claims. Assignment always creates a 'manager' row, never
+// 'owner' — owner is a singular, structurally-enforced role
+// (business_members_one_owner_per_business) already governed by the
+// claim-approval and transfer_business_ownership() flows; this is a
+// separate, additive way to grant access, not a way to set ownership.
+
+/** Resolves an email to an existing FindMi account via the new
+ * lookup_auth_user_id_by_email() RPC (service-role only — see its own
+ * migration), then adds a 'manager' business_members row for that user.
+ * Never creates a user, never touches auth.users beyond the read-only
+ * lookup, and never inserts a duplicate membership (checked explicitly,
+ * on top of business_members' own (user_id, business_id) uniqueness). */
+export async function assignBusinessMember(businessId: string, formData: FormData) {
+  const editPath = `/admin/businesses/${businessId}`;
+  const supabase = await requireAdminSupabase();
+
+  const email = str(formData, "email");
+  if (!email) {
+    redirect(errorRedirectUrl(editPath, "Enter an email address."));
+  }
+
+  const { data: userId, error: lookupError } = await supabase.rpc("lookup_auth_user_id_by_email", {
+    p_email: email,
+  });
+  if (lookupError) {
+    redirect(errorRedirectUrl(editPath, "Couldn't look up that email. Please try again."));
+  }
+  if (!userId) {
+    redirect(errorRedirectUrl(editPath, "No FindMi account found with that email."));
+  }
+
+  const { data: existing } = await supabase
+    .from("business_members")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (existing) {
+    redirect(errorRedirectUrl(editPath, "That user is already a member of this business."));
+  }
+
+  const { error: insertError } = await supabase
+    .from("business_members")
+    .insert({ business_id: businessId, user_id: userId, role: "manager" });
+  if (insertError) {
+    redirect(errorRedirectUrl(editPath, "Couldn't assign that member. Please try again."));
+  }
+
+  revalidatePath(editPath);
+  redirect(`${editPath}?member_updated=1`);
+}
+
+/** Removes a manager/staff member's access entirely. Same `.neq("role",
+ * "owner")` guard the claims page's own removeMember() uses, so this can
+ * never remove an owner even given a tampered member id — ownership only
+ * ever changes via remove_business_owner()/transfer_business_ownership()
+ * (claims page), untouched by this pass. Never deletes the user or the
+ * business — only the one business_members row. */
+export async function removeBusinessMember(businessId: string, memberId: string) {
+  const editPath = `/admin/businesses/${businessId}`;
+  const supabase = await requireAdminSupabase();
+
+  const { data, error } = await supabase
+    .from("business_members")
+    .delete()
+    .eq("id", memberId)
+    .eq("business_id", businessId)
+    .neq("role", "owner")
+    .select()
+    .maybeSingle();
+
+  if (error || !data) {
+    redirect(errorRedirectUrl(editPath, "Couldn't remove that member — they may no longer be a member."));
+  }
+
+  revalidatePath(editPath);
+  redirect(`${editPath}?member_updated=1`);
+}
