@@ -164,17 +164,17 @@ export default async function BusinessPage({
   const primaryCategory = business.categories[0] ?? null;
   const extraCategoryCount = Math.max(0, business.categories.length - 1);
 
-  // Compact icon row — website gets its own globe glyph (UI cleanup pass
-  // item 5; the old generic chain-link icon read as "some vague URL," not
-  // recognizably "this business's website"). Facebook/tiktok still reuse
-  // the generic "link" glyph, unchanged this pass — out of this item's
-  // explicit scope, not an oversight.
+  // Compact icon row — every link gets its own recognizable glyph (Details
+  // polish pass): globe for website, and real Instagram/Facebook/TikTok
+  // marks instead of the old generic chain-link icon for the latter two.
   const socialLinks = [
     { href: business.website_url, label: "Website", icon: "globe" as const },
     { href: business.instagram_url, label: "Instagram", icon: "instagram" as const },
-    { href: business.facebook_url, label: "Facebook", icon: "link" as const },
-    { href: business.tiktok_url, label: "TikTok", icon: "link" as const },
-  ].filter((l): l is { href: string; label: string; icon: "link" | "instagram" | "globe" } => isSafeExternalUrl(l.href));
+    { href: business.facebook_url, label: "Facebook", icon: "facebook" as const },
+    { href: business.tiktok_url, label: "TikTok", icon: "tiktok" as const },
+  ].filter((l): l is { href: string; label: string; icon: "instagram" | "globe" | "facebook" | "tiktok" } =>
+    isSafeExternalUrl(l.href)
+  );
 
   const hasDetails = Boolean(
     location || business.service_radius_miles || business.phone || business.email || socialLinks.length > 0
@@ -617,48 +617,51 @@ function DetailsBlock({
 }: {
   business: { phone: string | null; email: string | null; service_radius_miles: number | null };
   location: string;
-  socialLinks: { href: string; label: string; icon: "link" | "instagram" | "globe" }[];
+  socialLinks: { href: string; label: string; icon: "instagram" | "globe" | "facebook" | "tiktok" }[];
   className: string;
 }) {
+  // Phone/email join the social links as the same ~44px circular icon
+  // buttons, in one horizontal wrapping row — a single compact contact
+  // strip instead of separate text lines + a separate icon row.
+  const contactLinks: { href: string; label: string; icon: ContactIcon; external: boolean }[] = [
+    ...(business.phone ? [{ href: `tel:${business.phone}`, label: business.phone, icon: "phone" as const, external: false }] : []),
+    ...(business.email ? [{ href: `mailto:${business.email}`, label: business.email, icon: "mail" as const, external: false }] : []),
+    ...socialLinks.map((l) => ({ ...l, external: true })),
+  ];
+
   return (
     <section className={className}>
       <h2 className="font-display text-sm font-bold uppercase tracking-wide text-ink/40">Details</h2>
       {/* UI cleanup pass item 4: wrapped in a real card (white, thin
-          border, soft shadow) instead of plain text floating on the page. */}
-      <div className="mt-3 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-        <div className="flex flex-col gap-2.5 text-sm text-ink/70">
-          {location && (
-            <p className="flex items-center gap-2">
-              <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+          border, soft shadow) instead of plain text floating on the page.
+          Details polish pass: tighter padding/gaps, a stronger pill-badge
+          treatment for the map pin, and phone/email folded into the same
+          circular icon row as the social links below instead of their own
+          separate text lines — less empty space, one compact contact
+          strip. */}
+      <div className="mt-3 rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        {location && (
+          <p className="flex items-center gap-2.5 text-sm text-ink/70">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+              <PinGlyph className="h-4 w-4" />
+            </span>
+            <span>
               {location}
               {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
-            </p>
-          )}
-          {business.phone && (
-            <a href={`tel:${business.phone}`} className="flex items-center gap-2 hover:text-ink">
-              <PhoneGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-              {business.phone}
-            </a>
-          )}
-          {business.email && (
-            <a href={`mailto:${business.email}`} className="flex items-center gap-2 hover:text-ink">
-              <MailGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-              {business.email}
-            </a>
-          )}
-        </div>
-        {socialLinks.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/[0.06] pt-3">
-            {socialLinks.map((link) => (
+            </span>
+          </p>
+        )}
+        {contactLinks.length > 0 && (
+          <div className={`flex flex-wrap items-center gap-2 ${location ? "mt-3 border-t border-black/[0.06] pt-3" : ""}`}>
+            {contactLinks.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                target="_blank"
-                rel="noreferrer"
+                {...(link.external ? { target: "_blank", rel: "noreferrer" } : {})}
                 aria-label={link.label}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700 transition hover:bg-findmi-100"
               >
-                <SocialGlyph icon={link.icon} />
+                <ContactGlyph icon={link.icon} />
               </a>
             ))}
           </div>
@@ -668,10 +671,18 @@ function DetailsBlock({
   );
 }
 
-function SocialGlyph({ icon }: { icon: "link" | "instagram" | "globe" }) {
+type ContactIcon = "phone" | "mail" | "instagram" | "globe" | "facebook" | "tiktok";
+
+function ContactGlyph({ icon }: { icon: ContactIcon }) {
+  if (icon === "phone") return <PhoneGlyph className="h-5 w-5" />;
+  if (icon === "mail") return <MailGlyph className="h-5 w-5" />;
+  return <SocialGlyph icon={icon} />;
+}
+
+function SocialGlyph({ icon }: { icon: "instagram" | "globe" | "facebook" | "tiktok" }) {
   if (icon === "instagram") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
         <rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="currentColor" strokeWidth="1.6" />
         <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.6" />
         <circle cx="17" cy="7" r="1" fill="currentColor" />
@@ -680,22 +691,38 @@ function SocialGlyph({ icon }: { icon: "link" | "instagram" | "globe" }) {
   }
   if (icon === "globe") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
         <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.6" />
         <ellipse cx="12" cy="12" rx="3.4" ry="8.5" stroke="currentColor" strokeWidth="1.6" />
         <path d="M3.5 12h17" stroke="currentColor" strokeWidth="1.6" />
       </svg>
     );
   }
+  if (icon === "facebook") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+        <path
+          d="M14.5 21v-7.5h2.5l.5-3h-3V8.5c0-.9.3-1.5 1.6-1.5H17.5V4.3C17.2 4.2 16.2 4 15 4c-2.5 0-4 1.5-4 4.3V10.5H8.5v3H11V21"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  // tiktok — a simplified line rendition of the note-and-swirl mark, same
+  // minimal stroke language as every other glyph on this page.
   return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
       <path
-        d="M9 15l6-6M11 6.5l1.5-1.5a3.2 3.2 0 014.5 4.5L15.5 11M13 17.5L11.5 19a3.2 3.2 0 01-4.5-4.5L8.5 13"
+        d="M13 4v10.3a3 3 0 11-2.2-2.9"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      <path d="M13 4c.4 2.3 2.2 4 4.5 4.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
