@@ -18,7 +18,13 @@ export const dynamic = "force-dynamic";
 /** My FindMi home — the account section's own entry point/hub, so it
  * carries the nav cards itself rather than the AccountNav tab strip
  * every other /account/* page uses. */
-export default async function AccountHomePage() {
+export default async function AccountHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
+
   const supabase = await getServerSupabase();
   const {
     data: { user },
@@ -33,6 +39,28 @@ export default async function AccountHomePage() {
     .eq("id", user.id)
     .maybeSingle<Pick<Profile, "display_name">>();
 
+  // My FindMi — Manage Business entry point: the businesses this user is
+  // a business_members row for (any role). RLS already scopes this
+  // table's SELECT to auth.uid() = user_id, so this can only ever see the
+  // caller's own memberships — no service-role needed just to list them.
+  // One card per business, same AccountCard pattern as every other
+  // section below; omitted entirely for a visitor with none, never a
+  // placeholder/empty card.
+  const { data: businessMemberships } = await supabase
+    .from("business_members")
+    .select("business_id, businesses(name, slug)")
+    .eq("user_id", user.id);
+  type BusinessMembershipRow = {
+    business_id: string;
+    businesses: { name: string; slug: string } | { name: string; slug: string }[] | null;
+  };
+  const myBusinesses = ((businessMemberships ?? []) as BusinessMembershipRow[])
+    .map((m) => {
+      const business = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
+      return business ? { id: m.business_id, name: business.name } : null;
+    })
+    .filter((b): b is { id: string; name: string } => Boolean(b));
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountSync />
@@ -43,6 +71,10 @@ export default async function AccountHomePage() {
       <p className="mt-2 text-sm text-ink/60">
         Keep track of what you discover — the businesses, events, and products you save and follow.
       </p>
+
+      {error && (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      )}
 
       <div className="mt-7 grid grid-cols-2 gap-3">
         <AccountCard
@@ -69,6 +101,15 @@ export default async function AccountHomePage() {
           description="Name, email & sign out"
           icon={<NavIcon name="person" className="h-5 w-5" />}
         />
+        {myBusinesses.map((b) => (
+          <AccountCard
+            key={b.id}
+            href={`/account/business/${b.id}`}
+            label={b.name}
+            description="Manage this business"
+            icon={<NavIcon name="storefront" className="h-5 w-5" />}
+          />
+        ))}
       </div>
     </div>
   );

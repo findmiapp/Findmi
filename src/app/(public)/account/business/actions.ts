@@ -7,6 +7,77 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
+import { validateImageFile } from "@/lib/imageUploadValidation";
+
+const UPLOAD_BUCKET = "findmi-media";
+
+/**
+ * MANAGE BUSINESS — MEMBER IMAGE UPLOAD ONLY. The member-facing
+ * counterpart to lib/admin/upload.ts's uploadImage() — same Storage
+ * bucket and the exact same shared file-safety rules (size/HEIC/SVG/MIME/
+ * magic-byte checks, via lib/imageUploadValidation.ts), but its own
+ * separate authorization path. Deliberately NOT a change to uploadImage()
+ * itself (still requireAdmin()-gated, untouched) and never exposed to a
+ * member — this is a distinct exported function a member-facing
+ * component calls directly.
+ *
+ * Authorization, never trusted from the client:
+ *   1. requireBusinessMember(businessId) — the exact same foundation
+ *      updateMemberBusiness uses — re-derives real membership from the
+ *      caller's own session-scoped query against business_members. No
+ *      businessId is ever trusted on its own; it only unlocks an upload
+ *      once the CALLER'S real session proves they belong to that
+ *      specific business. A signed-out visitor, or a signed-in user with
+ *      no business_members row for this businessId, gets a friendly
+ *      error and nothing is written to Storage.
+ *   2. Only after that succeeds does this reach for the service-role
+ *      client to perform the actual Storage write — Storage writes need
+ *      elevated privileges the same way the businesses table write in
+ *      updateMemberBusiness does, so this mirrors that exact authorize-
+ *      then-elevate shape rather than trusting an RLS-scoped client for
+ *      the upload itself.
+ *
+ * Returns a plain { url } / { error } result (same shape uploadImage()
+ * already returns) — this function never writes to the businesses table
+ * itself. The resulting URL only ever reaches logo_url/cover_image_url
+ * via updateMemberBusiness's own existing, already-scoped allowlist —
+ * this action's only "purpose" restriction is that its result can never
+ * be used for anything besides those two fields, because nothing else in
+ * updateMemberBusiness accepts a submitted URL at all.
+ */
+export async function uploadMemberBusinessImage(
+  businessId: string,
+  formData: FormData
+): Promise<{ url?: string; error?: string }> {
+  try {
+    await requireBusinessMember(businessId);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "You don't have access to this business." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "No file selected." };
+
+  const validated = await validateImageFile(file);
+  if ("error" in validated) return validated;
+
+  const admin = getAdminSupabase();
+  if (!admin) return { error: "Storage isn't configured on the server." };
+
+  // Same server-generated-path convention as uploadImage() — a random
+  // UUID plus the validated extension, never anything derived from the
+  // submitted filename or businessId.
+  const path = `${crypto.randomUUID()}.${validated.extension}`;
+
+  const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, file, {
+    contentType: file.type,
+    upsert: false,
+  });
+  if (error) return { error: error.message };
+
+  const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(path);
+  return { url: data.publicUrl };
+}
 
 // OWNER BUSINESS MUTATION — MINIMAL FOUNDATION
 //

@@ -1,0 +1,152 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { getServerSupabase } from "@/lib/supabase/server";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { errorRedirectUrl } from "@/lib/admin/form-helpers";
+import { requireBusinessMember } from "@/lib/permissions";
+import { isBusinessPro } from "@/lib/entitlements";
+import { getCategories } from "@/lib/data";
+import AccountNav from "../../AccountNav";
+import { updateMemberBusiness } from "../actions";
+import MemberImageField from "./MemberImageField";
+
+export const metadata: Metadata = {
+  title: "Manage Business",
+  robots: { index: false },
+};
+// Authenticated, per-user content — must never be statically or
+// ISR-cached; every response here is specific to whoever is signed in.
+export const dynamic = "force-dynamic";
+
+const inputClass =
+  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
+const primaryButtonClass =
+  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+
+/** MY FINDMI — MINIMAL MANAGE BUSINESS PAGE. The smallest functional
+ * owner-facing editor for a claimed business, calling the existing
+ * updateMemberBusiness Server Action directly (no update logic
+ * duplicated here) — this page only reads what it needs to render the
+ * form and hands the submit off entirely to that action, which already
+ * owns every authorization/validation/allowlist/atomicity concern.
+ *
+ * Free and Pro currently render the exact same form — updateMemberBusiness
+ * itself only allows this same small field set for both tiers right now
+ * (see its own doc comment), so there is nothing more to show yet; the
+ * plan label is purely informational here. */
+export default async function ManageBusinessPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ saved?: string; error?: string }>;
+}) {
+  const { id } = await params;
+  const { saved, error } = await searchParams;
+
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  // Same defense-in-depth re-check every other /account Server
+  // Component/Action already does.
+  if (!user) redirect(`/login?next=${encodeURIComponent(`/account/business/${id}`)}`);
+
+  // Real, session-scoped authorization — never trusts anything from the
+  // URL beyond the id itself. Same requireBusinessMember() foundation
+  // updateMemberBusiness uses; a visitor with no business_members row for
+  // this business never sees the form at all, existing account error
+  // pattern (an ?error= banner on the account home, same shape every
+  // other /account page already uses).
+  try {
+    await requireBusinessMember(id);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "You don't have access to that business.";
+    redirect(errorRedirectUrl("/account", message));
+  }
+
+  // Only reachable AFTER authorization succeeds above — plan_tier isn't in
+  // the public column grant (see restrict_internal_commerce_columns), so
+  // it's read via service-role here, same authorize-then-elevate shape as
+  // updateMemberBusiness itself.
+  const admin = getAdminSupabase();
+  if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
+
+  const [{ data: business }, categories, { data: businessCategoryRows }] = await Promise.all([
+    admin.from("businesses").select("id, name, logo_url, cover_image_url, plan_tier").eq("id", id).maybeSingle(),
+    getCategories(),
+    // A business may still carry more than one category from before this
+    // action's one-category rule existed (admin's own editor allows
+    // several) — ordered + limited to 1 so the form simply defaults to
+    // one of them rather than erroring; saving collapses it to exactly
+    // one via updateMemberBusiness's own atomic set_business_category().
+    admin.from("business_categories").select("category_id").eq("business_id", id).order("category_id").limit(1),
+  ]);
+  if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
+
+  const pro = isBusinessPro(business);
+  const currentCategoryId = businessCategoryRows?.[0]?.category_id ?? "";
+  const action = updateMemberBusiness.bind(null, id);
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
+      <AccountNav />
+
+      <div className="mx-auto max-w-md">
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Manage Business</p>
+        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">{business.name}</h1>
+        <span
+          className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+            pro ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/60"
+          }`}
+        >
+          {pro ? "Pro" : "Free"} Plan
+        </span>
+
+        {error && (
+          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        )}
+        {saved && !error && (
+          <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+            Business updated.
+          </p>
+        )}
+
+        <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+          <form action={action} className="flex flex-col gap-4">
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
+              <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
+            </label>
+
+            <MemberImageField businessId={id} label="Logo" name="logo_url" defaultValue={business.logo_url} />
+            <MemberImageField
+              businessId={id}
+              label="Cover image"
+              name="cover_image_url"
+              defaultValue={business.cover_image_url}
+            />
+
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Category</span>
+              <select name="category_id" required defaultValue={currentCategoryId} className={inputClass}>
+                <option value="" disabled>
+                  Choose a category…
+                </option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
+              Save Changes
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
