@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +45,11 @@ async function resolveEntityId(supabase: SupabaseClient, entityTable: string, sl
  *   "paid_pending_review"  — EVENT claims only: the pending claim's
  *                            payment_status is 'paid'; awaiting founder
  *                            review. Payment alone never implies approval.
- *   "member"               — a real business_members/event_members row
- *                            exists; claim UI hidden entirely.
+ *   "member"               — the entity already has an approved owner
+ *                            (this viewer or anyone else), OR a different
+ *                            user's claim is already pending on it; claim
+ *                            UI hidden entirely for every visitor either
+ *                            way, never just the owner/claimant.
  * A rejected (or approved, i.e. now covered by "member") claim falls back
  * to "none", intentionally allowing a fresh claim to be submitted — see
  * the claim foundation migration's partial-unique-index note. */
@@ -67,39 +71,83 @@ export async function GET(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ state: "none" });
 
   const { entityTable, claimTable, memberTable, column } = ENTITY[type];
   const entityId = await resolveEntityId(supabase, entityTable, slug);
-  if (!entityId) return NextResponse.json({ state: "none", accountEmail: user.email ?? null });
+  if (!entityId) return NextResponse.json({ state: "none", accountEmail: user?.email ?? null });
 
-  const { data: membership } = await supabase
-    .from(memberTable)
-    .select("id")
-    .eq("user_id", user.id)
-    .eq(column, entityId)
-    .maybeSingle();
-  if (membership) return NextResponse.json({ state: "member" });
-
-  const { data: pendingClaim } = await supabase
-    .from(claimTable)
-    .select("id, payment_status, full_name, email, phone")
-    .eq("user_id", user.id)
-    .eq(column, entityId)
-    .eq("status", "pending")
-    .maybeSingle();
-  if (pendingClaim) {
-    const state = resolvePendingState(type, pendingClaim.payment_status);
-    return NextResponse.json({
-      state,
-      claimId: pendingClaim.id,
-      fullName: pendingClaim.full_name,
-      email: pendingClaim.email,
-      phone: pendingClaim.phone,
-    });
+  // Original per-viewer membership check — unchanged, still runs for both
+  // types (event claim behavior stays exactly as before this pass).
+  if (user) {
+    const { data: membership } = await supabase
+      .from(memberTable)
+      .select("id")
+      .eq("user_id", user.id)
+      .eq(column, entityId)
+      .maybeSingle();
+    if (membership) return NextResponse.json({ state: "member" });
   }
 
-  return NextResponse.json({ state: "none", accountEmail: user.email ?? null });
+  // Business-claim-only addition: already-claimed-by-anyone check — must
+  // answer the same way for EVERY visitor (owner, other signed-in users,
+  // and signed-out guests alike), not just the current viewer, so it
+  // can't use the RLS-scoped client above (business_members only lets a
+  // user read their own row). Read-only existence check via service-role,
+  // same authorize-elsewhere-then-elevate shape used throughout the app —
+  // no membership/claim record is touched, only reported on.
+  // business_members enforces at most one 'owner' row per business, so
+  // any row here means it's already claimed. Scoped to type === "business"
+  // only — event claim eligibility is untouched by this pass.
+  if (type === "business") {
+    const admin = getAdminSupabase();
+    if (admin) {
+      const { data: anyMember } = await admin.from(memberTable).select("id").eq(column, entityId).limit(1).maybeSingle();
+      if (anyMember) return NextResponse.json({ state: "member" });
+    }
+  }
+
+  if (user) {
+    const { data: pendingClaim } = await supabase
+      .from(claimTable)
+      .select("id, payment_status, full_name, email, phone")
+      .eq("user_id", user.id)
+      .eq(column, entityId)
+      .eq("status", "pending")
+      .maybeSingle();
+    if (pendingClaim) {
+      const state = resolvePendingState(type, pendingClaim.payment_status);
+      return NextResponse.json({
+        state,
+        claimId: pendingClaim.id,
+        fullName: pendingClaim.full_name,
+        email: pendingClaim.email,
+        phone: pendingClaim.phone,
+      });
+    }
+  }
+
+  // Business-claim-only addition: no pending claim belonging to this
+  // viewer (or no viewer at all) — but a DIFFERENT user's claim may
+  // already be pending on this same business (the "one pending claim"
+  // constraint is per-user, not per-entity — see the claim foundation
+  // migration). Never expose that claimant's contact info to anyone else;
+  // just stop offering a competing CTA. Scoped to "business" only — event
+  // claim eligibility is untouched by this pass.
+  if (type === "business") {
+    const admin = getAdminSupabase();
+    if (admin) {
+      const { data: pendingAny } = await admin
+        .from(claimTable)
+        .select("id")
+        .eq(column, entityId)
+        .eq("status", "pending")
+        .limit(1)
+        .maybeSingle();
+      if (pendingAny) return NextResponse.json({ state: "member" });
+    }
+  }
+
+  return NextResponse.json({ state: "none", accountEmail: user?.email ?? null });
 }
 
 /** Submits a new claim request. Body: { type, slug, fullName, email,

@@ -76,10 +76,12 @@ export default function ClaimButton({
     let cancelled = false;
     getAccountSession().then((authed) => {
       if (cancelled) return;
-      if (!authed) {
-        setState("guest");
-        return;
-      }
+      // Always check claim status via the API, signed in or not — an
+      // already-claimed (or already-pending-from-someone-else) business
+      // must never offer the CTA, guests included, so a guest can no
+      // longer skip straight to the "guest" login-link render below
+      // without first confirming the business is actually still open to
+      // claim (see the API route's own admin-scoped eligibility check).
       fetch(`/api/account/claim?type=${type}&slug=${encodeURIComponent(slug)}`)
         .then((res) => (res.ok ? res.json() : null))
         .then(
@@ -95,7 +97,12 @@ export default function ClaimButton({
           ) => {
             if (cancelled) return;
             const resolved = data?.state ?? "none";
-            setState(resolved);
+            // "none" from the API means the business is genuinely still
+            // open to claim — for a signed-out visitor that's the existing
+            // login-routed CTA; any other resolved state (member/pending/
+            // etc.) already means "don't show a claim CTA" and applies
+            // the same regardless of auth.
+            setState(!authed && resolved === "none" ? "guest" : resolved);
             setClaimId(data?.claimId ?? null);
             if (data?.fullName != null || data?.email != null || data?.phone != null) {
               setContact({ fullName: data.fullName ?? "", email: data.email ?? "", phone: data.phone ?? "" });
@@ -116,7 +123,7 @@ export default function ClaimButton({
           }
         )
         .catch(() => {
-          if (!cancelled) setState("none");
+          if (!cancelled) setState(authed ? "none" : "guest");
         });
     });
     return () => {
@@ -176,11 +183,31 @@ export default function ClaimButton({
 
   if (state === "pending_review") {
     return (
-      <div className="max-w-xs rounded-2xl border border-black/10 bg-white p-4">
+      <div className="max-w-sm rounded-2xl border border-black/10 bg-white p-4">
         <p className="text-sm font-semibold text-ink">Claim submitted. Your claim is under review.</p>
         <p className="mt-1 text-xs text-ink/50">
           FindMi will manually verify your connection to this {noun} before granting management access.
         </p>
+        <p className="mt-1 text-xs text-ink/50">Standard claims are typically reviewed within 48–72 hours.</p>
+
+        {/* Post-claim Pro offer — priority review only, never a guarantee
+            of approval (see below). Not a payment integration: a plain
+            link out to the existing Tally Pro-upgrade form. */}
+        <div className="mt-3 rounded-xl border border-findmi/20 bg-findmi-50 p-3">
+          <p className="text-xs font-bold text-ink">Need access sooner?</p>
+          <p className="mt-1 text-xs text-ink/60">
+            Upgrade to FindMi Pro for priority review, typically within 2 business hours during regular business
+            hours, plus your full business profile, gallery, products, appearances, contact links and more.
+          </p>
+          <a
+            href="https://tally.so/r/0QR7LN"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 flex h-9 items-center justify-center rounded-full bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Upgrade to Pro
+          </a>
+        </div>
       </div>
     );
   }
