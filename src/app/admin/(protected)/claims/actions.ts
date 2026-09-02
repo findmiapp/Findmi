@@ -31,9 +31,33 @@ const FRIENDLY_ERROR: Record<string, string> = {
  * not at all) — done via a single service-role-only Postgres function
  * (see the migration) rather than a multi-write sequence from here, which
  * would leave a real window for two concurrent approvals to both succeed
- * against the same business/event. */
+ * against the same business/event.
+ *
+ * The $20 claim payment is checked HERE, before the RPC is ever called —
+ * not inside approve_business_claim()/approve_event_claim() themselves,
+ * which stay exactly what they were (membership-grant eligibility only:
+ * claim pending, claimant not already a member, entity not already
+ * owned). Keeping payment verification a separate, earlier gate matches
+ * this pass's explicit "claim payment must never grant permissions on its
+ * own" architecture — payment is a precondition for approval, never a
+ * path around it. The UI already disables the Approve button for an
+ * unpaid claim; this is the required server-side backstop for anyone
+ * bypassing that (a replayed/hand-crafted form submission). */
 export async function approveClaim(entityType: ClaimEntityType, claimId: string) {
   const supabase = await requireAdminSupabase();
+
+  const { data: claim } = await supabase
+    .from(CLAIM_TABLE[entityType])
+    .select("payment_status")
+    .eq("id", claimId)
+    .maybeSingle();
+  if (!claim) {
+    redirect(errorRedirectUrl("/admin/claims", "That claim no longer exists."));
+  }
+  if (claim!.payment_status !== "paid") {
+    redirect(errorRedirectUrl("/admin/claims", "Can't approve — the $20 claim payment hasn't been received yet."));
+  }
+
   const { error } = await supabase.rpc(APPROVE_RPC[entityType], { p_claim_id: claimId });
 
   if (error) {

@@ -70,3 +70,63 @@ export function getOnboardingFormUrl(membership?: {
   const separator = ONBOARDING_BASE.includes("?") ? "&" : "?";
   return `${ONBOARDING_BASE}${separator}${params.toString()}`;
 }
+
+// .env.example ships this exact placeholder value — treated identically to
+// "unset", same reasoning as ONBOARDING_PLACEHOLDER above.
+const CLAIM_PAYMENT_PLACEHOLDER = "https://tally.so/r/your-claim-payment-form-id";
+const CLAIM_PAYMENT_BASE = ((): string => {
+  const raw = (process.env.NEXT_PUBLIC_TALLY_CLAIM_PAYMENT_URL ?? "").trim();
+  return raw === CLAIM_PAYMENT_PLACEHOLDER ? "" : raw;
+})();
+
+/**
+ * The $20 claim listing-activation payment Tally form — ONE shared form
+ * for both business and event claims, distinguished by claim_type, rather
+ * than two separate forms (simplest setup that still cleanly associates a
+ * payment with the right claim; see the claim payment pass's report for
+ * why two URLs were considered and not used).
+ *
+ * ONLY claim_id + claim_type are ever trusted by the payment webhook
+ * (/api/webhooks/tally) to resolve which pending claim a payment belongs
+ * to — never full_name/email/phone, and never the claimant's email alone,
+ * since a Tally submission's own field values aren't guaranteed to match
+ * what FindMi already has on file. full_name/email/phone are passed
+ * ONLY so the founder can configure the Tally form to skip asking for
+ * them again (FindMi already collected them in the claim form itself —
+ * see /api/account/claim's POST) — they carry no authority and the
+ * webhook never reads them for anything.
+ *
+ * Required hidden fields to configure on the Tally form (Settings ->
+ * Hidden fields), matching these param keys exactly: claim_id, claim_type,
+ * full_name, email, phone. The visible form itself should be
+ * payment-focused only — a brief note that this is the $20 listing
+ * activation payment, the Payment question, and a submit button; it
+ * should NOT contain separate visible Full Name / Email / Phone
+ * questions, since FindMi already has that data (see this pass's report
+ * for what Tally's own payment block may still require from the payer,
+ * which is a different thing from a duplicate form question). The form
+ * also needs a $20 USD Payment question (Tally's built-in Stripe-backed
+ * payment block) — see the claim payment webhook's own comments for the
+ * field-label conventions it reads to confirm a genuine paid $20
+ * submission; that field-shape could not be verified against live Tally
+ * documentation from this environment and MUST be confirmed with one
+ * real test payment before this is relied on in production.
+ */
+export function getClaimPaymentFormUrl(claim: {
+  id: string;
+  type: "business" | "event";
+  fullName: string;
+  email: string;
+  phone: string;
+}): string {
+  if (!CLAIM_PAYMENT_BASE) return "";
+  const params = new URLSearchParams({
+    claim_id: claim.id,
+    claim_type: claim.type,
+    full_name: claim.fullName,
+    email: claim.email,
+    phone: claim.phone,
+  });
+  const separator = CLAIM_PAYMENT_BASE.includes("?") ? "&" : "?";
+  return `${CLAIM_PAYMENT_BASE}${separator}${params.toString()}`;
+}
