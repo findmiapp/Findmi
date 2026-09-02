@@ -133,7 +133,12 @@ export async function getAllCategories(kind?: CategoryKind): Promise<Category[]>
   let query = supabase.from("categories").select("*");
   if (kind) query = query.eq("kind", kind);
   const { data } = await query.order("name");
-  return data ?? [];
+  const categories = data ?? [];
+  // Business-only: "Other" always sorts last, regardless of where it
+  // falls alphabetically. Event/product ordering (and the unscoped/mixed
+  // call, kind omitted) are untouched.
+  if (kind !== "business") return categories;
+  return [...categories.filter((c) => c.name !== "Other"), ...categories.filter((c) => c.name === "Other")];
 }
 
 /** Looks up just the one business a form already has selected, for seeding a

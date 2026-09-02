@@ -200,7 +200,10 @@ export async function getCategories(): Promise<Category[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data } = await supabase.from("categories").select("*").eq("kind", "business").order("name");
-  return data ?? [];
+  const categories = data ?? [];
+  // Alphabetical (already the query's own order), except "Other" always
+  // sorts last regardless of where it falls alphabetically.
+  return [...categories.filter((c) => c.name !== "Other"), ...categories.filter((c) => c.name === "Other")];
 }
 
 /** Founder-controlled subset/order for the homepage category strip (see
