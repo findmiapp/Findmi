@@ -257,8 +257,9 @@ export default async function EventPage({
                   href={directionsHref!}
                   target="_blank"
                   rel="noreferrer"
-                  className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
                 >
+                  <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
                   Directions
                 </a>
               )}
@@ -507,6 +508,18 @@ function PinGlyph({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+// Action-row UX pass — small navigation/directions arrow for the
+// Directions pill, matching the Save/Add to Calendar icons in this same
+// row exactly (h-3.5 w-3.5, strokeWidth 1.8, currentColor so it inherits
+// the pill's muted text-ink/60 / hover:text-ink treatment).
+function DirectionsGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M12 2L4.5 20.5l.9.9L12 18l6.6 3.4.9-.9L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
     </svg>
   );
 }

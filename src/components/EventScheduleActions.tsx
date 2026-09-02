@@ -47,8 +47,9 @@ export default function EventScheduleActions({
           href={directionsHref}
           target="_blank"
           rel="noreferrer"
-          className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+          className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
         >
+          <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
           Directions
         </a>
       )}
@@ -64,5 +65,15 @@ export default function EventScheduleActions({
         </div>
       )}
     </>
+  );
+}
+
+// Same glyph/sizing convention as the Save and Add to Calendar icons in
+// this same action row (h-3.5 w-3.5, strokeWidth 1.8, currentColor).
+function DirectionsGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M12 2L4.5 20.5l.9.9L12 18l6.6 3.4.9-.9L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
   );
 }
