@@ -14,6 +14,13 @@ export default async function AdminLoginPage({
   searchParams: Promise<{ error?: string; next?: string }>;
 }) {
   const { error, next } = await searchParams;
+  // Admin Login Rate-Limit UX fix — error=rate_limited (temporarily
+  // blocked, see loginRateLimit.ts) is a distinct, honest state from a
+  // plain wrong password; the two must never show the same text, or a
+  // founder who's actually correct-but-blocked gets told their password
+  // is wrong (see the session-persistence trace report). Any other
+  // truthy `error` value still means "wrong password" — unchanged.
+  const rateLimited = error === "rate_limited";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-6">
@@ -41,7 +48,11 @@ export default async function AdminLoginPage({
           </div>
 
           {error && (
-            <p className="text-sm text-red-600">That password isn&rsquo;t right. Try again.</p>
+            <p className="text-sm text-red-600">
+              {rateLimited
+                ? "Too many login attempts. Try again in a few minutes."
+                : "That password isn't right. Try again."}
+            </p>
           )}
 
           <button
