@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 
 // Shared presentational lightbox/slider — final refinement pass, item 15:
@@ -9,6 +9,25 @@ import Image from "next/image";
 // implementations. Previous vs Next only render when there's more than
 // one image; Escape/Left/Right work whenever mounted, backdrop click and
 // the close button both dismiss.
+//
+// Reliability fix — public gallery pass: two real gaps, both closed here
+// without touching how index/images/alt ever get here (every caller —
+// ImageGalleryStrip, EventCoverLightbox — already passes one consistent
+// array + index, verified against production data; this component was
+// never the source of a thumbnail/active-image mismatch):
+//   1. No touch handling existed at all, so mobile swipe simply did
+//      nothing — not "unreliable", just absent. See handleTouchStart/End.
+//   2. No onError handling on the active <Image>, so a single failed URL
+//      (bad data, a deleted Storage object, a transient network error —
+//      any of those) rendered as a bare broken-image icon with no
+//      indication and, worse, gave no way to tell "this exact image
+//      failed" from "the whole lightbox is broken". failedIndices below
+//      tracks exactly (and only) images that have actually failed to
+//      load — never a guess/heuristic applied ahead of time — and swaps
+//      in a small, clearly-labeled placeholder for just that index.
+//      index/hasMultiple/counter/arrows are completely unaffected by a
+//      failure, so prev/next/swipe/counter keep working through however
+//      many good images surround one bad one.
 export default function ImageLightbox({
   images,
   initialIndex,
@@ -21,6 +40,7 @@ export default function ImageLightbox({
   onClose: () => void;
 }) {
   const [index, setIndex] = useState(initialIndex);
+  const [failedIndices, setFailedIndices] = useState<Set<number>>(new Set());
   const hasMultiple = images.length > 1;
 
   useEffect(() => {
@@ -36,6 +56,26 @@ export default function ImageLightbox({
       document.body.style.overflow = "";
     };
   }, [hasMultiple, images.length, onClose]);
+
+  // Swipe — a plain touch-delta check, no gesture library. Tracked as a
+  // ref (not state) since these coordinates never need to trigger a
+  // render themselves. Horizontal movement has to clearly dominate
+  // vertical (so a vertical scroll/drag is never mistaken for a swipe)
+  // and clear a real minimum distance (so a stray tap never is either).
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  function handleTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start || !hasMultiple) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) setIndex((i) => (i + 1) % images.length); // swiped left -> next
+    else setIndex((i) => (i - 1 + images.length) % images.length); // swiped right -> previous
+  }
 
   return (
     <div
@@ -80,8 +120,28 @@ export default function ImageLightbox({
         </>
       )}
 
-      <div className="relative h-full max-h-[85vh] w-full max-w-4xl" onClick={(e) => e.stopPropagation()}>
-        <Image src={images[index]} alt={alt} fill sizes="100vw" className="object-contain" />
+      <div
+        className="relative h-full max-h-[85vh] w-full max-w-4xl"
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        {failedIndices.has(index) ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-white/50">
+            <BrokenImageGlyph className="h-10 w-10" />
+            <p className="text-xs">Image unavailable</p>
+          </div>
+        ) : (
+          <Image
+            key={images[index]}
+            src={images[index]}
+            alt={alt}
+            fill
+            sizes="100vw"
+            className="object-contain"
+            onError={() => setFailedIndices((prev) => new Set(prev).add(index))}
+          />
+        )}
       </div>
 
       {hasMultiple && (
@@ -105,6 +165,16 @@ function ChevronGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function BrokenImageGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M3.5 16l5-5 3 3 4-4 5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 4.5l16 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
