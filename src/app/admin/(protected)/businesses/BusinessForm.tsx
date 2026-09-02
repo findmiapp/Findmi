@@ -41,11 +41,25 @@ export default function BusinessForm({
         </p>
       )}
 
+      {/* Plan Tier moved to the very top — this is the same Free/Pro
+          control referenced by the Access & Plan section above the form;
+          keeping it first here makes it the first thing the founder edits,
+          not buried among unrelated fields further down. */}
+      <SelectField
+        label="Plan Tier"
+        name="plan_tier"
+        defaultValue={business?.plan_tier ?? "free"}
+        options={[
+          { value: "free", label: "Free" },
+          { value: "pro", label: "Pro" },
+        ]}
+      />
+
       <CheckboxField
         label="Published"
         name="published"
         defaultChecked={business ? !business.is_demo : true}
-        hint="On = visible to the public. Off = hidden (demo/test only). A business linked to a membership also needs its onboarding approved (see the Membership section above) — a pending/rejected/paused membership keeps the profile hidden even when this is on."
+        hint="On = visible to the public. Off = hidden (demo/test only). A business linked to a Founding Membership record also needs its onboarding approved (see Legacy Membership / Onboarding below) — a pending/rejected/paused membership keeps the profile hidden even when this is on."
       />
 
       <NameSlugFields
@@ -165,16 +179,6 @@ export default function BusinessForm({
         name="is_featured"
         defaultChecked={business?.is_featured}
         hint="Shows in the homepage/Businesses 'Featured Brands' rows. Independent of Founding Member."
-      />
-
-      <SelectField
-        label="Plan Tier"
-        name="plan_tier"
-        defaultValue={business?.plan_tier ?? "free"}
-        options={[
-          { value: "free", label: "Free" },
-          { value: "pro", label: "Pro" },
-        ]}
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
