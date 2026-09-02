@@ -9,6 +9,7 @@ import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import EventFollowForm from "@/components/EventFollowForm";
 import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
+import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import EventOccurrenceCard from "@/components/EventOccurrenceCard";
 import EventSaveButton from "@/components/EventSaveButton";
 import EventScheduleActions from "@/components/EventScheduleActions";
@@ -26,6 +27,7 @@ import {
   getEventBySlug,
   getEventImages,
   getEventProducts,
+  getOccurrenceBusinessRosters,
   getUpcomingOccurrencesForEvent,
 } from "@/lib/data";
 import { cityState, formatDateRange } from "@/lib/format";
@@ -72,6 +74,13 @@ export default async function EventPage({
       getUpcomingOccurrencesForEvent(event.id),
       eventHasAnyOccurrences(event.id),
     ]);
+  // Depends on upcomingOccurrences' own ids, so this can't join the
+  // Promise.all above — one extra query, only for a recurring event, for
+  // every one of its upcoming occurrences' rosters at once (never one
+  // query per occurrence — see getOccurrenceBusinessRosters).
+  const rostersByOccurrence = hasOccurrences
+    ? await getOccurrenceBusinessRosters(upcomingOccurrences.map((o) => o.id))
+    : {};
   const category = eventWithCategories.categories[0] ?? null;
   const location = cityState(event.city, event.state);
   const venueLine = [event.venue_name, event.address, location].filter(Boolean).join(" · ");
@@ -331,6 +340,43 @@ export default async function EventPage({
           </HorizontalScroller>
         </div>
       )}
+
+      {/* Events only have one description field today (no separate
+          short/long), so this is the single "About This Event" section
+          rather than duplicating the same text twice. Identical either
+          way — moved inside this shared fragment only so it's still
+          reachable inside the Provider below the Upcoming Dates
+          selector, ahead of the occurrence-aware roster right after it. */}
+      {event.description && (
+        <section className="mt-5">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
+          <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
+            {event.description}
+          </p>
+        </section>
+      )}
+
+      {/* Item 7 (content order) — Who You'll Find Here comes right after
+          About, BEFORE Featured Products and About the Venue. Recurring
+          Events V2: for an event WITH occurrence rows, the SELECTED
+          occurrence's own event_occurrence_businesses roster is
+          authoritative (EventOccurrenceBusinessRoster reads it via the
+          shared context) — never event_businesses, never a fallback to
+          it. A legacy event keeps the exact original event_businesses
+          roster below, untouched. */}
+      {hasOccurrences ? (
+        <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} />
+      ) : (
+        <section className="mt-5">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
+            Who You&rsquo;ll Find Here
+          </h2>
+          <p className="mt-1 text-sm text-ink/55">
+            {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
+          </p>
+          <EventBusinessRoster businesses={businesses} />
+        </section>
+      )}
     </>
   );
 
@@ -367,32 +413,6 @@ export default async function EventPage({
         ) : (
           scheduleAndDetails
         )}
-
-        {/* Events only have one description field today (no separate
-            short/long), so this is the single "About This Event" section
-            rather than duplicating the same text twice. */}
-        {event.description && (
-          <section className="mt-5">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
-            <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
-              {event.description}
-            </p>
-          </section>
-        )}
-
-        {/* Item 7 (content order) — Who You'll Find Here now comes right
-            after About, BEFORE Featured Products and About the Venue, per
-            this pass's explicit ordering requirement. Preserves the
-            existing participating-business logic/taxonomy untouched. */}
-        <section className="mt-5">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
-            Who You&rsquo;ll Find Here
-          </h2>
-          <p className="mt-1 text-sm text-ink/55">
-            {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
-          </p>
-          <EventBusinessRoster businesses={businesses} />
-        </section>
 
         {/* Item 11 — a founder-picked small set of real, existing products
             (event_products), moved to right after Who You'll Find Here.

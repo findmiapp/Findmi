@@ -1078,6 +1078,58 @@ export async function getBusinessesForEvent(eventId: string): Promise<EventBusin
   }));
 }
 
+/** Occurrence-specific public vendor rosters (Recurring Events V2) — for
+ * events WITH occurrence rows, event_occurrence_businesses is
+ * authoritative for a given date's lineup, never event_businesses (see
+ * getBusinessesForEvent above, which stays exactly as-is for legacy
+ * one-time events). One query for every occurrence's roster at once
+ * (not one per occurrence) to avoid N+1 — the public event page fetches
+ * this once for all of an event's upcoming occurrences and looks up the
+ * currently selected one client-side, so switching Upcoming Dates cards
+ * never refetches. Only `status = 'approved'` rows are ever returned;
+ * ordered featured-first, then by business name (event_occurrence_
+ * businesses has no manual display_order — see the migration report),
+ * so the result is already in a sensible, stable order without further
+ * client-side sorting. Same is_demo/publication_status filtering as
+ * getBusinessesForEvent, for the same reason. */
+export async function getOccurrenceBusinessRosters(
+  occurrenceIds: string[]
+): Promise<Record<string, EventBusinessListing[]>> {
+  const byOccurrence: Record<string, EventBusinessListing[]> = {};
+  if (occurrenceIds.length === 0) return byOccurrence;
+  const supabase = getSupabase();
+  if (!supabase) return byOccurrence;
+
+  const { data, error } = await supabase
+    .from("event_occurrence_businesses")
+    .select(`occurrence_id, featured, businesses(${PUBLIC_BUSINESS_COLUMNS})`)
+    .in("occurrence_id", occurrenceIds)
+    .eq("status", "approved")
+    .order("featured", { ascending: false })
+    .order("name", { foreignTable: "businesses", ascending: true });
+  logPublicQueryError("getOccurrenceBusinessRosters", error);
+
+  type Row = { occurrence_id: string; featured: boolean; businesses: Business | Business[] | null };
+  const rows = ((data ?? []) as unknown as Row[])
+    .map((row) => {
+      const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
+      const b = business as (Business & { is_demo?: boolean }) | null;
+      return b && !b.is_demo && b.publication_status === "live"
+        ? { occurrence_id: row.occurrence_id, business: b, featured: row.featured }
+        : null;
+    })
+    .filter((r): r is { occurrence_id: string; business: Business; featured: boolean } => Boolean(r));
+  if (rows.length === 0) return byOccurrence;
+
+  const withCategories = await attachCategories(rows.map((r) => r.business));
+  withCategories.forEach((b, i) => {
+    const listing: EventBusinessListing = { ...b, featured: rows[i].featured, offering_text: null };
+    const occId = rows[i].occurrence_id;
+    (byOccurrence[occId] ??= []).push(listing);
+  });
+  return byOccurrence;
+}
+
 export async function getUpcomingAppearancesForEvent(eventId: string): Promise<Appearance[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
