@@ -42,7 +42,13 @@ const FRIENDLY_ERROR: Record<string, string> = {
  * own" architecture — payment is a precondition for approval, never a
  * path around it. The UI already disables the Approve button for an
  * unpaid claim; this is the required server-side backstop for anyone
- * bypassing that (a replayed/hand-crafted form submission). */
+ * bypassing that (a replayed/hand-crafted form submission).
+ *
+ * CLAIMS: REMOVE PAYMENT REQUIREMENT ONLY — claiming a business is now
+ * free, so this gate only applies to entityType "event" (unchanged).
+ * business_claim_requests.payment_status stays 'unpaid' the whole time
+ * for a business claim (accurate — no payment was ever required or
+ * taken), it just no longer blocks approval. */
 export async function approveClaim(entityType: ClaimEntityType, claimId: string) {
   const supabase = await requireAdminSupabase();
 
@@ -54,7 +60,7 @@ export async function approveClaim(entityType: ClaimEntityType, claimId: string)
   if (!claim) {
     redirect(errorRedirectUrl("/admin/claims", "That claim no longer exists."));
   }
-  if (claim!.payment_status !== "paid") {
+  if (entityType === "event" && claim!.payment_status !== "paid") {
     redirect(errorRedirectUrl("/admin/claims", "Can't approve — the $20 claim payment hasn't been received yet."));
   }
 

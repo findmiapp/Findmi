@@ -85,8 +85,9 @@ export default async function AdminClaimsPage({
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Claims</h1>
       <p className="mt-1 text-sm text-ink/50">
-        Requests from signed-in FindMi accounts to manage a business or event. A $20 listing activation payment is
-        required before a claim can be approved — approving grants ownership, so review each claim carefully.
+        Requests from signed-in FindMi accounts to manage a business or event. Claiming a business is free — a $20
+        listing activation payment is still required for an event claim before it can be approved. Approving grants
+        ownership, so review each claim carefully.
       </p>
 
       {error && (
@@ -217,7 +218,11 @@ export default async function AdminClaimsPage({
                   This {c.entityType} already has an owner — approving will be blocked until that&rsquo;s resolved.
                 </p>
               )}
-              {c.status === "pending" && c.paymentStatus !== "paid" && (
+              {/* Claims: remove payment requirement only — claiming a
+                  business is free, so this $20 gate (and the disabled
+                  Approve button below) only ever applies to event
+                  claims now. */}
+              {c.entityType === "event" && c.status === "pending" && c.paymentStatus !== "paid" && (
                 <p className="mt-2 text-xs font-semibold text-ink/50">
                   Awaiting the $20 claim payment — approving is blocked until payment is confirmed.
                 </p>
@@ -228,8 +233,8 @@ export default async function AdminClaimsPage({
                   <form action={approveClaim.bind(null, c.entityType, c.id)}>
                     <button
                       type="submit"
-                      disabled={c.paymentStatus !== "paid"}
-                      title={c.paymentStatus !== "paid" ? "Claim hasn't been paid yet" : undefined}
+                      disabled={c.entityType === "event" && c.paymentStatus !== "paid"}
+                      title={c.entityType === "event" && c.paymentStatus !== "paid" ? "Claim hasn't been paid yet" : undefined}
                       className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       Approve

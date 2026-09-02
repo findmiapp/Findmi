@@ -31,19 +31,31 @@ async function resolveEntityId(supabase: SupabaseClient, entityTable: string, sl
  *                            prefill hint for the claim form's editable
  *                            Email field — never stored anywhere until the
  *                            claimant actually submits it.
- *   "awaiting_payment"     — a pending, unpaid claim row already exists;
- *                            show the $20 payment step. Returns the
- *                            claim's own stored fullName/email/phone (NOT
- *                            the account email) so ClaimButton can rebuild
- *                            the Tally payment link after a page reload.
- *   "paid_pending_review"  — the pending claim's payment_status is 'paid';
- *                            awaiting founder review. Payment alone never
- *                            implies approval.
+ *   "pending_review"       — BUSINESS claims only (claiming a business is
+ *                            free — see CLAIMS: REMOVE PAYMENT REQUIREMENT
+ *                            ONLY): a pending claim row exists and goes
+ *                            straight to founder review, no payment step.
+ *   "awaiting_payment"     — EVENT claims only: a pending, unpaid claim
+ *                            row already exists; show the $20 payment
+ *                            step. Returns the claim's own stored
+ *                            fullName/email/phone (NOT the account email)
+ *                            so ClaimButton can rebuild the Tally payment
+ *                            link after a page reload.
+ *   "paid_pending_review"  — EVENT claims only: the pending claim's
+ *                            payment_status is 'paid'; awaiting founder
+ *                            review. Payment alone never implies approval.
  *   "member"               — a real business_members/event_members row
  *                            exists; claim UI hidden entirely.
  * A rejected (or approved, i.e. now covered by "member") claim falls back
  * to "none", intentionally allowing a fresh claim to be submitted — see
  * the claim foundation migration's partial-unique-index note. */
+function resolvePendingState(
+  type: EntityType,
+  paymentStatus: string
+): "pending_review" | "awaiting_payment" | "paid_pending_review" {
+  if (type === "business") return "pending_review";
+  return paymentStatus === "paid" ? "paid_pending_review" : "awaiting_payment";
+}
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get("type");
   const slug = request.nextUrl.searchParams.get("slug");
@@ -77,7 +89,7 @@ export async function GET(request: NextRequest) {
     .eq("status", "pending")
     .maybeSingle();
   if (pendingClaim) {
-    const state = pendingClaim.payment_status === "paid" ? "paid_pending_review" : "awaiting_payment";
+    const state = resolvePendingState(type, pendingClaim.payment_status);
     return NextResponse.json({
       state,
       claimId: pendingClaim.id,
@@ -103,7 +115,9 @@ export async function GET(request: NextRequest) {
  * accepted from the client and always inserts as 'unpaid'. Never grants
  * membership itself, and never marks anything paid — that only ever
  * happens via the payment webhook (see /api/webhooks/tally) after a real
- * $20 payment is verified, and even then only founder approval (see the
+ * $20 payment is verified — event claims only. A business claim skips the
+ * payment step entirely (see resolvePendingState above) and goes straight
+ * to founder review; even then, only founder approval (see the
  * migration's approve_*_claim() functions) grants membership. */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -149,7 +163,7 @@ export async function POST(request: NextRequest) {
     .eq("status", "pending")
     .maybeSingle();
   if (pendingClaim) {
-    const state = pendingClaim.payment_status === "paid" ? "paid_pending_review" : "awaiting_payment";
+    const state = resolvePendingState(type, pendingClaim.payment_status);
     return NextResponse.json({
       state,
       claimId: pendingClaim.id,
@@ -169,5 +183,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Couldn't submit your claim. Please try again." }, { status: 500 });
   }
 
-  return NextResponse.json({ state: "awaiting_payment", claimId: inserted.id, fullName, email, phone });
+  // Claiming a business is free — straight to founder review, no payment
+  // step. Event claims are untouched: still require the $20 payment.
+  const state = type === "business" ? "pending_review" : "awaiting_payment";
+  return NextResponse.json({ state, claimId: inserted.id, fullName, email, phone });
 }

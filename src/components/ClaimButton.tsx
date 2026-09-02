@@ -5,7 +5,14 @@ import { createPortal } from "react-dom";
 import { getAccountSession } from "@/lib/accountSession";
 import { getClaimPaymentFormUrl } from "@/lib/tally";
 
-type ClaimState = "loading" | "guest" | "none" | "awaiting_payment" | "paid_pending_review" | "member";
+type ClaimState =
+  | "loading"
+  | "guest"
+  | "none"
+  | "pending_review" // business claims only — free, no payment step
+  | "awaiting_payment" // event claims only
+  | "paid_pending_review" // event claims only
+  | "member";
 
 type ContactInfo = { fullName: string; email: string; phone: string };
 
@@ -16,17 +23,23 @@ type ContactInfo = { fullName: string; email: string; phone: string };
  * automatically on return); signed-in visitors get the real flow:
  *
  *   submit claim (full name/email/phone required — email prefilled from
- *   the account but editable; message optional; unpaid, pending) -> pay
- *   $20 via Tally (full_name/email/phone passed through as hidden fields
- *   so Tally never has to ask again) -> webhook marks
- *   payment_status='paid' -> "under review" -> founder approves/rejects.
+ *   the account but editable; message optional) -> "under review" ->
+ *   founder approves/rejects.
  *
- * Submitting the claim form never grants access, and paying never grants
- * access either — only founder approval (business_members/event_members)
- * does, and identity is always the session's user_id, never the submitted
- * contact email. This component only ever reads/writes claim state via
- * /api/account/claim; it has no way to mark anything paid or approved
- * itself. */
+ * BUSINESS claims are free (see CLAIMS: REMOVE PAYMENT REQUIREMENT ONLY)
+ * — submitting goes straight to "under review", no payment step. EVENT
+ * claims are unchanged and still require payment before review: submit
+ * (unpaid, pending) -> pay $20 via Tally (full_name/email/phone passed
+ * through as hidden fields so Tally never has to ask again) -> webhook
+ * marks payment_status='paid' -> "under review" -> founder approves/
+ * rejects.
+ *
+ * Submitting the claim form never grants access on its own — neither does
+ * paying, for an event claim — only founder approval (business_members/
+ * event_members) does, and identity is always the session's user_id,
+ * never the submitted contact email. This component only ever reads/
+ * writes claim state via /api/account/claim; it has no way to mark
+ * anything paid or approved itself. */
 export default function ClaimButton({
   type,
   slug,
@@ -151,6 +164,17 @@ export default function ClaimButton({
     );
   }
 
+  if (state === "pending_review") {
+    return (
+      <div className="max-w-xs rounded-2xl border border-black/10 bg-white p-4">
+        <p className="text-sm font-semibold text-ink">Claim submitted. Your claim is under review.</p>
+        <p className="mt-1 text-xs text-ink/50">
+          FindMi will manually verify your connection to this {noun} before granting management access.
+        </p>
+      </div>
+    );
+  }
+
   if (state === "awaiting_payment") {
     const payUrl = claimId && contact ? getClaimPaymentFormUrl({ id: claimId, type, ...contact }) : "";
     return (
@@ -210,9 +234,18 @@ export default function ClaimButton({
             >
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Claim {entityName}</h2>
               <p className="mt-1.5 text-sm text-ink/60">
-                Claiming requests management access to this {noun}. A $20 listing activation payment is required to
-                submit your claim for review — FindMi reviews every request manually, and paying doesn&rsquo;t
-                guarantee access.
+                {type === "business" ? (
+                  <>
+                    Claiming requests management access to this business. FindMi reviews every request manually —
+                    submitting a claim doesn&rsquo;t guarantee access.
+                  </>
+                ) : (
+                  <>
+                    Claiming requests management access to this {noun}. A $20 listing activation payment is required
+                    to submit your claim for review — FindMi reviews every request manually, and paying
+                    doesn&rsquo;t guarantee access.
+                  </>
+                )}
               </p>
 
               <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
@@ -263,7 +296,7 @@ export default function ClaimButton({
                   disabled={submitting}
                   className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                 >
-                  {submitting ? "…" : "Continue to Payment"}
+                  {submitting ? "…" : type === "business" ? "Submit for Review" : "Continue to Payment"}
                 </button>
                 <button
                   type="button"
