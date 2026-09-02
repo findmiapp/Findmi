@@ -303,6 +303,23 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
     redirect(errorRedirectUrl(redirectPath, message));
   }
 
+  // Gallery — Pro only, reusing the exact same business_images table and
+  // delete-then-reinsert-on-save shape admin's saveBusiness already uses
+  // (current config, not economic history — see that action's own
+  // comment). Gated on the server-resolved `pro` above, never on
+  // anything submitted: a Free request that includes gallery_image_url
+  // fields simply never reaches this block, so no gallery row is ever
+  // touched for a Free business.
+  if (pro) {
+    const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+    await admin.from("business_images").delete().eq("business_id", businessId);
+    if (galleryUrls.length > 0) {
+      await admin
+        .from("business_images")
+        .insert(galleryUrls.map((url, i) => ({ business_id: businessId, url, display_order: i })));
+    }
+  }
+
   revalidatePath(redirectPath);
   if (business.slug) revalidatePath(`/business/${business.slug}`);
 

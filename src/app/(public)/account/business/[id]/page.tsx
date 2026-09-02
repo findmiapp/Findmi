@@ -9,6 +9,7 @@ import { getCategories } from "@/lib/data";
 import AccountNav from "../../AccountNav";
 import { updateMemberBusiness } from "../actions";
 import MemberImageField from "./MemberImageField";
+import MemberGalleryField from "./MemberGalleryField";
 
 export const metadata: Metadata = {
   title: "Manage Business",
@@ -72,7 +73,7 @@ export default async function ManageBusinessPage({
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
-  const [{ data: business }, categories, { data: businessCategoryRows }] = await Promise.all([
+  const [{ data: business }, categories, { data: businessCategoryRows }, { data: galleryRows }] = await Promise.all([
     admin
       .from("businesses")
       .select(
@@ -87,11 +88,20 @@ export default async function ManageBusinessPage({
     // one of them rather than erroring; saving collapses it to exactly
     // one via updateMemberBusiness's own atomic set_business_category().
     admin.from("business_categories").select("category_id").eq("business_id", id).order("category_id").limit(1),
+    // Existing gallery table (business_images) — same admin query shape
+    // (lib/admin/queries.ts's getAdminBusinessById), just read here too so
+    // the Pro-only gallery field below has something to preview.
+    admin
+      .from("business_images")
+      .select("url")
+      .eq("business_id", id)
+      .order("display_order", { ascending: true, nullsFirst: false }),
   ]);
   if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
 
   const pro = isBusinessPro(business);
   const currentCategoryId = businessCategoryRows?.[0]?.category_id ?? "";
+  const galleryImages = (galleryRows ?? []).map((r) => r.url);
   const action = updateMemberBusiness.bind(null, id);
 
   return (
@@ -297,6 +307,8 @@ export default async function ManageBusinessPage({
                     </label>
                   </div>
                 </div>
+
+                <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
               </>
             )}
 
