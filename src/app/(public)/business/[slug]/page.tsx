@@ -330,7 +330,11 @@ export default async function BusinessPage({
                 </span>
               )}
             </p>
-            {pro && business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
+            {/* Free profile correction — short description is identity-level
+                copy (like name/category), not promotional profile content,
+                so it now shows for both tiers; everything else in this
+                identity block stays pro-gated as before. */}
+            {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
           </div>
         </div>
       </div>
