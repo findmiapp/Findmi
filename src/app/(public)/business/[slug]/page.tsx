@@ -27,11 +27,33 @@ import { cityState } from "@/lib/format";
 import { resolveBusinessInquiryForm } from "@/lib/forms";
 import { validateCustomDestination } from "@/lib/navigation";
 import { getPublicOrigin } from "@/lib/site-url";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { isBusinessPro } from "@/lib/entitlements";
 
 export const revalidate = 60;
 
 function isSafeExternalUrl(url: string | null | undefined): url is string {
   return typeof url === "string" && /^https?:\/\//i.test(url);
+}
+
+/** FREE VS PRO GATING — resolved server-side via lib/entitlements.ts,
+ * never trusted from the client, never determined by CSS/client hiding.
+ * plan_tier isn't in the public column grant (see
+ * restrict_internal_commerce_columns / business_plan_tier migrations) —
+ * deliberately not widened here, since that would make it readable by
+ * any anon REST call — so it's read through a small, separate
+ * service-role lookup instead of the public getBusinessBySlug() query.
+ * Fails safe: if the admin client isn't available (e.g. this sandbox —
+ * see CLAUDE.md §4) or the row can't be read, isBusinessPro({}) resolves
+ * to false, so the page renders the more restrictive Free view rather
+ * than risking over-exposure when plan state is unknown. Used by both
+ * generateMetadata (so a Free business's hidden description/short
+ * description never leaks into meta tags either) and the page itself. */
+async function resolveIsPro(businessId: string): Promise<boolean> {
+  const admin = getAdminSupabase();
+  if (!admin) return false;
+  const { data } = await admin.from("businesses").select("plan_tier").eq("id", businessId).maybeSingle();
+  return isBusinessPro(data ?? {});
 }
 
 export async function generateMetadata({
@@ -43,12 +65,19 @@ export async function generateMetadata({
   const business = await getBusinessBySlug(slug);
   if (!business) return { title: "Business not found" };
 
+  const pro = await resolveIsPro(business.id);
   const location = cityState(business.city, business.state);
-  const description =
-    business.description?.trim().slice(0, 160) ||
-    business.short_description?.trim().slice(0, 160) ||
-    [business.categories[0]?.name, location].filter(Boolean).join(" · ") ||
-    `Discover ${business.name} on FindMi.`;
+  // Free's description/short_description are hidden on the page itself
+  // (see BusinessPage below) — the meta description falls back to the
+  // exact same category+location/generic text a Free page would show,
+  // so that hidden copy never leaks into a search snippet or share
+  // preview either.
+  const description = pro
+    ? business.description?.trim().slice(0, 160) ||
+      business.short_description?.trim().slice(0, 160) ||
+      [business.categories[0]?.name, location].filter(Boolean).join(" · ") ||
+      `Discover ${business.name} on FindMi.`
+    : business.categories[0]?.name || `Discover ${business.name} on FindMi.`;
   const ogImage = business.cover_image_url ?? business.logo_url ?? undefined;
   const url = `${getPublicOrigin()}/business/${business.slug}`;
 
@@ -74,14 +103,30 @@ export default async function BusinessPage({
   const business = await getBusinessBySlug(slug);
   if (!business) notFound();
 
-  const [products, appearances, alternatives, people, inquiryForm, galleryImages] = await Promise.all([
-    getProductsForBusiness(business.id),
-    getUpcomingAppearancesForBusiness(business.id),
-    getAlternativeBusinesses(business),
-    getPeopleForBusiness(business.id),
-    resolveBusinessInquiryForm(business),
-    getBusinessGalleryImages(business.id),
-  ]);
+  const pro = await resolveIsPro(business.id);
+
+  // "Discover More Like This" surfaces OTHER businesses, not additional
+  // content about this one, so it's unaffected by plan tier — fetched
+  // either way. Everything else below is Pro-only page content, so for a
+  // Free business none of these queries even run — not fetched-then-
+  // hidden, per the pass's "avoid exposing restricted data unnecessarily"
+  // requirement.
+  const alternatives = await getAlternativeBusinesses(business);
+
+  let products: Awaited<ReturnType<typeof getProductsForBusiness>> = [];
+  let appearances: Awaited<ReturnType<typeof getUpcomingAppearancesForBusiness>> = [];
+  let people: Awaited<ReturnType<typeof getPeopleForBusiness>> = [];
+  let inquiryForm: Awaited<ReturnType<typeof resolveBusinessInquiryForm>> = null;
+  let galleryImages: Awaited<ReturnType<typeof getBusinessGalleryImages>> = [];
+  if (pro) {
+    [products, appearances, people, inquiryForm, galleryImages] = await Promise.all([
+      getProductsForBusiness(business.id),
+      getUpcomingAppearancesForBusiness(business.id),
+      getPeopleForBusiness(business.id),
+      resolveBusinessInquiryForm(business),
+      getBusinessGalleryImages(business.id),
+    ]);
+  }
 
   // "Meet the Owners" only when every configured role genuinely says so —
   // never assumed. Any broader/mixed set of roles gets the honest generic
@@ -141,10 +186,15 @@ export default async function BusinessPage({
   // column; nothing here is inferred or fabricated (no ratings, priceRange,
   // geo coordinates, or hours — none of those are modeled in the schema).
   // address only includes locality/region since businesses has no street-
-  // address field to draw from.
-  const sameAs = [business.website_url, business.instagram_url, business.facebook_url, business.tiktok_url].filter(
-    isSafeExternalUrl
-  );
+  // address field to draw from. Free-tier gating applies here too — not
+  // just on-page: description/phone/social links are all hidden on the
+  // page for Free (see below), so they're withheld from this structured
+  // data as well rather than only visually hidden.
+  const sameAs = pro
+    ? [business.website_url, business.instagram_url, business.facebook_url, business.tiktok_url].filter(
+        isSafeExternalUrl
+      )
+    : [];
   const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
@@ -153,12 +203,14 @@ export default async function BusinessPage({
     ...(business.cover_image_url || business.logo_url
       ? { image: [business.cover_image_url, business.logo_url].filter((v): v is string => Boolean(v)) }
       : {}),
-    ...(business.description || business.short_description
+    ...(pro && (business.description || business.short_description)
       ? { description: business.description ?? business.short_description }
       : {}),
-    ...(business.phone ? { telephone: business.phone } : {}),
+    ...(pro && business.phone ? { telephone: business.phone } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
-    ...(business.city || business.state
+    // Free identity has no location — withheld from structured data too,
+    // same reasoning as description/phone/sameAs above.
+    ...(pro && (business.city || business.state)
       ? {
           address: {
             "@type": "PostalAddress",
@@ -262,16 +314,23 @@ export default async function BusinessPage({
             )}
             <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
               {primaryCategory && <span className="font-semibold text-ink/70">{primaryCategory.name}</span>}
-              {primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
-              {primaryCategory && location && <span aria-hidden="true">·</span>}
-              {location && (
+              {/* Free shows exactly 1 category — the "+N" extra-category
+                  count is Pro-only, regardless of how many category rows
+                  the business actually has (a Free business is limited to
+                  one going forward, but a legacy row could still carry
+                  more from before that rule existed). */}
+              {pro && primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
+              {/* Free identity is exactly cover/logo/name/1 category —
+                  location is hidden too, not just the "+N" count above. */}
+              {pro && primaryCategory && location && <span aria-hidden="true">·</span>}
+              {pro && location && (
                 <span>
                   {location}
                   {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
                 </span>
               )}
             </p>
-            {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
+            {pro && business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
           </div>
         </div>
       </div>
@@ -283,8 +342,9 @@ export default async function BusinessPage({
         <div className="mt-6 lg:order-2 lg:sticky lg:top-20 lg:mt-0">
           {/* Item 1: Follow + Save both now live in the identity block
               above — this row is purely Inquire, the single most-
-              configurable primary action (item 4's custom URL/label). */}
-          {inquiryAction && (
+              configurable primary action (item 4's custom URL/label).
+              Inquire is contact functionality — Free-tier hidden. */}
+          {pro && inquiryAction && (
             <div className="min-w-0">
               {inquiryAction.url.startsWith("mailto:") ? (
                 <a
@@ -305,26 +365,35 @@ export default async function BusinessPage({
             </div>
           )}
 
-          {hasDetails && <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-6 hidden lg:block" />}
+          {/* DetailsBlock covers phone/email/social/website — all
+              contact/promotional fields, so Pro-only. */}
+          {pro && hasDetails && (
+            <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-6 hidden lg:block" />
+          )}
         </div>
 
         <div className="lg:order-1">
           {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin
               now open the main content column (right after Inquire on
               mobile), well before FindMi Here/Shop/About, instead of
-              appearing far down the page after About. */}
-          <BusinessCtaRow business={business} />
-          <div className="mt-8">
-            <Bulletin
-              label={business.bulletin_label?.trim() || "Announcement"}
-              heading={business.bulletin_heading}
-              body={business.bulletin_enabled ? business.bulletin_body : null}
-              url={business.bulletin_url && validateCustomDestination(business.bulletin_url).ok ? business.bulletin_url : null}
-            />
-          </div>
+              appearing far down the page after About. Both are
+              promotional profile content — Pro-only. */}
+          {pro && <BusinessCtaRow business={business} />}
+          {pro && (
+            <div className="mt-8">
+              <Bulletin
+                label={business.bulletin_label?.trim() || "Announcement"}
+                heading={business.bulletin_heading}
+                body={business.bulletin_enabled ? business.bulletin_body : null}
+                url={business.bulletin_url && validateCustomDestination(business.bulletin_url).ok ? business.bulletin_url : null}
+              />
+            </div>
+          )}
           {/* FindMi Here — the signature feature. Hidden entirely (not an
               empty placeholder) when nothing's scheduled, per Business
-              Profile V2 Part 9/32. */}
+              Profile V2 Part 9/32. Free-tier hidden too — but implicitly:
+              `appearances` is simply never fetched for a Free business
+              (see above), so it's always [] here regardless of plan. */}
           {appearances.length > 0 && (
             // mt-6 keeps a clear break from whatever renders above it
             // (CTA row/Bulletin when present, otherwise Inquire itself on
@@ -367,7 +436,9 @@ export default async function BusinessPage({
               purchasable state (BusinessShopSection), and `business` is
               passed through so ProductCard's Add to Cart gate checks the
               real commerce_enabled flag instead of falling back to
-              purchasable alone. */}
+              purchasable alone. Free-tier hidden too — implicitly:
+              `products` is never fetched for a Free business (see
+              above), so it's always [] here regardless of plan. */}
           {products.length > 0 && (
             <BusinessShopSection
               businessName={business.name}
@@ -388,7 +459,9 @@ export default async function BusinessPage({
               with fewer than 2 images (nothing to browse), so a business
               with 0-1 gallery photos correctly shows nothing here. Same
               shared lightbox (prev/next, keyboard, close) as everywhere
-              else it's used. */}
+              else it's used. Free-tier hidden too — implicitly:
+              `galleryImages` is never fetched for a Free business (see
+              above), so it's always [] here regardless of plan. */}
           {galleryImages.length > 1 && (
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
@@ -398,7 +471,11 @@ export default async function BusinessPage({
             </section>
           )}
 
-          {business.description && (
+          {/* About/description — Pro-only, and unlike products/gallery/
+              appearances/people this comes straight off the already-
+              fetched `business` row rather than a conditionally-run
+              query, so it needs an explicit pro && gate here. */}
+          {pro && business.description && (
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">About {business.name}</h2>
               <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{business.description}</p>
@@ -407,7 +484,9 @@ export default async function BusinessPage({
 
           {/* People — editorial, human; single person gets a stronger
               treatment, multiple people use a horizontal carousel. Never
-              rendered empty. */}
+              rendered empty. Free-tier hidden too — implicitly: `people`
+              is never fetched for a Free business (see above), so it's
+              always [] here regardless of plan. */}
           {people.length > 0 && (
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">{peopleHeading}</h2>
@@ -433,7 +512,9 @@ export default async function BusinessPage({
             </section>
           )}
 
-          {hasDetails && <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-8 lg:hidden" />}
+          {pro && hasDetails && (
+            <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-8 lg:hidden" />
+          )}
 
           {/* UI cleanup pass item 6: rebuilt on BusinessLogoCard (the same
               cover+overlapping-logo brand-preview card Brands We Love
