@@ -16,6 +16,13 @@ import type { BusinessPersonRow } from "@/lib/admin/people-queries";
 import type { Category } from "@/lib/types";
 import { saveBusiness } from "./actions";
 
+// Business Category Onboarding Filter pass — Markets & Pop-Ups and
+// Packaged Goods stay real rows (existing relationships preserved), just
+// no longer offered as a new selectable choice here. Slugs only, so this
+// has zero effect on the DB, on event/product categories, or on public
+// discovery (getAllCategories() itself is untouched).
+const LEGACY_BUSINESS_CATEGORY_SLUGS = new Set(["markets-pop-ups", "packaged-goods"]);
+
 export default function BusinessForm({
   business,
   categories,
@@ -32,6 +39,13 @@ export default function BusinessForm({
   error?: string;
 }) {
   const action = saveBusiness.bind(null, business?.id ?? null);
+  // Existing legacy assignments (a business already checked into Markets
+  // & Pop-Ups/Packaged Goods) stay visible/checked; the option is just
+  // hidden for anyone not already on it, so saving can never silently
+  // drop it.
+  const selectableCategories = categories.filter(
+    (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || selectedCategoryIds.includes(c.id)
+  );
 
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -121,7 +135,7 @@ export default function BusinessForm({
         label="Categories"
         name="category_ids"
         defaultSelected={selectedCategoryIds}
-        options={categories.map((c) => ({ value: c.id, label: c.name }))}
+        options={selectableCategories.map((c) => ({ value: c.id, label: c.name }))}
       />
       <TextField
         label="Short Description"

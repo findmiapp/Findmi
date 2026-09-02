@@ -19,6 +19,13 @@ export const metadata: Metadata = {
 // ISR-cached; every response here is specific to whoever is signed in.
 export const dynamic = "force-dynamic";
 
+// Business Category Onboarding Filter pass — Markets & Pop-Ups and
+// Packaged Goods stay real rows (existing relationships preserved), just
+// no longer offered as a selectable choice here. Slugs only, so this has
+// zero effect on the DB, on event/product categories, or on public
+// discovery (getCategories() itself is untouched).
+const LEGACY_BUSINESS_CATEGORY_SLUGS = new Set(["markets-pop-ups", "packaged-goods"]);
+
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
@@ -104,6 +111,13 @@ export default async function ManageBusinessPage({
   const galleryImages = (galleryRows ?? []).map((r) => r.url);
   const action = updateMemberBusiness.bind(null, id);
 
+  // Legacy categories stay in the DB for existing relationships but are no
+  // longer offered as a new choice — except for a business already
+  // assigned to one, so editing this page can never silently drop it.
+  const selectableCategories = categories.filter(
+    (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || c.id === currentCategoryId
+  );
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
@@ -158,7 +172,7 @@ export default async function ManageBusinessPage({
                 <option value="" disabled>
                   Choose a category…
                 </option>
-                {categories.map((c) => (
+                {selectableCategories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
