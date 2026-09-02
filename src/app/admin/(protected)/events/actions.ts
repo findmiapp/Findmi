@@ -96,6 +96,57 @@ export async function saveEvent(id: string | null, formData: FormData) {
     eventId = data.id;
   }
 
+  // Occurrences (Event Occurrences foundation) — same "current roster +
+  // explicitly removed ids" shape as the participant/featured-product
+  // rosters below: "occurrence_id" carries the current roster,
+  // "removed_occurrence_id" carries anything explicitly removed this
+  // submit. Each occurrence carries its own surrogate id (generated
+  // client-side via crypto.randomUUID() for a brand-new row — see
+  // EventOccurrencesEditor), so upsert is keyed on that id directly rather
+  // than a natural composite key. Concrete rows only, never a stored
+  // recurrence rule — the editor's "repeat weekly" control just clones
+  // rows client-side before they ever reach here.
+  const occurrenceIds = formData.getAll("occurrence_id").map(String);
+  const removedOccurrenceIds = formData.getAll("removed_occurrence_id").map(String);
+
+  const occurrencesToUpsert = occurrenceIds.map((occId) => {
+    const occStartLocal = str(formData, `start_at_${occId}`);
+    const occEndLocal = str(formData, `end_at_${occId}`);
+    if (!occStartLocal || !occEndLocal) {
+      redirect(errorRedirectUrl(editPath, "Every occurrence needs both a start and end date/time."));
+    }
+    const occStartIso = localDateTimeToIso(occStartLocal);
+    const occEndIso = localDateTimeToIso(occEndLocal);
+    if (!occStartIso || !occEndIso || new Date(occEndIso) <= new Date(occStartIso)) {
+      redirect(errorRedirectUrl(editPath, "Each occurrence's end date/time must be after its own start date/time."));
+    }
+    return {
+      id: occId,
+      event_id: eventId as string,
+      start_at: occStartIso as string,
+      end_at: occEndIso as string,
+      location_id: str(formData, `location_id_${occId}`),
+      featured: bool(formData, `featured_${occId}`),
+      status: bool(formData, `cancelled_${occId}`) ? "cancelled" : "scheduled",
+      ticket_url_override: str(formData, `ticket_url_override_${occId}`),
+      vendor_apply_url_override: str(formData, `vendor_apply_url_override_${occId}`),
+    };
+  });
+
+  if (occurrencesToUpsert.length > 0) {
+    const { error: occError } = await supabase
+      .from("event_occurrences")
+      .upsert(occurrencesToUpsert, { onConflict: "id" });
+    if (occError) redirect(errorRedirectUrl(editPath, `Occurrences: ${occError.message}`));
+  }
+  if (removedOccurrenceIds.length > 0) {
+    const { error: occDeleteError } = await supabase
+      .from("event_occurrences")
+      .delete()
+      .in("id", removedOccurrenceIds);
+    if (occDeleteError) redirect(errorRedirectUrl(editPath, `Occurrences: ${occDeleteError.message}`));
+  }
+
   // Participation roster: ParticipationRoster only ever renders rows for
   // businesses actually on this event's roster (added via search, see
   // EntitySearchAdd) plus whichever ones were just removed in the browser —

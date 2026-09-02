@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAdminEventById, getAllCategories, getEventCategoryIds } from "@/lib/admin/queries";
+import { getAdminEventById, getAdminLocations, getAllCategories, getEventCategoryIds } from "@/lib/admin/queries";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import EventForm from "../EventForm";
 
@@ -14,10 +14,11 @@ export default async function EditEventPage({
 }) {
   const { id } = await params;
   const { error, saved } = await searchParams;
-  const [result, categories, selectedCategoryIds] = await Promise.all([
+  const [result, categories, selectedCategoryIds, locations] = await Promise.all([
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
+    getAdminLocations(),
   ]);
   if (!result) notFound();
   const publicHref = !result.event.is_demo ? `/event/${result.event.slug}` : null;
@@ -40,6 +41,8 @@ export default async function EditEventPage({
           featuredProducts={result.featuredProducts}
           galleryImages={result.galleryImages}
           venueImages={result.venueImages}
+          occurrences={result.occurrences}
+          locations={locations}
           categories={categories}
           selectedCategoryIds={selectedCategoryIds}
           error={error}

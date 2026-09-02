@@ -1,4 +1,4 @@
-import { getAllCategories } from "@/lib/admin/queries";
+import { getAdminLocations, getAllCategories } from "@/lib/admin/queries";
 import EventForm from "../EventForm";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export default async function NewEventPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const categories = await getAllCategories("event");
+  const [categories, locations] = await Promise.all([getAllCategories("event"), getAdminLocations()]);
 
   return (
     <div>
@@ -21,6 +21,8 @@ export default async function NewEventPage({
           featuredProducts={[]}
           galleryImages={[]}
           venueImages={[]}
+          occurrences={[]}
+          locations={locations}
           categories={categories}
           selectedCategoryIds={[]}
           error={error}

@@ -6,6 +6,7 @@ import type {
   BusinessSummary,
   BusinessWithCategories,
   Category,
+  EventOccurrence,
   EventWithCategories,
   FindmiEvent,
   FindmiLocation,
@@ -637,50 +638,240 @@ export async function getShowcaseBusiness(): Promise<ShowcaseBusinessData | null
   return { business, products, appearances };
 }
 
+// ----------------------------------------------------------------------------
+// Event Occurrences — discovery/featured helper.
+//
+// events stays identity/content; event_occurrences (when present) is the
+// source of truth for WHEN an event is actually happening. This helper
+// resolves "is this event upcoming, and for what date/location" for every
+// event in one pass, branching per event:
+//   - an event with ANY event_occurrences rows is judged purely by its
+//     occurrences (cancelled rows never count; a row's own end_at decides
+//     "hasn't ended yet").
+//   - an event with ZERO event_occurrences rows falls back to its own
+//     start_at/end_at exactly as before this feature existed — legacy
+//     events are completely unaffected.
+// Because occurrence eligibility is resolved into a Map keyed by event_id
+// (keeping only the nearest qualifying occurrence per event), this
+// naturally returns at most one row per event no matter how many
+// occurrences it has — the mechanism that satisfies both "Today/Weekend/
+// date-window filtering should match occurrences" and "a recurring event
+// must not appear N times just because it has N featured occurrences".
+// ----------------------------------------------------------------------------
+
+export interface EffectiveEventRow {
+  event: FindmiEvent;
+  effectiveStart: string;
+  effectiveEnd: string;
+  /** The occurrence this row's date/location came from — null for a
+   * legacy event with no event_occurrences rows (using the event's own
+   * start_at/end_at directly). */
+  occurrence: EventOccurrence | null;
+  occurrenceLocation: FindmiLocation | null;
+}
+
+interface EffectiveUpcomingEventsOptions {
+  /** Restrict to this set of parent event ids (e.g. a category's tagged
+   * events) — applied to both the occurrence-driven branch and the
+   * legacy-fallback branch. Omit/null for "all events". */
+  eventIds?: string[] | null;
+  /** When an event has more than one qualifying occurrence, prefer its
+   * earliest FEATURED, still-scheduled occurrence for date/location
+   * display over its plain earliest occurrence — falls back to the
+   * earliest qualifying occurrence when the event has no featured one.
+   * Used by getFeaturedEvents so a recurring event shows its next
+   * *featured* date rather than just its chronologically-next one. */
+  preferFeaturedOccurrence?: boolean;
+  /** Same free-text/city/location filters getEventsDiscovery already
+   * supports — applied server-side against the parent `events` table in
+   * both branches, so text search stays a SQL ilike, not a JS scan. */
+  q?: string;
+  city?: string;
+  location?: string;
+}
+
+function applyEventTextFilters<
+  Q extends { or: (f: string) => Q; ilike: (col: string, v: string) => Q },
+>(query: Q, opts: EffectiveUpcomingEventsOptions): Q {
+  let q = query;
+  if (opts.q) {
+    const term = `%${opts.q.trim()}%`;
+    q = q.or(`name.ilike.${term},description.ilike.${term},venue_name.ilike.${term}`);
+  }
+  if (opts.city) q = q.ilike("city", `%${opts.city}%`);
+  if (opts.location) {
+    const term = opts.location.trim();
+    q = q.or(`city.ilike.%${term}%,state.ilike.%${term}%`);
+  }
+  return q;
+}
+
+/** Overrides an event's own start_at/end_at (and, when the occurrence has
+ * a location on file, its venue/address/city/state/coordinates) with an
+ * occurrence's — so every existing display component that already reads
+ * plain FindmiEvent fields shows the right concrete date/place for a
+ * recurring event without needing its own occurrence-aware rewrite. A
+ * shallow clone; the underlying event row/id/slug are untouched. */
+function applyOccurrenceOverride(
+  event: FindmiEvent,
+  occurrence: EventOccurrence | null,
+  location: FindmiLocation | null
+): FindmiEvent {
+  if (!occurrence) return event;
+  return {
+    ...event,
+    start_at: occurrence.start_at,
+    end_at: occurrence.end_at,
+    ...(location
+      ? {
+          venue_name: location.name,
+          address: location.address,
+          city: location.city,
+          state: location.state,
+          latitude: location.latitude,
+          longitude: location.longitude,
+        }
+      : {}),
+  };
+}
+
+export async function getEffectiveUpcomingEvents(
+  bounds: { start: Date; end: Date } | null,
+  options: EffectiveUpcomingEventsOptions = {}
+): Promise<EffectiveEventRow[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  // Which events have ANY occurrence rows at all (any status) — these are
+  // judged purely by their occurrences; everything else falls back to its
+  // own start_at/end_at.
+  const { data: occEventRows } = await supabase.from("event_occurrences").select("event_id");
+  const eventsWithOccurrences = new Set((occEventRows ?? []).map((r) => r.event_id as string));
+
+  // Qualifying occurrence rows for this window: never cancelled, and
+  // either overlapping the given window or (bounds === null, "anytime")
+  // simply not yet ended — same duration-overlap semantics as the
+  // legacy events query below. Filtered as status = 'scheduled' rather
+  // than != 'cancelled' — logically equivalent given the status CHECK
+  // constraint only allows those two values, but Postgres's partial-index
+  // predicate proof doesn't consult CHECK constraints, so only the "="
+  // form can actually match event_occurrences_upcoming_idx/
+  // event_occurrences_featured_idx (both defined `where status =
+  // 'scheduled'`) — see the migration review. getUpcomingOccurrencesForEvent
+  // (the public carousel) intentionally does NOT filter on status at all —
+  // it still needs to return cancelled-but-not-yet-past occurrences so the
+  // page can badge them, and is untouched by this change.
+  let occQuery = supabase.from("event_occurrences").select("*").eq("status", "scheduled");
+  occQuery = bounds
+    ? occQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
+    : occQuery.gt("end_at", new Date().toISOString());
+  const { data: occRows } = await occQuery.order("start_at", { ascending: true });
+
+  // Keep only the nearest (and, separately, nearest-featured) qualifying
+  // occurrence per event — rows already arrive start_at-ascending, so the
+  // first one seen per event_id is the nearest.
+  const nearestByEvent = new Map<string, EventOccurrence>();
+  const nearestFeaturedByEvent = new Map<string, EventOccurrence>();
+  for (const row of (occRows ?? []) as EventOccurrence[]) {
+    if (!nearestByEvent.has(row.event_id)) nearestByEvent.set(row.event_id, row);
+    if (row.featured && !nearestFeaturedByEvent.has(row.event_id)) nearestFeaturedByEvent.set(row.event_id, row);
+  }
+
+  let occurrenceEventIds = Array.from(nearestByEvent.keys());
+  if (options.eventIds) {
+    const allowed = new Set(options.eventIds);
+    occurrenceEventIds = occurrenceEventIds.filter((id) => allowed.has(id));
+  }
+
+  let occurrenceEvents: FindmiEvent[] = [];
+  if (occurrenceEventIds.length > 0) {
+    let evQuery = supabase.from("events").select("*").eq("is_demo", false).in("id", occurrenceEventIds);
+    evQuery = applyEventTextFilters(evQuery, options);
+    const { data } = await evQuery;
+    occurrenceEvents = data ?? [];
+  }
+
+  // Legacy branch — events with zero event_occurrences rows, matched by
+  // their own start_at/end_at exactly as before this feature existed.
+  let legacyQuery = supabase.from("events").select("*").eq("is_demo", false);
+  if (options.eventIds) legacyQuery = legacyQuery.in("id", options.eventIds);
+  legacyQuery = bounds
+    ? legacyQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
+    : legacyQuery.gt("end_at", new Date().toISOString());
+  legacyQuery = applyEventTextFilters(legacyQuery, options);
+  const { data: legacyRows } = await legacyQuery;
+  const legacyEvents = ((legacyRows ?? []) as FindmiEvent[]).filter((e) => !eventsWithOccurrences.has(e.id));
+
+  // Locations for the chosen occurrences' display.
+  const chosenOccurrences = occurrenceEvents
+    .map((e) => (options.preferFeaturedOccurrence ? (nearestFeaturedByEvent.get(e.id) ?? nearestByEvent.get(e.id)) : nearestByEvent.get(e.id)))
+    .filter((o): o is EventOccurrence => !!o);
+  const locationIds = Array.from(
+    new Set(chosenOccurrences.map((o) => o.location_id).filter((id): id is string => !!id))
+  );
+  const locationsById = new Map<string, FindmiLocation>();
+  if (locationIds.length > 0) {
+    const { data: locs } = await supabase.from("locations").select("*").in("id", locationIds);
+    for (const l of (locs ?? []) as FindmiLocation[]) locationsById.set(l.id, l);
+  }
+
+  const rows: EffectiveEventRow[] = [];
+  for (const event of occurrenceEvents) {
+    const occ = options.preferFeaturedOccurrence
+      ? (nearestFeaturedByEvent.get(event.id) ?? nearestByEvent.get(event.id))
+      : nearestByEvent.get(event.id);
+    if (!occ) continue;
+    rows.push({
+      event,
+      effectiveStart: occ.start_at,
+      effectiveEnd: occ.end_at,
+      occurrence: occ,
+      occurrenceLocation: occ.location_id ? (locationsById.get(occ.location_id) ?? null) : null,
+    });
+  }
+  for (const event of legacyEvents) {
+    rows.push({
+      event,
+      effectiveStart: event.start_at,
+      effectiveEnd: event.end_at ?? event.start_at,
+      occurrence: null,
+      occurrenceLocation: null,
+    });
+  }
+
+  rows.sort((a, b) => new Date(a.effectiveStart).getTime() - new Date(b.effectiveStart).getTime());
+  return rows;
+}
+
 export async function getUpcomingEvents(
   limit = 20,
   when: DiscoveryWindow = "anytime"
 ): Promise<FindmiEvent[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
   const bounds = getDiscoveryWindowBounds(when);
-  let query = supabase.from("events").select("*").eq("is_demo", false);
-  if (bounds) {
-    // Duration overlap, not a start-time check: an event is eligible for
-    // this window when it starts before the window ends AND ends after
-    // the window starts. This is what keeps a currently-active,
-    // overnight, or multi-day event visible for its whole real duration
-    // instead of only up to the moment it starts (the active-event
-    // visibility bug fix). end_at is required on every event now, so no
-    // null-handling/fallback is needed here.
-    query = query.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString());
-  } else {
-    // "anytime" — no window to overlap against, so eligibility is simply
-    // "hasn't ended yet" (previously, incorrectly, "hasn't started yet").
-    query = query.gt("end_at", new Date().toISOString());
-  }
-  const { data } = await query.order("start_at", { ascending: true }).limit(limit);
-  return data ?? [];
+  const rows = await getEffectiveUpcomingEvents(bounds);
+  return rows.slice(0, limit).map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
 
 /** Editorial top-of-page Featured Events — is_featured first (ordered by
  * the founder's own featured_sort_order, nulls last), then legitimate
  * upcoming events as fallback. Never fabricated. "Upcoming" here means
  * "hasn't ended yet" (end_at > now), not "hasn't started yet" — see the
- * active-event visibility bug fix. */
+ * active-event visibility bug fix. A recurring event with several
+ * featured occurrences still contributes exactly one row here (see
+ * getEffectiveUpcomingEvents), shown with its nearest featured (or, if
+ * none, nearest upcoming) occurrence's date/location. */
 export async function getFeaturedEvents(limit = 6): Promise<FindmiEvent[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-  const { data } = await supabase
-    .from("events")
-    .select("*")
-    .eq("is_demo", false)
-    .gt("end_at", new Date().toISOString())
-    .order("is_featured", { ascending: false })
-    .order("featured_sort_order", { ascending: true, nullsFirst: false })
-    .order("start_at", { ascending: true })
-    .limit(limit);
-  return data ?? [];
+  const rows = await getEffectiveUpcomingEvents(null, { preferFeaturedOccurrence: true });
+  rows.sort((a, b) => {
+    const aFeatured = a.event.is_featured ? 0 : 1;
+    const bFeatured = b.event.is_featured ? 0 : 1;
+    if (aFeatured !== bFeatured) return aFeatured - bFeatured;
+    const aOrder = a.event.featured_sort_order ?? Number.POSITIVE_INFINITY;
+    const bOrder = b.event.featured_sort_order ?? Number.POSITIVE_INFINITY;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return new Date(a.effectiveStart).getTime() - new Date(b.effectiveStart).getTime();
+  });
+  return rows.slice(0, limit).map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
 
 export interface EventDiscoveryParams {
@@ -701,7 +892,18 @@ export interface EventDiscoveryParams {
 /** Shared events query — backs /events' "All Events" browse state and
  * every curated row on that page (This Weekend, category rows, etc.), per
  * CLAUDE.md's "reuse architecture only where it meaningfully prevents
- * duplication" — one query helper, not five bespoke ones. */
+ * duplication" — one query helper, not five bespoke ones.
+ *
+ * Date/window eligibility is occurrence-aware (see
+ * getEffectiveUpcomingEvents): an event with event_occurrences rows is
+ * matched by them; a legacy event with none falls back to its own
+ * start_at/end_at exactly as before. q/city/location/categorySlug are
+ * unchanged — still applied against the parent events table. Because
+ * eligible events can come from either branch, final ordering (by
+ * effective date) and limit/offset paging happen after both branches are
+ * combined, in JS rather than a single SQL ORDER BY/LIMIT — the
+ * trade-off that lets one query surface both occurrence-driven and
+ * legacy events without a database-side recurrence join. */
 export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Promise<FindmiEvent[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -724,36 +926,18 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
   }
 
   const bounds = params.date ? getExactDateBounds(params.date) : getDiscoveryWindowBounds(params.when ?? "anytime");
-  let query = supabase.from("events").select("*").eq("is_demo", false);
-  if (bounds) {
-    // Duration overlap (active-event visibility bug fix): eligible for
-    // this window when it starts before the window ends AND ends after
-    // the window starts — keeps a currently-active, overnight, or
-    // multi-day event visible for its whole real duration, not just up
-    // to the moment it starts. end_at is required on every event now.
-    query = query.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString());
-  } else {
-    // "anytime" — eligibility is simply "hasn't ended yet".
-    query = query.gt("end_at", new Date().toISOString());
-  }
-  if (params.q) {
-    const term = `%${params.q.trim()}%`;
-    query = query.or(`name.ilike.${term},description.ilike.${term},venue_name.ilike.${term}`);
-  }
-  if (params.city) query = query.ilike("city", `%${params.city}%`);
-  const location = params.location;
-  if (location) {
-    const term = location.trim();
-    query = query.or(`city.ilike.%${term}%,state.ilike.%${term}%`);
-  }
-  if (categoryEventIds) query = query.in("id", categoryEventIds);
+  const rows = await getEffectiveUpcomingEvents(bounds, {
+    eventIds: categoryEventIds,
+    q: params.q,
+    city: params.city,
+    location: params.location,
+  });
 
-  query = query.order("start_at", { ascending: true });
-  if (params.offset) query = query.range(params.offset, params.offset + (params.limit ?? 50) - 1);
-  else query = query.limit(params.limit ?? 50);
-
-  const { data } = await query;
-  return data ?? [];
+  const offset = params.offset ?? 0;
+  const limit = params.limit ?? 50;
+  return rows
+    .slice(offset, offset + limit)
+    .map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
 
 /** Attaches each event's tagged categories (event_categories) — mirrors
@@ -788,6 +972,42 @@ export async function getEventBySlug(slug: string): Promise<FindmiEvent | null> 
     .eq("is_demo", false)
     .maybeSingle();
   return data ?? null;
+}
+
+export interface EventOccurrenceWithLocation extends EventOccurrence {
+  location: FindmiLocation | null;
+}
+
+/** For the public event page's "Upcoming Dates" carousel — every
+ * still-upcoming occurrence for one event, INCLUDING cancelled ones (so
+ * the carousel can show a "Cancelled" badge on a date rather than have it
+ * silently vanish), ordered soonest first. A legacy event with zero
+ * event_occurrences rows simply returns []; the page falls back to its
+ * own single start_at/end_at display as before. */
+export async function getUpcomingOccurrencesForEvent(
+  eventId: string,
+  limit = 12
+): Promise<EventOccurrenceWithLocation[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("event_occurrences")
+    .select("*")
+    .eq("event_id", eventId)
+    .gt("end_at", new Date().toISOString())
+    .order("start_at", { ascending: true })
+    .limit(limit);
+  const occurrences = (data ?? []) as EventOccurrence[];
+  if (occurrences.length === 0) return [];
+
+  const locationIds = Array.from(new Set(occurrences.map((o) => o.location_id).filter((id): id is string => !!id)));
+  const locationsById = new Map<string, FindmiLocation>();
+  if (locationIds.length > 0) {
+    const { data: locs } = await supabase.from("locations").select("*").in("id", locationIds);
+    for (const l of (locs ?? []) as FindmiLocation[]) locationsById.set(l.id, l);
+  }
+
+  return occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
 }
 
 export interface EventBusinessListing extends BusinessWithCategories {

@@ -8,13 +8,21 @@ import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import EventFollowForm from "@/components/EventFollowForm";
+import EventOccurrenceCard from "@/components/EventOccurrenceCard";
 import EventSaveButton from "@/components/EventSaveButton";
 import EventShareButton from "@/components/EventShareButton";
 import FormAction from "@/components/FormAction";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ProductCard from "@/components/ProductCard";
 import { HorizontalScroller } from "@/components/Section";
-import { attachEventCategories, getBusinessesForEvent, getEventBySlug, getEventImages, getEventProducts } from "@/lib/data";
+import {
+  attachEventCategories,
+  getBusinessesForEvent,
+  getEventBySlug,
+  getEventImages,
+  getEventProducts,
+  getUpcomingOccurrencesForEvent,
+} from "@/lib/data";
 import { cityState, formatDateRange } from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -50,11 +58,12 @@ export default async function EventPage({
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images] = await Promise.all([
+  const [businesses, [eventWithCategories], featuredProducts, images, upcomingOccurrences] = await Promise.all([
     getBusinessesForEvent(event.id),
     attachEventCategories([event]),
     getEventProducts(event.id),
     getEventImages(event.id),
+    getUpcomingOccurrencesForEvent(event.id),
   ]);
   const category = eventWithCategories.categories[0] ?? null;
   const location = cityState(event.city, event.state);
@@ -285,6 +294,25 @@ export default async function EventPage({
         <div className="mt-3">
           <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
         </div>
+
+        {/* Event Occurrences foundation — "Upcoming Dates" carousel, shown
+            only when this event has real event_occurrences rows still to
+            come (including cancelled-but-not-yet-past ones, badged
+            accordingly). A legacy event with none simply has an empty
+            list here and this section renders nothing — its single date
+            keeps showing exactly as it always has, further up the page. */}
+        {upcomingOccurrences.length > 0 && (
+          <div className="mt-5 -mx-4 sm:mx-0">
+            <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
+              Upcoming Dates
+            </p>
+            <HorizontalScroller>
+              {upcomingOccurrences.map((occ) => (
+                <EventOccurrenceCard key={occ.id} occurrence={occ} eventTicketsUrl={event.tickets_url} />
+              ))}
+            </HorizontalScroller>
+          </div>
+        )}
 
         {/* Events only have one description field today (no separate
             short/long), so this is the single "About This Event" section

@@ -12,7 +12,8 @@ import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
-import type { AdminEvent, EventFeaturedProduct, EventParticipant } from "@/lib/admin/queries";
+import EventOccurrencesEditor from "@/components/admin/EventOccurrencesEditor";
+import type { AdminEvent, AdminEventOccurrence, AdminLocation, EventFeaturedProduct, EventParticipant } from "@/lib/admin/queries";
 import type { Category } from "@/lib/types";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveEvent } from "./actions";
@@ -23,6 +24,8 @@ export default function EventForm({
   featuredProducts,
   galleryImages,
   venueImages,
+  occurrences,
+  locations,
   categories,
   selectedCategoryIds,
   error,
@@ -32,6 +35,8 @@ export default function EventForm({
   featuredProducts: EventFeaturedProduct[];
   galleryImages: string[];
   venueImages: string[];
+  occurrences: AdminEventOccurrence[];
+  locations: AdminLocation[];
   categories: Category[];
   selectedCategoryIds: string[];
   error?: string;
@@ -88,6 +93,10 @@ export default function EventForm({
           required
           hint="Required — must be after the start time. Also Eastern time. Used to keep the event visible on the site for its whole real duration, not just until it starts."
         />
+      </div>
+
+      <div className="rounded-2xl border border-black/10 p-4">
+        <EventOccurrencesEditor initialOccurrences={occurrences} locations={locations} />
       </div>
 
       <TextField label="Venue Name" name="venue_name" defaultValue={event?.venue_name} />

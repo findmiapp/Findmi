@@ -300,6 +300,26 @@ export interface EventImage {
   display_order: number | null;
 }
 
+export type EventOccurrenceStatus = "scheduled" | "cancelled";
+
+/** Event Occurrences foundation — one concrete scheduled instance of a
+ * parent event. events stays identity/content; this is the actual
+ * date/time/location. Concrete rows only, never a recurrence rule — a
+ * weekly market with 12 upcoming dates is 12 real rows. */
+export interface EventOccurrence {
+  id: string;
+  event_id: string;
+  start_at: string;
+  end_at: string;
+  location_id: string | null;
+  featured: boolean;
+  status: EventOccurrenceStatus;
+  ticket_url_override: string | null;
+  vendor_apply_url_override: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EventWithCategories extends FindmiEvent {
   categories: Category[];
 }

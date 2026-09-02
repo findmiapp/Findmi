@@ -5,6 +5,7 @@ import type {
   Business,
   Category,
   CategoryKind,
+  EventOccurrence,
   EventParticipationStatus,
   FindmiEvent,
   FindmiLocation,
@@ -225,34 +226,58 @@ export interface EventFeaturedProduct {
   display_order: number | null;
 }
 
+// Event Occurrences foundation — admin's flattened shape for one occurrence
+// row, with its location's display name/city already joined in (avoids
+// every admin caller re-resolving location_id -> name itself).
+export type AdminEventOccurrence = EventOccurrence & {
+  location_name: string | null;
+  location_city: string | null;
+};
+
 export async function getAdminEventById(id: string): Promise<{
   event: AdminEvent;
   participants: EventParticipant[];
   featuredProducts: EventFeaturedProduct[];
   galleryImages: string[];
   venueImages: string[];
+  occurrences: AdminEventOccurrence[];
 } | null> {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
-  const [{ data: event }, { data: links }, { data: productLinks }, { data: imageRows }] = await Promise.all([
-    supabase.from("events").select("*").eq("id", id).maybeSingle(),
-    supabase
-      .from("event_businesses")
-      .select("business_id, status, featured, offering_text, display_order, businesses(name, logo_url)")
-      .eq("event_id", id)
-      .order("display_order", { ascending: true, nullsFirst: false }),
-    supabase
-      .from("event_products")
-      .select("product_id, display_order, products(name, image_url)")
-      .eq("event_id", id)
-      .order("display_order", { ascending: true, nullsFirst: false }),
-    supabase
-      .from("event_images")
-      .select("url, kind")
-      .eq("event_id", id)
-      .order("display_order", { ascending: true, nullsFirst: false }),
-  ]);
+  const [{ data: event }, { data: links }, { data: productLinks }, { data: imageRows }, { data: occurrenceRows }] =
+    await Promise.all([
+      supabase.from("events").select("*").eq("id", id).maybeSingle(),
+      supabase
+        .from("event_businesses")
+        .select("business_id, status, featured, offering_text, display_order, businesses(name, logo_url)")
+        .eq("event_id", id)
+        .order("display_order", { ascending: true, nullsFirst: false }),
+      supabase
+        .from("event_products")
+        .select("product_id, display_order, products(name, image_url)")
+        .eq("event_id", id)
+        .order("display_order", { ascending: true, nullsFirst: false }),
+      supabase
+        .from("event_images")
+        .select("url, kind")
+        .eq("event_id", id)
+        .order("display_order", { ascending: true, nullsFirst: false }),
+      supabase
+        .from("event_occurrences")
+        .select("*, locations(name, city)")
+        .eq("event_id", id)
+        .order("start_at", { ascending: true }),
+    ]);
   if (!event) return null;
+
+  type OccurrenceRow = EventOccurrence & {
+    locations: { name: string; city: string | null } | { name: string; city: string | null }[] | null;
+  };
+  const occurrences = ((occurrenceRows ?? []) as OccurrenceRow[]).map((o) => {
+    const { locations, ...rest } = o;
+    const location = Array.isArray(locations) ? (locations[0] ?? null) : locations;
+    return { ...rest, location_name: location?.name ?? null, location_city: location?.city ?? null };
+  });
 
   const galleryImages: string[] = [];
   const venueImages: string[] = [];
@@ -315,7 +340,7 @@ export async function getAdminEventById(id: string): Promise<{
     };
   });
 
-  return { event: event as AdminEvent, participants, featuredProducts, galleryImages, venueImages };
+  return { event: event as AdminEvent, participants, featuredProducts, galleryImages, venueImages, occurrences };
 }
 
 export async function getEventCategoryIds(eventId: string): Promise<string[]> {
