@@ -1,0 +1,57 @@
+-- ============================================================================
+-- Business Plan Entitlement — Foundation Only
+--
+-- NOT APPLIED YET. Created for review only — apply_migration must not be
+-- run against this file until explicit separate approval is given.
+--
+-- Adds the smallest authoritative business-level plan state: free | pro.
+-- This is foundation only — no UI gating, no Pro-permission enforcement,
+-- no change to the claim flow, /join, public business profiles, products,
+-- appearances, gallery, contact fields, or owner workspace behavior. Later
+-- passes build on this; this migration only makes the state exist.
+--
+-- Investigated first (read-only, against the live schema via
+-- mcp__Supabase__execute_sql) whether an existing field could safely
+-- represent this — it can't:
+--   - businesses.membership_status ('lead'|'active'|'past_due'|'canceled')
+--     and businesses.founding_member track the $99/yr FOUNDING MEMBERSHIP
+--     itself (a /join billing concept) — a business can be an active
+--     Founding Member while still being feature-tier "Free", so reusing
+--     either would conflate two different concepts and risk silently
+--     changing /join-driven behavior, which this pass must not touch.
+--   - memberships.plan_id / memberships.billing_status (the Membership
+--     table backing /join) are keyed to a MEMBERSHIP row, not a business,
+--     and exist for the same founding-membership billing concept above —
+--     not a general product feature tier either.
+-- None of these is "an appropriate plan/subscription/entitlement field
+-- that can safely represent Free vs Pro" — so a new field is added.
+--
+-- Why a single flat column rather than a new table: exactly one
+-- business-level fact (its current tier) is needed right now, no history/
+-- billing metadata yet (that's what memberships already covers for
+-- Founding Membership, and would cover for Pro billing too if/when that's
+-- built) — the smallest schema change per the pass's own instruction.
+-- ============================================================================
+
+alter table public.businesses
+  add column if not exists plan_tier text not null default 'free'
+    check (plan_tier in ('free', 'pro'));
+
+-- Existing-data default: every current business defaults to 'free' via the
+-- column default above — no separate backfill UPDATE. Nothing in today's
+-- schema (founding_member, membership_status, or anything else) is a
+-- reliable signal that a business is already "Pro" in the feature-tier
+-- sense this column introduces (Pro doesn't exist as an operative concept
+-- anywhere yet — see CLAUDE.md's "Do NOT build Pro permissions yet"), so
+-- defaulting every row to 'free' is the only defensible choice; there is
+-- no case where current data "clearly proves otherwise."
+--
+-- No public-read grant: businesses.anon/authenticated access is an
+-- explicit COLUMN-LEVEL grant, not `select *` (see
+-- restrict_internal_commerce_columns) — a Postgres column-level grant
+-- only covers the columns listed at grant time, so this new column is
+-- NOT automatically added to it and stays invisible to anon/authenticated
+-- by default. That's deliberate here, not an oversight: this pass must
+-- not change public business profiles, so plan_tier is reachable only via
+-- getAdminSupabase() (service role, bypasses grants/RLS entirely) until a
+-- later pass decides it needs public exposure for real UI gating.

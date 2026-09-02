@@ -13,6 +13,15 @@ export type ProcessingFeePayer = "vendor" | "customer";
 export type PayoutMethod = "manual" | "stripe_connect_future";
 export type FulfillmentMethod = "shipping" | "local_delivery" | "pickup" | "event_pickup";
 
+// Business Plan Entitlement — foundation only (see
+// supabase/migrations/20260902060000_business_plan_tier.sql, not yet
+// applied). BUSINESS-level feature tier, deliberately separate from
+// membership_status/founding_member (the /join Founding Membership
+// billing concept) and from business_members.role (owner/manager/staff —
+// who can act, not what the business is entitled to). No UI gating reads
+// this yet — see lib/entitlements.ts's isBusinessPro().
+export type PlanTier = "free" | "pro";
+
 // Membership / onboarding — see lib/admin/membership-queries.ts. Kept as
 // three separate statuses on purpose: a paid membership can be
 // onboarding-incomplete and still non-public (publication_status stays
@@ -135,6 +144,12 @@ export interface Business {
   // own bulletin fields above are untouched.
   bulletin_label: string | null;
   bulletin_url: string | null;
+  // Business Plan Entitlement — foundation only, not yet publicly
+  // readable (see the PlanTier type above and the not-yet-applied
+  // migration). Optional here because most existing SELECTs (e.g.
+  // PUBLIC_BUSINESS_COLUMNS) don't request this column yet and won't
+  // start returning it just because the column exists in the database.
+  plan_tier?: PlanTier;
 }
 
 export interface Market {
