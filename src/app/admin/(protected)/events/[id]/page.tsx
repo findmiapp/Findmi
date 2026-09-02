@@ -1,5 +1,11 @@
 import { notFound } from "next/navigation";
-import { getAdminEventById, getAdminLocations, getAllCategories, getEventCategoryIds } from "@/lib/admin/queries";
+import {
+  getAdminEventById,
+  getAdminLocations,
+  getAdminOccurrenceVendorRosters,
+  getAllCategories,
+  getEventCategoryIds,
+} from "@/lib/admin/queries";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import EventForm from "../EventForm";
 
@@ -21,6 +27,7 @@ export default async function EditEventPage({
     getAdminLocations(),
   ]);
   if (!result) notFound();
+  const vendorRostersByOccurrence = await getAdminOccurrenceVendorRosters(result.occurrences.map((o) => o.id));
   const publicHref = !result.event.is_demo ? `/event/${result.event.slug}` : null;
 
   return (
@@ -42,6 +49,7 @@ export default async function EditEventPage({
           galleryImages={result.galleryImages}
           venueImages={result.venueImages}
           occurrences={result.occurrences}
+          vendorRostersByOccurrence={vendorRostersByOccurrence}
           locations={locations}
           categories={categories}
           selectedCategoryIds={selectedCategoryIds}

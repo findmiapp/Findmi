@@ -13,7 +13,14 @@ import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
 import EventOccurrencesEditor from "@/components/admin/EventOccurrencesEditor";
-import type { AdminEvent, AdminEventOccurrence, AdminLocation, EventFeaturedProduct, EventParticipant } from "@/lib/admin/queries";
+import type {
+  AdminEvent,
+  AdminEventOccurrence,
+  AdminLocation,
+  AdminOccurrenceVendor,
+  EventFeaturedProduct,
+  EventParticipant,
+} from "@/lib/admin/queries";
 import type { Category } from "@/lib/types";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveEvent } from "./actions";
@@ -25,6 +32,7 @@ export default function EventForm({
   galleryImages,
   venueImages,
   occurrences,
+  vendorRostersByOccurrence,
   locations,
   categories,
   selectedCategoryIds,
@@ -36,6 +44,7 @@ export default function EventForm({
   galleryImages: string[];
   venueImages: string[];
   occurrences: AdminEventOccurrence[];
+  vendorRostersByOccurrence: Record<string, AdminOccurrenceVendor[]>;
   locations: AdminLocation[];
   categories: Category[];
   selectedCategoryIds: string[];
@@ -96,7 +105,12 @@ export default function EventForm({
       </div>
 
       <div className="rounded-2xl border border-black/10 p-4">
-        <EventOccurrencesEditor initialOccurrences={occurrences} locations={locations} />
+        <EventOccurrencesEditor
+          eventId={event?.id ?? null}
+          initialOccurrences={occurrences}
+          locations={locations}
+          vendorRostersByOccurrence={vendorRostersByOccurrence}
+        />
       </div>
 
       <TextField label="Venue Name" name="venue_name" defaultValue={event?.venue_name} />

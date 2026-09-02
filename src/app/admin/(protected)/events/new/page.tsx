@@ -22,6 +22,7 @@ export default async function NewEventPage({
           galleryImages={[]}
           venueImages={[]}
           occurrences={[]}
+          vendorRostersByOccurrence={{}}
           locations={locations}
           categories={categories}
           selectedCategoryIds={[]}

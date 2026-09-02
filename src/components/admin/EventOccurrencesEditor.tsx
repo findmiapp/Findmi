@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { AdminEventOccurrence, AdminLocation } from "@/lib/admin/queries";
+import type { AdminEventOccurrence, AdminLocation, AdminOccurrenceVendor } from "@/lib/admin/queries";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
+import OccurrenceVendorManager from "./OccurrenceVendorManager";
 
 const inputClass =
   "rounded-lg border border-black/10 bg-white px-2.5 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none";
@@ -67,23 +68,41 @@ const MAX_REPEAT_WEEKS = 26;
  * carries anything explicitly removed this submit, and each row's own
  * fields post under `${field}_${occurrence.id}`. Concrete rows only — the
  * "repeat weekly" control below just clones the last row N times client-
- * side; nothing here stores a recurrence rule. */
+ * side; nothing here stores a recurrence rule.
+ *
+ * Recurring Events V2 — "Manage Vendors" (per-occurrence roster, see
+ * OccurrenceVendorManager) is the one exception to the hidden-input-rows
+ * pattern above: it's only offered for an already-saved occurrence (one
+ * present in initialOccurrences/existingIds — a freshly added row's id is
+ * client-only and doesn't exist in event_occurrences yet), and its
+ * mutations are immediate direct Server Action calls rather than more
+ * hidden inputs on this form, since that roster is independent of
+ * anything saveEvent itself writes. */
 export default function EventOccurrencesEditor({
+  eventId,
   initialOccurrences,
   locations,
+  vendorRostersByOccurrence,
 }: {
+  eventId: string | null;
   initialOccurrences: AdminEventOccurrence[];
   locations: AdminLocation[];
+  vendorRostersByOccurrence: Record<string, AdminOccurrenceVendor[]>;
 }) {
   const [rows, setRows] = useState<Row[]>(initialOccurrences.map(toRow));
   const [removedIds, setRemovedIds] = useState<string[]>([]);
   const [repeatWeeks, setRepeatWeeks] = useState("4");
+  // Manage Vendors panel — plain client state, not tied to a navigation:
+  // OccurrenceVendorManager's mutations only ever revalidatePath (no
+  // redirect), so this stays open across an add/status/feature/remove.
+  const [openVendorsFor, setOpenVendorsFor] = useState<string | null>(null);
 
   const addOccurrence = () => setRows((prev) => [...prev, emptyRow()]);
 
   const removeOccurrence = (id: string, isExisting: boolean) => {
     setRows((prev) => prev.filter((r) => r.id !== id));
     if (isExisting) setRemovedIds((prev) => [...prev, id]);
+    setOpenVendorsFor((prev) => (prev === id ? null : prev));
   };
 
   const updateRow = (id: string, patch: Partial<Row>) => {
@@ -128,14 +147,29 @@ export default function EventOccurrencesEditor({
                   Date {i + 1}
                   {row.cancelled && <span className="ml-2 text-red-600">Cancelled</span>}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => removeOccurrence(row.id, existingIds.has(row.id))}
-                  className="shrink-0 text-xs font-semibold text-red-600 hover:underline"
-                >
-                  Remove
-                </button>
+                <div className="flex shrink-0 items-center gap-3">
+                  {existingIds.has(row.id) && eventId && (
+                    <button
+                      type="button"
+                      onClick={() => setOpenVendorsFor((prev) => (prev === row.id ? null : row.id))}
+                      className="text-xs font-semibold text-findmi-700 hover:underline"
+                    >
+                      {openVendorsFor === row.id ? "Hide Vendors" : "Manage Vendors"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeOccurrence(row.id, existingIds.has(row.id))}
+                    className="text-xs font-semibold text-red-600 hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
+
+              {!existingIds.has(row.id) && (
+                <p className="mt-1 text-[11px] text-ink/40">Save this event before managing vendors for this date.</p>
+              )}
 
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <label className="block">
@@ -228,6 +262,14 @@ export default function EventOccurrencesEditor({
                   />
                 </label>
               </div>
+
+              {eventId && existingIds.has(row.id) && openVendorsFor === row.id && (
+                <OccurrenceVendorManager
+                  eventId={eventId}
+                  occurrenceId={row.id}
+                  vendors={vendorRostersByOccurrence[row.id] ?? []}
+                />
+              )}
             </div>
           ))}
         </div>

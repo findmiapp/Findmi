@@ -247,3 +247,110 @@ export async function saveEvent(id: string | null, formData: FormData) {
   revalidatePath("/discover");
   redirect(`/admin/events/${eventId}?saved=1`);
 }
+
+// ── Recurring Events V2 — per-occurrence vendor management ─────────────
+//
+// Manages event_occurrence_businesses ONLY. Never touches event_businesses
+// (the parent event's own roster, handled entirely by the participation
+// roster section of saveEvent above) and never copies rows either
+// direction between the two tables. Occurrence rows in
+// EventOccurrencesEditor already live inside the big
+// <form action={saveEvent}> on this page, so these four actions are
+// called directly (startTransition(() => addOccurrenceVendor(...))) from
+// OccurrenceVendorManager rather than through their own <form> — a <form>
+// nested inside another <form> is invalid HTML with unpredictable browser
+// behavior. Same direct-call-from-a-client-handler shape the codebase
+// already uses for non-nested toggles (see toggleItemFulfilled /
+// FulfillmentStatusToggle in ../orders).
+//
+// On success, each action only calls revalidatePath — no redirect — so
+// OccurrenceVendorManager's own open/closed panel state (plain client
+// useState in EventOccurrencesEditor) survives the refresh instead of
+// resetting on a full navigation. A real failure still redirects, reusing
+// the exact same errorRedirectUrl + top-of-page error banner every other
+// save on this form already uses.
+
+/** Search/select an existing FindMi business (EntitySearchAdd, same
+ * component ParticipationRoster already uses) and add it to one
+ * occurrence's roster. Duplicate (occurrence_id, business_id) pairs are a
+ * silent no-op via ignoreDuplicates — re-adding an already-present
+ * business never overwrites its current status/featured state — backed by
+ * the table's own `unique (occurrence_id, business_id)` constraint as the
+ * ultimate guarantee either way. */
+export async function addOccurrenceVendor(eventId: string, occurrenceId: string, businessId: string) {
+  const supabase = await requireAdminSupabase();
+  const { error } = await supabase
+    .from("event_occurrence_businesses")
+    .upsert(
+      { occurrence_id: occurrenceId, business_id: businessId },
+      { onConflict: "occurrence_id,business_id", ignoreDuplicates: true }
+    );
+  if (error) redirect(errorRedirectUrl(`/admin/events/${eventId}`, error.message));
+  revalidatePath(`/admin/events/${eventId}`);
+}
+
+/** Change one roster row's participation status (invited/applied/pending/
+ * approved/declined — same EventParticipationStatus enum event_businesses
+ * uses). Both `id` and `occurrence_id` are matched in the WHERE clause so
+ * a mismatched pair can never touch the wrong occurrence's row. */
+export async function updateOccurrenceVendorStatus(
+  eventId: string,
+  occurrenceId: string,
+  rowId: string,
+  status: EventParticipationStatus
+) {
+  if (!VALID_STATUSES.includes(status)) {
+    redirect(errorRedirectUrl(`/admin/events/${eventId}`, "Not a valid status."));
+  }
+  const supabase = await requireAdminSupabase();
+  const { data, error } = await supabase
+    .from("event_occurrence_businesses")
+    .update({ status })
+    .eq("id", rowId)
+    .eq("occurrence_id", occurrenceId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    redirect(errorRedirectUrl(`/admin/events/${eventId}`, error?.message ?? "Vendor row not found."));
+  }
+  revalidatePath(`/admin/events/${eventId}`);
+}
+
+/** Toggle one roster row's featured flag. Same compound-WHERE guard as
+ * updateOccurrenceVendorStatus above. */
+export async function updateOccurrenceVendorFeatured(
+  eventId: string,
+  occurrenceId: string,
+  rowId: string,
+  featured: boolean
+) {
+  const supabase = await requireAdminSupabase();
+  const { data, error } = await supabase
+    .from("event_occurrence_businesses")
+    .update({ featured })
+    .eq("id", rowId)
+    .eq("occurrence_id", occurrenceId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    redirect(errorRedirectUrl(`/admin/events/${eventId}`, error?.message ?? "Vendor row not found."));
+  }
+  revalidatePath(`/admin/events/${eventId}`);
+}
+
+/** Remove a business from this occurrence's roster only — never touches
+ * event_businesses or any other occurrence's roster. */
+export async function removeOccurrenceVendor(eventId: string, occurrenceId: string, rowId: string) {
+  const supabase = await requireAdminSupabase();
+  const { data, error } = await supabase
+    .from("event_occurrence_businesses")
+    .delete()
+    .eq("id", rowId)
+    .eq("occurrence_id", occurrenceId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    redirect(errorRedirectUrl(`/admin/events/${eventId}`, error?.message ?? "Vendor row not found."));
+  }
+  revalidatePath(`/admin/events/${eventId}`);
+}

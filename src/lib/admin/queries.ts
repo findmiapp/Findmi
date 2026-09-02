@@ -350,6 +350,68 @@ export async function getEventCategoryIds(eventId: string): Promise<string[]> {
   return (data ?? []).map((c) => c.category_id);
 }
 
+// Recurring Events V2 — admin per-occurrence vendor roster
+// (event_occurrence_businesses). Deliberately its own relationship, never
+// derived from or falling back to event_businesses/EventParticipant above:
+// an occurrence's vendor roster is independent of its parent event's
+// roster and is never auto-copied either direction. Unlike the public
+// getOccurrenceBusinessRosters (src/lib/data.ts, approved-only, filtered
+// by RLS+application code for consumer display), this reads via
+// service-role and returns EVERY status — the founder's admin view needs
+// to see and change invited/applied/pending/declined rows too, not just
+// what's publicly visible.
+export interface AdminOccurrenceVendor {
+  id: string;
+  occurrence_id: string;
+  business_id: string;
+  business_name: string;
+  logo_url: string | null;
+  status: EventParticipationStatus;
+  featured: boolean;
+}
+
+/** One query for every occurrence on the event being edited, keyed by
+ * occurrence id — mirrors the "fetch all, group client-side" shape
+ * getOccurrenceBusinessRosters already uses for the public page, so the
+ * admin edit page can render every occurrence row's roster without a
+ * query per row. */
+export async function getAdminOccurrenceVendorRosters(
+  occurrenceIds: string[]
+): Promise<Record<string, AdminOccurrenceVendor[]>> {
+  const supabase = getAdminSupabase();
+  if (!supabase || occurrenceIds.length === 0) return {};
+  const { data } = await supabase
+    .from("event_occurrence_businesses")
+    .select("id, occurrence_id, business_id, status, featured, businesses(name, logo_url)")
+    .in("occurrence_id", occurrenceIds)
+    .order("created_at", { ascending: true });
+
+  type Row = {
+    id: string;
+    occurrence_id: string;
+    business_id: string;
+    status: EventParticipationStatus;
+    featured: boolean;
+    businesses: { name: string; logo_url: string | null } | { name: string; logo_url: string | null }[] | null;
+  };
+
+  const byOccurrence: Record<string, AdminOccurrenceVendor[]> = {};
+  for (const row of (data ?? []) as Row[]) {
+    const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
+    const vendor: AdminOccurrenceVendor = {
+      id: row.id,
+      occurrence_id: row.occurrence_id,
+      business_id: row.business_id,
+      business_name: business?.name ?? "Unknown business",
+      logo_url: business?.logo_url ?? null,
+      status: row.status,
+      featured: row.featured,
+    };
+    (byOccurrence[row.occurrence_id] ??= []).push(vendor);
+  }
+  return byOccurrence;
+}
+
 /** Same shape as getEventCategoryIds above, for a product's
  * product_categories assignments — seeds ProductForm's category checklist
  * on an edit page. */
