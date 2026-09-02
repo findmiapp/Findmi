@@ -341,29 +341,17 @@ export default async function EventPage({
         </div>
       )}
 
-      {/* Events only have one description field today (no separate
-          short/long), so this is the single "About This Event" section
-          rather than duplicating the same text twice. Identical either
-          way — moved inside this shared fragment only so it's still
-          reachable inside the Provider below the Upcoming Dates
-          selector, ahead of the occurrence-aware roster right after it. */}
-      {event.description && (
-        <section className="mt-5">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
-          <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
-            {event.description}
-          </p>
-        </section>
-      )}
-
-      {/* Item 7 (content order) — Who You'll Find Here comes right after
-          About, BEFORE Featured Products and About the Venue. Recurring
-          Events V2: for an event WITH occurrence rows, the SELECTED
-          occurrence's own event_occurrence_businesses roster is
-          authoritative (EventOccurrenceBusinessRoster reads it via the
-          shared context) — never event_businesses, never a fallback to
-          it. A legacy event keeps the exact original event_businesses
-          roster below, untouched. */}
+      {/* Who You'll Find Here now comes BEFORE About This Event — About
+          must always render immediately after it (or, when it doesn't
+          render at all, About simply moves up with no gap, since this is
+          plain unconditional JSX order, not a founder-configurable
+          section list). Recurring Events V2: for an event WITH
+          occurrence rows, the SELECTED occurrence's own
+          event_occurrence_businesses roster is authoritative
+          (EventOccurrenceBusinessRoster reads it via the shared context)
+          — never event_businesses, never a fallback to it. A legacy
+          event keeps the exact original event_businesses roster below,
+          untouched. */}
       {hasOccurrences ? (
         <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} />
       ) : (
@@ -375,6 +363,19 @@ export default async function EventPage({
             {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
           </p>
           <EventBusinessRoster businesses={businesses} />
+        </section>
+      )}
+
+      {/* Events only have one description field today (no separate
+          short/long), so this is the single "About This Event" section
+          rather than duplicating the same text twice. Always immediately
+          after Who You'll Find Here — see the comment above. */}
+      {event.description && (
+        <section className="mt-5">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
+          <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
+            {event.description}
+          </p>
         </section>
       )}
     </>
