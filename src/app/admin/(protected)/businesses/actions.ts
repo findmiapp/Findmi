@@ -62,6 +62,7 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     founding_member: bool(formData, "founding_member"),
     is_featured: bool(formData, "is_featured"),
     membership_status: str(formData, "membership_status") ?? "lead",
+    plan_tier: str(formData, "plan_tier") ?? "free",
     lead_status: str(formData, "lead_status") ?? "new",
     // Framed to the founder as "Published" — is_demo is the inverse.
     is_demo: !bool(formData, "published"),

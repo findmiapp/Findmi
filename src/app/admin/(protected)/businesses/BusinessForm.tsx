@@ -167,6 +167,16 @@ export default function BusinessForm({
         hint="Shows in the homepage/Businesses 'Featured Brands' rows. Independent of Founding Member."
       />
 
+      <SelectField
+        label="Plan Tier"
+        name="plan_tier"
+        defaultValue={business?.plan_tier ?? "free"}
+        options={[
+          { value: "free", label: "Free" },
+          { value: "pro", label: "Pro" },
+        ]}
+      />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <SelectField
           label="Membership Status"
