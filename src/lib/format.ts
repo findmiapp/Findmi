@@ -42,7 +42,7 @@ export function formatDateRange(startIso: string, endIso?: string | null): strin
 
   const sameDay = dateKey(new Date(startIso)) === dateKey(new Date(endIso));
   if (sameDay) {
-    return `${start} · ${startTime}–${formatTime(endIso)}`;
+    return `${start} · ${startTime} – ${formatTime(endIso)}`;
   }
   return `${start} – ${formatDateShort(endIso)}`;
 }
@@ -56,7 +56,7 @@ export function formatTimeRange(startIso: string, endIso?: string | null): strin
   if (!endIso) return startTime;
 
   const sameDay = dateKey(new Date(startIso)) === dateKey(new Date(endIso));
-  if (sameDay) return `${startTime}–${formatTime(endIso)}`;
+  if (sameDay) return `${startTime} – ${formatTime(endIso)}`;
   return formatDateRange(startIso, endIso);
 }
 
@@ -123,7 +123,7 @@ export function formatDateRangeInZone(startIso: string, endIso: string | null | 
   if (!endIso) return `${start} · ${startTime}`;
 
   const sameDay = dateKeyInZone(new Date(startIso), timezone) === dateKeyInZone(new Date(endIso), timezone);
-  if (sameDay) return `${start} · ${startTime}–${formatTimeInZone(endIso, timezone)}`;
+  if (sameDay) return `${start} · ${startTime} – ${formatTimeInZone(endIso, timezone)}`;
   return `${start} – ${formatDateShortInZone(endIso, timezone)}`;
 }
 
@@ -135,7 +135,7 @@ export function formatTimeRangeInZone(startIso: string, endIso: string | null | 
   if (!endIso) return startTime;
 
   const sameDay = dateKeyInZone(new Date(startIso), timezone) === dateKeyInZone(new Date(endIso), timezone);
-  if (sameDay) return `${startTime}–${formatTimeInZone(endIso, timezone)}`;
+  if (sameDay) return `${startTime} – ${formatTimeInZone(endIso, timezone)}`;
   return formatDateRangeInZone(startIso, endIso, timezone);
 }
 
