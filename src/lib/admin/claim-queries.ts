@@ -135,3 +135,98 @@ export async function getAdminClaims(filters: ClaimListFilters = {}): Promise<Ad
     }))
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 }
+
+// ── Current access (business_members / event_members) ──────────────────────
+// Deliberately separate from everything above: a claim row is a historical
+// record of a REQUEST, never edited to reflect current access. Membership
+// is the current-access grant, read here independently so /admin/claims can
+// show "who has access to this business/event right now" alongside (never
+// merged into) the claim's own historical fields.
+
+export type MemberRole = "owner" | "manager" | "staff";
+
+export interface AdminCurrentAccessMember {
+  /** business_members/event_members row id — the identifier every
+   * role-change/remove action below operates on, never the claim id. */
+  id: string;
+  user_id: string;
+  role: MemberRole;
+  displayName: string | null;
+  /** The account's real login email (Auth Admin API), not a claim's own
+   * submitted contact email — those are two different things (see
+   * AdminClaimRow.claimantEmail's own note). */
+  email: string | null;
+}
+
+const MEMBER_TABLE: Record<ClaimEntityType, "business_members" | "event_members"> = {
+  business: "business_members",
+  event: "event_members",
+};
+const MEMBER_ENTITY_COLUMN: Record<ClaimEntityType, "business_id" | "event_id"> = {
+  business: "business_id",
+  event: "event_id",
+};
+const ROLE_SORT_ORDER: Record<MemberRole, number> = { owner: 0, manager: 1, staff: 2 };
+
+/** Batched account lookups for a small, bounded set of user ids — the
+ * Auth Admin API has no "get many by id" call, so this is one request per
+ * unique member account, run in parallel; fine at the scale claims/
+ * memberships actually run at (a handful of entities, a few members
+ * each), same "small dataset, in-JS merge" reasoning getAdminClaims above
+ * already uses. Never throws — a lookup failure just leaves that member's
+ * email null rather than breaking the whole page. */
+async function fetchEmailsByUserId(supabase: SupabaseClient, userIds: string[]): Promise<Map<string, string | null>> {
+  const map = new Map<string, string | null>();
+  await Promise.all(
+    userIds.map(async (id) => {
+      const { data } = await supabase.auth.admin.getUserById(id);
+      map.set(id, data.user?.email ?? null);
+    })
+  );
+  return map;
+}
+
+/** Current business_members/event_members for a set of entities, keyed by
+ * entity id — owner first, then manager/staff. Used by the claims page to
+ * render each claim's "Current Access" section without ever reading or
+ * writing through the claim record itself. */
+export async function getCurrentAccessByEntity(
+  entityType: ClaimEntityType,
+  entityIds: string[]
+): Promise<Map<string, AdminCurrentAccessMember[]>> {
+  const map = new Map<string, AdminCurrentAccessMember[]>();
+  if (entityIds.length === 0) return map;
+  const supabase = getAdminSupabase();
+  if (!supabase) return map;
+
+  const table = MEMBER_TABLE[entityType];
+  const column = MEMBER_ENTITY_COLUMN[entityType];
+  const { data } = await supabase.from(table).select(`id, user_id, role, ${column}`).in(column, entityIds);
+  const rows = (data ?? []) as { id: string; user_id: string; role: MemberRole; [key: string]: unknown }[];
+  if (rows.length === 0) return map;
+
+  const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+  const [{ data: profileRows }, emailByUser] = await Promise.all([
+    supabase.from("profiles").select("id, display_name").in("id", userIds),
+    fetchEmailsByUserId(supabase, userIds),
+  ]);
+  const displayNameByUser = new Map(
+    ((profileRows ?? []) as { id: string; display_name: string | null }[]).map((p) => [p.id, p.display_name])
+  );
+
+  for (const row of rows) {
+    const entityId = row[column] as string;
+    const member: AdminCurrentAccessMember = {
+      id: row.id,
+      user_id: row.user_id,
+      role: row.role,
+      displayName: displayNameByUser.get(row.user_id) ?? null,
+      email: emailByUser.get(row.user_id) ?? null,
+    };
+    map.set(entityId, [...(map.get(entityId) ?? []), member]);
+  }
+  for (const members of map.values()) {
+    members.sort((a, b) => ROLE_SORT_ORDER[a.role] - ROLE_SORT_ORDER[b.role]);
+  }
+  return map;
+}

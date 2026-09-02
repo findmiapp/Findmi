@@ -1,6 +1,13 @@
 import Link from "next/link";
-import { getAdminClaims, type ClaimEntityType, type ClaimStatus } from "@/lib/admin/claim-queries";
-import { approveClaim, rejectClaim } from "./actions";
+import {
+  getAdminClaims,
+  getCurrentAccessByEntity,
+  type AdminCurrentAccessMember,
+  type ClaimEntityType,
+  type ClaimStatus,
+} from "@/lib/admin/claim-queries";
+import { RemoveOwnerForm, TransferOwnershipForm } from "@/components/admin/OwnershipActions";
+import { approveClaim, rejectClaim, removeMember, removeOwner, transferOwnership, updateMemberRole } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +41,17 @@ function formatAmount(cents: number | null): string {
 export default async function AdminClaimsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; type?: string; view?: string; error?: string; approved?: string; rejected?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    type?: string;
+    view?: string;
+    error?: string;
+    approved?: string;
+    rejected?: string;
+    member_updated?: string;
+  }>;
 }) {
-  const { status, type, view, error, approved, rejected } = await searchParams;
+  const { status, type, view, error, approved, rejected, member_updated } = await searchParams;
   const activeStatus = STATUS_VIEWS.find((v) => v.value === status)?.value;
   const activeType = TYPE_VIEWS.find((v) => v.value === type)?.value;
   const paidOnly = view === "paid_needs_review";
@@ -45,6 +60,26 @@ export default async function AdminClaimsPage({
     entityType: activeType,
     view: paidOnly ? "paid_needs_review" : undefined,
   });
+
+  // Current Access — deliberately fetched independently of the claim
+  // rows' own historical fields (see claim-queries.ts). Keyed by
+  // "entityType-entityId" since business/event ids are both plain uuids
+  // and could theoretically collide.
+  const businessIds = Array.from(
+    new Set(claims.filter((c) => c.entityType === "business").map((c) => c.entity?.id).filter((id): id is string => Boolean(id)))
+  );
+  const eventIds = Array.from(
+    new Set(claims.filter((c) => c.entityType === "event").map((c) => c.entity?.id).filter((id): id is string => Boolean(id)))
+  );
+  const [businessMembers, eventMembers] = await Promise.all([
+    getCurrentAccessByEntity("business", businessIds),
+    getCurrentAccessByEntity("event", eventIds),
+  ]);
+  const currentAccessFor = (c: (typeof claims)[number]): AdminCurrentAccessMember[] => {
+    if (!c.entity?.id) return [];
+    const map = c.entityType === "business" ? businessMembers : eventMembers;
+    return map.get(c.entity.id) ?? [];
+  };
 
   return (
     <div>
@@ -65,6 +100,11 @@ export default async function AdminClaimsPage({
       {rejected && !error && (
         <p className="mt-3 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/70">
           Claim rejected.
+        </p>
+      )}
+      {member_updated && !error && (
+        <p className="mt-3 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/70">
+          Current Access updated.
         </p>
       )}
 
@@ -205,6 +245,95 @@ export default async function AdminClaimsPage({
                   </form>
                 </div>
               )}
+
+              {/* Current Access — CURRENT membership (business_members/
+                  event_members), deliberately separate from the claim
+                  record above: this is never edited by touching the
+                  claim, and the claim's own historical fields are never
+                  edited from here. */}
+              <div className="mt-3 border-t border-black/10 pt-3">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink/40">Current Access</p>
+                {(() => {
+                  const members = currentAccessFor(c);
+                  if (members.length === 0) {
+                    return <p className="text-xs text-ink/40">No current members.</p>;
+                  }
+                  const entityId = c.entity?.id ?? "";
+                  const hasOwner = members.some((m) => m.role === "owner");
+                  const eligibleTargets = members
+                    .filter((m): m is AdminCurrentAccessMember & { role: "manager" | "staff" } => m.role !== "owner")
+                    .map((m) => ({ id: m.id, label: m.displayName || m.email || "Member", role: m.role }));
+                  return (
+                    <div className="flex flex-col gap-2">
+                      {!hasOwner && (
+                        <p className="text-[11px] font-semibold text-amber-700">No owner currently assigned.</p>
+                      )}
+                      {members.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-black/[0.02] px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold text-ink">
+                              {m.displayName || m.email || "Member"}
+                            </p>
+                            {m.displayName && m.email && (
+                              <p className="truncate text-[11px] text-ink/45">{m.email}</p>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                m.role === "owner" ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/60"
+                              }`}
+                            >
+                              {m.role}
+                            </span>
+                            {m.role === "owner" ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <TransferOwnershipForm
+                                  action={transferOwnership.bind(null, c.entityType, entityId)}
+                                  eligibleMembers={eligibleTargets}
+                                />
+                                <RemoveOwnerForm
+                                  action={removeOwner.bind(null, c.entityType, entityId)}
+                                  ownerLabel={m.displayName || m.email || "the current owner"}
+                                />
+                              </div>
+                            ) : (
+                              <>
+                                <form
+                                  action={updateMemberRole.bind(
+                                    null,
+                                    c.entityType,
+                                    m.id,
+                                    m.role === "manager" ? "staff" : "manager"
+                                  )}
+                                >
+                                  <button
+                                    type="submit"
+                                    className="rounded-lg border border-black/10 px-2 py-1 text-[11px] font-semibold text-ink transition hover:bg-black/[0.03]"
+                                  >
+                                    Make {m.role === "manager" ? "Staff" : "Manager"}
+                                  </button>
+                                </form>
+                                <form action={removeMember.bind(null, c.entityType, m.id)}>
+                                  <button
+                                    type="submit"
+                                    className="rounded-lg border border-black/10 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-50"
+                                  >
+                                    Remove
+                                  </button>
+                                </form>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           );
         })}
