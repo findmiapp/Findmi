@@ -8,8 +8,11 @@ import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import EventFollowForm from "@/components/EventFollowForm";
+import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceCard from "@/components/EventOccurrenceCard";
 import EventSaveButton from "@/components/EventSaveButton";
+import EventScheduleActions from "@/components/EventScheduleActions";
+import EventScheduleSummary from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
 import FormAction from "@/components/FormAction";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
@@ -17,6 +20,7 @@ import ProductCard from "@/components/ProductCard";
 import { HorizontalScroller } from "@/components/Section";
 import {
   attachEventCategories,
+  eventHasAnyOccurrences,
   getBusinessesForEvent,
   getEventBySlug,
   getEventImages,
@@ -58,13 +62,15 @@ export default async function EventPage({
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, upcomingOccurrences] = await Promise.all([
-    getBusinessesForEvent(event.id),
-    attachEventCategories([event]),
-    getEventProducts(event.id),
-    getEventImages(event.id),
-    getUpcomingOccurrencesForEvent(event.id),
-  ]);
+  const [businesses, [eventWithCategories], featuredProducts, images, upcomingOccurrences, hasOccurrences] =
+    await Promise.all([
+      getBusinessesForEvent(event.id),
+      attachEventCategories([event]),
+      getEventProducts(event.id),
+      getEventImages(event.id),
+      getUpcomingOccurrencesForEvent(event.id),
+      eventHasAnyOccurrences(event.id),
+    ]);
   const category = eventWithCategories.categories[0] ?? null;
   const location = cityState(event.city, event.state);
   const venueLine = [event.venue_name, event.address, location].filter(Boolean).join(" · ");
@@ -135,6 +141,183 @@ export default async function EventPage({
   // Location link (see the pass report).
   const hasVenueDetails = Boolean(event.venue_name || event.address || location);
 
+  // Recurring Events V2 — for an event WITH occurrence rows, occurrence
+  // scheduling becomes public scheduling truth: the details card's date/
+  // time/location and the Directions/Add to Calendar actions read the
+  // shared selectedOccurrence (EventScheduleSummary/EventScheduleActions)
+  // instead of the parent event's own start_at/end_at/venue fields, which
+  // stop being authoritative the moment occurrences exist. A legacy event
+  // with zero occurrence rows (hasOccurrences false, upcomingOccurrences
+  // always []) renders this exact same JSX block, but with the original
+  // static date/venue line and Directions/Add to Calendar untouched — see
+  // the two `hasOccurrences ? … : …` branches below. Built once as a
+  // variable (not duplicated per branch) so Tier A CTAs, the rest of the
+  // utility row, and Bulletin are never repeated in source.
+  const scheduleAndDetails = (
+    <>
+      {/* Item 7 — one coherent details module (title, date/time, venue,
+          address) instead of floating loosely in open whitespace below
+          the cover. Light containment only: subtle border, restrained
+          radius, no heavy card styling. */}
+      <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-6">
+        {category && (
+          <div className="mb-2">
+            <CategoryPill>{category.name}</CategoryPill>
+          </div>
+        )}
+        <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{event.name}</h1>
+
+        {hasOccurrences ? (
+          <EventScheduleSummary />
+        ) : (
+          <div className="mt-3 flex flex-col gap-2 text-sm text-ink/65">
+            <div className="flex items-center gap-2">
+              <CalendarGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+              <span className="font-medium text-ink/80">{formatDateRange(event.start_at, event.end_at)}</span>
+            </div>
+            {venueLine && (
+              <div className="flex items-center gap-2">
+                <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+                <span>{venueLine}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Tier A — the strongest, organizer-configured actions. */}
+      {customCtas.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2.5">
+          {customCtas.map((action) => (
+            <FormAction
+              key={action.label}
+              href={action.href}
+              displayMode={action.displayMode}
+              label={action.label}
+              className={
+                action.weight === "solid"
+                  ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Tier B — supporting utility actions, visually quiet, grouped
+          together and separate from Tier A above. Mobile layout pass: a
+          single non-wrapping, horizontally scrollable row (Save →
+          Directions → Add to Calendar → Share → Contact Organizer, then
+          Follow/Event Details when present) instead of flex-wrap — every
+          action/icon/link/behavior is unchanged, only the row's own
+          layout. -mx-4/px-4 (sm:-mx-6/sm:px-6) bleeds the scroll track to
+          the same edges as the padded content around it, and
+          overflow-x-auto contains all overflow within this one element —
+          it can't cause page-level horizontal scroll. */}
+      <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex w-max items-center gap-2">
+          <div className="shrink-0">
+            <EventSaveButton slug={event.slug} />
+          </div>
+          {hasOccurrences ? (
+            <EventScheduleActions
+              eventName={event.name}
+              description={event.description}
+              directionsEnabled={event.directions_enabled}
+            />
+          ) : (
+            <>
+              {showDirections && (
+                <a
+                  href={directionsHref!}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+                >
+                  Directions
+                </a>
+              )}
+              <div className="shrink-0">
+                <AddToCalendarButton
+                  title={event.name}
+                  description={event.description}
+                  location={venueLine || null}
+                  startAt={event.start_at}
+                  endAt={event.end_at}
+                />
+              </div>
+            </>
+          )}
+          <div className="shrink-0">
+            <EventShareButton title={event.name} url={canonicalUrl} />
+          </div>
+          {showContact && contactForm && (
+            contactForm.url.startsWith("mailto:") ? (
+              <a
+                href={contactForm.url}
+                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              >
+                Contact Organizer
+              </a>
+            ) : (
+              <FormAction
+                href={contactForm.url}
+                displayMode={contactForm.displayMode}
+                label="Contact Organizer"
+                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              />
+            )
+          )}
+          {showFollow && (
+            <a
+              href="#follow"
+              className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+            >
+              Follow
+            </a>
+          )}
+          {event.external_url && (
+            <a
+              href={event.external_url}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+            >
+              Event Details
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Item 8 — optional Bulletin, same shared component as Business
+          Profile, right after the utility row and before About. */}
+      <div className="mt-3">
+        <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
+      </div>
+
+      {/* Event Occurrences foundation — "Upcoming Dates" carousel, now the
+          occurrence SELECTOR (Recurring Events V2) rather than merely
+          informational, shown only when this event has real
+          event_occurrences rows still to come (including
+          cancelled-but-not-yet-past ones, badged accordingly and still
+          selectable for transparency). A legacy event with none simply
+          has an empty list here and this section renders nothing — its
+          single date keeps showing exactly as it always has, above. */}
+      {upcomingOccurrences.length > 0 && (
+        <div className="mt-5 -mx-4 sm:mx-0">
+          <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
+            Upcoming Dates
+          </p>
+          <HorizontalScroller>
+            {upcomingOccurrences.map((occ) => (
+              <EventOccurrenceCard key={occ.id} occurrence={occ} />
+            ))}
+          </HorizontalScroller>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div>
       {/* Item 9: the cover becomes a lightbox/slider trigger through every
@@ -163,155 +346,10 @@ export default async function EventPage({
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-        {/* Item 7 — one coherent details module (title, date/time, venue,
-            address) instead of floating loosely in open whitespace below
-            the cover. Light containment only: subtle border, restrained
-            radius, no heavy card styling. */}
-        <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-6">
-          {category && (
-            <div className="mb-2">
-              <CategoryPill>{category.name}</CategoryPill>
-            </div>
-          )}
-          <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{event.name}</h1>
-
-          <div className="mt-3 flex flex-col gap-2 text-sm text-ink/65">
-            <div className="flex items-center gap-2">
-              <CalendarGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-              <span className="font-medium text-ink/80">{formatDateRange(event.start_at, event.end_at)}</span>
-            </div>
-            {venueLine && (
-              <div className="flex items-center gap-2">
-                <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-                <span>{venueLine}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Tier A — the strongest, organizer-configured actions. */}
-        {customCtas.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-2.5">
-            {customCtas.map((action) => (
-              <FormAction
-                key={action.label}
-                href={action.href}
-                displayMode={action.displayMode}
-                label={action.label}
-                className={
-                  action.weight === "solid"
-                    ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-                }
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Tier B — supporting utility actions, visually quiet, grouped
-            together and separate from Tier A above. Add to Calendar/
-            Share always function (real start_at/title/canonical URL
-            always exist), so they always render.
-            Mobile layout pass: a single non-wrapping, horizontally
-            scrollable row (Save → Directions → Add to Calendar → Share
-            → Contact Organizer, then Follow/Event Details when present)
-            instead of flex-wrap — every action/icon/link/behavior is
-            unchanged, only the row's own layout. The three sub-components
-            (EventSaveButton/AddToCalendarButton/EventShareButton) render
-            their own root element with no className prop, so each gets a
-            shrink-0 wrapper; the plain <a>/FormAction pills take
-            shrink-0 directly. -mx-4/px-4 (sm:-mx-6/sm:px-6) bleeds the
-            scroll track to the same edges as the padded content around
-            it, and overflow-x-auto contains all overflow within this one
-            element — it can't cause page-level horizontal scroll. */}
-        <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex w-max items-center gap-2">
-            <div className="shrink-0">
-              <EventSaveButton slug={event.slug} />
-            </div>
-            {showDirections && (
-              <a
-                href={directionsHref!}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-              >
-                Directions
-              </a>
-            )}
-            <div className="shrink-0">
-              <AddToCalendarButton
-                title={event.name}
-                description={event.description}
-                location={venueLine || null}
-                startAt={event.start_at}
-                endAt={event.end_at}
-              />
-            </div>
-            <div className="shrink-0">
-              <EventShareButton title={event.name} url={canonicalUrl} />
-            </div>
-            {showContact && contactForm && (
-              contactForm.url.startsWith("mailto:") ? (
-                <a
-                  href={contactForm.url}
-                  className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-                >
-                  Contact Organizer
-                </a>
-              ) : (
-                <FormAction
-                  href={contactForm.url}
-                  displayMode={contactForm.displayMode}
-                  label="Contact Organizer"
-                  className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-                />
-              )
-            )}
-            {showFollow && (
-              <a
-                href="#follow"
-                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-              >
-                Follow
-              </a>
-            )}
-            {event.external_url && (
-              <a
-                href={event.external_url}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-              >
-                Event Details
-              </a>
-            )}
-          </div>
-        </div>
-
-        {/* Item 8 — optional Bulletin, same shared component as Business
-            Profile, right after the utility row and before About. */}
-        <div className="mt-3">
-          <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
-        </div>
-
-        {/* Event Occurrences foundation — "Upcoming Dates" carousel, shown
-            only when this event has real event_occurrences rows still to
-            come (including cancelled-but-not-yet-past ones, badged
-            accordingly). A legacy event with none simply has an empty
-            list here and this section renders nothing — its single date
-            keeps showing exactly as it always has, further up the page. */}
-        {upcomingOccurrences.length > 0 && (
-          <div className="mt-5 -mx-4 sm:mx-0">
-            <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
-              Upcoming Dates
-            </p>
-            <HorizontalScroller>
-              {upcomingOccurrences.map((occ) => (
-                <EventOccurrenceCard key={occ.id} occurrence={occ} eventTicketsUrl={event.tickets_url} />
-              ))}
-            </HorizontalScroller>
-          </div>
+        {hasOccurrences ? (
+          <EventOccurrenceProvider occurrences={upcomingOccurrences}>{scheduleAndDetails}</EventOccurrenceProvider>
+        ) : (
+          scheduleAndDetails
         )}
 
         {/* Events only have one description field today (no separate

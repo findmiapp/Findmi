@@ -316,6 +316,15 @@ export interface EventOccurrence {
   status: EventOccurrenceStatus;
   ticket_url_override: string | null;
   vendor_apply_url_override: string | null;
+  /** RSVP override — Recurring Events V2. Null means "use the parent
+   * event's own rsvp_url", same shape as the two overrides above. */
+  rsvp_url_override: string | null;
+  /** IANA timezone identifier (e.g. "America/Chicago") — Recurring
+   * Events V2. This occurrence's own intended local timezone; never
+   * derived from city/state text or the viewer's/server's timezone. See
+   * lib/format.ts's *InZone formatters, which this field is meant to be
+   * passed into for every public occurrence date/time render. */
+  timezone: string;
   created_at: string;
   updated_at: string;
 }

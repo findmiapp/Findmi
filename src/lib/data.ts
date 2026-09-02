@@ -1010,6 +1010,25 @@ export async function getUpcomingOccurrencesForEvent(
   return occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
 }
 
+/** Whether an event has ANY event_occurrences row at all — any status,
+ * any time, past included. Recurring Events V2's public page needs this
+ * distinct from getUpcomingOccurrencesForEvent's result: an empty
+ * upcoming-occurrences list is ambiguous between "legacy one-time event,
+ * zero occurrence rows ever" (fall back to the event's own start_at/
+ * end_at, exactly as before) and "recurring event, occurrence rows exist
+ * but none are currently announced as upcoming" ("No upcoming dates
+ * announced" — never fall back to stale parent scheduling). A cheap
+ * existence check, not a second fetch of the rows themselves. */
+export async function eventHasAnyOccurrences(eventId: string): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  const { count } = await supabase
+    .from("event_occurrences")
+    .select("id", { count: "exact", head: true })
+    .eq("event_id", eventId);
+  return (count ?? 0) > 0;
+}
+
 export interface EventBusinessListing extends BusinessWithCategories {
   featured: boolean;
   /** Event-specific "what they'll have here" text (see /admin's Event

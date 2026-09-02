@@ -1,44 +1,44 @@
-import Link from "next/link";
+"use client";
+
 import type { EventOccurrenceWithLocation } from "@/lib/data";
-import { cityState, formatTimeRange, getTemporalLabel } from "@/lib/format";
-import { validateCustomDestination } from "@/lib/navigation";
+import { cityState, formatDayOfMonthInZone, formatMonthAbbrevInZone, formatTimeRangeInZone } from "@/lib/format";
+import { useEventOccurrence } from "./EventOccurrenceContext";
 import LiveDot from "./LiveDot";
 
-// One card in the public event page's "Upcoming Dates" carousel — visual
-// language mirrors AppearanceCard's date-tile + text-block + circular CTA
-// pattern, adapted for an occurrence: cancelled state instead of
-// "Tentative", and a ticket-link (occurrence override, else the parent
-// event's own) instead of AppearanceCard's tiered click logic — an
-// occurrence has no external_url/flyer of its own to fall back through.
-export default function EventOccurrenceCard({
-  occurrence,
-  eventTicketsUrl,
-}: {
-  occurrence: EventOccurrenceWithLocation;
-  /** The parent event's own Ticket Link — used when this occurrence has
-   * no ticket_url_override of its own. */
-  eventTicketsUrl: string | null;
-}) {
+/** One card in the public event page's "Upcoming Dates" row — Recurring
+ * Events V2 makes this the occurrence SELECTOR for the whole page (see
+ * EventOccurrenceContext), not an independent ticket link. Clicking/
+ * tapping only ever changes which occurrence is selected in the shared
+ * context; it never navigates. Per-occurrence ticket/RSVP/vendor-apply
+ * link resolution (this card's previous click-through behavior) is
+ * explicitly deferred to a later "CTA parity" pass — see the pass
+ * report. Every date/time renders in the OCCURRENCE'S OWN timezone
+ * (occurrence.timezone), never the app's global APP_TIMEZONE or the
+ * viewer's device timezone. */
+export default function EventOccurrenceCard({ occurrence }: { occurrence: EventOccurrenceWithLocation }) {
+  const { selected, select } = useEventOccurrence();
+  const isSelected = selected?.id === occurrence.id;
   const cancelled = occurrence.status === "cancelled";
   const location = cityState(occurrence.location?.city, occurrence.location?.state);
-  const { live } = !cancelled ? getTemporalLabel(occurrence.start_at, occurrence.end_at) : { live: false };
 
-  const ticketUrl = occurrence.ticket_url_override ?? eventTicketsUrl;
-  const destination =
-    !cancelled && ticketUrl && validateCustomDestination(ticketUrl).ok ? ticketUrl : null;
-  // Same internal-vs-external convention used everywhere else a founder-
-  // entered destination is rendered (see Bulletin.tsx/AppearanceCard.tsx):
-  // a bare "https://" URL opens in a new tab.
-  const destinationIsAbsolute = destination ? /^https:\/\//i.test(destination) : false;
+  const now = Date.now();
+  const live = !cancelled && new Date(occurrence.start_at).getTime() <= now && new Date(occurrence.end_at).getTime() > now;
 
-  const content = (
-    <div
-      className={`flex w-56 shrink-0 items-center gap-3 rounded-2xl border p-3 transition ${
+  return (
+    <button
+      type="button"
+      onClick={() => select(occurrence.id)}
+      aria-pressed={isSelected}
+      className={`flex w-56 shrink-0 items-center gap-3 rounded-2xl border p-3 text-left transition ${
         cancelled
-          ? "border-black/5 bg-black/[0.02] opacity-70"
-          : live
-            ? "border-findmi/50 bg-findmi-50"
-            : "border-black/5 bg-white hover:border-black/10 hover:shadow-sm"
+          ? isSelected
+            ? "border-red-300 bg-red-50/60"
+            : "border-black/5 bg-black/[0.02] opacity-70"
+          : isSelected
+            ? "border-findmi bg-findmi-50 ring-1 ring-findmi"
+            : live
+              ? "border-findmi/50 bg-findmi-50"
+              : "border-black/5 bg-white hover:border-black/20"
       }`}
     >
       <div
@@ -54,9 +54,11 @@ export default function EventOccurrenceCard({
         ) : (
           <>
             <span className="text-[10px] font-semibold uppercase tracking-wide text-ink/50">
-              {new Date(occurrence.start_at).toLocaleDateString("en-US", { month: "short" })}
+              {formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone)}
             </span>
-            <span className="text-lg font-bold leading-none">{new Date(occurrence.start_at).getDate()}</span>
+            <span className="text-lg font-bold leading-none">
+              {formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone)}
+            </span>
           </>
         )}
       </div>
@@ -65,7 +67,9 @@ export default function EventOccurrenceCard({
         {cancelled ? (
           <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Cancelled</p>
         ) : (
-          <p className="truncate text-xs text-ink/55">{formatTimeRange(occurrence.start_at, occurrence.end_at)}</p>
+          <p className="truncate text-xs text-ink/55">
+            {formatTimeRangeInZone(occurrence.start_at, occurrence.end_at, occurrence.timezone)}
+          </p>
         )}
         {(occurrence.location?.name || location) && (
           <p className="mt-0.5 truncate text-xs text-ink/45">
@@ -73,39 +77,6 @@ export default function EventOccurrenceCard({
           </p>
         )}
       </div>
-
-      {destination && (
-        <span
-          aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi text-white transition group-hover:bg-findmi-600"
-        >
-          <ArrowGlyph className="h-3.5 w-3.5" />
-        </span>
-      )}
-    </div>
-  );
-
-  if (!destination) return content;
-
-  const ariaLabel = `${formatTimeRange(occurrence.start_at, occurrence.end_at)} — Get tickets`;
-  if (destinationIsAbsolute) {
-    return (
-      <a href={destination} target="_blank" rel="noreferrer" className="group block" aria-label={ariaLabel}>
-        {content}
-      </a>
-    );
-  }
-  return (
-    <Link href={destination} className="group block" aria-label={ariaLabel}>
-      {content}
-    </Link>
-  );
-}
-
-function ArrowGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    </button>
   );
 }

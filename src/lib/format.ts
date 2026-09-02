@@ -60,6 +60,85 @@ export function formatTimeRange(startIso: string, endIso?: string | null): strin
   return formatDateRange(startIso, endIso);
 }
 
+// ── Occurrence-timezone-aware variants (Recurring Events V2) ────────────
+// Every function above renders in the single global APP_TIMEZONE — correct
+// for events/appearances, which have no timezone of their own, but wrong
+// for an event_occurrence, which now carries its own IANA timezone (one
+// recurring series can span multiple real-world timezones, e.g. an Austin
+// date and a New York date). These *InZone siblings are the exact same
+// logic, parameterized by an explicit `timezone` argument instead of the
+// hardcoded constant — deliberately NOT a change to the functions above,
+// which stay exactly as they are for every other caller (appearances,
+// legacy one-time events, businesses, products — none of which have a
+// per-row timezone to pass). Only occurrence-aware code should use these.
+
+export function formatDateShortInZone(iso: string, timezone: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function formatTimeInZone(iso: string, timezone: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** Month abbreviation only (e.g. "Sep") — for a compact date tile's top
+ * line, in the occurrence's own timezone rather than the browser's/
+ * server's implicit local time (new Date().toLocaleDateString() with no
+ * timeZone option uses whichever runtime rendered it — wrong on both a
+ * UTC server and a differently-zoned visitor). */
+export function formatMonthAbbrevInZone(iso: string, timezone: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { timeZone: timezone, month: "short" });
+}
+
+/** Day-of-month only (e.g. "10") — a date tile's number line, in the
+ * occurrence's own timezone. Deliberately NOT Date.getDate(), which
+ * always reads the runtime's local calendar day, not the intended one. */
+export function formatDayOfMonthInZone(iso: string, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, day: "numeric" }).formatToParts(new Date(iso));
+  return parts.find((p) => p.type === "day")?.value ?? "";
+}
+
+function dateKeyInZone(date: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+export function formatDateRangeInZone(startIso: string, endIso: string | null | undefined, timezone: string): string {
+  const start = formatDateShortInZone(startIso, timezone);
+  const startTime = formatTimeInZone(startIso, timezone);
+  if (!endIso) return `${start} · ${startTime}`;
+
+  const sameDay = dateKeyInZone(new Date(startIso), timezone) === dateKeyInZone(new Date(endIso), timezone);
+  if (sameDay) return `${start} · ${startTime}–${formatTimeInZone(endIso, timezone)}`;
+  return `${start} – ${formatDateShortInZone(endIso, timezone)}`;
+}
+
+/** Time-only range in the occurrence's own timezone — mirrors
+ * formatTimeRange above for a date tile that already shows the date
+ * separately. */
+export function formatTimeRangeInZone(startIso: string, endIso: string | null | undefined, timezone: string): string {
+  const startTime = formatTimeInZone(startIso, timezone);
+  if (!endIso) return startTime;
+
+  const sameDay = dateKeyInZone(new Date(startIso), timezone) === dateKeyInZone(new Date(endIso), timezone);
+  if (sameDay) return `${startTime}–${formatTimeInZone(endIso, timezone)}`;
+  return formatDateRangeInZone(startIso, endIso, timezone);
+}
+
 // Appearance Import hardening pass, item 1 — appearances.start_at is
 // NOT NULL, so a "time TBD" appearance from the importer still needs some
 // real timestamp to satisfy the schema (see appearances/import/actions.ts,
