@@ -516,6 +516,17 @@ export default async function BusinessPage({
             <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-8 lg:hidden" />
           )}
 
+          {/* Claim placement pass — moved off the top action area (never
+              competing with Inquire/Follow/Save there) into its own
+              compact card, immediately before "Discover More Like This".
+              Same reused flow/modal/eligibility logic as before (see
+              ClaimButton) — only the entry-point states (guest/none) pick
+              up this card's copy via variant="card"; a claim already in
+              progress still renders its own existing status card. */}
+          <div className="mt-8">
+            <ClaimButton type="business" slug={business.slug} entityName={business.name} variant="card" />
+          </div>
+
           {/* UI cleanup pass item 6: rebuilt on BusinessLogoCard (the same
               cover+overlapping-logo brand-preview card Brands We Love
               uses) instead of BusinessCard's dark PostCard poster style,
@@ -531,12 +542,6 @@ export default async function BusinessPage({
               </div>
             </section>
           )}
-
-          {/* Claim foundation pass — deliberately last, small, and muted;
-              never competing with Inquire/Follow/Save. */}
-          <div className="mt-8">
-            <ClaimButton type="business" slug={business.slug} entityName={business.name} />
-          </div>
         </div>
       </div>
     </div>

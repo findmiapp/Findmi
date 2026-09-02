@@ -44,10 +44,19 @@ export default function ClaimButton({
   type,
   slug,
   entityName,
+  variant = "inline",
 }: {
   type: "business" | "event";
   slug: string;
   entityName: string;
+  /** "inline" (default, unchanged) — the original small muted text link,
+   * used as-is wherever this component was already placed (e.g. the event
+   * page). "card" — same flow/modal/state logic, wrapped in a small
+   * "Is this your business?" card for the entry-point states (guest/none).
+   * The other states (pending_review/awaiting_payment/paid_pending_review)
+   * already render their own self-contained card and are unaffected by
+   * this prop. */
+  variant?: "inline" | "card";
 }) {
   const [state, setState] = useState<ClaimState>("loading");
   const [claimId, setClaimId] = useState<string | null>(null);
@@ -157,11 +166,12 @@ export default function ClaimButton({
     // mount effect above resolves "guest" client-side; the initial
     // server-rendered pass is always "loading" (renders null).
     const next = `${window.location.pathname}?claim=1`;
-    return (
+    const link = (
       <a href={`/login?next=${encodeURIComponent(next)}`} className="text-xs font-semibold text-ink/40 hover:text-ink/70">
         Claim this {noun}
       </a>
     );
+    return variant === "card" ? <ClaimCard>{link}</ClaimCard> : link;
   }
 
   if (state === "pending_review") {
@@ -211,15 +221,19 @@ export default function ClaimButton({
     );
   }
 
+  const trigger = (
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      className="text-xs font-semibold text-ink/40 hover:text-ink/70"
+    >
+      Claim this {noun}
+    </button>
+  );
+
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="text-xs font-semibold text-ink/40 hover:text-ink/70"
-      >
-        Claim this {noun}
-      </button>
+      {variant === "card" ? <ClaimCard>{trigger}</ClaimCard> : trigger}
 
       {mounted &&
         open &&
@@ -311,5 +325,19 @@ export default function ClaimButton({
           document.body
         )}
     </>
+  );
+}
+
+/** variant="card" chrome for the entry-point (guest/none) states — same
+ * copy/positioning the public business profile places right before
+ * "Discover More Like This". Kept local to this file since it only wraps
+ * this component's own trigger element. */
+function ClaimCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-black/10 bg-white p-5 sm:p-6">
+      <h2 className="font-display text-base font-bold tracking-tight text-ink">Is this your business?</h2>
+      <p className="mt-1.5 text-sm text-ink/60">Claim your free FindMi listing to manage your business information.</p>
+      <div className="mt-3">{children}</div>
+    </div>
   );
 }
