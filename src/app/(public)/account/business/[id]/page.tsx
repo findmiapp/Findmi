@@ -75,7 +75,9 @@ export default async function ManageBusinessPage({
   const [{ data: business }, categories, { data: businessCategoryRows }] = await Promise.all([
     admin
       .from("businesses")
-      .select("id, name, logo_url, cover_image_url, plan_tier, short_description")
+      .select(
+        "id, name, logo_url, cover_image_url, plan_tier, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url"
+      )
       .eq("id", id)
       .maybeSingle(),
     getCategories(),
@@ -157,6 +159,146 @@ export default async function ManageBusinessPage({
                 className={inputClass}
               />
             </label>
+
+            {/* Pro-only fields — the additional businesses columns
+                (existing schema, admin already edits every one of these)
+                that PRO_ONLY_COLUMNS in actions.ts allows only when this
+                business's server-resolved plan_tier is Pro. Free never
+                renders this block, so a Free owner can't even see these
+                inputs, let alone submit them — and even if they crafted a
+                raw request with these field names, the action's own
+                allowlist (resolved server-side, never from the submitted
+                form) silently drops them. */}
+            {pro && (
+              <>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">About / full description</span>
+                  <textarea
+                    name="description"
+                    rows={5}
+                    defaultValue={business.description ?? ""}
+                    className={inputClass}
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
+                    <input type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
+                    <input type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
+                    <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
+                    <input type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
+                    <input type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
+                  </label>
+                </div>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">Website</span>
+                  <input
+                    type="url"
+                    name="website_url"
+                    defaultValue={business.website_url ?? ""}
+                    placeholder="https://…"
+                    className={inputClass}
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Instagram</span>
+                    <input
+                      type="url"
+                      name="instagram_url"
+                      defaultValue={business.instagram_url ?? ""}
+                      placeholder="https://instagram.com/…"
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Facebook</span>
+                    <input
+                      type="url"
+                      name="facebook_url"
+                      defaultValue={business.facebook_url ?? ""}
+                      placeholder="https://facebook.com/…"
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">TikTok</span>
+                    <input
+                      type="url"
+                      name="tiktok_url"
+                      defaultValue={business.tiktok_url ?? ""}
+                      placeholder="https://tiktok.com/@…"
+                      className={inputClass}
+                    />
+                  </label>
+                </div>
+
+                <div className="rounded-2xl border border-black/10 p-4">
+                  <label className="flex items-center gap-2 text-sm font-medium text-ink">
+                    <input type="checkbox" name="bulletin_enabled" defaultChecked={business.bulletin_enabled} />
+                    Show announcement
+                  </label>
+                  <div className="mt-3 flex flex-col gap-3">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement label</span>
+                      <input
+                        type="text"
+                        name="bulletin_label"
+                        defaultValue={business.bulletin_label ?? ""}
+                        placeholder="Announcement"
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement heading</span>
+                      <input
+                        type="text"
+                        name="bulletin_heading"
+                        defaultValue={business.bulletin_heading ?? ""}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement message</span>
+                      <textarea
+                        name="bulletin_body"
+                        rows={3}
+                        defaultValue={business.bulletin_body ?? ""}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement link (optional)</span>
+                      <input
+                        type="text"
+                        name="bulletin_url"
+                        defaultValue={business.bulletin_url ?? ""}
+                        placeholder="https://…"
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </>
+            )}
 
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Category</span>

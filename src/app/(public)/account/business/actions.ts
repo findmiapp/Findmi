@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
+import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile } from "@/lib/imageUploadValidation";
@@ -102,7 +102,28 @@ export async function uploadMemberBusinessImage(
  * one) purely so a later pass can widen PRO_ALLOWED_COLUMNS without
  * touching the Free path at all. */
 const FREE_ALLOWED_COLUMNS = ["name", "logo_url", "cover_image_url", "short_description"] as const;
-const PRO_ALLOWED_COLUMNS = FREE_ALLOWED_COLUMNS;
+// Pro-only additions — every one an EXISTING businesses column already
+// used by the founder admin editor (BusinessForm.tsx); no new columns.
+// "announcement" is the bulletin_* group admin already exposes together
+// under that same label.
+const PRO_ONLY_COLUMNS = [
+  "description",
+  "city",
+  "state",
+  "country",
+  "email",
+  "phone",
+  "website_url",
+  "instagram_url",
+  "facebook_url",
+  "tiktok_url",
+  "bulletin_enabled",
+  "bulletin_label",
+  "bulletin_heading",
+  "bulletin_body",
+  "bulletin_url",
+] as const;
+const PRO_ALLOWED_COLUMNS = [...FREE_ALLOWED_COLUMNS, ...PRO_ONLY_COLUMNS] as const;
 
 /**
  * Updates a business's name, logo, cover image, and category — the ONLY
@@ -181,17 +202,55 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
   const cover_image_url = str(formData, "cover_image_url");
   const short_description = str(formData, "short_description");
 
+  // Pro-only fields — read from the submitted form regardless of tier
+  // (harmless: only the columns actually named in allowedColumns below
+  // ever reach the real Supabase payload), same "extra fields are simply
+  // never looked at" pattern this action already documents. A Free
+  // submission that manually includes these is never able to persist
+  // them, because allowedColumns for Free never names them.
+  const description = str(formData, "description");
+  const city = str(formData, "city");
+  const state = str(formData, "state");
+  const country = str(formData, "country");
+  const email = str(formData, "email");
+  const phone = str(formData, "phone");
+  const website_url = str(formData, "website_url");
+  const instagram_url = str(formData, "instagram_url");
+  const facebook_url = str(formData, "facebook_url");
+  const tiktok_url = str(formData, "tiktok_url");
+  const bulletin_enabled = bool(formData, "bulletin_enabled");
+  const bulletin_label = str(formData, "bulletin_label");
+  const bulletin_heading = str(formData, "bulletin_heading");
+  const bulletin_body = str(formData, "bulletin_body");
+  const bulletin_url = str(formData, "bulletin_url");
+
   // The actual UPDATE payload is built FROM allowedColumns, not just
   // gated by it — every value this action is capable of writing lives in
   // candidateValues, and only the columns named in allowedColumns are
-  // ever copied out of it into the real Supabase payload. A future pass
-  // widening PRO_ALLOWED_COLUMNS (and candidateValues) automatically
-  // reaches this same construction — no branching logic to duplicate.
-  const candidateValues: Record<(typeof FREE_ALLOWED_COLUMNS)[number], string | null> = {
+  // ever copied out of it into the real Supabase payload. Widening
+  // PRO_ALLOWED_COLUMNS automatically reaches this same construction —
+  // no branching logic to duplicate, and Free's allowedColumns can never
+  // pick up a Pro-only key no matter what the form submits.
+  const candidateValues: Record<(typeof PRO_ALLOWED_COLUMNS)[number], string | boolean | null> = {
     name,
     logo_url,
     cover_image_url,
     short_description,
+    description,
+    city,
+    state,
+    country,
+    email,
+    phone,
+    website_url,
+    instagram_url,
+    facebook_url,
+    tiktok_url,
+    bulletin_enabled,
+    bulletin_label,
+    bulletin_heading,
+    bulletin_body,
+    bulletin_url,
   };
   const payload = Object.fromEntries(allowedColumns.map((column) => [column, candidateValues[column]]));
 
