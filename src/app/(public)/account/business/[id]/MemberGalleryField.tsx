@@ -28,16 +28,28 @@ export default function MemberGalleryField({
   const [isPending, startTransition] = useTransition();
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!file) return;
+    if (files.length === 0) return;
     setError(null);
-    const fd = new FormData();
-    fd.set("file", file);
+    // isPending stays true for this whole transition, so the file input
+    // below (disabled={isPending}) can't be used again mid-upload — same
+    // duplicate-submission guard as before, just covering the whole batch
+    // instead of one file.
     startTransition(async () => {
-      const result = await uploadMemberBusinessImage(businessId, fd);
-      if (result.error) setError(result.error);
-      else if (result.url) setUrls((prev) => [...prev, result.url!]);
+      let lastError: string | null = null;
+      // Sequential, not Promise.all — preserves the order the visitor
+      // selected files in, and one failure never discards images that
+      // already uploaded successfully (each success is appended as soon
+      // as it resolves, regardless of what happens to the rest).
+      for (const file of files) {
+        const fd = new FormData();
+        fd.set("file", file);
+        const result = await uploadMemberBusinessImage(businessId, fd);
+        if (result.error) lastError = result.error;
+        else if (result.url) setUrls((prev) => [...prev, result.url!]);
+      }
+      if (lastError) setError(lastError);
     });
   }
 
@@ -71,7 +83,7 @@ export default function MemberGalleryField({
 
       <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30">
         {isPending ? "Uploading…" : "Add Image"}
-        <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={isPending} />
+        <input type="file" accept="image/*" multiple className="hidden" onChange={handleFile} disabled={isPending} />
       </label>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
