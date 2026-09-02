@@ -334,7 +334,14 @@ export default async function EventPage({
           <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
             Upcoming Dates
           </p>
-          <HorizontalScroller>
+          {/* pt-2 — QA fix: the selected card's aqua ring/border (see
+              EventOccurrenceCard) is a box-shadow that bleeds slightly
+              outside the card's own box; with zero top padding here it
+              sat flush against this scroller's top edge and got clipped
+              by the overflow-x-auto container's (CSS-forced) overflow-y
+              clipping. Local to this carousel only — every other
+              HorizontalScroller on the site is unaffected. */}
+          <HorizontalScroller className="pt-2">
             {upcomingOccurrences.map((occ) => (
               <EventOccurrenceCard key={occ.id} occurrence={occ} />
             ))}
