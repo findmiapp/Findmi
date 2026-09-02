@@ -193,6 +193,9 @@ export default async function ManageBusinessPage({
                 form) silently drops them. */}
             {pro && (
               <>
+                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
+                <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
+
                 <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink">About / full description</span>
@@ -273,9 +276,6 @@ export default async function ManageBusinessPage({
                     />
                   </label>
                 </div>
-
-                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
-                <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
 
                 <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Announcement</p>
                 <div className="rounded-2xl border border-black/10 p-4">

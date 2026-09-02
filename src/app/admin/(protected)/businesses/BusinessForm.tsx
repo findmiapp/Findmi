@@ -141,6 +141,17 @@ export default function BusinessForm({
         />
       </div>
 
+      {/* GALLERY */}
+      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
+      <div className="rounded-2xl border border-black/10 p-4">
+        <GalleryField
+          label="Gallery"
+          name="gallery_image_url"
+          initialUrls={galleryImages}
+          hint="Additional photos shown on the public profile, below Shop/Products, in a compact strip that opens a lightbox. The Logo and Cover Photo above stay separate."
+        />
+      </div>
+
       {/* ABOUT */}
       <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
       <TextareaField
@@ -198,17 +209,6 @@ export default function BusinessForm({
           type="url"
           defaultValue={business?.tiktok_url}
           placeholder="https://tiktok.com/@…"
-        />
-      </div>
-
-      {/* GALLERY */}
-      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
-      <div className="rounded-2xl border border-black/10 p-4">
-        <GalleryField
-          label="Gallery"
-          name="gallery_image_url"
-          initialUrls={galleryImages}
-          hint="Additional photos shown on the public profile, below Shop/Products, in a compact strip that opens a lightbox. The Logo and Cover Photo above stay separate."
         />
       </div>
 
