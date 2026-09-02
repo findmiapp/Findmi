@@ -103,6 +103,23 @@ export default async function ManageBusinessPage({
           {pro ? "Pro" : "Free"} Plan
         </span>
 
+        {!pro && (
+          <div className="mt-4 rounded-2xl border border-findmi/20 bg-findmi-50 p-4 sm:p-5">
+            <p className="text-sm font-bold text-ink">Unlock your full FindMi presence</p>
+            <p className="mt-1 text-sm text-ink/60">
+              Upgrade to Pro to add your business details, contact links, gallery, products, appearances and more.
+            </p>
+            <a
+              href="https://tally.so/r/0QR7LN"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            >
+              Upgrade to Pro
+            </a>
+          </div>
+        )}
+
         {error && (
           <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
         )}
