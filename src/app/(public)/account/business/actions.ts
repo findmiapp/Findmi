@@ -101,7 +101,7 @@ export async function uploadMemberBusinessImage(
  * the pass spec). Kept as two named constants (rather than one shared
  * one) purely so a later pass can widen PRO_ALLOWED_COLUMNS without
  * touching the Free path at all. */
-const FREE_ALLOWED_COLUMNS = ["name", "logo_url", "cover_image_url"] as const;
+const FREE_ALLOWED_COLUMNS = ["name", "logo_url", "cover_image_url", "short_description"] as const;
 const PRO_ALLOWED_COLUMNS = FREE_ALLOWED_COLUMNS;
 
 /**
@@ -179,6 +179,7 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
   }
   const logo_url = str(formData, "logo_url");
   const cover_image_url = str(formData, "cover_image_url");
+  const short_description = str(formData, "short_description");
 
   // The actual UPDATE payload is built FROM allowedColumns, not just
   // gated by it — every value this action is capable of writing lives in
@@ -190,6 +191,7 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
     name,
     logo_url,
     cover_image_url,
+    short_description,
   };
   const payload = Object.fromEntries(allowedColumns.map((column) => [column, candidateValues[column]]));
 

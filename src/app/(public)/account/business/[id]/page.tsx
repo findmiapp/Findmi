@@ -73,7 +73,11 @@ export default async function ManageBusinessPage({
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
   const [{ data: business }, categories, { data: businessCategoryRows }] = await Promise.all([
-    admin.from("businesses").select("id, name, logo_url, cover_image_url, plan_tier").eq("id", id).maybeSingle(),
+    admin
+      .from("businesses")
+      .select("id, name, logo_url, cover_image_url, plan_tier, short_description")
+      .eq("id", id)
+      .maybeSingle(),
     getCategories(),
     // A business may still carry more than one category from before this
     // action's one-category rule existed (admin's own editor allows
@@ -143,6 +147,16 @@ export default async function ManageBusinessPage({
               name="cover_image_url"
               defaultValue={business.cover_image_url}
             />
+
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Short description</span>
+              <textarea
+                name="short_description"
+                rows={3}
+                defaultValue={business.short_description ?? ""}
+                className={inputClass}
+              />
+            </label>
 
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Category</span>
