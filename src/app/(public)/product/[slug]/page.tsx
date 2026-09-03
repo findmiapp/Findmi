@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Image from "next/image";
+import SupabaseImage from "@/components/SupabaseImage";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AddToCartForm from "@/components/AddToCartForm";
@@ -127,7 +127,7 @@ export default async function ProductPage({
         <div className="relative">
           <div className="relative aspect-square w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm">
             {product.image_url ? (
-              <Image
+              <SupabaseImage
                 src={product.image_url}
                 alt={product.name}
                 fill
@@ -162,7 +162,7 @@ export default async function ProductPage({
           >
             <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-mist">
               {product.business.logo_url ? (
-                <Image
+                <SupabaseImage
                   src={product.business.logo_url}
                   alt={product.business.name}
                   fill

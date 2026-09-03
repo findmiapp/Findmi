@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -163,7 +163,7 @@ function ResultGroup({
           className="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-black/[0.03]"
         >
           <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-mist">
-            {item.image && <Image src={item.image} alt="" fill sizes="36px" className="object-cover" />}
+            {item.image && <SupabaseImage src={item.image} alt="" fill sizes="36px" className="object-cover" />}
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-ink">{item.name}</p>

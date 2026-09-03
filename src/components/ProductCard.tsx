@@ -1,4 +1,4 @@
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import type { Product } from "@/lib/types";
 import { formatCurrency, formatPrice } from "@/lib/format";
@@ -73,7 +73,7 @@ export default function ProductCard({
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-white transition active:scale-[0.98]">
       <div className="relative aspect-square w-full shrink-0 bg-mist">
         {product.image_url ? (
-          <Image
+          <SupabaseImage
             src={product.image_url}
             alt={product.name}
             fill
@@ -96,7 +96,7 @@ export default function ProductCard({
           <p className="flex min-w-0 items-center gap-1.5 text-xs text-ink/50">
             {business.logo_url && (
               <span className="relative h-4 w-4 shrink-0 overflow-hidden rounded-full bg-black/5">
-                <Image src={business.logo_url} alt="" fill sizes="16px" className="object-cover" />
+                <SupabaseImage src={business.logo_url} alt="" fill sizes="16px" className="object-cover" />
               </span>
             )}
             <span className="truncate">{business.name}</span>

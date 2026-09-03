@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import SupabaseImage from "@/components/SupabaseImage";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
@@ -188,7 +188,7 @@ function CartLineRow({ line, onChanged }: { line: CartLineQuote; onChanged: () =
   return (
     <div className={`flex gap-3 rounded-xl border border-black/5 bg-white p-3 ${!line.available ? "opacity-60" : ""}`}>
       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-mist">
-        {line.imageUrl && <Image src={line.imageUrl} alt={line.productName} fill sizes="64px" className="object-cover" />}
+        {line.imageUrl && <SupabaseImage src={line.imageUrl} alt={line.productName} fill sizes="64px" className="object-cover" />}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-ink">{line.productName}</p>

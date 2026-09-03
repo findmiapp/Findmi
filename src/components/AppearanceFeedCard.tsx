@@ -1,4 +1,4 @@
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import type { AppearanceFeedItem } from "@/lib/data";
 import { cityState, getTemporalLabel } from "@/lib/format";
@@ -23,7 +23,7 @@ export default function AppearanceFeedCard({
       <div className="flex items-center gap-3">
         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-black/5">
           {item.business.logo_url && (
-            <Image
+            <SupabaseImage
               src={item.business.logo_url}
               alt={item.business.name}
               fill

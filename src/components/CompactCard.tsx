@@ -1,4 +1,4 @@
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 
 // Small, normal-flow image+title+meta card — not the tall PostCard-based
@@ -22,7 +22,7 @@ export default function CompactCard({
   return (
     <Link href={href} className="block">
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-mist">
-        {image && <Image src={image} alt={title} fill sizes="160px" className="object-cover" />}
+        {image && <SupabaseImage src={image} alt={title} fill sizes="160px" className="object-cover" />}
       </div>
       <p className="mt-1.5 line-clamp-1 text-sm font-semibold text-ink">{title}</p>
       {meta && <p className="line-clamp-1 text-xs text-ink/50">{meta}</p>}

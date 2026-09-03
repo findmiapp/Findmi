@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Image from "next/image";
+import SupabaseImage from "@/components/SupabaseImage";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import { toJsonLdScript } from "@/lib/jsonLd";
@@ -233,7 +233,7 @@ export default async function BusinessPage({
       <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6 sm:pt-6">
         <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm sm:aspect-[21/9]">
           {business.cover_image_url ? (
-            <Image
+            <SupabaseImage
               src={business.cover_image_url}
               alt={business.name}
               fill
@@ -279,7 +279,7 @@ export default async function BusinessPage({
           <div className="flex items-start gap-2">
             {business.logo_url && (
               <div className="relative -mt-10 h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-28 sm:w-28">
-                <Image src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
+                <SupabaseImage src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
               </div>
             )}
             <div

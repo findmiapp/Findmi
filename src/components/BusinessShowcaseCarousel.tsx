@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import { useRef, useState } from "react";
 import type { ShowcaseBusinessData } from "@/lib/data";
 import { cityState, formatCurrency, formatDateShort } from "@/lib/format";
@@ -121,13 +121,13 @@ function RealProfileScreen({ demo }: { demo: ShowcaseBusinessData }) {
     <div className="flex h-full flex-col">
       <div className="relative h-16 shrink-0 bg-gradient-to-br from-findmi-300 to-findmi-600">
         {business.cover_image_url && (
-          <Image src={business.cover_image_url} alt="" fill sizes="144px" className="object-cover opacity-70" />
+          <SupabaseImage src={business.cover_image_url} alt="" fill sizes="144px" className="object-cover opacity-70" />
         )}
       </div>
       <div className="flex flex-1 flex-col items-center gap-1 px-2 pt-2">
         <div className="relative -mt-7 h-11 w-11 shrink-0 overflow-hidden rounded-full border-2 border-white bg-white">
           {business.logo_url ? (
-            <Image src={business.logo_url} alt="" fill sizes="44px" className="object-cover" />
+            <SupabaseImage src={business.logo_url} alt="" fill sizes="44px" className="object-cover" />
           ) : (
             <div className="h-full w-full bg-findmi-100" />
           )}
@@ -140,7 +140,7 @@ function RealProfileScreen({ demo }: { demo: ShowcaseBusinessData }) {
         <div className="mt-1.5 grid w-full grid-cols-3 gap-1 px-1">
           {Array.from({ length: 3 }, (_, i) => (
             <div key={i} className="relative aspect-square overflow-hidden rounded-sm bg-mist">
-              {gallery[i] && <Image src={gallery[i]} alt="" fill sizes="40px" className="object-cover" />}
+              {gallery[i] && <SupabaseImage src={gallery[i]} alt="" fill sizes="40px" className="object-cover" />}
             </div>
           ))}
         </div>
@@ -223,7 +223,7 @@ function ProductTile({
   return (
     <div className={`overflow-hidden rounded-md border border-black/5 ${className ?? ""}`}>
       <div className="relative aspect-square bg-mist">
-        {product.image_url && <Image src={product.image_url} alt="" fill sizes={imageSizes} className="object-cover" />}
+        {product.image_url && <SupabaseImage src={product.image_url} alt="" fill sizes={imageSizes} className="object-cover" />}
       </div>
       <div className="px-1 py-1">
         <p className="truncate text-[6.5px] font-medium text-ink/70">{product.name}</p>
@@ -255,12 +255,12 @@ function RealDiscoveryScreen({ demo }: { demo: ShowcaseBusinessData }) {
           concrete "here's what being found looks like" moment. */}
       <div className="relative mt-0.5 flex-1 overflow-hidden rounded-md border border-black/5 bg-mist">
         {business.cover_image_url && (
-          <Image src={business.cover_image_url} alt="" fill sizes="128px" className="object-cover" />
+          <SupabaseImage src={business.cover_image_url} alt="" fill sizes="128px" className="object-cover" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
         {business.logo_url && (
           <div className="absolute bottom-1 left-1 h-6 w-6 overflow-hidden rounded border-2 border-white bg-white">
-            <Image src={business.logo_url} alt="" fill sizes="24px" className="object-contain p-0.5" />
+            <SupabaseImage src={business.logo_url} alt="" fill sizes="24px" className="object-contain p-0.5" />
           </div>
         )}
         <div className="absolute inset-x-0 bottom-1 pl-8 pr-1.5">

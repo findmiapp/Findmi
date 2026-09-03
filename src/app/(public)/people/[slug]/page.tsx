@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Image from "next/image";
+import SupabaseImage from "@/components/SupabaseImage";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import AdminEditButton from "@/components/AdminEditButton";
@@ -44,7 +44,7 @@ export default async function PersonPage({
       <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
         <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border-4 border-paper bg-mist shadow-sm sm:h-32 sm:w-32">
           {person.image_url ? (
-            <Image src={person.image_url} alt={person.name} fill sizes="128px" className="object-cover" />
+            <SupabaseImage src={person.image_url} alt={person.name} fill sizes="128px" className="object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-3xl font-bold text-ink/20">
               {person.name.charAt(0)}

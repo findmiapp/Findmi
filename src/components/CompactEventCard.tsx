@@ -1,4 +1,4 @@
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import type { EventWithCategories } from "@/lib/types";
 import { cityState, formatDateShort, formatTime, getTemporalLabel } from "@/lib/format";
@@ -27,7 +27,7 @@ export default function CompactEventCard({ event }: { event: EventWithCategories
     >
       <div className="relative aspect-[4/3] w-full shrink-0 bg-mist">
         {event.cover_image_url ? (
-          <Image
+          <SupabaseImage
             src={event.cover_image_url}
             alt={event.name}
             fill

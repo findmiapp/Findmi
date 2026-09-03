@@ -1,4 +1,4 @@
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import type { BusinessWithCategories } from "@/lib/types";
 import type { NextAppearanceHint } from "@/lib/data";
@@ -83,7 +83,7 @@ export default function BusinessLogoCard({
       <div className="relative">
         <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-3xl bg-mist">
           {hasCover ? (
-            <Image
+            <SupabaseImage
               src={business.cover_image_url!}
               alt=""
               fill
@@ -95,7 +95,7 @@ export default function BusinessLogoCard({
             // the visual area — large and centered, not a small tile.
             <div className="flex h-full w-full items-center justify-center bg-findmi-50 p-8">
               <div className="relative h-full w-full">
-                <Image
+                <SupabaseImage
                   src={business.logo_url!}
                   alt={business.name}
                   fill
@@ -135,7 +135,7 @@ export default function BusinessLogoCard({
           // ever cropped or distorted — transparent-background logos still
           // read cleanly against the tile's own white fill.
           <div className="absolute -bottom-7 left-5 h-20 w-20 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-white">
-            <Image src={business.logo_url!} alt={business.name} fill sizes="80px" className="object-contain" />
+            <SupabaseImage src={business.logo_url!} alt={business.name} fill sizes="80px" className="object-contain" />
           </div>
         )}
       </div>

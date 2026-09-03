@@ -1,4 +1,4 @@
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 
 // The homepage's masthead.
@@ -126,7 +126,7 @@ export default function HomeHero({
                   position as before — unaffected by the container
                   resize, left edge (0) also unchanged. */}
               <div className="absolute left-0 top-[19.2px] h-[113.6px] w-[82.5%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
-                <Image src={a} alt="" fill sizes="82vw" className="object-cover" />
+                <SupabaseImage src={a} alt="" fill sizes="82vw" className="object-cover" />
               </div>
               {b && (
                 // Image 2 — coffee, the only support image left on
@@ -138,7 +138,7 @@ export default function HomeHero({
                 // bit more overlap onto bread as its left edge extends
                 // further left — expected/acceptable per spec.
                 <div className="absolute right-[1.5%] top-[-119px] z-10 h-[161px] w-[37.5%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <Image src={b} alt="" fill sizes="38vw" className="object-cover" />
+                  <SupabaseImage src={b} alt="" fill sizes="38vw" className="object-cover" />
                 </div>
               )}
               {/* Image 3 (pizza) intentionally not rendered on mobile —
@@ -195,7 +195,7 @@ export default function HomeHero({
             // breakpoint without per-tile breakpoint math.
             <div className="relative h-72 w-[22rem] shrink-0 lg:h-96 lg:w-[28rem] xl:h-[26rem] xl:w-[32rem]">
               <div className="absolute left-0 top-0 h-[70%] w-[72%] overflow-hidden rounded-3xl shadow-md ring-4 ring-white">
-                <Image
+                <SupabaseImage
                   src={a}
                   alt=""
                   fill
@@ -205,7 +205,7 @@ export default function HomeHero({
               </div>
               {b && (
                 <div className="absolute right-0 top-0 z-10 h-[38%] w-[40%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <Image
+                  <SupabaseImage
                     src={b}
                     alt=""
                     fill
@@ -216,7 +216,7 @@ export default function HomeHero({
               )}
               {c && (
                 <div className="absolute bottom-0 right-[4%] z-10 h-[40%] w-[42%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <Image
+                  <SupabaseImage
                     src={c}
                     alt=""
                     fill

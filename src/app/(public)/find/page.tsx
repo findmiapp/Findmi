@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Image from "next/image";
+import SupabaseImage from "@/components/SupabaseImage";
 import Link from "next/link";
 import { cityState, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import { getCategories, getEventsDiscovery, getFindMiHereFeed, type AppearanceFeedItem, type FindWindow } from "@/lib/data";
@@ -180,7 +180,7 @@ function DarkAppearanceRow({ item }: { item: AppearanceFeedItem }) {
     >
       <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-white/10">
         {item.business.logo_url && (
-          <Image src={item.business.logo_url} alt={item.business.name} fill sizes="48px" className="object-cover" />
+          <SupabaseImage src={item.business.logo_url} alt={item.business.name} fill sizes="48px" className="object-cover" />
         )}
       </div>
       <div className="min-w-0 flex-1">

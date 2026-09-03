@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import LiveDot from "./LiveDot";
 
@@ -89,7 +89,7 @@ export default function PostCard({
       } ${aspect ?? ASPECT_BY_KIND[kind]}`}
     >
       {showImage ? (
-        <Image
+        <SupabaseImage
           src={image as string}
           alt={title}
           fill
@@ -129,7 +129,7 @@ export default function PostCard({
 
       {logoUrl && (
         <div className="absolute right-3 top-3 h-9 w-9 overflow-hidden rounded-full border-2 border-white/80 bg-white shadow-sm">
-          <Image src={logoUrl} alt="" fill sizes="36px" className="object-cover" />
+          <SupabaseImage src={logoUrl} alt="" fill sizes="36px" className="object-cover" />
         </div>
       )}
 
