@@ -625,18 +625,30 @@ export interface AppearanceWithEventSlug extends Appearance {
 // end_at, one from a bulk-seeded batch, one added individually later).
 // This groups by the STRONGEST identifier available and keeps exactly
 // one row per real occurrence:
-//   - event_occurrence_id, when set — the actual occurrence-linked case.
-//   - else event_id + start_at — same FindMi event AND the same exact
-//     start time. Grouping by event_id alone would be wrong: a business
-//     can genuinely appear at two different dates of the same recurring
-//     event (same event_id, different start_at) — those must both stay
-//     visible, so start_at is part of the key, not just event_id.
+//   - event_id + start_at, when event_id is set — same FindMi event AND
+//     the same exact start time. This is the primary key (not
+//     event_occurrence_id-first) specifically so an occurrence-linked row
+//     (official_participation, created via ensureOccurrenceAppearance —
+//     which always sets both event_id and event_occurrence_id together)
+//     and a legacy event-only row for that exact same event+time (no
+//     event_occurrence_id at all — predates the occurrence-link/
+//     provenance passes) still collapse into ONE public card instead of
+//     two, once the Official Participation Historical Reconciliation pass
+//     started creating occurrence-linked rows alongside those pre-
+//     existing legacy ones. Grouping by event_id alone would be wrong: a
+//     business can genuinely appear at two different dates of the same
+//     recurring event (same event_id, different start_at/occurrence) —
+//     those must both stay visible, so start_at is still part of the key.
+//   - else event_occurrence_id alone, for the (currently theoretical —
+//     every real write path sets event_id alongside it) case of an
+//     occurrence-linked row with no event_id.
 //   - else the row's own id — a pure standalone/manual appearance with no
 //     event_id at all never merges with anything.
-// Within a group, prefers (in order): occurrence-linked over not,
-// official_participation source over any other, then the most recently
-// created row — a deterministic, non-guessing tiebreak (never inspects
-// venue/description text to judge "which one is more correct").
+// Within a group, prefers (in order): occurrence-linked over not, then
+// source official_participation > event_self_added > manual, then the
+// most recently created row — a deterministic, non-guessing tiebreak
+// (never inspects venue/description text to judge "which one is more
+// correct").
 type DedupableAppearance = {
   id: string;
   event_id: string | null;
@@ -646,10 +658,16 @@ type DedupableAppearance = {
   created_at: string;
 };
 
+function sourceRank(source: string): number {
+  if (source === "official_participation") return 2;
+  if (source === "event_self_added") return 1;
+  return 0; // "manual", or anything unrecognized
+}
+
 function betterAppearance<T extends DedupableAppearance>(a: T, b: T): T {
   const score = (r: T): [number, number, number] => [
     r.event_occurrence_id ? 1 : 0,
-    r.source === "official_participation" ? 1 : 0,
+    sourceRank(r.source),
     new Date(r.created_at).getTime(),
   ];
   const [sa, sb] = [score(a), score(b)];
@@ -663,10 +681,10 @@ function dedupeAppearances<T extends DedupableAppearance>(rows: T[]): T[] {
   const winners = new Map<string, T>();
   const order: string[] = [];
   for (const row of rows) {
-    const key = row.event_occurrence_id
-      ? `occ:${row.event_occurrence_id}`
-      : row.event_id
-        ? `evt:${row.event_id}:${row.start_at}`
+    const key = row.event_id
+      ? `evt:${row.event_id}:${row.start_at}`
+      : row.event_occurrence_id
+        ? `occ:${row.event_occurrence_id}`
         : `id:${row.id}`;
     const existing = winners.get(key);
     if (existing) {
