@@ -29,10 +29,21 @@ export default function HomeEventCard({ event }: { event: EventWithCategories })
       className="group relative block aspect-[4/5] w-full overflow-hidden rounded-2xl bg-black/5 transition active:scale-[0.98]"
     >
       {event.cover_image_url ? (
+        // unoptimized — bypasses Vercel's next/image optimizer (the
+        // /_next/image proxy) for this Supabase Storage-hosted cover,
+        // fetching the original file directly instead. Root-caused
+        // against production data: this exact URL resolves to a real,
+        // correctly-uploaded object in the findmi-media bucket (verified
+        // via Storage — right size/mimetype, a recorded 200 at upload
+        // time), so the file itself isn't the problem; the optimizer
+        // request for it was failing while the plain origin file is
+        // fine. No onError/fallback state needed here — bypassing the
+        // optimizer is the fix, not papering over a still-failing load.
         <Image
           src={event.cover_image_url}
           alt={event.name}
           fill
+          unoptimized
           sizes="(min-width: 768px) 360px, 76vw"
           className="object-cover transition duration-300 group-hover:scale-105"
         />
