@@ -16,6 +16,7 @@ import {
 } from "../actions";
 import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
+import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
 import { formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -63,10 +64,58 @@ export default async function ManageBusinessPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{
+    saved?: string;
+    error?: string;
+    editing?: string;
+    add_title?: string;
+    add_date?: string;
+    add_start_time?: string;
+    add_end_time?: string;
+    add_venue_name?: string;
+    add_address?: string;
+    add_city?: string;
+    add_state?: string;
+    add_external_url?: string;
+    add_flyer_image_url?: string;
+    edit_title?: string;
+    edit_date?: string;
+    edit_start_time?: string;
+    edit_end_time?: string;
+    edit_venue_name?: string;
+    edit_address?: string;
+    edit_city?: string;
+    edit_state?: string;
+    edit_external_url?: string;
+    edit_flyer_image_url?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { saved, error } = await searchParams;
+  const {
+    saved,
+    error,
+    editing,
+    add_title,
+    add_date,
+    add_start_time,
+    add_end_time,
+    add_venue_name,
+    add_address,
+    add_city,
+    add_state,
+    add_external_url,
+    add_flyer_image_url,
+    edit_title,
+    edit_date,
+    edit_start_time,
+    edit_end_time,
+    edit_venue_name,
+    edit_address,
+    edit_city,
+    edit_state,
+    edit_external_url,
+    edit_flyer_image_url,
+  } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
@@ -153,6 +202,7 @@ export default async function ManageBusinessPage({
     city: string | null;
     state: string | null;
     external_url: string | null;
+    flyer_image_url: string | null;
     event_id: string | null;
     event_occurrence_id: string | null;
     participationStatus: EventParticipationStatus | null;
@@ -165,7 +215,9 @@ export default async function ManageBusinessPage({
     const [{ data: appearanceRows }, { data: ebStatusRows }, { data: eobStatusRows }] = await Promise.all([
       admin
         .from("appearances")
-        .select("id, title, start_at, end_at, venue_name, address, city, state, external_url, event_id, event_occurrence_id")
+        .select(
+          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id"
+        )
         .eq("business_id", id)
         .neq("status", "canceled")
         .gt("end_at", nowIso)
@@ -227,6 +279,24 @@ export default async function ManageBusinessPage({
 
   const addFromEvent = addAppearanceFromEvent.bind(null, id);
   const addManual = addManualAppearance.bind(null, id);
+
+  // "Add an Appearance" defaults — blank unless a server-side validation
+  // error on THIS form just sent the visitor back here, in which case
+  // every add_* value they'd typed is restored exactly as submitted (see
+  // buildAppearanceErrorUrl in ../actions.ts). Success clears the form
+  // (fresh page load, no add_* params); failure never does.
+  const addDefaultValues: AppearanceFieldValues = {
+    title: add_title ?? "",
+    date: add_date ?? "",
+    start_time: add_start_time ?? "",
+    end_time: add_end_time ?? "",
+    venue_name: add_venue_name ?? "",
+    address: add_address ?? "",
+    city: add_city ?? "",
+    state: add_state ?? "",
+    external_url: add_external_url ?? "",
+    flyer_image_url: add_flyer_image_url ?? null,
+  };
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
@@ -468,8 +538,38 @@ export default async function ManageBusinessPage({
             {appearances.length > 0 ? (
               <ul className="mt-4 flex flex-col gap-3">
                 {appearances.map((a) => {
-                  const [editDate, editStartTime] = isoToLocalDateTime(a.start_at).split("T");
-                  const editEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
+                  const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
+                  const storedEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
+                  // A server-side validation error on THIS specific
+                  // appearance's edit form takes precedence over its
+                  // stored DB values — same "never lose what was typed"
+                  // rule as Add, just scoped to the one row that failed.
+                  const isEditing = editing === a.id;
+                  const editDefaultValues: AppearanceFieldValues = isEditing
+                    ? {
+                        title: edit_title ?? a.title,
+                        date: edit_date ?? storedDate,
+                        start_time: edit_start_time ?? storedStartTime,
+                        end_time: edit_end_time ?? storedEndTime,
+                        venue_name: edit_venue_name ?? a.venue_name ?? "",
+                        address: edit_address ?? a.address ?? "",
+                        city: edit_city ?? a.city ?? "",
+                        state: edit_state ?? a.state ?? "",
+                        external_url: edit_external_url ?? a.external_url ?? "",
+                        flyer_image_url: edit_flyer_image_url ?? a.flyer_image_url,
+                      }
+                    : {
+                        title: a.title,
+                        date: storedDate,
+                        start_time: storedStartTime,
+                        end_time: storedEndTime,
+                        venue_name: a.venue_name ?? "",
+                        address: a.address ?? "",
+                        city: a.city ?? "",
+                        state: a.state ?? "",
+                        external_url: a.external_url ?? "",
+                        flyer_image_url: a.flyer_image_url,
+                      };
                   return (
                     <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">
                       <div className="flex items-start justify-between gap-3">
@@ -496,57 +596,16 @@ export default async function ManageBusinessPage({
                         </form>
                       </div>
 
-                      <details className="mt-2">
+                      <details className="mt-2" open={isEditing}>
                         <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
-                        <form
-                          action={updateOwnerAppearance.bind(null, id, a.id)}
-                          className="mt-3 flex flex-col gap-2"
-                        >
-                          <input
-                            type="text"
-                            name="title"
-                            required
-                            defaultValue={a.title}
-                            placeholder="Appearance/Event Name"
-                            className={inputClass}
+                        <div className="mt-3">
+                          <AppearanceFieldsForm
+                            businessId={id}
+                            action={updateOwnerAppearance.bind(null, id, a.id)}
+                            defaultValues={editDefaultValues}
+                            submitLabel="Save"
                           />
-                          <div className="grid grid-cols-3 gap-2">
-                            <input type="date" name="date" required defaultValue={editDate} className={inputClass} />
-                            <input type="time" name="start_time" required defaultValue={editStartTime} className={inputClass} />
-                            <input type="time" name="end_time" required defaultValue={editEndTime} className={inputClass} />
-                          </div>
-                          <input
-                            type="text"
-                            name="venue_name"
-                            defaultValue={a.venue_name ?? ""}
-                            placeholder="Venue Name"
-                            className={inputClass}
-                          />
-                          <input
-                            type="text"
-                            name="address"
-                            defaultValue={a.address ?? ""}
-                            placeholder="Address"
-                            className={inputClass}
-                          />
-                          <div className="grid grid-cols-2 gap-2">
-                            <input type="text" name="city" defaultValue={a.city ?? ""} placeholder="City" className={inputClass} />
-                            <input type="text" name="state" defaultValue={a.state ?? ""} placeholder="State" className={inputClass} />
-                          </div>
-                          <input
-                            type="url"
-                            name="external_url"
-                            defaultValue={a.external_url ?? ""}
-                            placeholder="Link (optional)"
-                            className={inputClass}
-                          />
-                          <button
-                            type="submit"
-                            className="mt-1 rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                          >
-                            Save
-                          </button>
-                        </form>
+                        </div>
                       </details>
                     </li>
                   );
@@ -588,27 +647,14 @@ export default async function ManageBusinessPage({
               <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
                 Option 2 — Add an appearance manually
               </p>
-              <form action={addManual} className="mt-2 flex flex-col gap-2">
-                <input type="text" name="title" required placeholder="Appearance/Event Name" className={inputClass} />
-                <div className="grid grid-cols-3 gap-2">
-                  <input type="date" name="date" required className={inputClass} />
-                  <input type="time" name="start_time" required className={inputClass} />
-                  <input type="time" name="end_time" required className={inputClass} />
-                </div>
-                <input type="text" name="venue_name" placeholder="Venue Name" className={inputClass} />
-                <input type="text" name="address" placeholder="Address" className={inputClass} />
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="text" name="city" placeholder="City" className={inputClass} />
-                  <input type="text" name="state" placeholder="State" className={inputClass} />
-                </div>
-                <input type="url" name="external_url" placeholder="Link (optional)" className={inputClass} />
-                <button
-                  type="submit"
-                  className="mt-1 rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                >
-                  Add Appearance
-                </button>
-              </form>
+              <div className="mt-2">
+                <AppearanceFieldsForm
+                  businessId={id}
+                  action={addManual}
+                  defaultValues={addDefaultValues}
+                  submitLabel="Add Appearance"
+                />
+              </div>
             </div>
           </div>
         )}

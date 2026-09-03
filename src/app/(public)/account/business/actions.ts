@@ -559,28 +559,75 @@ export async function withdrawEventParticipation(businessId: string, kind: "even
 }
 
 // ── Standalone appearances (Option 2) + edit/remove ─────────────────────
-// Plain business_id-owned appearances rows — no event_id/event_occurrence_id
-// at all. Never touches event_businesses/event_occurrence_businesses.
+// Plain business_id-owned appearances rows. Creation/edit never touches
+// event_businesses/event_occurrence_businesses; a linked appearance's own
+// event_id/event_occurrence_id is likewise never touched by edit (see
+// updateOwnerAppearance's own note).
 
-function parseAppearanceFields(formData: FormData, redirectPath: string) {
+// The exact appearance field names this form submits — reused both to
+// build the insert/update payload and, on a validation error, to carry
+// the visitor's own submitted values back through the redirect so the
+// form is never returned blank (see buildAppearanceErrorUrl below).
+const APPEARANCE_FIELD_NAMES = [
+  "title",
+  "date",
+  "start_time",
+  "end_time",
+  "venue_name",
+  "address",
+  "city",
+  "state",
+  "external_url",
+  "flyer_image_url",
+] as const;
+
+/** Same shape errorRedirectUrl already uses (?error=...) plus the
+ * visitor's own submitted field values, each namespaced `add_*` or
+ * `edit_*` (+ `editing=<id>` for edit) so the page can repopulate
+ * exactly the form that failed — "Add" and one specific appearance's
+ * "Edit" disclosure never collide even if both existed on the page at
+ * once. Never includes parsed/validated values, only the raw strings the
+ * visitor actually typed, so correcting one field never loses another. */
+function buildAppearanceErrorUrl(
+  redirectPath: string,
+  message: string,
+  kind: "add" | "edit",
+  formData: FormData,
+  appearanceId?: string
+): string {
+  const params = new URLSearchParams({ error: message });
+  for (const name of APPEARANCE_FIELD_NAMES) {
+    const value = formData.get(name);
+    if (typeof value === "string" && value) params.set(`${kind}_${name}`, value);
+  }
+  if (kind === "edit" && appearanceId) params.set("editing", appearanceId);
+  return `${redirectPath}?${params.toString()}`;
+}
+
+/** Validates + normalizes the shared appearance fields. `onError` is
+ * supplied by the caller (never redirects on its own) so each caller can
+ * redirect through buildAppearanceErrorUrl with its own "add"/"edit"
+ * values-preserving shape — this function itself has no opinion on that,
+ * just validation. */
+function parseAppearanceFields(formData: FormData, onError: (message: string) => never) {
   const title = str(formData, "title");
   const dateLocal = str(formData, "date");
   const startTime = str(formData, "start_time");
   const endTime = str(formData, "end_time");
   if (!title || !dateLocal || !startTime || !endTime) {
-    redirect(errorRedirectUrl(redirectPath, "Name, date, start time, and end time are required."));
+    onError("Name, date, start time, and end time are required.");
   }
   const start_at = localDateTimeToIso(`${dateLocal}T${startTime}`);
   const end_at = localDateTimeToIso(`${dateLocal}T${endTime}`);
   if (!start_at || !end_at || new Date(end_at) <= new Date(start_at)) {
-    redirect(errorRedirectUrl(redirectPath, "End time must be after the start time."));
+    onError("End time must be after the start time.");
   }
 
   const externalUrlRaw = str(formData, "external_url");
   let external_url: string | null = null;
   if (externalUrlRaw) {
     const result = validateCustomDestination(externalUrlRaw);
-    if (!result.ok) redirect(errorRedirectUrl(redirectPath, `Link: ${result.error}`));
+    if (!result.ok) onError(`Link: ${result.error}`);
     external_url = result.value;
   }
 
@@ -593,41 +640,59 @@ function parseAppearanceFields(formData: FormData, redirectPath: string) {
     city: str(formData, "city"),
     state: str(formData, "state"),
     external_url,
+    // Reuses the existing appearances.flyer_image_url column admin's own
+    // AppearanceForm already writes to, and the file itself was already
+    // uploaded (and validated — size/type/magic-byte checks, same
+    // findmi-media bucket) by the existing uploadMemberBusinessImage
+    // action via MemberImageField before this form ever submits; this
+    // just carries the resulting URL through like any other field.
+    flyer_image_url: str(formData, "flyer_image_url"),
   };
 }
 
 /** Option 2 — "Add an appearance manually." Creates a standalone
  * appearances row (no event_id/event_occurrence_id) owned entirely by
  * this business — never touches the official event roster tables at
- * all. */
+ * all. On any validation/write failure, redirects back with every
+ * submitted value preserved (see buildAppearanceErrorUrl) — the form is
+ * never returned blank. */
 export async function addManualAppearance(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
   const admin = await requireProBusinessMember(businessId, redirectPath);
 
-  const fields = parseAppearanceFields(formData, redirectPath);
+  const onError = (message: string): never => {
+    redirect(buildAppearanceErrorUrl(redirectPath, message, "add", formData));
+  };
+  const fields = parseAppearanceFields(formData, onError);
 
   const { error } = await admin.from("appearances").insert({
     business_id: businessId,
     status: "confirmed",
     ...fields,
   });
-  if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't create that appearance. Please try again."));
+  if (error) onError("Couldn't create that appearance. Please try again.");
 
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?appearance_added=1`);
 }
 
 /** Edit — only ever touches content fields (title/date-time/venue/
- * address/city/state/link) on the owner's OWN appearance row. Ownership
- * is re-verified against the authorized business_id before any write,
- * and never touches event_id/event_occurrence_id/business_id/status —
- * so editing an appearance linked to a real FindMi event/occurrence can
- * never re-point it at a different event or silently change its link,
- * and never touches the underlying event/occurrence or the official
- * roster row either. */
+ * address/city/state/link/image) on the owner's OWN appearance row.
+ * Ownership is re-verified against the authorized business_id before any
+ * write, and never touches event_id/event_occurrence_id/business_id/
+ * status — so editing an appearance linked to a real FindMi event/
+ * occurrence can never re-point it at a different event, and never
+ * touches the underlying event/occurrence or the official roster row
+ * either; an owner may freely set/change their OWN appearance's image
+ * without that affecting the event itself in any way. Same
+ * values-preserved-on-error behavior as addManualAppearance. */
 export async function updateOwnerAppearance(businessId: string, appearanceId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
   const admin = await requireProBusinessMember(businessId, redirectPath);
+
+  const onError = (message: string): never => {
+    redirect(buildAppearanceErrorUrl(redirectPath, message, "edit", formData, appearanceId));
+  };
 
   const { data: existing } = await admin
     .from("appearances")
@@ -635,27 +700,34 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
     .eq("id", appearanceId)
     .eq("business_id", businessId)
     .maybeSingle();
-  if (!existing) redirect(errorRedirectUrl(redirectPath, "That appearance no longer exists."));
+  if (!existing) onError("That appearance no longer exists.");
 
-  const fields = parseAppearanceFields(formData, redirectPath);
+  const fields = parseAppearanceFields(formData, onError);
 
   const { error } = await admin.from("appearances").update(fields).eq("id", appearanceId).eq("business_id", businessId);
-  if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't update that appearance. Please try again."));
+  if (error) onError("Couldn't update that appearance. Please try again.");
 
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?appearance_updated=1`);
 }
 
-/** Remove — deletes only the owner's own appearance row, scoped by
- * business_id. Deliberately does NOT touch event_businesses/
- * event_occurrence_businesses: removing this business's own appearance
- * never removes an approved (or any) official event roster entry in this
- * pass — cancellation/decline sync is explicitly out of scope. */
+/** Remove — a soft cancel (status: 'canceled'), never a hard delete.
+ * Scoped by both id and business_id, so a business can only ever cancel
+ * its OWN appearance. Every public appearance query already excludes
+ * status = 'canceled' (see lib/data.ts), so this alone is enough to stop
+ * FindMi Here from showing it — with no risk to the underlying event/
+ * occurrence (never touched) or to event_businesses/
+ * event_occurrence_businesses (never touched either — an approved
+ * official roster entry survives). For an occurrence-linked appearance,
+ * the DB-level partial unique index (appearances_one_per_business_
+ * occurrence) is itself scoped to `status <> 'canceled'`, so canceling
+ * frees the business up to be re-added to that same occurrence later
+ * without a conflict. */
 export async function removeOwnerAppearance(businessId: string, appearanceId: string) {
   const redirectPath = `/account/business/${businessId}`;
   const admin = await requireProBusinessMember(businessId, redirectPath);
 
-  await admin.from("appearances").delete().eq("id", appearanceId).eq("business_id", businessId);
+  await admin.from("appearances").update({ status: "canceled" }).eq("id", appearanceId).eq("business_id", businessId);
 
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?appearance_removed=1`);
