@@ -191,6 +191,21 @@ export function cityState(city?: string | null, state?: string | null): string {
   return [city, state].filter(Boolean).join(", ");
 }
 
+/** Product Pickup Occurrences — Expire Past Options fix. Whether an
+ * appearance's pickup window hasn't passed yet, for keeping an expired
+ * event-pickup fulfillment option (product page, cart, checkout) from
+ * remaining selectable. Prefers end_at (the real end of the pickup
+ * window) when set, falling back to start_at only when there's no end_at.
+ * Compares real Date instants (absolute UTC timestamps), never formatted
+ * display strings and never a hardcoded offset — correct regardless of
+ * the server's or a viewer's local timezone. The single source of truth
+ * for this rule; every pickup-eligibility check in the app should call
+ * this rather than re-deriving its own date comparison. */
+export function isAppearanceStillAvailable(appearance: { start_at: string; end_at?: string | null }): boolean {
+  const expiresAt = appearance.end_at ?? appearance.start_at;
+  return new Date(expiresAt).getTime() >= Date.now();
+}
+
 const currencyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 /** Canonical consumer-facing money formatter — always exactly two decimal

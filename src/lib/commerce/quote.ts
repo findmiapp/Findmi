@@ -1,5 +1,5 @@
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { formatAppearanceDateRange } from "@/lib/format";
+import { formatAppearanceDateRange, isAppearanceStillAvailable } from "@/lib/format";
 import {
   estimateProcessingFee,
   resolveMarketplaceFeePercent,
@@ -109,9 +109,21 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
     : { data: [] as never[] };
   const appearanceById = new Map((appearances ?? []).map((a) => [a.id, a]));
 
+  // Product Pickup Occurrences — Expire Past Options fix: an event_pickup
+  // option whose appearance has expired (isAppearanceStillAvailable,
+  // end_at falling back to start_at) is excluded from every list this
+  // returns — both the cart's "change fulfillment" alternatives and the
+  // matched-option lookup below, so an expired pickup can never remain
+  // selectable, freshly re-checked server-side on every quote/checkout
+  // call rather than trusted from the product page's own filtering.
   function optionsForProduct(productId: string) {
     return (fulfillmentOptions ?? [])
       .filter((o) => o.product_id === productId)
+      .filter((o) => {
+        if (o.method !== "event_pickup") return true;
+        const appearance = o.appearance_id ? appearanceById.get(o.appearance_id) : null;
+        return Boolean(appearance) && isAppearanceStillAvailable(appearance!);
+      })
       .map((o) => {
         const appearance = o.appearance_id ? appearanceById.get(o.appearance_id) : null;
         const label =
@@ -225,6 +237,44 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
         availableFulfillmentOptions: optionsForProduct(product.id),
       } as CartLineQuote);
       continue;
+    }
+
+    // Product Pickup Occurrences — Expire Past Options fix — cart safety:
+    // a cart line can be added while its pickup appearance was still
+    // valid, then left open past that appearance's end_at/start_at. A
+    // still-enabled product_fulfillment_options row (matchedOption above)
+    // never expires on its own, so re-check the appearance's real time
+    // here too, every time a quote/checkout is computed — never rely only
+    // on the product page's own filtering. An expired match is treated
+    // exactly like "no longer offered" above (never silently swapped to a
+    // different occurrence): the line becomes unavailable, hasUnavailable
+    // blocks checkout (see createOrder.ts), and availableFulfillmentOptions
+    // (already expiry-filtered by optionsForProduct) is what the cart UI
+    // offers as a real replacement, if one exists.
+    if (matchedOption.method === "event_pickup") {
+      const matchedAppearance = matchedOption.appearance_id ? appearanceById.get(matchedOption.appearance_id) : null;
+      if (!matchedAppearance || !isAppearanceStillAvailable(matchedAppearance)) {
+        quoteLines.push({
+          ...baseQuote,
+          productName: product.name,
+          productSlug: product.slug,
+          imageUrl: product.image_url,
+          businessId: business.id,
+          businessName: business.name,
+          businessSlug: business.slug,
+          unitPrice: product.price ?? 0,
+          lineMerchandiseTotal: round2((product.price ?? 0) * (baseQuote.quantity ?? 1)),
+          fulfillmentAmount: 0,
+          fulfillmentLabel: FULFILLMENT_LABELS[line.fulfillmentMethod],
+          appearanceLabel: null,
+          eventId: matchedAppearance?.event_id ?? null,
+          processingFeePayer: "vendor",
+          available: false,
+          unavailableReason: "This pickup date has passed — please choose another.",
+          availableFulfillmentOptions: optionsForProduct(product.id),
+        } as CartLineQuote);
+        continue;
+      }
     }
 
     const appearance = line.appearanceId ? appearanceById.get(line.appearanceId) : null;

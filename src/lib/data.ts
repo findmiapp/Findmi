@@ -1,5 +1,11 @@
 import { getSupabase } from "./supabase";
-import { formatAppearanceDateRange, getDiscoveryWindowBounds, getExactDateBounds, type DiscoveryWindow } from "./format";
+import {
+  formatAppearanceDateRange,
+  getDiscoveryWindowBounds,
+  getExactDateBounds,
+  isAppearanceStillAvailable,
+  type DiscoveryWindow,
+} from "./format";
 import type {
   Appearance,
   Business,
@@ -1424,7 +1430,13 @@ export interface FulfillmentOptionDisplay {
  * upcoming, non-canceled appearances are eligible (the appearances table's
  * own RLS already excludes canceled ones); a past appearance configured
  * for pickup quietly stops being offered rather than needing manual
- * cleanup. */
+ * cleanup — see isAppearanceStillAvailable (lib/format.ts), which this
+ * checks against end_at (falling back to start_at) so an expired pickup
+ * window can never remain selectable here. This is product-page display
+ * only, though — a cart line added while an option was still valid could
+ * still expire before checkout, so lib/commerce/quote.ts independently
+ * re-checks the exact same rule server-side; that's the real enforcement,
+ * this is just what a new visitor sees offered. */
 export async function getFulfillmentOptionsForProduct(
   productId: string
 ): Promise<FulfillmentOptionDisplay[]> {
@@ -1456,6 +1468,7 @@ export async function getFulfillmentOptionsForProduct(
     .map((row) => {
       const appearance = Array.isArray(row.appearances) ? row.appearances[0] : row.appearances;
       if (row.method === "event_pickup" && !appearance) return null; // stale/removed appearance
+      if (row.method === "event_pickup" && appearance && !isAppearanceStillAvailable(appearance)) return null; // expired
       // formatAppearanceDateRange shows "Time TBD" instead of a formatted
       // time when this appearance's real time is genuinely unknown (see
       // lib/format.ts) — a checkout-facing pickup label must never claim
