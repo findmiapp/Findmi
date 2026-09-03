@@ -1,13 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import SupabaseImage from "./SupabaseImage";
 import ImageLightbox from "./ImageLightbox";
 
-// Shared compact thumbnail strip — used for both the Event Gallery and
-// the About the Venue gallery (final refinement pass, items 9/10/15).
-// Tapping any tile opens the same ImageLightbox, positioned at that
-// tile's own index. Renders nothing with 0-1 images (nothing to browse).
+// Shared compact thumbnail strip — used for the Business Gallery, the
+// Event Gallery, and the About the Venue gallery (final refinement pass,
+// items 9/10/15). Tapping any tile opens the same ImageLightbox,
+// positioned at that tile's own index. Renders nothing with 0-1 images
+// (nothing to browse).
+//
+// Gallery thumbnails missing fix — this used next/image's <Image>
+// directly, only bypassing Vercel's optimizer when a caller explicitly
+// passed `unoptimized` (the event page's cover+gallery call did; the
+// business Gallery section and the event page's own venue-photos call
+// did not). Root-caused against production data (Madrina Vegana's
+// business_images): the stored URLs are completely valid, intact
+// Supabase Storage objects — the same optimizer failure already fixed
+// everywhere else in the app (see SupabaseImage's own comment) was simply
+// never applied here for those two callers, so their thumbnails rendered
+// as permanently empty/gray tiles. Now uses SupabaseImage (the estab-
+// lished drop-in fix), which auto-detects a Supabase Storage URL and
+// bypasses the optimizer for it — every caller is fixed at this one
+// shared layer, with no per-callsite opt-in required. The `unoptimized`
+// prop below still works exactly as before for any caller that passes it
+// explicitly; it's just no longer necessary for a Supabase-hosted image.
 //
 // Reliability fix — public gallery pass: failedIndices tracks only
 // thumbnails that have actually failed to load (a real onError, never a
@@ -25,11 +42,11 @@ export default function ImageGalleryStrip({
 }: {
   images: string[];
   alt: string;
-  /** Bypasses next/image optimization for every thumbnail in this strip —
-   * same fix as HomeEventCard/EventCoverLightbox, opt-in per caller so the
-   * venue and business galleries (not reported broken) keep their exact
-   * existing behavior. Pass this only where a Supabase-hosted image is
-   * known to fail Vercel's optimizer. */
+  /** Forces bypassing next/image optimization for every thumbnail in this
+   * strip, regardless of source. No longer required for a Supabase-hosted
+   * image — SupabaseImage (used below) already detects and bypasses those
+   * automatically. Kept only for a caller that needs to force it for a
+   * non-Supabase URL too. */
   unoptimized?: boolean;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -51,7 +68,7 @@ export default function ImageGalleryStrip({
                 <BrokenImageGlyph className="h-5 w-5" />
               </div>
             ) : (
-              <Image
+              <SupabaseImage
                 src={src}
                 alt={alt}
                 fill
