@@ -20,8 +20,26 @@ export default function EventBusinessRoster({
   }, [businesses]);
 
   const [active, setActive] = useState<string>("All");
+  // "Featured Here" deliberately keeps deriving from the raw incoming
+  // order (display_order for a legacy event, or featured-first-then-name
+  // from getOccurrenceBusinessRosters for a recurring one) — never
+  // touched by the A-Z sort below, so featured prioritization/order is
+  // unaffected by this change either way.
   const featured = businesses.filter((b) => b.featured);
-  const filtered = active === "All" ? businesses : businesses.filter((b) => b.categories[0]?.name === active);
+  // A–Z Public Display pass — the main roster grid (below, and everything
+  // the category filter narrows down to) sorts alphabetically by business
+  // name, case-insensitive/natural, regardless of how `businesses` arrived
+  // (admin display_order for event-level, or the occurrence-level query's
+  // own ordering) — that source order is never mutated, only this
+  // rendering copy.
+  const sortedByName = useMemo(
+    () =>
+      [...businesses].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true })
+      ),
+    [businesses]
+  );
+  const filtered = active === "All" ? sortedByName : sortedByName.filter((b) => b.categories[0]?.name === active);
 
   if (businesses.length === 0) {
     return (
