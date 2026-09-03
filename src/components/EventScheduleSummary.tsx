@@ -2,6 +2,7 @@
 
 import { cityState, formatDateRangeInZone } from "@/lib/format";
 import { useEventOccurrence, type OccurrenceScheduleState } from "./EventOccurrenceContext";
+import LiveDot from "./LiveDot";
 
 const STATE_LABEL: Record<Exclude<OccurrenceScheduleState, "none">, string> = {
   current: "Happening Now",
@@ -31,14 +32,22 @@ export default function EventScheduleSummary() {
   return (
     <div className="mt-3 flex flex-col gap-2 text-sm text-ink/65">
       <span
-        className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
           selectedState === "cancelled"
             ? "bg-red-50 text-red-700"
             : selectedState === "current"
-              ? "animate-happening-now-glow bg-red-600 text-white"
+              ? "bg-findmi text-white"
               : "bg-black/[0.06] text-ink/60"
         }`}
       >
+        {/* Full pill = aqua + white text; the live signal itself is the
+            dot — red, pulsing, with the shared animate-happening-now-glow
+            halo — not the pill background. The compact Upcoming Dates NOW
+            tile (EventOccurrenceCard) keeps its own red-fill treatment;
+            this is the opposite convention, deliberately, per this pass. */}
+        {selectedState === "current" && (
+          <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
+        )}
         {STATE_LABEL[selectedState]}
       </span>
       <div className="flex items-center gap-2">
