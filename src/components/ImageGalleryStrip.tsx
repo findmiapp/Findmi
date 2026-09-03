@@ -18,7 +18,20 @@ import ImageLightbox from "./ImageLightbox";
 // (which shows the same graceful "Image unavailable" state there — see
 // ImageLightbox), so a bad tile never blocks reaching the good ones
 // around it.
-export default function ImageGalleryStrip({ images, alt }: { images: string[]; alt: string }) {
+export default function ImageGalleryStrip({
+  images,
+  alt,
+  unoptimized,
+}: {
+  images: string[];
+  alt: string;
+  /** Bypasses next/image optimization for every thumbnail in this strip —
+   * same fix as HomeEventCard/EventCoverLightbox, opt-in per caller so the
+   * venue and business galleries (not reported broken) keep their exact
+   * existing behavior. Pass this only where a Supabase-hosted image is
+   * known to fail Vercel's optimizer. */
+  unoptimized?: boolean;
+}) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [failedIndices, setFailedIndices] = useState<Set<number>>(new Set());
   if (images.length < 2) return null;
@@ -42,6 +55,7 @@ export default function ImageGalleryStrip({ images, alt }: { images: string[]; a
                 src={src}
                 alt={alt}
                 fill
+                unoptimized={unoptimized}
                 sizes="80px"
                 className="object-cover"
                 onError={() => setFailedIndices((prev) => new Set(prev).add(i))}

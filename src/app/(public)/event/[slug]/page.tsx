@@ -411,7 +411,7 @@ export default async function EventPage({
             length<2 guard), never a placeholder wall of tiles. */}
         {images.gallery.length > 0 && (
           <div className="mt-2.5">
-            <ImageGalleryStrip images={coverAndGallery} alt={event.name} />
+            <ImageGalleryStrip images={coverAndGallery} alt={event.name} unoptimized />
           </div>
         )}
       </div>

@@ -19,7 +19,21 @@ export default function EventCoverLightbox({ images, alt }: { images: string[]; 
 
   return (
     <>
-      <Image src={cover} alt={alt} fill priority sizes="(min-width: 1024px) 1024px, 100vw" className="object-cover" />
+      {/* unoptimized — same fix as HomeEventCard: this cover is a valid
+          Supabase Storage URL (root-caused against production data — the
+          object itself is intact), but Vercel's next/image optimizer was
+          failing to serve it. Bypassing the optimizer fetches the
+          original file directly instead of relying on that failing
+          pipeline. */}
+      <Image
+        src={cover}
+        alt={alt}
+        fill
+        priority
+        unoptimized
+        sizes="(min-width: 1024px) 1024px, 100vw"
+        className="object-cover"
+      />
       <button
         type="button"
         onClick={() => setOpen(true)}
