@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
-import { createCategoryRow, saveCategoryRows, type CategoryRowEdit } from "@/lib/admin/categoryForm";
+import {
+  createCategoryRow,
+  deleteCategoryRow,
+  reorderBusinessCategory,
+  saveCategoryRows,
+  type CategoryRowEdit,
+} from "@/lib/admin/categoryForm";
 
 const EDIT_PATH = "/admin/categories";
 
@@ -43,4 +49,27 @@ export async function saveHomeCategories(formData: FormData) {
   revalidatePath(EDIT_PATH);
   revalidatePath("/");
   redirect(`${EDIT_PATH}?saved=1`);
+}
+
+/** Category Admin Usability pass — Move Up/Down. No redirect on success:
+ * same pattern as events/actions.ts's per-occurrence vendor actions
+ * (revalidatePath only), so the admin stays exactly where they were —
+ * including whatever they'd typed into the search box — rather than a
+ * navigation resetting client state for a small in-place reorder. */
+export async function moveBusinessCategory(id: string, direction: "up" | "down") {
+  const supabase = await requireAdminSupabase();
+  const result = await reorderBusinessCategory(supabase, id, direction);
+  if (result.error) redirect(errorRedirectUrl(EDIT_PATH, result.error));
+  revalidatePath(EDIT_PATH);
+}
+
+/** Category Admin Usability pass — Delete. Re-checks usage server-side
+ * (see deleteCategoryRow) regardless of the UI already disabling this
+ * for an in-use category — never trusts the client alone. No redirect on
+ * success, same reasoning as moveBusinessCategory above. */
+export async function deleteBusinessCategory(id: string) {
+  const supabase = await requireAdminSupabase();
+  const result = await deleteCategoryRow(supabase, "business", id);
+  if (result.error) redirect(errorRedirectUrl(EDIT_PATH, result.error));
+  revalidatePath(EDIT_PATH);
 }

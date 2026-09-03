@@ -1,10 +1,17 @@
 import Link from "next/link";
 import NameSlugFields from "@/components/admin/NameSlugFields";
+import CategoryList from "@/components/admin/CategoryList";
 import { getAllCategories, getCategoryUsageCounts } from "@/lib/admin/queries";
-import SubmitBar from "@/components/admin/SubmitBar";
-import { createBusinessCategory, saveHomeCategories } from "./actions";
+import { createBusinessCategory, deleteBusinessCategory, moveBusinessCategory, saveHomeCategories } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+// Same legacy-onboarding-filter set BusinessForm.tsx and
+// account/business/[id]/page.tsx already each keep their own copy of —
+// still checked/hidden from NEW selection there, unchanged by this pass.
+// This is only a third, admin-list-only read of the same two slugs, to
+// label their existing state here rather than reactivating/changing it.
+const LEGACY_BUSINESS_CATEGORY_SLUGS = new Set(["markets-pop-ups", "packaged-goods"]);
 
 export default async function AdminCategoriesPage({
   searchParams,
@@ -13,9 +20,18 @@ export default async function AdminCategoriesPage({
 }) {
   const { saved, error } = await searchParams;
   const [categories, usage] = await Promise.all([getAllCategories("business"), getCategoryUsageCounts()]);
-  const sorted = [...categories].sort(
+
+  // "Other" always sorts last, full stop — regardless of home_sort_order
+  // (previously, the home_sort_order sort below ran over the WHOLE list,
+  // which could pull "Other" out of last place if it ever had an
+  // explicit order number lower than 999). getAllCategories() already
+  // applies this same rule when no home_sort_order is in play; this only
+  // makes it hold up once ordering enters the picture too.
+  const other = categories.filter((c) => c.name === "Other");
+  const rest = [...categories.filter((c) => c.name !== "Other")].sort(
     (a, b) => (a.home_sort_order ?? 999) - (b.home_sort_order ?? 999) || a.name.localeCompare(b.name)
   );
+  const sorted = [...rest, ...other];
 
   return (
     <div>
@@ -74,66 +90,16 @@ export default async function AdminCategoriesPage({
         </form>
       </div>
 
-      <form action={saveHomeCategories} className="mt-5 flex flex-col gap-5">
-        {categories.length === 0 ? (
-          <p className="text-sm text-ink/50">No categories yet — add one above.</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {sorted.map((c) => {
-              const count = usage.get(c.id) ?? { events: 0, businesses: 0, products: 0 };
-              return (
-                <div
-                  key={c.id}
-                  className="flex flex-col gap-2 rounded-xl border border-black/5 bg-white px-4 py-3"
-                >
-                  <input type="hidden" name="all_category_ids" value={c.id} />
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <input
-                      type="text"
-                      name={`name_${c.id}`}
-                      defaultValue={c.name}
-                      aria-label={`Name for ${c.name}`}
-                      className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      name={`slug_${c.id}`}
-                      defaultValue={c.slug}
-                      aria-label={`Slug for ${c.name}`}
-                      className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-ink/70 focus:border-ink/30 focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        name={`show_${c.id}`}
-                        defaultChecked={c.show_on_home}
-                        className="h-5 w-5 shrink-0 accent-findmi"
-                      />
-                      <span className="text-xs text-ink/60">Show on homepage</span>
-                    </label>
-                    <span className="text-xs text-ink/40">
-                      {count.businesses} business{count.businesses === 1 ? "" : "es"}
-                    </span>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <span className="text-xs text-ink/45">Order</span>
-                      <input
-                        type="number"
-                        name={`order_${c.id}`}
-                        defaultValue={c.home_sort_order ?? ""}
-                        className="w-16 rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <SubmitBar cancelHref="/admin" />
-      </form>
+      <CategoryList
+        kind="business"
+        categories={sorted}
+        usage={usage}
+        saveAction={saveHomeCategories}
+        deleteAction={deleteBusinessCategory}
+        moveAction={moveBusinessCategory}
+        legacySlugs={LEGACY_BUSINESS_CATEGORY_SLUGS}
+        cancelHref="/admin"
+      />
     </div>
   );
 }

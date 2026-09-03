@@ -1,8 +1,8 @@
 import Link from "next/link";
 import NameSlugFields from "@/components/admin/NameSlugFields";
-import SubmitBar from "@/components/admin/SubmitBar";
+import CategoryList from "@/components/admin/CategoryList";
 import { getAllCategories, getCategoryUsageCounts } from "@/lib/admin/queries";
-import { createCategory, saveEventCategories } from "./actions";
+import { createCategory, deleteEventCategory, saveEventCategories } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -59,43 +59,14 @@ export default async function EventCategoriesPage({
         </form>
       </div>
 
-      <form action={saveEventCategories} className="mt-6 flex flex-col gap-5">
-        <p className="text-xs font-bold uppercase tracking-wide text-ink/40">All Categories</p>
-        {sorted.length === 0 ? (
-          <p className="text-sm text-ink/45">No categories yet — add one above.</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {sorted.map((c) => {
-              const count = usage.get(c.id) ?? { events: 0, businesses: 0, products: 0 };
-              return (
-                <div key={c.id} className="flex flex-col gap-2 rounded-xl border border-black/5 bg-white px-4 py-3">
-                  <input type="hidden" name="all_category_ids" value={c.id} />
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <input
-                      type="text"
-                      name={`name_${c.id}`}
-                      defaultValue={c.name}
-                      aria-label={`Name for ${c.name}`}
-                      className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      name={`slug_${c.id}`}
-                      defaultValue={c.slug}
-                      aria-label={`Slug for ${c.name}`}
-                      className="rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-ink/70 focus:border-ink/30 focus:outline-none"
-                    />
-                  </div>
-                  <span className="text-xs text-ink/45">
-                    {count.events} event{count.events === 1 ? "" : "s"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <SubmitBar cancelHref="/admin/categories" />
-      </form>
+      <CategoryList
+        kind="event"
+        categories={sorted}
+        usage={usage}
+        saveAction={saveEventCategories}
+        deleteAction={deleteEventCategory}
+        cancelHref="/admin/categories"
+      />
     </div>
   );
 }
