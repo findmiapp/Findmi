@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
+import { bool, errorRedirectUrl, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile } from "@/lib/imageUploadValidation";
+import { validateCustomDestination } from "@/lib/navigation";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -326,25 +327,31 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
   redirect(`${redirectPath}?saved=1`);
 }
 
-// ── Pro FindMi Here — Phase 1: request/withdraw participation on an
-// EXISTING event/occurrence only ──────────────────────────────────────────
+// ── Pro FindMi Here — Owner Appearance Manager ──────────────────────────
 //
-// Deliberately narrow: this never writes to `appearances` (the table that
-// actually drives public FindMi Here rendering — untouched by this pass),
-// never edits `events`/`event_occurrences` themselves, and never grants
-// access on its own. It only ever creates/removes ONE row this business's
-// own membership authorizes, in the SAME event_businesses/
-// event_occurrence_businesses tables and EventParticipationStatus the
-// founder admin's existing ParticipationRoster/OccurrenceVendorManager
-// already reviews — approval remains entirely founder-controlled there,
-// unchanged.
+// Two DELIBERATELY separate concepts, per this pass's own instruction:
+//   1. The business's own FindMi Here calendar — plain `appearances` rows
+//      it fully owns (business_id-scoped), editable/removable at will.
+//   2. Official event roster visibility (event_businesses/
+//      event_occurrence_businesses, EventParticipationStatus) — still
+//      entirely founder-controlled; these actions only ever create a new
+//      roster row as 'applied' (never 'approved', never update an
+//      existing row's status) and never edit `events`/`event_occurrences`
+//      themselves.
+// Adding an appearance from an existing FindMi event creates BOTH (the
+// appearance, and — only if not already on that roster — the applied
+// request) but they stay independently readable/removable: removing the
+// appearance never touches the roster row, and withdrawing the roster
+// request never touches the appearance.
 //
-// Both actions share the same authorize-then-elevate shape as every other
-// action in this file: requireBusinessMember(businessId) first (real
-// session-scoped membership, business_id never trusted from the client
-// beyond that check), then a fresh service-role read of plan_tier —
-// re-checked on every call, never cached/assumed — gates the whole
-// feature to Pro.
+// Every action below shares the same authorize-then-elevate shape as
+// every other action in this file: requireBusinessMember(businessId)
+// first (real session-scoped membership, business_id never trusted from
+// the client beyond that check), then a fresh service-role read of
+// plan_tier — re-checked on every call, never cached/assumed — gates the
+// whole feature to Pro. A Free business (including one downgraded after
+// creating an appearance) gets the same "Upgrade to Pro" redirect a
+// tampered request would.
 
 async function requireProBusinessMember(businessId: string, redirectPath: string) {
   const sessionSupabase = await getServerSupabase();
@@ -372,62 +379,154 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
   return admin;
 }
 
-/** Requests participation in an existing event, or a specific occurrence
- * of a recurring event. `target` is one of:
- *   "event:<eventId>"               -> event_businesses row
- *   "occ:<eventId>:<occurrenceId>"  -> event_occurrence_businesses row
- * Always inserts status: 'applied' — never accepted from the form, never
- * anything else. Duplicate requests are a silent no-op (ignoreDuplicates,
- * same idiom admin's addOccurrenceVendor already uses for this exact
- * table) so a resubmission can never downgrade an already-approved row
- * back to 'applied'. For an occurrence request, the occurrence is
- * re-verified to actually belong to the submitted event before anything
- * is written — a mismatched/tampered pair matches no row and is rejected. */
-export async function requestEventParticipation(businessId: string, formData: FormData) {
+/** Option 1 — "Choose an existing FindMi event." `target` is one of:
+ *   "event:<eventId>"               -> non-recurring event
+ *   "occ:<eventId>:<occurrenceId>"  -> one occurrence of a recurring event
+ *
+ * Creates/links the business's OWN appearance (using the real event_id/
+ * event_occurrence_id — never title/date fuzzy matching), inheriting
+ * title/date-time/location straight from the event or occurrence row.
+ * Deduplicated by an existence check first: a non-recurring appearance is
+ * unique per (business_id, event_id, event_occurrence_id IS NULL); an
+ * occurrence appearance is additionally backed by the real DB-level
+ * partial unique index (appearances_one_per_business_occurrence) as a
+ * race-safe backstop — a 23505 there just means it already exists.
+ *
+ * Only when this business isn't already on that event's/occurrence's
+ * OFFICIAL roster does this also create an event_businesses/
+ * event_occurrence_businesses row — always status: 'applied', never
+ * accepted from the form, and via ignoreDuplicates so an existing
+ * approved/declined row is never touched or downgraded. Official roster
+ * visibility still requires founder approval there, unchanged — creating
+ * an appearance here never grants it. */
+export async function addAppearanceFromEvent(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
   const admin = await requireProBusinessMember(businessId, redirectPath);
 
   const target = str(formData, "target");
-  if (!target) redirect(errorRedirectUrl(redirectPath, "Choose an event to request."));
+  if (!target) redirect(errorRedirectUrl(redirectPath, "Choose an event to add."));
 
   const [kind, a, b] = target.split(":");
 
   if (kind === "event") {
     const eventId = a;
-    const { data: event } = await admin.from("events").select("id").eq("id", eventId).eq("is_demo", false).maybeSingle();
+    const { data: event } = await admin
+      .from("events")
+      .select("id, name, start_at, end_at, venue_name, address, city, state, latitude, longitude")
+      .eq("id", eventId)
+      .eq("is_demo", false)
+      .maybeSingle();
     if (!event) redirect(errorRedirectUrl(redirectPath, "That event is no longer available."));
 
-    const { error } = await admin
+    const { data: existingAppearance } = await admin
+      .from("appearances")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("event_id", eventId)
+      .is("event_occurrence_id", null)
+      .neq("status", "canceled")
+      .maybeSingle();
+    if (!existingAppearance) {
+      const { error } = await admin.from("appearances").insert({
+        business_id: businessId,
+        event_id: eventId,
+        title: event.name,
+        start_at: event.start_at,
+        end_at: event.end_at,
+        venue_name: event.venue_name,
+        address: event.address,
+        city: event.city,
+        state: event.state,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        status: "confirmed",
+      });
+      if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't create that appearance. Please try again."));
+    }
+
+    await admin
       .from("event_businesses")
       .upsert(
         { event_id: eventId, business_id: businessId, status: "applied" },
         { onConflict: "event_id,business_id", ignoreDuplicates: true }
       );
-    if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't submit that request. Please try again."));
   } else if (kind === "occ") {
     const eventId = a;
     const occurrenceId = b;
     const { data: occurrence } = await admin
       .from("event_occurrences")
-      .select("id")
+      .select("id, event_id, start_at, end_at, location_id, events(name, venue_name, address, city, state, latitude, longitude)")
       .eq("id", occurrenceId)
       .eq("event_id", eventId)
       .maybeSingle();
     if (!occurrence) redirect(errorRedirectUrl(redirectPath, "That date is no longer available."));
+    const event = Array.isArray(occurrence.events) ? occurrence.events[0] : occurrence.events;
+    if (!event) redirect(errorRedirectUrl(redirectPath, "That event is no longer available."));
 
-    const { error } = await admin
+    let venue = {
+      venue_name: event.venue_name as string | null,
+      address: event.address as string | null,
+      city: event.city as string | null,
+      state: event.state as string | null,
+      latitude: event.latitude as number | null,
+      longitude: event.longitude as number | null,
+    };
+    if (occurrence.location_id) {
+      const { data: location } = await admin
+        .from("locations")
+        .select("name, address, city, state, latitude, longitude")
+        .eq("id", occurrence.location_id)
+        .maybeSingle();
+      if (location) {
+        venue = {
+          venue_name: location.name,
+          address: location.address,
+          city: location.city,
+          state: location.state,
+          latitude: location.latitude,
+          longitude: location.longitude,
+        };
+      }
+    }
+
+    const { data: existingAppearance } = await admin
+      .from("appearances")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("event_occurrence_id", occurrenceId)
+      .neq("status", "canceled")
+      .maybeSingle();
+    if (!existingAppearance) {
+      const { error } = await admin.from("appearances").insert({
+        business_id: businessId,
+        event_id: occurrence.event_id,
+        event_occurrence_id: occurrenceId,
+        title: event.name,
+        start_at: occurrence.start_at,
+        end_at: occurrence.end_at,
+        status: "confirmed",
+        ...venue,
+      });
+      // 23505 = unique_violation — a concurrent add already won the race
+      // against appearances_one_per_business_occurrence; treat that as
+      // "already exists," not a failure.
+      if (error && error.code !== "23505") {
+        redirect(errorRedirectUrl(redirectPath, "Couldn't create that appearance. Please try again."));
+      }
+    }
+
+    await admin
       .from("event_occurrence_businesses")
       .upsert(
         { occurrence_id: occurrenceId, business_id: businessId, status: "applied" },
         { onConflict: "occurrence_id,business_id", ignoreDuplicates: true }
       );
-    if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't submit that request. Please try again."));
   } else {
     redirect(errorRedirectUrl(redirectPath, "Choose a valid event or date."));
   }
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?participation_updated=1`);
+  redirect(`${redirectPath}?appearance_added=1`);
 }
 
 /** Withdraws this business's OWN request — only while it's still
@@ -457,4 +556,107 @@ export async function withdrawEventParticipation(businessId: string, kind: "even
 
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?participation_updated=1`);
+}
+
+// ── Standalone appearances (Option 2) + edit/remove ─────────────────────
+// Plain business_id-owned appearances rows — no event_id/event_occurrence_id
+// at all. Never touches event_businesses/event_occurrence_businesses.
+
+function parseAppearanceFields(formData: FormData, redirectPath: string) {
+  const title = str(formData, "title");
+  const dateLocal = str(formData, "date");
+  const startTime = str(formData, "start_time");
+  const endTime = str(formData, "end_time");
+  if (!title || !dateLocal || !startTime || !endTime) {
+    redirect(errorRedirectUrl(redirectPath, "Name, date, start time, and end time are required."));
+  }
+  const start_at = localDateTimeToIso(`${dateLocal}T${startTime}`);
+  const end_at = localDateTimeToIso(`${dateLocal}T${endTime}`);
+  if (!start_at || !end_at || new Date(end_at) <= new Date(start_at)) {
+    redirect(errorRedirectUrl(redirectPath, "End time must be after the start time."));
+  }
+
+  const externalUrlRaw = str(formData, "external_url");
+  let external_url: string | null = null;
+  if (externalUrlRaw) {
+    const result = validateCustomDestination(externalUrlRaw);
+    if (!result.ok) redirect(errorRedirectUrl(redirectPath, `Link: ${result.error}`));
+    external_url = result.value;
+  }
+
+  return {
+    title,
+    start_at: start_at as string,
+    end_at: end_at as string,
+    venue_name: str(formData, "venue_name"),
+    address: str(formData, "address"),
+    city: str(formData, "city"),
+    state: str(formData, "state"),
+    external_url,
+  };
+}
+
+/** Option 2 — "Add an appearance manually." Creates a standalone
+ * appearances row (no event_id/event_occurrence_id) owned entirely by
+ * this business — never touches the official event roster tables at
+ * all. */
+export async function addManualAppearance(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}`;
+  const admin = await requireProBusinessMember(businessId, redirectPath);
+
+  const fields = parseAppearanceFields(formData, redirectPath);
+
+  const { error } = await admin.from("appearances").insert({
+    business_id: businessId,
+    status: "confirmed",
+    ...fields,
+  });
+  if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't create that appearance. Please try again."));
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?appearance_added=1`);
+}
+
+/** Edit — only ever touches content fields (title/date-time/venue/
+ * address/city/state/link) on the owner's OWN appearance row. Ownership
+ * is re-verified against the authorized business_id before any write,
+ * and never touches event_id/event_occurrence_id/business_id/status —
+ * so editing an appearance linked to a real FindMi event/occurrence can
+ * never re-point it at a different event or silently change its link,
+ * and never touches the underlying event/occurrence or the official
+ * roster row either. */
+export async function updateOwnerAppearance(businessId: string, appearanceId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}`;
+  const admin = await requireProBusinessMember(businessId, redirectPath);
+
+  const { data: existing } = await admin
+    .from("appearances")
+    .select("id")
+    .eq("id", appearanceId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (!existing) redirect(errorRedirectUrl(redirectPath, "That appearance no longer exists."));
+
+  const fields = parseAppearanceFields(formData, redirectPath);
+
+  const { error } = await admin.from("appearances").update(fields).eq("id", appearanceId).eq("business_id", businessId);
+  if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't update that appearance. Please try again."));
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?appearance_updated=1`);
+}
+
+/** Remove — deletes only the owner's own appearance row, scoped by
+ * business_id. Deliberately does NOT touch event_businesses/
+ * event_occurrence_businesses: removing this business's own appearance
+ * never removes an approved (or any) official event roster entry in this
+ * pass — cancellation/decline sync is explicitly out of scope. */
+export async function removeOwnerAppearance(businessId: string, appearanceId: string) {
+  const redirectPath = `/account/business/${businessId}`;
+  const admin = await requireProBusinessMember(businessId, redirectPath);
+
+  await admin.from("appearances").delete().eq("id", appearanceId).eq("business_id", businessId);
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?appearance_removed=1`);
 }

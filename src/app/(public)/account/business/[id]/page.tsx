@@ -2,16 +2,30 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { errorRedirectUrl } from "@/lib/admin/form-helpers";
+import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { getCategories } from "@/lib/data";
 import AccountNav from "../../AccountNav";
-import { requestEventParticipation, updateMemberBusiness, withdrawEventParticipation } from "../actions";
+import {
+  addAppearanceFromEvent,
+  addManualAppearance,
+  removeOwnerAppearance,
+  updateMemberBusiness,
+  updateOwnerAppearance,
+} from "../actions";
 import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
-import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
+import { formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
 import type { EventParticipationStatus } from "@/lib/types";
+
+const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
+  invited: "Invited",
+  applied: "Pending",
+  pending: "Pending",
+  approved: "Approved",
+  declined: "Declined",
+};
 
 export const metadata: Metadata = {
   title: "Manage Business",
@@ -120,82 +134,67 @@ export default async function ManageBusinessPage({
     (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || c.id === currentCategoryId
   );
 
-  // Pro FindMi Here — Phase 1 (request/withdraw participation only; see
-  // ../actions.ts for the write side). Reads the same event_businesses/
-  // event_occurrence_businesses tables the founder admin's own
-  // ParticipationRoster/OccurrenceVendorManager already use — both are
-  // public-SELECT-readable, so no extra grant is needed to display this
-  // business's own rows. Never touches `appearances`.
-  type ParticipationRow = {
-    withdrawKind: "event" | "occurrence";
-    withdrawKey: string;
-    eventName: string;
-    eventSlug: string | null;
-    occurrenceLabel: string | null;
-    status: EventParticipationStatus;
+  // Pro FindMi Here — Owner Appearance Manager. Two separate reads:
+  // (1) this business's OWN appearances (its real FindMi Here calendar —
+  //     see ../actions.ts for the write side), and
+  // (2) its official event-roster status (event_businesses/
+  //     event_occurrence_businesses), purely to label each linked
+  //     appearance with its separate "Official event participation: …"
+  //     status — never presented as the appearance's own publication
+  //     state. Both tables are public-SELECT-readable, so no extra grant
+  //     is needed to display this business's own rows.
+  type OwnAppearance = {
+    id: string;
+    title: string;
+    start_at: string;
+    end_at: string;
+    venue_name: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    external_url: string | null;
+    event_id: string | null;
+    event_occurrence_id: string | null;
+    participationStatus: EventParticipationStatus | null;
   };
-  let participation: ParticipationRow[] = [];
+  let appearances: OwnAppearance[] = [];
   let requestOptions: { value: string; label: string }[] = [];
 
   if (pro) {
-    type EventRef = { name: string; slug: string } | { name: string; slug: string }[] | null;
-    const [{ data: ebRows }, { data: eobRows }] = await Promise.all([
-      admin.from("event_businesses").select("event_id, status, events(name, slug)").eq("business_id", id),
+    const nowIso = new Date().toISOString();
+    const [{ data: appearanceRows }, { data: ebStatusRows }, { data: eobStatusRows }] = await Promise.all([
       admin
-        .from("event_occurrence_businesses")
-        .select("id, occurrence_id, status, event_occurrences(start_at, timezone, event_id, events(name, slug))")
-        .eq("business_id", id),
+        .from("appearances")
+        .select("id, title, start_at, end_at, venue_name, address, city, state, external_url, event_id, event_occurrence_id")
+        .eq("business_id", id)
+        .neq("status", "canceled")
+        .gt("end_at", nowIso)
+        .order("start_at", { ascending: true }),
+      admin.from("event_businesses").select("event_id, status").eq("business_id", id),
+      admin.from("event_occurrence_businesses").select("occurrence_id, status").eq("business_id", id),
     ]);
 
-    const requestedEventIds = new Set<string>();
-    const requestedOccurrenceIds = new Set<string>();
+    const statusByEvent = new Map((ebStatusRows ?? []).map((r) => [r.event_id, r.status as EventParticipationStatus]));
+    const statusByOccurrence = new Map(
+      (eobStatusRows ?? []).map((r) => [r.occurrence_id, r.status as EventParticipationStatus])
+    );
 
-    const eventRows: ParticipationRow[] = (
-      (ebRows ?? []) as { event_id: string; status: EventParticipationStatus; events: EventRef }[]
-    ).map((r) => {
-      requestedEventIds.add(r.event_id);
-      const event = Array.isArray(r.events) ? r.events[0] : r.events;
-      return {
-        withdrawKind: "event",
-        withdrawKey: r.event_id,
-        eventName: event?.name ?? "Unknown event",
-        eventSlug: event?.slug ?? null,
-        occurrenceLabel: null,
-        status: r.status,
-      };
-    });
-
-    type OccurrenceRef = {
-      start_at: string;
-      timezone: string;
-      event_id: string;
-      events: EventRef;
-    } | { start_at: string; timezone: string; event_id: string; events: EventRef }[] | null;
-
-    const occurrenceRows: ParticipationRow[] = (
-      (eobRows ?? []) as { id: string; occurrence_id: string; status: EventParticipationStatus; event_occurrences: OccurrenceRef }[]
-    ).map((r) => {
-      requestedOccurrenceIds.add(r.occurrence_id);
-      const occ = Array.isArray(r.event_occurrences) ? r.event_occurrences[0] : r.event_occurrences;
-      const event = occ ? (Array.isArray(occ.events) ? occ.events[0] : occ.events) : null;
-      return {
-        withdrawKind: "occurrence",
-        withdrawKey: r.id,
-        eventName: event?.name ?? "Unknown event",
-        eventSlug: event?.slug ?? null,
-        occurrenceLabel: occ
-          ? `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeInZone(occ.start_at, occ.timezone)}`
+    appearances = (appearanceRows ?? []).map((a) => ({
+      ...a,
+      participationStatus: a.event_occurrence_id
+        ? (statusByOccurrence.get(a.event_occurrence_id) ?? null)
+        : a.event_id
+          ? (statusByEvent.get(a.event_id) ?? null)
           : null,
-        status: r.status,
-      };
-    });
+    }));
 
-    participation = [...eventRows, ...occurrenceRows];
+    const linkedEventIds = new Set(appearances.filter((a) => !a.event_occurrence_id).map((a) => a.event_id));
+    const linkedOccurrenceIds = new Set(appearances.map((a) => a.event_occurrence_id).filter((x): x is string => Boolean(x)));
 
-    // Picker: upcoming, non-demo events. An event with occurrences is only
-    // ever offered per-date (never as a bare event-level request) — a
-    // recurring event is requested at the occurrence level, correctly.
-    const nowIso = new Date().toISOString();
+    // Picker: upcoming, non-demo events not already on this business's
+    // own appearance calendar. An event with occurrences is only ever
+    // offered per-date (never as a bare event-level option) — a
+    // recurring event is always added at the occurrence level.
     const [{ data: events }, { data: occurrences }] = await Promise.all([
       admin.from("events").select("id, name, is_demo, start_at, end_at").eq("is_demo", false),
       admin.from("event_occurrences").select("id, event_id, start_at, timezone").gt("start_at", nowIso).order("start_at"),
@@ -212,22 +211,22 @@ export default async function ManageBusinessPage({
       const evOccurrences = occurrencesByEvent.get(ev.id) ?? [];
       if (evOccurrences.length > 0) {
         for (const occ of evOccurrences) {
-          if (requestedOccurrenceIds.has(occ.id)) continue;
+          if (linkedOccurrenceIds.has(occ.id)) continue;
           requestOptions.push({
             value: `occ:${ev.id}:${occ.id}`,
-            label: `${ev.name} — ${formatDateShortInZone(occ.start_at, occ.timezone)}`,
+            label: `${ev.name} — ${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeInZone(occ.start_at, occ.timezone)}`,
           });
         }
       } else {
         const upcoming = ev.end_at ? new Date(ev.end_at) > new Date() : ev.start_at ? new Date(ev.start_at) > new Date() : false;
-        if (!upcoming || requestedEventIds.has(ev.id)) continue;
+        if (!upcoming || linkedEventIds.has(ev.id)) continue;
         requestOptions.push({ value: `event:${ev.id}`, label: ev.name });
       }
     }
   }
 
-  const requestParticipation = requestEventParticipation.bind(null, id);
-  const WITHDRAWABLE: EventParticipationStatus[] = ["applied", "pending"];
+  const addFromEvent = addAppearanceFromEvent.bind(null, id);
+  const addManual = addManualAppearance.bind(null, id);
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
@@ -458,44 +457,113 @@ export default async function ManageBusinessPage({
           </form>
         </div>
 
-        {/* Pro FindMi Here — Phase 1: request/withdraw only. Approval stays
-            entirely founder-controlled (existing admin Participation
-            Roster / Occurrence Vendor Manager, unchanged); an approved row
-            here does not yet create a public appearance — see ../actions.ts. */}
+        {/* Pro FindMi Here — Owner Appearance Manager. The business's own
+            appearances calendar, separate from official event roster
+            approval (see ../actions.ts's own doc comment on that split). */}
         {pro && (
           <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">FindMi Here</p>
+            <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
 
-            {participation.length > 0 ? (
-              <ul className="mt-3 flex flex-col gap-2">
-                {participation.map((row) => (
-                  <li
-                    key={`${row.withdrawKind}-${row.withdrawKey}`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-2.5"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">{row.eventName}</p>
-                      {row.occurrenceLabel && <p className="text-xs text-ink/50">{row.occurrenceLabel}</p>}
-                      <p className="text-xs uppercase tracking-wide text-ink/45">{row.status}</p>
-                    </div>
-                    {WITHDRAWABLE.includes(row.status) && (
-                      <form action={withdrawEventParticipation.bind(null, id, row.withdrawKind, row.withdrawKey)}>
-                        <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
-                          Withdraw
-                        </button>
-                      </form>
-                    )}
-                  </li>
-                ))}
+            {appearances.length > 0 ? (
+              <ul className="mt-4 flex flex-col gap-3">
+                {appearances.map((a) => {
+                  const [editDate, editStartTime] = isoToLocalDateTime(a.start_at).split("T");
+                  const editEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
+                  return (
+                    <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
+                          <p className="mt-0.5 text-xs text-ink/60">
+                            {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
+                          </p>
+                          {(a.venue_name || a.city) && (
+                            <p className="mt-0.5 text-xs text-ink/50">
+                              {[a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                          {a.participationStatus && (
+                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-findmi-700">
+                              Official event participation: {PARTICIPATION_LABEL[a.participationStatus]}
+                            </p>
+                          )}
+                        </div>
+                        <form action={removeOwnerAppearance.bind(null, id, a.id)}>
+                          <button type="submit" className="shrink-0 text-xs font-semibold text-red-600 hover:underline">
+                            Remove
+                          </button>
+                        </form>
+                      </div>
+
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
+                        <form
+                          action={updateOwnerAppearance.bind(null, id, a.id)}
+                          className="mt-3 flex flex-col gap-2"
+                        >
+                          <input
+                            type="text"
+                            name="title"
+                            required
+                            defaultValue={a.title}
+                            placeholder="Appearance/Event Name"
+                            className={inputClass}
+                          />
+                          <div className="grid grid-cols-3 gap-2">
+                            <input type="date" name="date" required defaultValue={editDate} className={inputClass} />
+                            <input type="time" name="start_time" required defaultValue={editStartTime} className={inputClass} />
+                            <input type="time" name="end_time" required defaultValue={editEndTime} className={inputClass} />
+                          </div>
+                          <input
+                            type="text"
+                            name="venue_name"
+                            defaultValue={a.venue_name ?? ""}
+                            placeholder="Venue Name"
+                            className={inputClass}
+                          />
+                          <input
+                            type="text"
+                            name="address"
+                            defaultValue={a.address ?? ""}
+                            placeholder="Address"
+                            className={inputClass}
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="text" name="city" defaultValue={a.city ?? ""} placeholder="City" className={inputClass} />
+                            <input type="text" name="state" defaultValue={a.state ?? ""} placeholder="State" className={inputClass} />
+                          </div>
+                          <input
+                            type="url"
+                            name="external_url"
+                            defaultValue={a.external_url ?? ""}
+                            placeholder="Link (optional)"
+                            className={inputClass}
+                          />
+                          <button
+                            type="submit"
+                            className="mt-1 rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                          >
+                            Save
+                          </button>
+                        </form>
+                      </details>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <p className="mt-2 text-sm text-ink/50">No FindMi Here requests yet.</p>
+              <p className="mt-3 text-sm text-ink/50">No upcoming appearances yet.</p>
             )}
 
-            <div className="mt-4 border-t border-black/10 pt-4">
-              <p className="mb-1.5 text-sm font-medium text-ink">Request an Appearance</p>
+            <div className="mt-5 border-t border-black/10 pt-4">
+              <p className="text-sm font-medium text-ink">Add an Appearance</p>
+
+              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
+                Option 1 — Choose an existing FindMi event
+              </p>
               {requestOptions.length > 0 ? (
-                <form action={requestParticipation} className="flex flex-wrap items-center gap-2">
+                <form action={addFromEvent} className="mt-2 flex flex-wrap items-center gap-2">
                   <select name="target" required className={inputClass} defaultValue="">
                     <option value="" disabled>
                       Choose an event…
@@ -510,12 +578,37 @@ export default async function ManageBusinessPage({
                     type="submit"
                     className="rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   >
-                    Request
+                    Add
                   </button>
                 </form>
               ) : (
-                <p className="text-sm text-ink/50">No upcoming FindMi events available to request right now.</p>
+                <p className="mt-2 text-sm text-ink/50">No upcoming FindMi events available right now.</p>
               )}
+
+              <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
+                Option 2 — Add an appearance manually
+              </p>
+              <form action={addManual} className="mt-2 flex flex-col gap-2">
+                <input type="text" name="title" required placeholder="Appearance/Event Name" className={inputClass} />
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="date" name="date" required className={inputClass} />
+                  <input type="time" name="start_time" required className={inputClass} />
+                  <input type="time" name="end_time" required className={inputClass} />
+                </div>
+                <input type="text" name="venue_name" placeholder="Venue Name" className={inputClass} />
+                <input type="text" name="address" placeholder="Address" className={inputClass} />
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" name="city" placeholder="City" className={inputClass} />
+                  <input type="text" name="state" placeholder="State" className={inputClass} />
+                </div>
+                <input type="url" name="external_url" placeholder="Link (optional)" className={inputClass} />
+                <button
+                  type="submit"
+                  className="mt-1 rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Add Appearance
+                </button>
+              </form>
             </div>
           </div>
         )}
