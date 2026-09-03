@@ -58,7 +58,7 @@ export default function AppearanceCard({
     >
       <div
         className={`flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 ${
-          live ? "bg-findmi text-white" : "bg-black/[0.04] text-ink"
+          live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/[0.04] text-ink"
         }`}
       >
         {live ? (

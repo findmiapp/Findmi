@@ -615,6 +615,70 @@ export interface AppearanceWithEventSlug extends Appearance {
   event: { slug: string } | null;
 }
 
+// FindMi Here duplicate-appearance fix — a business can legitimately have
+// more than one appearances row resolving to the exact same real-world
+// event occurrence: a manual/event_self_added row the owner added
+// themselves, plus (independently) an official_participation row synced
+// from admin approval, or a plain duplicate manual entry (see this pass's
+// own report for a concrete production example — Madrina Vegana had two
+// separate 'manual' rows for the same event_id and identical start_at/
+// end_at, one from a bulk-seeded batch, one added individually later).
+// This groups by the STRONGEST identifier available and keeps exactly
+// one row per real occurrence:
+//   - event_occurrence_id, when set — the actual occurrence-linked case.
+//   - else event_id + start_at — same FindMi event AND the same exact
+//     start time. Grouping by event_id alone would be wrong: a business
+//     can genuinely appear at two different dates of the same recurring
+//     event (same event_id, different start_at) — those must both stay
+//     visible, so start_at is part of the key, not just event_id.
+//   - else the row's own id — a pure standalone/manual appearance with no
+//     event_id at all never merges with anything.
+// Within a group, prefers (in order): occurrence-linked over not,
+// official_participation source over any other, then the most recently
+// created row — a deterministic, non-guessing tiebreak (never inspects
+// venue/description text to judge "which one is more correct").
+type DedupableAppearance = {
+  id: string;
+  event_id: string | null;
+  event_occurrence_id: string | null;
+  start_at: string;
+  source: string;
+  created_at: string;
+};
+
+function betterAppearance<T extends DedupableAppearance>(a: T, b: T): T {
+  const score = (r: T): [number, number, number] => [
+    r.event_occurrence_id ? 1 : 0,
+    r.source === "official_participation" ? 1 : 0,
+    new Date(r.created_at).getTime(),
+  ];
+  const [sa, sb] = [score(a), score(b)];
+  for (let i = 0; i < sa.length; i++) {
+    if (sa[i] !== sb[i]) return sa[i] > sb[i] ? a : b;
+  }
+  return a;
+}
+
+function dedupeAppearances<T extends DedupableAppearance>(rows: T[]): T[] {
+  const winners = new Map<string, T>();
+  const order: string[] = [];
+  for (const row of rows) {
+    const key = row.event_occurrence_id
+      ? `occ:${row.event_occurrence_id}`
+      : row.event_id
+        ? `evt:${row.event_id}:${row.start_at}`
+        : `id:${row.id}`;
+    const existing = winners.get(key);
+    if (existing) {
+      winners.set(key, betterAppearance(existing, row));
+    } else {
+      winners.set(key, row);
+      order.push(key);
+    }
+  }
+  return order.map((key) => winners.get(key)!);
+}
+
 export async function getUpcomingAppearancesForBusiness(
   businessId: string,
   limit = 20
@@ -627,6 +691,10 @@ export async function getUpcomingAppearancesForBusiness(
   // NOT treated as open-ended (a handful of legacy rows still have one;
   // they're excluded here until backfilled — see this pass's report).
   const nowIso = new Date().toISOString();
+  // Over-fetch before the limit — deduping can drop rows (two DB rows
+  // collapsing to one real appearance), so fetching exactly `limit` first
+  // could under-fill a caller's row after dedup even though more real,
+  // distinct appearances exist just past that raw cutoff.
   const { data } = await supabase
     .from("appearances")
     .select("*, event:events(slug)")
@@ -634,13 +702,17 @@ export async function getUpcomingAppearancesForBusiness(
     .neq("status", "canceled")
     .gt("end_at", nowIso)
     .order("start_at", { ascending: true })
-    .limit(limit);
+    .limit(limit * 2);
 
-  return ((data ?? []) as never[]).map((row: unknown) => {
-    const r = row as Appearance & { event: { slug: string } | { slug: string }[] | null };
+  type RawRow = Appearance &
+    DedupableAppearance & { event: { slug: string } | { slug: string }[] | null };
+  const rows = ((data ?? []) as never[]).map((row: unknown) => {
+    const r = row as RawRow;
     const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
     return { ...r, event };
   });
+
+  return dedupeAppearances(rows).slice(0, limit);
 }
 
 /** The one real FindMi business the homepage's "Have a business or

@@ -38,3 +38,26 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* FindMi Here — Happening Now badge glow (product/business appearance
+   cards, see AppearanceCard.tsx's "live" tile). A soft red+white halo
+   behind the tile, pulsing in step with LiveDot's own animate-ping dot —
+   tasteful, not an alert-sized glow. Box-shadow (not opacity/scale) so
+   the tile's own dimensions/layout never move. */
+@keyframes happening-now-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(239, 68, 68, 0.4),
+      0 0 0 0 rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 9px 3px rgba(239, 68, 68, 0.35),
+      0 0 4px 1px rgba(255, 255, 255, 0.25);
+  }
+}
+
+.animate-happening-now-glow {
+  animation: happening-now-glow 2s ease-in-out infinite;
+}
