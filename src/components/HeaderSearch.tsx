@@ -215,7 +215,16 @@ function ResultGroup({
           className="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-black/[0.03]"
         >
           <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-mist">
-            {item.image && <Image src={item.image} alt="" fill sizes="36px" className="object-cover" />}
+            {/* unoptimized — same fix already applied to HomeEventCard,
+                EventCoverLightbox, ImageGalleryStrip, and ImageLightbox:
+                bypasses Vercel's next/image optimizer, which was failing
+                to serve some valid Supabase Storage URLs (root-caused
+                against production data there). One shared <Image> here
+                renders businesses/events/products alike, so this can't be
+                scoped to events only without splitting the component —
+                bypassing for all three is safe, since it only removes a
+                dependency on the same unreliable optimizer path. */}
+            {item.image && <Image src={item.image} alt="" fill unoptimized sizes="36px" className="object-cover" />}
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-ink">{item.name}</p>
