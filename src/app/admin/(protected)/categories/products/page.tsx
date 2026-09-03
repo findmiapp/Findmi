@@ -6,6 +6,14 @@ import { createCategory, deleteProductCategory, saveProductCategories } from "./
 
 export const dynamic = "force-dynamic";
 
+// Product Taxonomy V1 pass — the old flat "Apparel & Accessories" /
+// "Food & Beverage" / "Home & Living" set was split/renamed into a full
+// 14-parent → subcategory taxonomy (see the seed migration). Apparel &
+// Accessories itself couldn't be confidently mapped to one new parent (it
+// splits into Clothing and Bags & Accessories) so it's preserved as-is —
+// still selectable, just excluded from the new Marketplace browse row.
+const LEGACY_PRODUCT_CATEGORY_SLUGS = new Set(["apparel-accessories"]);
+
 // Product Categories — first-class product taxonomy (taxonomy foundation
 // pass). Separate from a product's selling business's category: a product
 // with its own product-category assignment shows that instead of the
@@ -18,7 +26,12 @@ export default async function ProductCategoriesPage({
 }) {
   const { saved, error } = await searchParams;
   const [categories, usage] = await Promise.all([getAllCategories("product"), getCategoryUsageCounts()]);
-  const sorted = [...categories].sort((a, b) => a.name.localeCompare(b.name));
+  // Product Taxonomy V1 — Parent Category / ↳ Subcategory grouping (see
+  // CategoryList), not flat alphabetical: sorting the raw list here would
+  // just get re-grouped by CategoryList anyway, but passing it through
+  // getAllCategories("product")'s own name order is enough since
+  // CategoryList re-sorts within each parent/child group itself.
+  const sorted = categories;
 
   return (
     <div>
@@ -31,9 +44,9 @@ export default async function ProductCategoriesPage({
       </div>
       <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">Product Categories</h1>
       <p className="mt-1 max-w-xl text-sm text-ink/50">
-        Create categories here, then assign them to a specific product from that product&rsquo;s own
-        edit page. A product can have more than one. Separate from Business Categories and Event
-        Categories — its own taxonomy.
+        Parent categories and their subcategories — assign the most specific one to a product from
+        that product&rsquo;s own edit page (Category → Subcategory). Separate from Business
+        Categories and Event Categories — its own taxonomy.
       </p>
 
       {error && (
@@ -66,6 +79,7 @@ export default async function ProductCategoriesPage({
         usage={usage}
         saveAction={saveProductCategories}
         deleteAction={deleteProductCategory}
+        legacySlugs={LEGACY_PRODUCT_CATEGORY_SLUGS}
         cancelHref="/admin/categories"
       />
     </div>

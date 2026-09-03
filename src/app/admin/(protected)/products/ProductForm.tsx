@@ -1,5 +1,6 @@
-import { CheckboxField, CheckboxList, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
+import { CheckboxField, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
 import { RelationField } from "@/components/admin/RelationPicker";
+import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
 import FulfillmentOptionsEditor from "@/components/admin/FulfillmentOptionsEditor";
 import ImageField from "@/components/admin/ImageField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
@@ -58,13 +59,7 @@ export default function ProductForm({
         <TextareaField label="Description" name="description" defaultValue={product?.description} rows={4} />
         <ImageField label="Product Image" name="image_url" defaultValue={product?.image_url} />
 
-        <CheckboxList
-          label="Categories"
-          name="category_ids"
-          defaultSelected={selectedCategoryIds}
-          options={categories.map((c) => ({ value: c.id, label: c.name }))}
-          emptyText="No product categories yet — add some in /admin/categories/products."
-        />
+        <CategorySubcategoryField categories={categories} defaultCategoryId={selectedCategoryIds[0] ?? null} />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberField label="Price" name="price" defaultValue={product?.price} step="0.01" />

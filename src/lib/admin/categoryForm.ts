@@ -99,6 +99,24 @@ export async function deleteCategoryRow(
     return { error: "This category is currently in use and can't be deleted." };
   }
 
+  // Product Taxonomy V1 — a parent-with-children delete is a second,
+  // separate hazard from "in use" above: categories.parent_id is
+  // ON DELETE SET NULL, not CASCADE, so an unguarded delete here wouldn't
+  // remove its children — it would silently orphan them into top-level
+  // categories of their own (see the hierarchy trigger/FK, taxonomy
+  // foundation migration). Block it explicitly rather than let that
+  // happen invisibly; the founder must reassign/delete the children
+  // first. Only product/business/event kinds can even have children (the
+  // hierarchy trigger enforces matching kind), so this check is safe to
+  // run for every kind.
+  const { count: childCount } = await supabase
+    .from("categories")
+    .select("id", { count: "exact", head: true })
+    .eq("parent_id", id);
+  if ((childCount ?? 0) > 0) {
+    return { error: "This category has subcategories — delete or reassign them first." };
+  }
+
   const { error } = await supabase.from("categories").delete().eq("id", id).eq("kind", kind);
   if (error) return { error: error.message };
   return {};

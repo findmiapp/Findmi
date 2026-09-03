@@ -214,11 +214,16 @@ export interface Category {
   kind: CategoryKind;
   /** One level of subcategory only — a parent's own parent_id is always
    * null, enforced server-side (see the taxonomy migration's trigger). A
-   * child always shares its parent's kind. Not yet exposed in any admin
-   * UI — structural prep for a future pass. */
+   * child always shares its parent's kind. Live in the admin Product
+   * Categories screen (Product Taxonomy V1 pass) as Parent → Subcategory;
+   * still unused for business/event kinds. */
   parent_id?: string | null;
-  /** Business-kind only — the homepage category strip's visibility/order.
-   * Meaningless (and unused) for event/product-kind rows. */
+  /** Business-kind homepage category strip visibility/order. Product
+   * Taxonomy V1 reuses the same two columns for top-level (parent_id null)
+   * product-kind categories — membership/order in the marketplace's
+   * primary browse row. Still meaningless/unused for event-kind rows and
+   * for product-kind subcategories (children are always shown under their
+   * parent, never independently ordered by this). */
   show_on_home?: boolean;
   home_sort_order?: number | null;
 }

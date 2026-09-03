@@ -58,6 +58,35 @@ export default function CategoryList({
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
 
+  // Product Taxonomy V1 — Parent Category / ↳ Subcategory display, kind
+  // "product" only (the only kind with any live hierarchy so far; event/
+  // business rows render exactly as before). Top-level rows (parent_id
+  // null) are followed immediately by their own children, alphabetical
+  // within each group — same shape lib/data.ts's getProductCategoryTree
+  // uses for the public Marketplace browse rows, just without the
+  // show_on_home filter (a legacy/unmapped top-level row with no children
+  // and show_on_home unset must still show up here so it stays
+  // manageable).
+  const displayList = useMemo(() => {
+    if (kind !== "product") return categories.map((c) => ({ ...c, depth: 0 as const, childCount: 0, parentName: "" }));
+    const byParent = new Map<string, Category[]>();
+    for (const c of categories) {
+      if (!c.parent_id) continue;
+      const list = byParent.get(c.parent_id) ?? [];
+      list.push(c);
+      byParent.set(c.parent_id, list);
+    }
+    for (const list of byParent.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+    const topLevel = categories.filter((c) => !c.parent_id).sort((a, b) => a.name.localeCompare(b.name));
+    const out: (Category & { depth: 0 | 1; childCount: number; parentName: string })[] = [];
+    for (const p of topLevel) {
+      const children = byParent.get(p.id) ?? [];
+      out.push({ ...p, depth: 0, childCount: children.length, parentName: "" });
+      for (const c of children) out.push({ ...c, depth: 1, childCount: 0, parentName: p.name });
+    }
+    return out;
+  }, [kind, categories]);
+
   // Business only, and only for the ordering UI: "Other" is never part of
   // the reorderable sequence — see reorderBusinessCategory's own comment.
   // Its move buttons are simply never rendered for that row.
@@ -102,8 +131,16 @@ export default function CategoryList({
         <p className="text-sm text-ink/50">No categories yet — add one above.</p>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {categories.map((c) => {
-            const hidden = q.length > 0 && !c.name.toLowerCase().includes(q);
+          {displayList.map((c, i) => {
+            const ownMatch = !q || c.name.toLowerCase().includes(q);
+            // A parent stays visible if any of its own children match, so
+            // a subcategory search still reads in context; a child stays
+            // visible if its parent (the row right above its group) does.
+            const groupMatch =
+              c.depth === 0
+                ? ownMatch || displayList.slice(i + 1, i + 1 + c.childCount).some((child) => child.name.toLowerCase().includes(q))
+                : ownMatch || c.parentName.toLowerCase().includes(q);
+            const hidden = q.length > 0 && !groupMatch;
             const uses = usageFor(c.id);
             const isLegacy = legacySlugs?.has(c.slug) ?? false;
             const isOther = c.name === "Other";
@@ -113,9 +150,11 @@ export default function CategoryList({
               <div
                 key={c.id}
                 hidden={hidden}
-                className="flex flex-col gap-2 rounded-xl border border-black/5 bg-white px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
+                className={`flex flex-col gap-2 rounded-xl border border-black/5 bg-white px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3 ${c.depth === 1 ? "ml-4 sm:ml-7" : ""}`}
               >
                 <input type="hidden" name="all_category_ids" value={c.id} />
+
+                {c.depth === 1 && <span className="shrink-0 text-ink/30" aria-hidden>↳</span>}
 
                 {kind === "business" && (
                   <div className="flex shrink-0 items-center gap-1 sm:flex-col sm:gap-0.5">
@@ -165,10 +204,15 @@ export default function CategoryList({
                   )}
                   {isLegacy && (
                     <span
-                      title="Hidden from new business category selection — existing assignments are preserved."
+                      title="Kept for existing assignments — not part of the current taxonomy."
                       className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700"
                     >
                       Legacy
+                    </span>
+                  )}
+                  {kind === "product" && c.depth === 0 && c.childCount > 0 && (
+                    <span className="rounded-full bg-findmi-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-findmi-700">
+                      {c.childCount} subcategor{c.childCount === 1 ? "y" : "ies"}
                     </span>
                   )}
                   {kind === "business" && position && (
@@ -210,6 +254,15 @@ export default function CategoryList({
                       className="cursor-not-allowed rounded-lg border border-black/10 px-2 py-1 text-[11px] font-semibold text-ink/30"
                     >
                       In use
+                    </button>
+                  ) : c.childCount > 0 ? (
+                    <button
+                      type="button"
+                      disabled
+                      title="Has subcategories — delete or reassign them first so nothing gets orphaned."
+                      className="cursor-not-allowed rounded-lg border border-black/10 px-2 py-1 text-[11px] font-semibold text-ink/30"
+                    >
+                      Has subcategories
                     </button>
                   ) : (
                     <button

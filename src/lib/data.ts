@@ -230,6 +230,32 @@ export async function getHomeCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
+/** Product Taxonomy V1 — the parent→subcategory tree that drives the
+ * Marketplace's primary browse row (parents) and secondary contextual row
+ * (a selected parent's children). Reuses show_on_home/home_sort_order the
+ * same way getHomeCategories() does for business-kind rows: only
+ * top-level (parent_id null) product categories with show_on_home=true
+ * are included/ordered here, so a legacy/unmapped top-level category
+ * (e.g. the old "Apparel & Accessories") can be preserved in the table
+ * without appearing in the new browse row. Children are always included
+ * under their parent regardless of show_on_home/home_sort_order — V1 has
+ * no per-child homepage flag, they're just alphabetical. */
+export async function getProductCategoryTree(): Promise<(Category & { children: Category[] })[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase.from("categories").select("*").eq("kind", "product").order("name");
+  const all = data ?? [];
+  const parents = all
+    .filter((c) => !c.parent_id && c.show_on_home)
+    .sort((a, b) => {
+      const aOrder = a.home_sort_order ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = b.home_sort_order ?? Number.MAX_SAFE_INTEGER;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.name.localeCompare(b.name);
+    });
+  return parents.map((p) => ({ ...p, children: all.filter((c) => c.parent_id === p.id) }));
+}
+
 /** Categories actually tagged on at least one REAL, still-upcoming event,
  * via event_categories — NOT business categories (see getHomeCategories
  * above, which is business-scoped and must never be reused here — live
@@ -1624,29 +1650,37 @@ export interface MarketplaceProductParams {
 /** The public product marketplace's shared query (/marketplace and the
  * homepage's Shop FindMi row both read real purchasable/inquiry-ready
  * catalog data through here — see getFeaturedProducts for the curated
- * subset, this is the full active catalog). categorySlug filters by the
- * SELLING BUSINESS's category — this filter/grouping system stays
- * business-category-based even now that products have their own
- * first-class taxonomy (product_categories); switching the marketplace's
- * own filter/grouping to real product categories is a bigger change left
- * for a future pass. Only the product-card/detail LABEL prefers a real
- * product category when one exists — see getPrimaryCategoryByProduct. */
+ * subset, this is the full active catalog). Product Taxonomy V1 pass:
+ * categorySlug now filters by the PRODUCT's own category (product_categories
+ * / product-kind categories), replacing the previous selling-business-
+ * category filter. Selecting a parent (parent_id null) matches any product
+ * assigned to that parent OR any of its children; selecting a child (a
+ * subcategory) matches only that exact subcategory — see
+ * getProductCategoryTree for the same parent/child shape used to render
+ * the Marketplace's browse rows. */
 export async function getMarketplaceProducts(params: MarketplaceProductParams = {}): Promise<MarketplaceProduct[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  let categoryBusinessIds: string[] | null = null;
+  let categoryProductIds: string[] | null = null;
   if (params.categorySlug) {
     const { data: cat } = await supabase
       .from("categories")
-      .select("id")
+      .select("id, parent_id")
       .eq("slug", params.categorySlug)
-      .eq("kind", "business")
+      .eq("kind", "product")
       .maybeSingle();
     if (!cat) return [];
-    const { data: links } = await supabase.from("business_categories").select("business_id").eq("category_id", cat.id);
-    categoryBusinessIds = (links ?? []).map((l) => l.business_id);
-    if (categoryBusinessIds.length === 0) return [];
+
+    let categoryIds = [cat.id];
+    if (!cat.parent_id) {
+      const { data: children } = await supabase.from("categories").select("id").eq("kind", "product").eq("parent_id", cat.id);
+      categoryIds = [cat.id, ...(children ?? []).map((c) => c.id)];
+    }
+
+    const { data: links } = await supabase.from("product_categories").select("product_id").in("category_id", categoryIds);
+    categoryProductIds = [...new Set((links ?? []).map((l) => l.product_id))];
+    if (categoryProductIds.length === 0) return [];
   }
 
   const limit = params.limit ?? 40;
@@ -1658,7 +1692,7 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
     const term = `%${params.q.trim()}%`;
     query = query.or(`name.ilike.${term},description.ilike.${term}`);
   }
-  if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
+  if (categoryProductIds) query = query.in("id", categoryProductIds);
   if (params.featuredOnly) query = query.eq("is_featured", true);
 
   const { data, error } = await query

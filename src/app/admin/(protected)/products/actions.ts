@@ -90,16 +90,18 @@ export async function saveProduct(id: string | null, formData: FormData) {
     await supabase.from("product_fulfillment_options").insert(newOptions);
   }
 
-  // Product categories (product_categories) — same "current-config, not
-  // economic history" reasoning as fulfillment options above: nothing
-  // else references a specific row, so delete-then-reinsert the submitted
-  // set is safe and simpler than diffing.
-  const categoryIds = formData.getAll("category_ids").map(String);
+  // Product category (product_categories) — Product Taxonomy V1 pass:
+  // the editor now submits exactly one most-specific category id (a
+  // Category → Subcategory cascading select — see
+  // CategorySubcategoryField) rather than a multi-select checklist.
+  // product_categories itself is still a plain junction table (unchanged
+  // schema, still capable of more than one row per product), so this
+  // stays a delete-then-reinsert of "current config" like fulfillment
+  // options above — nothing else references a specific row.
+  const categoryId = str(formData, "category_id");
   await supabase.from("product_categories").delete().eq("product_id", productId);
-  if (categoryIds.length > 0) {
-    await supabase
-      .from("product_categories")
-      .insert(categoryIds.map((category_id) => ({ product_id: productId, category_id })));
+  if (categoryId) {
+    await supabase.from("product_categories").insert([{ product_id: productId, category_id: categoryId }]);
   }
 
   revalidatePath("/admin/products");
