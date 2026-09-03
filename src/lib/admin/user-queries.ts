@@ -68,6 +68,21 @@ export async function listAdminUsers(query?: string): Promise<AdminUserRow[]> {
   return rows;
 }
 
+/** Admin Dashboard Redesign — a cheap count-only version of the same
+ * listUsers() call listAdminUsers() already makes, for the "Users" At a
+ * Glance card. perPage: 1 keeps the actual page payload minimal; the
+ * Admin API still returns the real total across all users in its
+ * pagination metadata, so this stays a single request regardless of
+ * account volume rather than paging through everything to count. */
+export async function getAdminUserCount(): Promise<number> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return 0;
+
+  const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1 });
+  if (error || !data) return 0;
+  return data.total ?? data.users.length;
+}
+
 /** One account's safe Account-tab fields. Returns null for a missing/bad
  * id rather than throwing — the page decides how to render "not found". */
 export async function getAdminUserAccount(userId: string): Promise<AdminUserRow | null> {
