@@ -26,6 +26,12 @@ import ImageLightbox from "./ImageLightbox";
 // prop below still works exactly as before for any caller that passes it
 // explicitly; it's just no longer necessary for a Supabase-hosted image.
 //
+// 2x thumbnail size pass: tiles doubled from h-16/w-16 (sm:h-20/w-20) to
+// h-32/w-32 (sm:h-40/w-40) — 128px mobile, 160px sm+ — so ~2-2.5 tiles
+// show at once on a typical phone width instead of shrinking to fit.
+// Everything else (one-row flex + overflow-x-auto scroll, gap, rounded
+// corners, border, tap target, lightbox wiring) is unchanged.
+//
 // Reliability fix — public gallery pass: failedIndices tracks only
 // thumbnails that have actually failed to load (a real onError, never a
 // guess ahead of time) and swaps in a small placeholder tile for just
@@ -61,7 +67,7 @@ export default function ImageGalleryStrip({
             key={`${src}-${i}`}
             type="button"
             onClick={() => setOpenIndex(i)}
-            className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-mist transition active:scale-95 sm:h-20 sm:w-20"
+            className="relative h-32 w-32 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-mist transition active:scale-95 sm:h-40 sm:w-40"
           >
             {failedIndices.has(i) ? (
               <div className="flex h-full w-full items-center justify-center text-ink/25">
@@ -73,7 +79,7 @@ export default function ImageGalleryStrip({
                 alt={alt}
                 fill
                 unoptimized={unoptimized}
-                sizes="80px"
+                sizes="(min-width: 640px) 160px, 128px"
                 className="object-cover"
                 onError={() => setFailedIndices((prev) => new Set(prev).add(i))}
               />
