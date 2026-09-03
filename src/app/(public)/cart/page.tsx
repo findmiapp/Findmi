@@ -80,10 +80,10 @@ export default function CartPage() {
         <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Your cart is empty</h1>
         <p className="mt-2 text-sm text-ink/60">Find something to bring home from a FindMi vendor.</p>
         <Link
-          href="/discover"
+          href="/marketplace"
           className="mt-6 inline-block rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white hover:bg-findmi-600"
         >
-          Start Exploring
+          Visit Marketplace
         </Link>
       </div>
     );
