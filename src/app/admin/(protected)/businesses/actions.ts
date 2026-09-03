@@ -152,6 +152,13 @@ export async function saveBusiness(id: string | null, formData: FormData) {
   }
 
   revalidatePath("/admin/businesses");
+  // The exact page this redirects back to — missing before, which meant
+  // Next's client router cache could keep serving the pre-save (or a
+  // stale notFound()) RSC payload for this same URL after a redirect,
+  // even though the write itself had already succeeded — same bug class
+  // already fixed for saveEvent (see events/actions.ts's own editPath
+  // revalidation, with the identical comment this one mirrors).
+  revalidatePath(editPath);
   revalidatePath(`/business/${slug}`);
   revalidatePath("/");
   revalidatePath("/businesses");
