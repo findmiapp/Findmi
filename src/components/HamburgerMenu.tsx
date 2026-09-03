@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import Logo from "./Logo";
 import NavIcon from "./NavIcon";
+import DrawerUtilityStrip from "./DrawerUtilityStrip";
+import DrawerSearch from "./DrawerSearch";
 import type { ResolvedNavItem } from "@/lib/navigation";
 
 // Header hamburger trigger + mobile nav drawer (2026 navigation pass,
@@ -26,7 +28,21 @@ import type { ResolvedNavItem } from "@/lib/navigation";
 // later. Only mounted after the client hydrates (`mounted` state) since
 // document.body doesn't exist during SSR — before that, the trigger
 // button alone renders, same as any other client-only overlay.
-export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
+export default function HamburgerMenu({
+  items,
+  authenticated,
+  contactEmail,
+  contactPhone,
+}: {
+  items: ResolvedNavItem[];
+  /** Server-resolved (see (public)/layout.tsx) — drives the utility
+   * strip's Login/Logout action. Never determined client-side. */
+  authenticated: boolean;
+  /** Founder-editable (Admin → Site → Contact Info); null hides that
+   * utility-strip action entirely rather than showing a dead link. */
+  contactEmail: string | null;
+  contactPhone: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
@@ -131,6 +147,20 @@ export default function HamburgerMenu({ items }: { items: ResolvedNavItem[] }) {
                   </svg>
                 </button>
               </div>
+
+              {/* Utility strip + live search — top-of-drawer pass. Both
+                  shrink-0, sitting above the scrollable nav body below
+                  them; DrawerSearch's own results list scrolls inside
+                  itself (max-h-[45vh]) rather than growing the drawer, so
+                  the existing nav underneath is never pushed out of
+                  reach. */}
+              <DrawerUtilityStrip
+                authenticated={authenticated}
+                email={contactEmail}
+                phone={contactPhone}
+                onNavigate={close}
+              />
+              <DrawerSearch onNavigate={close} />
 
               {/* Nav body — flex-1 + min-h-0 (belt-and-suspenders with
                   overflow-y-auto, which already exempts a flex item from

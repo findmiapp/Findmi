@@ -10,6 +10,9 @@ import type { ResolvedNavItem } from "@/lib/navigation";
 export default function MobileHeader({
   navItems,
   adminToolbar = false,
+  authenticated,
+  contactEmail,
+  contactPhone,
 }: {
   navItems: ResolvedNavItem[];
   /** True only when the server-verified admin session gates AdminToolbar
@@ -18,6 +21,11 @@ export default function MobileHeader({
    * instead of overlapping. Never itself a source of truth for admin
    * status; just a layout offset the layout hands down. */
   adminToolbar?: boolean;
+  /** Passed straight through to HamburgerMenu's drawer utility strip —
+   * see that component and DrawerUtilityStrip for what each drives. */
+  authenticated: boolean;
+  contactEmail: string | null;
+  contactPhone: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -52,7 +60,12 @@ export default function MobileHeader({
       <div className="flex items-center gap-0.5">
         <HeaderSearch variant="icon" />
         <CartBadge />
-        <HamburgerMenu items={navItems} />
+        <HamburgerMenu
+          items={navItems}
+          authenticated={authenticated}
+          contactEmail={contactEmail}
+          contactPhone={contactPhone}
+        />
       </div>
     </header>
   );

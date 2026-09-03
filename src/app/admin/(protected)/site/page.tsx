@@ -8,6 +8,7 @@ const PAGES = [
   { key: "homepage", label: "Homepage", href: "/admin/site/homepage", available: true },
   { key: "join", label: "Join Page", href: "/admin/site/join", available: true },
   { key: "navigation", label: "Navigation", href: "/admin/site/navigation", available: true },
+  { key: "contact", label: "Contact Info", href: "/admin/site/contact", available: true },
 ];
 
 export default function SiteEditorPage() {
