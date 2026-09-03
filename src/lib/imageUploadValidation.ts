@@ -3,11 +3,13 @@
 // (founder/admin uploads, gated by requireAdmin()) and the member-facing
 // upload action in account/business/actions.ts (gated by
 // requireBusinessMember()) so the actual file-safety rules — allowed MIME
-// types, magic-byte verification, size limit, HEIC/SVG rejection — live
-// in exactly one place and can never drift between the two upload paths.
-// This file never decides WHO may upload; each caller's own
-// authorization check runs entirely before it's ever reached, and this
+// types, magic-byte verification, size limit, HEIC conversion, SVG
+// rejection — live in exactly one place and can never drift between the
+// two upload paths. This file never decides WHO may upload; each caller's
+// own authorization check runs entirely before it's ever reached, and this
 // module has no way to weaken or bypass that.
+
+import convertHeic from "heic-convert";
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
@@ -40,31 +42,81 @@ function matchesMagicBytes(header: Uint8Array, mimeType: string): boolean {
   }
 }
 
+// HEIC/HEIF container signature — the ISO-BMFF "ftyp" box's major_brand
+// plus compatible_brands list (bytes 4-8 = "ftyp", 8-12 = major_brand,
+// then 4-byte brand codes onward). This is the actual file signature, not
+// the client-supplied MIME type or filename — checked in addition to (not
+// instead of) the MIME/extension hints below, so a mislabeled-but-real
+// HEIC file is still caught, and so a file merely NAMED .heic can't skip
+// straight to "trusted" without its content agreeing. avif/avis are
+// deliberately excluded from this brand set: that's a different, already
+// broadly browser-supported HEIF profile, not part of this HEIC-specific
+// conversion.
+const HEIC_BRANDS = new Set(["heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1"]);
+
+function looksLikeHeicContainer(header: Uint8Array): boolean {
+  if (header.length < 12) return false;
+  const brandAt = (offset: number) =>
+    String.fromCharCode(header[offset], header[offset + 1], header[offset + 2], header[offset + 3]);
+  if (brandAt(4) !== "ftyp") return false;
+  if (HEIC_BRANDS.has(brandAt(8))) return true; // major_brand
+  for (let offset = 16; offset + 4 <= header.length; offset += 4) {
+    if (HEIC_BRANDS.has(brandAt(offset))) return true; // compatible_brands
+  }
+  return false;
+}
+
 export interface ImageValidationResult {
   extension: string;
+  /** Set only when the original upload needed server-side conversion
+   * before it's safe to store (currently: HEIC/HEIF -> JPEG). When
+   * present, the caller must upload THIS buffer/contentType instead of
+   * the original File — the original bytes are never valid to store as-
+   * is. Absent for every other format, so existing JPG/PNG/WEBP/GIF
+   * upload behavior is completely unchanged. */
+  converted?: { buffer: Buffer; contentType: string };
 }
 
 /** Validates an uploaded File against FindMi's supported image rules —
- * size, HEIC/SVG rejection, MIME allowlist, and a magic-byte check that
- * the file's real bytes match what it claims to be. Returns the safe
- * extension to store it under on success, or a user-facing error message
- * on failure. Never touches Storage or the database — every caller still
- * owns its own authorization and the actual write. */
+ * size, HEIC/HEIF conversion, SVG rejection, MIME allowlist, and a magic-
+ * byte check that the file's real bytes match what it claims to be.
+ * Returns the safe extension (and, for a converted HEIC/HEIF file, the
+ * ready-to-upload JPEG bytes) to store it under on success, or a user-
+ * facing error message on failure. Never touches Storage or the
+ * database — every caller still owns its own authorization and the
+ * actual write. */
 export async function validateImageFile(file: File): Promise<ImageValidationResult | { error: string }> {
   if (file.size === 0) return { error: "No file selected." };
   if (file.size > MAX_UPLOAD_BYTES) return { error: "Image must be under 5MB." };
 
-  // HEIC/HEIF (the default format for iPhone camera photos) uploads and
-  // stores fine, but almost no browser can render it in an <img>/next/image
-  // element — checked ahead of the allowlist purely for this specific,
-  // friendlier error message; a HEIC file would also fail the allowlist
-  // check either way.
-  const isHeic = /^image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+  // Read enough of the header up front for the HEIC container-signature
+  // check below (32 bytes comfortably covers ftyp + major_brand + a
+  // handful of compatible_brands on real-world files) — the same slice
+  // also covers the 16-byte magic-byte checks further down.
+  const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+
+  // HEIC/HEIF (the default format for iPhone camera photos) — the
+  // client-supplied MIME/filename are spoofable hints, so detection also
+  // checks the actual container signature; either is enough to attempt
+  // conversion, but the conversion itself (which fully decodes the file)
+  // is the real, authoritative check that the bytes are genuinely
+  // HEIC/HEIF and not just named/labeled that way.
+  const isHeic = /^image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name) || looksLikeHeicContainer(header);
   if (isHeic) {
-    return {
-      error:
-        "HEIC/HEIF photos aren't supported (most browsers can't display them). Please use a JPG or PNG — on iPhone, Settings → Camera → Formats → \"Most Compatible\" saves new photos as JPG.",
-    };
+    try {
+      const inputBuffer = Buffer.from(await file.arrayBuffer());
+      const outputBuffer = (await convertHeic({ buffer: inputBuffer, format: "JPEG", quality: 0.85 })) as Buffer;
+      return { extension: "jpg", converted: { buffer: outputBuffer, contentType: "image/jpeg" } };
+    } catch {
+      // Never let a decode failure (corrupt file, an unsupported HEIC
+      // variant, a false-positive container match on a non-image file,
+      // etc.) crash the calling Server Action — surface a clean,
+      // actionable message instead.
+      return {
+        error:
+          "That HEIC/HEIF photo couldn't be converted. Please try again, or use a JPG or PNG instead — on iPhone, Settings → Camera → Formats → \"Most Compatible\" saves new photos as JPG.",
+      };
+    }
   }
 
   if (file.type === "image/svg+xml") {
@@ -76,7 +128,6 @@ export async function validateImageFile(file: File): Promise<ImageValidationResu
     return { error: "Only JPG, PNG, WEBP, or GIF images are supported." };
   }
 
-  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   if (!matchesMagicBytes(header, file.type)) {
     return { error: "That file doesn't look like a valid image of the type it claims to be." };
   }

@@ -46,8 +46,15 @@ export async function uploadImage(formData: FormData): Promise<{ url?: string; e
   // (arbitrary, admin-supplied) never touches the storage path at all.
   const path = `${crypto.randomUUID()}.${validated.extension}`;
 
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-    contentType: file.type,
+  // A HEIC/HEIF upload was already converted to JPEG bytes above (see
+  // validateImageFile) — upload THOSE, never the original File, with the
+  // matching contentType. Every other format is uploaded exactly as
+  // before, unchanged.
+  const uploadBody = validated.converted?.buffer ?? file;
+  const uploadContentType = validated.converted?.contentType ?? file.type;
+
+  const { error } = await supabase.storage.from(BUCKET).upload(path, uploadBody, {
+    contentType: uploadContentType,
     upsert: false,
   });
   if (error) return { error: error.message };

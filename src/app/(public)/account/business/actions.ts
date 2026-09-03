@@ -70,8 +70,15 @@ export async function uploadMemberBusinessImage(
   // submitted filename or businessId.
   const path = `${crypto.randomUUID()}.${validated.extension}`;
 
-  const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, file, {
-    contentType: file.type,
+  // A HEIC/HEIF upload was already converted to JPEG bytes above (see
+  // validateImageFile) — upload THOSE, never the original File, with the
+  // matching contentType. Every other format is uploaded exactly as
+  // before, unchanged.
+  const uploadBody = validated.converted?.buffer ?? file;
+  const uploadContentType = validated.converted?.contentType ?? file.type;
+
+  const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, uploadBody, {
+    contentType: uploadContentType,
     upsert: false,
   });
   if (error) return { error: error.message };
