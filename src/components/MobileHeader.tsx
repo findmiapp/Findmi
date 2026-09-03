@@ -7,13 +7,26 @@ import HeaderSearch from "./HeaderSearch";
 import Logo from "./Logo";
 import type { ResolvedNavItem } from "@/lib/navigation";
 
-export default function MobileHeader({ navItems }: { navItems: ResolvedNavItem[] }) {
+export default function MobileHeader({
+  navItems,
+  adminToolbar = false,
+}: {
+  navItems: ResolvedNavItem[];
+  /** True only when the server-verified admin session gates AdminToolbar
+   * into rendering above this header on mobile (see (public)/layout.tsx) —
+   * shifts this header down by its 1.75rem height so the two stack
+   * instead of overlapping. Never itself a source of truth for admin
+   * status; just a layout offset the layout hands down. */
+  adminToolbar?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const isHome = pathname === "/";
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b border-black/5 bg-paper/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur md:hidden">
+    <header
+      className={`fixed inset-x-0 ${adminToolbar ? "top-7" : "top-0"} z-40 flex h-14 items-center justify-between border-b border-black/5 bg-paper/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur md:hidden`}
+    >
       <div className="flex items-center gap-1">
         {!isHome && (
           <button
