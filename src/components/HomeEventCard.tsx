@@ -70,11 +70,11 @@ export default function HomeEventCard({ event }: { event: EventWithCategories })
         <div className="absolute left-3 top-3">
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
-              live ? "bg-findmi text-white" : "bg-black/45 text-white backdrop-blur-sm"
+              live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/45 text-white backdrop-blur-sm"
             }`}
           >
             {live && <LiveDot className="text-white" />}
-            {live ? "Here Now" : category}
+            {live ? "Happening Now" : category}
           </span>
         </div>
       )}

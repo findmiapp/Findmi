@@ -13,7 +13,7 @@ export function HappeningCard({ item }: { item: LocationHappening }) {
       href={item.href}
       image={item.imageUrl}
       kind="event"
-      badgeLabel={when}
+      badgeLabel={live ? "Happening Now" : when}
       badgeVariant={live ? "live" : "default"}
       title={item.title}
       metaLines={[
@@ -39,7 +39,7 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
     >
       <div
         className={`flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-2 ${
-          live ? "bg-findmi text-white" : "bg-black/[0.04] text-ink"
+          live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/[0.04] text-ink"
         }`}
       >
         {live ? (

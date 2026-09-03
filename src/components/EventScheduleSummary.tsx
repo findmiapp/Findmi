@@ -35,7 +35,7 @@ export default function EventScheduleSummary() {
           selectedState === "cancelled"
             ? "bg-red-50 text-red-700"
             : selectedState === "current"
-              ? "bg-findmi text-white"
+              ? "animate-happening-now-glow bg-red-600 text-white"
               : "bg-black/[0.06] text-ink/60"
         }`}
       >

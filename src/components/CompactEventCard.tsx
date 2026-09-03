@@ -16,7 +16,7 @@ import LiveDot from "./LiveDot";
 // count, or attendee-count column today, so there's nothing real to
 // display there — see the homepage implementation report.
 export default function CompactEventCard({ event }: { event: EventWithCategories }) {
-  const { label: when, live } = getTemporalLabel(event.start_at, event.end_at);
+  const { live } = getTemporalLabel(event.start_at, event.end_at);
   const location = [event.venue_name, cityState(event.city, event.state)].filter(Boolean).join(" · ");
   const category = event.categories[0]?.name ?? null;
 
@@ -41,7 +41,7 @@ export default function CompactEventCard({ event }: { event: EventWithCategories
         )}
         <span
           className={`absolute left-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
-            live ? "bg-findmi text-white" : "bg-black/55 text-white backdrop-blur-sm"
+            live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/55 text-white backdrop-blur-sm"
           }`}
         >
           {live && <LiveDot className="text-white" />}
@@ -52,8 +52,11 @@ export default function CompactEventCard({ event }: { event: EventWithCategories
         {category && <p className="truncate text-[10px] font-bold uppercase tracking-wide text-ink/40">{category}</p>}
         <p className="line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">{event.name}</p>
         {location && <p className="truncate text-xs text-ink/50">{location}</p>}
-        <p className={`mt-auto truncate text-xs font-medium ${live ? "text-findmi-700" : "text-ink/45"}`}>
-          {live ? when : formatTime(event.start_at)}
+        {/* Compact card, truncated caption line — "NOW" not the full
+            phrase, same "small tile doesn't get the long wording"
+            allowance as EventOccurrenceCard/AppearanceCard's live tiles. */}
+        <p className={`mt-auto truncate text-xs font-medium ${live ? "text-red-600" : "text-ink/45"}`}>
+          {live ? "NOW" : formatTime(event.start_at)}
         </p>
       </div>
     </Link>

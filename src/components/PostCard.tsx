@@ -37,8 +37,10 @@ export interface PostCardProps {
   kind: PostKind;
   badgeLabel: string;
   badgeIcon?: IconName;
-  /** "live" gives the badge Findmi's HERE NOW treatment — solid teal with a
-   * pulsing dot — for a card whose temporal label came back live. */
+  /** "live" gives the badge Findmi's Happening Now treatment — solid red
+   * with a white pulsing dot and glow (same red as AppearanceCard's live
+   * tile, commit 31a99a0) — for a card whose temporal label came back
+   * live. */
   badgeVariant?: "default" | "live";
   title: string;
   metaLines?: PostCardMetaLine[];
@@ -115,7 +117,9 @@ export default function PostCard({
       <div className="absolute left-3 top-3">
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
-            badgeVariant === "live" ? "bg-findmi text-white" : "bg-black/45 text-white backdrop-blur-sm"
+            badgeVariant === "live"
+              ? "animate-happening-now-glow bg-red-600 text-white"
+              : "bg-black/45 text-white backdrop-blur-sm"
           }`}
         >
           {badgeVariant === "live" ? (

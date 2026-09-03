@@ -39,8 +39,8 @@ export default function AppearanceFeedCard({
               live ? "text-ink" : "text-ink/40"
             }`}
           >
-            {live && <LiveDot className="text-findmi-700" />}
-            {when}
+            {live && <LiveDot className="text-red-600" />}
+            {live ? "Happening Now" : when}
           </p>
         </div>
       </div>

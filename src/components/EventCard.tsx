@@ -13,7 +13,7 @@ export default function EventCard({ event }: { event: FindmiEvent }) {
       href={`/event/${event.slug}`}
       image={event.cover_image_url}
       kind="event"
-      badgeLabel={when}
+      badgeLabel={live ? "Happening Now" : when}
       badgeVariant={live ? "live" : "default"}
       title={event.name}
       metaLines={[

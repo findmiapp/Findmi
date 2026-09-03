@@ -125,7 +125,7 @@ export default async function FindPage({
                   image={hero.business.cover_image_url ?? null}
                   logoUrl={hero.business.logo_url}
                   kind="event"
-                  badgeLabel={heroLabel!.label}
+                  badgeLabel={heroLabel!.live ? "Happening Now" : heroLabel!.label}
                   badgeVariant={heroLabel!.live ? "live" : "default"}
                   title={hero.business.name}
                   metaLines={[
@@ -140,7 +140,7 @@ export default async function FindPage({
             {rest.length > 0 && (
               <div className="mt-6">
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
-                  {when === "live" ? "Also Here Now" : "More"}
+                  {when === "live" ? "Also Happening Now" : "More"}
                 </p>
                 <div className="mt-2.5 flex flex-col gap-2">
                   {rest.map((item) => (
@@ -184,9 +184,9 @@ function DarkAppearanceRow({ item }: { item: AppearanceFeedItem }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide ${live ? "text-findmi" : "text-white/40"}`}>
-          {live && <LiveDot className="text-findmi" />}
-          {when}
+        <p className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide ${live ? "text-red-500" : "text-white/40"}`}>
+          {live && <LiveDot className="text-red-500" />}
+          {live ? "Happening Now" : when}
         </p>
         <p className="truncate text-sm font-semibold text-white">{item.business.name}</p>
         <p className="truncate text-xs text-white/50">
