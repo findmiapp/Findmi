@@ -447,6 +447,12 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
         latitude: event.latitude,
         longitude: event.longitude,
         status: "confirmed",
+        // Appearance Provenance pass — the OWNER chose this event
+        // themselves; never becomes 'official_participation' just because
+        // admin later approves the roster row this also upserts below
+        // (ensureEventAppearance's own existence check finds this row and
+        // returns without touching it — see that helper's comment).
+        source: "event_self_added",
       });
       if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't create that appearance. Please try again."));
     }
@@ -513,6 +519,10 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
         end_at: occurrence.end_at,
         status: "confirmed",
         ...venue,
+        // Appearance Provenance pass — same reasoning as the non-recurring
+        // branch above: owner-chosen, never reassigned to
+        // 'official_participation' by a later admin approval.
+        source: "event_self_added",
       });
       // 23505 = unique_violation — a concurrent add already won the race
       // against appearances_one_per_business_occurrence; treat that as
@@ -676,6 +686,10 @@ export async function addManualAppearance(businessId: string, formData: FormData
     business_id: businessId,
     status: "confirmed",
     ...fields,
+    // Appearance Provenance pass — a true standalone/manual entry, never
+    // linked to a real FindMi event/occurrence (no event_id above). Kept
+    // after the ...fields spread so it can never be overridden by it.
+    source: "manual",
   });
   if (error) onError("Couldn't create that appearance. Please try again.");
 

@@ -72,6 +72,13 @@ async function ensureEventAppearance(supabase: SupabaseClient, eventId: string, 
     latitude: event.latitude,
     longitude: event.longitude,
     status: "confirmed",
+    // Appearance Provenance pass — only this admin-approval sync path
+    // (and its occurrence-level sibling below) ever writes this value.
+    // The existence check above already returns early if a matching
+    // appearance exists at all — owner-created or otherwise — so this
+    // insert only ever runs when nothing existed yet, never overwriting
+    // an owner-added appearance's provenance.
+    source: "official_participation",
   });
 }
 
@@ -134,6 +141,10 @@ async function ensureOccurrenceAppearance(supabase: SupabaseClient, occurrenceId
     end_at: occurrence.end_at,
     status: "confirmed",
     ...venue,
+    // Appearance Provenance pass — same reasoning as ensureEventAppearance
+    // above: the existence check already returned early if a matching
+    // appearance (owner-added or otherwise) already existed.
+    source: "official_participation",
   });
   // 23505 = unique_violation — a concurrent approval already won the race
   // against appearances_one_per_business_occurrence; that's the intended
