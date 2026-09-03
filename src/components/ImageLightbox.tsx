@@ -41,21 +41,6 @@ export default function ImageLightbox({
 }) {
   const [index, setIndex] = useState(initialIndex);
   const [failedIndices, setFailedIndices] = useState<Set<number>>(new Set());
-  // Public appearance-flyer fix: a business/event/gallery image already has
-  // a visible next/image thumbnail elsewhere on the page (ImageGalleryStrip,
-  // EventCoverLightbox's own cover) by the time anyone opens this lightbox,
-  // so its optimized URL has always already been fetched successfully once.
-  // AppearanceCard's flyer has no such thumbnail — clicking it is the FIRST
-  // time that exact URL is ever requested, cold, at full "100vw" size. A
-  // single failed attempt there was being treated identically to a
-  // genuinely dead image (a deleted Storage object), permanently showing
-  // "Image unavailable" with no attempt to recover. retriedIndices lets
-  // exactly one first-failure per index retry once, via a cache-busting
-  // query param (bypasses any negatively-cached response for the original
-  // URL+width at the edge) and a changed `key` (forces a real remount, not
-  // just a prop update) — only a SECOND failure for the same index is
-  // treated as real and falls back to the placeholder below.
-  const [retriedIndices, setRetriedIndices] = useState<Set<number>>(new Set());
   const hasMultiple = images.length > 1;
 
   useEffect(() => {
@@ -147,24 +132,29 @@ export default function ImageLightbox({
             <p className="text-xs">Image unavailable</p>
           </div>
         ) : (
+          // unoptimized — same fix as HomeEventCard/EventCoverLightbox/
+          // ImageGalleryStrip: these are valid Supabase Storage URLs (root-
+          // caused against production data across three separate reports —
+          // an appearance flyer, an event cover, and event gallery
+          // thumbnails — every one of them a real, intact Storage object),
+          // but Vercel's next/image optimizer was failing to serve them.
+          // The retry/cache-busting workaround previously here existed
+          // ONLY to paper over that same optimizer failure; now that the
+          // actual cause is fixed at the source (bypass the optimizer
+          // entirely), the retry no longer has anything to compensate for
+          // and is removed rather than kept as unneeded complexity. onError
+          // below still exists for a real failure (e.g. an actually-
+          // deleted Storage object) — a single failed load still falls
+          // back to the placeholder, for that legitimate case.
           <Image
-            key={retriedIndices.has(index) ? `${images[index]}#retry` : images[index]}
-            src={retriedIndices.has(index) ? `${images[index]}${images[index].includes("?") ? "&" : "?"}retry=1` : images[index]}
+            key={images[index]}
+            src={images[index]}
             alt={alt}
             fill
+            unoptimized
             sizes="100vw"
             className="object-contain"
-            onError={() =>
-              setRetriedIndices((prev) => {
-                if (prev.has(index)) {
-                  // Already retried once for this exact image — a second
-                  // failure is treated as real, not a cold-fetch blip.
-                  setFailedIndices((f) => new Set(f).add(index));
-                  return prev;
-                }
-                return new Set(prev).add(index);
-              })
-            }
+            onError={() => setFailedIndices((prev) => new Set(prev).add(index))}
           />
         )}
       </div>
