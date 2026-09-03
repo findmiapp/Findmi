@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { isAdminSession } from "@/lib/admin/auth";
+import AdminEditThisPageLink from "./AdminEditThisPageLink";
 
 // Founder-only quick-access strip across the very top of public pages —
 // same self-contained "check the real admin session, render nothing
@@ -47,6 +48,7 @@ export default async function AdminToolbar() {
             {item.label}
           </Link>
         ))}
+        <AdminEditThisPageLink />
       </div>
     </div>
   );
