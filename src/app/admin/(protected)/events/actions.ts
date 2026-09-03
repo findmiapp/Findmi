@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { isSlugTaken } from "@/lib/admin/queries";
-import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
+import { bool, DEFAULT_ADMIN_TIMEZONE, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -252,8 +252,16 @@ export async function saveEvent(id: string | null, formData: FormData) {
     if (!occStartLocal || !occEndLocal) {
       redirect(errorRedirectUrl(editPath, "Every occurrence needs both a start and end date/time."));
     }
-    const occStartIso = localDateTimeToIso(occStartLocal);
-    const occEndIso = localDateTimeToIso(occEndLocal);
+    // Admin Occurrence Timezone Correctness pass — each occurrence carries
+    // its own IANA timezone (event_occurrences.timezone, EventOccurrencesEditor's
+    // per-row select), submitted as `timezone_${occId}`. Falls back to
+    // DEFAULT_ADMIN_TIMEZONE only if that field is somehow missing (should
+    // never happen — the editor always renders the hidden input), which
+    // matches the column's own DB default and is never worse than the
+    // previous hardcoded behavior.
+    const occTimezone = str(formData, `timezone_${occId}`) ?? DEFAULT_ADMIN_TIMEZONE;
+    const occStartIso = localDateTimeToIso(occStartLocal, occTimezone);
+    const occEndIso = localDateTimeToIso(occEndLocal, occTimezone);
     if (!occStartIso || !occEndIso || new Date(occEndIso) <= new Date(occStartIso)) {
       redirect(errorRedirectUrl(editPath, "Each occurrence's end date/time must be after its own start date/time."));
     }
@@ -262,6 +270,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
       event_id: eventId as string,
       start_at: occStartIso as string,
       end_at: occEndIso as string,
+      timezone: occTimezone,
       location_id: str(formData, `location_id_${occId}`),
       featured: bool(formData, `featured_${occId}`),
       status: bool(formData, `cancelled_${occId}`) ? "cancelled" : "scheduled",

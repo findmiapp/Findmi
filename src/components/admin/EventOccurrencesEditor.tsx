@@ -2,17 +2,34 @@
 
 import { useState } from "react";
 import type { AdminEventOccurrence, AdminLocation, AdminOccurrenceVendor } from "@/lib/admin/queries";
-import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
-import { formatDateShort, formatTime } from "@/lib/format";
+import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "@/lib/admin/form-helpers";
+import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
 import OccurrenceVendorManager from "./OccurrenceVendorManager";
 
 const inputClass =
   "rounded-lg border border-black/10 bg-white px-2.5 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none";
 
+// Admin Occurrence Timezone Correctness pass — a bounded set of common US
+// IANA zones for the occurrence timezone <select> below, not an attempt at
+// a full IANA picker. An occurrence's real stored timezone (any valid IANA
+// string) always still round-trips correctly even if it isn't one of
+// these — see the row's hidden `timezone_${id}` input, which always posts
+// the real state value regardless of what this <select> can display.
+const TIMEZONE_OPTIONS: { value: string; label: string }[] = [
+  { value: "America/New_York", label: "Eastern — America/New_York" },
+  { value: "America/Chicago", label: "Central — America/Chicago" },
+  { value: "America/Denver", label: "Mountain — America/Denver" },
+  { value: "America/Phoenix", label: "Mountain, no DST — America/Phoenix" },
+  { value: "America/Los_Angeles", label: "Pacific — America/Los_Angeles" },
+  { value: "America/Anchorage", label: "Alaska — America/Anchorage" },
+  { value: "Pacific/Honolulu", label: "Hawaii — Pacific/Honolulu" },
+];
+
 interface Row {
   id: string;
-  start_at: string; // datetime-local value
-  end_at: string; // datetime-local value
+  start_at: string; // datetime-local value, in this row's own timezone
+  end_at: string; // datetime-local value, in this row's own timezone
+  timezone: string; // IANA zone — event_occurrences.timezone
   location_id: string; // "" = none
   featured: boolean;
   cancelled: boolean;
@@ -23,8 +40,9 @@ interface Row {
 function toRow(o: AdminEventOccurrence): Row {
   return {
     id: o.id,
-    start_at: isoToLocalDateTime(o.start_at),
-    end_at: isoToLocalDateTime(o.end_at),
+    start_at: isoToLocalDateTime(o.start_at, o.timezone),
+    end_at: isoToLocalDateTime(o.end_at, o.timezone),
+    timezone: o.timezone,
     location_id: o.location_id ?? "",
     featured: o.featured,
     cancelled: o.status === "cancelled",
@@ -33,11 +51,19 @@ function toRow(o: AdminEventOccurrence): Row {
   };
 }
 
-function emptyRow(): Row {
+/** A brand-new occurrence has no timezone of its own yet — the safest
+ * default is the most recently added occurrence's own timezone (a new
+ * date on the same recurring event overwhelmingly belongs to the same
+ * market/timezone), falling back to DEFAULT_ADMIN_TIMEZONE only when this
+ * is the event's very first occurrence. There's no parent-event-level
+ * timezone column to prefer over this — events carries no timezone field
+ * at all today. */
+function emptyRow(inheritTimezone?: string): Row {
   return {
     id: crypto.randomUUID(),
     start_at: "",
     end_at: "",
+    timezone: inheritTimezone ?? DEFAULT_ADMIN_TIMEZONE,
     location_id: "",
     featured: false,
     cancelled: false,
@@ -66,7 +92,7 @@ const MAX_REPEAT_WEEKS = 26;
  * picker — reuses the existing formatters purely for display, doesn't
  * touch date/time formatting logic itself. */
 function occurrenceLabel(o: AdminEventOccurrence): string {
-  return `${formatDateShort(o.start_at)} · ${formatTime(o.start_at)}`;
+  return `${formatDateShortInZone(o.start_at, o.timezone)} · ${formatTimeInZone(o.start_at, o.timezone)}`;
 }
 
 /** Occurrence (concrete date/time/location) editor for one event, nested
@@ -105,7 +131,8 @@ export default function EventOccurrencesEditor({
   // redirect), so this stays open across an add/status/feature/remove.
   const [openVendorsFor, setOpenVendorsFor] = useState<string | null>(null);
 
-  const addOccurrence = () => setRows((prev) => [...prev, emptyRow()]);
+  const addOccurrence = () =>
+    setRows((prev) => [...prev, emptyRow(prev.length > 0 ? prev[prev.length - 1].timezone : undefined)]);
 
   const removeOccurrence = (id: string, isExisting: boolean) => {
     // Occurrence delete warning — an unsaved row (isExisting false) has no
@@ -142,6 +169,10 @@ export default function EventOccurrencesEditor({
     const generated: Row[] = [];
     for (let i = 1; i <= weeks; i++) {
       generated.push({
+        // `...template` already carries the template row's own timezone
+        // through to every generated row — the intended fix here:
+        // generated dates belong to the same event/timezone as the date
+        // they were generated from, never a silent DB-default timezone.
         ...template,
         id: crypto.randomUUID(),
         start_at: addDaysToLocalDateTime(template.start_at, 7 * i),
@@ -216,6 +247,32 @@ export default function EventOccurrencesEditor({
                     className={`${inputClass} w-full`}
                   />
                 </label>
+              </div>
+
+              <div className="mt-2">
+                <label className="block sm:max-w-xs">
+                  <span className="mb-1 block text-xs font-medium text-ink/60">Timezone</span>
+                  <input type="hidden" name={`timezone_${row.id}`} value={row.timezone} />
+                  <select
+                    value={row.timezone}
+                    onChange={(e) => updateRow(row.id, { timezone: e.target.value })}
+                    className={`${inputClass} w-full`}
+                  >
+                    {TIMEZONE_OPTIONS.map((tz) => (
+                      <option key={tz.value} value={tz.value}>
+                        {tz.label}
+                      </option>
+                    ))}
+                    {!TIMEZONE_OPTIONS.some((tz) => tz.value === row.timezone) && (
+                      <option value={row.timezone}>{row.timezone}</option>
+                    )}
+                  </select>
+                </label>
+                <p className="mt-1 text-[11px] text-ink/40">
+                  Start/End above are shown and saved in this date&rsquo;s own timezone. Changing this alone (without
+                  touching Start/End) re-interprets the same numbers in the new zone — an explicit correction, not a
+                  no-op.
+                </p>
               </div>
 
               <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
