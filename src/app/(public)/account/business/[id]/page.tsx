@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -319,14 +320,17 @@ export default async function ManageBusinessPage({
             <p className="mt-1 text-sm text-ink/60">
               Upgrade to Pro to add your business details, contact links, gallery, products, appearances and more.
             </p>
-            <a
-              href="https://tally.so/r/0QR7LN"
-              target="_blank"
-              rel="noreferrer"
+            {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: an
+                exact, owned business_id is already known here (this page
+                already required requireBusinessMember(id) above), so this
+                routes through the internal /upgrade/pro handoff instead of
+                straight to the external Tally form. */}
+            <Link
+              href={`/upgrade/pro?business=${id}`}
               className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Upgrade to Pro
-            </a>
+            </Link>
           </div>
         )}
 

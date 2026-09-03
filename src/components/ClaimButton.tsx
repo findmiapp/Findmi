@@ -222,10 +222,13 @@ export default function ClaimButton({
             Upgrade to FindMi Pro for priority review, typically within 2 business hours during regular business
             hours, plus your full business profile, gallery, products, appearances, contact links and more.
           </p>
+          {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: this
+              claimant doesn't own the business yet (claim still pending
+              founder approval), so this stays a plain link to /join
+              rather than the owner-only /upgrade/pro handoff — a payment
+              must never imply or expedite claim approval. */}
           <a
-            href="https://tally.so/r/0QR7LN"
-            target="_blank"
-            rel="noreferrer"
+            href="/join"
             className="mt-2 flex h-9 items-center justify-center rounded-full bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
             Upgrade to Pro

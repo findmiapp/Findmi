@@ -196,14 +196,19 @@ export default async function AccountHomePage({
                   <p className="text-xs font-semibold text-findmi-700">Claim under review</p>
                   <p className="text-xs text-ink/50">Typically reviewed within 48–72 hours.</p>
                 </Link>
-                <a
-                  href="https://tally.so/r/0QR7LN"
-                  target="_blank"
-                  rel="noreferrer"
+                {/* Pro Upgrade — Internal Checkout Handoff Foundation pass:
+                    this claimant doesn't own this business yet (the claim
+                    is still pending founder approval), so this can never
+                    route through the owner-only /upgrade/pro handoff —
+                    that would let a payment imply/expedite ownership. /join
+                    is the general acquisition entry point, not tied to any
+                    specific business_members row. */}
+                <Link
+                  href="/join"
                   className="flex h-9 w-fit items-center justify-center rounded-full bg-findmi px-4 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                 >
                   Upgrade to Pro
-                </a>
+                </Link>
               </div>
             ))}
           </div>

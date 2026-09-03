@@ -42,9 +42,18 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     label: "Card 1 — Discovery Pro",
     eyebrow: "For businesses",
     title: "Discovery Pro",
-    price: "$99",
-    priceSuffix: "/year",
-    tagline: "Your FindMi presence for local discovery.",
+    // Pro Upgrade — Internal Checkout Handoff Foundation pass: this
+    // fallback only renders if the live site_sections DB override (the
+    // real, currently-shown $20/90-day content) is ever missing — it must
+    // match the current real offer, not the old $99/year one, so losing
+    // that override can never silently put stale pricing back in front of
+    // a real customer. Matches the live override's price/priceSuffix/
+    // no-auto-renewal wording/CTA label exactly; DB content itself is
+    // untouched by this pass.
+    price: "$20",
+    priceSuffix: "/intro price for first 90 days.",
+    tagline:
+      "Your FindMi presence for local discovery. $20 for your first 90 days — no automatic renewal during the introductory period.",
     features: [
       "Full FindMi Business Profile",
       "Products & offerings",
@@ -57,7 +66,7 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
       "Smart schedule importing & setup support",
       "Profile updates and support",
     ],
-    ctaLabel: "Join FindMi",
+    ctaLabel: "Join FindMi Pro - $20",
     emphasis: true,
   },
   card_events_markets: {
