@@ -141,10 +141,16 @@ export default async function AddBusinessPage({
             <input type="url" name="instagram_url" placeholder="https://instagram.com/…" className={inputClass} />
           </label>
 
-          {/* Plan choice — Native Business Onboarding Pass 3. Free is the
-              default (defaultChecked), never a deceptively pre-selected
-              Pro — a legitimate, fully usable option on its own. Every
-              bullet below is a CURRENT entitlement (see
+          {/* Plan choice — Native Business Onboarding Pass 3, restyled by
+              the Pro Positioning pass to the same hierarchy as /join:
+              Pro first/dominant with FindMi Here spotlighted, Free
+              smaller/quieter directly below as a genuinely selectable
+              "basic index" option. Radio values/names and the default
+              selection logic are UNCHANGED — Free stays defaultChecked
+              unless ?plan=pro was passed in (never auto-selecting a
+              paid plan just because it's now visually first) — so
+              createMemberBusiness (untouched) submits identically to
+              before. Every bullet below is a CURRENT entitlement (see
               account/business/actions.ts's FREE_ALLOWED_COLUMNS/
               PRO_ONLY_COLUMNS and business/[slug]/page.tsx's own `pro &&`
               gates) — nothing promised here that doesn't already exist.
@@ -154,31 +160,10 @@ export default async function AddBusinessPage({
               checkout for that exact business — see createMemberBusiness. */}
           <div>
             <span className="mb-1.5 block text-sm font-medium text-ink">Choose your plan</span>
-            {/* Plan UX Alignment pass — compact version of /join's PlanCard
-                visual vocabulary (rounded-3xl, font-display price, aqua
-                checkmarks) so the difference reads without a trip to
-                /join. Same radio inputs/names/values/defaultChecked
-                convention as before (createMemberBusiness untouched) —
-                only the surrounding markup changed. Selected state uses
-                the same has-[:checked] pattern as before, now with a
-                visible aqua ring so it's unmistakable at a glance. */}
-            <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">
-              <label className="flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-black/10 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Free · Basic Index</p>
-                  <input type="radio" name="plan_choice" value="free" defaultChecked={!wantsPro} className="h-4 w-4 accent-findmi" />
-                </div>
-                <p className="font-display text-2xl font-bold tracking-tight text-ink">$0</p>
-                <p className="text-xs text-ink/60">A simple way to get your business onto FindMi.</p>
-                <ul className="mt-1 flex flex-col gap-1.5 text-xs text-ink/70">
-                  <PlanBullet>Basic business page</PlanBullet>
-                  <PlanBullet>Name &amp; category</PlanBullet>
-                  <PlanBullet>Logo, cover &amp; short description</PlanBullet>
-                  <PlanBullet>Manage &amp; share your listing</PlanBullet>
-                  <PlanBullet>Upgrade to Pro anytime later</PlanBullet>
-                </ul>
-              </label>
-              <label className="flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-black/10 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
+            <div className="flex flex-col gap-3">
+              {/* Pro — dominant choice, same visual weight/aqua glow as
+                  /join's ProCard, FindMi Here spotlighted inside it. */}
+              <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Pro</p>
                   <input type="radio" name="plan_choice" value="pro" defaultChecked={wantsPro} className="h-4 w-4 accent-findmi" />
@@ -187,13 +172,44 @@ export default async function AddBusinessPage({
                   <span className="font-display text-2xl font-bold tracking-tight text-ink">$20</span>
                   <span className="text-xs font-medium text-ink/45">first 90 days</span>
                 </p>
-                <p className="text-xs text-ink/60">A fuller profile with richer discovery features.</p>
-                <ul className="mt-1 flex flex-col gap-1.5 text-xs text-ink/70">
-                  <PlanBullet>Everything in Free, plus:</PlanBullet>
-                  <PlanBullet>Full description &amp; photo gallery</PlanBullet>
-                  <PlanBullet>Contact &amp; social links</PlanBullet>
-                  <PlanBullet>FindMi Here appearance tools</PlanBullet>
+
+                {/* FindMi Here — the featured Pro benefit, not one bullet
+                    among many. Presentation only; the feature/code
+                    itself is untouched. */}
+                <div className="rounded-2xl bg-findmi-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Featured with Pro</p>
+                  <p className="mt-0.5 text-sm font-bold text-ink">FindMi Here</p>
+                  <p className="mt-0.5 text-xs font-semibold text-ink/75">Show people where to find you next.</p>
+                  <p className="mt-1 text-xs text-ink/60">
+                    Add your upcoming markets, pop-ups, events and appearances so customers can see exactly
+                    where you&rsquo;ll be next.
+                  </p>
+                </div>
+
+                <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
+                  <PlanBullet>Full business profile</PlanBullet>
+                  <PlanBullet>Gallery</PlanBullet>
+                  <PlanBullet>Website, socials &amp; contact information</PlanBullet>
+                  <PlanBullet>Business updates</PlanBullet>
+                  <PlanBullet>Richer discovery presence</PlanBullet>
                 </ul>
+              </label>
+
+              {/* Free — small, quiet "basic index" option directly below
+                  Pro, not an equal competing card. */}
+              <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-ink/70">Just need a basic listing?</p>
+                  <input type="radio" name="plan_choice" value="free" defaultChecked={!wantsPro} className="h-4 w-4 accent-findmi" />
+                </div>
+                <p className="flex items-baseline gap-1.5">
+                  <span className="text-sm font-bold text-ink">Free Basic Index</span>
+                  <span className="text-sm text-ink/45">· $0</span>
+                </p>
+                <p className="text-xs text-ink/60">Get your name, logo, category and short description into FindMi.</p>
+                <p className="mt-1 text-xs text-ink/35 line-through decoration-ink/25">
+                  Full About section · Gallery · Website + social links · FindMi Here · Business updates
+                </p>
               </label>
             </div>
             <p className="mt-1.5 text-xs text-ink/40">No automatic renewal during the introductory period.</p>
