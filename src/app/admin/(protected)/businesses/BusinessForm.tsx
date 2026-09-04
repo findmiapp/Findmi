@@ -13,7 +13,7 @@ import SubmitBar from "@/components/admin/SubmitBar";
 import BusinessPeopleRoster from "@/components/admin/BusinessPeopleRoster";
 import type { AdminBusiness } from "@/lib/admin/queries";
 import type { BusinessPersonRow } from "@/lib/admin/people-queries";
-import type { Category } from "@/lib/types";
+import type { Category, PublicationStatus } from "@/lib/types";
 import { saveBusiness } from "./actions";
 
 // Business Category Onboarding Filter pass — Markets & Pop-Ups and
@@ -22,6 +22,23 @@ import { saveBusiness } from "./actions";
 // has zero effect on the DB, on event/product categories, or on public
 // discovery (getAllCategories() itself is untouched).
 const LEGACY_BUSINESS_CATEGORY_SLUGS = new Set(["markets-pop-ups", "packaged-goods"]);
+
+// Native Moderation Consolidation pass — Listing Status is the ONE
+// admin-facing control for businesses.publication_status, the actual
+// column every public query already gates on (AND is_demo=false — see
+// the relabeled "Real Business" checkbox below, a separate concept).
+// Reuses the existing PublicationStatus type/values as-is (no new status
+// system) — draft/paused/rejected included since they're already real,
+// legitimate values the column accepts, not invented here. pending_review
+// and live get this pass's exact requested wording; the rest reuse the
+// existing publicationStatusLabel() wording (lib/admin/membership-queries.ts).
+const LISTING_STATUS_OPTIONS: { value: PublicationStatus; label: string }[] = [
+  { value: "pending_review", label: "Pending Review" },
+  { value: "live", label: "Published / Live" },
+  { value: "draft", label: "Draft" },
+  { value: "paused", label: "Paused" },
+  { value: "rejected", label: "Rejected" },
+];
 
 export default function BusinessForm({
   business,
@@ -55,17 +72,35 @@ export default function BusinessForm({
         </p>
       )}
 
-      {/* STATUS — Published, Plan Tier (the same Free/Pro control the
-          Access & Plan summary above this form refers to), and every
-          other existing admin classification/status toggle on the
-          business record. Kept first so the founder sees/sets these
-          before touching public-facing content below. */}
+      {/* STATUS — Listing Status (moderation/discovery), the Real
+          Business flag (demo/test exclusion — a separate concept), Plan
+          Tier (the same Free/Pro control the Access & Plan summary above
+          this form refers to), and every other existing admin
+          classification/status toggle on the business record. Kept first
+          so the founder sees/sets these before touching public-facing
+          content below. */}
       <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Status</p>
+      {/* Native Moderation Consolidation pass — THE control that approves
+          a listing. businesses.publication_status is what every public
+          query actually gates on (together with is_demo=false below);
+          this field is the first time it's been directly admin-editable
+          for a business with no Founding Membership record — previously
+          only reachable through the separate legacy membership approve/
+          reject/pause actions (see the Legacy Membership section below),
+          which still work exactly as before for a business linked to one
+          and can still override this value afterward for that business. */}
+      <SelectField
+        label="Listing Status"
+        name="publication_status"
+        defaultValue={business?.publication_status ?? "live"}
+        options={LISTING_STATUS_OPTIONS}
+        hint="Pending Review businesses are excluded from FindMi discovery until you set this to Published / Live. This is what approves the listing — the Real Business toggle below does not."
+      />
       <CheckboxField
-        label="Published"
+        label="Real Business (Not Demo/Test)"
         name="published"
         defaultChecked={business ? !business.is_demo : true}
-        hint="On = visible to the public. Off = hidden (demo/test only). A business linked to a Founding Membership record also needs its onboarding approved (see Legacy Membership / Onboarding below) — a pending/rejected/paused membership keeps the profile hidden even when this is on."
+        hint="On = a real business, eligible to ever appear publicly once Listing Status above is Published / Live. Off = demo/test content, always hidden regardless of Listing Status. This does NOT by itself approve the listing — use Listing Status above for that."
       />
       <SelectField
         label="Plan Tier"

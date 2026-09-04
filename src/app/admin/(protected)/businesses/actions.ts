@@ -72,7 +72,17 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     plan_expires_at: str(formData, "plan_expires_at"),
     plan_payment_reference: str(formData, "plan_payment_reference"),
     lead_status: str(formData, "lead_status") ?? "new",
-    // Framed to the founder as "Published" — is_demo is the inverse.
+    // Native Moderation Consolidation pass — THE moderation/discovery
+    // gate every public query filters on (together with is_demo below).
+    // Defaults to 'live' only because that's this column's own existing
+    // DB default for a brand-new admin-created business (unchanged
+    // behavior for the founder's own creation flow) — BusinessForm's own
+    // Listing Status field always submits a real value for every save,
+    // this is just the fallback if that field were somehow missing.
+    publication_status: str(formData, "publication_status") ?? "live",
+    // Framed to the founder as "Real Business" — is_demo is the inverse.
+    // A SEPARATE concept from publication_status above: this is demo/
+    // test-content exclusion, not moderation approval.
     is_demo: !bool(formData, "published"),
     commerce_enabled: bool(formData, "commerce_enabled"),
     marketplace_fee_percent: num(formData, "marketplace_fee_percent") ?? 5,
