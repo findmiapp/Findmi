@@ -6,18 +6,22 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
-import { getCategories } from "@/lib/data";
+import { getCategories, getProductCategories } from "@/lib/data";
 import AccountNav from "../../AccountNav";
 import {
   addAppearanceFromEvent,
   addManualAppearance,
+  createMemberProduct,
   removeOwnerAppearance,
+  setMemberProductActive,
   updateMemberBusiness,
+  updateMemberProduct,
   updateOwnerAppearance,
 } from "../actions";
 import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
+import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
 import { formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -293,6 +297,59 @@ export default async function ManageBusinessPage({
       }
     }
   }
+
+  // Pro Products Foundation pass — Products are genuinely Pro/Pro
+  // Seller-only (locked rule), unlike appearances above. Fetched via the
+  // service-role client directly (not getProductsForBusiness, which is
+  // RLS-scoped to is_active=true only — the public read policy) so the
+  // owner can see and manage their own deactivated products too, same
+  // "read everything this business owns regardless of public
+  // visibility" reasoning the appearances fetch above already uses.
+  // product_categories (existing join table, unchanged) read separately
+  // to default each product's edit form to its current category.
+  type OwnProduct = {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    image_url: string | null;
+    price: number | null;
+    price_label: string | null;
+    product_type: "product" | "service";
+    external_purchase_url: string | null;
+    is_active: boolean;
+    categoryId: string;
+  };
+  let products: OwnProduct[] = [];
+  let productCategories: Awaited<ReturnType<typeof getProductCategories>> = [];
+  if (pro) {
+    const [{ data: productRows }, fetchedProductCategories] = await Promise.all([
+      admin
+        .from("products")
+        .select(
+          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active"
+        )
+        .eq("business_id", id)
+        .order("is_active", { ascending: false })
+        .order("name"),
+      getProductCategories(),
+    ]);
+    productCategories = fetchedProductCategories;
+
+    const productIds = (productRows ?? []).map((p) => p.id);
+    const { data: categoryLinks } =
+      productIds.length > 0
+        ? await admin.from("product_categories").select("product_id, category_id").in("product_id", productIds)
+        : { data: [] as { product_id: string; category_id: string }[] };
+    const categoryByProduct = new Map((categoryLinks ?? []).map((r) => [r.product_id, r.category_id]));
+
+    products = (productRows ?? []).map((p) => ({
+      ...p,
+      product_type: p.product_type as "product" | "service",
+      categoryId: categoryByProduct.get(p.id) ?? "",
+    }));
+  }
+  const addProduct = createMemberProduct.bind(null, id);
 
   const addFromEvent = addAppearanceFromEvent.bind(null, id);
   const addManual = addManualAppearance.bind(null, id);
@@ -763,6 +820,121 @@ export default async function ManageBusinessPage({
             </div>
           </div>
         </div>
+
+        {/* Pro Products Foundation pass — Products management area.
+            Pro/Pro Seller: a functional Add/Edit/Deactivate manager,
+            reusing the existing products table/taxonomy/image-upload
+            infrastructure as-is (see ../actions.ts's own section
+            comment for the full server-side authorization chain). Free:
+            a locked/upgrade state only, never a silently-broken form —
+            and createMemberProduct/updateMemberProduct/
+            setMemberProductActive are ALL independently Pro-gated
+            server-side regardless of what this page renders, so a Free
+            owner can't bypass this by invoking the action directly. */}
+        {pro ? (
+          <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Products</p>
+            <p className="mt-1 text-sm text-ink/60">Show customers what you make, sell or offer.</p>
+
+            {products.length > 0 ? (
+              <ul className="mt-4 flex flex-col gap-3">
+                {products.map((p) => (
+                  <li key={p.id} className="rounded-2xl border border-black/10 p-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        {p.image_url && (
+                          <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
+                            {/* eslint-disable-next-line @next/next/no-img-element -- small preview only, a live Storage URL */}
+                            <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
+                          {!p.is_active && (
+                            <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink/40">
+                              Deactivated
+                            </p>
+                          )}
+                          {(p.price != null || p.price_label) && (
+                            <p className="mt-0.5 text-xs text-ink/60">{p.price_label || `$${p.price}`}</p>
+                          )}
+                        </div>
+                      </div>
+                      <form action={setMemberProductActive.bind(null, id, p.id, !p.is_active)}>
+                        <button
+                          type="submit"
+                          className={`shrink-0 text-xs font-semibold hover:underline ${
+                            p.is_active ? "text-red-600" : "text-findmi-700"
+                          }`}
+                        >
+                          {p.is_active ? "Deactivate" : "Reactivate"}
+                        </button>
+                      </form>
+                    </div>
+
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
+                      <div className="mt-3">
+                        <ProductFieldsForm
+                          businessId={id}
+                          action={updateMemberProduct.bind(null, id, p.id)}
+                          categories={productCategories}
+                          defaultValues={{
+                            name: p.name,
+                            description: p.description ?? "",
+                            image_url: p.image_url,
+                            price: p.price != null ? String(p.price) : "",
+                            price_label: p.price_label ?? "",
+                            product_type: p.product_type,
+                            external_purchase_url: p.external_purchase_url ?? "",
+                            category_id: p.categoryId,
+                          }}
+                          submitLabel="Save"
+                        />
+                      </div>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-ink/50">No products yet.</p>
+            )}
+
+            <div className="mt-5 border-t border-black/10 pt-4">
+              <p className="text-sm font-medium text-ink">Add Product</p>
+              <div className="mt-2">
+                <ProductFieldsForm
+                  businessId={id}
+                  action={addProduct}
+                  categories={productCategories}
+                  defaultValues={{
+                    name: "",
+                    description: "",
+                    image_url: null,
+                    price: "",
+                    price_label: "",
+                    product_type: "product",
+                    external_purchase_url: "",
+                    category_id: "",
+                  }}
+                  submitLabel="Add Product"
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Products</p>
+            <p className="mt-1 text-sm text-ink/60">Show customers what you make, sell or offer.</p>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">Available with FindMi Pro</p>
+            <Link
+              href={`/upgrade/pro?business=${id}`}
+              className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            >
+              Upgrade to Pro
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );

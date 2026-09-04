@@ -5,12 +5,12 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { bool, errorRedirectUrl, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
+import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
-import { isSlugTaken } from "@/lib/admin/queries";
+import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
 
@@ -371,6 +371,16 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
 // creating an appearance) gets the same "Upgrade to Pro" redirect a
 // tampered request would.
 
+/** Pro Products Foundation pass — this helper previously had zero
+ * callers (FindMi Here appearance management moved off it in Free
+ * Appearances Pass 1, onto requireAuthorizedBusinessMember below); it
+ * now gets its first real caller here, for Products, which — unlike
+ * appearances — genuinely IS Pro/Pro Seller-only (locked rule: Free
+ * cannot add/manage products). Also now returns the business row
+ * (id/slug/plan_tier), not just `admin` — every real caller needs the
+ * slug for revalidatePath anyway, so callers no longer need their own
+ * extra read for it. Message generalized from its old FindMi-Here-
+ * specific wording since it's shared across features now. */
 async function requireProBusinessMember(businessId: string, redirectPath: string) {
   const sessionSupabase = await getServerSupabase();
   const {
@@ -388,13 +398,17 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl(redirectPath, "Server isn't configured."));
 
-  const { data: business } = await admin.from("businesses").select("id, plan_tier").eq("id", businessId).maybeSingle();
+  const { data: business } = await admin
+    .from("businesses")
+    .select("id, slug, plan_tier")
+    .eq("id", businessId)
+    .maybeSingle();
   if (!business) redirect(errorRedirectUrl(redirectPath, "Business not found."));
   if (!isBusinessPro(business)) {
-    redirect(errorRedirectUrl(redirectPath, "Upgrade to Pro to manage FindMi Here participation."));
+    redirect(errorRedirectUrl(redirectPath, "Upgrade to Pro to unlock this feature."));
   }
 
-  return admin;
+  return { admin, business };
 }
 
 /** Free Appearances Pass 1 — the exact same authorize-then-elevate shape
@@ -1005,4 +1019,193 @@ export async function startBusinessProCheckout(businessId: string) {
   const checkout = await createBusinessProCheckoutSession(admin, businessId);
   if ("url" in checkout) redirect(checkout.url);
   redirect(errorRedirectUrl(upgradePath, checkout.error));
+}
+
+// ── Pro Products — Member Product Management ────────────────────────────
+//
+// Pro Products Foundation pass. Locked rule: Free cannot add/manage
+// products; Pro and Pro Seller (isBusinessPro covers both) can manage
+// products belonging to their OWN business. Reuses the existing
+// `products` table/schema/taxonomy as-is — no new table, no parallel
+// product system, no new RLS write policy: every write here still goes
+// through the service-role client, exactly like admin's own
+// saveProduct/deleteProduct (src/app/admin/(protected)/products/
+// actions.ts, untouched) — the difference is WHO is allowed to reach
+// this code path, enforced entirely server-side before any write:
+//   1. requireProBusinessMember(businessId, redirectPath) — real
+//      Supabase Auth session -> requireBusinessMember() (real,
+//      session-scoped business_members row, business_id never trusted
+//      from the client beyond that check) -> fresh service-role
+//      plan_tier read -> isBusinessPro gate. A Free business (including
+//      one downgraded after adding a product) gets the same
+//      "Upgrade to Pro" redirect a tampered request would.
+//   2. Edit/deactivate/reactivate additionally re-verify
+//      product.business_id === the authorized business_id with a
+//      `.eq("id", productId).eq("business_id", businessId)` double scope
+//      on both the existence check AND the write itself — the same
+//      pattern addManualAppearance/updateOwnerAppearance/
+//      removeOwnerAppearance above already use for appearances.
+//      Changing a product id or business id in a crafted request
+//      therefore matches zero rows rather than touching another
+//      business's product.
+// The service role is never treated as the user's authorization — it's
+// only ever reached after both checks above succeed.
+//
+// Field set is deliberately restricted to genuinely public catalog
+// fields already on the existing schema — name, description, image,
+// category, price/price label, product/service type, external purchase
+// link, and active status (via deactivate/reactivate, kept separate
+// from content edits, same split appearances use for status). Never
+// exposed here, even though the columns exist: is_featured/
+// home_sort_order/profile_sort_order (founder homepage/marketplace
+// curation), purchasable/inventory_status/marketplace_fee_override_
+// percent/processing_fee_payer_override/fulfillment options (commerce/
+// payout/fee internals — admin-only, see ProductForm.tsx's own
+// "Commerce" section, completely untouched by this pass).
+
+/** Shared field parsing for create/update — mirrors admin's saveProduct
+ * payload shape for exactly the public-catalog subset this pass allows
+ * a member to touch. `onError` (from the caller) both reports the
+ * message and never returns, so every field below is safely non-null
+ * where required by the time this returns. */
+function parseProductFields(formData: FormData, onError: (message: string) => never) {
+  const name = str(formData, "name");
+  if (!name) onError("Product name is required.");
+
+  const externalRaw = str(formData, "external_purchase_url");
+  let external_purchase_url: string | null = null;
+  if (externalRaw) {
+    const result = validateCustomDestination(externalRaw);
+    if (!result.ok) onError(`Product link: ${result.error}`);
+    external_purchase_url = result.value;
+  }
+
+  return {
+    name: name as string,
+    description: str(formData, "description"),
+    image_url: str(formData, "image_url"),
+    price: num(formData, "price"),
+    price_label: str(formData, "price_label"),
+    product_type: str(formData, "product_type") === "service" ? "service" : "product",
+    external_purchase_url,
+  };
+}
+
+/** Atomic single-category replace for a member-owned product — same
+ * "current config, delete-then-reinsert" shape admin's saveProduct
+ * already uses for product_categories, just re-validated against
+ * kind="product" here too (never trusts the submitted id is actually a
+ * product-kind category). Optional: a blank selection simply clears it. */
+async function setMemberProductCategory(admin: SupabaseClient, productId: string, formData: FormData) {
+  const categoryId = str(formData, "category_id");
+  await admin.from("product_categories").delete().eq("product_id", productId);
+  if (!categoryId) return;
+  const { data: category } = await admin
+    .from("categories")
+    .select("id")
+    .eq("id", categoryId)
+    .eq("kind", "product")
+    .maybeSingle();
+  if (category) {
+    await admin.from("product_categories").insert({ product_id: productId, category_id: categoryId });
+  }
+}
+
+export async function createMemberProduct(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}`;
+  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+
+  const onError = (message: string): never => {
+    redirect(errorRedirectUrl(redirectPath, message));
+  };
+  const fields = parseProductFields(formData, onError);
+
+  const baseSlug = resolveSlugInput(null, fields.name);
+  if (!baseSlug) onError("Product name is required to generate a URL.");
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) => isProductSlugTaken(candidate));
+
+  const { data, error } = await admin
+    .from("products")
+    .insert({ business_id: businessId, slug, is_active: true, ...fields })
+    .select("id")
+    .single();
+  if (error || !data) return onError("Couldn't create that product. Please try again.");
+
+  await setMemberProductCategory(admin, data.id, formData);
+
+  revalidatePath(redirectPath);
+  revalidatePath(`/product/${slug}`);
+  if (business.slug) revalidatePath(`/business/${business.slug}`);
+  revalidatePath("/marketplace");
+  redirect(`${redirectPath}?product_added=1`);
+}
+
+/** Edit — only ever touches this ONE product, and only after confirming
+ * it belongs to the authorized business (see the section comment above
+ * for the exact double-scoped check). Slug is deliberately never
+ * regenerated here even if the name changes — keeps the product's
+ * public URL stable across edits; only admin's own editor changes it. */
+export async function updateMemberProduct(businessId: string, productId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}`;
+  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+
+  const onError = (message: string): never => {
+    redirect(errorRedirectUrl(redirectPath, message));
+  };
+
+  const { data: existing } = await admin
+    .from("products")
+    .select("id, slug")
+    .eq("id", productId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (!existing) return onError("That product no longer exists.");
+
+  const fields = parseProductFields(formData, onError);
+
+  const { error } = await admin.from("products").update(fields).eq("id", productId).eq("business_id", businessId);
+  if (error) onError("Couldn't update that product. Please try again.");
+
+  await setMemberProductCategory(admin, productId, formData);
+
+  revalidatePath(redirectPath);
+  revalidatePath(`/product/${existing.slug}`);
+  if (business.slug) revalidatePath(`/business/${business.slug}`);
+  revalidatePath("/marketplace");
+  redirect(`${redirectPath}?product_updated=1`);
+}
+
+/** Deactivate/reactivate — a status toggle only, never a delete (Section
+ * 9's own "prefer deactivate/unpublish" instruction): flips is_active,
+ * which every existing public product query already filters on (see
+ * lib/data.ts's getProductsForBusiness and the products table's own
+ * "Public read active products" RLS policy) — an inactive product keeps
+ * its row, its slug, its category, and its order history intact, it
+ * simply stops appearing publicly, and reactivating brings it straight
+ * back with nothing to rebuild. Same double-scoped ownership check as
+ * updateMemberProduct above. */
+export async function setMemberProductActive(businessId: string, productId: string, active: boolean) {
+  const redirectPath = `/account/business/${businessId}`;
+  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+
+  const { data: existing } = await admin
+    .from("products")
+    .select("id, slug")
+    .eq("id", productId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (!existing) redirect(errorRedirectUrl(redirectPath, "That product no longer exists."));
+
+  const { error } = await admin
+    .from("products")
+    .update({ is_active: active })
+    .eq("id", productId)
+    .eq("business_id", businessId);
+  if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't update that product. Please try again."));
+
+  revalidatePath(redirectPath);
+  revalidatePath(`/product/${existing.slug}`);
+  if (business.slug) revalidatePath(`/business/${business.slug}`);
+  revalidatePath("/marketplace");
+  redirect(`${redirectPath}?product_updated=1`);
 }

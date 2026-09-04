@@ -212,6 +212,19 @@ export async function getCategories(): Promise<Category[]> {
   return [...categories.filter((c) => c.name !== "Other"), ...categories.filter((c) => c.name === "Other")];
 }
 
+/** Product-kind counterpart to getCategories() above — same shape/
+ * reasoning, just `kind = "product"` instead of "business". Pro Products
+ * Foundation pass — used by the native member Product form
+ * (account/business/[id]/ProductFieldsForm.tsx) for its category select;
+ * admin's own product editor already has its own richer Parent →
+ * Subcategory picker (CategorySubcategoryField) and is untouched. */
+export async function getProductCategories(): Promise<Category[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase.from("categories").select("*").eq("kind", "product").order("name");
+  return data ?? [];
+}
+
 /** Founder-controlled subset/order for the homepage category strip (see
  * /admin/categories) — separate from getCategories() because every other
  * caller (business forms, the /businesses filter) still needs the full
