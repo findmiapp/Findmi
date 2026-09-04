@@ -13,7 +13,9 @@ import {
   addManualAppearance,
   createMemberProduct,
   removeOwnerAppearance,
+  returnProductToCatalog,
   setMemberProductActive,
+  submitProductToMarketplace,
   updateMemberBusiness,
   updateMemberProduct,
   updateOwnerAppearance,
@@ -333,6 +335,12 @@ export default async function ManageBusinessPage({
     hasPendingChanges: boolean;
     displayState: "Pending Review" | "Live" | "Changes Pending Review" | "Rejected" | "Inactive";
     editDefaults: ProductFieldValues;
+    // Product Marketplace Distribution pass — SEPARATE from
+    // moderationStatus/displayState above, never merged with it: this is
+    // whether the product may appear in broader FindMi Marketplace/
+    // discovery surfaces, not whether its content is approved.
+    marketplaceStatus: "catalog_only" | "submitted" | "approved" | "rejected" | "paused";
+    marketplaceState: "Catalog Only" | "Marketplace Review Pending" | "Marketplace Approved" | "Marketplace Not Approved" | "Marketplace Paused";
   };
   let products: OwnProduct[] = [];
   let productCategories: Awaited<ReturnType<typeof getProductCategories>> = [];
@@ -341,7 +349,7 @@ export default async function ManageBusinessPage({
       admin
         .from("products")
         .select(
-          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active, moderation_status, pending_changes"
+          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active, moderation_status, pending_changes, marketplace_status"
         )
         .eq("business_id", id)
         .order("is_active", { ascending: false })
@@ -393,6 +401,18 @@ export default async function ManageBusinessPage({
         category_id: (proposed ? (proposed.category_id ?? "") : categoryId) ?? "",
       };
 
+      const marketplaceStatus = (p.marketplace_status ?? "catalog_only") as OwnProduct["marketplaceStatus"];
+      const marketplaceState: OwnProduct["marketplaceState"] =
+        marketplaceStatus === "submitted"
+          ? "Marketplace Review Pending"
+          : marketplaceStatus === "approved"
+            ? "Marketplace Approved"
+            : marketplaceStatus === "rejected"
+              ? "Marketplace Not Approved"
+              : marketplaceStatus === "paused"
+                ? "Marketplace Paused"
+                : "Catalog Only";
+
       return {
         ...p,
         product_type: p.product_type as "product" | "service",
@@ -401,6 +421,8 @@ export default async function ManageBusinessPage({
         hasPendingChanges,
         displayState,
         editDefaults,
+        marketplaceStatus,
+        marketplaceState,
       };
     });
   }
@@ -922,6 +944,21 @@ export default async function ManageBusinessPage({
                           >
                             {p.displayState}
                           </p>
+                          {/* Product Marketplace Distribution pass — a
+                              SECOND, separate badge from displayState
+                              above: distribution state, never merged with
+                              content moderation state. */}
+                          <p
+                            className={`mt-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                              p.marketplaceState === "Marketplace Approved"
+                                ? "text-sky-700"
+                                : p.marketplaceState === "Marketplace Not Approved"
+                                  ? "text-red-600"
+                                  : "text-ink/40"
+                            }`}
+                          >
+                            {p.marketplaceState}
+                          </p>
                           {(p.price != null || p.price_label) && (
                             <p className="mt-0.5 text-xs text-ink/60">{p.price_label || `$${p.price}`}</p>
                           )}
@@ -954,6 +991,36 @@ export default async function ManageBusinessPage({
                       <p className="mt-2 text-xs text-ink/50">
                         FindMi didn&rsquo;t approve this product. Edit and resubmit it for another review.
                       </p>
+                    )}
+
+                    {/* Product Marketplace Distribution pass — owner-facing
+                        transitions, separate from content moderation
+                        above. Never offers "approved"/"paused" as
+                        something the owner can set directly — those only
+                        ever come from admin/products/actions.ts. */}
+                    {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
+                      <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
+                        <button type="submit" className="text-xs font-semibold text-sky-700 hover:underline">
+                          {p.marketplaceStatus === "rejected" ? "Resubmit To Marketplace" : "Submit To Marketplace"}
+                        </button>
+                      </form>
+                    )}
+                    {p.marketplaceStatus === "submitted" && (
+                      <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
+                        <p className="text-xs text-ink/50">
+                          Awaiting FindMi&rsquo;s Marketplace review.{" "}
+                          <button type="submit" className="font-semibold text-ink/60 hover:underline">
+                            Cancel Submission
+                          </button>
+                        </p>
+                      </form>
+                    )}
+                    {p.marketplaceStatus === "rejected" && (
+                      <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
+                        <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                          Return To Catalog Only
+                        </button>
+                      </form>
                     )}
 
                     <details className="mt-2">
@@ -993,6 +1060,7 @@ export default async function ManageBusinessPage({
                     category_id: "",
                   }}
                   submitLabel="Add Product"
+                  showDistributionChoice
                 />
               </div>
             </div>

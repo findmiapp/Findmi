@@ -207,6 +207,16 @@ export default async function AdminDashboardPage() {
             count={needsAttention.pendingProductReviews}
             href="/admin/products?status=needs_review"
           />
+          {/* Product Marketplace Distribution pass — a SEPARATE decision
+              from Product Reviews above: content approval vs broader
+              Marketplace/discovery placement approval. */}
+          <ReviewCard
+            title="Marketplace Reviews"
+            description="Review products submitted for broader FindMi Marketplace placement."
+            cta="Review Marketplace Requests"
+            count={needsAttention.pendingMarketplaceReviews}
+            href="/admin/products?status=marketplace_review"
+          />
         </section>
       )}
 

@@ -257,6 +257,19 @@ export interface Category {
 // list) never select either — only admin/owner reads do.
 export type ProductModerationStatus = "pending_review" | "live" | "rejected";
 
+// Product Marketplace Distribution pass — a SECOND, independent axis from
+// moderation_status above. moderation_status gates whether the Product's
+// content is approved at all; marketplace_status gates whether an already-
+// approved Product may ALSO appear in broader FindMi Marketplace/discovery
+// surfaces, separate from its own business profile/storefront (which a
+// live+active Product remains visible on regardless of marketplace_status).
+// Optional on the shared Product interface for the same reason
+// moderation_status is: PUBLIC_PRODUCT_COLUMNS never selects the timestamps,
+// and marketplace_status itself is only ever populated by owner/admin
+// service-role reads even though it's separately anon/authenticated-
+// grantable for query-level filtering (see the migration).
+export type ProductMarketplaceStatus = "catalog_only" | "submitted" | "approved" | "rejected" | "paused";
+
 export interface ProductPendingChanges {
   name?: string;
   description?: string | null;
@@ -283,6 +296,9 @@ export interface Product {
   is_active: boolean;
   moderation_status?: ProductModerationStatus;
   pending_changes?: ProductPendingChanges | null;
+  marketplace_status?: ProductMarketplaceStatus;
+  marketplace_submitted_at?: string | null;
+  marketplace_approved_at?: string | null;
   // Commerce — off by default (see purchasable). When false, the product
   // keeps its existing inquiry/external-link behavior unchanged.
   purchasable: boolean;

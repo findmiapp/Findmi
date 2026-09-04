@@ -31,12 +31,21 @@ export default function ProductFieldsForm({
   defaultValues,
   categories,
   submitLabel,
+  showDistributionChoice = false,
 }: {
   businessId: string;
   action: (formData: FormData) => void | Promise<void>;
   defaultValues: ProductFieldValues;
   categories: Category[];
   submitLabel: string;
+  /** Product Marketplace Distribution pass — only meaningful at creation:
+   * the owner's initial Catalog Only vs Submit To Marketplace choice
+   * (read by createMemberProduct, ../actions.ts). Never shown on the Edit
+   * form — an existing product's distribution changes through its own
+   * dedicated Submit/Return controls in the manager list, not by
+   * resubmitting the content-edit form, so a content edit can never
+   * silently also change marketplace_status. */
+  showDistributionChoice?: boolean;
 }) {
   return (
     <form action={action} className="flex flex-col gap-2">
@@ -98,6 +107,30 @@ export default function ProductFieldsForm({
         placeholder="Purchase link (optional)"
         className={inputClass}
       />
+      {showDistributionChoice && (
+        <fieldset className="mt-1 rounded-xl border border-black/10 p-3">
+          <legend className="px-1 text-xs font-semibold text-ink">Where Should This Product Appear?</legend>
+          <label className="mt-1 flex cursor-pointer items-start gap-2">
+            <input type="radio" name="distribution" value="catalog_only" defaultChecked className="mt-1" />
+            <span>
+              <span className="block text-sm font-medium text-ink">Catalog Only</span>
+              <span className="block text-xs text-ink/50">
+                Show This Product On Your FindMi Business Profile And Storefront Only.
+              </span>
+            </span>
+          </label>
+          <label className="mt-2 flex cursor-pointer items-start gap-2">
+            <input type="radio" name="distribution" value="marketplace" className="mt-1" />
+            <span>
+              <span className="block text-sm font-medium text-ink">Submit To Marketplace</span>
+              <span className="block text-xs text-ink/50">
+                Request Broader Placement Across FindMi Marketplace And Discovery. Marketplace Approval And
+                Commission Terms Apply.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+      )}
       <button
         type="submit"
         className="mt-1 rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"

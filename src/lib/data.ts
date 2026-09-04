@@ -445,7 +445,11 @@ export async function getProductsByIds(ids: string[]): Promise<FeaturedProduct[]
     .from("products")
     .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
     .in("id", ids)
-    .eq("is_active", true);
+    .eq("is_active", true)
+    // Product Marketplace Distribution pass — a curated homepage row is a
+    // broader discovery surface, not a business's own catalog: a
+    // catalog_only Product must never enter it just by being curated.
+    .eq("marketplace_status", "approved");
   logPublicQueryError("getProductsByIds", error);
 
   type JoinedBusiness = Omit<FeaturedProduct["business"], "categoryName"> & {
@@ -609,6 +613,15 @@ export async function getBusinessGalleryImages(businessId: string): Promise<stri
   return (data ?? []).map((row) => row.url);
 }
 
+// Product Marketplace Distribution pass — getProductsForBusiness and
+// getProductBySlug below are deliberately NEVER filtered on
+// marketplace_status: a business's own profile/storefront and a Product's
+// own direct URL are the business-catalog surfaces the feature's own rule
+// explicitly keeps visible regardless of marketplace distribution choice
+// (catalog_only + live + active is public here). Only the broader
+// discovery surfaces above (getMarketplaceProducts, getFeaturedProducts,
+// getHomepageRowProducts, getProductsByIds, getEventProducts) require
+// marketplace_status='approved'.
 export async function getProductsForBusiness(businessId: string): Promise<Product[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -1450,6 +1463,9 @@ export async function getFeaturedProducts(limit = 8): Promise<FeaturedProduct[]>
     .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
     .eq("is_featured", true)
     .eq("is_active", true)
+    // Product Marketplace Distribution pass — Featured Products is a
+    // homepage/marketplace discovery surface, not a business catalog view.
+    .eq("marketplace_status", "approved")
     .order("home_sort_order", { ascending: true, nullsFirst: false })
     .order("name")
     .limit(limit * 2); // over-fetch since some may be filtered out as demo
@@ -1790,7 +1806,12 @@ export async function getMarketplaceProducts(params: MarketplaceProductParams = 
   let query = supabase
     .from("products")
     .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
-    .eq("is_active", true);
+    .eq("is_active", true)
+    // Product Marketplace Distribution pass — the Marketplace page itself
+    // is the canonical broader-discovery surface: a catalog_only Product
+    // (never submitted, or not yet approved) must never appear here even
+    // though it's fully live/active on its own business's profile.
+    .eq("marketplace_status", "approved");
   if (params.q) {
     const term = `%${params.q.trim()}%`;
     query = query.or(`name.ilike.${term},description.ilike.${term}`);
@@ -1851,8 +1872,12 @@ export async function getEventProducts(eventId: string): Promise<MarketplaceProd
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("event_products")
+    // Product Marketplace Distribution pass — marketplace_status appended
+    // (not part of PUBLIC_PRODUCT_COLUMNS) so it can be filtered in JS
+    // below, the same is_active-in-JS pattern this function already uses
+    // rather than a !inner embed filter.
     .select(
-      `display_order, product:products(${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status))`
+      `display_order, product:products(${PUBLIC_PRODUCT_COLUMNS}, marketplace_status, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status))`
     )
     .eq("event_id", eventId)
     .order("display_order", { ascending: true, nullsFirst: false });
@@ -1869,7 +1894,14 @@ export async function getEventProducts(eventId: string): Promise<MarketplaceProd
     })
     .filter(
       (item): item is Product & { business: JoinedBusiness } =>
-        Boolean(item) && item!.is_active && Boolean(item!.business) && !item!.business.is_demo && item!.business.publication_status === "live"
+        Boolean(item) &&
+        item!.is_active &&
+        // Event product carousels are a cross-business discovery surface,
+        // not the owning business's own catalog view.
+        item!.marketplace_status === "approved" &&
+        Boolean(item!.business) &&
+        !item!.business.is_demo &&
+        item!.business.publication_status === "live"
     )
     .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({
       ...rest,
@@ -1904,7 +1936,11 @@ export async function getHomepageRowProducts(params: MarketplaceProductParams = 
   let query = supabase
     .from("products")
     .select(`${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, commerce_enabled, is_demo, publication_status)`)
-    .eq("is_active", true);
+    .eq("is_active", true)
+    // Product Marketplace Distribution pass — a founder-configured
+    // homepage row is a broader discovery surface, not a business's own
+    // catalog view.
+    .eq("marketplace_status", "approved");
   if (params.q) {
     const term = `%${params.q.trim()}%`;
     query = query.or(`name.ilike.${term},description.ilike.${term}`);

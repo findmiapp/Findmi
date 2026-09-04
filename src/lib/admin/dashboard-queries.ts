@@ -34,6 +34,11 @@ export interface DashboardNeedsAttention {
    * ?status=needs_review filter uses (getAdminProducts's
    * status="needs_review" branch). */
   pendingProductReviews: number;
+  /** Product Marketplace Distribution pass — products.marketplace_status=
+   * 'submitted'. A SEPARATE queue from pendingProductReviews above —
+   * content approval and Marketplace approval are independent decisions.
+   * Same queue admin/products' ?status=marketplace_review filter uses. */
+  pendingMarketplaceReviews: number;
 }
 
 export interface DashboardGlance {
@@ -56,6 +61,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingOnboardingReview,
     pendingBusinessReviews,
     pendingProductReviews,
+    pendingMarketplaceReviews,
   ] = await Promise.all([
     supabase.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("event_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -76,6 +82,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
       .from("products")
       .select("id", { count: "exact", head: true })
       .or("moderation_status.eq.pending_review,pending_changes.not.is.null"),
+    supabase.from("products").select("id", { count: "exact", head: true }).eq("marketplace_status", "submitted"),
   ]);
 
   return {
@@ -84,6 +91,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingOnboardingReview: pendingOnboardingReview.count ?? 0,
     pendingBusinessReviews: pendingBusinessReviews.count ?? 0,
     pendingProductReviews: pendingProductReviews.count ?? 0,
+    pendingMarketplaceReviews: pendingMarketplaceReviews.count ?? 0,
   };
 }
 

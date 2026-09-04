@@ -1136,6 +1136,15 @@ export async function createMemberProduct(businessId: string, formData: FormData
   if (!baseSlug) onError("Product name is required to generate a URL.");
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isProductSlugTaken(candidate));
 
+  // Product Marketplace Distribution pass — the owner's initial choice
+  // between Catalog Only (default) and Submit To Marketplace. Setting
+  // marketplace_status="submitted" here is only ever a REQUEST — it never
+  // grants broader Marketplace/discovery placement itself (see
+  // approveMarketplaceSubmission in admin/products/actions.ts, the only
+  // place marketplace_status becomes "approved"), and content moderation
+  // below is completely unaffected by this choice either way.
+  const distribution = str(formData, "distribution") === "marketplace" ? "marketplace" : "catalog_only";
+
   // Product Moderation pass — a member-created product is NEVER
   // immediately public. moderation_status starts "pending_review"
   // (overriding the column's own 'live' default, which exists only so
@@ -1146,7 +1155,15 @@ export async function createMemberProduct(businessId: string, formData: FormData
   // that can set this to "live" themselves.
   const { data, error } = await admin
     .from("products")
-    .insert({ business_id: businessId, slug, is_active: true, moderation_status: "pending_review", ...fields })
+    .insert({
+      business_id: businessId,
+      slug,
+      is_active: true,
+      moderation_status: "pending_review",
+      marketplace_status: distribution === "marketplace" ? "submitted" : "catalog_only",
+      marketplace_submitted_at: distribution === "marketplace" ? new Date().toISOString() : null,
+      ...fields,
+    })
     .select("id")
     .single();
   if (error || !data) return onError("Couldn't create that product. Please try again.");
@@ -1266,4 +1283,74 @@ export async function setMemberProductActive(businessId: string, productId: stri
   if (business.slug) revalidatePath(`/business/${business.slug}`);
   revalidatePath("/marketplace");
   redirect(`${redirectPath}?product_updated=1`);
+}
+
+// ── Product Marketplace Distribution — Member Actions ────────────────────
+//
+// Two owner-facing state transitions, deliberately separate from content
+// edits (updateMemberProduct above) — marketplace_status changes never
+// touch moderation_status/pending_changes, and content edits never touch
+// marketplace_status. Same requireProBusinessMember + double-scoped
+// (id + business_id) authorization shape as every other action in this
+// section. Neither action can ever set marketplace_status to "approved" —
+// that value is written exclusively by admin/products/actions.ts's
+// approveMarketplaceSubmission/resumeMarketplaceListing, which this file
+// has no access to and never calls.
+
+/** Catalog Only -> Submit To Marketplace, or Rejected -> resubmit for
+ * review. A no-op (redirects back unchanged) from any other state
+ * ("submitted" is already pending; "approved"/"paused" are admin
+ * decisions the owner can't self-override by resubmitting). */
+export async function submitProductToMarketplace(businessId: string, productId: string) {
+  const redirectPath = `/account/business/${businessId}`;
+  const { admin } = await requireProBusinessMember(businessId, redirectPath);
+
+  const { data: existing } = await admin
+    .from("products")
+    .select("id, marketplace_status")
+    .eq("id", productId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (!existing) redirect(errorRedirectUrl(redirectPath, "That product no longer exists."));
+
+  if (existing.marketplace_status === "catalog_only" || existing.marketplace_status === "rejected") {
+    await admin
+      .from("products")
+      .update({ marketplace_status: "submitted", marketplace_submitted_at: new Date().toISOString() })
+      .eq("id", productId)
+      .eq("business_id", businessId);
+  }
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?marketplace_updated=1`);
+}
+
+/** Withdraws the owner's own not-yet-decided request ("submitted"), or
+ * opts back out after a rejection ("rejected") — back to catalog_only.
+ * A no-op from "catalog_only" (nothing to withdraw) or "approved"/
+ * "paused" (an admin decision the owner can't self-revert — see
+ * pauseMarketplaceListing in admin/products/actions.ts for the admin-side
+ * equivalent). */
+export async function returnProductToCatalog(businessId: string, productId: string) {
+  const redirectPath = `/account/business/${businessId}`;
+  const { admin } = await requireProBusinessMember(businessId, redirectPath);
+
+  const { data: existing } = await admin
+    .from("products")
+    .select("id, marketplace_status")
+    .eq("id", productId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (!existing) redirect(errorRedirectUrl(redirectPath, "That product no longer exists."));
+
+  if (existing.marketplace_status === "submitted" || existing.marketplace_status === "rejected") {
+    await admin
+      .from("products")
+      .update({ marketplace_status: "catalog_only" })
+      .eq("id", productId)
+      .eq("business_id", businessId);
+  }
+
+  revalidatePath(redirectPath);
+  redirect(`${redirectPath}?marketplace_updated=1`);
 }

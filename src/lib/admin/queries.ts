@@ -598,8 +598,14 @@ export interface ProductListFilters {
    * that's never been approved (moderation_status='pending_review') OR
    * an already-live product with a standing proposed edit
    * (pending_changes is not null). Mirrors the existing
-   * published='pending_review' filter admin/businesses already offers. */
-  status?: "needs_review";
+   * published='pending_review' filter admin/businesses already offers.
+   *
+   * Product Marketplace Distribution pass — "marketplace_review" is the
+   * SEPARATE queue the dashboard's Marketplace Reviews card links to:
+   * marketplace_status='submitted'. Never combined with "needs_review" —
+   * content approval and Marketplace approval stay two independent
+   * decisions, each with its own filter/queue. */
+  status?: "needs_review" | "marketplace_review";
 }
 
 export async function getAdminProducts(filters: ProductListFilters = {}): Promise<AdminProductRow[]> {
@@ -613,6 +619,9 @@ export async function getAdminProducts(filters: ProductListFilters = {}): Promis
   if (filters.businessId) query = query.eq("business_id", filters.businessId);
   if (filters.status === "needs_review") {
     query = query.or("moderation_status.eq.pending_review,pending_changes.not.is.null");
+  }
+  if (filters.status === "marketplace_review") {
+    query = query.eq("marketplace_status", "submitted");
   }
   const { data } = await query.order("name");
   return ((data ?? []) as never[]).map((row: unknown) => {

@@ -198,3 +198,107 @@ export async function rejectProduct(id: string) {
   revalidatePath(`/admin/products/${id}`);
   redirect(`/admin/products/${id}?rejected=1`);
 }
+
+// ── Product Marketplace Distribution — Admin Review ───────────────────────
+//
+// CONTENT moderation (approveProduct/rejectProduct above) and Marketplace
+// distribution approval are two entirely independent decisions — see
+// lib/types.ts's ProductMarketplaceStatus. Owner-facing half of this
+// workflow: (public)/account/business/actions.ts's
+// submitProductToMarketplace/returnProductToCatalog. Admin-only
+// (requireAdminSupabase); a business member has no path to any action
+// below and no form field reaches them.
+
+async function getProductForMarketplaceReview(supabase: Awaited<ReturnType<typeof requireAdminSupabase>>, id: string) {
+  const { data } = await supabase
+    .from("products")
+    .select("id, slug, business_id, moderation_status, marketplace_status")
+    .eq("id", id)
+    .maybeSingle();
+  return data;
+}
+
+/** Grants broader Marketplace/discovery visibility. Blocked entirely
+ * unless the product's CONTENT is already approved (moderation_status
+ * must be "live") — Marketplace submission must never bypass content
+ * moderation, regardless of how long a submission has been waiting. */
+export async function approveMarketplaceSubmission(id: string) {
+  const supabase = await requireAdminSupabase();
+  const product = await getProductForMarketplaceReview(supabase, id);
+  if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
+
+  if (product.moderation_status !== "live") {
+    redirect(
+      errorRedirectUrl(`/admin/products/${id}`, "Approve this product's content first — Marketplace approval requires it to be live.")
+    );
+  }
+
+  await supabase
+    .from("products")
+    .update({ marketplace_status: "approved", marketplace_approved_at: new Date().toISOString() })
+    .eq("id", id);
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${id}`);
+  revalidatePath("/marketplace");
+  if (product.slug) revalidatePath(`/product/${product.slug}`);
+  redirect(`/admin/products/${id}?marketplace_approved=1`);
+}
+
+/** Declines a Marketplace submission. The Product's own business-profile/
+ * storefront visibility (moderation_status/is_active) is never touched
+ * here — only future broader Marketplace/discovery placement is
+ * declined. Also used to reject an already-"paused" listing outright. */
+export async function rejectMarketplaceSubmission(id: string) {
+  const supabase = await requireAdminSupabase();
+  const product = await getProductForMarketplaceReview(supabase, id);
+  if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
+
+  await supabase.from("products").update({ marketplace_status: "rejected" }).eq("id", id);
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${id}`);
+  revalidatePath("/marketplace");
+  redirect(`/admin/products/${id}?marketplace_rejected=1`);
+}
+
+/** Temporarily withdraws Marketplace visibility without rejecting the
+ * submission outright — the Product remains fully visible on its own
+ * business's profile/storefront (untouched here); only broader
+ * Marketplace/discovery placement pauses. resumeMarketplaceListing below
+ * restores it without a new review. */
+export async function pauseMarketplaceListing(id: string) {
+  const supabase = await requireAdminSupabase();
+  const product = await getProductForMarketplaceReview(supabase, id);
+  if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
+
+  await supabase.from("products").update({ marketplace_status: "paused" }).eq("id", id);
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${id}`);
+  revalidatePath("/marketplace");
+  redirect(`/admin/products/${id}?marketplace_paused=1`);
+}
+
+/** Resumes a paused listing — restores "approved" without re-running a
+ * fresh review (the admin already approved it once; pausing was a hold,
+ * not a rejection). Still requires moderation_status="live", same gate
+ * as approveMarketplaceSubmission, purely defensive. */
+export async function resumeMarketplaceListing(id: string) {
+  const supabase = await requireAdminSupabase();
+  const product = await getProductForMarketplaceReview(supabase, id);
+  if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
+
+  if (product.moderation_status !== "live") {
+    redirect(
+      errorRedirectUrl(`/admin/products/${id}`, "Approve this product's content first — Marketplace approval requires it to be live.")
+    );
+  }
+
+  await supabase.from("products").update({ marketplace_status: "approved" }).eq("id", id);
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${id}`);
+  revalidatePath("/marketplace");
+  redirect(`/admin/products/${id}?marketplace_approved=1`);
+}

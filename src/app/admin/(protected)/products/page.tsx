@@ -12,8 +12,16 @@ export default async function AdminProductsPage({
 }) {
   const { q, business, status } = await searchParams;
   const needsReview = status === "needs_review";
+  // Product Marketplace Distribution pass — a SEPARATE filter/queue from
+  // Needs Review above: content approval and Marketplace approval stay
+  // two independent decisions, never combined into one filter.
+  const marketplaceReview = status === "marketplace_review";
   const [products, initialBusiness] = await Promise.all([
-    getAdminProducts({ q, businessId: business, status: needsReview ? "needs_review" : undefined }),
+    getAdminProducts({
+      q,
+      businessId: business,
+      status: needsReview ? "needs_review" : marketplaceReview ? "marketplace_review" : undefined,
+    }),
     getBusinessOptionById(business ?? null),
   ]);
 
@@ -41,7 +49,18 @@ export default async function AdminProductsPage({
         >
           Needs Review
         </Link>
-        {needsReview && (
+        {/* Product Marketplace Distribution pass — Marketplace Review is a
+            separate queue (marketplace_status='submitted'), never merged
+            with Needs Review's content-moderation queue above. */}
+        <Link
+          href="/admin/products?status=marketplace_review"
+          className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+            marketplaceReview ? "bg-sky-500 text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+          }`}
+        >
+          Marketplace Review
+        </Link>
+        {(needsReview || marketplaceReview) && (
           <Link href="/admin/products" className="text-xs font-semibold text-ink/50 hover:text-ink">
             Clear filter
           </Link>
@@ -50,6 +69,7 @@ export default async function AdminProductsPage({
 
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
         {needsReview && <input type="hidden" name="status" value="needs_review" />}
+        {marketplaceReview && <input type="hidden" name="status" value="marketplace_review" />}
         <input
           type="text"
           name="q"
@@ -104,6 +124,25 @@ export default async function AdminProductsPage({
                   : p.is_active
                     ? "bg-findmi-50 text-findmi-700"
                     : "bg-black/[0.06] text-ink/50";
+
+            // Product Marketplace Distribution pass — a SEPARATE badge,
+            // only shown once the owner has actually requested/received a
+            // Marketplace decision (catalog_only is the common case and
+            // stays unbadged here, same as content moderation's own
+            // "nothing to flag" rows). Never merged with badgeLabel/
+            // badgeClass above.
+            const marketplaceStatus = p.marketplace_status ?? "catalog_only";
+            const marketplaceBadge =
+              marketplaceStatus === "submitted"
+                ? { label: "Marketplace Pending", className: "bg-sky-100 text-sky-800" }
+                : marketplaceStatus === "approved"
+                  ? { label: "Marketplace Approved", className: "bg-sky-50 text-sky-700" }
+                  : marketplaceStatus === "paused"
+                    ? { label: "Marketplace Paused", className: "bg-black/[0.06] text-ink/50" }
+                    : marketplaceStatus === "rejected"
+                      ? { label: "Marketplace Rejected", className: "bg-red-50 text-red-700" }
+                      : null;
+
             return (
               <Link
                 key={p.id}
@@ -117,8 +156,15 @@ export default async function AdminProductsPage({
                     {formatPrice(p.price, p.price_label) ? ` · ${formatPrice(p.price, p.price_label)}` : ""}
                   </p>
                 </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>
-                  {badgeLabel}
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>
+                    {badgeLabel}
+                  </span>
+                  {marketplaceBadge && (
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${marketplaceBadge.className}`}>
+                      {marketplaceBadge.label}
+                    </span>
+                  )}
                 </span>
               </Link>
             );
