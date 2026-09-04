@@ -976,6 +976,18 @@ export async function createMemberBusiness(formData: FormData) {
   const businessId = (created as { id: string }).id;
   revalidatePath("/account");
 
+  // Pro Invite / Complimentary Access Codes pass — an invite in play
+  // always wins over any plan_choice/Stripe path below: the business is
+  // still created the same safe way (free + pending_review) regardless,
+  // but this hands off to /redeem/[code] (with this brand-new business
+  // pre-hinted) to apply the invite there — never to Stripe. The actual
+  // grant is decided entirely by that flow's own server-side checks
+  // (redeem_pro_invite), never by this action.
+  const invite = str(formData, "invite");
+  if (invite) {
+    redirect(`/redeem/${encodeURIComponent(invite)}?business=${businessId}`);
+  }
+
   // Plan choice — Native Business Onboarding Pass 3. The business is
   // ALWAYS created the same safe way first (free + pending_review, owner
   // membership already granted by the RPC above) regardless of which

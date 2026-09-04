@@ -35,6 +35,39 @@ export type PlanTier = "free" | "pro" | "pro_seller";
 // most do) have plan_tier set with no provenance recorded at all.
 export type PlanSource = "paid" | "complimentary" | "promotional" | "admin";
 
+// Pro Invite / Complimentary Access Codes V1 — grants FindMi Pro to ONE
+// business without Stripe. Admin-only data (never anon/authenticated-
+// readable — see the pro_invites migration); read via getAdminSupabase()
+// and via the SECURITY DEFINER redeem_pro_invite() RPC only. plan_tier is
+// always "pro" for V1 (Pro Seller invites are out of scope), kept as a
+// literal here rather than PlanTier so a future widen is a deliberate
+// type change, not an accidental one.
+export interface ProInvite {
+  id: string;
+  code: string;
+  name: string | null;
+  plan_tier: "pro";
+  duration_days: number;
+  max_redemptions: number | null;
+  redemption_count: number;
+  expires_at: string | null;
+  is_active: boolean;
+  created_by_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProInviteRedemption {
+  id: string;
+  invite_id: string;
+  business_id: string;
+  redeemed_by: string;
+  redeemed_at: string;
+  previous_plan_tier: string | null;
+  granted_plan_tier: string;
+  granted_until: string;
+}
+
 // Membership / onboarding — see lib/admin/membership-queries.ts. Kept as
 // three separate statuses on purpose: a paid membership can be
 // onboarding-incomplete and still non-public (publication_status stays

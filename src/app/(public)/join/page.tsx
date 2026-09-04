@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   JOIN_CARD_KEYS,
   getJoinPageSections,
@@ -53,7 +54,19 @@ const PRO_NATIVE_CTA_URL = "/account/business/new?plan=pro";
 // tagline, features, emphasis) still does.
 const PRO_CTA_LABEL = "Get FindMi Pro";
 
-export default async function JoinPage() {
+/** Pro Invite / Complimentary Access Codes pass — findmi.app/join?invite=CODE
+ * is the invite link's public entry point. This page has no other use for
+ * that param, so it just hands off straight to the real redemption flow
+ * (/redeem/[code], which handles auth/business-selection/redemption
+ * itself) rather than growing invite-aware UI here. */
+export default async function JoinPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string }>;
+}) {
+  const { invite } = await searchParams;
+  if (invite) redirect(`/redeem/${encodeURIComponent(invite)}`);
+
   const overrides = await getJoinPageSections();
 
   const hero = resolveJoinHero(overrides);

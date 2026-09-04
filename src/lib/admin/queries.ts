@@ -10,6 +10,8 @@ import type {
   FindmiEvent,
   FindmiLocation,
   Product,
+  ProInvite,
+  ProInviteRedemption,
 } from "@/lib/types";
 
 // Admin-only row shapes: the public types.ts interfaces don't carry
@@ -740,5 +742,54 @@ export async function getCuratedItemPreviews(
   return (data ?? []).map((p) => {
     const business = Array.isArray(p.business) ? p.business[0] : p.business;
     return { value: p.id, label: p.name, sublabel: business?.name, image_url: p.image_url };
+  });
+}
+
+// ── Pro Invite / Complimentary Access Codes ────────────────────────────────
+// Admin-only reads against pro_invites/pro_invite_redemptions (both RLS-
+// enabled with zero policies — service_role via getAdminSupabase() is the
+// only reader). Redemption writes never happen here — they go exclusively
+// through the redeem_pro_invite() SECURITY DEFINER RPC (see
+// (public)/redeem/actions.ts), never through a plain update from this file.
+
+export async function getAdminProInvites(): Promise<ProInvite[]> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase.from("pro_invites").select("*").order("created_at", { ascending: false });
+  return (data ?? []) as ProInvite[];
+}
+
+export async function getAdminProInviteById(id: string): Promise<ProInvite | null> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase.from("pro_invites").select("*").eq("id", id).maybeSingle();
+  return (data as ProInvite | null) ?? null;
+}
+
+export interface ProInviteRedemptionRow extends ProInviteRedemption {
+  business_name: string | null;
+}
+
+export async function getProInviteRedemptions(inviteId: string): Promise<ProInviteRedemptionRow[]> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("pro_invite_redemptions")
+    .select("*, business:businesses(name)")
+    .eq("invite_id", inviteId)
+    .order("redeemed_at", { ascending: false });
+  return (data ?? []).map((r) => {
+    const business = Array.isArray(r.business) ? r.business[0] : r.business;
+    return {
+      id: r.id,
+      invite_id: r.invite_id,
+      business_id: r.business_id,
+      redeemed_by: r.redeemed_by,
+      redeemed_at: r.redeemed_at,
+      previous_plan_tier: r.previous_plan_tier,
+      granted_plan_tier: r.granted_plan_tier,
+      granted_until: r.granted_until,
+      business_name: business?.name ?? null,
+    };
   });
 }

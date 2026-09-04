@@ -29,24 +29,37 @@ const primaryButtonClass =
 export default async function AddBusinessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; duplicate_slug?: string; duplicate_name?: string; plan?: string }>;
+  searchParams: Promise<{ error?: string; duplicate_slug?: string; duplicate_name?: string; plan?: string; invite?: string }>;
 }) {
-  const { error, duplicate_slug: duplicateSlug, duplicate_name: duplicateName, plan } = await searchParams;
+  const { error, duplicate_slug: duplicateSlug, duplicate_name: duplicateName, plan, invite } = await searchParams;
   // Join + Add Business Plan UX Alignment pass — /join's Pro card links
   // here with ?plan=pro so Pro intent is preselected instead of the
   // default Free radio. Free needs no param (it's already the default).
   const wantsPro = plan === "pro";
+
+  // Pro Invite / Complimentary Access Codes pass — /redeem/[code] links
+  // here with ?invite=CODE when a signed-in-but-business-less visitor
+  // needs to create a business before applying their invite. An invite
+  // in play always wins over ?plan=pro: Pro here would mean Stripe
+  // checkout, and an invited business should never be routed through
+  // Stripe (see createMemberBusiness's own invite-first branch).
+  const hasInvite = Boolean(invite);
 
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    // Preserve ?plan=pro through sign-in using the existing safe `next`
-    // redirect mechanism (lib/auth/safe-redirect.ts already round-trips
-    // a path's query string) — no new auth infrastructure, just not
-    // dropping the query string this redirect used to hardcode away.
-    const next = wantsPro ? "/account/business/new?plan=pro" : "/account/business/new";
+    // Preserve ?plan=pro/?invite=CODE through sign-in using the existing
+    // safe `next` redirect mechanism (lib/auth/safe-redirect.ts already
+    // round-trips a path's query string) — no new auth infrastructure,
+    // just not dropping the query string this redirect used to hardcode
+    // away.
+    const params = new URLSearchParams();
+    if (hasInvite) params.set("invite", invite!);
+    else if (wantsPro) params.set("plan", "pro");
+    const query = params.toString();
+    const next = `/account/business/new${query ? `?${query}` : ""}`;
     redirect(`/login?next=${encodeURIComponent(next)}`);
   }
 
@@ -158,65 +171,80 @@ export default async function AddBusinessPage({
               it's still created Free + pending_review first (same RPC),
               then this action immediately continues into native Stripe
               checkout for that exact business — see createMemberBusiness. */}
-          <div>
-            <span className="mb-1.5 block text-sm font-medium text-ink">Choose your plan</span>
-            <div className="flex flex-col gap-3">
-              {/* Pro — dominant choice, same visual weight/aqua glow as
-                  /join's ProCard, FindMi Here spotlighted inside it. */}
-              <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Pro</p>
-                  <input type="radio" name="plan_choice" value="pro" defaultChecked={wantsPro} className="h-4 w-4 accent-findmi" />
-                </div>
-                <p className="flex items-baseline gap-1">
-                  <span className="font-display text-2xl font-bold tracking-tight text-ink">$99</span>
-                  <span className="text-xs font-medium text-ink/45">/ year</span>
-                </p>
-
-                {/* Final Conversion Consistency pass — Free can also add/
-                    manage appearances now (Passes 1-2), so this no longer
-                    frames "adding appearances" as the Pro-exclusive
-                    benefit — the real Pro distinction is the full
-                    schedule showing publicly (Free's public profile
-                    shows only its next 1). Also drops the "Featured with
-                    Pro" eyebrow (implied FindMi itself features the
-                    business), matching join/page.tsx's ProCard. */}
-                <div className="rounded-2xl bg-findmi-50 p-3">
-                  <p className="text-sm font-bold text-ink">FindMi Here</p>
-                  <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers where to find you next.</p>
-                  <p className="mt-1 text-xs text-ink/60">
-                    Your full upcoming schedule shows on your public profile — not just your next appearance.
+          {hasInvite ? (
+            // Pro Invite / Complimentary Access Codes pass — an invite in
+            // play replaces the Free/Pro/Stripe choice entirely: this
+            // business is still created Free + pending_review first (same
+            // RPC as always), then createMemberBusiness hands off to
+            // /redeem/[code] to apply the invite — never to Stripe.
+            <>
+              <input type="hidden" name="invite" value={invite} />
+              <div className="rounded-2xl border border-findmi/30 bg-findmi-50 p-4 text-sm text-findmi-700">
+                You have a complimentary FindMi Pro invite — you&rsquo;ll apply it to this business right after it&rsquo;s
+                created. No payment required.
+              </div>
+            </>
+          ) : (
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-ink">Choose your plan</span>
+              <div className="flex flex-col gap-3">
+                {/* Pro — dominant choice, same visual weight/aqua glow as
+                    /join's ProCard, FindMi Here spotlighted inside it. */}
+                <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Pro</p>
+                    <input type="radio" name="plan_choice" value="pro" defaultChecked={wantsPro} className="h-4 w-4 accent-findmi" />
+                  </div>
+                  <p className="flex items-baseline gap-1">
+                    <span className="font-display text-2xl font-bold tracking-tight text-ink">$99</span>
+                    <span className="text-xs font-medium text-ink/45">/ year</span>
                   </p>
-                </div>
 
-                <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
-                  <PlanBullet>Full business profile</PlanBullet>
-                  <PlanBullet>Gallery</PlanBullet>
-                  <PlanBullet>Website, socials &amp; contact information</PlanBullet>
-                  <PlanBullet>Business updates</PlanBullet>
-                  <PlanBullet>Richer discovery presence</PlanBullet>
-                </ul>
-              </label>
+                  {/* Final Conversion Consistency pass — Free can also add/
+                      manage appearances now (Passes 1-2), so this no longer
+                      frames "adding appearances" as the Pro-exclusive
+                      benefit — the real Pro distinction is the full
+                      schedule showing publicly (Free's public profile
+                      shows only its next 1). Also drops the "Featured with
+                      Pro" eyebrow (implied FindMi itself features the
+                      business), matching join/page.tsx's ProCard. */}
+                  <div className="rounded-2xl bg-findmi-50 p-3">
+                    <p className="text-sm font-bold text-ink">FindMi Here</p>
+                    <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers where to find you next.</p>
+                    <p className="mt-1 text-xs text-ink/60">
+                      Your full upcoming schedule shows on your public profile — not just your next appearance.
+                    </p>
+                  </div>
 
-              {/* Free — small, quiet "basic index" option directly below
-                  Pro, not an equal competing card. */}
-              <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-ink/70">Just need a basic listing?</p>
-                  <input type="radio" name="plan_choice" value="free" defaultChecked={!wantsPro} className="h-4 w-4 accent-findmi" />
-                </div>
-                <p className="flex items-baseline gap-1.5">
-                  <span className="text-sm font-bold text-ink">Free Basic Index</span>
-                  <span className="text-sm text-ink/45">· $0</span>
-                </p>
-                <p className="text-xs text-ink/60">Get your name, logo, category and short description into FindMi.</p>
-                <p className="mt-1 text-xs text-ink/35 line-through decoration-ink/25">
-                  Full About section · Gallery · Website + social links · FindMi Here · Business updates
-                </p>
-              </label>
+                  <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
+                    <PlanBullet>Full business profile</PlanBullet>
+                    <PlanBullet>Gallery</PlanBullet>
+                    <PlanBullet>Website, socials &amp; contact information</PlanBullet>
+                    <PlanBullet>Business updates</PlanBullet>
+                    <PlanBullet>Richer discovery presence</PlanBullet>
+                  </ul>
+                </label>
+
+                {/* Free — small, quiet "basic index" option directly below
+                    Pro, not an equal competing card. */}
+                <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-ink/70">Just need a basic listing?</p>
+                    <input type="radio" name="plan_choice" value="free" defaultChecked={!wantsPro} className="h-4 w-4 accent-findmi" />
+                  </div>
+                  <p className="flex items-baseline gap-1.5">
+                    <span className="text-sm font-bold text-ink">Free Basic Index</span>
+                    <span className="text-sm text-ink/45">· $0</span>
+                  </p>
+                  <p className="text-xs text-ink/60">Get your name, logo, category and short description into FindMi.</p>
+                  <p className="mt-1 text-xs text-ink/35 line-through decoration-ink/25">
+                    Full About section · Gallery · Website + social links · FindMi Here · Business updates
+                  </p>
+                </label>
+              </div>
+              <p className="mt-1.5 text-xs text-ink/40">$99 for one year of FindMi Pro.</p>
             </div>
-            <p className="mt-1.5 text-xs text-ink/40">$99 for one year of FindMi Pro.</p>
-          </div>
+          )}
 
           <label className="mt-1 flex items-start gap-2.5">
             <input
@@ -233,9 +261,11 @@ export default async function AddBusinessPage({
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Business
           </button>
-          <p className="text-center text-xs text-ink/40">
-            Free plan requires no payment. Pro continues to secure Stripe checkout after your business is created.
-          </p>
+          {!hasInvite && (
+            <p className="text-center text-xs text-ink/40">
+              Free plan requires no payment. Pro continues to secure Stripe checkout after your business is created.
+            </p>
+          )}
         </form>
       </div>
     </div>

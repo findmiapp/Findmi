@@ -41,6 +41,7 @@ const MORE_GROUPS: NavGroup[] = [
       { href: "/admin/locations", label: "Locations", hint: "Venues & places" },
       { href: "/admin/products", label: "Products", hint: "Business products" },
       { href: "/admin/categories", label: "Categories", hint: "Discovery taxonomy" },
+      { href: "/admin/pro-invites", label: "Pro Invites", hint: "Complimentary Pro access codes" },
       { href: "/admin/site", label: "Site Editor", hint: "Site content & settings" },
     ],
   },
