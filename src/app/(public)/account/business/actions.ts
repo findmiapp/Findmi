@@ -390,6 +390,41 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
   return admin;
 }
 
+/** Free Appearances Pass 1 — the exact same authorize-then-elevate shape
+ * as requireProBusinessMember above (real Supabase Auth session,
+ * requireBusinessMember() re-deriving real membership from the caller's
+ * OWN session-scoped business_members row — never trusted from the
+ * client — then elevating to the service-role client for the actual
+ * write, same pattern every member action in this file already uses),
+ * MINUS the plan_tier/isBusinessPro check: locked product rule is that
+ * plan tier must never prevent an authorized business member from
+ * maintaining FindMi Here appearance data — FindMi wants accurate
+ * appearance data from Free businesses too. Deliberately a separate
+ * function rather than editing requireProBusinessMember in place —
+ * withdrawEventParticipation (below) still calls the original
+ * Pro-gated helper, untouched by this pass; only the four actions this
+ * pass's spec names (addAppearanceFromEvent, addManualAppearance,
+ * updateOwnerAppearance, removeOwnerAppearance) now call this one. */
+async function requireAuthorizedBusinessMember(businessId: string, redirectPath: string) {
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (!user) redirect(`/login?next=${encodeURIComponent(redirectPath)}`);
+
+  try {
+    await requireBusinessMember(businessId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "You don't have access to this business.";
+    redirect(errorRedirectUrl(redirectPath, message));
+  }
+
+  const admin = getAdminSupabase();
+  if (!admin) redirect(errorRedirectUrl(redirectPath, "Server isn't configured."));
+
+  return admin;
+}
+
 /** Option 1 — "Choose an existing FindMi event." `target` is one of:
  *   "event:<eventId>"               -> non-recurring event
  *   "occ:<eventId>:<occurrenceId>"  -> one occurrence of a recurring event
@@ -412,7 +447,7 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
  * an appearance here never grants it. */
 export async function addAppearanceFromEvent(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
-  const admin = await requireProBusinessMember(businessId, redirectPath);
+  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   const target = str(formData, "target");
   if (!target) redirect(errorRedirectUrl(redirectPath, "Choose an event to add."));
@@ -679,7 +714,7 @@ function parseAppearanceFields(formData: FormData, onError: (message: string) =>
  * never returned blank. */
 export async function addManualAppearance(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
-  const admin = await requireProBusinessMember(businessId, redirectPath);
+  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   const onError = (message: string): never => {
     redirect(buildAppearanceErrorUrl(redirectPath, message, "add", formData));
@@ -713,7 +748,7 @@ export async function addManualAppearance(businessId: string, formData: FormData
  * values-preserved-on-error behavior as addManualAppearance. */
 export async function updateOwnerAppearance(businessId: string, appearanceId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
-  const admin = await requireProBusinessMember(businessId, redirectPath);
+  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   const onError = (message: string): never => {
     redirect(buildAppearanceErrorUrl(redirectPath, message, "edit", formData, appearanceId));
@@ -750,7 +785,7 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
  * without a conflict. */
 export async function removeOwnerAppearance(businessId: string, appearanceId: string) {
   const redirectPath = `/account/business/${businessId}`;
-  const admin = await requireProBusinessMember(businessId, redirectPath);
+  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   await admin.from("appearances").update({ status: "canceled" }).eq("id", appearanceId).eq("business_id", businessId);
 
