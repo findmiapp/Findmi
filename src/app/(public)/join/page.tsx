@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   JOIN_CARD_KEYS,
   getJoinPageSections,
@@ -396,12 +397,12 @@ function FreeBasicBox() {
         </div>
       </details>
 
-      <a
+      <Link
         href="/account/business/new"
         className="mt-4 flex h-11 items-center justify-center rounded-full border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
       >
         Start with Basic
-      </a>
+      </Link>
     </div>
   );
 }
