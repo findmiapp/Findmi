@@ -112,10 +112,18 @@ export default async function JoinPage() {
         id="options"
         className={`mx-auto max-w-5xl px-4 pt-8 sm:px-6 sm:pt-10 ${optionsIsLastSection ? "pb-16 sm:pb-20" : ""}`}
       >
+        {/* Conversion Completion pass — one shared, quiet reassurance
+            note, read once before either choice below. Not repeated per
+            card, not phrased as a warning, and says nothing about
+            payment/approval — just sets expectations honestly. */}
+        <p className="mx-auto max-w-xl text-center text-xs text-ink/40">
+          New listings are reviewed before appearing publicly.
+        </p>
+
         {/* Free — static copy, not a CMS-driven card (see this pass's
             own report on what would need a later admin-editability
             pass). Always shown, genuinely selectable on its own. */}
-        <div className="mx-auto max-w-xl">
+        <div className="mx-auto mt-4 max-w-xl">
           <FreeBasicBox />
         </div>
 
@@ -124,6 +132,21 @@ export default async function JoinPage() {
             <ProCard card={proCard} />
           </div>
         )}
+
+        {/* Conversion Completion pass — secondary escape hatch for a
+            business that's already on FindMi (added by the founder, or
+            by another member). Reuses the existing public discovery
+            page (/businesses) — every result there links into that
+            business's real profile, where the existing ClaimButton
+            claim flow already lives (business/[slug]/page.tsx). No new
+            claim flow, no new route. Deliberately quiet/secondary —
+            plain text link, not a button, not styled like Free/Pro. */}
+        <p className="mx-auto mt-6 max-w-xl text-center text-sm text-ink/50">
+          Already listed on FindMi?{" "}
+          <Link href="/businesses" className="font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+            Claim your business →
+          </Link>
+        </p>
 
         {secondaryCards.length > 0 && (
           <div className="mt-10">
@@ -354,6 +377,14 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
       >
         {ctaLabel}
       </a>
+      {/* Conversion Completion pass — concise payment reassurance right
+          under the CTA. Matches the actual native Pro checkout exactly:
+          a one-time Stripe payment (createBusinessProCheckoutSession,
+          untouched), never called a subscription, no renewal price
+          stated since none is finalized. */}
+      <p className="mt-2 text-center text-xs text-ink/40">
+        $20 introductory payment · 90 days of Pro · No automatic renewal.
+      </p>
     </div>
   );
 }
