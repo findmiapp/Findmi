@@ -307,6 +307,16 @@ export default async function ManageBusinessPage({
   // visibility" reasoning the appearances fetch above already uses.
   // product_categories (existing join table, unchanged) read separately
   // to default each product's edit form to its current category.
+  //
+  // Product Moderation pass — moderation_status/pending_changes now read
+  // too, purely for display: a "Pending Review" / "Live" / "Changes
+  // Pending Review" / "Rejected" / "Inactive" badge (displayState below)
+  // and, for a live product with a standing proposal, defaulting the Edit
+  // form to the PROPOSED values rather than the live ones (so the owner
+  // is editing their draft, not silently reverting it). Nothing here
+  // grants any write capability — createMemberProduct/updateMemberProduct
+  // (../actions.ts) are the only place moderation_status ever changes,
+  // fully server-side, regardless of what this page renders.
   type OwnProduct = {
     id: string;
     name: string;
@@ -319,6 +329,10 @@ export default async function ManageBusinessPage({
     external_purchase_url: string | null;
     is_active: boolean;
     categoryId: string;
+    moderationStatus: "pending_review" | "live" | "rejected";
+    hasPendingChanges: boolean;
+    displayState: "Pending Review" | "Live" | "Changes Pending Review" | "Rejected" | "Inactive";
+    editDefaults: ProductFieldValues;
   };
   let products: OwnProduct[] = [];
   let productCategories: Awaited<ReturnType<typeof getProductCategories>> = [];
@@ -327,7 +341,7 @@ export default async function ManageBusinessPage({
       admin
         .from("products")
         .select(
-          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active"
+          "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active, moderation_status, pending_changes"
         )
         .eq("business_id", id)
         .order("is_active", { ascending: false })
@@ -343,11 +357,52 @@ export default async function ManageBusinessPage({
         : { data: [] as { product_id: string; category_id: string }[] };
     const categoryByProduct = new Map((categoryLinks ?? []).map((r) => [r.product_id, r.category_id]));
 
-    products = (productRows ?? []).map((p) => ({
-      ...p,
-      product_type: p.product_type as "product" | "service",
-      categoryId: categoryByProduct.get(p.id) ?? "",
-    }));
+    products = (productRows ?? []).map((p) => {
+      const moderationStatus = (p.moderation_status ?? "live") as "pending_review" | "live" | "rejected";
+      const pendingChanges = (p.pending_changes ?? null) as Partial<ProductFieldValues> | null;
+      const hasPendingChanges = moderationStatus === "live" && pendingChanges != null;
+      const categoryId = categoryByProduct.get(p.id) ?? "";
+
+      const displayState: OwnProduct["displayState"] =
+        moderationStatus === "pending_review"
+          ? "Pending Review"
+          : moderationStatus === "rejected"
+            ? "Rejected"
+            : !p.is_active
+              ? "Inactive"
+              : hasPendingChanges
+                ? "Changes Pending Review"
+                : "Live";
+
+      // Edit form defaults: the standing proposal's values when one
+      // exists (falls back to the live value for any field the proposal
+      // didn't include), otherwise the product's own current values.
+      // Explicitly gated on hasPendingChanges rather than just
+      // `pendingChanges != null` — pending_changes should only ever be
+      // set while moderation_status is "live" (see updateMemberProduct),
+      // but this stays correct even if that ever weren't true.
+      const proposed = hasPendingChanges ? pendingChanges : null;
+      const editDefaults: ProductFieldValues = {
+        name: proposed?.name ?? p.name,
+        description: (proposed?.description ?? p.description) ?? "",
+        image_url: p.image_url,
+        price: String((proposed?.price ?? p.price) ?? ""),
+        price_label: (proposed?.price_label ?? p.price_label) ?? "",
+        product_type: (proposed?.product_type ?? p.product_type) as "product" | "service",
+        external_purchase_url: (proposed?.external_purchase_url ?? p.external_purchase_url) ?? "",
+        category_id: (proposed ? (proposed.category_id ?? "") : categoryId) ?? "",
+      };
+
+      return {
+        ...p,
+        product_type: p.product_type as "product" | "service",
+        categoryId,
+        moderationStatus,
+        hasPendingChanges,
+        displayState,
+        editDefaults,
+      };
+    });
   }
   const addProduct = createMemberProduct.bind(null, id);
 
@@ -850,11 +905,23 @@ export default async function ManageBusinessPage({
                         )}
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                          {!p.is_active && (
-                            <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink/40">
-                              Deactivated
-                            </p>
-                          )}
+                          {/* Product Moderation pass — moderation state badge.
+                              Same priority order as displayState above:
+                              a product that's never been approved (or was
+                              rejected) says so regardless of is_active;
+                              only an approved/live product's own
+                              deactivation shows as "Inactive". */}
+                          <p
+                            className={`mt-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                              p.displayState === "Live"
+                                ? "text-findmi-700"
+                                : p.displayState === "Rejected"
+                                  ? "text-red-600"
+                                  : "text-amber-700"
+                            }`}
+                          >
+                            {p.displayState}
+                          </p>
                           {(p.price != null || p.price_label) && (
                             <p className="mt-0.5 text-xs text-ink/60">{p.price_label || `$${p.price}`}</p>
                           )}
@@ -872,6 +939,23 @@ export default async function ManageBusinessPage({
                       </form>
                     </div>
 
+                    {p.moderationStatus === "pending_review" && (
+                      <p className="mt-2 text-xs text-ink/50">
+                        This product will appear publicly after FindMi approves it.
+                      </p>
+                    )}
+                    {p.hasPendingChanges && (
+                      <p className="mt-2 text-xs text-ink/50">
+                        Your submitted changes are waiting on FindMi&rsquo;s approval — the version above stays
+                        publicly visible until then.
+                      </p>
+                    )}
+                    {p.moderationStatus === "rejected" && (
+                      <p className="mt-2 text-xs text-ink/50">
+                        FindMi didn&rsquo;t approve this product. Edit and resubmit it for another review.
+                      </p>
+                    )}
+
                     <details className="mt-2">
                       <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
                       <div className="mt-3">
@@ -879,16 +963,7 @@ export default async function ManageBusinessPage({
                           businessId={id}
                           action={updateMemberProduct.bind(null, id, p.id)}
                           categories={productCategories}
-                          defaultValues={{
-                            name: p.name,
-                            description: p.description ?? "",
-                            image_url: p.image_url,
-                            price: p.price != null ? String(p.price) : "",
-                            price_label: p.price_label ?? "",
-                            product_type: p.product_type,
-                            external_purchase_url: p.external_purchase_url ?? "",
-                            category_id: p.categoryId,
-                          }}
+                          defaultValues={p.editDefaults}
                           submitLabel="Save"
                         />
                       </div>

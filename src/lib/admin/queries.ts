@@ -593,6 +593,13 @@ export interface AdminProductRow extends AdminProduct {
 export interface ProductListFilters {
   q?: string;
   businessId?: string;
+  /** Product Moderation pass — "needs_review" is the same queue the
+   * dashboard's Product Reviews card and count link to: a product
+   * that's never been approved (moderation_status='pending_review') OR
+   * an already-live product with a standing proposed edit
+   * (pending_changes is not null). Mirrors the existing
+   * published='pending_review' filter admin/businesses already offers. */
+  status?: "needs_review";
 }
 
 export async function getAdminProducts(filters: ProductListFilters = {}): Promise<AdminProductRow[]> {
@@ -604,6 +611,9 @@ export async function getAdminProducts(filters: ProductListFilters = {}): Promis
     query = query.or(`name.ilike.${term},slug.ilike.${term}`);
   }
   if (filters.businessId) query = query.eq("business_id", filters.businessId);
+  if (filters.status === "needs_review") {
+    query = query.or("moderation_status.eq.pending_review,pending_changes.not.is.null");
+  }
   const { data } = await query.order("name");
   return ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as AdminProductRow & { business: AdminProductRow["business"] | AdminProductRow["business"][] };

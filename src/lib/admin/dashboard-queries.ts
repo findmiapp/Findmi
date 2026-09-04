@@ -28,6 +28,12 @@ export interface DashboardNeedsAttention {
    * DIFFERENT queue from pendingOnboardingReview above (the legacy
    * memberships/Tally onboarding table). */
   pendingBusinessReviews: number;
+  /** Product Moderation pass — products.moderation_status=
+   * 'pending_review' OR an already-live product with a standing
+   * pending_changes proposal. Same queue admin/products'
+   * ?status=needs_review filter uses (getAdminProducts's
+   * status="needs_review" branch). */
+  pendingProductReviews: number;
 }
 
 export interface DashboardGlance {
@@ -49,6 +55,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingEventApplications,
     pendingOnboardingReview,
     pendingBusinessReviews,
+    pendingProductReviews,
   ] = await Promise.all([
     supabase.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("event_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -65,6 +72,10 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
       .select("id", { count: "exact", head: true })
       .eq("is_demo", false)
       .eq("publication_status", "pending_review"),
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .or("moderation_status.eq.pending_review,pending_changes.not.is.null"),
   ]);
 
   return {
@@ -72,6 +83,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingEventApplications: pendingEventApplications.count ?? 0,
     pendingOnboardingReview: pendingOnboardingReview.count ?? 0,
     pendingBusinessReviews: pendingBusinessReviews.count ?? 0,
+    pendingProductReviews: pendingProductReviews.count ?? 0,
   };
 }
 

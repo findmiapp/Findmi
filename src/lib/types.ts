@@ -247,6 +247,27 @@ export interface Category {
   home_sort_order?: number | null;
 }
 
+// Product Moderation pass — owner-submitted content (new products, and
+// edits to already-live products) needs admin approval before it's
+// public. moderation_status gates a NEW product's first publication;
+// pending_changes holds a proposed edit to an already-live product so the
+// live/public columns are never overwritten until approved (null = no
+// pending edit). Both are optional on the shared Product interface
+// because public-facing reads (PUBLIC_PRODUCT_COLUMNS, an explicit column
+// list) never select either — only admin/owner reads do.
+export type ProductModerationStatus = "pending_review" | "live" | "rejected";
+
+export interface ProductPendingChanges {
+  name?: string;
+  description?: string | null;
+  image_url?: string | null;
+  price?: number | null;
+  price_label?: string | null;
+  product_type?: ProductType;
+  external_purchase_url?: string | null;
+  category_id?: string | null;
+}
+
 export interface Product {
   id: string;
   business_id: string;
@@ -260,6 +281,8 @@ export interface Product {
   external_purchase_url: string | null;
   is_featured: boolean;
   is_active: boolean;
+  moderation_status?: ProductModerationStatus;
+  pending_changes?: ProductPendingChanges | null;
   // Commerce — off by default (see purchasable). When false, the product
   // keeps its existing inquiry/external-link behavior unchanged.
   purchasable: boolean;

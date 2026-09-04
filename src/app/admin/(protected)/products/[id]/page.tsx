@@ -9,6 +9,7 @@ import {
 } from "@/lib/admin/queries";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import ProductForm from "../ProductForm";
+import ProductModerationPanel from "./ProductModerationPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +18,10 @@ export default async function EditProductPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; approved?: string; rejected?: string }>;
 }) {
   const { id } = await params;
-  const { error, saved } = await searchParams;
+  const { error, saved, approved, rejected } = await searchParams;
   const product = await getAdminProductById(id);
   if (!product) notFound();
   const [initialBusiness, fulfillmentOptions, appearanceOptions, categories, selectedCategoryIds] = await Promise.all([
@@ -47,6 +48,30 @@ export default async function EditProductPage({
           Saved.
         </p>
       )}
+      {approved && (
+        <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          Approved.
+        </p>
+      )}
+      {rejected && (
+        <p className="mt-3 rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 text-sm text-ink/70">
+          Rejected.
+        </p>
+      )}
+
+      {/* Product Moderation pass — Current/Proposed review + Approve/
+          Reject, only rendered when there's actually something to
+          review. Admin's own edits below (ProductForm/saveProduct) are
+          completely untouched and always publish immediately — this
+          panel is exclusively about OWNER-submitted content. */}
+      <div className="mt-5">
+        <ProductModerationPanel
+          product={product}
+          categories={categories}
+          currentCategoryId={selectedCategoryIds[0] ?? null}
+        />
+      </div>
+
       <div className="mt-5">
         <ProductForm
           product={product}

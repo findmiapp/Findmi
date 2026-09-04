@@ -118,3 +118,83 @@ export async function deleteProduct(id: string) {
   revalidatePath("/");
   redirect("/admin/products");
 }
+
+// ── Product Moderation — Admin Review ────────────────────────────────────
+//
+// Approve/reject owner-submitted Product content. Admin-only
+// (requireAdminSupabase — the same founder-password-gated session every
+// other admin action already requires); a business member has no path to
+// either of these, and neither takes a business_id or any value from a
+// member-facing form, so there's nothing for a member to tamper with to
+// reach them. See ../../../(public)/account/business/actions.ts's own
+// section comment for the member-facing half of this workflow.
+
+async function getProductForReview(supabase: Awaited<ReturnType<typeof requireAdminSupabase>>, id: string) {
+  const { data } = await supabase
+    .from("products")
+    .select("id, slug, business_id, moderation_status, pending_changes")
+    .eq("id", id)
+    .maybeSingle();
+  return data;
+}
+
+/**
+ * Approve a NEW product (moderation_status was "pending_review" → "live",
+ * nothing else changes) OR approve a standing edit to an already-live
+ * product (pending_changes' proposed field values are copied onto the
+ * product's real columns — including a delete-then-reinsert of
+ * product_categories for the proposed category — and pending_changes is
+ * cleared). Either way the approved Product remains a single row; nothing
+ * is deleted.
+ */
+export async function approveProduct(id: string) {
+  const supabase = await requireAdminSupabase();
+  const product = await getProductForReview(supabase, id);
+  if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
+
+  if (product.moderation_status === "pending_review") {
+    await supabase.from("products").update({ moderation_status: "live" }).eq("id", id);
+  } else if (product.pending_changes) {
+    const { category_id, ...fieldChanges } = product.pending_changes as Record<string, unknown> & {
+      category_id?: string | null;
+    };
+    await supabase
+      .from("products")
+      .update({ ...fieldChanges, pending_changes: null })
+      .eq("id", id);
+    await supabase.from("product_categories").delete().eq("product_id", id);
+    if (category_id) {
+      await supabase.from("product_categories").insert({ product_id: id, category_id });
+    }
+  }
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${id}`);
+  revalidatePath("/");
+  revalidatePath("/marketplace");
+  if (product.slug) revalidatePath(`/product/${product.slug}`);
+  redirect(`/admin/products/${id}?approved=1`);
+}
+
+/**
+ * Reject a NEW product (moderation_status → "rejected"; it stays
+ * non-public, the owner can edit it to resubmit) OR reject a standing
+ * edit to an already-live product (pending_changes is simply cleared —
+ * the currently-approved/live content is never touched, so it keeps
+ * showing publicly exactly as it did before the proposal).
+ */
+export async function rejectProduct(id: string) {
+  const supabase = await requireAdminSupabase();
+  const product = await getProductForReview(supabase, id);
+  if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
+
+  if (product.moderation_status === "pending_review") {
+    await supabase.from("products").update({ moderation_status: "rejected" }).eq("id", id);
+  } else if (product.pending_changes) {
+    await supabase.from("products").update({ pending_changes: null }).eq("id", id);
+  }
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${id}`);
+  redirect(`/admin/products/${id}?rejected=1`);
+}

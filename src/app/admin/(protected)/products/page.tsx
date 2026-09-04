@@ -8,11 +8,12 @@ export const dynamic = "force-dynamic";
 export default async function AdminProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; business?: string }>;
+  searchParams: Promise<{ q?: string; business?: string; status?: string }>;
 }) {
-  const { q, business } = await searchParams;
+  const { q, business, status } = await searchParams;
+  const needsReview = status === "needs_review";
   const [products, initialBusiness] = await Promise.all([
-    getAdminProducts({ q, businessId: business }),
+    getAdminProducts({ q, businessId: business, status: needsReview ? "needs_review" : undefined }),
     getBusinessOptionById(business ?? null),
   ]);
 
@@ -28,7 +29,27 @@ export default async function AdminProductsPage({
         </Link>
       </div>
 
+      {/* Product Moderation pass — Product Reviews entry point, same
+          querystring-filter-on-the-existing-list shape as admin/businesses'
+          own Pending Review filter. */}
+      <div className="mt-3 flex items-center gap-2">
+        <Link
+          href="/admin/products?status=needs_review"
+          className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+            needsReview ? "bg-amber-400 text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+          }`}
+        >
+          Needs Review
+        </Link>
+        {needsReview && (
+          <Link href="/admin/products" className="text-xs font-semibold text-ink/50 hover:text-ink">
+            Clear filter
+          </Link>
+        )}
+      </div>
+
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+        {needsReview && <input type="hidden" name="status" value="needs_review" />}
         <input
           type="text"
           name="q"
@@ -58,28 +79,50 @@ export default async function AdminProductsPage({
         {products.length === 0 ? (
           <p className="text-sm text-ink/50">No products yet.</p>
         ) : (
-          products.map((p) => (
-            <Link
-              key={p.id}
-              href={`/admin/products/${p.id}`}
-              className="flex items-center justify-between gap-3 rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                <p className="truncate text-xs text-ink/45">
-                  {p.business?.name ?? "—"}
-                  {formatPrice(p.price, p.price_label) ? ` · ${formatPrice(p.price, p.price_label)}` : ""}
-                </p>
-              </div>
-              <span
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                  p.is_active ? "bg-findmi-50 text-findmi-700" : "bg-black/[0.06] text-ink/50"
-                }`}
+          products.map((p) => {
+            // Product Moderation pass — same priority order as the owner
+            // manager's own badge (account/business/[id]/page.tsx):
+            // never-approved/rejected content outranks the plain
+            // Active/Inactive distinction, since it's the thing that
+            // needs a founder decision.
+            const moderationStatus = p.moderation_status ?? "live";
+            const badgeLabel =
+              moderationStatus === "pending_review"
+                ? "Pending Review"
+                : moderationStatus === "rejected"
+                  ? "Rejected"
+                  : p.pending_changes
+                    ? "Changes Pending"
+                    : p.is_active
+                      ? "Active"
+                      : "Inactive";
+            const badgeClass =
+              moderationStatus === "pending_review" || p.pending_changes
+                ? "bg-amber-100 text-amber-800"
+                : moderationStatus === "rejected"
+                  ? "bg-red-50 text-red-700"
+                  : p.is_active
+                    ? "bg-findmi-50 text-findmi-700"
+                    : "bg-black/[0.06] text-ink/50";
+            return (
+              <Link
+                key={p.id}
+                href={`/admin/products/${p.id}`}
+                className="flex items-center justify-between gap-3 rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10"
               >
-                {p.is_active ? "Active" : "Inactive"}
-              </span>
-            </Link>
-          ))
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
+                  <p className="truncate text-xs text-ink/45">
+                    {p.business?.name ?? "—"}
+                    {formatPrice(p.price, p.price_label) ? ` · ${formatPrice(p.price, p.price_label)}` : ""}
+                  </p>
+                </div>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>
+                  {badgeLabel}
+                </span>
+              </Link>
+            );
+          })
         )}
       </div>
     </div>

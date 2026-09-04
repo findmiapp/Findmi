@@ -69,7 +69,25 @@ function MetricCard({ label, count, href, detail }: { label: string; count: numb
  * conditional on count > 0) — the zero state is its own quiet copy/color,
  * never a misleading "0 awaiting review" phrased as if there's an action
  * to take. */
-function BusinessReviewCard({ count, href }: { count: number; href: string }) {
+/** Generalized from its original Business-Reviews-only shape (Onboarding
+ * UX Polish pass) so the Product Moderation pass's Product Reviews card
+ * (below) can reuse the exact same layout instead of a near-duplicate
+ * component. Always renders (not conditional on count > 0) — the zero
+ * state is its own quiet copy/color, never a misleading "0 awaiting
+ * review" phrased as if there's an action to take. */
+function ReviewCard({
+  title,
+  description,
+  cta,
+  count,
+  href,
+}: {
+  title: string;
+  description: string;
+  cta: string;
+  count: number;
+  href: string;
+}) {
   const needsAction = count > 0;
   return (
     <div
@@ -78,13 +96,11 @@ function BusinessReviewCard({ count, href }: { count: number; href: string }) {
       }`}
     >
       <div className="min-w-0">
-        <p className={`text-sm font-bold ${needsAction ? "text-amber-800" : "text-ink"}`}>Business Reviews</p>
+        <p className={`text-sm font-bold ${needsAction ? "text-amber-800" : "text-ink"}`}>{title}</p>
         <p className={`mt-0.5 text-sm font-semibold ${needsAction ? "text-amber-800" : "text-ink/50"}`}>
-          {needsAction ? `${count} awaiting review` : "No businesses awaiting review"}
+          {needsAction ? `${count} awaiting review` : "Nothing awaiting review"}
         </p>
-        <p className={`mt-0.5 text-xs ${needsAction ? "text-amber-900/70" : "text-ink/40"}`}>
-          Review new businesses submitted by members.
-        </p>
+        <p className={`mt-0.5 text-xs ${needsAction ? "text-amber-900/70" : "text-ink/40"}`}>{description}</p>
       </div>
       <Link
         href={href}
@@ -94,7 +110,7 @@ function BusinessReviewCard({ count, href }: { count: number; href: string }) {
             : "border border-black/10 text-ink/60 hover:border-black/20"
         }`}
       >
-        Review Businesses
+        {cta}
       </Link>
     </div>
   );
@@ -172,10 +188,24 @@ export default async function AdminDashboardPage() {
           Pending Review filter (added in the prior pass) rather than a
           second moderation screen. */}
       {needsAttention && (
-        <section className="mt-6">
-          <BusinessReviewCard
+        <section className="mt-6 flex flex-col gap-3">
+          <ReviewCard
+            title="Business Reviews"
+            description="Review new businesses submitted by members."
+            cta="Review Businesses"
             count={needsAttention.pendingBusinessReviews}
             href="/admin/businesses?published=pending_review"
+          />
+          {/* Product Moderation pass — new products and edits to
+              already-live products submitted by Pro/Pro Seller owners,
+              same "needs a founder decision" prominence as Business
+              Reviews above. */}
+          <ReviewCard
+            title="Product Reviews"
+            description="Review new products and proposed edits submitted by owners."
+            cta="Review Products"
+            count={needsAttention.pendingProductReviews}
+            href="/admin/products?status=needs_review"
           />
         </section>
       )}

@@ -13,6 +13,7 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
+import type { ProductPendingChanges, ProductType } from "@/lib/types";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -1068,7 +1069,18 @@ export async function startBusinessProCheckout(businessId: string) {
  * a member to touch. `onError` (from the caller) both reports the
  * message and never returns, so every field below is safely non-null
  * where required by the time this returns. */
-function parseProductFields(formData: FormData, onError: (message: string) => never) {
+function parseProductFields(
+  formData: FormData,
+  onError: (message: string) => never
+): {
+  name: string;
+  description: string | null;
+  image_url: string | null;
+  price: number | null;
+  price_label: string | null;
+  product_type: ProductType;
+  external_purchase_url: string | null;
+} {
   const name = str(formData, "name");
   if (!name) onError("Product name is required.");
 
@@ -1124,13 +1136,26 @@ export async function createMemberProduct(businessId: string, formData: FormData
   if (!baseSlug) onError("Product name is required to generate a URL.");
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isProductSlugTaken(candidate));
 
+  // Product Moderation pass — a member-created product is NEVER
+  // immediately public. moderation_status starts "pending_review"
+  // (overriding the column's own 'live' default, which exists only so
+  // existing admin-authored rows read as already-approved) and the RLS
+  // policy on products now requires moderation_status='live' in addition
+  // to is_active — so this row genuinely cannot appear on any public
+  // surface until an admin approves it. The owner has no field/param
+  // that can set this to "live" themselves.
   const { data, error } = await admin
     .from("products")
-    .insert({ business_id: businessId, slug, is_active: true, ...fields })
+    .insert({ business_id: businessId, slug, is_active: true, moderation_status: "pending_review", ...fields })
     .select("id")
     .single();
   if (error || !data) return onError("Couldn't create that product. Please try again.");
 
+  // Safe to assign the category immediately — the product itself is
+  // still pending_review, so it can't leak through any public
+  // category-filtered query (getMarketplaceProducts etc. all require
+  // moderation_status='live' via RLS) even though product_categories has
+  // no moderation gate of its own.
   await setMemberProductCategory(admin, data.id, formData);
 
   revalidatePath(redirectPath);
@@ -1144,7 +1169,23 @@ export async function createMemberProduct(businessId: string, formData: FormData
  * it belongs to the authorized business (see the section comment above
  * for the exact double-scoped check). Slug is deliberately never
  * regenerated here even if the name changes — keeps the product's
- * public URL stable across edits; only admin's own editor changes it. */
+ * public URL stable across edits; only admin's own editor changes it.
+ *
+ * Product Moderation pass — behavior now branches on the product's
+ * current moderation_status:
+ *   - "live" (already approved and public): the submitted fields are
+ *     NEVER written to the product's real columns. They're stored as a
+ *     proposal in pending_changes instead, so the currently-approved
+ *     content keeps showing publicly untouched until an admin approves
+ *     the edit (see admin's approveProduct/rejectProduct). A second edit
+ *     while one is already pending simply replaces the standing
+ *     proposal — there's only ever one pending revision per product.
+ *   - "pending_review" or "rejected" (never successfully live): nothing
+ *     is public yet regardless of what changes, so the row's real
+ *     columns are updated directly, same as before this pass. Editing a
+ *     rejected product also resubmits it (back to "pending_review") —
+ *     the smallest way to let an owner act on admin feedback without a
+ *     dead-end state; there is no separate "resubmit" action. */
 export async function updateMemberProduct(businessId: string, productId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
   const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
@@ -1155,15 +1196,32 @@ export async function updateMemberProduct(businessId: string, productId: string,
 
   const { data: existing } = await admin
     .from("products")
-    .select("id, slug")
+    .select("id, slug, moderation_status")
     .eq("id", productId)
     .eq("business_id", businessId)
     .maybeSingle();
   if (!existing) return onError("That product no longer exists.");
 
   const fields = parseProductFields(formData, onError);
+  const categoryId = str(formData, "category_id");
 
-  const { error } = await admin.from("products").update(fields).eq("id", productId).eq("business_id", businessId);
+  if (existing.moderation_status === "live") {
+    const pending_changes: ProductPendingChanges = { ...fields, category_id: categoryId || null };
+    const { error } = await admin
+      .from("products")
+      .update({ pending_changes })
+      .eq("id", productId)
+      .eq("business_id", businessId);
+    if (error) onError("Couldn't submit those changes. Please try again.");
+    revalidatePath(redirectPath);
+    redirect(`${redirectPath}?product_changes_pending=1`);
+  }
+
+  const { error } = await admin
+    .from("products")
+    .update({ ...fields, moderation_status: "pending_review" })
+    .eq("id", productId)
+    .eq("business_id", businessId);
   if (error) onError("Couldn't update that product. Please try again.");
 
   await setMemberProductCategory(admin, productId, formData);
