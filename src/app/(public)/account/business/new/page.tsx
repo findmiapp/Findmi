@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -28,15 +29,26 @@ const primaryButtonClass =
 export default async function AddBusinessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; duplicate_slug?: string; duplicate_name?: string }>;
+  searchParams: Promise<{ error?: string; duplicate_slug?: string; duplicate_name?: string; plan?: string }>;
 }) {
-  const { error, duplicate_slug: duplicateSlug, duplicate_name: duplicateName } = await searchParams;
+  const { error, duplicate_slug: duplicateSlug, duplicate_name: duplicateName, plan } = await searchParams;
+  // Join + Add Business Plan UX Alignment pass — /join's Pro card links
+  // here with ?plan=pro so Pro intent is preselected instead of the
+  // default Free radio. Free needs no param (it's already the default).
+  const wantsPro = plan === "pro";
 
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/account/business/new");
+  if (!user) {
+    // Preserve ?plan=pro through sign-in using the existing safe `next`
+    // redirect mechanism (lib/auth/safe-redirect.ts already round-trips
+    // a path's query string) — no new auth infrastructure, just not
+    // dropping the query string this redirect used to hardcode away.
+    const next = wantsPro ? "/account/business/new?plan=pro" : "/account/business/new";
+    redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
 
   const categories = await getCategories();
 
@@ -142,35 +154,45 @@ export default async function AddBusinessPage({
               checkout for that exact business — see createMemberBusiness. */}
           <div>
             <span className="mb-1.5 block text-sm font-medium text-ink">Choose your plan</span>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-black/10 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50">
+            {/* Plan UX Alignment pass — compact version of /join's PlanCard
+                visual vocabulary (rounded-3xl, font-display price, aqua
+                checkmarks) so the difference reads without a trip to
+                /join. Same radio inputs/names/values/defaultChecked
+                convention as before (createMemberBusiness untouched) —
+                only the surrounding markup changed. Selected state uses
+                the same has-[:checked] pattern as before, now with a
+                visible aqua ring so it's unmistakable at a glance. */}
+            <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">
+              <label className="flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-black/10 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-bold text-ink">Free — Basic Index</span>
-                  <input type="radio" name="plan_choice" value="free" defaultChecked className="h-4 w-4 accent-findmi" />
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Free · Basic Index</p>
+                  <input type="radio" name="plan_choice" value="free" defaultChecked={!wantsPro} className="h-4 w-4 accent-findmi" />
                 </div>
-                <p className="text-lg font-bold text-ink">$0</p>
-                <ul className="flex flex-col gap-1 text-xs text-ink/60">
-                  <li>Basic business page</li>
-                  <li>Name &amp; category</li>
-                  <li>Logo, cover &amp; short description</li>
-                  <li>Manage &amp; share your listing</li>
-                  <li>Upgrade to Pro anytime later</li>
+                <p className="font-display text-2xl font-bold tracking-tight text-ink">$0</p>
+                <p className="text-xs text-ink/60">A simple way to get your business onto FindMi.</p>
+                <ul className="mt-1 flex flex-col gap-1.5 text-xs text-ink/70">
+                  <PlanBullet>Basic business page</PlanBullet>
+                  <PlanBullet>Name &amp; category</PlanBullet>
+                  <PlanBullet>Logo, cover &amp; short description</PlanBullet>
+                  <PlanBullet>Manage &amp; share your listing</PlanBullet>
+                  <PlanBullet>Upgrade to Pro anytime later</PlanBullet>
                 </ul>
               </label>
-              <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-black/10 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50">
+              <label className="flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-black/10 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-bold text-ink">FindMi Pro</span>
-                  <input type="radio" name="plan_choice" value="pro" className="h-4 w-4 accent-findmi" />
+                  <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Pro</p>
+                  <input type="radio" name="plan_choice" value="pro" defaultChecked={wantsPro} className="h-4 w-4 accent-findmi" />
                 </div>
-                <p className="text-lg font-bold text-ink">
-                  $20 <span className="text-xs font-medium text-ink/45">first 90 days</span>
+                <p className="flex items-baseline gap-1">
+                  <span className="font-display text-2xl font-bold tracking-tight text-ink">$20</span>
+                  <span className="text-xs font-medium text-ink/45">first 90 days</span>
                 </p>
-                <ul className="flex flex-col gap-1 text-xs text-ink/60">
-                  <li>Everything in Free, plus:</li>
-                  <li>Full description</li>
-                  <li>Photo gallery</li>
-                  <li>Contact &amp; social links</li>
-                  <li>FindMi Here appearance tools</li>
+                <p className="text-xs text-ink/60">A fuller profile with richer discovery features.</p>
+                <ul className="mt-1 flex flex-col gap-1.5 text-xs text-ink/70">
+                  <PlanBullet>Everything in Free, plus:</PlanBullet>
+                  <PlanBullet>Full description &amp; photo gallery</PlanBullet>
+                  <PlanBullet>Contact &amp; social links</PlanBullet>
+                  <PlanBullet>FindMi Here appearance tools</PlanBullet>
                 </ul>
               </label>
             </div>
@@ -198,5 +220,32 @@ export default async function AddBusinessPage({
         </form>
       </div>
     </div>
+  );
+}
+
+/** Same aqua checkmark bullet /join's PlanCard uses (join/page.tsx),
+ * recreated locally rather than imported — that component lives in a
+ * page file, not a shared module, and this is cheap enough not to
+ * warrant a new shared abstraction (Plan UX Alignment pass). */
+function PlanBullet({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-1.5">
+      <CheckGlyph />
+      <span>{children}</span>
+    </li>
+  );
+}
+
+function CheckGlyph() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-findmi-700">
+      <path
+        d="M4 10.5l3.5 3.5L16 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

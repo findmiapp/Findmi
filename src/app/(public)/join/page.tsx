@@ -31,32 +31,91 @@ export const metadata: Metadata = {
   description: "Get discovered on FindMi — tell us about your business or event and we'll be in touch.",
 };
 
+// Join + Add Business Plan UX Alignment pass — the fields PlanCard
+// actually renders, factored out of ResolvedJoinCard (lib/join-page.ts)
+// so the same card component can render both a founder-editable CMS card
+// (Pro, Events & Markets, Multi-Region) and the static Free card below,
+// which intentionally isn't CMS-driven — Free is a real, permanent plan,
+// not admin-hideable marketing content.
+type PlanCardData = Pick<
+  ResolvedJoinCard,
+  "eyebrow" | "title" | "price" | "priceSuffix" | "tagline" | "features" | "ctaLabel" | "ctaUrl" | "emphasis"
+>;
+
+// The one core Free/Pro business-acquisition path — never Tally. Pro
+// intent survives sign-in via the existing safe `next` redirect
+// mechanism (see account/business/new/page.tsx and lib/auth/
+// safe-redirect.ts) — no new auth/session infrastructure.
+const PRO_NATIVE_CTA_URL = "/account/business/new?plan=pro";
+
+// Free copy matches this pass's exact requested wording — only CURRENT
+// real Free entitlements (see account/business/actions.ts's
+// FREE_ALLOWED_COLUMNS and account/business/new/page.tsx's own Free
+// bullets), nothing promised here that doesn't already exist. Free
+// itself needs no `?plan=` param — free is already the Add Business
+// form's own default selection.
+const FREE_CARD: PlanCardData = {
+  eyebrow: "Free",
+  title: "Basic Index",
+  price: "$0",
+  priceSuffix: null,
+  tagline: "A simple way to get your business onto FindMi.",
+  features: [
+    "Business name, logo and category",
+    "Short business description",
+    "Basic FindMi listing",
+    "Manage your listing",
+    "Appear in relevant event/vendor contexts where applicable",
+    "Upgrade to Pro anytime",
+  ],
+  ctaLabel: "Start Free",
+  ctaUrl: "/account/business/new",
+  emphasis: false,
+};
+
 export default async function JoinPage() {
   const overrides = await getJoinPageSections();
 
   const hero = resolveJoinHero(overrides);
   const global = resolveJoinGlobal(overrides);
-  const allCards = JOIN_CARD_KEYS.map((key) => resolveJoinCard(overrides, key, global.ctaUrl));
+
+  // Join + Add Business Plan UX Alignment pass — the Pro card
+  // (card_discovery_pro) is the one core Free/Pro business-acquisition
+  // path, so its CTA must always lead into the native
+  // account/business/new creation flow with Pro intent preserved (see
+  // that page's own `plan` param), never back through the founder-
+  // editable Tally CTA URL every other non-core card here still
+  // legitimately uses (Events & Markets, Multi-Region/National —
+  // untouched, still resolve to their own CMS/global cta_url exactly as
+  // before). Every other Pro field (heading, price, tagline, features,
+  // emphasis) stays fully founder-editable via the CMS as before — only
+  // this one card's destination is now fixed in code.
+  const allCards = JOIN_CARD_KEYS.map((key) => resolveJoinCard(overrides, key, global.ctaUrl)).map((c) =>
+    c.key === "card_discovery_pro" ? { ...c, ctaUrl: PRO_NATIVE_CTA_URL } : c
+  );
   const cards = allCards.filter((c) => c.visible);
+  const proCard = cards.find((c) => c.key === "card_discovery_pro") ?? null;
+  const secondaryCards = cards.filter((c) => c.key !== "card_discovery_pro");
+  // Free is a real, permanent plan now (not admin-toggleable here, same
+  // as it isn't a Tally-driven CMS card at all) — it and Pro are always
+  // shown together as the two main ways a normal business joins FindMi,
+  // regardless of which of the other founder-editable cards are enabled.
+  const primaryCards: PlanCardData[] = proCard ? [FREE_CARD, proCard] : [FREE_CARD];
   const whatYouGet = resolveJoinWhatYouGet(overrides);
 
-  // Every section admin can hide (all three cards, then "What you get") is
-  // optional, so whichever section actually renders last needs to own the
-  // page's closing bottom padding itself — otherwise hiding the lower
-  // section(s) leaves the page ending abruptly with no space before the
-  // footer. Neither section carries bottom padding by default (so the gap
-  // between two visible sections stays a single, intentional amount).
-  const hasOptions = cards.length > 0;
-  const optionsIsLastSection = hasOptions && !whatYouGet.visible;
-  const heroIsLastSection = !hasOptions && !whatYouGet.visible;
+  // The options section (primary Free/Pro pair, always present, plus
+  // whichever secondary cards are enabled) now always renders, so
+  // whichever section actually renders last needs to own the page's
+  // closing bottom padding itself — otherwise hiding "What you get"
+  // leaves the page ending abruptly with no space before the footer.
+  const optionsIsLastSection = !whatYouGet.visible;
 
   return (
     <div>
       {/* Hero — short, one core message, not a long pitch before the
-          actual options. */}
-      <div
-        className={`mx-auto max-w-4xl px-6 pt-14 sm:pt-16 ${heroIsLastSection ? "pb-16 sm:pb-20" : ""}`}
-      >
+          actual options. Options always render now (Free is permanent),
+          so the hero never needs to own the page's closing padding. */}
+      <div className="mx-auto max-w-4xl px-6 pt-14 sm:pt-16">
         <div className="max-w-xl">
           <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
             {hero.heading}
@@ -66,24 +125,43 @@ export default async function JoinPage() {
       </div>
 
       {/* The options — appear early, not buried under marketing copy.
-          Layout adapts to however many cards are currently enabled so a
-          hidden card never leaves a blank column. */}
-      {hasOptions && (
+          Free + Pro (the two main ways a normal business joins) always
+          appear together as their own prominent pair first; whichever
+          other founder-editable cards (Events & Markets, Multi-Region)
+          are enabled follow below as secondary options, unchanged. */}
+      <div
+        id="options"
+        className={`mx-auto max-w-5xl px-4 pt-8 sm:px-6 sm:pt-10 ${optionsIsLastSection ? "pb-16 sm:pb-20" : ""}`}
+      >
         <div
-          id="options"
-          className={`mx-auto max-w-5xl px-4 pt-8 sm:px-6 sm:pt-10 ${optionsIsLastSection ? "pb-16 sm:pb-20" : ""}`}
+          className={
+            primaryCards.length === 2
+              ? "mx-auto grid max-w-3xl gap-4 sm:grid-cols-2 sm:items-stretch"
+              : "mx-auto max-w-md"
+          }
         >
-          <CardGrid cards={cards} />
-
-          {/* Not hiding pricing, just being upfront that this step doesn't
-              collect payment — a plain, welcoming line, not an "apply for
-              approval" framing. */}
-          <p className="mx-auto mt-6 max-w-md text-center text-sm text-ink/50">{global.message}</p>
-          {global.supportingText && (
-            <p className="mx-auto mt-1.5 max-w-md text-center text-sm text-ink/50">{global.supportingText}</p>
-          )}
+          {primaryCards.map((c, i) => (
+            <PlanCard key={i} card={c} />
+          ))}
         </div>
-      )}
+
+        {secondaryCards.length > 0 && (
+          <div className="mt-10">
+            <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">More ways to join FindMi</p>
+            <div className="mt-4">
+              <CardGrid cards={secondaryCards} />
+            </div>
+          </div>
+        )}
+
+        {/* Not hiding pricing, just being upfront that this step doesn't
+            collect payment — a plain, welcoming line, not an "apply for
+            approval" framing. */}
+        <p className="mx-auto mt-6 max-w-md text-center text-sm text-ink/50">{global.message}</p>
+        {global.supportingText && (
+          <p className="mx-auto mt-1.5 max-w-md text-center text-sm text-ink/50">{global.supportingText}</p>
+        )}
+      </div>
 
       {/* Show the product — real FindMi visual language, a link to an
           actual live profile rather than a fabricated mockup. */}
@@ -158,7 +236,7 @@ function CardGrid({ cards }: { cards: ResolvedJoinCard[] }) {
   );
 }
 
-function PlanCard({ card }: { card: ResolvedJoinCard }) {
+function PlanCard({ card }: { card: PlanCardData }) {
   const { emphasis, eyebrow, title, price, priceSuffix, tagline, features, ctaLabel, ctaUrl } = card;
   return (
     <div
