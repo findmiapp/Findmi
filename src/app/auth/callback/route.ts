@@ -63,10 +63,31 @@ export async function GET(request: NextRequest) {
       return redirectNoStore(new URL(next, request.url));
     }
 
+    // Never log the code itself — only GoTrue's own error shape (message/
+    // status), which carries no secret/PII, same pattern as
+    // signup/actions.ts's existing signUp failure log.
+    console.error("[auth/callback] exchangeCodeForSession failed", {
+      error: error.message,
+      status: error.status,
+    });
+
     if (type === "recovery") {
       const failUrl = new URL("/forgot-password", request.url);
       failUrl.searchParams.set("error", "expired");
       return redirectNoStore(failUrl);
+    }
+
+    // A near-duplicate confirmation request (the same link visited twice —
+    // a prefetch, a double-tap) can legitimately fail this exchange even
+    // though an earlier request in the same flow already succeeded and set
+    // a valid session on this exact browser. Check for that before
+    // treating it as a real failure: only show "expired" if this browser
+    // genuinely has no session either.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      return redirectNoStore(new URL(next, request.url));
     }
 
     // Default to the signup-confirmation failure state — this endpoint
@@ -91,6 +112,13 @@ export async function GET(request: NextRequest) {
     if (!error) {
       return redirectNoStore(new URL(next, request.url));
     }
+
+    // Same safe error-shape-only logging as the code branch above —
+    // logged for both outcomes below; neither redirect's behavior changes.
+    console.error("[auth/callback] verifyOtp failed", {
+      error: error.message,
+      status: error.status,
+    });
 
     if (type === "recovery") {
       const failUrl = new URL("/forgot-password", request.url);
