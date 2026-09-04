@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 import { signUp } from "./actions";
+import SubmitButton from "./SubmitButton";
 
 export const metadata: Metadata = {
   title: "Sign Up",
@@ -12,8 +13,6 @@ export const dynamic = "force-dynamic";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
-const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 export default async function SignupPage({
   searchParams,
@@ -57,9 +56,9 @@ export default async function SignupPage({
               className={inputClass}
             />
           </label>
-          <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
-            Create Account
-          </button>
+          <div className="mt-1">
+            <SubmitButton />
+          </div>
         </form>
       </div>
 

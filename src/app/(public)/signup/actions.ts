@@ -54,9 +54,18 @@ export async function signUp(formData: FormData) {
     // the same console.error({...}) shape lib/commerce/membershipCheckout.ts
     // already uses for this kind of failure — no new logging system.
     console.error("[signup] auth.signUp failed", { error: error.message });
-    redirect(
-      `/signup?error=${encodeURIComponent("Could not create your account. Please try again.")}&next=${encodeURIComponent(next)}`
-    );
+    // GoTrue's own rate limit (status 429 — e.g. a near-duplicate submit
+    // for the same email) is a real, non-enumerating distinction: it
+    // reveals nothing about whether the account exists, only that the
+    // request was too soon. Telling the user to wait instead of implying
+    // the account wasn't created avoids the exact confusion a duplicate
+    // submit produces — everything else still falls through to the
+    // generic message.
+    const message =
+      error.status === 429
+        ? "Too many attempts. Please wait a moment and try again."
+        : "Could not create your account. Please try again.";
+    redirect(`/signup?error=${encodeURIComponent(message)}&next=${encodeURIComponent(next)}`);
   }
 
   redirect(`/signup/check-email?next=${encodeURIComponent(next)}`);
