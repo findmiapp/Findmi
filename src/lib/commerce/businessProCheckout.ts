@@ -3,7 +3,7 @@ import { getStripe } from "./stripe";
 import { getPublicOrigin } from "@/lib/site-url";
 import { isBusinessPro } from "@/lib/entitlements";
 
-// Native Business Onboarding Pass 3 — the introductory $20/first-year
+// Native Business Onboarding Pass 3 — the introductory $20/first-90-days
 // Pro offer, deliberately separate from the marketplace order checkout
 // (lib/commerce/quote.ts, order/order_items — untouched) and from the
 // legacy membership checkout (membershipCheckout.ts, still intact,
@@ -29,12 +29,15 @@ import { isBusinessPro } from "@/lib/entitlements";
  * altered by changing what a FUTURE checkout tags itself with. */
 export const BUSINESS_PRO_INTRO_OFFER_ID = "pro_intro_1yr_2000";
 export const BUSINESS_PRO_INTRO_PRICE_CENTS = 2000; // $20
-// Pro Offer Pass 4 — locked launch offer is "$20 for the first year",
-// not 90 days. Feeds businessProActivation.ts's plan_expires_at
-// calculation directly (expiresAt.setDate(... + BUSINESS_PRO_INTRO_DAYS))
-// — that's the entire "existing expiration/provenance mechanism" this
-// pass reuses, no other change needed there.
-export const BUSINESS_PRO_INTRO_DAYS = 365;
+// Pro Intro Term pass — locked launch offer is "$20 for the first 90
+// days", not a year (corrects Pro Offer Pass 4, which had changed this
+// to 365 — confirmed via a real, already-activated live payment that
+// this constant must be 90 to match: see this pass's own report).
+// Feeds businessProActivation.ts's plan_expires_at calculation directly
+// (expiresAt.setDate(... + BUSINESS_PRO_INTRO_DAYS)) — that's the
+// entire "existing expiration/provenance mechanism" this reuses, no
+// other change needed there.
+export const BUSINESS_PRO_INTRO_DAYS = 90;
 
 /** Creates a one-time Stripe Checkout Session for the introductory Pro
  * offer, scoped to exactly one already-existing business. Deliberately
