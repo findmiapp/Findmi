@@ -147,6 +147,21 @@ export default async function JoinPage({
           </div>
         )}
 
+        {/* Make Pro Invite First-Class pass — moved here (directly under
+            the Pro card, secondary to its $99 CTA) from far below the
+            fold after "More Ways To Join FindMi." A brand-new visitor
+            evaluating Free vs. Pro needs to see the no-payment invite
+            path in the SAME glance as the $99 price, not several
+            sections later — that's the whole root cause this pass fixes.
+            Still the same ProInviteCodeEntry -> goToRedeemCode ->
+            /redeem/[code] flow (Option B); Option A
+            (findmi.app/join?invite=CODE) is handled by the redirect at
+            the top of this page. Only one invite box on this page now —
+            the old location below was removed, not duplicated. */}
+        <div className="mx-auto mt-4 max-w-xl">
+          <ProInviteCodeEntry returnTo="/join" />
+        </div>
+
         {/* Conversion Completion pass — secondary escape hatch for a
             business that's already on FindMi (added by the founder, or
             by another member). Reuses the existing public discovery
@@ -170,15 +185,6 @@ export default async function JoinPage({
             </div>
           </div>
         )}
-
-        {/* Pro Invite Sharing UX pass — Option B (manual code entry) for a
-            vendor given a code verbally/by text/on a printed card, rather
-            than the findmi.app/join?invite=CODE link (Option A, handled
-            above). Deliberately quiet/secondary — plain bordered box, not
-            styled like Free/Pro. */}
-        <div className="mx-auto mt-6 max-w-xl">
-          <ProInviteCodeEntry returnTo="/join" />
-        </div>
 
         {/* Not hiding pricing, just being upfront that this step doesn't
             collect payment — a plain, welcoming line, not an "apply for

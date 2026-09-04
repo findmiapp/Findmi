@@ -243,6 +243,39 @@ export default async function AddBusinessPage({
                 </label>
               </div>
               <p className="mt-1.5 text-xs text-ink/40">$99 for one year of FindMi Pro.</p>
+
+              {/* Make Pro Invite First-Class pass — a first-time vendor
+                  with a complimentary code should never have to choose
+                  paid Pro and land in Stripe just to get here. This is a
+                  plain field inside the SAME create-business form (not a
+                  separate ProInviteCodeEntry mini-form that would navigate
+                  away before the business even exists) — name="invite"
+                  submits alongside name/category/plan_choice/etc., and
+                  createMemberBusiness's own existing invite-first branch
+                  (account/business/actions.ts) already takes priority
+                  over plan_choice whenever this is non-blank, regardless
+                  of which Free/Pro radio is selected: the business is
+                  still created via the exact same safe native RPC
+                  (Free + pending_review, owner membership granted), then
+                  handed off to /redeem/[code] instead of Stripe. Leaving
+                  this blank changes nothing — plan_choice behaves exactly
+                  as before. Collapsed by default so it stays secondary to
+                  the primary Free/Pro choice above, not a third
+                  competing option. */}
+              <details className="group mt-3">
+                <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+                  Have a Pro Invite Code?
+                </summary>
+                <input
+                  type="text"
+                  name="invite"
+                  placeholder="Enter Invite Code"
+                  className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+                />
+                <p className="mt-1.5 text-xs text-ink/40">
+                  A valid code applies complimentary Pro after your business is created — no payment required.
+                </p>
+              </details>
             </div>
           )}
 
