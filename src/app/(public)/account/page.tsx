@@ -48,21 +48,32 @@ export default async function AccountHomePage({
   // placeholder/empty card.
   const { data: businessMemberships } = await supabase
     .from("business_members")
-    .select("business_id, businesses(name, slug)")
+    .select("business_id, businesses(name, slug, publication_status)")
     .eq("user_id", user.id);
   type BusinessMembershipRow = {
     business_id: string;
-    businesses: { name: string; slug: string } | { name: string; slug: string }[] | null;
+    businesses:
+      | { name: string; slug: string; publication_status: string }
+      | { name: string; slug: string; publication_status: string }[]
+      | null;
   };
   // slug was already part of this same query above — just also carried
   // through the mapping now (previously dropped) so the redesigned card
   // below can link to the public profile; no new query, no new data.
+  // publication_status added (Native Business Onboarding Pass 2) so a
+  // newly created/claimed business still awaiting approval can show
+  // "Pending Review" here instead of reading identically to a live one —
+  // publication_status is on the same public column grant every other
+  // anon/authenticated business read already uses (unlike plan_tier),
+  // so this needs no service-role elevation.
   const myBusinesses = ((businessMemberships ?? []) as BusinessMembershipRow[])
     .map((m) => {
       const business = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
-      return business ? { id: m.business_id, name: business.name, slug: business.slug } : null;
+      return business
+        ? { id: m.business_id, name: business.name, slug: business.slug, pendingReview: business.publication_status === "pending_review" }
+        : null;
     })
-    .filter((b): b is { id: string; name: string; slug: string } => Boolean(b));
+    .filter((b): b is { id: string; name: string; slug: string; pendingReview: boolean } => Boolean(b));
 
   // Pending BUSINESS claims this user submitted — same RLS-scoped
   // (auth.uid() = user_id) select_own policy business_members already
@@ -136,14 +147,33 @@ export default async function AccountHomePage({
       </section>
 
       {/* 3. My Businesses — separate section, own compact card shape (name
-          + Manage Business + View Public Profile). No plan badge here:
-          this page's existing business_members query only ever selected
-          name/slug, never plan_tier, so there's no existing data to show
-          a badge from without adding a new query — out of scope for a
-          presentation-only pass. */}
-      {myBusinesses.length > 0 && (
-        <section className="mt-8">
+          + Manage Business + View Public Profile). Native Business
+          Onboarding Pass 2: always renders now (not gated on having any
+          businesses yet), so the "+ Add a Business" CTA stays available
+          either way — an account can own/manage more than one business.
+          Pending-review businesses show a small status line instead of a
+          plan badge (still no plan_tier query here — out of scope, same
+          as before). */}
+      <section className="mt-8">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">My Businesses</h2>
+          <Link
+            href="/account/business/new"
+            className="rounded-full bg-findmi px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            + Add a Business
+          </Link>
+        </div>
+
+        {myBusinesses.length === 0 ? (
+          <p className="mt-3 text-sm text-ink/50">
+            Can&rsquo;t find your business on FindMi?{" "}
+            <Link href="/account/business/new" className="font-semibold text-ink underline underline-offset-2">
+              Add it
+            </Link>{" "}
+            — it&rsquo;s free.
+          </p>
+        ) : (
           <div className="mt-3 flex flex-col gap-3">
             {myBusinesses.map((b) => (
               <div
@@ -155,6 +185,11 @@ export default async function AccountHomePage({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-ink">{b.name}</p>
+                  {b.pendingReview && (
+                    <p className="mt-0.5 text-xs font-semibold text-amber-700">
+                      Pending Review — visible only to you until FindMi approves it.
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Link
                       href={`/account/business/${b.id}`}
@@ -167,7 +202,7 @@ export default async function AccountHomePage({
                         href={`/business/${b.slug}`}
                         className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/60 transition hover:border-black/20 hover:text-ink"
                       >
-                        View Public Profile
+                        {b.pendingReview ? "Preview Profile" : "View Public Profile"}
                       </Link>
                     )}
                   </div>
@@ -175,8 +210,8 @@ export default async function AccountHomePage({
               </div>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* 4. Pending Claims — separate section, same status copy/actions as
           before, just moved out of the shared grid. A soft aqua tint

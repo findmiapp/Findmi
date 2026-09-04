@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { bool, errorRedirectUrl, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
@@ -9,6 +10,8 @@ import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
+import { isSlugTaken } from "@/lib/admin/queries";
+import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -752,4 +755,161 @@ export async function removeOwnerAppearance(businessId: string, appearanceId: st
 
   revalidatePath(redirectPath);
   redirect(`${redirectPath}?appearance_removed=1`);
+}
+
+// ── NATIVE FREE BUSINESS CREATION — Native Business Onboarding Pass 2 ──────
+//
+// Creating a business is free, requires no Pro purchase, and starts every
+// new business Free + pending_review — see create_owned_business() (the
+// migration this pass adds) for where plan_tier/publication_status are
+// actually hardcoded, not trusted from here or anywhere client-side.
+
+const CREATE_BUSINESS_PATH = "/account/business/new";
+
+function normalizeForMatch(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normalizeUrlForMatch(value: string | null): string | null {
+  if (!value) return null;
+  return value.trim().toLowerCase().replace(/\/+$/, "").replace(/^https?:\/\/(www\.)?/, "") || null;
+}
+
+/** Practical, non-fuzzy duplicate check — the small candidate pool this
+ * catalog actually has today makes a full compare-in-JS pass (not a
+ * search index) the honest "smallest thing that works" choice; see this
+ * pass's own scope note against building real matching infrastructure.
+ * Checked in order: an exact website/Instagram match (the strongest
+ * signal) first, then a normalized name match that ALSO agrees on city
+ * and state whenever both sides have one (so the same business name in a
+ * different city is never flagged). Demo rows are never candidates — a
+ * seeded demo business is not a real duplicate target. Every real
+ * publication_status (pending_review and live alike) is considered, so
+ * two users can't independently create the "same" business twice while
+ * the first is still awaiting review. */
+async function findLikelyDuplicateBusiness(
+  admin: SupabaseClient,
+  input: { name: string; city: string | null; state: string | null; websiteUrl: string | null; instagramUrl: string | null }
+): Promise<{ slug: string; name: string } | null> {
+  const { data } = await admin
+    .from("businesses")
+    .select("slug, name, city, state, website_url, instagram_url")
+    .eq("is_demo", false);
+  const rows = (data ?? []) as { slug: string; name: string; city: string | null; state: string | null; website_url: string | null; instagram_url: string | null }[];
+
+  const inputSite = normalizeUrlForMatch(input.websiteUrl);
+  const inputInsta = normalizeUrlForMatch(input.instagramUrl);
+  if (inputSite || inputInsta) {
+    for (const row of rows) {
+      if (inputSite && normalizeUrlForMatch(row.website_url) === inputSite) return row;
+      if (inputInsta && normalizeUrlForMatch(row.instagram_url) === inputInsta) return row;
+    }
+  }
+
+  const normalizedName = normalizeForMatch(input.name);
+  for (const row of rows) {
+    if (normalizeForMatch(row.name) !== normalizedName) continue;
+    const cityMatches = !input.city || !row.city || normalizeForMatch(input.city) === normalizeForMatch(row.city);
+    const stateMatches = !input.state || !row.state || normalizeForMatch(input.state) === normalizeForMatch(row.state);
+    if (cityMatches && stateMatches) return row;
+  }
+
+  return null;
+}
+
+const CREATE_FRIENDLY_ERROR: Record<string, string> = {
+  user_required: "You need to be signed in to create a business.",
+  name_required: "Business name is required.",
+  slug_required: "Business name is required to generate a URL.",
+  invalid_category: "Choose a valid category.",
+};
+
+/** Creates a brand-new business natively — free, no payment, starting
+ * plan_tier='free' and publication_status='pending_review' (both
+ * hardcoded inside create_owned_business(), never accepted as input here
+ * or by that RPC). The authenticated creator becomes its owner
+ * atomically with the business itself (same RPC, one transaction) — see
+ * that migration's own comment for why this needed a small SECURITY
+ * DEFINER function rather than two separate inserts from here.
+ *
+ * city/state/website_url/instagram_url are collected for identity,
+ * duplicate detection, and moderation ONLY — they're stored on the new
+ * row, but this does NOT grant a Free business ongoing editing rights
+ * over them: updateMemberBusiness's own Free allowlist (above) still
+ * excludes every one of these columns regardless of how the row was
+ * created, so a Free owner can set them here once, at creation, and never
+ * touch them again through the normal editor until/unless the business
+ * becomes Pro. They also never render publicly for a Free business
+ * either (see business/[slug]/page.tsx's own `pro &&` gates) — no
+ * additional exposure beyond what a Pro business's owner could already
+ * set through the existing Pro editor. */
+export async function createMemberBusiness(formData: FormData) {
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (!user) redirect(`/login?next=${encodeURIComponent(CREATE_BUSINESS_PATH)}`);
+
+  const name = str(formData, "name");
+  const categoryId = str(formData, "category_id");
+  const city = str(formData, "city");
+  const state = str(formData, "state");
+  const websiteUrl = str(formData, "website_url");
+  const instagramUrl = str(formData, "instagram_url");
+  const authorized = bool(formData, "authorized");
+
+  if (!name) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Business name is required."));
+  if (!categoryId) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose a category."));
+  if (!authorized) {
+    redirect(
+      errorRedirectUrl(CREATE_BUSINESS_PATH, "Please confirm you're authorized to create and manage this business.")
+    );
+  }
+
+  const admin = getAdminSupabase();
+  if (!admin) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Server isn't configured."));
+
+  // Server-side duplicate protection — required regardless of any
+  // client-side check, run BEFORE the atomic create below. A likely
+  // match never auto-creates a second business; the visitor is directed
+  // to the existing Claim Business flow instead.
+  const duplicate = await findLikelyDuplicateBusiness(admin, {
+    name: name!,
+    city,
+    state,
+    websiteUrl,
+    instagramUrl,
+  });
+  if (duplicate) {
+    const params = new URLSearchParams({
+      error: "We found a business that looks like a match. Claim it instead of creating a duplicate.",
+      duplicate_slug: duplicate.slug,
+      duplicate_name: duplicate.name,
+    });
+    redirect(`${CREATE_BUSINESS_PATH}?${params.toString()}`);
+  }
+
+  const baseSlug = resolveSlugInput(null, name);
+  if (!baseSlug) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Business name is required to generate a URL."));
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("businesses", candidate));
+
+  const { data: created, error } = await admin.rpc("create_owned_business", {
+    p_user_id: user.id,
+    p_name: name,
+    p_slug: slug,
+    p_category_id: categoryId,
+    p_city: city,
+    p_state: state,
+    p_website_url: websiteUrl,
+    p_instagram_url: instagramUrl,
+  });
+
+  if (error || !created) {
+    const message = CREATE_FRIENDLY_ERROR[error?.message ?? ""] ?? "Couldn't create your business. Please try again.";
+    redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, message));
+  }
+
+  const businessId = (created as { id: string }).id;
+  revalidatePath("/account");
+  redirect(`/account/business/${businessId}?created=1`);
 }

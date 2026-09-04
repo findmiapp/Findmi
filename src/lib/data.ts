@@ -90,7 +90,7 @@ function withCategories(
   }));
 }
 
-async function attachCategories(businesses: Business[]): Promise<BusinessWithCategories[]> {
+export async function attachCategories(businesses: Business[]): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase || businesses.length === 0) {
     return businesses.map((b) => ({ ...b, categories: [] }));

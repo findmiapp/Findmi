@@ -62,7 +62,12 @@ export async function getDashboardCounts() {
 export interface BusinessListFilters {
   q?: string;
   categoryId?: string;
-  published?: "public" | "demo";
+  // "pending_review" — Native Business Onboarding Pass 2: a real
+  // (is_demo=false), not-yet-approved business (publication_status=
+  // 'pending_review'), the smallest useful filter to find newly
+  // user-created/claimed-pending businesses in this same list rather
+  // than building a second moderation screen.
+  published?: "public" | "demo" | "pending_review";
 }
 
 export async function getAdminBusinesses(filters: BusinessListFilters = {}): Promise<AdminBusiness[]> {
@@ -85,6 +90,7 @@ export async function getAdminBusinesses(filters: BusinessListFilters = {}): Pro
     }
     if (filters.published === "public") query = query.eq("is_demo", false);
     if (filters.published === "demo") query = query.eq("is_demo", true);
+    if (filters.published === "pending_review") query = query.eq("is_demo", false).eq("publication_status", "pending_review");
     const { data } = await query;
     return ((data ?? []) as unknown as AdminBusiness[]) ?? [];
   }
@@ -96,6 +102,7 @@ export async function getAdminBusinesses(filters: BusinessListFilters = {}): Pro
   }
   if (filters.published === "public") query = query.eq("is_demo", false);
   if (filters.published === "demo") query = query.eq("is_demo", true);
+  if (filters.published === "pending_review") query = query.eq("is_demo", false).eq("publication_status", "pending_review");
   const { data } = await query;
   return (data as AdminBusiness[]) ?? [];
 }

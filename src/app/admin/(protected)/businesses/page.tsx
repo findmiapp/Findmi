@@ -12,7 +12,8 @@ export default async function AdminBusinessesPage({
   searchParams: Promise<{ q?: string; category?: string; published?: string }>;
 }) {
   const { q, category, published } = await searchParams;
-  const publishedFilter = published === "public" || published === "demo" ? published : undefined;
+  const publishedFilter =
+    published === "public" || published === "demo" || published === "pending_review" ? published : undefined;
 
   const [businesses, categories] = await Promise.all([
     getAdminBusinesses({ q, categoryId: category, published: publishedFilter }),
@@ -51,6 +52,7 @@ export default async function AdminBusinessesPage({
           <select name="published" defaultValue={published ?? ""} className={selectClass}>
             <option value="">Published: All</option>
             <option value="public">Public only</option>
+            <option value="pending_review">Pending Review only</option>
             <option value="demo">Demo/hidden only</option>
           </select>
           <button
@@ -80,10 +82,14 @@ export default async function AdminBusinessesPage({
               </div>
               <span
                 className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                  b.is_demo ? "bg-black/[0.06] text-ink/50" : "bg-findmi-50 text-findmi-700"
+                  b.is_demo
+                    ? "bg-black/[0.06] text-ink/50"
+                    : b.publication_status === "pending_review"
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-findmi-50 text-findmi-700"
                 }`}
               >
-                {b.is_demo ? "Demo" : "Public"}
+                {b.is_demo ? "Demo" : b.publication_status === "pending_review" ? "Pending Review" : "Public"}
               </span>
             </Link>
           ))

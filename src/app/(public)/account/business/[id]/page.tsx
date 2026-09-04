@@ -68,6 +68,7 @@ export default async function ManageBusinessPage({
   searchParams: Promise<{
     saved?: string;
     error?: string;
+    created?: string;
     editing?: string;
     add_title?: string;
     add_date?: string;
@@ -95,6 +96,7 @@ export default async function ManageBusinessPage({
   const {
     saved,
     error,
+    created,
     editing,
     add_title,
     add_date,
@@ -150,7 +152,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, logo_url, cover_image_url, plan_tier, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url"
+        "id, name, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -313,6 +315,28 @@ export default async function ManageBusinessPage({
         >
           {pro ? "Pro" : "Free"} Plan
         </span>
+
+        {/* Native Business Onboarding Pass 2 — clearly communicates
+            moderation status without promising a review time, per this
+            pass's own instruction. Shown regardless of plan tier: a Pro
+            business can also be pending_review (e.g. right after a
+            prebuilt-Pro claim gets approved but before founder review of
+            the listing itself, or a Pro business an admin resets to
+            pending for any reason). */}
+        {created && (
+          <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+            Business created! You can start building your profile below.
+          </p>
+        )}
+        {business.publication_status === "pending_review" && (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-bold text-amber-800">Pending Review</p>
+            <p className="mt-1 text-sm text-amber-900/80">
+              Your business is saved and you can continue building your profile. It will appear in FindMi discovery
+              after review.
+            </p>
+          </div>
+        )}
 
         {!pro && (
           <div className="mt-4 rounded-2xl border border-findmi/20 bg-findmi-50 p-4 sm:p-5">

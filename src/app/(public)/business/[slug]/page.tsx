@@ -14,20 +14,24 @@ import SaveButton from "@/components/SaveButton";
 import ClaimButton from "@/components/ClaimButton";
 import FormAction from "@/components/FormAction";
 import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
-import type { Business } from "@/lib/types";
+import Link from "next/link";
+import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
+  attachCategories,
   getAlternativeBusinesses,
   getBusinessBySlug,
   getBusinessGalleryImages,
   getPeopleForBusiness,
   getProductsForBusiness,
   getUpcomingAppearancesForBusiness,
+  PUBLIC_BUSINESS_COLUMNS,
 } from "@/lib/data";
 import { cityState } from "@/lib/format";
 import { resolveBusinessInquiryForm } from "@/lib/forms";
 import { validateCustomDestination } from "@/lib/navigation";
 import { getPublicOrigin } from "@/lib/site-url";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { isBusinessPro } from "@/lib/entitlements";
 
 export const revalidate = 60;
@@ -56,13 +60,66 @@ async function resolveIsPro(businessId: string): Promise<boolean> {
   return isBusinessPro(data ?? {});
 }
 
+/** Owner-preview fallback — Native Business Onboarding Pass 2. When the
+ * public/live lookup above (getBusinessBySlug) finds nothing, a
+ * newly-created or newly-claimed business's own real owner/manager/staff
+ * can still open (and share) its direct URL before admin approval,
+ * instead of a hard 404. Never weakens the existing public route for
+ * anyone else: this only runs as a fallback AFTER the live lookup
+ * already returned null, and only ever returns a row when a REAL
+ * session exists AND that exact user has a genuine business_members row
+ * for it — never guessed, never based on anything client-supplied.
+ *
+ * Uses the plain session-scoped client, not service-role: the
+ * "Public read businesses" RLS policy is already unconditional (row-
+ * level access was never what kept a pending business "invisible" — every
+ * public query's own explicit .eq("publication_status","live") filter is,
+ * a convention this fallback deliberately doesn't apply), and
+ * business_members' own RLS ("select own") already scopes the membership
+ * check to the caller's real session on its own. So this adds no new
+ * database-level exposure — it only adds one new, narrowly-gated
+ * APPLICATION path that a real member can reach. is_demo is still
+ * excluded either way — demo content is never previewable by anyone. */
+async function resolveOwnerPreviewBusiness(slug: string): Promise<BusinessWithCategories | null> {
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data } = await supabase
+    .from("businesses")
+    .select(PUBLIC_BUSINESS_COLUMNS)
+    .eq("slug", slug)
+    .eq("is_demo", false)
+    .maybeSingle();
+  if (!data) return null;
+  const business = data as unknown as Business;
+
+  const { data: membership } = await supabase
+    .from("business_members")
+    .select("id")
+    .eq("business_id", business.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!membership) return null;
+
+  const [withCategories] = await attachCategories([business]);
+  return withCategories;
+}
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const business = await getBusinessBySlug(slug);
+  let business = await getBusinessBySlug(slug);
+  let ownerPreview = false;
+  if (!business) {
+    business = await resolveOwnerPreviewBusiness(slug);
+    if (business) ownerPreview = true;
+  }
   if (!business) return { title: "Business not found" };
 
   const pro = await resolveIsPro(business.id);
@@ -85,6 +142,11 @@ export async function generateMetadata({
     title: `${business.name} | FindMi`,
     description,
     alternates: { canonical: url },
+    // Owner-preview pages (not yet approved — see resolveOwnerPreviewBusiness)
+    // must never be indexed even though they're technically reachable —
+    // this is the only case that sets this; every normal (live) business
+    // page is unaffected and stays indexable exactly as before.
+    ...(ownerPreview ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
       title: `${business.name} | FindMi`,
       description,
@@ -100,7 +162,12 @@ export default async function BusinessPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const business = await getBusinessBySlug(slug);
+  let business = await getBusinessBySlug(slug);
+  let ownerPreview = false;
+  if (!business) {
+    business = await resolveOwnerPreviewBusiness(slug);
+    if (business) ownerPreview = true;
+  }
   if (!business) notFound();
 
   const pro = await resolveIsPro(business.id);
@@ -224,6 +291,29 @@ export default async function BusinessPage({
   return (
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toJsonLdScript(jsonLd) }} />
+
+      {/* Owner-preview banner — Native Business Onboarding Pass 2. Only
+          renders for the real owner/manager/staff of a not-yet-approved
+          business (see resolveOwnerPreviewBusiness); every normal (live)
+          visitor never sees this, and it's the only thing distinguishing
+          a preview render from the real public page below it. */}
+      {ownerPreview && (
+        <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6">
+          <div className="rounded-2xl border border-findmi/20 bg-findmi-50/60 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Preview — Pending Review</p>
+            <p className="mt-1 text-sm text-ink/70">
+              This is a preview only you can see. It isn&rsquo;t visible in FindMi discovery yet — FindMi will
+              review it and publish it once approved.
+            </p>
+            <Link
+              href={`/account/business/${business.id}`}
+              className="mt-2 inline-flex text-xs font-semibold text-findmi-700 hover:text-findmi-800"
+            >
+              Manage Business →
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Cover / brand hero — a contained, rounded landscape image (not a
           full-bleed banner), matching Product Detail V2's hero treatment
