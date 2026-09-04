@@ -280,7 +280,11 @@ export default function EventForm({
         </div>
       </div>
 
-      <ParticipationRoster initialParticipants={participants} />
+      <ParticipationRoster
+        eventId={event?.id ?? null}
+        occurrences={occurrences}
+        initialParticipants={participants}
+      />
 
       <div className="rounded-2xl border border-black/10 p-4">
         <TextField
