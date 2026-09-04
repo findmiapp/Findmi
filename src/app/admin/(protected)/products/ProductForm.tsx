@@ -169,7 +169,8 @@ export default function ProductForm({
         <div className="border-t border-black/5 pt-5">
           <DeleteButton
             action={deleteProduct.bind(null, product.id)}
-            confirmMessage={`Delete "${product.name}"? This can't be undone.`}
+            confirmMessage="Delete This Product Permanently?\n\nThis Cannot Be Undone. The Product And Its FindMi Listing Will Be Removed."
+            label="Delete Product Permanently"
           />
         </div>
       )}

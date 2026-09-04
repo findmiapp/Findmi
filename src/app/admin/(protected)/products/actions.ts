@@ -111,9 +111,33 @@ export async function saveProduct(id: string | null, formData: FormData) {
   redirect(`/admin/products/${productId}?saved=1`);
 }
 
+/**
+ * Product Management Completion pass — this already-existing admin-only
+ * hard delete previously never checked the delete's own result: if the
+ * database blocked it (order_items.product_id -> products.id is
+ * ON DELETE NO ACTION — a product that has ever appeared in a real order
+ * can't be hard-deleted without orphaning that order's line item), the
+ * row silently survived while the page redirected as if it had
+ * succeeded. Traced dependencies: account_saved_products, event_products,
+ * product_categories, and product_fulfillment_options all cascade-delete
+ * safely (no data loss — saved-lists/join-tables/config only); order_items
+ * is the sole blocker, and correctly so — deleting a product should never
+ * silently orphan real order history. Now surfaces that as a clear error
+ * instead of a false success, and points the admin at deactivation
+ * (already the safe, always-available alternative) rather than adding any
+ * cascade/force-delete behavior.
+ */
 export async function deleteProduct(id: string) {
   const supabase = await requireAdminSupabase();
-  await supabase.from("products").delete().eq("id", id);
+  const { error } = await supabase.from("products").delete().eq("id", id);
+  if (error) {
+    redirect(
+      errorRedirectUrl(
+        `/admin/products/${id}`,
+        "Couldn't delete — this product has order history. Deactivate it instead if it shouldn't stay public."
+      )
+    );
+  }
   revalidatePath("/admin/products");
   revalidatePath("/");
   redirect("/admin/products");

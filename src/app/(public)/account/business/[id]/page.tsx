@@ -22,6 +22,7 @@ import {
 } from "../actions";
 import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
+import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
 import { formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
@@ -964,16 +965,10 @@ export default async function ManageBusinessPage({
                           )}
                         </div>
                       </div>
-                      <form action={setMemberProductActive.bind(null, id, p.id, !p.is_active)}>
-                        <button
-                          type="submit"
-                          className={`shrink-0 text-xs font-semibold hover:underline ${
-                            p.is_active ? "text-red-600" : "text-findmi-700"
-                          }`}
-                        >
-                          {p.is_active ? "Deactivate" : "Reactivate"}
-                        </button>
-                      </form>
+                      <MemberProductActiveButton
+                        action={setMemberProductActive.bind(null, id, p.id, !p.is_active)}
+                        isActive={p.is_active}
+                      />
                     </div>
 
                     {p.moderationStatus === "pending_review" && (
@@ -993,39 +988,60 @@ export default async function ManageBusinessPage({
                       </p>
                     )}
 
-                    {/* Product Marketplace Distribution pass — owner-facing
-                        transitions, separate from content moderation
-                        above. Never offers "approved"/"paused" as
-                        something the owner can set directly — those only
-                        ever come from admin/products/actions.ts. */}
-                    {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
-                      <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
-                        <button type="submit" className="text-xs font-semibold text-sky-700 hover:underline">
-                          {p.marketplaceStatus === "rejected" ? "Resubmit To Marketplace" : "Submit To Marketplace"}
-                        </button>
-                      </form>
-                    )}
-                    {p.marketplaceStatus === "submitted" && (
-                      <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
-                        <p className="text-xs text-ink/50">
-                          Awaiting FindMi&rsquo;s Marketplace review.{" "}
-                          <button type="submit" className="font-semibold text-ink/60 hover:underline">
-                            Cancel Submission
-                          </button>
-                        </p>
-                      </form>
-                    )}
-                    {p.marketplaceStatus === "rejected" && (
-                      <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
-                        <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
-                          Return To Catalog Only
-                        </button>
-                      </form>
-                    )}
-
                     <details className="mt-2">
                       <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
-                      <div className="mt-3">
+                      <div className="mt-3 flex flex-col gap-3">
+                        {/* Product Management Completion pass — Marketplace
+                            Distribution now shown INSIDE Edit for every
+                            Product (new or existing, owner- or admin-
+                            created — there is no separate rendering path),
+                            not just at creation time. Owner-facing
+                            transitions only, separate from content
+                            moderation above: never offers "approved"/
+                            "paused" as something the owner can set
+                            directly — those only ever come from
+                            admin/products/actions.ts. */}
+                        <div className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
+                          <p className="text-xs font-semibold text-ink">Where This Product Appears</p>
+                          <p className="mt-1 text-xs text-ink/60">
+                            {p.marketplaceStatus === "catalog_only" &&
+                              "Catalog Only — shown on your FindMi business profile and storefront only."}
+                            {p.marketplaceStatus === "submitted" && "Marketplace Review Pending — awaiting FindMi's decision."}
+                            {p.marketplaceStatus === "approved" &&
+                              "Marketplace Approved — may also appear across FindMi Marketplace and discovery."}
+                            {p.marketplaceStatus === "rejected" &&
+                              "Marketplace Not Approved — still shown on your business profile and storefront."}
+                            {p.marketplaceStatus === "paused" &&
+                              "Marketplace Paused — temporarily out of Marketplace/discovery; still shown on your business profile."}
+                          </p>
+                          {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
+                            <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
+                              <button type="submit" className="text-xs font-semibold text-sky-700 hover:underline">
+                                {p.marketplaceStatus === "rejected" ? "Resubmit To Marketplace" : "Submit To Marketplace"}
+                              </button>
+                            </form>
+                          )}
+                          {p.marketplaceStatus === "submitted" && (
+                            <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
+                              <button type="submit" className="text-xs font-semibold text-ink/60 hover:underline">
+                                Cancel Submission
+                              </button>
+                            </form>
+                          )}
+                          {p.marketplaceStatus === "rejected" && (
+                            <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
+                              <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                                Return To Catalog Only
+                              </button>
+                            </form>
+                          )}
+                          {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
+                            <p className="mt-1 text-xs text-ink/40">
+                              Marketplace placement is managed by FindMi and can&rsquo;t be changed here.
+                            </p>
+                          )}
+                        </div>
+
                         <ProductFieldsForm
                           businessId={id}
                           action={updateMemberProduct.bind(null, id, p.id)}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAdminBusinessById, getAllCategories } from "@/lib/admin/queries";
+import { getAdminBusinessById, getAdminProducts, getAllCategories } from "@/lib/admin/queries";
+import { formatPrice } from "@/lib/format";
 import {
   billingStatusLabel,
   getMembershipForBusiness,
@@ -24,7 +25,7 @@ export default async function EditBusinessPage({
 }) {
   const { id } = await params;
   const { error, saved } = await searchParams;
-  const [result, categories, membership, accessByEntity] = await Promise.all([
+  const [result, categories, membership, accessByEntity, products] = await Promise.all([
     getAdminBusinessById(id),
     getAllCategories("business"),
     getMembershipForBusiness(id),
@@ -33,6 +34,10 @@ export default async function EditBusinessPage({
     // systems). Same id -> email lookup pattern the claims page's Current
     // Access section already uses (fetchEmailsByUserId under the hood).
     getCurrentAccessByEntity("business", [id]),
+    // Product Management Completion pass — reuses the existing
+    // getAdminProducts(businessId) filter as-is (already used by the
+    // products list's own Business picker); no new query.
+    getAdminProducts({ businessId: id }),
   ]);
   if (!result) notFound();
   const { business } = result;
@@ -176,6 +181,78 @@ export default async function EditBusinessPage({
           people={result.people}
           error={error}
         />
+      </div>
+
+      {/* Product Management Completion pass — read-only overview of this
+          business's Products, each linking to the existing admin Product
+          detail/edit page. No new Product CRUD — reuses getAdminProducts
+          and the existing /admin/products/[id] route as-is. */}
+      <div className="mt-5 rounded-2xl border border-black/10 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-ink">Products</p>
+          <div className="flex items-center gap-3">
+            <Link href={`/admin/products?business=${id}`} className="text-xs font-semibold text-ink/60 hover:text-ink">
+              View All Products
+            </Link>
+            <Link
+              href={`/admin/products/new?business=${id}`}
+              className="text-xs font-semibold text-findmi-700 hover:underline"
+            >
+              Add Product
+            </Link>
+          </div>
+        </div>
+
+        {products.length > 0 ? (
+          <ul className="mt-3 flex flex-col gap-2">
+            {products.map((p) => {
+              const moderationStatus = p.moderation_status ?? "live";
+              const marketplaceStatus = p.marketplace_status ?? "catalog_only";
+              return (
+                <li key={p.id}>
+                  <Link
+                    href={`/admin/products/${p.id}`}
+                    className="flex items-center gap-3 rounded-xl border border-black/5 px-3 py-2 transition hover:border-black/10"
+                  >
+                    {p.image_url ? (
+                      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- small preview only */}
+                        <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="h-10 w-10 shrink-0 rounded-lg border border-black/10 bg-black/5" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-ink">{p.name}</p>
+                      <p className="truncate text-xs text-ink/45">
+                        {p.is_active ? "Active" : "Inactive"}
+                        {" · "}
+                        {moderationStatus === "pending_review"
+                          ? "Pending Review"
+                          : moderationStatus === "rejected"
+                            ? "Content Rejected"
+                            : "Live"}
+                        {" · "}
+                        {marketplaceStatus === "catalog_only"
+                          ? "Catalog Only"
+                          : marketplaceStatus === "submitted"
+                            ? "Marketplace Pending"
+                            : marketplaceStatus === "approved"
+                              ? "Marketplace Approved"
+                              : marketplaceStatus === "paused"
+                                ? "Marketplace Paused"
+                                : "Marketplace Rejected"}
+                        {formatPrice(p.price, p.price_label) ? ` · ${formatPrice(p.price, p.price_label)}` : ""}
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-ink/50">No products yet.</p>
+        )}
       </div>
 
       {/* Legacy Membership / Onboarding — Founding Membership billing/
