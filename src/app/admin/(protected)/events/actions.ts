@@ -543,13 +543,33 @@ export async function saveEvent(id: string | null, formData: FormData) {
  * ultimate guarantee either way. */
 export async function addOccurrenceVendor(eventId: string, occurrenceId: string, businessId: string) {
   const supabase = await requireAdminSupabase();
-  const { error } = await supabase
+  // Multi-Occurrence Participating Business pass, verification fix —
+  // event_occurrence_businesses.status defaults to 'approved' (an admin-
+  // added occurrence vendor is public immediately unless explicitly
+  // changed), but only updateOccurrenceVendorStatus used to sync the
+  // FindMi Here appearance, and only on an explicit status *change*. A
+  // brand-new row landing at 'approved' via the column default therefore
+  // showed up in "Who You'll Find Here" immediately but never got an
+  // appearance synced — "approved" must mean exactly one appearance
+  // regardless of whether that came from the default at insert or a
+  // later explicit approval. `.select("status")` reads back the result:
+  // with ignoreDuplicates, a genuinely new row returns its (default)
+  // status; an already-existing row returns nothing (Postgres's
+  // ON CONFLICT DO NOTHING has nothing to RETURN), so `data` is null and
+  // nothing further is synced — that existing row's appearance state is
+  // already correct from whatever last touched its status.
+  const { data, error } = await supabase
     .from("event_occurrence_businesses")
     .upsert(
       { occurrence_id: occurrenceId, business_id: businessId },
       { onConflict: "occurrence_id,business_id", ignoreDuplicates: true }
-    );
+    )
+    .select("status")
+    .maybeSingle();
   if (error) redirect(errorRedirectUrl(`/admin/events/${eventId}`, error.message));
+  if (data?.status === "approved") {
+    await ensureOccurrenceAppearance(supabase, occurrenceId, businessId);
+  }
   revalidatePath(`/admin/events/${eventId}`);
 }
 
