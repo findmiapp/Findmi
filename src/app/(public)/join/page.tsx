@@ -78,7 +78,7 @@ export default async function JoinPage() {
   const secondaryCards = cards.filter((c) => c.key !== "card_discovery_pro");
   const whatYouGet = resolveJoinWhatYouGet(overrides);
 
-  // The options section (Pro, then Free directly below it, always
+  // The options section (Free, then Pro directly below it, always
   // present, plus whichever secondary cards are enabled) always renders,
   // so whichever section actually renders last needs to own the page's
   // closing bottom padding itself — otherwise hiding "What you get"
@@ -100,28 +100,30 @@ export default async function JoinPage() {
       </div>
 
       {/* The options — appear early, not buried under marketing copy.
-          Pro Positioning pass: Pro is the dominant first offer (its own
-          larger ProCard, FindMi Here spotlighted inside it), Free is a
-          small, quiet "basic index" option directly below it — not a
-          second competing card. Whichever other founder-editable cards
-          (Events & Markets, Multi-Region) are enabled follow further
-          below as secondary options, unchanged. */}
+          Mobile Hierarchy pass: Free's compact, quiet box now renders
+          FIRST (mobile scan order), directly followed by the dominant
+          FindMi Pro card — still unmistakably the primary paid/product
+          experience, just no longer literally first on screen. Free
+          stays small/secondary-looking; it did not get visually
+          stronger, only reordered. Whichever other founder-editable
+          cards (Events & Markets, Multi-Region) are enabled follow
+          further below as secondary options, unchanged. */}
       <div
         id="options"
         className={`mx-auto max-w-5xl px-4 pt-8 sm:px-6 sm:pt-10 ${optionsIsLastSection ? "pb-16 sm:pb-20" : ""}`}
       >
-        {proCard && (
-          <div className="mx-auto max-w-xl">
-            <ProCard card={proCard} />
-          </div>
-        )}
-
         {/* Free — static copy, not a CMS-driven card (see this pass's
             own report on what would need a later admin-editability
             pass). Always shown, genuinely selectable on its own. */}
-        <div className="mx-auto mt-4 max-w-xl">
+        <div className="mx-auto max-w-xl">
           <FreeBasicBox />
         </div>
+
+        {proCard && (
+          <div className="mx-auto mt-4 max-w-xl">
+            <ProCard card={proCard} />
+          </div>
+        )}
 
         {secondaryCards.length > 0 && (
           <div className="mt-10">
@@ -302,23 +304,35 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
         <span className="font-display text-3xl font-bold tracking-tight text-ink">{price}</span>
         {priceSuffix && <span className="text-sm font-medium text-ink/45">{priceSuffix}</span>}
       </p>
-      <p className="mt-2.5 text-sm text-ink/60">{tagline}</p>
 
-      {/* FindMi Here — the featured Pro benefit, spotlighted rather than
-          buried as one generic bullet among many. */}
-      <div className="mt-5 rounded-2xl bg-findmi-50 p-4 sm:p-5">
+      {/* Mobile Hierarchy pass — FindMi Here now leads, directly under
+          price and ahead of the general description below, so it's the
+          first thing read about Pro rather than something discovered
+          partway down the card. */}
+      <div className="mt-4 rounded-2xl bg-findmi-50 p-4 sm:p-5">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Featured with Pro</p>
         <h4 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">FindMi Here</h4>
         <p className="mt-1 text-sm font-semibold text-ink/80">Show people where to find you next.</p>
         <p className="mt-1.5 text-sm text-ink/60">
-          Add your upcoming markets, pop-ups, events and appearances so customers can see exactly where
-          you&rsquo;ll be next.
+          Add markets, pop-ups, events and appearances so customers always know where you&rsquo;re showing up.
         </p>
       </div>
 
-      {/* Every other current Pro benefit — the founder's own CMS list,
-          unchanged data, shown quietly beneath the spotlight above
-          rather than at equal visual weight. */}
+      {/* General Pro description — founder-editable CMS content
+          (site_sections, page_key "join", section_key
+          "card_discovery_pro", the "Description" field / `tagline`
+          column in /admin/site/join). Rendered exactly as before, just
+          repositioned below the FindMi Here spotlight instead of above
+          it; not hardcoded over here — see this pass's own report for
+          the exact admin field to shorten it in. */}
+      <p className="mt-3 text-sm text-ink/60">{tagline}</p>
+
+      {/* Every other current Pro benefit — the founder's own CMS list
+          (same admin section, "What's included (feature list)" field),
+          unchanged data, shown quietly beneath the spotlight/description
+          above rather than at equal visual weight. Not hardcoded here —
+          see this pass's own report for the exact admin field to
+          shorten it in. */}
       <ul className="mt-5 flex flex-col gap-1.5">
         {features.map((f, i) => (
           <li key={`${i}-${f}`} className="flex items-start gap-2 text-xs text-ink/55">
@@ -338,22 +352,26 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
   );
 }
 
-/** Pro Positioning pass — Free's new small, quiet "basic index"
- * presentation: static copy (Free isn't a CMS card, same as before this
- * pass), an accessible native <details>/<summary> disclosure (no client
- * JS needed — this stays a server component) showing what's included
- * vs. what requires Pro. FindMi Here appears here too, muted/struck
- * through, so the comparison is consistent with ProCard's spotlight
- * above. */
+/** Pro Positioning / Mobile Hierarchy passes — Free's small, quiet
+ * "basic index" presentation: static copy (Free isn't a CMS card, same
+ * as before), an accessible native <details>/<summary> disclosure (no
+ * client JS needed — this stays a server component) showing what's
+ * included vs. what requires Pro. FindMi Here appears here too, muted/
+ * struck through, so the comparison is consistent with ProCard's
+ * spotlight. Now renders FIRST on the page (Mobile Hierarchy pass) —
+ * copy updated to stand on its own rather than read as a question
+ * answering a Pro card above it; container/sizing/weight are otherwise
+ * unchanged, so it's still visually quieter/smaller than Pro, not a
+ * second competing card. */
 function FreeBasicBox() {
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 sm:p-5">
-      <p className="text-sm font-semibold text-ink/70">Just need a basic listing?</p>
-      <p className="mt-1 flex items-baseline gap-1.5">
+      <p className="flex items-baseline gap-1.5">
         <span className="text-sm font-bold text-ink">Free Basic Index</span>
         <span className="text-sm text-ink/45">· $0</span>
       </p>
-      <p className="mt-1.5 text-sm text-ink/60">Get your name, logo, category and short description into FindMi.</p>
+      <p className="mt-1 text-sm font-semibold text-ink/70">Get listed on FindMi.</p>
+      <p className="mt-1.5 text-sm text-ink/60">Add your business name, logo, category and a short description.</p>
 
       <details className="group mt-3">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-ink/50 [&::-webkit-details-marker]:hidden">
