@@ -181,10 +181,20 @@ export default async function BusinessPage({
   const alternatives = await getAlternativeBusinesses(business);
 
   let products: Awaited<ReturnType<typeof getProductsForBusiness>> = [];
-  let appearances: Awaited<ReturnType<typeof getUpcomingAppearancesForBusiness>> = [];
   let people: Awaited<ReturnType<typeof getPeopleForBusiness>> = [];
   let inquiryForm: Awaited<ReturnType<typeof resolveBusinessInquiryForm>> = null;
   let galleryImages: Awaited<ReturnType<typeof getBusinessGalleryImages>> = [];
+  // Free Appearances Pass 2 — appearances is now fetched for EVERY
+  // business, Free included (locked product rule: Free's public profile
+  // shows its single next upcoming appearance). Still the same query,
+  // still data-layer limited via getUpcomingAppearancesForBusiness's own
+  // `limit` param (never over-fetched then trimmed) — Free asks for 1,
+  // Pro keeps the existing default of 20, same parallel-fetch shape as
+  // before for Pro. This affects the business-profile query/render only:
+  // storage, creation (Pass 1), event rosters, and /find are completely
+  // unaffected. Every other Pro-only section below (products/people/
+  // inquiry form/gallery) is unchanged, still gated `if (pro)`.
+  let appearances: Awaited<ReturnType<typeof getUpcomingAppearancesForBusiness>>;
   if (pro) {
     [products, appearances, people, inquiryForm, galleryImages] = await Promise.all([
       getProductsForBusiness(business.id),
@@ -193,6 +203,8 @@ export default async function BusinessPage({
       resolveBusinessInquiryForm(business),
       getBusinessGalleryImages(business.id),
     ]);
+  } else {
+    appearances = await getUpcomingAppearancesForBusiness(business.id, 1);
   }
 
   // "Meet the Owners" only when every configured role genuinely says so —
@@ -492,9 +504,15 @@ export default async function BusinessPage({
           )}
           {/* FindMi Here — the signature feature. Hidden entirely (not an
               empty placeholder) when nothing's scheduled, per Business
-              Profile V2 Part 9/32. Free-tier hidden too — but implicitly:
-              `appearances` is simply never fetched for a Free business
-              (see above), so it's always [] here regardless of plan. */}
+              Profile V2 Part 9/32. Free Appearances Pass 2 — `appearances`
+              is now fetched for every business (see above), just limited
+              to 1 for Free vs. 20 for Pro at the data layer; this render
+              block itself needed no change — with a single item,
+              `.slice(0, 3)` naturally renders just that one card and the
+              "Show N More" disclosure below never appears (length > 3 is
+              false), so Free's display stays to that one card while the
+              richer/full-list behavior stays exactly Pro's, with no new
+              UI added for this pass. */}
           {appearances.length > 0 && (
             // mt-6 keeps a clear break from whatever renders above it
             // (CTA row/Bulletin when present, otherwise Inquire itself on

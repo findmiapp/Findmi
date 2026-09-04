@@ -589,10 +589,16 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
  * 'applied' or 'pending'. The `.in("status", [...])` guard means an
  * approved row (or a tampered/mismatched key) simply matches zero rows
  * and nothing is deleted — approved participation can never be withdrawn
- * or otherwise touched through this action. */
+ * or otherwise touched through this action.
+ *
+ * Free Appearances Pass 2 — now uses requireAuthorizedBusinessMember
+ * (Pass 1), not requireProBusinessMember: withdrawing is basic business
+ * data/control, not a Pro feature, same locked rule as adding/editing/
+ * removing appearances. Authorization/scoping/status-guard behavior
+ * below is otherwise completely unchanged. */
 export async function withdrawEventParticipation(businessId: string, kind: "event" | "occurrence", key: string) {
   const redirectPath = `/account/business/${businessId}`;
-  const admin = await requireProBusinessMember(businessId, redirectPath);
+  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   if (kind === "event") {
     await admin
