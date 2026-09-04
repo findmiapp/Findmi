@@ -69,6 +69,7 @@ export default async function ManageBusinessPage({
     saved?: string;
     error?: string;
     created?: string;
+    pro_payment?: string;
     editing?: string;
     add_title?: string;
     add_date?: string;
@@ -97,6 +98,7 @@ export default async function ManageBusinessPage({
     saved,
     error,
     created,
+    pro_payment: proPayment,
     editing,
     add_title,
     add_date,
@@ -328,6 +330,29 @@ export default async function ManageBusinessPage({
             Business created! You can start building your profile below.
           </p>
         )}
+
+        {/* Native Business Onboarding Pass 3 — Stripe redirects here
+            immediately after checkout; webhook activation can land before
+            or after this render, so this never claims Pro is active until
+            `pro` above (read fresh from the database on every request)
+            actually confirms it — no false "Pro" state shown early. */}
+        {proPayment === "success" &&
+          (pro ? (
+            <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+              Payment received — FindMi Pro is active. Full Pro tools are unlocked below.
+            </p>
+          ) : (
+            <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+              Payment received. We&rsquo;re activating Pro — this usually only takes a moment. Refresh this page
+              shortly if it doesn&rsquo;t update automatically.
+            </p>
+          ))}
+        {proPayment === "cancelled" && (
+          <p className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
+            Checkout was canceled — your business is still Free. You can upgrade to Pro anytime.
+          </p>
+        )}
+
         {business.publication_status === "pending_review" && (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <p className="text-sm font-bold text-amber-800">Pending Review</p>

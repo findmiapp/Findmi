@@ -6,7 +6,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
-import { JOIN_FORM_URL_DEFAULT } from "@/lib/join-page";
+import { startBusinessProCheckout } from "@/app/(public)/account/business/actions";
 
 export const metadata: Metadata = {
   title: "Upgrade to Pro",
@@ -54,9 +54,9 @@ const primaryButtonClass =
 export default async function UpgradeToProPage({
   searchParams,
 }: {
-  searchParams: Promise<{ business?: string }>;
+  searchParams: Promise<{ business?: string; error?: string }>;
 }) {
-  const { business: businessId } = await searchParams;
+  const { business: businessId, error } = await searchParams;
   if (!businessId) redirect(errorRedirectUrl("/account", "Choose a business to upgrade first."));
 
   const supabase = await getServerSupabase();
@@ -137,9 +137,20 @@ export default async function UpgradeToProPage({
         </ul>
       </div>
 
-      <a href={JOIN_FORM_URL_DEFAULT} target="_blank" rel="noreferrer" className={`mt-6 ${primaryButtonClass}`}>
-        Continue to secure payment
-      </a>
+      {error && (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      )}
+
+      {/* Native Business Onboarding Pass 3 — replaces the old Tally
+          handoff with the same native, business-scoped Stripe checkout
+          the "create as Pro" path uses. startBusinessProCheckout
+          re-authorizes (requireBusinessMember) and re-reads plan_tier
+          fresh server-side before ever creating a session. */}
+      <form action={startBusinessProCheckout.bind(null, businessId)}>
+        <button type="submit" className={`mt-6 ${primaryButtonClass}`}>
+          Continue to secure payment
+        </button>
+      </form>
       <Link
         href={manageHref}
         className="mt-3 flex h-11 w-full items-center justify-center text-xs font-semibold text-ink/50 transition hover:text-ink"

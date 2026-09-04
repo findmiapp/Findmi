@@ -12,6 +12,7 @@ import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
+import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -911,5 +912,49 @@ export async function createMemberBusiness(formData: FormData) {
 
   const businessId = (created as { id: string }).id;
   revalidatePath("/account");
+
+  // Plan choice — Native Business Onboarding Pass 3. The business is
+  // ALWAYS created the same safe way first (free + pending_review, owner
+  // membership already granted by the RPC above) regardless of which
+  // plan was chosen — Pro is never created directly. Choosing Pro here
+  // only means immediately continuing into the same native Stripe
+  // checkout /upgrade/pro uses, scoped to this exact new business. If
+  // checkout creation itself fails for any reason, this still lands the
+  // owner on their new (Free, fully usable) business rather than losing
+  // it — never a dead end.
+  const planChoice = str(formData, "plan_choice");
+  if (planChoice === "pro") {
+    const checkout = await createBusinessProCheckoutSession(admin, businessId);
+    if ("url" in checkout) redirect(checkout.url);
+    redirect(`/account/business/${businessId}?created=1&error=${encodeURIComponent(checkout.error)}`);
+  }
+
   redirect(`/account/business/${businessId}?created=1`);
+}
+
+/** Starts the native Pro checkout for an EXISTING, already-owned
+ * business — the same one createMemberBusiness above uses for the
+ * "create as Pro" path, and what /upgrade/pro's "Continue to secure
+ * payment" now submits to instead of the old Tally handoff. Real
+ * authorization first (requireBusinessMember, same as every other member
+ * action in this file), never trusting the businessId from the client
+ * beyond that. createBusinessProCheckoutSession itself re-reads plan_tier
+ * fresh and refuses a business that's already pro/pro_seller, so this is
+ * safe to call even from a stale page. */
+export async function startBusinessProCheckout(businessId: string) {
+  const upgradePath = `/upgrade/pro?business=${businessId}`;
+
+  try {
+    await requireBusinessMember(businessId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "You don't have access to this business.";
+    redirect(errorRedirectUrl("/account", message));
+  }
+
+  const admin = getAdminSupabase();
+  if (!admin) redirect(errorRedirectUrl(upgradePath, "Server isn't configured."));
+
+  const checkout = await createBusinessProCheckoutSession(admin, businessId);
+  if ("url" in checkout) redirect(checkout.url);
+  redirect(errorRedirectUrl(upgradePath, checkout.error));
 }

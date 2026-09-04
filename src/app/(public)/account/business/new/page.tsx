@@ -45,8 +45,8 @@ export default async function AddBusinessPage({
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">My FindMi</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add a Business</h1>
       <p className="mt-2 text-sm text-ink/60">
-        Creating a business on FindMi is free — no payment required. You&rsquo;ll own and manage it right away, and
-        FindMi will review it before it appears in discovery.
+        You&rsquo;ll own and manage it right away, and FindMi will review it before it appears in discovery. Choose
+        Free or Pro below — Free never requires payment.
       </p>
 
       {duplicateSlug ? (
@@ -129,6 +129,54 @@ export default async function AddBusinessPage({
             <input type="url" name="instagram_url" placeholder="https://instagram.com/…" className={inputClass} />
           </label>
 
+          {/* Plan choice — Native Business Onboarding Pass 3. Free is the
+              default (defaultChecked), never a deceptively pre-selected
+              Pro — a legitimate, fully usable option on its own. Every
+              bullet below is a CURRENT entitlement (see
+              account/business/actions.ts's FREE_ALLOWED_COLUMNS/
+              PRO_ONLY_COLUMNS and business/[slug]/page.tsx's own `pro &&`
+              gates) — nothing promised here that doesn't already exist.
+              Choosing Pro doesn't create the business as Pro directly:
+              it's still created Free + pending_review first (same RPC),
+              then this action immediately continues into native Stripe
+              checkout for that exact business — see createMemberBusiness. */}
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-ink">Choose your plan</span>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-black/10 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-ink">Free — Basic Index</span>
+                  <input type="radio" name="plan_choice" value="free" defaultChecked className="h-4 w-4 accent-findmi" />
+                </div>
+                <p className="text-lg font-bold text-ink">$0</p>
+                <ul className="flex flex-col gap-1 text-xs text-ink/60">
+                  <li>Basic business page</li>
+                  <li>Name &amp; category</li>
+                  <li>Logo, cover &amp; short description</li>
+                  <li>Manage &amp; share your listing</li>
+                  <li>Upgrade to Pro anytime later</li>
+                </ul>
+              </label>
+              <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-black/10 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-ink">FindMi Pro</span>
+                  <input type="radio" name="plan_choice" value="pro" className="h-4 w-4 accent-findmi" />
+                </div>
+                <p className="text-lg font-bold text-ink">
+                  $20 <span className="text-xs font-medium text-ink/45">first 90 days</span>
+                </p>
+                <ul className="flex flex-col gap-1 text-xs text-ink/60">
+                  <li>Everything in Free, plus:</li>
+                  <li>Full description</li>
+                  <li>Photo gallery</li>
+                  <li>Contact &amp; social links</li>
+                  <li>FindMi Here appearance tools</li>
+                </ul>
+              </label>
+            </div>
+            <p className="mt-1.5 text-xs text-ink/40">No automatic renewal during the introductory period.</p>
+          </div>
+
           <label className="mt-1 flex items-start gap-2.5">
             <input
               type="checkbox"
@@ -142,10 +190,10 @@ export default async function AddBusinessPage({
           </label>
 
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-            Create Business — Free
+            Create My Business
           </button>
           <p className="text-center text-xs text-ink/40">
-            Free, always. You can explore upgrading to FindMi Pro anytime after.
+            Free plan requires no payment. Pro continues to secure Stripe checkout after your business is created.
           </p>
         </form>
       </div>
