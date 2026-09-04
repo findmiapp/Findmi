@@ -56,10 +56,14 @@ const primaryButtonClass =
  * form and hands the submit off entirely to that action, which already
  * owns every authorization/validation/allowlist/atomicity concern.
  *
- * Free and Pro currently render the exact same form — updateMemberBusiness
- * itself only allows this same small field set for both tiers right now
- * (see its own doc comment), so there is nothing more to show yet; the
- * plan label is purely informational here. */
+ * Free Business Editing Pass 3 — Free now gets its own basic-factual
+ * field set (name/logo/cover/short description/city/state/category,
+ * all always rendered above), and Pro renders everything Free gets plus
+ * the additional `{pro && (...)}` block below (full description,
+ * gallery, remaining contact/social links, announcement, country) —
+ * mirrors updateMemberBusiness's own FREE_ALLOWED_COLUMNS/
+ * PRO_ONLY_COLUMNS allowlist exactly (../actions.ts), so nothing shown
+ * here can submit a field that action wouldn't already accept. */
 export default async function ManageBusinessPage({
   params,
   searchParams,
@@ -442,6 +446,25 @@ export default async function ManageBusinessPage({
               defaultValue={business.cover_image_url}
             />
 
+            {/* Free Business Editing Pass 3 — city/state are basic
+                factual location context (locked product rule: Free =
+                ownership + accurate basic presence), so they're now
+                always rendered here rather than only inside the
+                Pro-only block below. FREE_ALLOWED_COLUMNS in
+                ../actions.ts is what actually authorizes the write for
+                both tiers — this is just presentation following that. */}
+            <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
+                <input type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
+                <input type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
+              </label>
+            </div>
+
             {/* Pro-only fields — the additional businesses columns
                 (existing schema, admin already edits every one of these)
                 that PRO_ONLY_COLUMNS in actions.ts allows only when this
@@ -467,21 +490,15 @@ export default async function ManageBusinessPage({
                   />
                 </label>
 
-                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
-                    <input type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
-                    <input type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
-                    <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
-                  </label>
-                </div>
+                {/* City/State moved to the always-rendered Business
+                    Basics section above (Free Business Editing Pass 3)
+                    — Country stays Pro-only here; this pass was only
+                    asked to unlock city/state, not every location
+                    field (see this pass's own report). */}
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
+                  <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
+                </label>
 
                 <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
                 <label className="block">

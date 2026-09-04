@@ -101,27 +101,32 @@ export async function uploadMemberBusinessImage(
 // unrestricted business editor.
 //
 // This pass establishes a secure MUTATION BOUNDARY, not full business-
-// management capability: both Free and Pro currently resolve to the same
-// tiny allowlist below (name/logo/cover/one category) — the full Pro
-// editor (description, website, contact, socials, gallery, products,
-// appearances, inquiry/lead settings, multi-category) doesn't exist yet
-// and is explicitly out of scope here. No UI calls this yet.
+// management capability. Free Business Editing Pass 3 gave Free its own
+// small allowlist (name/logo/cover/short description/city/state/one
+// category) — basic factual presence maintenance, not a Pro feature; Pro
+// still gets everything Free gets plus PRO_ONLY_COLUMNS below (full
+// description, remaining contact/socials/announcement fields, gallery).
+// A fuller Pro editor (products, appearances, inquiry/lead settings,
+// multi-category) still doesn't exist and is explicitly out of scope
+// here.
 
-/** Same tiny allowlist for both tiers today — Free because plan_tier
- * genuinely limits it, Pro because the full Pro editor isn't built yet
- * ("allow only the same basic fields implemented by this new action" per
- * the pass spec). Kept as two named constants (rather than one shared
- * one) purely so a later pass can widen PRO_ALLOWED_COLUMNS without
- * touching the Free path at all. */
-const FREE_ALLOWED_COLUMNS = ["name", "logo_url", "cover_image_url", "short_description"] as const;
+/** Free Business Editing Pass 3 — Free's allowlist now also covers city
+ * and state: locked product rule is that Free = ownership + accurate
+ * basic presence, and correcting a business's basic public location
+ * (city/state) is factual maintenance, not a Pro merchandising/growth
+ * feature. Pro's allowlist is unaffected in shape (still
+ * [...FREE_ALLOWED_COLUMNS, ...PRO_ONLY_COLUMNS] below) — city/state
+ * simply moved from one constant to the other, so a Pro business can
+ * still edit them exactly as before. `country` deliberately stays
+ * Pro-only (see PRO_ONLY_COLUMNS) — this pass only unlocks what it was
+ * explicitly asked to unlock. */
+const FREE_ALLOWED_COLUMNS = ["name", "logo_url", "cover_image_url", "short_description", "city", "state"] as const;
 // Pro-only additions — every one an EXISTING businesses column already
 // used by the founder admin editor (BusinessForm.tsx); no new columns.
 // "announcement" is the bulletin_* group admin already exposes together
 // under that same label.
 const PRO_ONLY_COLUMNS = [
   "description",
-  "city",
-  "state",
   "country",
   "email",
   "phone",
@@ -138,20 +143,22 @@ const PRO_ONLY_COLUMNS = [
 const PRO_ALLOWED_COLUMNS = [...FREE_ALLOWED_COLUMNS, ...PRO_ONLY_COLUMNS] as const;
 
 /**
- * Updates a business's name, logo, cover image, and category — the ONLY
- * fields any business_members-authorized user (any role: owner, manager,
- * or staff — role governs WHO can call this, never WHAT plan-tier fields
- * are allowed) may touch through this action, regardless of plan. Every
- * other business column (description, website, email/phone, socials,
- * gallery, products, appearances, inquiry/lead settings, CTAs, bulletin,
- * additional categories, commerce/payout settings, verification/
- * membership/publication status, etc.) is simply never read from the
- * submitted form — there is no generic object spread into Supabase
- * anywhere in this function, only this fixed, named column list — so a
- * request that also includes any of those fields has them silently
- * ignored rather than erroring, the same "extra form fields are just
- * never looked at" pattern every other action in this codebase already
- * uses (saveBusiness, saveEvent, updateProfile, etc.).
+ * Updates a business's basic factual fields — name, logo, cover image,
+ * short description, city, state, and category — regardless of plan
+ * tier (FREE_ALLOWED_COLUMNS, above); Pro additionally gets everything
+ * in PRO_ONLY_COLUMNS (full description, remaining contact/social
+ * links, announcement, gallery). Role (owner/manager/staff, via
+ * business_members) governs WHO can call this, never WHAT plan-tier
+ * fields are allowed. Every business column not in either allowlist
+ * (products, appearances, inquiry/lead settings, CTAs, additional
+ * categories, commerce/payout settings, verification/membership/
+ * publication status, etc.) is simply never read from the submitted
+ * form — there is no generic object spread into Supabase anywhere in
+ * this function, only these fixed, named column lists — so a request
+ * that also includes any of those fields has them silently ignored
+ * rather than erroring, the same "extra form fields are just never
+ * looked at" pattern every other action in this codebase already uses
+ * (saveBusiness, saveEvent, updateProfile, etc.).
  *
  * Authorization is never trusted from the client:
  *   1. A real Supabase Auth session is required (redirects to /login
