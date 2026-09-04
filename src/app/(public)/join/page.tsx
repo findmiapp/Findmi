@@ -305,16 +305,22 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
         {priceSuffix && <span className="text-sm font-medium text-ink/45">{priceSuffix}</span>}
       </p>
 
-      {/* Mobile Hierarchy pass — FindMi Here now leads, directly under
-          price and ahead of the general description below, so it's the
-          first thing read about Pro rather than something discovered
-          partway down the card. */}
+      {/* Mobile Hierarchy pass — FindMi Here leads, directly under price
+          and ahead of the general description below, so it's the first
+          thing read about Pro rather than something discovered partway
+          down the card. Free Positioning + Label Cleanup pass — eyebrow
+          reworded from "Featured with Pro" (read as FindMi itself
+          featuring the business) to "The Pro Difference", and the
+          supporting line now says the business controls/publishes its
+          own appearances — the actual Free/Pro distinction (see
+          FreeBasicBox's own note below). */}
       <div className="mt-4 rounded-2xl bg-findmi-50 p-4 sm:p-5">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Featured with Pro</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">The Pro Difference</p>
         <h4 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">FindMi Here</h4>
         <p className="mt-1 text-sm font-semibold text-ink/80">Show people where to find you next.</p>
         <p className="mt-1.5 text-sm text-ink/60">
-          Add markets, pop-ups, events and appearances so customers always know where you&rsquo;re showing up.
+          Add and manage your own markets, pop-ups, events and appearances so customers always know where
+          you&rsquo;re showing up.
         </p>
       </div>
 
@@ -352,17 +358,19 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
   );
 }
 
-/** Pro Positioning / Mobile Hierarchy passes — Free's small, quiet
- * "basic index" presentation: static copy (Free isn't a CMS card, same
- * as before), an accessible native <details>/<summary> disclosure (no
- * client JS needed — this stays a server component) showing what's
- * included vs. what requires Pro. FindMi Here appears here too, muted/
- * struck through, so the comparison is consistent with ProCard's
- * spotlight. Now renders FIRST on the page (Mobile Hierarchy pass) —
- * copy updated to stand on its own rather than read as a question
- * answering a Pro card above it; container/sizing/weight are otherwise
- * unchanged, so it's still visually quieter/smaller than Pro, not a
- * second competing card. */
+/** Pro Positioning / Mobile Hierarchy / Free Positioning passes — Free's
+ * small, quiet "basic index" presentation: static copy (Free isn't a
+ * CMS card, same as before), an accessible native <details>/<summary>
+ * disclosure (no client JS needed — this stays a server component)
+ * showing what's included vs. what requires Pro. Renders FIRST on the
+ * page; container/sizing/weight are unchanged, so it's still visually
+ * quieter/smaller than Pro, not a second competing card. Free
+ * Positioning pass — copy now names the actual distinction: Free gets a
+ * business into the network so organizers can feature it on existing
+ * FindMi events (Who You'll Find Here — see CLAUDE.md's locked product
+ * language); only Pro lets a business control/publish its own FindMi
+ * Here appearances. Presentation only — no permissions/features
+ * changed. */
 function FreeBasicBox() {
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 sm:p-5">
@@ -370,8 +378,11 @@ function FreeBasicBox() {
         <span className="text-sm font-bold text-ink">Free Basic Index</span>
         <span className="text-sm text-ink/45">· $0</span>
       </p>
-      <p className="mt-1 text-sm font-semibold text-ink/70">Get listed on FindMi.</p>
-      <p className="mt-1.5 text-sm text-ink/60">Add your business name, logo, category and a short description.</p>
+      <p className="mt-1 text-sm font-semibold text-ink/70">Get your business into the FindMi network.</p>
+      <p className="mt-1.5 text-sm text-ink/60">
+        Create and manage your basic profile so organizers can feature your brand on existing FindMi events under
+        Who You&rsquo;ll Find Here.
+      </p>
 
       <details className="group mt-3">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-ink/50 [&::-webkit-details-marker]:hidden">
@@ -384,7 +395,7 @@ function FreeBasicBox() {
             <ul className="mt-2 flex flex-col gap-1.5 text-sm text-ink/70">
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Business name + logo</span>
+                <span>Logo + cover image</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
@@ -392,11 +403,15 @@ function FreeBasicBox() {
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Short description</span>
+                <span>Short bio</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Basic index listing</span>
+                <span>Basic business profile</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckGlyph />
+                <span>Eligible to appear on participating FindMi event pages</span>
               </li>
             </ul>
           </div>
@@ -421,6 +436,13 @@ function FreeBasicBox() {
       >
         Start with Basic
       </Link>
+
+      {/* Free Positioning pass — quiet, informational, not an error/
+          upsell-pressure note: small muted text, no color/weight that
+          would make Free read as broken or incomplete. */}
+      <p className="mt-2.5 text-center text-xs text-ink/40">
+        * Want to show customers where you&rsquo;ll be next? FindMi Here is a Pro feature.
+      </p>
     </div>
   );
 }
