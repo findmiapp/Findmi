@@ -117,7 +117,7 @@ export default async function JoinPage() {
             card, not phrased as a warning, and says nothing about
             payment/approval — just sets expectations honestly. */}
         <p className="mx-auto max-w-xl text-center text-xs text-ink/40">
-          New listings are reviewed before appearing publicly.
+          New Listings Are Reviewed Before Appearing Publicly.
         </p>
 
         {/* Free — static copy, not a CMS-driven card (see this pass's
@@ -150,7 +150,7 @@ export default async function JoinPage() {
 
         {secondaryCards.length > 0 && (
           <div className="mt-10">
-            <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">More ways to join FindMi</p>
+            <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">More Ways To Join FindMi</p>
             <div className="mt-4">
               <CardGrid cards={secondaryCards} />
             </div>
@@ -329,12 +329,12 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
       {/* Final Conversion Consistency pass — this pass's own "Core
           positioning" line, new static content (title/price/priceSuffix/
           tagline/features stay fully CMS-driven, unchanged). */}
-      <p className="mt-1 text-sm text-ink/60">Build out your complete FindMi presence.</p>
+      <p className="mt-1 text-sm text-ink/60">Build Out Your Complete FindMi Presence.</p>
       <p className="mt-2 flex items-baseline gap-1">
         <span className="font-display text-3xl font-bold tracking-tight text-ink">{price}</span>
         {priceSuffix && <span className="text-sm font-medium text-ink/45">{priceSuffix}</span>}
       </p>
-      <p className="mt-1 text-xs text-ink/40">No automatic renewal.</p>
+      <p className="mt-1 text-xs text-ink/40">No Automatic Renewal.</p>
 
       {/* Mobile Hierarchy pass — FindMi Here leads, directly under price
           and ahead of the general description below, so it's the first
@@ -348,9 +348,9 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
           publicly, vs. Free's next-1-only public profile (Pass 2). */}
       <div className="mt-4 rounded-2xl bg-findmi-50 p-4 sm:p-5">
         <h4 className="font-display text-lg font-bold tracking-tight text-ink">FindMi Here</h4>
-        <p className="mt-1 text-sm font-semibold text-ink/80">Show customers where to find you next.</p>
+        <p className="mt-1 text-sm font-semibold text-ink/80">Show Customers Where To Find You Next.</p>
         <p className="mt-1.5 text-sm text-ink/60">
-          Your full upcoming schedule shows on your public profile — not just your next appearance.
+          Your Full Upcoming Schedule Shows On Your Public Profile — Not Just Your Next Appearance.
         </p>
       </div>
 
@@ -393,7 +393,7 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
           a one-time Stripe payment (createBusinessProCheckoutSession,
           untouched), never called a subscription, no renewal price
           stated since none is finalized. */}
-      <p className="mt-2 text-center text-xs text-ink/40">$99 for one year of FindMi Pro.</p>
+      <p className="mt-2 text-center text-xs text-ink/40">$99 For One Year Of FindMi Pro.</p>
     </div>
   );
 }
@@ -416,18 +416,27 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
 function FreeBasicBox() {
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 sm:p-5">
+      {/* Typography Polish pass — "Free" and "$0" now match the Pro
+          card's price treatment (font-display, bold, tracking-tight,
+          text-ink) instead of reading as small/light body text next to
+          Pro's prominent "$99". Sized text-2xl (vs. Pro's text-3xl) —
+          reuses the same size PlanCard already uses for its own price —
+          so the card stays visually quieter than Pro overall while the
+          price itself no longer looks like an afterthought. $0/meaning
+          unchanged. */}
       <p className="flex items-baseline gap-1.5">
-        <span className="text-sm font-bold text-ink">Free</span>
-        <span className="text-sm text-ink/45">· $0</span>
+        <span className="font-display text-2xl font-bold tracking-tight text-ink">Free</span>
+        <span className="text-sm text-ink/40">·</span>
+        <span className="font-display text-2xl font-bold tracking-tight text-ink">$0</span>
       </p>
-      <p className="mt-1 text-sm font-semibold text-ink/70">Get your business on FindMi.</p>
+      <p className="mt-1 text-sm font-semibold text-ink/70">Get Your Business On FindMi.</p>
       <p className="mt-1.5 text-sm text-ink/60">
-        Create your basic profile and appear on event pages when participating organizers add your business.
+        Create Your Basic Profile And Appear On Event Pages When Participating Organizers Add Your Business.
       </p>
 
       <details className="group mt-3">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-ink/50 [&::-webkit-details-marker]:hidden">
-          View what&rsquo;s included
+          View What&rsquo;s Included
           <ChevronGlyph className="transition-transform group-open:rotate-180" />
         </summary>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -441,19 +450,19 @@ function FreeBasicBox() {
             <ul className="mt-2 flex flex-col gap-1.5 text-sm text-ink/70">
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Logo + cover image &amp; basic profile</span>
+                <span>Logo + Cover Image &amp; Basic Profile</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Show your next upcoming appearance</span>
+                <span>Show Your Next Upcoming Appearance</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Appear on participating event/vendor rosters</span>
+                <span>Appear On Participating Event/Vendor Rosters</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>FindMi search &amp; discovery</span>
+                <span>FindMi Search &amp; Discovery</span>
               </li>
             </ul>
           </div>
@@ -464,11 +473,11 @@ function FreeBasicBox() {
                 "Full upcoming schedule" (not "FindMi Here") — Free
                 already gets FindMi Here, just limited to its next 1. */}
             <ul className="mt-2 flex flex-col gap-1.5 text-sm text-ink/35 line-through decoration-ink/25">
-              <li>Full upcoming schedule</li>
+              <li>Full Upcoming Schedule</li>
               <li>Gallery</li>
-              <li>Products &amp; services</li>
-              <li>Website &amp; social links</li>
-              <li>Full business profile</li>
+              <li>Products &amp; Services</li>
+              <li>Website &amp; Social Links</li>
+              <li>Full Business Profile</li>
             </ul>
           </div>
         </div>
