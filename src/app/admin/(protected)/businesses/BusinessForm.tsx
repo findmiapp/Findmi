@@ -74,8 +74,58 @@ export default function BusinessForm({
         options={[
           { value: "free", label: "Free" },
           { value: "pro", label: "Pro" },
+          // Future-only (Native Business Onboarding, Pass 1) — no seller
+          // checkout/commerce exists yet. Selectable now (a Pro Seller
+          // inherits full Pro access the moment this is set — see
+          // isBusinessPro) so the tier itself doesn't block later work,
+          // but labeled dormant so it's not mistaken for a live feature.
+          { value: "pro_seller", label: "Pro Seller (future — dormant)" },
         ]}
       />
+
+      {/* Plan Entitlement Provenance (Pass 1) — why/when/how this business
+          got its current plan_tier. All optional: never required to save
+          an existing business, and most businesses today have none of
+          this recorded (it didn't exist before this pass). Kept as one
+          compact block right under Plan Tier rather than reworking the
+          rest of this form's layout. */}
+      <div className="grid gap-4 rounded-2xl border border-black/10 bg-mist/40 p-4 sm:grid-cols-2">
+        <SelectField
+          label="Plan Source"
+          name="plan_source"
+          defaultValue={business?.plan_source ?? ""}
+          options={[
+            { value: "", label: "— Not recorded —" },
+            { value: "paid", label: "Paid" },
+            { value: "complimentary", label: "Complimentary" },
+            { value: "promotional", label: "Promotional" },
+            { value: "admin", label: "Admin-granted" },
+          ]}
+          hint="Why this business is on its current plan. Optional."
+        />
+        <TextField
+          label="Payment Reference"
+          name="plan_payment_reference"
+          defaultValue={business?.plan_payment_reference}
+          placeholder="Stripe/Tally id, or a short note"
+          hint="Optional — an external payment/record reference, if any."
+        />
+        <TextField
+          label="Plan Started"
+          name="plan_started_at"
+          type="date"
+          defaultValue={business?.plan_started_at ? business.plan_started_at.slice(0, 10) : null}
+          hint="Optional."
+        />
+        <TextField
+          label="Plan Expires"
+          name="plan_expires_at"
+          type="date"
+          defaultValue={business?.plan_expires_at ? business.plan_expires_at.slice(0, 10) : null}
+          hint="Optional — not currently enforced anywhere."
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <CheckboxField
           label="Verified"

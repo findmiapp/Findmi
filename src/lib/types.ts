@@ -13,14 +13,27 @@ export type ProcessingFeePayer = "vendor" | "customer";
 export type PayoutMethod = "manual" | "stripe_connect_future";
 export type FulfillmentMethod = "shipping" | "local_delivery" | "pickup" | "event_pickup";
 
-// Business Plan Entitlement — foundation only (see
-// supabase/migrations/20260902060000_business_plan_tier.sql, not yet
-// applied). BUSINESS-level feature tier, deliberately separate from
-// membership_status/founding_member (the /join Founding Membership
-// billing concept) and from business_members.role (owner/manager/staff —
-// who can act, not what the business is entitled to). No UI gating reads
-// this yet — see lib/entitlements.ts's isBusinessPro().
-export type PlanTier = "free" | "pro";
+// Business Plan Entitlement — BUSINESS-level feature tier, deliberately
+// separate from membership_status/founding_member (the /join Founding
+// Membership billing concept) and from business_members.role (owner/
+// manager/staff — who can act, not what the business is entitled to).
+// See lib/entitlements.ts for the central isBusinessPro()/
+// isBusinessProSeller() resolvers every gated feature should call instead
+// of comparing plan_tier directly.
+//
+// pro_seller (Native Business Onboarding, Pass 1) is FUTURE-ONLY — no
+// seller checkout/Stripe Connect/commissions/payouts/UI exists yet. It's
+// in the type now so the entitlement model doesn't need another schema/
+// type change when that work starts; a pro_seller business inherits every
+// Pro entitlement (see isBusinessPro below) plus, eventually, seller-only
+// ones gated separately via isBusinessProSeller().
+export type PlanTier = "free" | "pro" | "pro_seller";
+
+// Records WHY/WHEN/HOW a business's plan_tier became what it is — added
+// alongside plan_tier itself only in the Pass 1 provenance migration, so
+// every column here is nullable/optional: an existing business can (and
+// most do) have plan_tier set with no provenance recorded at all.
+export type PlanSource = "paid" | "complimentary" | "promotional" | "admin";
 
 // Membership / onboarding — see lib/admin/membership-queries.ts. Kept as
 // three separate statuses on purpose: a paid membership can be
@@ -144,12 +157,18 @@ export interface Business {
   // own bulletin fields above are untouched.
   bulletin_label: string | null;
   bulletin_url: string | null;
-  // Business Plan Entitlement — foundation only, not yet publicly
-  // readable (see the PlanTier type above and the not-yet-applied
-  // migration). Optional here because most existing SELECTs (e.g.
-  // PUBLIC_BUSINESS_COLUMNS) don't request this column yet and won't
+  // Business Plan Entitlement — not publicly readable (see the PlanTier
+  // type above; plan_tier is deliberately off the anon/authenticated
+  // column-level grant). Optional here because most existing SELECTs
+  // (e.g. PUBLIC_BUSINESS_COLUMNS) don't request this column and won't
   // start returning it just because the column exists in the database.
   plan_tier?: PlanTier;
+  // Provenance for the plan_tier above (Pass 1) — all optional/nullable;
+  // most businesses have plan_tier set with none of these recorded.
+  plan_source?: PlanSource | null;
+  plan_started_at?: string | null;
+  plan_expires_at?: string | null;
+  plan_payment_reference?: string | null;
 }
 
 export interface Market {

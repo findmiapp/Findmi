@@ -63,6 +63,14 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     is_featured: bool(formData, "is_featured"),
     membership_status: str(formData, "membership_status") ?? "lead",
     plan_tier: str(formData, "plan_tier") ?? "free",
+    // Plan Entitlement Provenance (Pass 1) — all optional, str() already
+    // resolves a blank/unselected field to null, so leaving every one of
+    // these unset is a completely valid save (never required to save an
+    // existing business — see this pass's own instruction).
+    plan_source: str(formData, "plan_source"),
+    plan_started_at: str(formData, "plan_started_at"),
+    plan_expires_at: str(formData, "plan_expires_at"),
+    plan_payment_reference: str(formData, "plan_payment_reference"),
     lead_status: str(formData, "lead_status") ?? "new",
     // Framed to the founder as "Published" — is_demo is the inverse.
     is_demo: !bool(formData, "published"),

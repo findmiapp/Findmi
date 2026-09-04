@@ -39,7 +39,7 @@ export function TextField({
   placeholder?: string;
   required?: boolean;
   hint?: string;
-  type?: "text" | "email" | "tel" | "url" | "password";
+  type?: "text" | "email" | "tel" | "url" | "password" | "date";
 }) {
   return (
     <Wrap label={label} hint={hint}>

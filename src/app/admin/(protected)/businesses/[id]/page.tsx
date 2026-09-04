@@ -11,7 +11,7 @@ import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import BusinessForm from "../BusinessForm";
 import { getCurrentAccessByEntity } from "@/lib/admin/claim-queries";
 import { assignBusinessMember, removeBusinessMember } from "../actions";
-import { isBusinessPro } from "@/lib/entitlements";
+import { isBusinessPro, isBusinessProSeller } from "@/lib/entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,11 @@ export default async function EditBusinessPage({
   const members = accessByEntity.get(id) ?? [];
   const assignMember = assignBusinessMember.bind(null, id);
   const pro = isBusinessPro(business);
+  // pro_seller is future-only (Native Business Onboarding, Pass 1 — no
+  // seller checkout/commerce built yet) but still gets its own distinct
+  // label here rather than reading identically to "Pro", so a founder
+  // looking at this summary can actually tell the two apart.
+  const proSeller = isBusinessProSeller(business);
   // Derived, not stored — "Claimed" simply means an owner row already
   // exists in business_members for this business. No new claim logic or
   // schema: same source of truth requireBusinessMember()/the claims page
@@ -91,7 +96,7 @@ export default async function EditBusinessPage({
               pro ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/60"
             }`}
           >
-            {pro ? "Pro" : "Free"} Plan
+            {proSeller ? "Pro Seller" : pro ? "Pro" : "Free"} Plan
           </span>
           <span
             className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
