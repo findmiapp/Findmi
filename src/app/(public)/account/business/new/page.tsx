@@ -170,7 +170,7 @@ export default async function AddBusinessPage({
                 </div>
                 <p className="flex items-baseline gap-1">
                   <span className="font-display text-2xl font-bold tracking-tight text-ink">$20</span>
-                  <span className="text-xs font-medium text-ink/45">first 90 days</span>
+                  <span className="text-xs font-medium text-ink/45">first year</span>
                 </p>
 
                 {/* FindMi Here — the featured Pro benefit, not one bullet

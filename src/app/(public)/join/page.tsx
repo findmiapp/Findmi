@@ -386,7 +386,7 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
           untouched), never called a subscription, no renewal price
           stated since none is finalized. */}
       <p className="mt-2 text-center text-xs text-ink/40">
-        $20 introductory payment · 90 days of Pro · No automatic renewal.
+        $20 introductory payment · First year of Pro · No automatic renewal.
       </p>
     </div>
   );

@@ -3,7 +3,7 @@ import { getStripe } from "./stripe";
 import { getPublicOrigin } from "@/lib/site-url";
 import { isBusinessPro } from "@/lib/entitlements";
 
-// Native Business Onboarding Pass 3 — the introductory $20/first-90-days
+// Native Business Onboarding Pass 3 — the introductory $20/first-year
 // Pro offer, deliberately separate from the marketplace order checkout
 // (lib/commerce/quote.ts, order/order_items — untouched) and from the
 // legacy membership checkout (membershipCheckout.ts, still intact,
@@ -21,10 +21,20 @@ import { isBusinessPro } from "@/lib/entitlements";
  * easy to find if/when a real pricing pass replaces it. offerId is
  * carried in Checkout metadata purely so the webhook (or a future
  * admin/report view) can tell which offer a given payment was for,
- * without guessing from the raw amount. */
-export const BUSINESS_PRO_INTRO_OFFER_ID = "pro_intro_90d_2000";
+ * without guessing from the raw amount — it's never read back anywhere
+ * today (confirmed: only findmi_purpose/findmi_business_id drive the
+ * webhook), so renaming it (Pro Offer Pass 4 — was "pro_intro_90d_2000")
+ * to match the new 1-year duration is safe: no idempotency/webhook
+ * logic keys off its value, and no historical payment record is
+ * altered by changing what a FUTURE checkout tags itself with. */
+export const BUSINESS_PRO_INTRO_OFFER_ID = "pro_intro_1yr_2000";
 export const BUSINESS_PRO_INTRO_PRICE_CENTS = 2000; // $20
-export const BUSINESS_PRO_INTRO_DAYS = 90;
+// Pro Offer Pass 4 — locked launch offer is "$20 for the first year",
+// not 90 days. Feeds businessProActivation.ts's plan_expires_at
+// calculation directly (expiresAt.setDate(... + BUSINESS_PRO_INTRO_DAYS))
+// — that's the entire "existing expiration/provenance mechanism" this
+// pass reuses, no other change needed there.
+export const BUSINESS_PRO_INTRO_DAYS = 365;
 
 /** Creates a one-time Stripe Checkout Session for the introductory Pro
  * offer, scoped to exactly one already-existing business. Deliberately
@@ -73,7 +83,7 @@ export async function createBusinessProCheckoutSession(
             unit_amount: BUSINESS_PRO_INTRO_PRICE_CENTS,
             product_data: {
               name: `FindMi Pro — ${business.name}`,
-              description: "FindMi Pro, first 90 days. No automatic renewal during the introductory period.",
+              description: "FindMi Pro, first year. No automatic renewal during the introductory period.",
             },
           },
         },
