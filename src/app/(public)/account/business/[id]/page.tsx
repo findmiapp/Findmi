@@ -383,8 +383,17 @@ export default async function ManageBusinessPage({
         {!pro && (
           <div className="mt-4 rounded-2xl border border-findmi/20 bg-findmi-50 p-4 sm:p-5">
             <p className="text-sm font-bold text-ink">Unlock your full FindMi presence</p>
+            {/* Final Conversion Consistency pass — "appearances" removed:
+                Free can already add/manage appearances (Passes 1-2), so
+                naming it here as a Pro upgrade reason was stale. Replaced
+                with the actual Pro-exclusive distinction — the full
+                upcoming schedule showing publicly (Free's public profile
+                shows only its next 1). This IS the existing, obvious
+                Upgrade to Pro path from this page (Section D) — only its
+                copy changed, not its structure/design/destination. */}
             <p className="mt-1 text-sm text-ink/60">
-              Upgrade to Pro to add your business details, contact links, gallery, products, appearances and more.
+              Upgrade to Pro for your full business details, contact links, gallery, products, and your complete
+              upcoming schedule.
             </p>
             {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: an
                 exact, owned business_id is already known here (this page

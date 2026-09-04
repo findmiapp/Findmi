@@ -326,7 +326,11 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
   return (
     <div className="flex flex-col rounded-3xl border border-findmi/40 bg-white p-6 shadow-[0_4px_24px_rgba(20,176,188,0.14)] sm:p-8">
       <h3 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h3>
-      <p className="mt-1.5 flex items-baseline gap-1">
+      {/* Final Conversion Consistency pass — this pass's own "Core
+          positioning" line, new static content (title/price/priceSuffix/
+          tagline/features stay fully CMS-driven, unchanged). */}
+      <p className="mt-1 text-sm text-ink/60">Build out your complete FindMi presence.</p>
+      <p className="mt-2 flex items-baseline gap-1">
         <span className="font-display text-3xl font-bold tracking-tight text-ink">{price}</span>
         {priceSuffix && <span className="text-sm font-medium text-ink/45">{priceSuffix}</span>}
       </p>
@@ -337,12 +341,16 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
           thing read about Pro rather than something discovered partway
           down the card. Copy Compression pass — no eyebrow above it
           anymore, and the copy no longer implies FindMi itself features
-          the business. */}
+          the business. Final Conversion Consistency pass — the
+          supporting line no longer frames "adding appearances" as the
+          Pro-exclusive benefit (Free can do that too, Passes 1-2); the
+          real Pro-exclusive distinction is the full schedule showing
+          publicly, vs. Free's next-1-only public profile (Pass 2). */}
       <div className="mt-4 rounded-2xl bg-findmi-50 p-4 sm:p-5">
         <h4 className="font-display text-lg font-bold tracking-tight text-ink">FindMi Here</h4>
         <p className="mt-1 text-sm font-semibold text-ink/80">Show customers where to find you next.</p>
         <p className="mt-1.5 text-sm text-ink/60">
-          Add your markets, pop-ups and appearances, or connect to events already happening on FindMi.
+          Your full upcoming schedule shows on your public profile — not just your next appearance.
         </p>
       </div>
 
@@ -392,24 +400,26 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
   );
 }
 
-/** Pro Positioning / Mobile Hierarchy / Free Positioning passes — Free's
- * small, quiet "basic index" presentation: static copy (Free isn't a
- * CMS card, same as before), an accessible native <details>/<summary>
- * disclosure (no client JS needed — this stays a server component)
- * showing what's included vs. what requires Pro. Renders FIRST on the
- * page; container/sizing/weight are unchanged, so it's still visually
- * quieter/smaller than Pro, not a second competing card. Free
- * Positioning pass — copy now names the actual distinction: Free gets a
- * business into the network so organizers can feature it on existing
- * FindMi events (Who You'll Find Here — see CLAUDE.md's locked product
- * language); only Pro lets a business control/publish its own FindMi
- * Here appearances. Presentation only — no permissions/features
- * changed. */
+/** Pro Positioning / Mobile Hierarchy / Free Positioning / Final
+ * Conversion Consistency passes — Free's small, quiet "basic index"
+ * presentation: static copy (Free isn't a CMS card, same as before), an
+ * accessible native <details>/<summary> disclosure (no client JS needed
+ * — this stays a server component) showing what's included vs. what
+ * requires Pro. Renders FIRST on the page; container/sizing/weight are
+ * unchanged, so it's still visually quieter/smaller than Pro, not a
+ * second competing card. Final Conversion Consistency pass — copy now
+ * names the ACTUAL current distinction: Free can add/manage unlimited
+ * appearances (Passes 1-2) and its own public profile shows its next 1
+ * (Pass 2), and it may also appear on participating organizers' event
+ * pages (Who You'll Find Here — see CLAUDE.md's locked product
+ * language); Pro's distinction is showing the FULL upcoming schedule
+ * publicly, plus gallery/products/full profile/outbound links.
+ * Presentation only — no permissions/features changed. */
 function FreeBasicBox() {
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 sm:p-5">
       <p className="flex items-baseline gap-1.5">
-        <span className="text-sm font-bold text-ink">Free Basic Index</span>
+        <span className="text-sm font-bold text-ink">Free</span>
         <span className="text-sm text-ink/45">· $0</span>
       </p>
       <p className="mt-1 text-sm font-semibold text-ink/70">Get your business on FindMi.</p>
@@ -425,55 +435,59 @@ function FreeBasicBox() {
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Included</p>
+            {/* Final Conversion Consistency pass — Free CAN add/manage
+                unlimited appearances (Passes 1-2); its public profile
+                just shows only the next 1 (Pass 2). That distinction —
+                not "no appearances" — is what belongs here and in
+                Requires Pro below. */}
             <ul className="mt-2 flex flex-col gap-1.5 text-sm text-ink/70">
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Logo + cover image</span>
+                <span>Logo + cover image &amp; basic profile</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Category</span>
+                <span>Show your next upcoming appearance</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Short bio</span>
+                <span>Appear on participating event/vendor rosters</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckGlyph />
-                <span>Basic business profile</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckGlyph />
-                <span>Eligible to appear on participating FindMi event pages</span>
+                <span>FindMi search &amp; discovery</span>
               </li>
             </ul>
           </div>
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Requires Pro</p>
             {/* Tasteful, not aggressive: muted text + line-through, same
-                small size as the Included column, no red/warning color. */}
+                small size as the Included column, no red/warning color.
+                "Full upcoming schedule" (not "FindMi Here") — Free
+                already gets FindMi Here, just limited to its next 1. */}
             <ul className="mt-2 flex flex-col gap-1.5 text-sm text-ink/35 line-through decoration-ink/25">
-              <li>Full About section</li>
+              <li>Full upcoming schedule</li>
               <li>Gallery</li>
-              <li>Website + social links</li>
-              <li>FindMi Here</li>
-              <li>Business updates</li>
+              <li>Products &amp; services</li>
+              <li>Website &amp; social links</li>
+              <li>Full business profile</li>
             </ul>
           </div>
         </div>
       </details>
 
+      {/* Final Conversion Consistency pass — the old footnote here
+          ("Want to add where you'll be next? Upgrade to Pro.") was
+          removed: it's now FALSE — Free can add/manage unlimited
+          appearances (Passes 1-2). The accurate Free/Pro distinction
+          (next-1 vs. full schedule) is already stated in the Included/
+          Requires Pro comparison above; no replacement note needed. */}
       <Link
         href="/account/business/new"
         className="mt-4 flex h-11 items-center justify-center rounded-full border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
       >
         Start with Basic
       </Link>
-
-      {/* Free Positioning pass — quiet, informational, not an error/
-          upsell-pressure note: small muted text, no color/weight that
-          would make Free read as broken or incomplete. */}
-      <p className="mt-2.5 text-center text-xs text-ink/40">Want to add where you&rsquo;ll be next? Upgrade to Pro.</p>
     </div>
   );
 }

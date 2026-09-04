@@ -16,13 +16,20 @@ export const metadata: Metadata = {
 // or ISR-cached.
 export const dynamic = "force-dynamic";
 
+// Final Conversion Consistency pass — three items previously listed here
+// ("Manage FindMi Here appearances", "Add your own pop-ups &
+// appearances", "Connect to existing FindMi events") described adding/
+// managing appearances as Pro-exclusive; Free can do all of that too now
+// (Passes 1-2). Replaced with the two things that are actually
+// Pro-exclusive: the full upcoming schedule showing publicly (Free's
+// public profile shows only its next 1) and products/services
+// merchandising (previously missing from this list entirely).
 const CORE_BENEFITS = [
   "Full About section",
   "Website, contact & social links",
   "Enhanced photo gallery",
-  "Manage FindMi Here appearances",
-  "Add your own pop-ups & appearances",
-  "Connect to existing FindMi events",
+  "Products & services showcase",
+  "Show your full upcoming schedule",
   "Business announcements",
   "Priority profile review/support",
 ];
