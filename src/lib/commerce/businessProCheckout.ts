@@ -23,8 +23,7 @@ import { isBusinessPro } from "@/lib/entitlements";
  * admin/report view) can tell which offer a given payment was for,
  * without guessing from the raw amount. */
 export const BUSINESS_PRO_INTRO_OFFER_ID = "pro_intro_90d_2000";
-// TEMP LIVE QA PRICE — restore to 2000 after transaction test.
-export const BUSINESS_PRO_INTRO_PRICE_CENTS = 50; // $0.50 (real offer is still $20, see public copy — this is a temporary live Stripe test amount only)
+export const BUSINESS_PRO_INTRO_PRICE_CENTS = 2000; // $20
 export const BUSINESS_PRO_INTRO_DAYS = 90;
 
 /** Creates a one-time Stripe Checkout Session for the introductory Pro
