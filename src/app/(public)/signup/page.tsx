@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 import { signUp } from "./actions";
 import SubmitButton from "./SubmitButton";
+import PasswordFields from "./PasswordFields";
 
 export const metadata: Metadata = {
   title: "Sign Up",
@@ -45,17 +46,7 @@ export default async function SignupPage({
             <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
             <input type="email" name="email" required autoComplete="email" className={inputClass} />
           </label>
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">Password</span>
-            <input
-              type="password"
-              name="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              className={inputClass}
-            />
-          </label>
+          <PasswordFields />
           <div className="mt-1">
             <SubmitButton />
           </div>
