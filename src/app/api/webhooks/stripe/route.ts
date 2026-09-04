@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const businessProPurpose = session.metadata?.findmi_purpose;
     const businessProBusinessId = session.metadata?.findmi_business_id;
 
-    // Native Business Onboarding Pass 3 — the introductory $20/90-day Pro
+    // Native Business Onboarding Pass 3 — the native $99/year Pro
     // checkout, a THIRD system alongside marketplace orders and legacy
     // membership billing, distinguished the same way those two already
     // are: by which metadata key/value Stripe echoes back, all verified

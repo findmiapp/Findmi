@@ -169,8 +169,8 @@ export default async function AddBusinessPage({
                   <input type="radio" name="plan_choice" value="pro" defaultChecked={wantsPro} className="h-4 w-4 accent-findmi" />
                 </div>
                 <p className="flex items-baseline gap-1">
-                  <span className="font-display text-2xl font-bold tracking-tight text-ink">$20</span>
-                  <span className="text-xs font-medium text-ink/45">first year</span>
+                  <span className="font-display text-2xl font-bold tracking-tight text-ink">$99</span>
+                  <span className="text-xs font-medium text-ink/45">/ year</span>
                 </p>
 
                 {/* Final Conversion Consistency pass — Free can also add/
@@ -215,7 +215,7 @@ export default async function AddBusinessPage({
                 </p>
               </label>
             </div>
-            <p className="mt-1.5 text-xs text-ink/40">No automatic renewal during the introductory period.</p>
+            <p className="mt-1.5 text-xs text-ink/40">$99 for one year of FindMi Pro.</p>
           </div>
 
           <label className="mt-1 flex items-start gap-2.5">

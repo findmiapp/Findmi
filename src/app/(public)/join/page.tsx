@@ -393,9 +393,7 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
           a one-time Stripe payment (createBusinessProCheckoutSession,
           untouched), never called a subscription, no renewal price
           stated since none is finalized. */}
-      <p className="mt-2 text-center text-xs text-ink/40">
-        $20 introductory payment · First year of Pro · No automatic renewal.
-      </p>
+      <p className="mt-2 text-center text-xs text-ink/40">$99 for one year of FindMi Pro.</p>
     </div>
   );
 }

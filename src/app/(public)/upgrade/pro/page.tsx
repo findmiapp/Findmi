@@ -119,9 +119,9 @@ export default async function UpgradeToProPage({
       </h1>
 
       <div className="mt-6 rounded-3xl border border-findmi/20 bg-findmi-50 p-5 sm:p-6">
-        <p className="font-display text-4xl font-bold tracking-tight text-ink">$20</p>
-        <p className="mt-0.5 text-sm font-semibold text-ink/70">First year</p>
-        <p className="mt-3 text-xs text-ink/60">No automatic renewal during the introductory period.</p>
+        <p className="font-display text-4xl font-bold tracking-tight text-ink">$99</p>
+        <p className="mt-0.5 text-sm font-semibold text-ink/70">/ year</p>
+        <p className="mt-3 text-xs text-ink/60">$99 for one year of FindMi Pro.</p>
       </div>
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">

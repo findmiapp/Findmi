@@ -3,50 +3,49 @@ import { getStripe } from "./stripe";
 import { getPublicOrigin } from "@/lib/site-url";
 import { isBusinessPro } from "@/lib/entitlements";
 
-// Native Business Onboarding Pass 3 — the introductory $20/first-90-days
-// Pro offer, deliberately separate from the marketplace order checkout
+// Native Business Onboarding Pass 3 — the native FindMi Pro offer,
+// deliberately separate from the marketplace order checkout
 // (lib/commerce/quote.ts, order/order_items — untouched) and from the
 // legacy membership checkout (membershipCheckout.ts, still intact,
 // unreachable from any live UI, not reused here per this pass's own
 // instruction not to resurrect it). One-time Stripe Checkout ("payment"
-// mode, never "subscription" — no renewal/subscription behavior exists
-// yet), for an ALREADY-EXISTING, already-owned business — this never
-// creates a business or a membership row itself; the caller (the
-// creation action, or /upgrade/pro) is responsible for having a real,
-// authorized business_id before calling this.
+// mode, never "subscription" — recurring annual renewal is handled
+// separately, not in this pass), for an ALREADY-EXISTING, already-owned
+// business — this never creates a business or a membership row itself;
+// the caller (the creation action, or /upgrade/pro) is responsible for
+// having a real, authorized business_id before calling this.
 
-/** Current introductory offer — the one and only Pro price point this
- * pass implements. A single named constant so the amount is server-
- * controlled in exactly one place, never trusted from the client, and
- * easy to find if/when a real pricing pass replaces it. offerId is
- * carried in Checkout metadata purely so the webhook (or a future
- * admin/report view) can tell which offer a given payment was for,
- * without guessing from the raw amount — it's never read back anywhere
- * today (confirmed: only findmi_purpose/findmi_business_id drive the
- * webhook), so renaming it (Pro Offer Pass 4 — was "pro_intro_90d_2000")
- * to match the new 1-year duration is safe: no idempotency/webhook
- * logic keys off its value, and no historical payment record is
- * altered by changing what a FUTURE checkout tags itself with. */
-export const BUSINESS_PRO_INTRO_OFFER_ID = "pro_intro_1yr_2000";
-export const BUSINESS_PRO_INTRO_PRICE_CENTS = 2000; // $20
-// Pro Intro Term pass — locked launch offer is "$20 for the first 90
-// days", not a year (corrects Pro Offer Pass 4, which had changed this
-// to 365 — confirmed via a real, already-activated live payment that
-// this constant must be 90 to match: see this pass's own report).
-// Feeds businessProActivation.ts's plan_expires_at calculation directly
-// (expiresAt.setDate(... + BUSINESS_PRO_INTRO_DAYS)) — that's the
-// entire "existing expiration/provenance mechanism" this reuses, no
-// other change needed there.
-export const BUSINESS_PRO_INTRO_DAYS = 90;
+/** Pro Pricing Reset pass — the current locked offer: $99 for 365 days
+ * of Pro access, one-time payment (no recurring billing yet — see this
+ * pass's own instruction). Previously the $20/90-day, then briefly the
+ * $20/365-day, introductory offer; that framing is retired along with
+ * this constant's old value, not just its number. A single named
+ * constant so the amount is server-controlled in exactly one place,
+ * never trusted from the client, and easy to find if/when a real
+ * renewal-pricing pass replaces it. offerId is carried in Checkout
+ * metadata purely so the webhook (or a future admin/report view) can
+ * tell which offer a given payment was for, without guessing from the
+ * raw amount — it's never read back anywhere today (confirmed: only
+ * findmi_purpose/findmi_business_id drive the webhook), so updating it
+ * to match the new price is safe: no idempotency/webhook logic keys off
+ * its value, and no historical payment record is altered by changing
+ * what a FUTURE checkout tags itself with. */
+export const BUSINESS_PRO_INTRO_OFFER_ID = "pro_intro_1yr_9900";
+export const BUSINESS_PRO_INTRO_PRICE_CENTS = 9900; // $99
+// 365 days of Pro access per payment. Feeds businessProActivation.ts's
+// plan_expires_at calculation directly (expiresAt.setDate(... +
+// BUSINESS_PRO_INTRO_DAYS)) — that's the entire "existing expiration/
+// provenance mechanism" this reuses, no other change needed there.
+export const BUSINESS_PRO_INTRO_DAYS = 365;
 
-/** Creates a one-time Stripe Checkout Session for the introductory Pro
- * offer, scoped to exactly one already-existing business. Deliberately
- * does NOT re-check authorization itself (every caller — createMemberBusiness,
+/** Creates a one-time Stripe Checkout Session for the current Pro offer,
+ * scoped to exactly one already-existing business. Deliberately does
+ * NOT re-check authorization itself (every caller — createMemberBusiness,
  * startBusinessProCheckout — already required real business_members
  * access via requireBusinessMember before reaching here); it DOES
  * independently re-read the business's current plan_tier server-side and
  * refuse checkout if it's already pro/pro_seller, so a stale page or a
- * replayed request can never start a second, redundant $20 charge — and
+ * replayed request can never start a second, redundant $99 charge — and
  * a pro_seller business (inherits Pro already) is never offered this
  * checkout either, satisfying this pass's own Pro Seller safeguard. */
 export async function createBusinessProCheckoutSession(
@@ -65,7 +64,7 @@ export async function createBusinessProCheckoutSession(
   if (isBusinessPro(business)) {
     // Covers both plan_tier === 'pro' and 'pro_seller' — a Pro Seller
     // already inherits full Pro access and must never be offered this
-    // $20 checkout (see isBusinessPro's own pro_seller handling).
+    // $99 checkout (see isBusinessPro's own pro_seller handling).
     return { error: "This business already has Pro access." };
   }
 
@@ -86,7 +85,7 @@ export async function createBusinessProCheckoutSession(
             unit_amount: BUSINESS_PRO_INTRO_PRICE_CENTS,
             product_data: {
               name: `FindMi Pro — ${business.name}`,
-              description: "FindMi Pro, first year. No automatic renewal during the introductory period.",
+              description: "$99 for one year of FindMi Pro.",
             },
           },
         },
