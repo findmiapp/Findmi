@@ -311,50 +311,53 @@ function CheckGlyph() {
 
 /** Pro Positioning pass — Pro's own dominant presentation, distinct from
  * the shared PlanCard (still used for the quieter secondary cards
- * below). Every field except ctaLabel/ctaUrl (overridden above, same
- * pattern the previous pass introduced) still comes straight from the
- * founder-editable CMS card exactly as PlanCard rendered it — this only
- * changes layout/emphasis, and adds one new static block (FindMi Here)
- * that isn't part of the founder's own content. Presentation only: the
- * actual FindMi Here feature/code is completely untouched. */
+ * below). Copy Compression pass — `eyebrow` is deliberately no longer
+ * rendered here (the founder's "Small label above the title" admin
+ * field still exists/is still editable, it just isn't displayed on this
+ * one card, same situation ctaLabel/ctaUrl were already in from an
+ * earlier pass). `title`, `priceSuffix`, `tagline` and `features`
+ * remain fully CMS-driven and UNCHANGED here — this pass does not
+ * hardcode over founder content; see this pass's own report for the
+ * exact current values vs. the requested replacement values for each.
+ * Presentation only: the actual FindMi Here feature/code is completely
+ * untouched. */
 function ProCard({ card }: { card: ResolvedJoinCard }) {
-  const { eyebrow, title, price, priceSuffix, tagline, features, ctaLabel, ctaUrl } = card;
+  const { title, price, priceSuffix, tagline, features, ctaLabel, ctaUrl } = card;
   return (
     <div className="flex flex-col rounded-3xl border border-findmi/40 bg-white p-6 shadow-[0_4px_24px_rgba(20,176,188,0.14)] sm:p-8">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">{eyebrow}</p>
-      <h3 className="mt-1.5 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h3>
+      <h3 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h3>
       <p className="mt-1.5 flex items-baseline gap-1">
         <span className="font-display text-3xl font-bold tracking-tight text-ink">{price}</span>
         {priceSuffix && <span className="text-sm font-medium text-ink/45">{priceSuffix}</span>}
       </p>
+      <p className="mt-1 text-xs text-ink/40">No automatic renewal.</p>
 
       {/* Mobile Hierarchy pass — FindMi Here leads, directly under price
           and ahead of the general description below, so it's the first
           thing read about Pro rather than something discovered partway
-          down the card. Free Positioning + Label Cleanup pass — eyebrow
-          reworded from "Featured with Pro" (read as FindMi itself
-          featuring the business) to "The Pro Difference", and the
-          supporting line now says the business controls/publishes its
-          own appearances — the actual Free/Pro distinction (see
-          FreeBasicBox's own note below). */}
+          down the card. Copy Compression pass — no eyebrow above it
+          anymore, and the copy no longer implies FindMi itself features
+          the business. */}
       <div className="mt-4 rounded-2xl bg-findmi-50 p-4 sm:p-5">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">The Pro Difference</p>
-        <h4 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">FindMi Here</h4>
-        <p className="mt-1 text-sm font-semibold text-ink/80">Show people where to find you next.</p>
+        <h4 className="font-display text-lg font-bold tracking-tight text-ink">FindMi Here</h4>
+        <p className="mt-1 text-sm font-semibold text-ink/80">Show customers where to find you next.</p>
         <p className="mt-1.5 text-sm text-ink/60">
-          Add and manage your own markets, pop-ups, events and appearances so customers always know where
-          you&rsquo;re showing up.
+          Add your markets, pop-ups and appearances, or connect to events already happening on FindMi.
         </p>
       </div>
 
       {/* General Pro description — founder-editable CMS content
           (site_sections, page_key "join", section_key
           "card_discovery_pro", the "Description" field / `tagline`
-          column in /admin/site/join). Rendered exactly as before, just
-          repositioned below the FindMi Here spotlight instead of above
-          it; not hardcoded over here — see this pass's own report for
-          the exact admin field to shorten it in. */}
-      <p className="mt-3 text-sm text-ink/60">{tagline}</p>
+          column in /admin/site/join). Content rendered exactly as
+          entered in admin, unchanged here — see this pass's own report
+          for the exact replacement text to paste in. whitespace-pre-line
+          is a pure rendering fix (not a content change) so a blank line
+          the founder types between paragraphs in that textarea actually
+          shows as a paragraph break here instead of collapsing to one
+          run-on line — the smallest safe fix, no rich text/HTML/Markdown
+          introduced. */}
+      <p className="mt-3 text-sm text-ink/60 whitespace-pre-line">{tagline}</p>
 
       {/* Every other current Pro benefit — the founder's own CMS list
           (same admin section, "What's included (feature list)" field),
@@ -409,10 +412,9 @@ function FreeBasicBox() {
         <span className="text-sm font-bold text-ink">Free Basic Index</span>
         <span className="text-sm text-ink/45">· $0</span>
       </p>
-      <p className="mt-1 text-sm font-semibold text-ink/70">Get your business into the FindMi network.</p>
+      <p className="mt-1 text-sm font-semibold text-ink/70">Get your business on FindMi.</p>
       <p className="mt-1.5 text-sm text-ink/60">
-        Create and manage your basic profile so organizers can feature your brand on existing FindMi events under
-        Who You&rsquo;ll Find Here.
+        Create your basic profile and appear on event pages when participating organizers add your business.
       </p>
 
       <details className="group mt-3">
@@ -471,9 +473,7 @@ function FreeBasicBox() {
       {/* Free Positioning pass — quiet, informational, not an error/
           upsell-pressure note: small muted text, no color/weight that
           would make Free read as broken or incomplete. */}
-      <p className="mt-2.5 text-center text-xs text-ink/40">
-        * Want to show customers where you&rsquo;ll be next? FindMi Here is a Pro feature.
-      </p>
+      <p className="mt-2.5 text-center text-xs text-ink/40">Want to add where you&rsquo;ll be next? Upgrade to Pro.</p>
     </div>
   );
 }
