@@ -202,7 +202,7 @@ export default async function AccountHomePage({
                         href={`/business/${b.slug}`}
                         className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/60 transition hover:border-black/20 hover:text-ink"
                       >
-                        {b.pendingReview ? "Preview Profile" : "View Public Profile"}
+                        {b.pendingReview ? "Preview Your Page" : "View Public Profile"}
                       </Link>
                     )}
                   </div>

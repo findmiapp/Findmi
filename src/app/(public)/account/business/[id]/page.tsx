@@ -154,7 +154,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url"
+        "id, name, slug, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -360,6 +360,19 @@ export default async function ManageBusinessPage({
               Your business is saved and you can continue building your profile. It will appear in FindMi discovery
               after review.
             </p>
+            {/* Onboarding UX Polish pass — explicit action into the
+                existing authenticated owner-preview fallback
+                (resolveOwnerPreviewBusiness, business/[slug]/page.tsx) —
+                same page, just a clearer entry point than only finding it
+                from /account's own business list. */}
+            {business.slug && (
+              <Link
+                href={`/business/${business.slug}`}
+                className="mt-3 inline-flex text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+              >
+                Preview Your Page →
+              </Link>
+            )}
           </div>
         )}
 

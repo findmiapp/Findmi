@@ -61,6 +61,45 @@ function MetricCard({ label, count, href, detail }: { label: string; count: numb
   );
 }
 
+/** Onboarding UX Polish pass — Business Reviews. Distinct from the plain
+ * label+badge AttentionCard rows below it: this one has its own
+ * description + explicit CTA button, per this pass's exact requested
+ * copy, so it stays visually prominent as its own thing rather than
+ * blending into the generic Needs Attention row. Always renders (not
+ * conditional on count > 0) — the zero state is its own quiet copy/color,
+ * never a misleading "0 awaiting review" phrased as if there's an action
+ * to take. */
+function BusinessReviewCard({ count, href }: { count: number; href: string }) {
+  const needsAction = count > 0;
+  return (
+    <div
+      className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+        needsAction ? "border-amber-300 bg-amber-50" : "border-black/5 bg-white"
+      }`}
+    >
+      <div className="min-w-0">
+        <p className={`text-sm font-bold ${needsAction ? "text-amber-800" : "text-ink"}`}>Business Reviews</p>
+        <p className={`mt-0.5 text-sm font-semibold ${needsAction ? "text-amber-800" : "text-ink/50"}`}>
+          {needsAction ? `${count} awaiting review` : "No businesses awaiting review"}
+        </p>
+        <p className={`mt-0.5 text-xs ${needsAction ? "text-amber-900/70" : "text-ink/40"}`}>
+          Review new businesses submitted by members.
+        </p>
+      </div>
+      <Link
+        href={href}
+        className={`inline-flex shrink-0 items-center justify-center rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wide transition ${
+          needsAction
+            ? "bg-amber-400 text-white hover:bg-amber-500"
+            : "border border-black/10 text-ink/60 hover:border-black/20"
+        }`}
+      >
+        Review Businesses
+      </Link>
+    </div>
+  );
+}
+
 function QuickAction({ href, label }: { href: string; label: string }) {
   return (
     <Link
@@ -124,6 +163,21 @@ export default async function AdminDashboardPage() {
           Server-side Supabase access isn&rsquo;t configured (missing SUPABASE_SERVICE_ROLE_KEY). Counts can&rsquo;t
           load, and writes will fail until it&rsquo;s set.
         </p>
+      )}
+
+      {/* A2. BUSINESS REVIEWS — Onboarding UX Polish pass. Near the top,
+          its own prominent card, ahead of the generic Needs Attention
+          row — new member-created/claimed businesses awaiting founder
+          review. Reuses the existing Admin Businesses list + its
+          Pending Review filter (added in the prior pass) rather than a
+          second moderation screen. */}
+      {needsAttention && (
+        <section className="mt-6">
+          <BusinessReviewCard
+            count={needsAttention.pendingBusinessReviews}
+            href="/admin/businesses?published=pending_review"
+          />
+        </section>
       )}
 
       {/* B. NEEDS ATTENTION */}

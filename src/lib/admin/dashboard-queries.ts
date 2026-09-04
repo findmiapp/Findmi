@@ -20,6 +20,14 @@ export interface DashboardNeedsAttention {
   /** memberships.publication_status='pending_review' — the same
    * pending_review view admin/onboarding already offers. */
   pendingOnboardingReview: number;
+  /** Onboarding UX Polish pass — businesses.publication_status=
+   * 'pending_review' AND is_demo=false — the same real, non-demo pending
+   * count admin/businesses's own Pending Review filter already uses
+   * (getAdminBusinesses's published='pending_review' branch). This is
+   * new member-created/claimed businesses awaiting founder review, a
+   * DIFFERENT queue from pendingOnboardingReview above (the legacy
+   * memberships/Tally onboarding table). */
+  pendingBusinessReviews: number;
 }
 
 export interface DashboardGlance {
@@ -35,24 +43,35 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
   const supabase = getAdminSupabase();
   if (!supabase) return null;
 
-  const [pendingBusinessClaims, pendingEventClaims, pendingEventApplications, pendingOnboardingReview] =
-    await Promise.all([
-      supabase.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("event_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      supabase
-        .from("event_businesses")
-        .select("id", { count: "exact", head: true })
-        .in("status", ["applied", "pending"]),
-      supabase
-        .from("memberships")
-        .select("id", { count: "exact", head: true })
-        .eq("publication_status", "pending_review"),
-    ]);
+  const [
+    pendingBusinessClaims,
+    pendingEventClaims,
+    pendingEventApplications,
+    pendingOnboardingReview,
+    pendingBusinessReviews,
+  ] = await Promise.all([
+    supabase.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("event_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase
+      .from("event_businesses")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["applied", "pending"]),
+    supabase
+      .from("memberships")
+      .select("id", { count: "exact", head: true })
+      .eq("publication_status", "pending_review"),
+    supabase
+      .from("businesses")
+      .select("id", { count: "exact", head: true })
+      .eq("is_demo", false)
+      .eq("publication_status", "pending_review"),
+  ]);
 
   return {
     pendingClaims: (pendingBusinessClaims.count ?? 0) + (pendingEventClaims.count ?? 0),
     pendingEventApplications: pendingEventApplications.count ?? 0,
     pendingOnboardingReview: pendingOnboardingReview.count ?? 0,
+    pendingBusinessReviews: pendingBusinessReviews.count ?? 0,
   };
 }
 

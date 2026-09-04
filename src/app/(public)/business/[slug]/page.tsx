@@ -299,18 +299,25 @@ export default async function BusinessPage({
           a preview render from the real public page below it. */}
       {ownerPreview && (
         <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6">
-          <div className="rounded-2xl border border-findmi/20 bg-findmi-50/60 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Preview — Pending Review</p>
-            <p className="mt-1 text-sm text-ink/70">
-              This is a preview only you can see. It isn&rsquo;t visible in FindMi discovery yet — FindMi will
-              review it and publish it once approved.
-            </p>
-            <Link
-              href={`/account/business/${business.id}`}
-              className="mt-2 inline-flex text-xs font-semibold text-findmi-700 hover:text-findmi-800"
-            >
-              Manage Business →
-            </Link>
+          <div className="flex flex-col gap-2 rounded-2xl border border-findmi/20 bg-findmi-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Preview Mode — Pending Review</p>
+              <p className="mt-0.5 text-sm text-ink/70">This page is only visible to you until FindMi approves it.</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href={`/account/business/${business.id}`}
+                className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              >
+                Edit Business
+              </Link>
+              <Link
+                href="/account"
+                className="rounded-full border border-findmi/30 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/50"
+              >
+                Back to Dashboard
+              </Link>
+            </div>
           </div>
         </div>
       )}
