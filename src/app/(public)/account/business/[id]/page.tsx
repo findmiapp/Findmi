@@ -8,6 +8,7 @@ import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { getCategories, getProductCategories } from "@/lib/data";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
+import TabNav, { type TabNavItem } from "@/components/TabNav";
 import AccountNav from "../../AccountNav";
 import {
   addAppearanceFromEvent,
@@ -17,7 +18,9 @@ import {
   returnProductToCatalog,
   setMemberProductActive,
   submitProductToMarketplace,
-  updateMemberBusiness,
+  updateBusinessGallery,
+  updateBusinessLinks,
+  updateBusinessProfile,
   updateMemberProduct,
   updateOwnerAppearance,
 } from "../actions";
@@ -56,28 +59,54 @@ const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6";
 
-/** MY FINDMI — MINIMAL MANAGE BUSINESS PAGE. The smallest functional
- * owner-facing editor for a claimed business, calling the existing
- * updateMemberBusiness Server Action directly (no update logic
- * duplicated here) — this page only reads what it needs to render the
- * form and hands the submit off entirely to that action, which already
- * owns every authorization/validation/allowlist/atomicity concern.
+// Tabbed Business Manager pass — Manage Business used to be one long
+// scrolling page (Business Basics -> Gallery/About/Contact/Announcement
+// behind a single Pro gate -> FindMi Here -> Products). Reducing that
+// scroll without rebuilding any working CRUD means: keep every existing
+// field/component/action exactly as it was, just group them into
+// sections switched via ?tab=<key> (a real Link-based nav, see TabNav —
+// no client state/SPA framework) and split the one giant save into
+// per-tab saves (updateBusinessProfile/updateBusinessLinks/
+// updateBusinessGallery in ../actions.ts) so saving one section can
+// never resubmit or overwrite another. Products and FindMi Here keep
+// their own existing, independent actions untouched — they already
+// saved section-by-section (per-appearance, per-product) before this
+// pass, so they just move into their own tabs unchanged.
+const OWNER_TABS: TabNavItem[] = [
+  { key: "overview", label: "Overview" },
+  { key: "profile", label: "Profile" },
+  { key: "gallery", label: "Gallery" },
+  { key: "products", label: "Products" },
+  { key: "findmi-here", label: "FindMi Here" },
+  { key: "links", label: "Links & Contact" },
+  { key: "plan", label: "Plan & Status" },
+];
+const OWNER_TAB_KEYS = new Set(OWNER_TABS.map((t) => t.key));
+
+/** MY FINDMI — MANAGE BUSINESS PAGE. The owner-facing editor for a
+ * claimed business, calling the existing split Server Actions directly
+ * (no update logic duplicated here) — this page only reads what it
+ * needs to render each tab's form and hands each submit off entirely to
+ * its own action, which already owns every authorization/validation/
+ * allowlist/atomicity concern for that section.
  *
- * Free Business Editing Pass 3 — Free now gets its own basic-factual
- * field set (name/logo/cover/short description/city/state/category,
- * all always rendered above), and Pro renders everything Free gets plus
- * the additional `{pro && (...)}` block below (full description,
- * gallery, remaining contact/social links, announcement, country) —
- * mirrors updateMemberBusiness's own FREE_ALLOWED_COLUMNS/
- * PRO_ONLY_COLUMNS allowlist exactly (../actions.ts), so nothing shown
- * here can submit a field that action wouldn't already accept. */
+ * Free Business Editing Pass 3 — Free still gets its own basic-factual
+ * field set (name/logo/cover/short description/city/state/category, in
+ * the Profile tab), and Pro additionally gets a Profile-only addition
+ * (full description, country) plus the entirely Pro-only Gallery and
+ * Links & Contact tabs — mirrors updateBusinessProfile/
+ * updateBusinessLinks/updateBusinessGallery's own allowlists exactly
+ * (../actions.ts), so nothing shown here can submit a field those
+ * actions wouldn't already accept. */
 export default async function ManageBusinessPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{
+    tab?: string;
     saved?: string;
     error?: string;
     created?: string;
@@ -107,6 +136,7 @@ export default async function ManageBusinessPage({
 }) {
   const { id } = await params;
   const {
+    tab: tabParam,
     saved,
     error,
     created,
@@ -133,6 +163,7 @@ export default async function ManageBusinessPage({
     edit_external_url,
     edit_flyer_image_url,
   } = await searchParams;
+  const tab = tabParam && OWNER_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   const supabase = await getServerSupabase();
   const {
@@ -144,7 +175,7 @@ export default async function ManageBusinessPage({
 
   // Real, session-scoped authorization — never trusts anything from the
   // URL beyond the id itself. Same requireBusinessMember() foundation
-  // updateMemberBusiness uses; a visitor with no business_members row for
+  // every split action uses; a visitor with no business_members row for
   // this business never sees the form at all, existing account error
   // pattern (an ?error= banner on the account home, same shape every
   // other /account page already uses).
@@ -158,7 +189,7 @@ export default async function ManageBusinessPage({
   // Only reachable AFTER authorization succeeds above — plan_tier isn't in
   // the public column grant (see restrict_internal_commerce_columns), so
   // it's read via service-role here, same authorize-then-elevate shape as
-  // updateMemberBusiness itself.
+  // every split action itself.
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
@@ -175,7 +206,7 @@ export default async function ManageBusinessPage({
     // action's one-category rule existed (admin's own editor allows
     // several) — ordered + limited to 1 so the form simply defaults to
     // one of them rather than erroring; saving collapses it to exactly
-    // one via updateMemberBusiness's own atomic set_business_category().
+    // one via updateBusinessProfile's own atomic set_business_category().
     admin.from("business_categories").select("category_id").eq("business_id", id).order("category_id").limit(1),
     // Existing gallery table (business_images) — same admin query shape
     // (lib/admin/queries.ts's getAdminBusinessById), just read here too so
@@ -191,7 +222,9 @@ export default async function ManageBusinessPage({
   const pro = isBusinessPro(business);
   const currentCategoryId = businessCategoryRows?.[0]?.category_id ?? "";
   const galleryImages = (galleryRows ?? []).map((r) => r.url);
-  const action = updateMemberBusiness.bind(null, id);
+  const profileAction = updateBusinessProfile.bind(null, id);
+  const linksAction = updateBusinessLinks.bind(null, id);
+  const galleryAction = updateBusinessGallery.bind(null, id);
 
   // Legacy categories stay in the DB for existing relationships but are no
   // longer offered as a new choice — except for a business already
@@ -451,6 +484,8 @@ export default async function ManageBusinessPage({
     flyer_image_url: add_flyer_image_url ?? null,
   };
 
+  const basePath = `/account/business/${id}`;
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
@@ -465,213 +500,516 @@ export default async function ManageBusinessPage({
         >
           {pro ? "Pro" : "Free"} Plan
         </span>
+      </div>
 
-        {/* Native Business Onboarding Pass 2 — clearly communicates
-            moderation status without promising a review time, per this
-            pass's own instruction. Shown regardless of plan tier: a Pro
-            business can also be pending_review (e.g. right after a
-            prebuilt-Pro claim gets approved but before founder review of
-            the listing itself, or a Pro business an admin resets to
-            pending for any reason). */}
-        {created && (
-          <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-            Business created! You can start building your profile below.
-          </p>
-        )}
+      <div className="mx-auto mt-5 max-w-md">
+        <TabNav items={OWNER_TABS} activeKey={tab} basePath={basePath} />
+      </div>
 
-        {/* Native Business Onboarding Pass 3 — Stripe redirects here
-            immediately after checkout; webhook activation can land before
-            or after this render, so this never claims Pro is active until
-            `pro` above (read fresh from the database on every request)
-            actually confirms it — no false "Pro" state shown early. */}
-        {proPayment === "success" &&
-          (pro ? (
-            <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-              Payment received — FindMi Pro is active. Full Pro tools are unlocked below.
-            </p>
-          ) : (
-            <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-              Payment received. We&rsquo;re activating Pro — this usually only takes a moment. Refresh this page
-              shortly if it doesn&rsquo;t update automatically.
-            </p>
-          ))}
-        {proPayment === "cancelled" && (
-          <p className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
-            Checkout was canceled — your business is still Free. You can upgrade to Pro anytime.
-          </p>
-        )}
-
-        {business.publication_status === "pending_review" && (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <p className="text-sm font-bold text-amber-800">Pending Review</p>
-            <p className="mt-1 text-sm text-amber-900/80">
-              Your business is saved and you can continue building your profile. It will appear in FindMi discovery
-              after review.
-            </p>
-            {/* Onboarding UX Polish pass — explicit action into the
-                existing authenticated owner-preview fallback
-                (resolveOwnerPreviewBusiness, business/[slug]/page.tsx) —
-                same page, just a clearer entry point than only finding it
-                from /account's own business list. */}
-            {business.slug && (
-              <Link
-                href={`/business/${business.slug}`}
-                className="mt-3 inline-flex text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
-              >
-                Preview Your Page →
-              </Link>
-            )}
-          </div>
-        )}
-
-        {!pro && (
-          <div className="mt-4 rounded-2xl border border-findmi/20 bg-findmi-50 p-4 sm:p-5">
-            <p className="text-sm font-bold text-ink">Unlock your full FindMi presence</p>
-            {/* Final Conversion Consistency pass — "appearances" removed:
-                Free can already add/manage appearances (Passes 1-2), so
-                naming it here as a Pro upgrade reason was stale. Replaced
-                with the actual Pro-exclusive distinction — the full
-                upcoming schedule showing publicly (Free's public profile
-                shows only its next 1). This IS the existing, obvious
-                Upgrade to Pro path from this page (Section D) — only its
-                copy changed, not its structure/design/destination. */}
-            <p className="mt-1 text-sm text-ink/60">
-              Upgrade to Pro for your full business details, contact links, gallery, products, and your complete
-              upcoming schedule.
-            </p>
-            {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: an
-                exact, owned business_id is already known here (this page
-                already required requireBusinessMember(id) above), so this
-                routes through the internal /upgrade/pro handoff instead of
-                straight to the external Tally form. */}
-            <Link
-              href={`/upgrade/pro?business=${id}`}
-              className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-            >
-              Upgrade to Pro
-            </Link>
-
-            {/* Pro Invite Sharing UX pass — small, secondary alternative
-                to the Stripe upgrade right above it, for an owner who has
-                a complimentary invite code instead of paying. Reuses the
-                exact same goToRedeemCode -> /redeem/[code] routing/
-                redemption flow as /join and /account (no separate
-                redemption implementation), with this already-authorized
-                business_id passed through as a hint so /redeem/[code]
-                can skip straight to "Apply Pro to {business.name}"
-                instead of showing a business selector. */}
-            <details className="group mt-3">
-              <summary className="cursor-pointer text-center text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-                Have a Pro invite code instead?
-              </summary>
-              <div className="mt-2">
-                <ProInviteCodeEntry returnTo={`/account/business/${id}`} businessId={id} />
-              </div>
-            </details>
-          </div>
-        )}
-
+      <div className="mx-auto mt-5 max-w-md">
         {error && (
-          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+          <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
         )}
         {saved && !error && (
-          <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-            Business updated.
+          <p className="mb-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+            Saved.
           </p>
         )}
 
-        <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-          <form action={action} className="flex flex-col gap-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Business Basics</p>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
-              <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Category</span>
-              <select name="category_id" required defaultValue={currentCategoryId} className={inputClass}>
-                <option value="" disabled>
-                  Choose a category…
-                </option>
-                {selectableCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
+        {/* ── Overview ─────────────────────────────────────────────── */}
+        {tab === "overview" && (
+          <div className="flex flex-col gap-4">
+            {created && (
+              <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                Business created! You can start building your profile below.
+              </p>
+            )}
+
+            {/* Native Business Onboarding Pass 3 — Stripe redirects here
+                immediately after checkout; webhook activation can land
+                before or after this render, so this never claims Pro is
+                active until `pro` above (read fresh from the database on
+                every request) actually confirms it — no false "Pro"
+                state shown early. */}
+            {proPayment === "success" &&
+              (pro ? (
+                <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                  Payment received — FindMi Pro is active. Full Pro tools are unlocked below.
+                </p>
+              ) : (
+                <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                  Payment received. We&rsquo;re activating Pro — this usually only takes a moment. Refresh this page
+                  shortly if it doesn&rsquo;t update automatically.
+                </p>
+              ))}
+            {proPayment === "cancelled" && (
+              <p className="rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
+                Checkout was canceled — your business is still Free. You can upgrade to Pro anytime.
+              </p>
+            )}
+
+            {business.publication_status === "pending_review" && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-bold text-amber-800">Pending Review</p>
+                <p className="mt-1 text-sm text-amber-900/80">
+                  Your business is saved and you can continue building your profile. It will appear in FindMi
+                  discovery after review.
+                </p>
+                {/* Onboarding UX Polish pass — explicit action into the
+                    existing authenticated owner-preview fallback
+                    (resolveOwnerPreviewBusiness, business/[slug]/page.tsx) —
+                    same page, just a clearer entry point than only finding it
+                    from /account's own business list. */}
+                {business.slug && (
+                  <Link
+                    href={`/business/${business.slug}`}
+                    className="mt-3 inline-flex text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+                  >
+                    Preview Your Page →
+                  </Link>
+                )}
+              </div>
+            )}
+
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Quick Links</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {OWNER_TABS.filter((t) => t.key !== "overview").map((t) => (
+                  <Link
+                    key={t.key}
+                    href={`${basePath}?tab=${t.key}`}
+                    className="rounded-xl border border-black/10 px-3.5 py-3 text-sm font-semibold text-ink transition hover:border-black/20"
+                  >
+                    {t.label}
+                  </Link>
                 ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Short description</span>
-              <textarea
-                name="short_description"
-                rows={3}
-                defaultValue={business.short_description ?? ""}
-                className={inputClass}
-              />
-            </label>
-            <MemberImageField businessId={id} label="Logo" name="logo_url" defaultValue={business.logo_url} />
-            <MemberImageField
-              businessId={id}
-              label="Cover image"
-              name="cover_image_url"
-              defaultValue={business.cover_image_url}
-            />
-
-            {/* Free Business Editing Pass 3 — city/state are basic
-                factual location context (locked product rule: Free =
-                ownership + accurate basic presence), so they're now
-                always rendered here rather than only inside the
-                Pro-only block below. FREE_ALLOWED_COLUMNS in
-                ../actions.ts is what actually authorizes the write for
-                both tiers — this is just presentation following that. */}
-            <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
-                <input type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
-                <input type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
-              </label>
+              </div>
             </div>
+          </div>
+        )}
 
-            {/* Pro-only fields — the additional businesses columns
-                (existing schema, admin already edits every one of these)
-                that PRO_ONLY_COLUMNS in actions.ts allows only when this
-                business's server-resolved plan_tier is Pro. Free never
-                renders this block, so a Free owner can't even see these
-                inputs, let alone submit them — and even if they crafted a
-                raw request with these field names, the action's own
-                allowlist (resolved server-side, never from the submitted
-                form) silently drops them. */}
-            {pro && (
-              <>
-                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
+        {/* ── Profile ──────────────────────────────────────────────── */}
+        {tab === "profile" && (
+          <div className={cardClass}>
+            <form action={profileAction} className="flex flex-col gap-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Business Basics</p>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
+                <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">Category</span>
+                <select name="category_id" required defaultValue={currentCategoryId} className={inputClass}>
+                  <option value="" disabled>
+                    Choose a category…
+                  </option>
+                  {selectableCategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">Short description</span>
+                <textarea
+                  name="short_description"
+                  rows={3}
+                  defaultValue={business.short_description ?? ""}
+                  className={inputClass}
+                />
+              </label>
+              <MemberImageField businessId={id} label="Logo" name="logo_url" defaultValue={business.logo_url} />
+              <MemberImageField
+                businessId={id}
+                label="Cover image"
+                name="cover_image_url"
+                defaultValue={business.cover_image_url}
+              />
+
+              {/* Free Business Editing Pass 3 — city/state are basic
+                  factual location context (locked product rule: Free =
+                  ownership + accurate basic presence), so they're always
+                  rendered here regardless of plan. PROFILE_FREE_COLUMNS
+                  in ../actions.ts is what actually authorizes the write
+                  for both tiers — this is just presentation following
+                  that. */}
+              <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
+                  <input type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
+                  <input type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
+                </label>
+              </div>
+
+              {/* Pro-only additions — PROFILE_PRO_COLUMNS in
+                  ../actions.ts allows these only when this business's
+                  server-resolved plan_tier is Pro. Free never renders
+                  this block, so a Free owner can't even see these
+                  inputs, let alone submit them — and even if they
+                  crafted a raw request with these field names, the
+                  action's own allowlist (resolved server-side, never
+                  from the submitted form) silently drops them. */}
+              {pro && (
+                <>
+                  <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">About / full description</span>
+                    <textarea
+                      name="description"
+                      rows={5}
+                      defaultValue={business.description ?? ""}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
+                    <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
+                  </label>
+                </>
+              )}
+
+              <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
+                Save Profile
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── Gallery ──────────────────────────────────────────────── */}
+        {tab === "gallery" &&
+          (pro ? (
+            <div className={cardClass}>
+              <form action={galleryAction} className="flex flex-col gap-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
                 <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
+                <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
+                  Save Gallery
+                </button>
+              </form>
+            </div>
+          ) : (
+            <UpgradeLockedTab businessId={id} description="Show off your business with additional photos." />
+          ))}
 
-                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">About / full description</span>
-                  <textarea
-                    name="description"
-                    rows={5}
-                    defaultValue={business.description ?? ""}
-                    className={inputClass}
+        {/* ── Products ─────────────────────────────────────────────── */}
+        {tab === "products" &&
+          (pro ? (
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Products</p>
+              <p className="mt-1 text-sm text-ink/60">Show customers what you make, sell or offer.</p>
+
+              {products.length > 0 ? (
+                <ul className="mt-4 flex flex-col gap-3">
+                  {products.map((p) => (
+                    <li key={p.id} className="rounded-2xl border border-black/10 p-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          {p.image_url && (
+                            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- small preview only, a live Storage URL */}
+                              <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
+                            {/* Product Moderation pass — moderation state badge.
+                                Same priority order as displayState above:
+                                a product that's never been approved (or was
+                                rejected) says so regardless of is_active;
+                                only an approved/live product's own
+                                deactivation shows as "Inactive". */}
+                            <p
+                              className={`mt-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                p.displayState === "Live"
+                                  ? "text-findmi-700"
+                                  : p.displayState === "Rejected"
+                                    ? "text-red-600"
+                                    : "text-amber-700"
+                              }`}
+                            >
+                              {p.displayState}
+                            </p>
+                            {/* Product Marketplace Distribution pass — a
+                                SECOND, separate badge from displayState
+                                above: distribution state, never merged with
+                                content moderation state. */}
+                            <p
+                              className={`mt-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                p.marketplaceState === "Marketplace Approved"
+                                  ? "text-sky-700"
+                                  : p.marketplaceState === "Marketplace Not Approved"
+                                    ? "text-red-600"
+                                    : "text-ink/40"
+                              }`}
+                            >
+                              {p.marketplaceState}
+                            </p>
+                            {(p.price != null || p.price_label) && (
+                              <p className="mt-0.5 text-xs text-ink/60">{p.price_label || `$${p.price}`}</p>
+                            )}
+                          </div>
+                        </div>
+                        <MemberProductActiveButton
+                          action={setMemberProductActive.bind(null, id, p.id, !p.is_active)}
+                          isActive={p.is_active}
+                        />
+                      </div>
+
+                      {p.moderationStatus === "pending_review" && (
+                        <p className="mt-2 text-xs text-ink/50">
+                          This product will appear publicly after FindMi approves it.
+                        </p>
+                      )}
+                      {p.hasPendingChanges && (
+                        <p className="mt-2 text-xs text-ink/50">
+                          Your submitted changes are waiting on FindMi&rsquo;s approval — the version above stays
+                          publicly visible until then.
+                        </p>
+                      )}
+                      {p.moderationStatus === "rejected" && (
+                        <p className="mt-2 text-xs text-ink/50">
+                          FindMi didn&rsquo;t approve this product. Edit and resubmit it for another review.
+                        </p>
+                      )}
+
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
+                        <div className="mt-3 flex flex-col gap-3">
+                          {/* Product Management Completion pass — Marketplace
+                              Distribution now shown INSIDE Edit for every
+                              Product (new or existing, owner- or admin-
+                              created — there is no separate rendering path),
+                              not just at creation time. Owner-facing
+                              transitions only, separate from content
+                              moderation above: never offers "approved"/
+                              "paused" as something the owner can set
+                              directly — those only ever come from
+                              admin/products/actions.ts. */}
+                          <div className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
+                            <p className="text-xs font-semibold text-ink">Where This Product Appears</p>
+                            <p className="mt-1 text-xs text-ink/60">
+                              {p.marketplaceStatus === "catalog_only" &&
+                                "Catalog Only — shown on your FindMi business profile and storefront only."}
+                              {p.marketplaceStatus === "submitted" && "Marketplace Review Pending — awaiting FindMi's decision."}
+                              {p.marketplaceStatus === "approved" &&
+                                "Marketplace Approved — may also appear across FindMi Marketplace and discovery."}
+                              {p.marketplaceStatus === "rejected" &&
+                                "Marketplace Not Approved — still shown on your business profile and storefront."}
+                              {p.marketplaceStatus === "paused" &&
+                                "Marketplace Paused — temporarily out of Marketplace/discovery; still shown on your business profile."}
+                            </p>
+                            {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
+                              <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
+                                <button type="submit" className="text-xs font-semibold text-sky-700 hover:underline">
+                                  {p.marketplaceStatus === "rejected" ? "Resubmit To Marketplace" : "Submit To Marketplace"}
+                                </button>
+                              </form>
+                            )}
+                            {p.marketplaceStatus === "submitted" && (
+                              <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
+                                <button type="submit" className="text-xs font-semibold text-ink/60 hover:underline">
+                                  Cancel Submission
+                                </button>
+                              </form>
+                            )}
+                            {p.marketplaceStatus === "rejected" && (
+                              <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
+                                <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                                  Return To Catalog Only
+                                </button>
+                              </form>
+                            )}
+                            {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
+                              <p className="mt-1 text-xs text-ink/40">
+                                Marketplace placement is managed by FindMi and can&rsquo;t be changed here.
+                              </p>
+                            )}
+                          </div>
+
+                          <ProductFieldsForm
+                            businessId={id}
+                            action={updateMemberProduct.bind(null, id, p.id)}
+                            categories={productCategories}
+                            defaultValues={p.editDefaults}
+                            submitLabel="Save"
+                          />
+                        </div>
+                      </details>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-sm text-ink/50">No products yet.</p>
+              )}
+
+              <div className="mt-5 border-t border-black/10 pt-4">
+                <p className="text-sm font-medium text-ink">Add Product</p>
+                <div className="mt-2">
+                  <ProductFieldsForm
+                    businessId={id}
+                    action={addProduct}
+                    categories={productCategories}
+                    defaultValues={{
+                      name: "",
+                      description: "",
+                      image_url: null,
+                      price: "",
+                      price_label: "",
+                      product_type: "product",
+                      external_purchase_url: "",
+                      category_id: "",
+                    }}
+                    submitLabel="Add Product"
+                    showDistributionChoice
                   />
-                </label>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <UpgradeLockedTab businessId={id} description="Show customers what you make, sell or offer." />
+          ))}
 
-                {/* City/State moved to the always-rendered Business
-                    Basics section above (Free Business Editing Pass 3)
-                    — Country stays Pro-only here; this pass was only
-                    asked to unlock city/state, not every location
-                    field (see this pass's own report). */}
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
-                  <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
-                </label>
+        {/* ── FindMi Here ──────────────────────────────────────────── */}
+        {tab === "findmi-here" && (
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">FindMi Here</p>
+            <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
 
-                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
+            {appearances.length > 0 ? (
+              <ul className="mt-4 flex flex-col gap-3">
+                {appearances.map((a) => {
+                  const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
+                  const storedEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
+                  // A server-side validation error on THIS specific
+                  // appearance's edit form takes precedence over its
+                  // stored DB values — same "never lose what was typed"
+                  // rule as Add, just scoped to the one row that failed.
+                  const isEditing = editing === a.id;
+                  const editDefaultValues: AppearanceFieldValues = isEditing
+                    ? {
+                        title: edit_title ?? a.title,
+                        date: edit_date ?? storedDate,
+                        start_time: edit_start_time ?? storedStartTime,
+                        end_time: edit_end_time ?? storedEndTime,
+                        venue_name: edit_venue_name ?? a.venue_name ?? "",
+                        address: edit_address ?? a.address ?? "",
+                        city: edit_city ?? a.city ?? "",
+                        state: edit_state ?? a.state ?? "",
+                        external_url: edit_external_url ?? a.external_url ?? "",
+                        flyer_image_url: edit_flyer_image_url ?? a.flyer_image_url,
+                      }
+                    : {
+                        title: a.title,
+                        date: storedDate,
+                        start_time: storedStartTime,
+                        end_time: storedEndTime,
+                        venue_name: a.venue_name ?? "",
+                        address: a.address ?? "",
+                        city: a.city ?? "",
+                        state: a.state ?? "",
+                        external_url: a.external_url ?? "",
+                        flyer_image_url: a.flyer_image_url,
+                      };
+                  return (
+                    <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
+                          <p className="mt-0.5 text-xs text-ink/60">
+                            {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
+                          </p>
+                          {(a.venue_name || a.city) && (
+                            <p className="mt-0.5 text-xs text-ink/50">
+                              {[a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                          {a.participationStatus && (
+                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-findmi-700">
+                              Official event participation: {PARTICIPATION_LABEL[a.participationStatus]}
+                            </p>
+                          )}
+                        </div>
+                        <form action={removeOwnerAppearance.bind(null, id, a.id)}>
+                          <button type="submit" className="shrink-0 text-xs font-semibold text-red-600 hover:underline">
+                            Remove
+                          </button>
+                        </form>
+                      </div>
+
+                      <details className="mt-2" open={isEditing}>
+                        <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
+                        <div className="mt-3">
+                          <AppearanceFieldsForm
+                            businessId={id}
+                            action={updateOwnerAppearance.bind(null, id, a.id)}
+                            defaultValues={editDefaultValues}
+                            submitLabel="Save"
+                          />
+                        </div>
+                      </details>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-ink/50">No upcoming appearances yet.</p>
+            )}
+
+            <div className="mt-5 border-t border-black/10 pt-4">
+              <p className="text-sm font-medium text-ink">Add an Appearance</p>
+
+              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
+                Option 1 — Choose an existing FindMi event
+              </p>
+              {requestOptions.length > 0 ? (
+                <form action={addFromEvent} className="mt-2 flex flex-wrap items-center gap-2">
+                  <select name="target" required className={inputClass} defaultValue="">
+                    <option value="" disabled>
+                      Choose an event…
+                    </option>
+                    {requestOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  >
+                    Add
+                  </button>
+                </form>
+              ) : (
+                <p className="mt-2 text-sm text-ink/50">No upcoming FindMi events available right now.</p>
+              )}
+
+              <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
+                Option 2 — Add an appearance manually
+              </p>
+              <div className="mt-2">
+                <AppearanceFieldsForm
+                  businessId={id}
+                  action={addManual}
+                  defaultValues={addDefaultValues}
+                  submitLabel="Add Appearance"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Links & Contact ──────────────────────────────────────── */}
+        {tab === "links" &&
+          (pro ? (
+            <div className={cardClass}>
+              <form action={linksAction} className="flex flex-col gap-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink">Website</span>
                   <input
@@ -772,348 +1110,99 @@ export default async function ManageBusinessPage({
                     </label>
                   </div>
                 </div>
-              </>
-            )}
 
-            <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
-              Save Changes
-            </button>
-          </form>
-        </div>
-
-        {/* FindMi Here — Owner Appearance Manager. Free Appearance
-            Manager Final Functional Fix — no longer Pro-gated (was
-            `{pro && (...)}`): Free and Pro both get the exact same
-            manager (add/connect/edit/remove/withdraw), reusing every
-            existing form/component/action unchanged — appearance
-            MANAGEMENT is a Free capability, only the PUBLIC profile's
-            display depth differs by plan (business/[slug]/page.tsx,
-            untouched). The business's own appearances calendar, separate
-            from official event roster approval (see ../actions.ts's own
-            doc comment on that split). */}
-        <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink/40">FindMi Here</p>
-          <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
-
-          {appearances.length > 0 ? (
-            <ul className="mt-4 flex flex-col gap-3">
-              {appearances.map((a) => {
-                const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
-                const storedEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
-                // A server-side validation error on THIS specific
-                // appearance's edit form takes precedence over its
-                // stored DB values — same "never lose what was typed"
-                // rule as Add, just scoped to the one row that failed.
-                const isEditing = editing === a.id;
-                const editDefaultValues: AppearanceFieldValues = isEditing
-                  ? {
-                      title: edit_title ?? a.title,
-                      date: edit_date ?? storedDate,
-                      start_time: edit_start_time ?? storedStartTime,
-                      end_time: edit_end_time ?? storedEndTime,
-                      venue_name: edit_venue_name ?? a.venue_name ?? "",
-                      address: edit_address ?? a.address ?? "",
-                      city: edit_city ?? a.city ?? "",
-                      state: edit_state ?? a.state ?? "",
-                      external_url: edit_external_url ?? a.external_url ?? "",
-                      flyer_image_url: edit_flyer_image_url ?? a.flyer_image_url,
-                    }
-                  : {
-                      title: a.title,
-                      date: storedDate,
-                      start_time: storedStartTime,
-                      end_time: storedEndTime,
-                      venue_name: a.venue_name ?? "",
-                      address: a.address ?? "",
-                      city: a.city ?? "",
-                      state: a.state ?? "",
-                      external_url: a.external_url ?? "",
-                      flyer_image_url: a.flyer_image_url,
-                    };
-                return (
-                  <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
-                        <p className="mt-0.5 text-xs text-ink/60">
-                          {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
-                        </p>
-                        {(a.venue_name || a.city) && (
-                          <p className="mt-0.5 text-xs text-ink/50">
-                            {[a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
-                          </p>
-                        )}
-                        {a.participationStatus && (
-                          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-findmi-700">
-                            Official event participation: {PARTICIPATION_LABEL[a.participationStatus]}
-                          </p>
-                        )}
-                      </div>
-                      <form action={removeOwnerAppearance.bind(null, id, a.id)}>
-                        <button type="submit" className="shrink-0 text-xs font-semibold text-red-600 hover:underline">
-                          Remove
-                        </button>
-                      </form>
-                    </div>
-
-                    <details className="mt-2" open={isEditing}>
-                      <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
-                      <div className="mt-3">
-                        <AppearanceFieldsForm
-                          businessId={id}
-                          action={updateOwnerAppearance.bind(null, id, a.id)}
-                          defaultValues={editDefaultValues}
-                          submitLabel="Save"
-                        />
-                      </div>
-                    </details>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm text-ink/50">No upcoming appearances yet.</p>
-          )}
-
-          <div className="mt-5 border-t border-black/10 pt-4">
-            <p className="text-sm font-medium text-ink">Add an Appearance</p>
-
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
-              Option 1 — Choose an existing FindMi event
-            </p>
-            {requestOptions.length > 0 ? (
-              <form action={addFromEvent} className="mt-2 flex flex-wrap items-center gap-2">
-                <select name="target" required className={inputClass} defaultValue="">
-                  <option value="" disabled>
-                    Choose an event…
-                  </option>
-                  {requestOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  className="rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                >
-                  Add
+                <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
+                  Save Links &amp; Contact
                 </button>
               </form>
-            ) : (
-              <p className="mt-2 text-sm text-ink/50">No upcoming FindMi events available right now.</p>
-            )}
-
-            <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
-              Option 2 — Add an appearance manually
-            </p>
-            <div className="mt-2">
-              <AppearanceFieldsForm
-                businessId={id}
-                action={addManual}
-                defaultValues={addDefaultValues}
-                submitLabel="Add Appearance"
-              />
             </div>
-          </div>
-        </div>
+          ) : (
+            <UpgradeLockedTab businessId={id} description="Add your website, socials, contact info, and a live announcement." />
+          ))}
 
-        {/* Pro Products Foundation pass — Products management area.
-            Pro/Pro Seller: a functional Add/Edit/Deactivate manager,
-            reusing the existing products table/taxonomy/image-upload
-            infrastructure as-is (see ../actions.ts's own section
-            comment for the full server-side authorization chain). Free:
-            a locked/upgrade state only, never a silently-broken form —
-            and createMemberProduct/updateMemberProduct/
-            setMemberProductActive are ALL independently Pro-gated
-            server-side regardless of what this page renders, so a Free
-            owner can't bypass this by invoking the action directly. */}
-        {pro ? (
-          <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Products</p>
-            <p className="mt-1 text-sm text-ink/60">Show customers what you make, sell or offer.</p>
-
-            {products.length > 0 ? (
-              <ul className="mt-4 flex flex-col gap-3">
-                {products.map((p) => (
-                  <li key={p.id} className="rounded-2xl border border-black/10 p-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        {p.image_url && (
-                          <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
-                            {/* eslint-disable-next-line @next/next/no-img-element -- small preview only, a live Storage URL */}
-                            <img src={p.image_url} alt="" className="h-full w-full object-cover" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                          {/* Product Moderation pass — moderation state badge.
-                              Same priority order as displayState above:
-                              a product that's never been approved (or was
-                              rejected) says so regardless of is_active;
-                              only an approved/live product's own
-                              deactivation shows as "Inactive". */}
-                          <p
-                            className={`mt-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                              p.displayState === "Live"
-                                ? "text-findmi-700"
-                                : p.displayState === "Rejected"
-                                  ? "text-red-600"
-                                  : "text-amber-700"
-                            }`}
-                          >
-                            {p.displayState}
-                          </p>
-                          {/* Product Marketplace Distribution pass — a
-                              SECOND, separate badge from displayState
-                              above: distribution state, never merged with
-                              content moderation state. */}
-                          <p
-                            className={`mt-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                              p.marketplaceState === "Marketplace Approved"
-                                ? "text-sky-700"
-                                : p.marketplaceState === "Marketplace Not Approved"
-                                  ? "text-red-600"
-                                  : "text-ink/40"
-                            }`}
-                          >
-                            {p.marketplaceState}
-                          </p>
-                          {(p.price != null || p.price_label) && (
-                            <p className="mt-0.5 text-xs text-ink/60">{p.price_label || `$${p.price}`}</p>
-                          )}
-                        </div>
-                      </div>
-                      <MemberProductActiveButton
-                        action={setMemberProductActive.bind(null, id, p.id, !p.is_active)}
-                        isActive={p.is_active}
-                      />
-                    </div>
-
-                    {p.moderationStatus === "pending_review" && (
-                      <p className="mt-2 text-xs text-ink/50">
-                        This product will appear publicly after FindMi approves it.
-                      </p>
-                    )}
-                    {p.hasPendingChanges && (
-                      <p className="mt-2 text-xs text-ink/50">
-                        Your submitted changes are waiting on FindMi&rsquo;s approval — the version above stays
-                        publicly visible until then.
-                      </p>
-                    )}
-                    {p.moderationStatus === "rejected" && (
-                      <p className="mt-2 text-xs text-ink/50">
-                        FindMi didn&rsquo;t approve this product. Edit and resubmit it for another review.
-                      </p>
-                    )}
-
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
-                      <div className="mt-3 flex flex-col gap-3">
-                        {/* Product Management Completion pass — Marketplace
-                            Distribution now shown INSIDE Edit for every
-                            Product (new or existing, owner- or admin-
-                            created — there is no separate rendering path),
-                            not just at creation time. Owner-facing
-                            transitions only, separate from content
-                            moderation above: never offers "approved"/
-                            "paused" as something the owner can set
-                            directly — those only ever come from
-                            admin/products/actions.ts. */}
-                        <div className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
-                          <p className="text-xs font-semibold text-ink">Where This Product Appears</p>
-                          <p className="mt-1 text-xs text-ink/60">
-                            {p.marketplaceStatus === "catalog_only" &&
-                              "Catalog Only — shown on your FindMi business profile and storefront only."}
-                            {p.marketplaceStatus === "submitted" && "Marketplace Review Pending — awaiting FindMi's decision."}
-                            {p.marketplaceStatus === "approved" &&
-                              "Marketplace Approved — may also appear across FindMi Marketplace and discovery."}
-                            {p.marketplaceStatus === "rejected" &&
-                              "Marketplace Not Approved — still shown on your business profile and storefront."}
-                            {p.marketplaceStatus === "paused" &&
-                              "Marketplace Paused — temporarily out of Marketplace/discovery; still shown on your business profile."}
-                          </p>
-                          {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
-                            <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
-                              <button type="submit" className="text-xs font-semibold text-sky-700 hover:underline">
-                                {p.marketplaceStatus === "rejected" ? "Resubmit To Marketplace" : "Submit To Marketplace"}
-                              </button>
-                            </form>
-                          )}
-                          {p.marketplaceStatus === "submitted" && (
-                            <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
-                              <button type="submit" className="text-xs font-semibold text-ink/60 hover:underline">
-                                Cancel Submission
-                              </button>
-                            </form>
-                          )}
-                          {p.marketplaceStatus === "rejected" && (
-                            <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
-                              <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
-                                Return To Catalog Only
-                              </button>
-                            </form>
-                          )}
-                          {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
-                            <p className="mt-1 text-xs text-ink/40">
-                              Marketplace placement is managed by FindMi and can&rsquo;t be changed here.
-                            </p>
-                          )}
-                        </div>
-
-                        <ProductFieldsForm
-                          businessId={id}
-                          action={updateMemberProduct.bind(null, id, p.id)}
-                          categories={productCategories}
-                          defaultValues={p.editDefaults}
-                          submitLabel="Save"
-                        />
-                      </div>
-                    </details>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 text-sm text-ink/50">No products yet.</p>
-            )}
-
-            <div className="mt-5 border-t border-black/10 pt-4">
-              <p className="text-sm font-medium text-ink">Add Product</p>
-              <div className="mt-2">
-                <ProductFieldsForm
-                  businessId={id}
-                  action={addProduct}
-                  categories={productCategories}
-                  defaultValues={{
-                    name: "",
-                    description: "",
-                    image_url: null,
-                    price: "",
-                    price_label: "",
-                    product_type: "product",
-                    external_purchase_url: "",
-                    category_id: "",
-                  }}
-                  submitLabel="Add Product"
-                  showDistributionChoice
-                />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Products</p>
-            <p className="mt-1 text-sm text-ink/60">Show customers what you make, sell or offer.</p>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">Available with FindMi Pro</p>
-            <Link
-              href={`/upgrade/pro?business=${id}`}
-              className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        {/* ── Plan & Status ────────────────────────────────────────── */}
+        {tab === "plan" && (
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Plan &amp; Status</p>
+            <span
+              className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                pro ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/60"
+              }`}
             >
-              Upgrade to Pro
-            </Link>
+              {pro ? "Pro" : "Free"} Plan
+            </span>
+
+            {pro ? (
+              <p className="mt-3 text-sm text-ink/60">
+                FindMi Pro is active — your full business profile, gallery, products, and complete upcoming schedule
+                are all unlocked.
+              </p>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-findmi/20 bg-findmi-50 p-4 sm:p-5">
+                <p className="text-sm font-bold text-ink">Unlock your full FindMi presence</p>
+                {/* Final Conversion Consistency pass — "appearances" removed:
+                    Free can already add/manage appearances (Passes 1-2), so
+                    naming it here as a Pro upgrade reason was stale. Replaced
+                    with the actual Pro-exclusive distinction — the full
+                    upcoming schedule showing publicly (Free's public profile
+                    shows only its next 1). */}
+                <p className="mt-1 text-sm text-ink/60">
+                  Upgrade to Pro for your full business details, contact links, gallery, products, and your complete
+                  upcoming schedule.
+                </p>
+                {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: an
+                    exact, owned business_id is already known here (this page
+                    already required requireBusinessMember(id) above), so this
+                    routes through the internal /upgrade/pro handoff instead of
+                    straight to the external Tally form. */}
+                <Link
+                  href={`/upgrade/pro?business=${id}`}
+                  className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Upgrade to Pro
+                </Link>
+
+                {/* Pro Invite Sharing UX pass — small, secondary alternative
+                    to the Stripe upgrade right above it, for an owner who has
+                    a complimentary invite code instead of paying. Reuses the
+                    exact same goToRedeemCode -> /redeem/[code] routing/
+                    redemption flow as /join and /account (no separate
+                    redemption implementation), with this already-authorized
+                    business_id passed through as a hint so /redeem/[code]
+                    can skip straight to "Apply Pro to {business.name}"
+                    instead of showing a business selector. */}
+                <details className="group mt-3">
+                  <summary className="cursor-pointer text-center text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+                    Have a Pro invite code instead?
+                  </summary>
+                  <div className="mt-2">
+                    <ProInviteCodeEntry returnTo={`/account/business/${id}?tab=plan`} businessId={id} />
+                  </div>
+                </details>
+              </div>
+            )}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Shared "this tab needs Pro" lock state — same shape Products already
+ * used before this pass (upgrade CTA, no broken/empty form), now reused
+ * for Gallery and Links & Contact too since all three are entirely
+ * Pro-only tabs. */
+function UpgradeLockedTab({ businessId, description }: { businessId: string; description: string }) {
+  return (
+    <div className={cardClass}>
+      <p className="mt-1 text-sm text-ink/60">{description}</p>
+      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">Available with FindMi Pro</p>
+      <Link
+        href={`/upgrade/pro?business=${businessId}`}
+        className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+      >
+        Upgrade to Pro
+      </Link>
     </div>
   );
 }

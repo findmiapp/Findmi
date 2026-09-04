@@ -18,6 +18,23 @@ import type { ProductPendingChanges, ProductType } from "@/lib/types";
 const UPLOAD_BUCKET = "findmi-media";
 
 /**
+ * Tabbed Business Manager pass — Manage Business is now tab-based
+ * (?tab=<key> on /account/business/[id]), and every save/action below
+ * that lives inside a specific tab must redirect back to that SAME tab
+ * on both success and error — otherwise a save would silently bounce
+ * the owner back to Overview (violates "active tab persists after
+ * save"). errorRedirectUrl (lib/admin/form-helpers) always joins with a
+ * bare "?", which breaks once the base URL already has its own query
+ * string (e.g. a tab-scoped redirectPath); this instead merges correctly
+ * with "&" whenever `base` already contains "?", via URLSearchParams
+ * (which also handles encoding, so no manual encodeURIComponent calls
+ * are needed at any of this file's tab-aware call sites). */
+function appendQuery(base: string, params: Record<string, string>): string {
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}${new URLSearchParams(params).toString()}`;
+}
+
+/**
  * MANAGE BUSINESS — MEMBER IMAGE UPLOAD ONLY. The member-facing
  * counterpart to lib/admin/upload.ts's uploadImage() — same Storage
  * bucket and the exact same shared file-safety rules (size/HEIC/SVG/MIME/
@@ -29,7 +46,7 @@ const UPLOAD_BUCKET = "findmi-media";
  *
  * Authorization, never trusted from the client:
  *   1. requireBusinessMember(businessId) — the exact same foundation
- *      updateMemberBusiness uses — re-derives real membership from the
+ *      updateBusinessProfile uses — re-derives real membership from the
  *      caller's own session-scoped query against business_members. No
  *      businessId is ever trusted on its own; it only unlocks an upload
  *      once the CALLER'S real session proves they belong to that
@@ -39,17 +56,17 @@ const UPLOAD_BUCKET = "findmi-media";
  *   2. Only after that succeeds does this reach for the service-role
  *      client to perform the actual Storage write — Storage writes need
  *      elevated privileges the same way the businesses table write in
- *      updateMemberBusiness does, so this mirrors that exact authorize-
+ *      updateBusinessProfile does, so this mirrors that exact authorize-
  *      then-elevate shape rather than trusting an RLS-scoped client for
  *      the upload itself.
  *
  * Returns a plain { url } / { error } result (same shape uploadImage()
  * already returns) — this function never writes to the businesses table
  * itself. The resulting URL only ever reaches logo_url/cover_image_url
- * via updateMemberBusiness's own existing, already-scoped allowlist —
+ * via updateBusinessProfile's own existing, already-scoped allowlist —
  * this action's only "purpose" restriction is that its result can never
  * be used for anything besides those two fields, because nothing else in
- * updateMemberBusiness accepts a submitted URL at all.
+ * updateBusinessProfile accepts a submitted URL at all.
  */
 export async function uploadMemberBusinessImage(
   businessId: string,
@@ -95,7 +112,7 @@ export async function uploadMemberBusinessImage(
 // OWNER BUSINESS MUTATION — MINIMAL FOUNDATION
 //
 // The minimal authenticated MEMBER-facing (owner/manager/staff via
-// business_members — see lib/permissions.ts) business update action a
+// business_members — see lib/permissions.ts) business update actions a
 // future My FindMi owner workspace will call. Deliberately separate from
 // the founder/admin saveBusiness (src/app/admin/(protected)/businesses/
 // actions.ts), which is untouched by this file and stays the only
@@ -105,30 +122,36 @@ export async function uploadMemberBusinessImage(
 // management capability. Free Business Editing Pass 3 gave Free its own
 // small allowlist (name/logo/cover/short description/city/state/one
 // category) — basic factual presence maintenance, not a Pro feature; Pro
-// still gets everything Free gets plus PRO_ONLY_COLUMNS below (full
-// description, remaining contact/socials/announcement fields, gallery).
-// A fuller Pro editor (products, appearances, inquiry/lead settings,
-// multi-category) still doesn't exist and is explicitly out of scope
-// here.
+// still gets everything Free gets plus a Pro-only Profile addition
+// (full description, country) plus the entirely Pro-only Links & Contact
+// tab (contact/social links, announcement) and Gallery tab below.
+//
+// Tabbed Business Manager pass — this used to be ONE monolithic action
+// (updateMemberBusiness) covering Profile + Links & Contact + Gallery in
+// a single submit. Split into updateBusinessProfile/updateBusinessLinks/
+// updateBusinessGallery below so saving one tab never resubmits or
+// overwrites another — each action only ever reads/writes its own
+// column set, and each redirects back to its OWN tab (?tab=<key>), never
+// resetting the visitor to a different section. Every authorization/
+// validation rule from the original action is preserved exactly, just
+// distributed across the three functions.
 
-/** Free Business Editing Pass 3 — Free's allowlist now also covers city
- * and state: locked product rule is that Free = ownership + accurate
- * basic presence, and correcting a business's basic public location
- * (city/state) is factual maintenance, not a Pro merchandising/growth
- * feature. Pro's allowlist is unaffected in shape (still
- * [...FREE_ALLOWED_COLUMNS, ...PRO_ONLY_COLUMNS] below) — city/state
- * simply moved from one constant to the other, so a Pro business can
- * still edit them exactly as before. `country` deliberately stays
- * Pro-only (see PRO_ONLY_COLUMNS) — this pass only unlocks what it was
- * explicitly asked to unlock. */
-const FREE_ALLOWED_COLUMNS = ["name", "logo_url", "cover_image_url", "short_description", "city", "state"] as const;
-// Pro-only additions — every one an EXISTING businesses column already
-// used by the founder admin editor (BusinessForm.tsx); no new columns.
-// "announcement" is the bulletin_* group admin already exposes together
-// under that same label.
-const PRO_ONLY_COLUMNS = [
-  "description",
-  "country",
+/** Profile tab — Free's allowlist (name/logo/cover/short description/
+ * city/state/category — the same set Free Business Editing Pass 3
+ * established); Pro additionally gets PROFILE_PRO_COLUMNS (full
+ * description, country). Category itself isn't in this list — it's
+ * handled separately below via the atomic set_business_category() RPC,
+ * same as the original action. */
+const PROFILE_FREE_COLUMNS = ["name", "logo_url", "cover_image_url", "short_description", "city", "state"] as const;
+const PROFILE_PRO_COLUMNS = ["description", "country"] as const;
+const PROFILE_ALLOWED_COLUMNS = [...PROFILE_FREE_COLUMNS, ...PROFILE_PRO_COLUMNS] as const;
+
+/** Links & Contact tab — entirely Pro-only (gated via
+ * requireProBusinessMember, not a per-column allowlist like Profile —
+ * there's no Free variant of this tab at all). Every one of these is an
+ * existing businesses column, unchanged from the original action's
+ * PRO_ONLY_COLUMNS minus description/country (now in Profile above). */
+const LINKS_COLUMNS = [
   "email",
   "phone",
   "website_url",
@@ -141,49 +164,24 @@ const PRO_ONLY_COLUMNS = [
   "bulletin_body",
   "bulletin_url",
 ] as const;
-const PRO_ALLOWED_COLUMNS = [...FREE_ALLOWED_COLUMNS, ...PRO_ONLY_COLUMNS] as const;
 
 /**
- * Updates a business's basic factual fields — name, logo, cover image,
- * short description, city, state, and category — regardless of plan
- * tier (FREE_ALLOWED_COLUMNS, above); Pro additionally gets everything
- * in PRO_ONLY_COLUMNS (full description, remaining contact/social
- * links, announcement, gallery). Role (owner/manager/staff, via
- * business_members) governs WHO can call this, never WHAT plan-tier
- * fields are allowed. Every business column not in either allowlist
- * (products, appearances, inquiry/lead settings, CTAs, additional
- * categories, commerce/payout settings, verification/membership/
- * publication status, etc.) is simply never read from the submitted
- * form — there is no generic object spread into Supabase anywhere in
- * this function, only these fixed, named column lists — so a request
- * that also includes any of those fields has them silently ignored
- * rather than erroring, the same "extra form fields are just never
- * looked at" pattern every other action in this codebase already uses
- * (saveBusiness, saveEvent, updateProfile, etc.).
+ * Profile tab save — name, logo, cover image, short description, city,
+ * state, category regardless of plan tier; Pro additionally gets full
+ * description and country. Same "payload built FROM allowedColumns, not
+ * just gated by it" discipline as the original action, and the same
+ * atomic set_business_category() category replace.
  *
- * Authorization is never trusted from the client:
- *   1. A real Supabase Auth session is required (redirects to /login
- *      otherwise, same as every other /account Server Action).
- *   2. requireBusinessMember(businessId) re-derives membership from the
- *      CALLER'S OWN session-scoped query against business_members — RLS
- *      already scopes that table's SELECT to `auth.uid() = user_id`, so
- *      this can only ever see (and only ever throws unless it finds) the
- *      caller's own real membership row for this exact business. No role
- *      or membership claim is ever accepted as a form field.
- *   3. Only AFTER that authorization succeeds does this switch to the
- *      service-role client (getAdminSupabase()) to read plan_tier and
- *      perform the actual write — businesses has no RLS UPDATE policy for
- *      anon/authenticated at all today (verified against the live
- *      schema — only "Public read businesses" SELECT exists), and
- *      plan_tier itself isn't in the public column-level SELECT grant
- *      (see restrict_internal_commerce_columns), so there is no way to
- *      read or act on real plan state through the RLS-scoped client in
- *      the first place. This mirrors requireAdminSupabase()'s own
- *      authorize-then-elevate shape exactly, just for a business member
- *      instead of a founder session.
+ * Authorization is never trusted from the client — identical
+ * authorize-then-elevate shape as every other action in this file:
+ * real Supabase Auth session -> requireBusinessMember(businessId)
+ * (re-derives real membership from the caller's OWN session-scoped
+ * business_members row) -> service-role client for the actual read/
+ * write, since plan_tier isn't in the public column-level SELECT grant
+ * and businesses has no RLS UPDATE policy for anon/authenticated at all.
  */
-export async function updateMemberBusiness(businessId: string, formData: FormData) {
-  const redirectPath = `/account/business/${businessId}`;
+export async function updateBusinessProfile(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}?tab=profile`;
 
   const sessionSupabase = await getServerSupabase();
   const {
@@ -195,82 +193,41 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
     await requireBusinessMember(businessId);
   } catch (err) {
     const message = err instanceof Error ? err.message : "You don't have access to this business.";
-    redirect(errorRedirectUrl(redirectPath, message));
+    redirect(appendQuery(redirectPath, { error: message }));
   }
 
   const admin = getAdminSupabase();
-  if (!admin) redirect(errorRedirectUrl(redirectPath, "Server isn't configured."));
+  if (!admin) redirect(appendQuery(redirectPath, { error: "Server isn't configured." }));
 
   const { data: business } = await admin
     .from("businesses")
     .select("id, slug, plan_tier")
     .eq("id", businessId)
     .maybeSingle();
-  if (!business) redirect(errorRedirectUrl(redirectPath, "Business not found."));
+  if (!business) redirect(appendQuery(redirectPath, { error: "Business not found." }));
 
   // Resolved here (not just for gating what already differs — see
-  // PRO_ALLOWED_COLUMNS above) so the entitlement state is loaded fresh
-  // from the database on every call, never assumed or cached.
+  // PROFILE_ALLOWED_COLUMNS above) so the entitlement state is loaded
+  // fresh from the database on every call, never assumed or cached.
   const pro = isBusinessPro(business);
-  const allowedColumns = pro ? PRO_ALLOWED_COLUMNS : FREE_ALLOWED_COLUMNS;
+  const allowedColumns = pro ? PROFILE_ALLOWED_COLUMNS : PROFILE_FREE_COLUMNS;
 
   const name = str(formData, "name");
-  if (!name) {
-    redirect(errorRedirectUrl(redirectPath, "Business name is required."));
-  }
-  const logo_url = str(formData, "logo_url");
-  const cover_image_url = str(formData, "cover_image_url");
-  const short_description = str(formData, "short_description");
+  if (!name) redirect(appendQuery(redirectPath, { error: "Business name is required." }));
 
   // Pro-only fields — read from the submitted form regardless of tier
   // (harmless: only the columns actually named in allowedColumns below
   // ever reach the real Supabase payload), same "extra fields are simply
-  // never looked at" pattern this action already documents. A Free
-  // submission that manually includes these is never able to persist
-  // them, because allowedColumns for Free never names them.
-  const description = str(formData, "description");
-  const city = str(formData, "city");
-  const state = str(formData, "state");
-  const country = str(formData, "country");
-  const email = str(formData, "email");
-  const phone = str(formData, "phone");
-  const website_url = str(formData, "website_url");
-  const instagram_url = str(formData, "instagram_url");
-  const facebook_url = str(formData, "facebook_url");
-  const tiktok_url = str(formData, "tiktok_url");
-  const bulletin_enabled = bool(formData, "bulletin_enabled");
-  const bulletin_label = str(formData, "bulletin_label");
-  const bulletin_heading = str(formData, "bulletin_heading");
-  const bulletin_body = str(formData, "bulletin_body");
-  const bulletin_url = str(formData, "bulletin_url");
-
-  // The actual UPDATE payload is built FROM allowedColumns, not just
-  // gated by it — every value this action is capable of writing lives in
-  // candidateValues, and only the columns named in allowedColumns are
-  // ever copied out of it into the real Supabase payload. Widening
-  // PRO_ALLOWED_COLUMNS automatically reaches this same construction —
-  // no branching logic to duplicate, and Free's allowedColumns can never
-  // pick up a Pro-only key no matter what the form submits.
-  const candidateValues: Record<(typeof PRO_ALLOWED_COLUMNS)[number], string | boolean | null> = {
+  // never looked at" pattern this action already documents.
+  const candidateValues: Record<(typeof PROFILE_ALLOWED_COLUMNS)[number], string | null> = {
     name,
-    logo_url,
-    cover_image_url,
-    short_description,
-    description,
-    city,
-    state,
-    country,
-    email,
-    phone,
-    website_url,
-    instagram_url,
-    facebook_url,
-    tiktok_url,
-    bulletin_enabled,
-    bulletin_label,
-    bulletin_heading,
-    bulletin_body,
-    bulletin_url,
+    logo_url: str(formData, "logo_url"),
+    cover_image_url: str(formData, "cover_image_url"),
+    short_description: str(formData, "short_description"),
+    city: str(formData, "city"),
+    state: str(formData, "state"),
+    description: str(formData, "description"),
+    country: str(formData, "country"),
   };
   const payload = Object.fromEntries(allowedColumns.map((column) => [column, candidateValues[column]]));
 
@@ -282,33 +239,27 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
   // "exactly 1 category" regardless of how many an admin may have set
   // previously.
   const categoryId = str(formData, "category_id");
-  if (!categoryId) {
-    redirect(errorRedirectUrl(redirectPath, "Choose a category."));
-  }
+  if (!categoryId) redirect(appendQuery(redirectPath, { error: "Choose a category." }));
   const { data: category } = await admin
     .from("categories")
     .select("id")
     .eq("id", categoryId)
     .eq("kind", "business")
     .maybeSingle();
-  if (!category) {
-    redirect(errorRedirectUrl(redirectPath, "That's not a valid category."));
-  }
+  if (!category) redirect(appendQuery(redirectPath, { error: "That's not a valid category." }));
 
   const { error: updateError } = await admin.from("businesses").update(payload).eq("id", businessId);
-  if (updateError) {
-    redirect(errorRedirectUrl(redirectPath, updateError.message));
-  }
+  if (updateError) redirect(appendQuery(redirectPath, { error: updateError.message }));
 
-  // Atomic replace — see set_business_category() in the not-yet-applied
-  // migration. A plain delete-then-insert here would be two separate
-  // requests: if the delete succeeded but the insert then failed, the
-  // business would be left with zero categories instead of its previous
-  // one. This RPC does both inside one Postgres function call, so
-  // Postgres's own implicit transaction makes it atomic — success leaves
-  // exactly the new category, any failure leaves the previous category
-  // relationship completely untouched (the delete itself gets rolled
-  // back), never a mid-write zero-category state.
+  // Atomic replace — see set_business_category(). A plain delete-then-
+  // insert here would be two separate requests: if the delete succeeded
+  // but the insert then failed, the business would be left with zero
+  // categories instead of its previous one. This RPC does both inside
+  // one Postgres function call, so Postgres's own implicit transaction
+  // makes it atomic — success leaves exactly the new category, any
+  // failure leaves the previous category relationship completely
+  // untouched (the delete itself gets rolled back), never a mid-write
+  // zero-category state.
   const { error: categoryError } = await admin.rpc("set_business_category", {
     p_business_id: businessId,
     p_category_id: categoryId,
@@ -320,30 +271,69 @@ export async function updateMemberBusiness(businessId: string, formData: FormDat
         : categoryError.message === "business_not_found"
           ? "Business not found."
           : categoryError.message;
-    redirect(errorRedirectUrl(redirectPath, message));
-  }
-
-  // Gallery — Pro only, reusing the exact same business_images table and
-  // delete-then-reinsert-on-save shape admin's saveBusiness already uses
-  // (current config, not economic history — see that action's own
-  // comment). Gated on the server-resolved `pro` above, never on
-  // anything submitted: a Free request that includes gallery_image_url
-  // fields simply never reaches this block, so no gallery row is ever
-  // touched for a Free business.
-  if (pro) {
-    const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
-    await admin.from("business_images").delete().eq("business_id", businessId);
-    if (galleryUrls.length > 0) {
-      await admin
-        .from("business_images")
-        .insert(galleryUrls.map((url, i) => ({ business_id: businessId, url, display_order: i })));
-    }
+    redirect(appendQuery(redirectPath, { error: message }));
   }
 
   revalidatePath(redirectPath);
   if (business.slug) revalidatePath(`/business/${business.slug}`);
+  redirect(appendQuery(redirectPath, { saved: "1" }));
+}
 
-  redirect(`${redirectPath}?saved=1`);
+/**
+ * Links & Contact tab save — email, phone, website/Instagram/Facebook/
+ * TikTok, and the announcement/bulletin fields. Entirely Pro-only (see
+ * requireProBusinessMember) — a Free business's tab is locked in the UI
+ * (see the page), and this action independently re-enforces the same
+ * gate server-side regardless of what the client renders.
+ */
+export async function updateBusinessLinks(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}?tab=links`;
+  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+
+  const payload: Record<(typeof LINKS_COLUMNS)[number], string | boolean | null> = {
+    email: str(formData, "email"),
+    phone: str(formData, "phone"),
+    website_url: str(formData, "website_url"),
+    instagram_url: str(formData, "instagram_url"),
+    facebook_url: str(formData, "facebook_url"),
+    tiktok_url: str(formData, "tiktok_url"),
+    bulletin_enabled: bool(formData, "bulletin_enabled"),
+    bulletin_label: str(formData, "bulletin_label"),
+    bulletin_heading: str(formData, "bulletin_heading"),
+    bulletin_body: str(formData, "bulletin_body"),
+    bulletin_url: str(formData, "bulletin_url"),
+  };
+
+  const { error } = await admin.from("businesses").update(payload).eq("id", businessId);
+  if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  revalidatePath(redirectPath);
+  if (business.slug) revalidatePath(`/business/${business.slug}`);
+  redirect(appendQuery(redirectPath, { saved: "1" }));
+}
+
+/**
+ * Gallery tab save — Pro only (see requireProBusinessMember), reusing
+ * the exact same business_images table and delete-then-reinsert-on-save
+ * shape the original combined action (and admin's saveBusiness) already
+ * used — current config, not economic history, so a wholesale replace
+ * on every save is correct.
+ */
+export async function updateBusinessGallery(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}?tab=gallery`;
+  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+
+  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  await admin.from("business_images").delete().eq("business_id", businessId);
+  if (galleryUrls.length > 0) {
+    await admin
+      .from("business_images")
+      .insert(galleryUrls.map((url, i) => ({ business_id: businessId, url, display_order: i })));
+  }
+
+  revalidatePath(redirectPath);
+  if (business.slug) revalidatePath(`/business/${business.slug}`);
+  redirect(appendQuery(redirectPath, { saved: "1" }));
 }
 
 // ── Pro FindMi Here — Owner Appearance Manager ──────────────────────────
@@ -393,20 +383,20 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
     await requireBusinessMember(businessId);
   } catch (err) {
     const message = err instanceof Error ? err.message : "You don't have access to this business.";
-    redirect(errorRedirectUrl(redirectPath, message));
+    redirect(appendQuery(redirectPath, { error: message }));
   }
 
   const admin = getAdminSupabase();
-  if (!admin) redirect(errorRedirectUrl(redirectPath, "Server isn't configured."));
+  if (!admin) redirect(appendQuery(redirectPath, { error: "Server isn't configured." }));
 
   const { data: business } = await admin
     .from("businesses")
     .select("id, slug, plan_tier")
     .eq("id", businessId)
     .maybeSingle();
-  if (!business) redirect(errorRedirectUrl(redirectPath, "Business not found."));
+  if (!business) redirect(appendQuery(redirectPath, { error: "Business not found." }));
   if (!isBusinessPro(business)) {
-    redirect(errorRedirectUrl(redirectPath, "Upgrade to Pro to unlock this feature."));
+    redirect(appendQuery(redirectPath, { error: "Upgrade to Pro to unlock this feature." }));
   }
 
   return { admin, business };
@@ -438,11 +428,11 @@ async function requireAuthorizedBusinessMember(businessId: string, redirectPath:
     await requireBusinessMember(businessId);
   } catch (err) {
     const message = err instanceof Error ? err.message : "You don't have access to this business.";
-    redirect(errorRedirectUrl(redirectPath, message));
+    redirect(appendQuery(redirectPath, { error: message }));
   }
 
   const admin = getAdminSupabase();
-  if (!admin) redirect(errorRedirectUrl(redirectPath, "Server isn't configured."));
+  if (!admin) redirect(appendQuery(redirectPath, { error: "Server isn't configured." }));
 
   return admin;
 }
@@ -468,11 +458,11 @@ async function requireAuthorizedBusinessMember(businessId: string, redirectPath:
  * visibility still requires founder approval there, unchanged — creating
  * an appearance here never grants it. */
 export async function addAppearanceFromEvent(businessId: string, formData: FormData) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=findmi-here`;
   const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   const target = str(formData, "target");
-  if (!target) redirect(errorRedirectUrl(redirectPath, "Choose an event to add."));
+  if (!target) redirect(appendQuery(redirectPath, { error: "Choose an event to add." }));
 
   const [kind, a, b] = target.split(":");
 
@@ -484,7 +474,7 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
       .eq("id", eventId)
       .eq("is_demo", false)
       .maybeSingle();
-    if (!event) redirect(errorRedirectUrl(redirectPath, "That event is no longer available."));
+    if (!event) redirect(appendQuery(redirectPath, { error: "That event is no longer available." }));
 
     const { data: existingAppearance } = await admin
       .from("appearances")
@@ -515,7 +505,7 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
         // returns without touching it — see that helper's comment).
         source: "event_self_added",
       });
-      if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't create that appearance. Please try again."));
+      if (error) redirect(appendQuery(redirectPath, { error: "Couldn't create that appearance. Please try again." }));
     }
 
     await admin
@@ -533,9 +523,9 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
       .eq("id", occurrenceId)
       .eq("event_id", eventId)
       .maybeSingle();
-    if (!occurrence) redirect(errorRedirectUrl(redirectPath, "That date is no longer available."));
+    if (!occurrence) redirect(appendQuery(redirectPath, { error: "That date is no longer available." }));
     const event = Array.isArray(occurrence.events) ? occurrence.events[0] : occurrence.events;
-    if (!event) redirect(errorRedirectUrl(redirectPath, "That event is no longer available."));
+    if (!event) redirect(appendQuery(redirectPath, { error: "That event is no longer available." }));
 
     let venue = {
       venue_name: event.venue_name as string | null,
@@ -589,7 +579,7 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
       // against appearances_one_per_business_occurrence; treat that as
       // "already exists," not a failure.
       if (error && error.code !== "23505") {
-        redirect(errorRedirectUrl(redirectPath, "Couldn't create that appearance. Please try again."));
+        redirect(appendQuery(redirectPath, { error: "Couldn't create that appearance. Please try again." }));
       }
     }
 
@@ -600,11 +590,11 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
         { onConflict: "occurrence_id,business_id", ignoreDuplicates: true }
       );
   } else {
-    redirect(errorRedirectUrl(redirectPath, "Choose a valid event or date."));
+    redirect(appendQuery(redirectPath, { error: "Choose a valid event or date." }));
   }
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?appearance_added=1`);
+  redirect(appendQuery(redirectPath, { appearance_added: "1" }));
 }
 
 /** Withdraws this business's OWN request — only while it's still
@@ -619,7 +609,7 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
  * removing appearances. Authorization/scoping/status-guard behavior
  * below is otherwise completely unchanged. */
 export async function withdrawEventParticipation(businessId: string, kind: "event" | "occurrence", key: string) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=findmi-here`;
   const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   if (kind === "event") {
@@ -639,7 +629,7 @@ export async function withdrawEventParticipation(businessId: string, kind: "even
   }
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?participation_updated=1`);
+  redirect(appendQuery(redirectPath, { participation_updated: "1" }));
 }
 
 // ── Standalone appearances (Option 2) + edit/remove ─────────────────────
@@ -679,13 +669,13 @@ function buildAppearanceErrorUrl(
   formData: FormData,
   appearanceId?: string
 ): string {
-  const params = new URLSearchParams({ error: message });
+  const params: Record<string, string> = { error: message };
   for (const name of APPEARANCE_FIELD_NAMES) {
     const value = formData.get(name);
-    if (typeof value === "string" && value) params.set(`${kind}_${name}`, value);
+    if (typeof value === "string" && value) params[`${kind}_${name}`] = value;
   }
-  if (kind === "edit" && appearanceId) params.set("editing", appearanceId);
-  return `${redirectPath}?${params.toString()}`;
+  if (kind === "edit" && appearanceId) params.editing = appearanceId;
+  return appendQuery(redirectPath, params);
 }
 
 /** Validates + normalizes the shared appearance fields. `onError` is
@@ -741,7 +731,7 @@ function parseAppearanceFields(formData: FormData, onError: (message: string) =>
  * submitted value preserved (see buildAppearanceErrorUrl) — the form is
  * never returned blank. */
 export async function addManualAppearance(businessId: string, formData: FormData) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=findmi-here`;
   const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   const onError = (message: string): never => {
@@ -761,7 +751,7 @@ export async function addManualAppearance(businessId: string, formData: FormData
   if (error) onError("Couldn't create that appearance. Please try again.");
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?appearance_added=1`);
+  redirect(appendQuery(redirectPath, { appearance_added: "1" }));
 }
 
 /** Edit — only ever touches content fields (title/date-time/venue/
@@ -775,7 +765,7 @@ export async function addManualAppearance(businessId: string, formData: FormData
  * without that affecting the event itself in any way. Same
  * values-preserved-on-error behavior as addManualAppearance. */
 export async function updateOwnerAppearance(businessId: string, appearanceId: string, formData: FormData) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=findmi-here`;
   const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   const onError = (message: string): never => {
@@ -796,7 +786,7 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
   if (error) onError("Couldn't update that appearance. Please try again.");
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?appearance_updated=1`);
+  redirect(appendQuery(redirectPath, { appearance_updated: "1" }));
 }
 
 /** Remove — a soft cancel (status: 'canceled'), never a hard delete.
@@ -812,13 +802,13 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
  * frees the business up to be re-added to that same occurrence later
  * without a conflict. */
 export async function removeOwnerAppearance(businessId: string, appearanceId: string) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=findmi-here`;
   const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
   await admin.from("appearances").update({ status: "canceled" }).eq("id", appearanceId).eq("business_id", businessId);
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?appearance_removed=1`);
+  redirect(appendQuery(redirectPath, { appearance_removed: "1" }));
 }
 
 // ── NATIVE FREE BUSINESS CREATION — Native Business Onboarding Pass 2 ──────
@@ -899,10 +889,10 @@ const CREATE_FRIENDLY_ERROR: Record<string, string> = {
  * city/state/website_url/instagram_url are collected for identity,
  * duplicate detection, and moderation ONLY — they're stored on the new
  * row, but this does NOT grant a Free business ongoing editing rights
- * over them: updateMemberBusiness's own Free allowlist (above) still
- * excludes every one of these columns regardless of how the row was
- * created, so a Free owner can set them here once, at creation, and never
- * touch them again through the normal editor until/unless the business
+ * over website_url/instagram_url specifically: those stay Pro-only
+ * (updateBusinessLinks, above) regardless of how the row was created, so
+ * a Free owner can set them here once, at creation, and never touch them
+ * again through the normal editor until/unless the business
  * becomes Pro. They also never render publicly for a Free business
  * either (see business/[slug]/page.tsx's own `pro &&` gates) — no
  * additional exposure beyond what a Pro business's owner could already
@@ -1136,11 +1126,11 @@ async function setMemberProductCategory(admin: SupabaseClient, productId: string
 }
 
 export async function createMemberProduct(businessId: string, formData: FormData) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=products`;
   const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
 
   const onError = (message: string): never => {
-    redirect(errorRedirectUrl(redirectPath, message));
+    redirect(appendQuery(redirectPath, { error: message }));
   };
   const fields = parseProductFields(formData, onError);
 
@@ -1191,7 +1181,7 @@ export async function createMemberProduct(businessId: string, formData: FormData
   revalidatePath(`/product/${slug}`);
   if (business.slug) revalidatePath(`/business/${business.slug}`);
   revalidatePath("/marketplace");
-  redirect(`${redirectPath}?product_added=1`);
+  redirect(appendQuery(redirectPath, { product_added: "1" }));
 }
 
 /** Edit — only ever touches this ONE product, and only after confirming
@@ -1216,11 +1206,11 @@ export async function createMemberProduct(businessId: string, formData: FormData
  *     the smallest way to let an owner act on admin feedback without a
  *     dead-end state; there is no separate "resubmit" action. */
 export async function updateMemberProduct(businessId: string, productId: string, formData: FormData) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=products`;
   const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
 
   const onError = (message: string): never => {
-    redirect(errorRedirectUrl(redirectPath, message));
+    redirect(appendQuery(redirectPath, { error: message }));
   };
 
   const { data: existing } = await admin
@@ -1243,7 +1233,7 @@ export async function updateMemberProduct(businessId: string, productId: string,
       .eq("business_id", businessId);
     if (error) onError("Couldn't submit those changes. Please try again.");
     revalidatePath(redirectPath);
-    redirect(`${redirectPath}?product_changes_pending=1`);
+    redirect(appendQuery(redirectPath, { product_changes_pending: "1" }));
   }
 
   const { error } = await admin
@@ -1259,7 +1249,7 @@ export async function updateMemberProduct(businessId: string, productId: string,
   revalidatePath(`/product/${existing.slug}`);
   if (business.slug) revalidatePath(`/business/${business.slug}`);
   revalidatePath("/marketplace");
-  redirect(`${redirectPath}?product_updated=1`);
+  redirect(appendQuery(redirectPath, { product_updated: "1" }));
 }
 
 /** Deactivate/reactivate — a status toggle only, never a delete (Section
@@ -1272,7 +1262,7 @@ export async function updateMemberProduct(businessId: string, productId: string,
  * back with nothing to rebuild. Same double-scoped ownership check as
  * updateMemberProduct above. */
 export async function setMemberProductActive(businessId: string, productId: string, active: boolean) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=products`;
   const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
 
   const { data: existing } = await admin
@@ -1281,20 +1271,20 @@ export async function setMemberProductActive(businessId: string, productId: stri
     .eq("id", productId)
     .eq("business_id", businessId)
     .maybeSingle();
-  if (!existing) redirect(errorRedirectUrl(redirectPath, "That product no longer exists."));
+  if (!existing) redirect(appendQuery(redirectPath, { error: "That product no longer exists." }));
 
   const { error } = await admin
     .from("products")
     .update({ is_active: active })
     .eq("id", productId)
     .eq("business_id", businessId);
-  if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't update that product. Please try again."));
+  if (error) redirect(appendQuery(redirectPath, { error: "Couldn't update that product. Please try again." }));
 
   revalidatePath(redirectPath);
   revalidatePath(`/product/${existing.slug}`);
   if (business.slug) revalidatePath(`/business/${business.slug}`);
   revalidatePath("/marketplace");
-  redirect(`${redirectPath}?product_updated=1`);
+  redirect(appendQuery(redirectPath, { product_updated: "1" }));
 }
 
 // ── Product Marketplace Distribution — Member Actions ────────────────────
@@ -1314,7 +1304,7 @@ export async function setMemberProductActive(businessId: string, productId: stri
  * ("submitted" is already pending; "approved"/"paused" are admin
  * decisions the owner can't self-override by resubmitting). */
 export async function submitProductToMarketplace(businessId: string, productId: string) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=products`;
   const { admin } = await requireProBusinessMember(businessId, redirectPath);
 
   const { data: existing } = await admin
@@ -1323,7 +1313,7 @@ export async function submitProductToMarketplace(businessId: string, productId: 
     .eq("id", productId)
     .eq("business_id", businessId)
     .maybeSingle();
-  if (!existing) redirect(errorRedirectUrl(redirectPath, "That product no longer exists."));
+  if (!existing) redirect(appendQuery(redirectPath, { error: "That product no longer exists." }));
 
   if (existing.marketplace_status === "catalog_only" || existing.marketplace_status === "rejected") {
     await admin
@@ -1334,7 +1324,7 @@ export async function submitProductToMarketplace(businessId: string, productId: 
   }
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?marketplace_updated=1`);
+  redirect(appendQuery(redirectPath, { marketplace_updated: "1" }));
 }
 
 /** Withdraws the owner's own not-yet-decided request ("submitted"), or
@@ -1344,7 +1334,7 @@ export async function submitProductToMarketplace(businessId: string, productId: 
  * pauseMarketplaceListing in admin/products/actions.ts for the admin-side
  * equivalent). */
 export async function returnProductToCatalog(businessId: string, productId: string) {
-  const redirectPath = `/account/business/${businessId}`;
+  const redirectPath = `/account/business/${businessId}?tab=products`;
   const { admin } = await requireProBusinessMember(businessId, redirectPath);
 
   const { data: existing } = await admin
@@ -1353,7 +1343,7 @@ export async function returnProductToCatalog(businessId: string, productId: stri
     .eq("id", productId)
     .eq("business_id", businessId)
     .maybeSingle();
-  if (!existing) redirect(errorRedirectUrl(redirectPath, "That product no longer exists."));
+  if (!existing) redirect(appendQuery(redirectPath, { error: "That product no longer exists." }));
 
   if (existing.marketplace_status === "submitted" || existing.marketplace_status === "rejected") {
     await admin
@@ -1364,5 +1354,5 @@ export async function returnProductToCatalog(businessId: string, productId: stri
   }
 
   revalidatePath(redirectPath);
-  redirect(`${redirectPath}?marketplace_updated=1`);
+  redirect(appendQuery(redirectPath, { marketplace_updated: "1" }));
 }

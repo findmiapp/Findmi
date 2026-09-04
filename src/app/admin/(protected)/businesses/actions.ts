@@ -8,6 +8,24 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 
+/**
+ * Tabbed Business Edit pass — every save action below that's scoped to
+ * one specific tab (?tab=<key> on /admin/businesses/[id]) must redirect
+ * back to that SAME tab on both success and error, never resetting the
+ * founder to a different section. errorRedirectUrl always joins with a
+ * bare "?", which breaks once the base URL already has its own query
+ * string (a tab-scoped editPath); this merges correctly with "&"
+ * whenever `base` already contains "?", via URLSearchParams (which also
+ * handles encoding). Same helper/reasoning as the public Business
+ * Manager's own appendQuery (account/business/actions.ts) — duplicated
+ * locally rather than shared across the admin/public boundary, same as
+ * this file's other small helpers.
+ */
+function appendQuery(base: string, params: Record<string, string>): string {
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}${new URLSearchParams(params).toString()}`;
+}
+
 export async function saveBusiness(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/businesses/${id}` : "/admin/businesses/new";
   const supabase = await requireAdminSupabase();
@@ -194,6 +212,243 @@ export async function saveBusiness(id: string | null, formData: FormData) {
   redirect(`/admin/businesses/${businessId}?saved=1`);
 }
 
+// ── Tabbed Business Edit — per-section saves ─────────────────────────────
+//
+// EDITING an existing business (/admin/businesses/[id]) is now tab-based
+// (see that page). saveBusiness above stays completely untouched and is
+// still the ONLY action /admin/businesses/new uses — creating a business
+// is a one-shot flow where a single all-fields form is still correct.
+// These six actions are split out of that same field set purely for the
+// EDIT experience, so saving one tab never resubmits or overwrites
+// another: each one only ever reads/writes its own column set, and each
+// redirects back to its OWN tab. Every validation rule saveBusiness
+// already had for its slice of fields (slug normalization/uniqueness,
+// announcement link safety) is preserved exactly, just distributed.
+
+/** Profile tab — identity/branding/about/location/contact/announcement/
+ * CTAs/people roster. Slug safety is identical to saveBusiness: normalize
+ * whatever was submitted, fall back to generating one from the name if
+ * blank, then resolve any collision with a deterministic suffix. */
+export async function saveBusinessProfile(id: string, formData: FormData) {
+  const editPath = `/admin/businesses/${id}?tab=profile`;
+  const supabase = await requireAdminSupabase();
+
+  const name = str(formData, "name");
+  if (!name) redirect(appendQuery(editPath, { error: "Name is required." }));
+
+  const baseSlug = resolveSlugInput(str(formData, "slug"), name);
+  if (!baseSlug) redirect(appendQuery(editPath, { error: "Name is required to generate a slug." }));
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("businesses", candidate, id));
+
+  // Announcement link — optional, but if the founder entered something it
+  // has to be a safe destination. Same internal/external validation
+  // nav_items' Custom Link already uses.
+  const bulletinUrlRaw = str(formData, "bulletin_url");
+  let bulletin_url: string | null = null;
+  if (bulletinUrlRaw) {
+    const result = validateCustomDestination(bulletinUrlRaw);
+    if (!result.ok) redirect(appendQuery(editPath, { error: `Announcement link: ${result.error}` }));
+    bulletin_url = result.value;
+  }
+
+  const payload = {
+    name,
+    slug,
+    short_description: str(formData, "short_description"),
+    description: str(formData, "description"),
+    logo_url: str(formData, "logo_url"),
+    cover_image_url: str(formData, "cover_image_url"),
+    website_url: str(formData, "website_url"),
+    instagram_url: str(formData, "instagram_url"),
+    facebook_url: str(formData, "facebook_url"),
+    tiktok_url: str(formData, "tiktok_url"),
+    email: str(formData, "email"),
+    phone: str(formData, "phone"),
+    city: str(formData, "city"),
+    state: str(formData, "state"),
+    country: str(formData, "country") ?? "US",
+    service_radius_miles: num(formData, "service_radius_miles"),
+    inquiry_cta_label: str(formData, "inquiry_cta_label"),
+    inquiry_cta_url: str(formData, "inquiry_cta_url"),
+    cta_1_label: str(formData, "cta_1_label"),
+    cta_1_url: str(formData, "cta_1_url"),
+    cta_1_enabled: bool(formData, "cta_1_enabled"),
+    cta_2_label: str(formData, "cta_2_label"),
+    cta_2_url: str(formData, "cta_2_url"),
+    cta_2_enabled: bool(formData, "cta_2_enabled"),
+    cta_3_label: str(formData, "cta_3_label"),
+    cta_3_url: str(formData, "cta_3_url"),
+    cta_3_enabled: bool(formData, "cta_3_enabled"),
+    bulletin_enabled: bool(formData, "bulletin_enabled"),
+    bulletin_label: str(formData, "bulletin_label"),
+    bulletin_heading: str(formData, "bulletin_heading"),
+    bulletin_body: str(formData, "bulletin_body"),
+    bulletin_url,
+  };
+
+  const { error } = await supabase.from("businesses").update(payload).eq("id", id);
+  if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  // People roster (business_people) — same upsert/remove shape saveBusiness
+  // already used: "Remove" only deletes the one relationship row for THIS
+  // business; the person's own profile (and their other business
+  // relationships) is untouched.
+  const personIds = formData.getAll("person_id").map(String);
+  const removedPersonIds = formData.getAll("removed_person_id").map(String);
+
+  const peopleToUpsert = personIds.map((personId) => ({
+    business_id: id,
+    person_id: personId,
+    role: str(formData, `role_${personId}`),
+    display_order: num(formData, `display_order_${personId}`),
+    featured: bool(formData, `featured_${personId}`),
+    show_on_business: bool(formData, `show_on_business_${personId}`),
+  }));
+  if (peopleToUpsert.length > 0) {
+    await supabase.from("business_people").upsert(peopleToUpsert, { onConflict: "business_id,person_id" });
+  }
+  if (removedPersonIds.length > 0) {
+    await supabase.from("business_people").delete().eq("business_id", id).in("person_id", removedPersonIds);
+  }
+
+  revalidatePath("/admin/businesses");
+  revalidatePath(editPath);
+  revalidatePath(`/business/${slug}`);
+  revalidatePath("/");
+  revalidatePath("/businesses");
+
+  // A person's own public profile also shows the businesses they're
+  // attached to — anyone added to or removed from this roster needs
+  // their profile refreshed too, not just this business's page.
+  const affectedPersonIds = [...new Set([...personIds, ...removedPersonIds])];
+  if (affectedPersonIds.length > 0) {
+    const { data: affectedPeople } = await supabase.from("people").select("slug").in("id", affectedPersonIds);
+    for (const p of affectedPeople ?? []) revalidatePath(`/people/${p.slug}`);
+  }
+
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+/** Gallery tab — same "current config, not economic history" wholesale
+ * replace saveBusiness already used for business_images. */
+export async function saveBusinessGallery(id: string, formData: FormData) {
+  const editPath = `/admin/businesses/${id}?tab=gallery`;
+  const supabase = await requireAdminSupabase();
+
+  const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
+  await supabase.from("business_images").delete().eq("business_id", id);
+  if (galleryUrls.length > 0) {
+    await supabase
+      .from("business_images")
+      .insert(galleryUrls.map((url, i) => ({ business_id: id, url, display_order: i })));
+  }
+
+  const { data: business } = await supabase.from("businesses").select("slug").eq("id", id).maybeSingle();
+  revalidatePath(editPath);
+  if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+/** Categories tab — admin's own multi-category model (business_categories),
+ * unrelated to the owner-facing single-category set_business_category()
+ * RPC — admin has always allowed several categories per business. */
+export async function saveBusinessCategories(id: string, formData: FormData) {
+  const editPath = `/admin/businesses/${id}?tab=categories`;
+  const supabase = await requireAdminSupabase();
+
+  const categoryIds = formData.getAll("category_ids").map(String);
+  await supabase.from("business_categories").delete().eq("business_id", id);
+  if (categoryIds.length > 0) {
+    await supabase
+      .from("business_categories")
+      .insert(categoryIds.map((category_id) => ({ business_id: id, category_id })));
+  }
+
+  const { data: business } = await supabase.from("businesses").select("slug").eq("id", id).maybeSingle();
+  revalidatePath(editPath);
+  if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+/** Plan tab — Plan Tier + entitlement provenance fields only. Never
+ * touches publication_status/is_demo (Moderation tab) or Free/Pro
+ * columns the member-facing editor also writes — this is the ONE place
+ * plan_tier itself changes admin-side, same as before this pass. */
+export async function saveBusinessPlan(id: string, formData: FormData) {
+  const editPath = `/admin/businesses/${id}?tab=plan`;
+  const supabase = await requireAdminSupabase();
+
+  const payload = {
+    plan_tier: str(formData, "plan_tier") ?? "free",
+    plan_source: str(formData, "plan_source"),
+    plan_started_at: str(formData, "plan_started_at"),
+    plan_expires_at: str(formData, "plan_expires_at"),
+    plan_payment_reference: str(formData, "plan_payment_reference"),
+  };
+
+  const { error } = await supabase.from("businesses").update(payload).eq("id", id);
+  if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  revalidatePath(editPath);
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+/** Moderation tab — THE control that approves a listing
+ * (publication_status, together with is_demo/"Real Business") plus the
+ * verified/founding-member/featured display badges. Never touches
+ * plan_tier (Plan tab) or the CRM/commerce fields (Internal tab). */
+export async function saveBusinessModeration(id: string, formData: FormData) {
+  const editPath = `/admin/businesses/${id}?tab=moderation`;
+  const supabase = await requireAdminSupabase();
+
+  const payload = {
+    publication_status: str(formData, "publication_status") ?? "live",
+    is_demo: !bool(formData, "published"),
+    verified: bool(formData, "verified"),
+    founding_member: bool(formData, "founding_member"),
+    is_featured: bool(formData, "is_featured"),
+  };
+
+  const { data: business, error } = await supabase
+    .from("businesses")
+    .update(payload)
+    .eq("id", id)
+    .select("slug")
+    .maybeSingle();
+  if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  revalidatePath("/admin/businesses");
+  revalidatePath(editPath);
+  if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  revalidatePath("/");
+  revalidatePath("/businesses");
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+/** Internal tab — CRM status fields (Membership Status/Lead Status,
+ * legacy lead-tracking unrelated to Founding Membership billing below)
+ * plus commerce/payout settings. Founder-only, never rendered or
+ * writable from any owner-facing surface. */
+export async function saveBusinessInternal(id: string, formData: FormData) {
+  const editPath = `/admin/businesses/${id}?tab=internal`;
+  const supabase = await requireAdminSupabase();
+
+  const payload = {
+    membership_status: str(formData, "membership_status") ?? "lead",
+    lead_status: str(formData, "lead_status") ?? "new",
+    commerce_enabled: bool(formData, "commerce_enabled"),
+    marketplace_fee_percent: num(formData, "marketplace_fee_percent") ?? 5,
+    processing_fee_payer: str(formData, "processing_fee_payer") ?? "vendor",
+    payout_method: str(formData, "payout_method") ?? "manual",
+  };
+
+  const { error } = await supabase.from("businesses").update(payload).eq("id", id);
+  if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  revalidatePath(editPath);
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
 // ── Owner/member assignment (Admin Business Owner pass) ─────────────────────
 // Deliberately separate from saveBusiness above and from the claims page's
 // own membership actions (src/app/admin/(protected)/claims/actions.ts,
@@ -213,22 +468,22 @@ export async function saveBusiness(id: string | null, formData: FormData) {
  * lookup, and never inserts a duplicate membership (checked explicitly,
  * on top of business_members' own (user_id, business_id) uniqueness). */
 export async function assignBusinessMember(businessId: string, formData: FormData) {
-  const editPath = `/admin/businesses/${businessId}`;
+  const editPath = `/admin/businesses/${businessId}?tab=ownership`;
   const supabase = await requireAdminSupabase();
 
   const email = str(formData, "email");
   if (!email) {
-    redirect(errorRedirectUrl(editPath, "Enter an email address."));
+    redirect(appendQuery(editPath, { error: "Enter an email address." }));
   }
 
   const { data: userId, error: lookupError } = await supabase.rpc("lookup_auth_user_id_by_email", {
     p_email: email,
   });
   if (lookupError) {
-    redirect(errorRedirectUrl(editPath, "Couldn't look up that email. Please try again."));
+    redirect(appendQuery(editPath, { error: "Couldn't look up that email. Please try again." }));
   }
   if (!userId) {
-    redirect(errorRedirectUrl(editPath, "No FindMi account found with that email."));
+    redirect(appendQuery(editPath, { error: "No FindMi account found with that email." }));
   }
 
   const { data: existing } = await supabase
@@ -238,18 +493,18 @@ export async function assignBusinessMember(businessId: string, formData: FormDat
     .eq("user_id", userId)
     .maybeSingle();
   if (existing) {
-    redirect(errorRedirectUrl(editPath, "That user is already a member of this business."));
+    redirect(appendQuery(editPath, { error: "That user is already a member of this business." }));
   }
 
   const { error: insertError } = await supabase
     .from("business_members")
     .insert({ business_id: businessId, user_id: userId, role: "manager" });
   if (insertError) {
-    redirect(errorRedirectUrl(editPath, "Couldn't assign that member. Please try again."));
+    redirect(appendQuery(editPath, { error: "Couldn't assign that member. Please try again." }));
   }
 
   revalidatePath(editPath);
-  redirect(`${editPath}?member_updated=1`);
+  redirect(appendQuery(editPath, { member_updated: "1" }));
 }
 
 /** Removes a manager/staff member's access entirely. Same `.neq("role",
@@ -259,7 +514,7 @@ export async function assignBusinessMember(businessId: string, formData: FormDat
  * (claims page), untouched by this pass. Never deletes the user or the
  * business — only the one business_members row. */
 export async function removeBusinessMember(businessId: string, memberId: string) {
-  const editPath = `/admin/businesses/${businessId}`;
+  const editPath = `/admin/businesses/${businessId}?tab=ownership`;
   const supabase = await requireAdminSupabase();
 
   const { data, error } = await supabase
@@ -272,9 +527,9 @@ export async function removeBusinessMember(businessId: string, memberId: string)
     .maybeSingle();
 
   if (error || !data) {
-    redirect(errorRedirectUrl(editPath, "Couldn't remove that member — they may no longer be a member."));
+    redirect(appendQuery(editPath, { error: "Couldn't remove that member — they may no longer be a member." }));
   }
 
   revalidatePath(editPath);
-  redirect(`${editPath}?member_updated=1`);
+  redirect(appendQuery(editPath, { member_updated: "1" }));
 }
