@@ -192,15 +192,23 @@ export default async function ManageBusinessPage({
     (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || c.id === currentCategoryId
   );
 
-  // Pro FindMi Here — Owner Appearance Manager. Two separate reads:
-  // (1) this business's OWN appearances (its real FindMi Here calendar —
-  //     see ../actions.ts for the write side), and
-  // (2) its official event-roster status (event_businesses/
-  //     event_occurrence_businesses), purely to label each linked
-  //     appearance with its separate "Official event participation: …"
-  //     status — never presented as the appearance's own publication
-  //     state. Both tables are public-SELECT-readable, so no extra grant
-  //     is needed to display this business's own rows.
+  // FindMi Here — Owner Appearance Manager. Free Appearance Manager
+  // Final Functional Fix — this data fetch, and the manager UI it feeds
+  // below, are no longer Pro-gated: appearance MANAGEMENT (add/connect/
+  // edit/remove/withdraw) is a Free capability (Passes 1-2 already
+  // authorized it at the Server Action layer; this page's UI just
+  // hadn't caught up). The Free/Pro distinction is DISPLAY DEPTH on the
+  // public business profile (business/[slug]/page.tsx, untouched by
+  // this pass — Free shows only its next 1, Pro shows the full
+  // schedule), never management access here. Two separate reads: (1)
+  // this business's OWN appearances (its real FindMi Here calendar —
+  // see ../actions.ts for the write side), and (2) its official
+  // event-roster status (event_businesses/event_occurrence_businesses),
+  // purely to label each linked appearance with its separate "Official
+  // event participation: …" status — never presented as the
+  // appearance's own publication state. Both tables are public-SELECT-
+  // readable, so no extra grant is needed to display this business's
+  // own rows.
   type OwnAppearance = {
     id: string;
     title: string;
@@ -219,7 +227,7 @@ export default async function ManageBusinessPage({
   let appearances: OwnAppearance[] = [];
   let requestOptions: { value: string; label: string }[] = [];
 
-  if (pro) {
+  {
     const nowIso = new Date().toISOString();
     const [{ data: appearanceRows }, { data: ebStatusRows }, { data: eobStatusRows }] = await Promise.all([
       admin
@@ -619,137 +627,142 @@ export default async function ManageBusinessPage({
           </form>
         </div>
 
-        {/* Pro FindMi Here — Owner Appearance Manager. The business's own
-            appearances calendar, separate from official event roster
-            approval (see ../actions.ts's own doc comment on that split). */}
-        {pro && (
-          <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">FindMi Here</p>
-            <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
+        {/* FindMi Here — Owner Appearance Manager. Free Appearance
+            Manager Final Functional Fix — no longer Pro-gated (was
+            `{pro && (...)}`): Free and Pro both get the exact same
+            manager (add/connect/edit/remove/withdraw), reusing every
+            existing form/component/action unchanged — appearance
+            MANAGEMENT is a Free capability, only the PUBLIC profile's
+            display depth differs by plan (business/[slug]/page.tsx,
+            untouched). The business's own appearances calendar, separate
+            from official event roster approval (see ../actions.ts's own
+            doc comment on that split). */}
+        <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink/40">FindMi Here</p>
+          <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
 
-            {appearances.length > 0 ? (
-              <ul className="mt-4 flex flex-col gap-3">
-                {appearances.map((a) => {
-                  const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
-                  const storedEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
-                  // A server-side validation error on THIS specific
-                  // appearance's edit form takes precedence over its
-                  // stored DB values — same "never lose what was typed"
-                  // rule as Add, just scoped to the one row that failed.
-                  const isEditing = editing === a.id;
-                  const editDefaultValues: AppearanceFieldValues = isEditing
-                    ? {
-                        title: edit_title ?? a.title,
-                        date: edit_date ?? storedDate,
-                        start_time: edit_start_time ?? storedStartTime,
-                        end_time: edit_end_time ?? storedEndTime,
-                        venue_name: edit_venue_name ?? a.venue_name ?? "",
-                        address: edit_address ?? a.address ?? "",
-                        city: edit_city ?? a.city ?? "",
-                        state: edit_state ?? a.state ?? "",
-                        external_url: edit_external_url ?? a.external_url ?? "",
-                        flyer_image_url: edit_flyer_image_url ?? a.flyer_image_url,
-                      }
-                    : {
-                        title: a.title,
-                        date: storedDate,
-                        start_time: storedStartTime,
-                        end_time: storedEndTime,
-                        venue_name: a.venue_name ?? "",
-                        address: a.address ?? "",
-                        city: a.city ?? "",
-                        state: a.state ?? "",
-                        external_url: a.external_url ?? "",
-                        flyer_image_url: a.flyer_image_url,
-                      };
-                  return (
-                    <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
-                          <p className="mt-0.5 text-xs text-ink/60">
-                            {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
+          {appearances.length > 0 ? (
+            <ul className="mt-4 flex flex-col gap-3">
+              {appearances.map((a) => {
+                const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
+                const storedEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
+                // A server-side validation error on THIS specific
+                // appearance's edit form takes precedence over its
+                // stored DB values — same "never lose what was typed"
+                // rule as Add, just scoped to the one row that failed.
+                const isEditing = editing === a.id;
+                const editDefaultValues: AppearanceFieldValues = isEditing
+                  ? {
+                      title: edit_title ?? a.title,
+                      date: edit_date ?? storedDate,
+                      start_time: edit_start_time ?? storedStartTime,
+                      end_time: edit_end_time ?? storedEndTime,
+                      venue_name: edit_venue_name ?? a.venue_name ?? "",
+                      address: edit_address ?? a.address ?? "",
+                      city: edit_city ?? a.city ?? "",
+                      state: edit_state ?? a.state ?? "",
+                      external_url: edit_external_url ?? a.external_url ?? "",
+                      flyer_image_url: edit_flyer_image_url ?? a.flyer_image_url,
+                    }
+                  : {
+                      title: a.title,
+                      date: storedDate,
+                      start_time: storedStartTime,
+                      end_time: storedEndTime,
+                      venue_name: a.venue_name ?? "",
+                      address: a.address ?? "",
+                      city: a.city ?? "",
+                      state: a.state ?? "",
+                      external_url: a.external_url ?? "",
+                      flyer_image_url: a.flyer_image_url,
+                    };
+                return (
+                  <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
+                        <p className="mt-0.5 text-xs text-ink/60">
+                          {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
+                        </p>
+                        {(a.venue_name || a.city) && (
+                          <p className="mt-0.5 text-xs text-ink/50">
+                            {[a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
                           </p>
-                          {(a.venue_name || a.city) && (
-                            <p className="mt-0.5 text-xs text-ink/50">
-                              {[a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
-                            </p>
-                          )}
-                          {a.participationStatus && (
-                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-findmi-700">
-                              Official event participation: {PARTICIPATION_LABEL[a.participationStatus]}
-                            </p>
-                          )}
-                        </div>
-                        <form action={removeOwnerAppearance.bind(null, id, a.id)}>
-                          <button type="submit" className="shrink-0 text-xs font-semibold text-red-600 hover:underline">
-                            Remove
-                          </button>
-                        </form>
+                        )}
+                        {a.participationStatus && (
+                          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-findmi-700">
+                            Official event participation: {PARTICIPATION_LABEL[a.participationStatus]}
+                          </p>
+                        )}
                       </div>
+                      <form action={removeOwnerAppearance.bind(null, id, a.id)}>
+                        <button type="submit" className="shrink-0 text-xs font-semibold text-red-600 hover:underline">
+                          Remove
+                        </button>
+                      </form>
+                    </div>
 
-                      <details className="mt-2" open={isEditing}>
-                        <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
-                        <div className="mt-3">
-                          <AppearanceFieldsForm
-                            businessId={id}
-                            action={updateOwnerAppearance.bind(null, id, a.id)}
-                            defaultValues={editDefaultValues}
-                            submitLabel="Save"
-                          />
-                        </div>
-                      </details>
-                    </li>
-                  );
-                })}
-              </ul>
+                    <details className="mt-2" open={isEditing}>
+                      <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
+                      <div className="mt-3">
+                        <AppearanceFieldsForm
+                          businessId={id}
+                          action={updateOwnerAppearance.bind(null, id, a.id)}
+                          defaultValues={editDefaultValues}
+                          submitLabel="Save"
+                        />
+                      </div>
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-ink/50">No upcoming appearances yet.</p>
+          )}
+
+          <div className="mt-5 border-t border-black/10 pt-4">
+            <p className="text-sm font-medium text-ink">Add an Appearance</p>
+
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
+              Option 1 — Choose an existing FindMi event
+            </p>
+            {requestOptions.length > 0 ? (
+              <form action={addFromEvent} className="mt-2 flex flex-wrap items-center gap-2">
+                <select name="target" required className={inputClass} defaultValue="">
+                  <option value="" disabled>
+                    Choose an event…
+                  </option>
+                  {requestOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className="rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Add
+                </button>
+              </form>
             ) : (
-              <p className="mt-3 text-sm text-ink/50">No upcoming appearances yet.</p>
+              <p className="mt-2 text-sm text-ink/50">No upcoming FindMi events available right now.</p>
             )}
 
-            <div className="mt-5 border-t border-black/10 pt-4">
-              <p className="text-sm font-medium text-ink">Add an Appearance</p>
-
-              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Option 1 — Choose an existing FindMi event
-              </p>
-              {requestOptions.length > 0 ? (
-                <form action={addFromEvent} className="mt-2 flex flex-wrap items-center gap-2">
-                  <select name="target" required className={inputClass} defaultValue="">
-                    <option value="" disabled>
-                      Choose an event…
-                    </option>
-                    {requestOptions.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="submit"
-                    className="rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                  >
-                    Add
-                  </button>
-                </form>
-              ) : (
-                <p className="mt-2 text-sm text-ink/50">No upcoming FindMi events available right now.</p>
-              )}
-
-              <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Option 2 — Add an appearance manually
-              </p>
-              <div className="mt-2">
-                <AppearanceFieldsForm
-                  businessId={id}
-                  action={addManual}
-                  defaultValues={addDefaultValues}
-                  submitLabel="Add Appearance"
-                />
-              </div>
+            <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
+              Option 2 — Add an appearance manually
+            </p>
+            <div className="mt-2">
+              <AppearanceFieldsForm
+                businessId={id}
+                action={addManual}
+                defaultValues={addDefaultValues}
+                submitLabel="Add Appearance"
+              />
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
