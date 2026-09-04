@@ -4,13 +4,25 @@ import { useState, useTransition } from "react";
 import { uploadImage } from "@/lib/admin/upload";
 
 /** Final refinement pass, items 9/10 — shared multi-image uploader for
- * both the Event Gallery and the About the Venue gallery. Same "current
- * config, not economic history" delete-then-reinsert-on-save approach
- * already used for product fulfillment options: every image URL renders
- * as a hidden input sharing one `name`, so the server reads the final,
- * reordered list in one shot via `formData.getAll(name)` and DOM order
- * IS display order — no separate order-index bookkeeping, no
- * new/existing-row tracking needed. */
+ * both the Event Gallery and the About the Venue gallery (also used by
+ * BusinessForm.tsx's own admin Gallery field). Same "current config, not
+ * economic history" delete-then-reinsert-on-save approach already used
+ * for product fulfillment options: every image URL renders as a hidden
+ * input sharing one `name`, so the server reads the final, reordered
+ * list in one shot via `formData.getAll(name)` and DOM order IS display
+ * order — no separate order-index bookkeeping, no new/existing-row
+ * tracking needed.
+ *
+ * Event Gallery Multi-Image Upload Parity pass — the file input now
+ * accepts multiple files in one picker action, same as the member-facing
+ * Business gallery (MemberGalleryField.tsx): uploads run sequentially
+ * (not Promise.all) so selection order is preserved and one failed file
+ * never discards images that already uploaded successfully — each
+ * success is appended to `urls` as soon as it resolves. `isPending`
+ * still covers the whole batch, so the input stays disabled (and the
+ * label reads "Uploading…") until every selected file has been
+ * attempted, the same duplicate-submission guard as before, just
+ * covering a batch instead of one file. */
 export default function GalleryField({
   label,
   name,
@@ -27,16 +39,20 @@ export default function GalleryField({
   const [isPending, startTransition] = useTransition();
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!file) return;
+    if (files.length === 0) return;
     setError(null);
-    const fd = new FormData();
-    fd.set("file", file);
     startTransition(async () => {
-      const result = await uploadImage(fd);
-      if (result.error) setError(result.error);
-      else if (result.url) setUrls((prev) => [...prev, result.url!]);
+      let lastError: string | null = null;
+      for (const file of files) {
+        const fd = new FormData();
+        fd.set("file", file);
+        const result = await uploadImage(fd);
+        if (result.error) lastError = result.error;
+        else if (result.url) setUrls((prev) => [...prev, result.url!]);
+      }
+      if (lastError) setError(lastError);
     });
   }
 
@@ -100,8 +116,8 @@ export default function GalleryField({
       )}
 
       <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30">
-        {isPending ? "Uploading…" : "Add Image"}
-        <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={isPending} />
+        {isPending ? "Uploading…" : "Add Images"}
+        <input type="file" accept="image/*" multiple className="hidden" onChange={handleFile} disabled={isPending} />
       </label>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
