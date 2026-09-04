@@ -283,6 +283,7 @@ export default function EventForm({
       <ParticipationRoster
         eventId={event?.id ?? null}
         occurrences={occurrences}
+        vendorRostersByOccurrence={vendorRostersByOccurrence}
         initialParticipants={participants}
       />
 
