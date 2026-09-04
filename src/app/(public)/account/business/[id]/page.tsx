@@ -7,6 +7,7 @@ import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { getCategories, getProductCategories } from "@/lib/data";
+import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import AccountNav from "../../AccountNav";
 import {
   addAppearanceFromEvent,
@@ -549,6 +550,24 @@ export default async function ManageBusinessPage({
             >
               Upgrade to Pro
             </Link>
+
+            {/* Pro Invite Sharing UX pass — small, secondary alternative
+                to the Stripe upgrade right above it, for an owner who has
+                a complimentary invite code instead of paying. Reuses the
+                exact same goToRedeemCode -> /redeem/[code] routing/
+                redemption flow as /join and /account (no separate
+                redemption implementation), with this already-authorized
+                business_id passed through as a hint so /redeem/[code]
+                can skip straight to "Apply Pro to {business.name}"
+                instead of showing a business selector. */}
+            <details className="group mt-3">
+              <summary className="cursor-pointer text-center text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+                Have a Pro invite code instead?
+              </summary>
+              <div className="mt-2">
+                <ProInviteCodeEntry returnTo={`/account/business/${id}`} businessId={id} />
+              </div>
+            </details>
           </div>
         )}
 

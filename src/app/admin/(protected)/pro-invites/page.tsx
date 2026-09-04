@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { getAdminProInvites } from "@/lib/admin/queries";
 import { formatDateShort } from "@/lib/format";
+import { getPublicOrigin } from "@/lib/site-url";
+import CopyButton from "@/components/admin/CopyButton";
 import { createProInvite } from "./actions";
+
+// Pro Invite Sharing UX pass — compact, text-only (no border/pill) so the
+// list's own Copy Link/Copy Code stay unobtrusive next to the existing
+// Code -> View/Manage link, per this pass's own "do not clutter" note.
+const listCopyButtonClass = "py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/50 transition hover:text-ink";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +24,7 @@ export default async function AdminProInvitesPage({
 }) {
   const { saved, error } = await searchParams;
   const invites = await getAdminProInvites();
+  const origin = getPublicOrigin();
 
   return (
     <div>
@@ -111,7 +119,7 @@ export default async function AdminProInvitesPage({
       </div>
 
       <div className="mt-6 overflow-x-auto rounded-2xl border border-black/10">
-        <table className="w-full min-w-[720px] text-left text-sm">
+        <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="bg-black/[0.02] text-xs font-semibold uppercase tracking-wide text-ink/50">
             <tr>
               <th className="px-4 py-3">Code</th>
@@ -120,6 +128,7 @@ export default async function AdminProInvitesPage({
               <th className="px-4 py-3">Redemptions</th>
               <th className="px-4 py-3">Expires</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Share</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-black/5">
@@ -150,11 +159,22 @@ export default async function AdminProInvitesPage({
                     {invite.is_active ? "Active" : "Inactive"}
                   </span>
                 </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2 whitespace-nowrap">
+                    <CopyButton
+                      value={`${origin}/join?invite=${invite.code}`}
+                      label="Copy Link"
+                      className={listCopyButtonClass}
+                    />
+                    <span className="text-ink/20">·</span>
+                    <CopyButton value={invite.code} label="Copy Code" className={listCopyButtonClass} />
+                  </div>
+                </td>
               </tr>
             ))}
             {invites.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-sm text-ink/50">
+                <td colSpan={7} className="px-4 py-6 text-center text-sm text-ink/50">
                   No invites yet.
                 </td>
               </tr>

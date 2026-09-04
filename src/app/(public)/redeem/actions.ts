@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember } from "@/lib/permissions";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
+import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 
 /**
  * Pro Invite / Complimentary Access Codes — the one real redemption path.
@@ -84,4 +85,47 @@ export async function redeemProInvite(code: string, formData: FormData) {
     granted_until: result.granted_until,
   });
   redirect(`${redirectPath}?${params.toString()}`);
+}
+
+/**
+ * Pro Invite Sharing UX pass — manual code entry (see ProInviteCodeEntry,
+ * used on /join and /account). This is a PURE ROUTING helper: it performs
+ * no redemption, no entitlement logic, no invite lookup of its own — it
+ * only normalizes whatever the visitor typed and hands off to the exact
+ * same /redeem/[code] flow the existing findmi.app/join?invite=CODE link
+ * already uses. All real validation (does the code exist, is it active/
+ * expired/at its limit, which business it applies to) still happens
+ * exclusively in that route and redeemProInvite() above — this function
+ * has no access to, and makes no query against, pro_invites at all.
+ *
+ * `str()` (lib/admin/form-helpers) already trims whitespace. A blank
+ * submission is also blocked client-side by the input's own `required`
+ * attribute (see ProInviteCodeEntry) — this still checks again
+ * server-side rather than trusting that alone, redirecting back to
+ * wherever the visitor submitted from (return_to) unchanged rather than
+ * navigating to a meaningless /redeem/ path. return_to is a same-origin
+ * hidden field this action's own callers set to "/join"/"/account", but
+ * it still goes through getSafeRedirect (same as every other
+ * client-supplied redirect target in this app — see lib/auth/
+ * safe-redirect.ts) rather than being redirected to directly, since a
+ * form field is still visitor-controllable in a crafted request.
+ *
+ * `business` is an OPTIONAL hint (Business Manager's own "Redeem Pro
+ * Invite Code" entry passes its already-known, already-authorized
+ * business id here) — carried through as the exact same `?business=`
+ * query param /redeem/[code] already reads from the founder's own
+ * just-created-business handoff (see account/business/actions.ts's
+ * createMemberBusiness). This function never validates it — /redeem/
+ * [code] only ever honors it after confirming it's in the signed-in
+ * visitor's OWN owned-business list, so a tampered/foreign id here just
+ * falls back to that page's normal selector, never a security boundary.
+ */
+export async function goToRedeemCode(formData: FormData) {
+  const returnTo = getSafeRedirect(str(formData, "return_to"));
+  const code = str(formData, "code");
+  if (!code) redirect(returnTo);
+
+  const businessHint = str(formData, "business");
+  const query = businessHint ? `?business=${encodeURIComponent(businessHint)}` : "";
+  redirect(`/redeem/${encodeURIComponent(code)}${query}`);
 }

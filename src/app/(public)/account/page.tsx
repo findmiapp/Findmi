@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import NavIcon from "@/components/NavIcon";
+import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import type { Profile } from "@/lib/types";
 import AccountSync from "./AccountSync";
 
@@ -211,6 +212,15 @@ export default async function AccountHomePage({
             ))}
           </div>
         )}
+      </section>
+
+      {/* Pro Invite Sharing UX pass — lets an existing signed-in vendor
+          apply a code they were given verbally/by text/on a printed card,
+          against whichever of their businesses they choose on the next
+          screen (/redeem/[code], the same existing secure flow). Placed
+          right under My Businesses since that's who this is for. */}
+      <section className="mt-8">
+        <ProInviteCodeEntry returnTo="/account" />
       </section>
 
       {/* 4. Pending Claims — separate section, same status copy/actions as

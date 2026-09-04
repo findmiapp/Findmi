@@ -3,9 +3,13 @@ import { notFound } from "next/navigation";
 import { getAdminProInviteById, getProInviteRedemptions } from "@/lib/admin/queries";
 import { formatDateShort } from "@/lib/format";
 import { getPublicOrigin } from "@/lib/site-url";
+import CopyButton from "@/components/admin/CopyButton";
 import { setProInviteActive } from "../actions";
 
 export const dynamic = "force-dynamic";
+
+const copyButtonClass =
+  "shrink-0 rounded-full bg-ink px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-ink/85";
 
 export default async function AdminProInviteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,6 +18,12 @@ export default async function AdminProInviteDetailPage({ params }: { params: Pro
 
   const redemptions = await getProInviteRedemptions(id);
   const toggleActive = setProInviteActive.bind(null, invite.id, !invite.is_active);
+  // Complete, production-ready shareable URL — getPublicOrigin() resolves
+  // FindMi's real public origin (NEXT_PUBLIC_SITE_URL, falling back to
+  // VERCEL_URL/localhost only when that isn't set — see lib/site-url.ts),
+  // never a hardcoded preview host. Same helper Stripe Checkout already
+  // relies on elsewhere for absolute URLs.
+  const joinUrl = `${getPublicOrigin()}/join?invite=${invite.code}`;
 
   return (
     <div>
@@ -78,11 +88,18 @@ export default async function AdminProInviteDetailPage({ params }: { params: Pro
         )}
       </dl>
 
-      <div className="mt-6 rounded-2xl border border-black/10 p-4">
-        <p className="text-sm font-semibold text-ink">Join Link</p>
-        <p className="mt-1 break-all font-mono text-xs text-ink/60">
-          {getPublicOrigin() + "/join?invite=" + invite.code}
-        </p>
+      <div className="mt-6 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Invite Link</p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <p className="min-w-0 flex-1 break-all font-mono text-xs text-ink/70">{joinUrl}</p>
+          <CopyButton value={joinUrl} label="Copy Link" className={copyButtonClass} />
+        </div>
+
+        <p className="mt-4 text-xs font-bold uppercase tracking-wide text-findmi-700">Invite Code</p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <p className="font-mono text-sm font-semibold text-ink">{invite.code}</p>
+          <CopyButton value={invite.code} label="Copy Code" className={copyButtonClass} />
+        </div>
       </div>
 
       <h2 className="mt-8 font-display text-lg font-semibold tracking-tight text-ink">Redemption History</h2>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import {
   JOIN_CARD_KEYS,
   getJoinPageSections,
@@ -169,6 +170,15 @@ export default async function JoinPage({
             </div>
           </div>
         )}
+
+        {/* Pro Invite Sharing UX pass — Option B (manual code entry) for a
+            vendor given a code verbally/by text/on a printed card, rather
+            than the findmi.app/join?invite=CODE link (Option A, handled
+            above). Deliberately quiet/secondary — plain bordered box, not
+            styled like Free/Pro. */}
+        <div className="mx-auto mt-6 max-w-xl">
+          <ProInviteCodeEntry returnTo="/join" />
+        </div>
 
         {/* Not hiding pricing, just being upfront that this step doesn't
             collect payment — a plain, welcoming line, not an "apply for
