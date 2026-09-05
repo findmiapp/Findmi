@@ -45,6 +45,8 @@ import {
 } from "@/lib/business-orders";
 import { updateOrderItemFulfillment } from "../orders-actions";
 import { FULFILLMENT_LABELS } from "@/lib/commerce/quote";
+import { getBusinessMarketAssignments } from "@/lib/admin/business-markets";
+import { getBusinessMarketLimit } from "@/lib/entitlements";
 import SupabaseImage from "@/components/SupabaseImage";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -98,6 +100,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "findmi-here", label: "FindMi Here" },
   { key: "links", label: "Links & Contact" },
   { key: "plan", label: "Plan & Status" },
+  { key: "market", label: "Market" },
   { key: "followers", label: "Followers" },
   { key: "inquiries", label: "Inquiries" },
   { key: "orders", label: "Orders" },
@@ -276,6 +279,19 @@ export default async function ManageBusinessPage({
   // admin client already established above (requireBusinessMember(id)
   // ran before `admin` was ever created), never a new/looser access path.
   const followerSummary = await getBusinessFollowerSummary(admin, id);
+  // Owner-Facing Market Display V1 — read-only for owners in this pass.
+  // Reuses the exact same admin-only read helper the Admin → Business →
+  // Markets management tab already uses (lib/admin/business-markets.ts),
+  // unmodified — its own `.eq("business_id", id)` is what actually scopes
+  // this to THIS business's assignments, same as every other read on this
+  // page. Same authorize-then-elevate admin client already established
+  // above (requireBusinessMember(id) ran before `admin` was ever
+  // created). No owner mutation path exists anywhere in this file for
+  // business_markets — admin remains the only place that writes it.
+  const marketAssignments = await getBusinessMarketAssignments(admin, id);
+  const primaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
+  const additionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
+  const marketLimit = getBusinessMarketLimit(business);
   // Native Inquiries V1 — same authorize-then-elevate admin client. The
   // list is always fetched (cheap, same pattern as followerSummary
   // above); the detail/thread is only fetched when `open` names one of
@@ -1258,6 +1274,62 @@ export default async function ManageBusinessPage({
                 </details>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Market (Owner-Facing Market Display V1) ──────────────────
+            READ-ONLY for owners in this pass — no insert/update/delete
+            path onto business_markets exists anywhere in this file or in
+            ../actions.ts. Deliberately three visually separate blocks so
+            Based In (home address), Primary Market (general discovery
+            entitlement), and FindMi Here (actual appearance geography,
+            covered in its own tab) are never conflated — an appearance
+            outside this business's Primary Market has no bearing on
+            anything shown here, because nothing here reads appearances
+            at all. */}
+        {activeTab === "market" && (
+          <div className="flex flex-col gap-4">
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Based In</p>
+              <p className="mt-1.5 text-sm text-ink">{[business.city, business.state].filter(Boolean).join(", ") || "Not set"}</p>
+              <p className="mt-2 text-xs text-ink/45">Your business&rsquo;s home address — separate from your Market below.</p>
+            </div>
+
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Primary Market</p>
+              {primaryMarket ? (
+                <p className="mt-1.5 text-sm font-semibold text-ink">{primaryMarket.marketName}</p>
+              ) : (
+                <>
+                  <p className="mt-1.5 text-sm font-semibold text-ink/60">Not assigned yet</p>
+                  <p className="mt-2 text-xs text-ink/45">
+                    Your FindMi Market determines where your business receives general discovery. Your event and
+                    pop-up appearances can still happen anywhere.
+                  </p>
+                  <p className="mt-2 text-xs text-ink/40">Contact FindMi to update this.</p>
+                </>
+              )}
+            </div>
+
+            {additionalMarkets.length > 0 && (
+              <div className={cardClass}>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Markets</p>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {additionalMarkets.map((m) => (
+                    <li key={m.id} className="text-sm text-ink">
+                      {m.marketName}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Market Allowance</p>
+              <p className="mt-1.5 text-sm text-ink">
+                {marketLimit} market{marketLimit === 1 ? "" : "s"} on your current plan
+              </p>
+            </div>
           </div>
         )}
 
