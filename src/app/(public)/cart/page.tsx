@@ -205,7 +205,16 @@ function CartLineRow({ line, onChanged }: { line: CartLineQuote; onChanged: () =
                   updateFulfillment(line.lineId, method as CartLineQuote["fulfillmentMethod"], appearanceId || null);
                   onChanged();
                 }}
-                className="mt-1 rounded-lg border border-black/10 bg-white px-2 py-1 text-xs text-ink"
+                // A native <select> sizes itself to its content (the
+                // selected option's text) by default, ignoring the flex
+                // parent's min-w-0 — a long fulfillment label (venue +
+                // date/time range + price) was pushing this element,
+                // and with it the whole cart row/page, wider than the
+                // mobile viewport. w-full/max-w-full/min-w-0 constrain
+                // the closed control to its card's width; truncate
+                // ellipsizes the closed display only — the native
+                // dropdown's own options still render full-length.
+                className="mt-1 w-full min-w-0 max-w-full truncate rounded-lg border border-black/10 bg-white px-2 py-1 text-xs text-ink"
               >
                 {line.availableFulfillmentOptions.map((o) => (
                   <option key={`${o.method}:${o.appearanceId ?? ""}`} value={`${o.method}:${o.appearanceId ?? ""}`}>
