@@ -35,7 +35,15 @@ export default function EventOccurrenceBusinessRoster({
           <p className="mt-1 text-sm text-ink/55">
             {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
           </p>
-          <EventBusinessRoster businesses={businesses} />
+          {/* key={selected.id} — forces a fresh EventBusinessRoster instance
+              per occurrence, so its internal category-filter selection
+              (active) resets to "All" instead of persisting a category
+              name from the previously selected occurrence that may not
+              exist (or match zero businesses) under the newly selected
+              one. Without this, switching occurrences while a specific
+              category was active could silently filter the new
+              occurrence's roster down to zero visible cards. */}
+          <EventBusinessRoster key={selected.id} businesses={businesses} />
         </>
       )}
     </section>
