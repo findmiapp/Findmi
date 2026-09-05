@@ -15,9 +15,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "FindMi isn't configured yet" }, { status: 503 });
   }
 
-  const { error } = await supabase
-    .from("event_followers")
-    .upsert({ event_id: eventId, email }, { onConflict: "event_id,email" });
+  // Restore Event Follow pass — routed through follow_event() rather than
+  // a direct .from("event_followers").upsert(...): Postgres needs SELECT
+  // visibility under RLS to evaluate an INSERT ... ON CONFLICT target,
+  // and event_followers intentionally has no SELECT policy (same fix
+  // /api/follow already applies for the business-side `followers` table
+  // via follow_business()). See migration follow_event_rpc.
+  const { error } = await supabase.rpc("follow_event", {
+    p_event_id: eventId,
+    p_email: email,
+  });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

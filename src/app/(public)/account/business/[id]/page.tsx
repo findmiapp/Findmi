@@ -34,6 +34,8 @@ import { formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } 
 import { getPublicOrigin } from "@/lib/site-url";
 import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
+import { getBusinessFollowerSummary } from "@/lib/business-followers";
+import SupabaseImage from "@/components/SupabaseImage";
 import type { EventParticipationStatus } from "@/lib/types";
 
 const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
@@ -86,6 +88,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "findmi-here", label: "FindMi Here" },
   { key: "links", label: "Links & Contact" },
   { key: "plan", label: "Plan & Status" },
+  { key: "followers", label: "Followers" },
   // Referral Partner + Discount Foundation — only ever shown/valid when
   // this business actually has a referral_partners row (an admin set
   // them up as a partner); see OWNER_TAB_KEYS/visibleTabs below, which
@@ -243,6 +246,10 @@ export default async function ManageBusinessPage({
   // simply omitted below — never an empty/broken tab.
   const referralPartner = await getReferralPartnerByBusinessId(id);
   const visibleTabs = referralPartner ? OWNER_TABS : OWNER_TABS.filter((t) => t.key !== "referral");
+  // User Identity + Follow Foundation pass — same authorize-then-elevate
+  // admin client already established above (requireBusinessMember(id)
+  // ran before `admin` was ever created), never a new/looser access path.
+  const followerSummary = await getBusinessFollowerSummary(admin, id);
   const activeTab = tab === "referral" && !referralPartner ? "overview" : tab;
   const requestPayoutAction = referralPartner
     ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
@@ -1202,6 +1209,52 @@ export default async function ManageBusinessPage({
                   </div>
                 </details>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Followers (privacy-safe audience view) ──────────────────
+            User Identity + Follow Foundation pass. Total count always
+            shown; individual identity chips ONLY for the subset of
+            account followers who've completed a public FindMi profile
+            (username set) — never email, phone, auth id, or any other
+            private field, and a follower with no username is counted but
+            never named, per this pass's own privacy rule. */}
+        {activeTab === "followers" && (
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Followers</p>
+            <p className="mt-2 font-display text-3xl font-bold tracking-tight text-ink">{followerSummary.totalCount}</p>
+            <p className="mt-1 text-sm text-ink/50">
+              {followerSummary.accountCount} with a FindMi account
+              {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount} email-only (legacy)`}
+            </p>
+
+            {followerSummary.profiles.length > 0 ? (
+              <div className="mt-4 flex flex-col gap-2">
+                {followerSummary.profiles.map((p) => (
+                  <Link
+                    key={p.username}
+                    href={`/user/${p.username}`}
+                    className="flex items-center gap-2.5 rounded-xl border border-black/5 p-2 transition hover:bg-black/[0.02]"
+                  >
+                    <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-mist">
+                      {p.avatar_url && (
+                        <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="32px" className="object-cover" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{p.display_name || `@${p.username}`}</p>
+                      {p.display_name && <p className="truncate text-xs text-ink/45">@{p.username}</p>}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              followerSummary.accountCount > 0 && (
+                <p className="mt-4 text-xs text-ink/40">
+                  None of your account followers have a public FindMi profile yet.
+                </p>
+              )
             )}
           </div>
         )}

@@ -568,6 +568,30 @@ export interface Profile {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
+  // User Identity + Follow Foundation pass — opt-in PUBLIC identity
+  // fields. A profile only becomes publicly readable (see profiles_
+  // select_public RLS) once username is set; until then these three stay
+  // exactly as private as display_name/avatar_url already were. Never
+  // add an email/phone/auth-metadata field to this interface — see the
+  // migration's own privacy note.
+  username: string | null;
+  bio: string | null;
+  location_label: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** The subset of Profile ever shown to anyone other than the account
+ * owner — used by /user/[username], business/event follower lists, and
+ * anywhere else a "who is this" chip renders for someone else's account.
+ * Deliberately its own type (not just "reuse Profile") so a future field
+ * added to Profile for account-owner-only use (should one ever exist)
+ * doesn't silently leak into a public rendering path just by being on the
+ * same interface. */
+export interface PublicProfile {
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  location_label: string | null;
 }

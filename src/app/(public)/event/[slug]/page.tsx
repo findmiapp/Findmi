@@ -7,7 +7,7 @@ import ClaimButton from "@/components/ClaimButton";
 import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
-import EventFollowForm from "@/components/EventFollowForm";
+import EventFollowButton from "@/components/EventFollowButton";
 import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import EventOccurrenceCard from "@/components/EventOccurrenceCard";
@@ -170,11 +170,31 @@ export default async function EventPage({
           the cover. Light containment only: subtle border, restrained
           radius, no heavy card styling. */}
       <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-6">
-        {category && (
-          <div className="mb-2">
-            <CategoryPill>{category.name}</CategoryPill>
-          </div>
-        )}
+        {/* Restore Event Follow pass — Follow lives here now: the top
+            identity/header area, same prominence Business's own Follow
+            button gets beside its logo/name, and visually distinct from
+            both the Tier A booking actions (RSVP/Tickets/Vendor Apply)
+            below and the Tier B utility row (Save/Directions/Share) —
+            never confused with either. Previously just a "#follow" jump
+            link down to a buried, non-toggling email-capture section;
+            that section and link are both removed below in favor of this
+            one real Follow/Following control. event.follow_enabled is
+            the same existing founder-configurable gate the old jump link
+            already respected — unchanged here, just relocated. */}
+        <div className="flex items-start justify-between gap-3">
+          {category ? (
+            <div className="mb-2">
+              <CategoryPill>{category.name}</CategoryPill>
+            </div>
+          ) : (
+            <span />
+          )}
+          {showFollow && (
+            <div className="shrink-0">
+              <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} size="compact" />
+            </div>
+          )}
+        </div>
         <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{event.name}</h1>
 
         {hasOccurrences ? (
@@ -293,14 +313,6 @@ export default async function EventPage({
                 className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
               />
             )
-          )}
-          {showFollow && (
-            <a
-              href="#follow"
-              className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-            >
-              Follow
-            </a>
           )}
           {event.external_url && (
             <a
@@ -470,20 +482,6 @@ export default async function EventPage({
           <section className="mt-8">
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Run By</p>
             <p className="mt-1 text-base font-semibold text-ink">{event.organizer_name}</p>
-          </section>
-        )}
-
-        {showFollow && (
-          <section id="follow" className="mt-12 scroll-mt-20">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">
-              Follow This Event
-            </h2>
-            <p className="mt-2 max-w-md text-sm text-ink/60">
-              We&rsquo;ll keep you posted on updates to {event.name}.
-            </p>
-            <div className="mt-4 max-w-md">
-              <EventFollowForm eventId={event.id} eventName={event.name} />
-            </div>
           </section>
         )}
 

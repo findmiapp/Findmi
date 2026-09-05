@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
@@ -53,7 +54,28 @@ export default async function ProfilePage({
           </p>
         )}
 
-        <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+        {/* User Identity + Follow Foundation pass — a username is what
+            turns this private account record into a public FindMi
+            identity (@username, shown to Business/Event owners as a
+            follower and visitable at /user/[username]) — never required
+            to use the rest of FindMi (no signup blocker), so this reads
+            as an invitation, not a warning, when one hasn't been chosen
+            yet. */}
+        {profile?.username ? (
+          <p className="mt-4 text-sm text-ink/50">
+            Your public profile:{" "}
+            <Link href={`/user/${profile.username}`} className="font-semibold text-findmi-700 hover:underline">
+              @{profile.username}
+            </Link>
+          </p>
+        ) : (
+          <p className="mt-4 rounded-xl border border-findmi/20 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+            Choose a username below to finish setting up your public FindMi profile — optional, but it&rsquo;s how
+            businesses and events you follow will recognize you.
+          </p>
+        )}
+
+        <div className="mt-4 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <form action={updateProfile} className="flex flex-col gap-4">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Display name</span>
@@ -63,6 +85,46 @@ export default async function ProfilePage({
                 defaultValue={profile?.display_name ?? ""}
                 className={inputClass}
               />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Username</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-ink/40">@</span>
+                <input
+                  type="text"
+                  name="username"
+                  defaultValue={profile?.username ?? ""}
+                  placeholder={profile?.username ? undefined : "choose_a_username"}
+                  pattern="[a-z0-9_]{3,20}"
+                  maxLength={20}
+                  className={inputClass}
+                />
+              </div>
+              <span className="mt-1 block text-xs text-ink/45">
+                3-20 characters: lowercase letters, numbers, underscores. Leave blank to keep things as they are.
+              </span>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Short bio (optional)</span>
+              <textarea
+                name="bio"
+                defaultValue={profile?.bio ?? ""}
+                rows={3}
+                maxLength={280}
+                className={`${inputClass} resize-y`}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Location (optional)</span>
+              <input
+                type="text"
+                name="location_label"
+                defaultValue={profile?.location_label ?? ""}
+                placeholder="e.g. Brooklyn, NY"
+                maxLength={80}
+                className={inputClass}
+              />
+              <span className="mt-1 block text-xs text-ink/45">A general area only — never an exact address.</span>
             </label>
             <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
               Save Changes
