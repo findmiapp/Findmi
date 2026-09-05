@@ -6,10 +6,18 @@ import {
   JOIN_CARD_KEYS,
   getJoinPageSections,
   resolveJoinCard,
+  resolveJoinClaimBusiness,
+  resolveJoinFreeCard,
   resolveJoinGlobal,
   resolveJoinHero,
+  resolveJoinInviteSection,
+  resolveJoinMoreWays,
+  resolveJoinProExtra,
+  resolveJoinReassurance,
   resolveJoinWhatYouGet,
   type ResolvedJoinCard,
+  type ResolvedJoinFreeCard,
+  type ResolvedJoinProExtra,
 } from "@/lib/join-page";
 
 // Launch-simplification pass — Stripe checkout/onboarding is intentionally
@@ -48,12 +56,15 @@ type PlanCardData = Pick<
 // mechanism (see account/business/new/page.tsx and lib/auth/
 // safe-redirect.ts) — no new auth/session infrastructure.
 const PRO_NATIVE_CTA_URL = "/account/business/new?plan=pro";
-// Pro Positioning pass — this pass's own exact requested CTA wording.
-// Same override pattern the previous pass already established for
-// ctaUrl: the founder's own cta_label admin field stops being what
-// renders for this one card, everything else they edit (heading, price,
-// tagline, features, emphasis) still does.
-const PRO_CTA_LABEL = "Get FindMi Pro";
+// Admin Join Page Editor pass — the CTA URL above stays fixed in code
+// (it's the native signup route, and must keep carrying the referral
+// `ref` param through — see refQuery below — never something admin copy
+// should be able to break). The CTA LABEL is no longer force-overridden
+// here, though: it's back to being fully founder-editable via the same
+// cta_label admin field every other card already uses (resolveJoinCard),
+// with JOIN_CARD_DEFAULTS.card_discovery_pro.ctaLabel ("Get FindMi Pro")
+// as its fallback — matching this pass's own data correction to the live
+// site_sections row so removing this hardcode changes nothing visually.
 
 /** Pro Invite / Complimentary Access Codes pass — findmi.app/join?invite=CODE
  * is the invite link's public entry point. This page has no other use for
@@ -102,12 +113,18 @@ export default async function JoinPage({
   // Discount Foundation pass) — blank string, so nothing changes when
   // there isn't one.
   const allCards = JOIN_CARD_KEYS.map((key) => resolveJoinCard(overrides, key, global.ctaUrl)).map((c) =>
-    c.key === "card_discovery_pro" ? { ...c, ctaUrl: `${PRO_NATIVE_CTA_URL}${refQuery}`, ctaLabel: PRO_CTA_LABEL } : c
+    c.key === "card_discovery_pro" ? { ...c, ctaUrl: `${PRO_NATIVE_CTA_URL}${refQuery}` } : c
   );
   const cards = allCards.filter((c) => c.visible);
   const proCard = cards.find((c) => c.key === "card_discovery_pro") ?? null;
+  const proExtra = resolveJoinProExtra(overrides);
   const secondaryCards = cards.filter((c) => c.key !== "card_discovery_pro");
   const whatYouGet = resolveJoinWhatYouGet(overrides);
+  const free = resolveJoinFreeCard(overrides);
+  const inviteSection = resolveJoinInviteSection(overrides);
+  const claim = resolveJoinClaimBusiness(overrides);
+  const reassurance = resolveJoinReassurance(overrides);
+  const moreWays = resolveJoinMoreWays(overrides);
 
   // The options section (Free, then Pro directly below it, always
   // present, plus whichever secondary cards are enabled) always renders,
@@ -147,20 +164,24 @@ export default async function JoinPage({
             note, read once before either choice below. Not repeated per
             card, not phrased as a warning, and says nothing about
             payment/approval — just sets expectations honestly. */}
-        <p className="mx-auto max-w-xl text-center text-xs text-ink/40">
-          New Listings Are Reviewed Before Appearing Publicly.
-        </p>
+        {reassurance.visible && (
+          <p className="mx-auto max-w-xl text-center text-xs text-ink/40">{reassurance.text}</p>
+        )}
 
-        {/* Free — static copy, not a CMS-driven card (see this pass's
-            own report on what would need a later admin-editability
-            pass). Always shown, genuinely selectable on its own. */}
-        <div className="mx-auto mt-4 max-w-xl">
-          <FreeBasicBox ctaHref={freeCtaHref} />
-        </div>
+        {/* Free — founder-editable via /admin/site/join's Free Plan tab
+            (card_free section) as of the Admin Join Page Editor pass;
+            still not a Stripe/plan-tier-backed "card" like the CMS cards
+            above, just presentation. Hidden entirely when free.visible is
+            off, same convention as the other cards. */}
+        {free.visible && (
+          <div className="mx-auto mt-4 max-w-xl">
+            <FreeBasicBox card={free} ctaHref={freeCtaHref} />
+          </div>
+        )}
 
         {proCard && (
           <div className="mx-auto mt-4 max-w-xl">
-            <ProCard card={proCard} />
+            <ProCard card={proCard} extra={proExtra} />
           </div>
         )}
 
@@ -175,9 +196,15 @@ export default async function JoinPage({
             (findmi.app/join?invite=CODE) is handled by the redirect at
             the top of this page. Only one invite box on this page now —
             the old location below was removed, not duplicated. */}
-        <div className="mx-auto mt-4 max-w-xl">
-          <ProInviteCodeEntry returnTo="/join" />
-        </div>
+        {inviteSection.visible && (
+          <div className="mx-auto mt-4 max-w-xl">
+            <ProInviteCodeEntry
+              returnTo="/join"
+              heading={inviteSection.heading}
+              helperText={inviteSection.helperText ?? undefined}
+            />
+          </div>
+        )}
 
         {/* Conversion Completion pass — secondary escape hatch for a
             business that's already on FindMi (added by the founder, or
@@ -186,17 +213,22 @@ export default async function JoinPage({
             business's real profile, where the existing ClaimButton
             claim flow already lives (business/[slug]/page.tsx). No new
             claim flow, no new route. Deliberately quiet/secondary —
-            plain text link, not a button, not styled like Free/Pro. */}
-        <p className="mx-auto mt-6 max-w-xl text-center text-sm text-ink/50">
-          Already listed on FindMi?{" "}
-          <Link href="/businesses" className="font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
-            Claim your business →
-          </Link>
-        </p>
+            plain text link, not a button, not styled like Free/Pro.
+            Text/link/URL are founder-editable (claim_business section,
+            Additional Sections admin tab) as of the Admin Join Page
+            Editor pass — /businesses stays the safe default. */}
+        {claim.visible && (
+          <p className="mx-auto mt-6 max-w-xl text-center text-sm text-ink/50">
+            {claim.body}{" "}
+            <Link href={claim.ctaUrl} className="font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+              {claim.ctaLabel}
+            </Link>
+          </p>
+        )}
 
         {secondaryCards.length > 0 && (
           <div className="mt-10">
-            <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">More Ways To Join FindMi</p>
+            <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">{moreWays.heading}</p>
             <div className="mt-4">
               <CardGrid cards={secondaryCards} />
             </div>
@@ -223,22 +255,9 @@ export default async function JoinPage({
           {whatYouGet.body && <p className="mt-2 text-sm text-ink/60">{whatYouGet.body}</p>}
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <PreviewTile
-              label="Business Profile"
-              detail="Your story, photos, categories, and contact info in one place."
-            />
-            <PreviewTile
-              label="Products & Services"
-              detail="A real catalog customers can browse — and buy, where you enable it."
-            />
-            <PreviewTile
-              label="FindMi Here"
-              detail="Appearance cards so customers always know where you'll be next."
-            />
-            <PreviewTile
-              label="Events"
-              detail="Join markets and pop-ups as a participating, featured vendor."
-            />
+            {whatYouGet.tiles.map((tile, i) => (
+              <PreviewTile key={`${i}-${tile.label}`} label={tile.label} detail={tile.detail} />
+            ))}
           </div>
 
           {whatYouGet.ctaUrl && (
@@ -367,37 +386,32 @@ function CheckGlyph() {
  * exact current values vs. the requested replacement values for each.
  * Presentation only: the actual FindMi Here feature/code is completely
  * untouched. */
-function ProCard({ card }: { card: ResolvedJoinCard }) {
+function ProCard({ card, extra }: { card: ResolvedJoinCard; extra: ResolvedJoinProExtra }) {
   const { title, price, priceSuffix, tagline, features, ctaLabel, ctaUrl } = card;
   return (
     <div className="flex flex-col rounded-3xl border border-findmi/40 bg-white p-6 shadow-[0_4px_24px_rgba(20,176,188,0.14)] sm:p-8">
       <h3 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h3>
-      {/* Final Conversion Consistency pass — this pass's own "Core
-          positioning" line, new static content (title/price/priceSuffix/
-          tagline/features stay fully CMS-driven, unchanged). */}
-      <p className="mt-1 text-sm text-ink/60">Build Out Your Complete FindMi Presence.</p>
+      {/* Founder-editable (Pro Plan admin tab, "Billing/supporting label")
+          as of the Admin Join Page Editor pass — title/price/priceSuffix/
+          tagline/features remain fully CMS-driven via the main card form,
+          unchanged. */}
+      <p className="mt-1 text-sm text-ink/60">{extra.billingLabel}</p>
       <p className="mt-2 flex items-baseline gap-1">
         <span className="font-display text-3xl font-bold tracking-tight text-ink">{price}</span>
         {priceSuffix && <span className="text-sm font-medium text-ink/45">{priceSuffix}</span>}
       </p>
-      <p className="mt-1 text-xs text-ink/40">No Automatic Renewal.</p>
+      <p className="mt-1 text-xs text-ink/40">{extra.noRenewalNote}</p>
 
       {/* Mobile Hierarchy pass — FindMi Here leads, directly under price
           and ahead of the general description below, so it's the first
           thing read about Pro rather than something discovered partway
-          down the card. Copy Compression pass — no eyebrow above it
-          anymore, and the copy no longer implies FindMi itself features
-          the business. Final Conversion Consistency pass — the
-          supporting line no longer frames "adding appearances" as the
-          Pro-exclusive benefit (Free can do that too, Passes 1-2); the
-          real Pro-exclusive distinction is the full schedule showing
-          publicly, vs. Free's next-1-only public profile (Pass 2). */}
+          down the card. Admin Join Page Editor pass — this whole
+          highlight block (heading/subheading/body) is now founder-
+          editable via the Pro Plan admin tab; layout/placement unchanged. */}
       <div className="mt-4 rounded-2xl bg-findmi-50 p-4 sm:p-5">
-        <h4 className="font-display text-lg font-bold tracking-tight text-ink">FindMi Here</h4>
-        <p className="mt-1 text-sm font-semibold text-ink/80">Show Customers Where To Find You Next.</p>
-        <p className="mt-1.5 text-sm text-ink/60">
-          Your Full Upcoming Schedule Shows On Your Public Profile — Not Just Your Next Appearance.
-        </p>
+        <h4 className="font-display text-lg font-bold tracking-tight text-ink">{extra.highlightHeading}</h4>
+        <p className="mt-1 text-sm font-semibold text-ink/80">{extra.highlightSubheading}</p>
+        <p className="mt-1.5 text-sm text-ink/60">{extra.highlightBody}</p>
       </div>
 
       {/* General Pro description — founder-editable CMS content
@@ -435,11 +449,14 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
         {ctaLabel}
       </a>
       {/* Conversion Completion pass — concise payment reassurance right
-          under the CTA. Matches the actual native Pro checkout exactly:
-          a one-time Stripe payment (createBusinessProCheckoutSession,
-          untouched), never called a subscription, no renewal price
-          stated since none is finalized. */}
-      <p className="mt-2 text-center text-xs text-ink/40">$99 For One Year Of FindMi Pro.</p>
+          under the CTA. Admin Join Page Editor pass — text is founder-
+          editable (Pro Plan tab, "Price reassurance line," explicitly
+          marked in that field's own hint as display copy only): the
+          actual one-time Stripe charge always comes from
+          BUSINESS_PRO_INTRO_PRICE_CENTS server-side
+          (createBusinessProCheckoutSession, untouched), never from
+          whatever text is typed here. */}
+      <p className="mt-2 text-center text-xs text-ink/40">{extra.priceFootnote}</p>
     </div>
   );
 }
@@ -459,7 +476,8 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
  * language); Pro's distinction is showing the FULL upcoming schedule
  * publicly, plus gallery/products/full profile/outbound links.
  * Presentation only — no permissions/features changed. */
-function FreeBasicBox({ ctaHref }: { ctaHref: string }) {
+function FreeBasicBox({ card, ctaHref }: { card: ResolvedJoinFreeCard; ctaHref: string }) {
+  const { title, price, shortTagline, description, disclosureLabel, includedFeatures, requiresProFeatures, ctaLabel } = card;
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 sm:p-5">
       {/* Typography Polish pass — "Free" and "$0" now match the Pro
@@ -468,78 +486,54 @@ function FreeBasicBox({ ctaHref }: { ctaHref: string }) {
           Pro's prominent "$99". Sized text-2xl (vs. Pro's text-3xl) —
           reuses the same size PlanCard already uses for its own price —
           so the card stays visually quieter than Pro overall while the
-          price itself no longer looks like an afterthought. $0/meaning
-          unchanged. */}
+          price itself no longer looks like an afterthought. Admin Join
+          Page Editor pass — title/price/shortTagline/description/feature
+          lists/CTA label are now founder-editable (Free Plan admin tab,
+          card_free section); this box's own visible/hidden toggle lives
+          there too. */}
       <p className="flex items-baseline gap-1.5">
-        <span className="font-display text-2xl font-bold tracking-tight text-ink">Free</span>
+        <span className="font-display text-2xl font-bold tracking-tight text-ink">{title}</span>
         <span className="text-sm text-ink/40">·</span>
-        <span className="font-display text-2xl font-bold tracking-tight text-ink">$0</span>
+        <span className="font-display text-2xl font-bold tracking-tight text-ink">{price}</span>
       </p>
-      <p className="mt-1 text-sm font-semibold text-ink/70">Get Your Business On FindMi.</p>
-      <p className="mt-1.5 text-sm text-ink/60">
-        Create Your Basic Profile And Appear On Event Pages When Participating Organizers Add Your Business.
-      </p>
+      <p className="mt-1 text-sm font-semibold text-ink/70">{shortTagline}</p>
+      <p className="mt-1.5 text-sm text-ink/60">{description}</p>
 
       <details className="group mt-3">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-ink/50 [&::-webkit-details-marker]:hidden">
-          View What&rsquo;s Included
+          {disclosureLabel}
           <ChevronGlyph className="transition-transform group-open:rotate-180" />
         </summary>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Included</p>
-            {/* Final Conversion Consistency pass — Free CAN add/manage
-                unlimited appearances (Passes 1-2); its public profile
-                just shows only the next 1 (Pass 2). That distinction —
-                not "no appearances" — is what belongs here and in
-                Requires Pro below. */}
             <ul className="mt-2 flex flex-col gap-1.5 text-sm text-ink/70">
-              <li className="flex items-start gap-2">
-                <CheckGlyph />
-                <span>Logo + Cover Image &amp; Basic Profile</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckGlyph />
-                <span>Show Your Next Upcoming Appearance</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckGlyph />
-                <span>Appear On Participating Event/Vendor Rosters</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckGlyph />
-                <span>FindMi Search &amp; Discovery</span>
-              </li>
+              {includedFeatures.map((f, i) => (
+                <li key={`${i}-${f}`} className="flex items-start gap-2">
+                  <CheckGlyph />
+                  <span>{f}</span>
+                </li>
+              ))}
             </ul>
           </div>
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Requires Pro</p>
             {/* Tasteful, not aggressive: muted text + line-through, same
-                small size as the Included column, no red/warning color.
-                "Full upcoming schedule" (not "FindMi Here") — Free
-                already gets FindMi Here, just limited to its next 1. */}
+                small size as the Included column, no red/warning color. */}
             <ul className="mt-2 flex flex-col gap-1.5 text-sm text-ink/35 line-through decoration-ink/25">
-              <li>Full Upcoming Schedule</li>
-              <li>Gallery</li>
-              <li>Products &amp; Services</li>
-              <li>Website &amp; Social Links</li>
-              <li>Full Business Profile</li>
+              {requiresProFeatures.map((f, i) => (
+                <li key={`${i}-${f}`}>{f}</li>
+              ))}
             </ul>
           </div>
         </div>
       </details>
 
-      {/* Final Conversion Consistency pass — the old footnote here
-          ("Want to add where you'll be next? Upgrade to Pro.") was
-          removed: it's now FALSE — Free can add/manage unlimited
-          appearances (Passes 1-2). The accurate Free/Pro distinction
-          (next-1 vs. full schedule) is already stated in the Included/
-          Requires Pro comparison above; no replacement note needed. */}
       <Link
         href={ctaHref}
         className="mt-4 flex h-11 items-center justify-center rounded-full border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
       >
-        Start with Basic
+        {ctaLabel}
       </Link>
     </div>
   );

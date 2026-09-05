@@ -12,10 +12,25 @@ import { goToRedeemCode } from "@/app/(public)/redeem/actions";
  * submission client-side (no navigation at all); goToRedeemCode
  * re-checks server-side too rather than trusting that alone.
  */
-export default function ProInviteCodeEntry({ returnTo, businessId }: { returnTo: string; businessId?: string }) {
+export default function ProInviteCodeEntry({
+  returnTo,
+  businessId,
+  heading = "Have a Pro Invite Code?",
+  helperText,
+}: {
+  returnTo: string;
+  businessId?: string;
+  // Admin Join Page Editor pass — /join passes its own founder-editable
+  // heading/helperText (lib/join-page.ts's resolveJoinInviteSection);
+  // every other caller (account, account/business/[id]) omits these and
+  // keeps rendering exactly as before.
+  heading?: string;
+  helperText?: string | null;
+}) {
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4">
-      <p className="text-sm font-semibold text-ink/70">Have a Pro Invite Code?</p>
+      <p className="text-sm font-semibold text-ink/70">{heading}</p>
+      {helperText && <p className="mt-1 text-xs text-ink/50">{helperText}</p>}
       <form action={goToRedeemCode} className="mt-2 flex flex-col gap-2 sm:flex-row">
         <input type="hidden" name="return_to" value={returnTo} />
         {businessId && <input type="hidden" name="business" value={businessId} />}
