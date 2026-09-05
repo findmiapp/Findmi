@@ -6,7 +6,14 @@ import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import BusinessFilters from "@/components/discover/BusinessFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
 import SortSelect from "@/components/discover/SortSelect";
-import { getActiveMarkets, getCategories, getNextAppearanceHints, searchBusinesses, type BusinessSort } from "@/lib/data";
+import {
+  getActiveMarkets,
+  getCategories,
+  getMarketAreaLabel,
+  getNextAppearanceHints,
+  searchBusinesses,
+  type BusinessSort,
+} from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Businesses",
@@ -27,8 +34,9 @@ interface Params {
   location?: string;
   /** Business Directory Market Filtering V1 — a FindMi Market slug
    * (never "Region"), completely independent of `location` (Based In
-   * free-text) above. Absent = "All Markets" = current unfiltered
-   * behavior, unchanged. */
+   * free-text) above. Absent = "All Areas" = current unfiltered
+   * behavior, unchanged. Shown to consumers as "Area" (Market Management
+   * + Plan Market Allowances V1) — the `market` param name is unchanged. */
   market?: string;
   featured?: string;
   founding?: string;
@@ -75,7 +83,10 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   if (sort !== "recommended") baseParams.set("sort", sort);
 
   const categoryName = categories.find((c) => c.slug === params.category)?.name;
-  const marketName = markets.find((m) => m.slug === params.market)?.name;
+  const marketAreaLabel = (() => {
+    const found = markets.find((m) => m.slug === params.market);
+    return found ? getMarketAreaLabel(found) : undefined;
+  })();
   const chips: ActiveFilterChip[] = [];
   const withoutParam = (key: string) => {
     const p = new URLSearchParams(baseParams);
@@ -83,7 +94,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
   };
   if (params.q) chips.push({ label: `"${params.q}"`, href: withoutParam("q") });
-  if (params.market) chips.push({ label: marketName ?? params.market, href: withoutParam("market") });
+  if (params.market) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
   if (featured) chips.push({ label: "Featured", href: withoutParam("featured") });
@@ -137,7 +148,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
         <div className="mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
           <p className="text-sm text-ink/60">
             {filtering
-              ? `No businesses matched${categoryName ? ` ${categoryName}` : ""}${marketName ? ` in ${marketName}` : params.market ? ` in that market` : ""}${params.location ? ` in ${params.location}` : ""}.`
+              ? `No businesses matched${categoryName ? ` ${categoryName}` : ""}${marketAreaLabel ? ` in ${marketAreaLabel}` : params.market ? ` in that area` : ""}${params.location ? ` in ${params.location}` : ""}.`
               : "No businesses yet — check back soon."}
           </p>
           {filtering && (

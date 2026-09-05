@@ -1,6 +1,13 @@
 import { getAllMembershipPlans } from "@/lib/admin/membership-queries";
+import { getPlanMarketLimits } from "@/lib/admin/plan-market-limits";
 import SubmitBar from "@/components/admin/SubmitBar";
-import { savePlans } from "./actions";
+import { savePlanMarketLimits, savePlans } from "./actions";
+
+const PLAN_TIER_LABELS: Record<string, string> = {
+  free: "Free",
+  pro: "Pro",
+  pro_seller: "Pro Seller",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +18,7 @@ export default async function AdminPlansPage({
 }) {
   const { saved, error } = await searchParams;
   const plans = await getAllMembershipPlans();
+  const planMarketLimits = await getPlanMarketLimits();
 
   return (
     <div>
@@ -90,6 +98,54 @@ export default async function AdminPlansPage({
 
         <SubmitBar cancelHref="/admin" />
       </form>
+
+      {/* Market Management + Plan Market Allowances V1 — a SEPARATE
+          configuration system from the Membership Plans list above
+          (membership_plans, the legacy Founding Membership funnel's own
+          plans/market_limit). This section governs the business
+          plan_tier column's (Free/Pro/Pro Seller) own Market allowance —
+          the configurable backing store for getBusinessMarketLimit
+          (lib/entitlements.ts), which used to hardcode every tier to 1.
+          Pro Seller is included here structurally (so the founder can
+          configure it whenever seller work ships) without launching it —
+          no pricing/checkout/Stripe change accompanies this. */}
+      <div className="mt-10 border-t border-black/10 pt-8">
+        <h2 className="font-display text-xl font-semibold tracking-tight text-ink">Business Plan Market Allowance</h2>
+        <p className="mt-1 text-sm text-ink/60">
+          Maximum number of active FindMi Markets a business on this plan can appear in. Primary + Additional
+          Markets count toward the same total. Leave blank for Unlimited.
+        </p>
+
+        <form action={savePlanMarketLimits} className="mt-5 flex flex-col gap-3">
+          {planMarketLimits.map((row) => (
+            <div key={row.planTier} className="rounded-2xl border border-black/10 bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-display text-base font-semibold tracking-tight text-ink">
+                  {PLAN_TIER_LABELS[row.planTier] ?? row.planTier}
+                </p>
+                {row.planTier === "pro_seller" && (
+                  <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
+                    Not yet launched
+                  </span>
+                )}
+              </div>
+              <label className="mt-3 block sm:max-w-xs">
+                <span className="mb-1 block text-xs font-medium text-ink/60">Market Allowance</span>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  name={`market_limit_${row.planTier}`}
+                  defaultValue={row.marketLimit ?? ""}
+                  placeholder="Blank = Unlimited"
+                  className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+                />
+              </label>
+            </div>
+          ))}
+          <SubmitBar cancelHref="/admin" saveLabel="Save Market Allowance" />
+        </form>
+      </div>
     </div>
   );
 }

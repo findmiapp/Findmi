@@ -697,7 +697,7 @@ export async function isProductSlugTaken(slug: string, excludeId?: string): Prom
  * Server Action, together with lib/slug's ensureUniqueSlug, so a saved
  * slug is never blank and never collides with an existing row. */
 export async function isSlugTaken(
-  table: "businesses" | "events" | "locations" | "people",
+  table: "businesses" | "events" | "locations" | "people" | "markets",
   slug: string,
   excludeId?: string
 ): Promise<boolean> {

@@ -218,6 +218,20 @@ export interface Market {
   slug: string;
   active: boolean;
   sort_order: number;
+  // Market Management + Plan Market Allowances V1 — all three nullable/
+  // optional so every existing row (still null on all of them) keeps
+  // behaving exactly as before until a founder explicitly sets one via
+  // /admin/markets. `name` remains the internal/admin name; consumer
+  // surfaces must prefer `display_name` when set (see
+  // lib/data.ts's getMarketAreaLabel) but never read/write `slug` or `id`
+  // differently because of it — URLs and every FK stay keyed on those.
+  display_name?: string | null;
+  description?: string | null;
+  // Lightweight, informational only (e.g. NYC -> ["Staten Island",
+  // "Brooklyn", "Manhattan", "Queens", "Bronx"]) — never consulted by any
+  // discovery/entitlement/matching logic, never a join table, never a
+  // second geography taxonomy.
+  areas_included?: string[] | null;
 }
 
 export interface MembershipPlan {

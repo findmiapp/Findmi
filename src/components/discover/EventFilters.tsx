@@ -1,3 +1,4 @@
+import { getMarketAreaLabel } from "@/lib/data";
 import type { Category, Market } from "@/lib/types";
 
 /**
@@ -35,16 +36,16 @@ export default function EventFilters({
   return (
     <div className="flex flex-col gap-4">
       <label className="block">
-        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Market</span>
+        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Area</span>
         <select
           name="market"
           defaultValue={defaultMarket ?? ""}
           className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
         >
-          <option value="">All Markets</option>
+          <option value="">All Areas</option>
           {markets.map((m) => (
             <option key={m.id} value={m.slug}>
-              {m.name}
+              {getMarketAreaLabel(m)}
             </option>
           ))}
         </select>

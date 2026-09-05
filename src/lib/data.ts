@@ -2366,6 +2366,18 @@ export async function getActiveMarkets(): Promise<Market[]> {
   return data ?? [];
 }
 
+/** Market Management + Plan Market Allowances V1 — the one shared
+ * resolver for a Market's CONSUMER-facing label. "Market" stays the
+ * internal/admin/business term everywhere else (business_markets,
+ * ?market= URLs, admin copy) — this is only for text a consumer actually
+ * reads (Area selectors, filter chips, empty-state copy). Prefers the
+ * founder-set display_name; falls back to the same `name` every existing
+ * Market already has, so a Market with no display_name set shows
+ * identically to before this pass existed. */
+export function getMarketAreaLabel(market: Pick<Market, "name" | "display_name">): string {
+  return market.display_name?.trim() || market.name;
+}
+
 // ----------------------------------------------------------------------------
 // People (Part 10) — founders, owners, makers, chefs, creators, operators.
 // Independent entity, many-to-many with businesses via business_people.

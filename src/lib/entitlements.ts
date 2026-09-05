@@ -1,3 +1,4 @@
+import { getSupabase } from "./supabase";
 import type { Business, PlanTier } from "./types";
 
 /**
@@ -52,34 +53,48 @@ export function isPlanTierProSeller(planTier: PlanTier | null | undefined): bool
 }
 
 /**
- * Markets Foundation V1 — the one centralized resolver for how many
- * FindMi Markets (business_markets rows, active primary + additional
- * combined) a business is entitled to hold. Every tier resolves to 1
- * today; callers must always go through this function rather than
- * re-deriving the number from plan_tier themselves, so a later change
- * (Multi-Market, a configurable Pro Seller allowance, a per-business
- * override column) only ever needs to change the body of this one
- * function, never its callers.
+ * Markets Foundation V1 / Market Management + Plan Market Allowances V1
+ * — the one centralized resolver for how many FindMi Markets
+ * (business_markets rows, active primary + additional COMBINED — never
+ * "1 primary + N additional") a business is entitled to hold. Callers
+ * must always go through this function rather than re-deriving the
+ * number from plan_tier themselves, so a later change only ever needs to
+ * change the body of this one function, never its callers.
+ *
+ * The allowance is now founder-configurable per plan_tier (see
+ * /admin/plans' "Business Plan Market Allowance" section) via the
+ * plan_market_limits table, rather than hardcoded here — there is no
+ * built-in assumption that Free/Pro/Pro Seller are all 1 (or all equal
+ * to each other); the founder can set any of the three independently
+ * without a code change. `null` means Unlimited — the same convention
+ * membership_plans.market_limit already uses, never a magic sentinel
+ * number like 999.
+ *
+ * A business-level override column doesn't exist in this codebase today,
+ * so none is introduced here — the plan's own configured allowance is
+ * the sole source of truth.
  */
-export function getBusinessMarketLimit(business: Pick<Business, "plan_tier">): number {
+export async function getBusinessMarketLimit(business: Pick<Business, "plan_tier">): Promise<number | null> {
   return getMarketLimitForPlanTier(business.plan_tier);
 }
 
 /** Bare-value counterpart to getBusinessMarketLimit, same relationship as
  * isPlanTierPro above — for a caller that only has the plan_tier column
- * (e.g. a narrow admin query) rather than a full Business row. */
-export function getMarketLimitForPlanTier(planTier: PlanTier | null | undefined): number {
-  switch (planTier) {
-    case "free":
-      return 1;
-    case "pro":
-      return 1;
-    case "pro_seller":
-      // Future Pro Seller allowance is meant to become configurable
-      // without a schema redesign (see this pass's task) — still a flat
-      // 1 for now since nothing seller-specific exists yet.
-      return 1;
-    default:
-      return 1;
-  }
+ * (e.g. a narrow admin query) rather than a full Business row. Reads the
+ * founder-configured plan_market_limits row for this tier (public-read
+ * RLS — same posture as membership_plans); defaults to the conservative
+ * 1-Market allowance only when Supabase isn't configured or no row
+ * exists yet for this tier (should not happen post-migration, since the
+ * migration seeds all three), never to Unlimited. */
+export async function getMarketLimitForPlanTier(planTier: PlanTier | null | undefined): Promise<number | null> {
+  const tier: PlanTier = planTier ?? "free";
+  const supabase = getSupabase();
+  if (!supabase) return 1;
+  const { data } = await supabase
+    .from("plan_market_limits")
+    .select("market_limit")
+    .eq("plan_tier", tier)
+    .maybeSingle();
+  if (!data) return 1;
+  return data.market_limit; // null = Unlimited, passed through as-is
 }

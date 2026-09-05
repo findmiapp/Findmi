@@ -287,6 +287,7 @@ export default async function AdminDashboardPage() {
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Site &amp; Discovery</h2>
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <ManageCard letter="Ca" label="Categories" description="Homepage category controls." href="/admin/categories" />
+          <ManageCard letter="Ma" label="Markets" description="FindMi Markets, consumer Area names, and areas included." href="/admin/markets" />
           <ManageCard letter="S" label="Site Editor" description="Homepage, navigation, and site content." href="/admin/site" />
         </div>
       </section>

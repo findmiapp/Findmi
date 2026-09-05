@@ -125,7 +125,15 @@ export default async function EditBusinessPage({
   const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
   const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
-  const marketLimit = getBusinessMarketLimit(business);
+  const marketLimit = await getBusinessMarketLimit(business);
+  const activeMarketCount = (activePrimaryMarket ? 1 : 0) + activeAdditionalMarkets.length;
+  // Downgrade/Limit Reduction Safety — a business can legitimately sit
+  // over its plan's current allowance (e.g. the founder lowered it after
+  // markets were already assigned); this never deletes/deactivates
+  // anything automatically (see assignPrimaryMarket/addAdditionalMarket's
+  // own limit checks) — it's surfaced here so the founder can see it and
+  // decide, per this pass's own instruction.
+  const overMarketAllowance = marketLimit !== null && activeMarketCount > marketLimit;
   const activeMarketableOptions = allMarkets.filter((m) => m.active);
   const publicHref = !business.is_demo && business.publication_status === "live" ? `/business/${business.slug}` : null;
   const members = accessByEntity.get(id) ?? [];
@@ -613,9 +621,14 @@ export default async function EditBusinessPage({
                 Market entitlement has no effect on it.
               </p>
               <p className="mt-2 text-xs font-semibold text-ink/60">
-                Entitled to {marketLimit} active market{marketLimit === 1 ? "" : "s"} on the current plan (
-                {business.plan_tier ?? "free"}).
+                {marketLimit === null
+                  ? `${activeMarketCount} active market${activeMarketCount === 1 ? "" : "s"} / Unlimited`
+                  : `${activeMarketCount} active / ${marketLimit} allowed`}{" "}
+                on the current plan ({business.plan_tier ?? "free"}).
               </p>
+              {overMarketAllowance && (
+                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-amber-700">Over allowance</p>
+              )}
             </div>
 
             <div className="rounded-2xl border border-black/10 bg-white p-4">

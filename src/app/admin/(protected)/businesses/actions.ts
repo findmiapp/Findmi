@@ -514,8 +514,11 @@ export async function assignPrimaryMarket(businessId: string, formData: FormData
     const targetAlreadyActive = Boolean(existing?.active);
     const demotesAnotherPrimary = Boolean(currentPrimary && currentPrimary.market_id !== marketId);
     const prospective = activeCount - (demotesAnotherPrimary ? 1 : 0) + (targetAlreadyActive ? 0 : 1);
-    const limit = getBusinessMarketLimit({ plan_tier: business.plan_tier });
-    if (prospective > limit) {
+    // Market Management + Plan Market Allowances V1 — limit is now
+    // founder-configurable and can be null (Unlimited), in which case
+    // this check never blocks (null is never exceeded).
+    const limit = await getBusinessMarketLimit({ plan_tier: business.plan_tier });
+    if (limit !== null && prospective > limit) {
       redirect(
         appendQuery(editPath, {
           error: `This plan is entitled to ${limit} active market${limit === 1 ? "" : "s"} — assigning this would exceed it. Check "Override limit" to correct this deliberately.`,
@@ -586,8 +589,8 @@ export async function addAdditionalMarket(businessId: string, formData: FormData
   const override = bool(formData, "override_limit");
   if (!override) {
     const activeCount = await countActiveBusinessMarkets(supabase, businessId);
-    const limit = getBusinessMarketLimit({ plan_tier: business.plan_tier });
-    if (activeCount + 1 > limit) {
+    const limit = await getBusinessMarketLimit({ plan_tier: business.plan_tier });
+    if (limit !== null && activeCount + 1 > limit) {
       redirect(
         appendQuery(editPath, {
           error: `This plan is entitled to ${limit} active market${limit === 1 ? "" : "s"} — adding this would exceed it. Check "Override limit" to correct this deliberately.`,

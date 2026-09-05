@@ -291,7 +291,9 @@ export default async function ManageBusinessPage({
   const marketAssignments = await getBusinessMarketAssignments(admin, id);
   const primaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const additionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
-  const marketLimit = getBusinessMarketLimit(business);
+  const marketLimit = await getBusinessMarketLimit(business);
+  const activeMarketCount = (primaryMarket ? 1 : 0) + additionalMarkets.length;
+  const overMarketAllowance = marketLimit !== null && activeMarketCount > marketLimit;
   // Native Inquiries V1 — same authorize-then-elevate admin client. The
   // list is always fetched (cheap, same pattern as followerSummary
   // above); the detail/thread is only fetched when `open` names one of
@@ -1328,8 +1330,14 @@ export default async function ManageBusinessPage({
             <div className={cardClass}>
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Market Allowance</p>
               <p className="mt-1.5 text-sm text-ink">
-                {marketLimit} market{marketLimit === 1 ? "" : "s"} on your current plan
+                {marketLimit === null
+                  ? `${activeMarketCount} active market${activeMarketCount === 1 ? "" : "s"} / Unlimited`
+                  : `${activeMarketCount} active / ${marketLimit} allowed`}{" "}
+                on your current plan
               </p>
+              {overMarketAllowance && (
+                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-amber-700">Over allowance</p>
+              )}
             </div>
           </div>
         )}

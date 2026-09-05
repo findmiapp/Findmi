@@ -19,6 +19,7 @@ import {
   getEventCategories,
   getFeaturedBusinesses,
   getHomeCategories,
+  getMarketAreaLabel,
   getNextAppearanceHints,
   getShowcaseBusiness,
   getUpcomingEvents,
@@ -146,17 +147,25 @@ export default async function HomePage({
           never persisted to a cookie/localStorage/session — see
           SortSelect's own note). Reuses that exact URL-param select
           component (already proven on /businesses for `sort`) rather than
-          building a new one; "All Markets" is options[0], so picking it
-          removes the param entirely. Scopes ONLY dynamic business
-          discovery below (rows, category chips, search) — never events,
-          products, appearances, or venues, which never read this param at
-          all. Deliberately NOT in the global header — page-scoped only. */}
+          building a new one; "All Areas" is options[0], so picking it
+          removes the param entirely. Scopes dynamic business AND event
+          discovery below (rows, category chips, search) — never products,
+          appearances, or venues, which never read this param at all.
+          Deliberately NOT in the global header — page-scoped only.
+          Market Management + Plan Market Allowances V1 — consumer-facing
+          label is "Area" (never "Market", the internal/admin/business
+          term); the ?market= URL param itself is unchanged. Option labels
+          prefer each Market's founder-set consumer display name via
+          getMarketAreaLabel. */}
       {markets.length > 0 && (
         <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
           <SortSelect
-            label="Market"
+            label="Area"
             paramName="market"
-            options={[{ value: "", label: "All Markets" }, ...markets.map((m) => ({ value: m.slug, label: m.name }))]}
+            options={[
+              { value: "", label: "All Areas" },
+              ...markets.map((m) => ({ value: m.slug, label: getMarketAreaLabel(m) })),
+            ]}
           />
         </div>
       )}
