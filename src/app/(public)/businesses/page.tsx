@@ -6,7 +6,7 @@ import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import BusinessFilters from "@/components/discover/BusinessFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
 import SortSelect from "@/components/discover/SortSelect";
-import { getCategories, getNextAppearanceHints, searchBusinesses, type BusinessSort } from "@/lib/data";
+import { getActiveMarkets, getCategories, getNextAppearanceHints, searchBusinesses, type BusinessSort } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Businesses",
@@ -25,6 +25,11 @@ interface Params {
   q?: string;
   category?: string;
   location?: string;
+  /** Business Directory Market Filtering V1 — a FindMi Market slug
+   * (never "Region"), completely independent of `location` (Based In
+   * free-text) above. Absent = "All Markets" = current unfiltered
+   * behavior, unchanged. */
+  market?: string;
   featured?: string;
   founding?: string;
   sort?: string;
@@ -38,12 +43,14 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   const featured = params.featured === "1";
   const founding = params.founding === "1";
 
-  const [categories, fetched] = await Promise.all([
+  const [categories, markets, fetched] = await Promise.all([
     getCategories(),
+    getActiveMarkets(),
     searchBusinesses({
       q: params.q,
       categorySlug: params.category,
       location: params.location,
+      marketSlug: params.market,
       featuredOnly: featured,
       foundingMemberOnly: founding,
       sort,
@@ -62,11 +69,13 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   if (params.q) baseParams.set("q", params.q);
   if (params.category) baseParams.set("category", params.category);
   if (params.location) baseParams.set("location", params.location);
+  if (params.market) baseParams.set("market", params.market);
   if (featured) baseParams.set("featured", "1");
   if (founding) baseParams.set("founding", "1");
   if (sort !== "recommended") baseParams.set("sort", sort);
 
   const categoryName = categories.find((c) => c.slug === params.category)?.name;
+  const marketName = markets.find((m) => m.slug === params.market)?.name;
   const chips: ActiveFilterChip[] = [];
   const withoutParam = (key: string) => {
     const p = new URLSearchParams(baseParams);
@@ -74,6 +83,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
   };
   if (params.q) chips.push({ label: `"${params.q}"`, href: withoutParam("q") });
+  if (params.market) chips.push({ label: marketName ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
   if (featured) chips.push({ label: "Featured", href: withoutParam("featured") });
@@ -81,7 +91,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
 
   // Only the fields that actually live inside the Filters sheet count
   // toward its own badge — search has its own always-visible field.
-  const sheetFilterCount = [params.category, params.location, featured, founding].filter(Boolean).length;
+  const sheetFilterCount = [params.market, params.category, params.location, featured, founding].filter(Boolean).length;
 
   const loadMoreHref = (() => {
     const p = new URLSearchParams(baseParams);
@@ -105,6 +115,8 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
           <FilterSheet activeCount={sheetFilterCount}>
             <BusinessFilters
               categories={categories}
+              markets={markets}
+              defaultMarket={params.market}
               defaultCategory={params.category}
               defaultLocation={params.location}
               defaultFeatured={featured}
@@ -125,7 +137,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
         <div className="mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
           <p className="text-sm text-ink/60">
             {filtering
-              ? `No businesses matched${categoryName ? ` ${categoryName}` : ""}${params.location ? ` in ${params.location}` : ""}.`
+              ? `No businesses matched${categoryName ? ` ${categoryName}` : ""}${marketName ? ` in ${marketName}` : params.market ? ` in that market` : ""}${params.location ? ` in ${params.location}` : ""}.`
               : "No businesses yet — check back soon."}
           </p>
           {filtering && (

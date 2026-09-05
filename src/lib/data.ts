@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { getAdminSupabase } from "./admin/supabase-admin";
 import {
   formatAppearanceDateRange,
   getDiscoveryWindowBounds,
@@ -483,6 +484,64 @@ function reorderByIds<T extends { id: string }>(items: T[], ids: string[]): T[] 
   return ids.map((id) => byId.get(id)).filter((item): item is T => Boolean(item));
 }
 
+/**
+ * Business Directory Market Filtering V1 — resolves which businesses are
+ * eligible for a MARKET-SCOPED general discovery view. This is deliberately
+ * separate from Based In (city/state, free-text — see `location` below)
+ * and from appearance/event geography (never consulted here at all): a
+ * business appearing outside its Market does not gain that Market, and
+ * this function has no way to even see appearance/event data since it
+ * only ever reads `markets`/`business_markets`.
+ *
+ * A business counts for a Market when it has an ACTIVE business_markets
+ * row for that market with relationship 'primary' OR 'additional' — both
+ * are general-distribution Markets for discovery purposes; only plan_tier
+ * governs how MANY a business may hold (see getBusinessMarketLimit in
+ * lib/entitlements.ts), never whether a given assignment counts here.
+ *
+ * Uses the admin/service-role client for the business_markets read only
+ * (that table has zero RLS policies for anon/authenticated — see the
+ * business_markets migration; a plain anon read would silently return
+ * empty every time) — the same "trusted server-only code doing a
+ * legitimate non-admin-session read" pattern already used elsewhere for a
+ * zero-RLS-policy table (see /redeem/[code]/page.tsx's own identical
+ * comment for pro_invites). Nothing sensitive is exposed: only which
+ * business ids belong to a market a visitor already explicitly selected,
+ * same sensitivity level as business_categories (already anon-public).
+ * The `markets` row itself is still resolved via the normal anon client,
+ * since that table already has a public "active markets" read policy.
+ *
+ * Returns an empty array — never falls back to "all businesses" — both
+ * when the slug matches no ACTIVE market at all (unknown/typo'd/inactive
+ * slug) and when a real market genuinely has zero eligible businesses
+ * right now. Callers must treat both cases identically: a scoped, empty
+ * result, never an unfiltered one.
+ */
+export async function getBusinessIdsInMarket(marketSlug: string): Promise<string[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  const { data: market } = await supabase
+    .from("markets")
+    .select("id")
+    .eq("slug", marketSlug)
+    .eq("active", true)
+    .maybeSingle();
+  if (!market) return [];
+
+  const admin = getAdminSupabase();
+  if (!admin) return [];
+
+  const { data: rows } = await admin
+    .from("business_markets")
+    .select("business_id")
+    .eq("market_id", market.id)
+    .eq("active", true)
+    .in("relationship", ["primary", "additional"]);
+
+  return (rows ?? []).map((r) => r.business_id as string);
+}
+
 export type BusinessSort = "recommended" | "newest" | "az";
 
 export interface SearchBusinessesParams {
@@ -490,11 +549,21 @@ export interface SearchBusinessesParams {
   categorySlug?: string;
   /** Free-text match against city OR state — the only location data the
    * schema actually has (no structured place/geo table for businesses).
-   * Discovery + Archive V2 Part 5/6. */
+   * Discovery + Archive V2 Part 5/6. Stays completely independent of
+   * marketSlug below — Based In vs. FindMi Market are separate concepts
+   * (see getBusinessIdsInMarket's own comment) and this pass does not
+   * merge them. */
   location?: string;
   /** @deprecated use `location` — kept so existing callers (homepage
    * search, marketplace) that still pass `city` keep working unchanged. */
   city?: string;
+  /** Business Directory Market Filtering V1 — when set, results are
+   * intersected with getBusinessIdsInMarket(marketSlug). Omitted/undefined
+   * preserves the exact prior behavior (no Market scoping at all, a
+   * zero-Market business still shows normally). Never falls back to
+   * unfiltered results for an unknown/inactive slug — see that
+   * function's own comment. */
+  marketSlug?: string;
   featuredOnly?: boolean;
   foundingMemberOnly?: boolean;
   /** "recommended" (default) = is_featured desc, founding_member desc,
@@ -513,6 +582,19 @@ export interface SearchBusinessesParams {
 export async function searchBusinesses(params: SearchBusinessesParams = {}): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
+
+  // Business Directory Market Filtering V1 — resolved and short-circuited
+  // exactly like categoryBusinessIds below: an empty result here (unknown/
+  // inactive slug, or a real market with nobody in it yet) returns []
+  // immediately, never falling through to an unfiltered query. Based In
+  // (`location` below) is untouched by this — the two filters combine
+  // (AND, via two separate .in("id", ...) calls further down), never
+  // merged into one concept.
+  let marketBusinessIds: string[] | null = null;
+  if (params.marketSlug) {
+    marketBusinessIds = await getBusinessIdsInMarket(params.marketSlug);
+    if (marketBusinessIds.length === 0) return [];
+  }
 
   let categoryBusinessIds: string[] | null = null;
   if (params.categorySlug) {
@@ -555,6 +637,12 @@ export async function searchBusinesses(params: SearchBusinessesParams = {}): Pro
   if (params.foundingMemberOnly) query = query.eq("founding_member", true);
   if (categoryBusinessIds) {
     query = query.in("id", categoryBusinessIds);
+  }
+  // A second .in("id", ...) call ANDs with the category one above
+  // (PostgREST applies every filter conjunctively) — equivalent to
+  // intersecting the two id sets, without doing that intersection in JS.
+  if (marketBusinessIds) {
+    query = query.in("id", marketBusinessIds);
   }
 
   if (params.sort === "newest") {

@@ -1,4 +1,4 @@
-import type { Category } from "@/lib/types";
+import type { Category, Market } from "@/lib/types";
 
 /**
  * Business archive filter fields (Discovery/Archive V2 Part 5/15) — real
@@ -8,15 +8,26 @@ import type { Category } from "@/lib/types";
  * now/ratings/price-level — none of those fields exist on `businesses`.
  * Plain form fields, no client JS — submits with the page's own
  * <form method="get"> inside FilterSheet.
+ *
+ * Business Directory Market Filtering V1 — Market is a SEPARATE axis from
+ * Location above: Location is free-text Based In (city/state); Market is
+ * FindMi's own general-discovery distribution boundary
+ * (business_markets), selected from the fixed active-Markets list, never
+ * "Region". Defaults to "All Markets" (no filtering — today's exact
+ * behavior) so this is purely additive for a visitor who never touches it.
  */
 export default function BusinessFilters({
   categories,
+  markets,
+  defaultMarket,
   defaultCategory,
   defaultLocation,
   defaultFeatured,
   defaultFounding,
 }: {
   categories: Category[];
+  markets: Market[];
+  defaultMarket?: string;
   defaultCategory?: string;
   defaultLocation?: string;
   defaultFeatured?: boolean;
@@ -24,6 +35,22 @@ export default function BusinessFilters({
 }) {
   return (
     <div className="flex flex-col gap-4">
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Market</span>
+        <select
+          name="market"
+          defaultValue={defaultMarket ?? ""}
+          className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
+        >
+          <option value="">All Markets</option>
+          {markets.map((m) => (
+            <option key={m.id} value={m.slug}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <label className="block">
         <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Category</span>
         <select
