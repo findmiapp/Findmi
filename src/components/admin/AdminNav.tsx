@@ -40,6 +40,7 @@ const MORE_GROUPS: NavGroup[] = [
       { href: "/admin/people", label: "People", hint: "Directory people" },
       { href: "/admin/locations", label: "Locations", hint: "Venues & places" },
       { href: "/admin/markets", label: "Markets", hint: "FindMi Markets & Area presentation" },
+      { href: "/admin/market-requests", label: "Market Requests", hint: "Geography requested but not yet a Market" },
       { href: "/admin/products", label: "Products", hint: "Business products" },
       { href: "/admin/categories", label: "Categories", hint: "Discovery taxonomy" },
       { href: "/admin/pro-invites", label: "Pro Invites", hint: "Complimentary Pro access codes" },

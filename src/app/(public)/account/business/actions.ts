@@ -921,8 +921,13 @@ const CREATE_FRIENDLY_ERROR: Record<string, string> = {
   // invalid_market are raised by create_owned_business() itself (see
   // that migration); mapped here the same way every other RPC exception
   // already is, never trusted as a client-side-only validation.
-  market_required: "Choose a Primary Market.",
+  market_required: "Choose a Primary Market, or request one below.",
   invalid_market: "That market isn't available. Choose another.",
+  // Consumer Area Picker + Market Requests V1 — raised by
+  // create_owned_business() when BOTH a market_id and requested market
+  // text were submitted; the form itself asks for only one, so this
+  // should only ever surface from a tampered/unusual submission.
+  market_choice_ambiguous: "Choose an existing Market OR request one — not both.",
 };
 
 /** Creates a brand-new business natively — free, no payment, starting
@@ -968,17 +973,28 @@ export async function createMemberBusiness(formData: FormData) {
   const websiteUrl = str(formData, "website_url");
   const instagramUrl = str(formData, "instagram_url");
   const marketId = str(formData, "market_id");
+  // Consumer Area Picker + Market Requests V1 — the alternative to
+  // marketId: the business is still created, but with a linked
+  // market_requests row instead of a business_markets row (see
+  // create_owned_business()'s own new branch). Exactly one of the two
+  // must be present.
+  const requestedMarketText = str(formData, "requested_market_text");
   const authorized = bool(formData, "authorized");
 
   if (!name) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Business name is required."));
   if (!categoryId) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose a category."));
-  // Primary Market During Business Creation V1 — checked here for a fast,
-  // friendly error before any duplicate-check/slug work runs, but
-  // create_owned_business() re-validates existence/active status itself
-  // (market_required/invalid_market) as the real, untrusted-client-input
-  // enforcement — this is only a UX shortcut for the "field left blank"
-  // case, never the actual security boundary.
-  if (!marketId) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose a Primary Market."));
+  // Primary Market During Business Creation V1, extended by Consumer Area
+  // Picker + Market Requests V1 — checked here for a fast, friendly error
+  // before any duplicate-check/slug work runs, but create_owned_business()
+  // re-validates existence/active status/exactly-one-choice itself
+  // (market_required/invalid_market/market_choice_ambiguous) as the real,
+  // untrusted-client-input enforcement — this is only a UX shortcut.
+  if (!marketId && !requestedMarketText) {
+    redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose a Primary Market, or request one below."));
+  }
+  if (marketId && requestedMarketText) {
+    redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose an existing Market OR request one — not both."));
+  }
   if (!authorized) {
     redirect(
       errorRedirectUrl(CREATE_BUSINESS_PATH, "Please confirm you're authorized to create and manage this business.")
@@ -1022,6 +1038,7 @@ export async function createMemberBusiness(formData: FormData) {
     p_website_url: websiteUrl,
     p_instagram_url: instagramUrl,
     p_market_id: marketId,
+    p_requested_market_text: requestedMarketText,
   });
 
   if (error || !created) {

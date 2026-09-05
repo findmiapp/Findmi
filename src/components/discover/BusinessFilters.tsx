@@ -1,5 +1,4 @@
-import { getMarketAreaLabel } from "@/lib/data";
-import type { Category, Market } from "@/lib/types";
+import type { Category } from "@/lib/types";
 
 /**
  * Business archive filter fields (Discovery/Archive V2 Part 5/15) — real
@@ -10,31 +9,22 @@ import type { Category, Market } from "@/lib/types";
  * Plain form fields, no client JS — submits with the page's own
  * <form method="get"> inside FilterSheet.
  *
- * Business Directory Market Filtering V1 — the `market` field is a
- * SEPARATE axis from Location below: Location is free-text Based In
- * (city/state); this is FindMi's own general-discovery distribution
- * boundary (business_markets), selected from the fixed active-Markets
- * list, never "Region". Defaults to "All Areas" (no filtering — today's
- * exact behavior) so this is purely additive for a visitor who never
- * touches it.
- *
- * Market Management + Plan Market Allowances V1 — consumer-facing label
- * is "Area" (the internal/admin/business term "Market" stays everywhere
- * else — the `market` field name and URL param are unchanged). Option
- * labels prefer each Market's founder-set consumer display name.
+ * Consumer Area Picker + Market Requests V1 — the Area/Market field
+ * moved OUT of this sheet into its own standalone, immediate-apply
+ * AreaPicker (src/components/discover/AreaPicker.tsx) rendered directly
+ * on the page, next to this FilterSheet trigger — same searchable
+ * picker shared with the homepage and /events, rather than a plain
+ * <select> duplicated per page. Category/Location/Featured/Founding
+ * still submit together via this sheet's own <form method="get">.
  */
 export default function BusinessFilters({
   categories,
-  markets,
-  defaultMarket,
   defaultCategory,
   defaultLocation,
   defaultFeatured,
   defaultFounding,
 }: {
   categories: Category[];
-  markets: Market[];
-  defaultMarket?: string;
   defaultCategory?: string;
   defaultLocation?: string;
   defaultFeatured?: boolean;
@@ -42,22 +32,6 @@ export default function BusinessFilters({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <label className="block">
-        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Area</span>
-        <select
-          name="market"
-          defaultValue={defaultMarket ?? ""}
-          className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
-        >
-          <option value="">All Areas</option>
-          {markets.map((m) => (
-            <option key={m.id} value={m.slug}>
-              {getMarketAreaLabel(m)}
-            </option>
-          ))}
-        </select>
-      </label>
-
       <label className="block">
         <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Category</span>
         <select

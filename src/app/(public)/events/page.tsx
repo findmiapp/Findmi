@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import HomeEventCard from "@/components/HomeEventCard";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
+import AreaPicker from "@/components/discover/AreaPicker";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import EventFilters from "@/components/discover/EventFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
 import {
   attachEventCategories,
-  getActiveMarkets,
+  getConsumerVisibleMarkets,
   getEventCategories,
   getEventsDiscovery,
   getMarketAreaLabel,
@@ -60,7 +61,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   // live, upcoming event — see that function's own note.
   const [eventCategories, markets, fetchedRaw] = await Promise.all([
     getEventCategories(),
-    getActiveMarkets(),
+    getConsumerVisibleMarkets(),
     getEventsDiscovery({
       when,
       q: params.q,
@@ -96,7 +97,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
 
-  const sheetFilterCount = [params.market, params.category, params.location].filter(Boolean).length;
+  const sheetFilterCount = [params.category, params.location].filter(Boolean).length;
   const filtering = chips.length > 0 || timeKey !== "upNext";
 
   const loadMoreHref = (() => {
@@ -149,11 +150,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <AreaPicker
+            options={markets.map((m) => ({ slug: m.slug, label: getMarketAreaLabel(m), areasIncluded: m.areas_included }))}
+          />
           <FilterSheet activeCount={sheetFilterCount}>
             <EventFilters
               categories={eventCategories}
-              markets={markets}
-              defaultMarket={params.market}
               defaultCategory={params.category}
               defaultLocation={params.location}
             />

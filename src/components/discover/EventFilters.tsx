@@ -1,5 +1,4 @@
-import { getMarketAreaLabel } from "@/lib/data";
-import type { Category, Market } from "@/lib/types";
+import type { Category } from "@/lib/types";
 
 /**
  * Event archive filter fields (Discovery/Archive V2 Part 9/10/15) —
@@ -12,45 +11,22 @@ import type { Category, Market } from "@/lib/types";
  * page, not inside this sheet — it's the dominant axis for event
  * discovery, same treatment the homepage already uses.
  *
- * Consumer Event Market Filtering V1 — Market select mirrors
- * BusinessFilters' own Market select exactly (same markup/behavior,
- * reused rather than a new component). A SEPARATE axis from Location
- * below: Market is FindMi's coarse taxonomy (scoping by each event
- * occurrence's EFFECTIVE physical Market — see lib/event-markets.ts),
- * Location stays the existing free-text city/state refinement; the two
- * intersect rather than one replacing the other.
+ * Consumer Area Picker + Market Requests V1 — the Area/Market field
+ * moved OUT of this sheet into its own standalone, immediate-apply
+ * AreaPicker (src/components/discover/AreaPicker.tsx), the same
+ * searchable picker shared with the homepage and /businesses.
  */
 export default function EventFilters({
   categories,
-  markets,
-  defaultMarket,
   defaultCategory,
   defaultLocation,
 }: {
   categories: Category[];
-  markets: Market[];
-  defaultMarket?: string;
   defaultCategory?: string;
   defaultLocation?: string;
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <label className="block">
-        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Area</span>
-        <select
-          name="market"
-          defaultValue={defaultMarket ?? ""}
-          className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
-        >
-          <option value="">All Areas</option>
-          {markets.map((m) => (
-            <option key={m.id} value={m.slug}>
-              {getMarketAreaLabel(m)}
-            </option>
-          ))}
-        </select>
-      </label>
-
       {categories.length > 0 && (
         <label className="block">
           <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink/50">Category</span>

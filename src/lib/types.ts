@@ -232,6 +232,36 @@ export interface Market {
   // discovery/entitlement/matching logic, never a join table, never a
   // second geography taxonomy.
   areas_included?: string[] | null;
+  // Consumer Area Picker + Market Requests V1 — a Market can be `active`
+  // (valid for internal/business/event assignment) without yet appearing
+  // in consumer Area discovery. Internal/admin/business Market pickers
+  // keep using `active` alone; ONLY the consumer Area picker also
+  // requires this. Defaults true (see the migration) so every existing
+  // Market's consumer visibility is unchanged.
+  consumer_visible?: boolean;
+}
+
+// Consumer Area Picker + Market Requests V1
+export type MarketRequestSource = "consumer" | "business_creation" | "event_creation";
+export type MarketRequestStatus = "pending" | "approved" | "mapped" | "rejected";
+
+export interface MarketRequest {
+  id: string;
+  requested_text: string;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  normalized_key: string;
+  requester_user_id: string | null;
+  requester_email: string | null;
+  source: MarketRequestSource;
+  source_business_id: string | null;
+  source_event_id: string | null;
+  status: MarketRequestStatus;
+  mapped_market_id: string | null;
+  admin_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
 }
 
 export interface MembershipPlan {

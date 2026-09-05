@@ -40,6 +40,7 @@ import {
 import { getAllMarketsForAdmin, getBusinessMarketAssignments } from "@/lib/admin/business-markets";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getBusinessMarketLimit, isBusinessPro, isBusinessProSeller } from "@/lib/entitlements";
+import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import type { PublicationStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -125,6 +126,8 @@ export default async function EditBusinessPage({
   const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
   const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
+  const pendingMarketRequest =
+    !activePrimaryMarket && marketsAdmin ? await getPendingMarketRequestForBusiness(marketsAdmin, id) : null;
   const marketLimit = await getBusinessMarketLimit(business);
   const activeMarketCount = (activePrimaryMarket ? 1 : 0) + activeAdditionalMarkets.length;
   // Downgrade/Limit Reduction Safety — a business can legitimately sit
@@ -648,7 +651,14 @@ export default async function EditBusinessPage({
                   </form>
                 </div>
               ) : (
-                <p className="mt-1 text-sm text-ink/50">None assigned.</p>
+                <>
+                  <p className="mt-1 text-sm text-ink/50">None assigned.</p>
+                  {pendingMarketRequest && (
+                    <p className="mt-1.5 text-xs font-semibold text-amber-700">
+                      Pending Market Request: {pendingMarketRequest.requestedText} — see /admin/market-requests.
+                    </p>
+                  )}
+                </>
               )}
 
               <form action={assignPrimaryMarketAction} className="mt-4 flex flex-col gap-4">

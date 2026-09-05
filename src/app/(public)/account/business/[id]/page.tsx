@@ -47,6 +47,7 @@ import { updateOrderItemFulfillment } from "../orders-actions";
 import { FULFILLMENT_LABELS } from "@/lib/commerce/quote";
 import { getBusinessMarketAssignments } from "@/lib/admin/business-markets";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
+import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -294,6 +295,12 @@ export default async function ManageBusinessPage({
   const marketLimit = await getBusinessMarketLimit(business);
   const activeMarketCount = (primaryMarket ? 1 : 0) + additionalMarkets.length;
   const overMarketAllowance = marketLimit !== null && activeMarketCount > marketLimit;
+  // Consumer Area Picker + Market Requests V1 — a business created via
+  // the "request a missing Market" path has no active Primary Market
+  // yet; show what was actually requested instead of a bare "Not
+  // assigned yet" so the owner isn't left guessing. Never implies an
+  // approved Market — see getPendingMarketRequestForBusiness's own note.
+  const pendingMarketRequest = primaryMarket ? null : await getPendingMarketRequestForBusiness(admin, id);
   // Native Inquiries V1 — same authorize-then-elevate admin client. The
   // list is always fetched (cheap, same pattern as followerSummary
   // above); the detail/thread is only fetched when `open` names one of
@@ -1302,6 +1309,16 @@ export default async function ManageBusinessPage({
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Primary Market</p>
               {primaryMarket ? (
                 <p className="mt-1.5 text-sm font-semibold text-ink">{primaryMarket.marketName}</p>
+              ) : pendingMarketRequest ? (
+                <>
+                  <p className="mt-1.5 text-sm font-semibold text-amber-700">
+                    Pending review — {pendingMarketRequest.requestedText}
+                  </p>
+                  <p className="mt-2 text-xs text-ink/45">
+                    FindMi is reviewing your requested Market. Your business is live in the meantime, but won&rsquo;t
+                    appear in general Market-based discovery until this is approved.
+                  </p>
+                </>
               ) : (
                 <>
                   <p className="mt-1.5 text-sm font-semibold text-ink/60">Not assigned yet</p>

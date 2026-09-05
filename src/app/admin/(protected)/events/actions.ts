@@ -7,6 +7,7 @@ import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { bool, DEFAULT_ADMIN_TIMEZONE, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
+import { createLinkedMarketRequest } from "@/lib/market-requests";
 import type { EventParticipationStatus } from "@/lib/types";
 
 // ── Approval <-> FindMi Here sync (Admin Approval → FindMi Here Sync pass,
@@ -329,6 +330,23 @@ export async function saveEvent(id: string | null, formData: FormData) {
     const { data, error } = await supabase.from("events").insert(payload).select("id").single();
     if (error || !data) redirect(errorRedirectUrl(editPath, error?.message ?? "Could not create event."));
     eventId = data.id;
+  }
+
+  // Consumer Area Picker + Market Requests V1 — never writes into
+  // event.market_id; only creates a linked, admin-reviewable request.
+  // Admin can resubmit this field on a later save (e.g. to note a
+  // different Market) — each non-blank submission creates its own row,
+  // same as business/event creation always creating a fresh request
+  // rather than editing a prior one.
+  const requestedMarketText = str(formData, "requested_market_text");
+  if (requestedMarketText) {
+    await createLinkedMarketRequest(supabase, {
+      text: requestedMarketText,
+      city: payload.city,
+      state: payload.state,
+      source: "event_creation",
+      sourceEventId: eventId,
+    });
   }
 
   // Occurrences (Event Occurrences foundation) — same "current roster +

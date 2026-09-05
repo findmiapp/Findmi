@@ -2366,6 +2366,23 @@ export async function getActiveMarkets(): Promise<Market[]> {
   return data ?? [];
 }
 
+/** Consumer Area Picker + Market Requests V1 — the list for the consumer
+ * Area picker specifically (homepage/businesses/events): active AND
+ * consumer_visible. Internal/admin/business Market pickers (Location/
+ * Event/business creation) keep using getActiveMarkets() — a Market can
+ * be assignable internally before its public Area "launch". */
+export async function getConsumerVisibleMarkets(): Promise<Market[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("markets")
+    .select("*")
+    .eq("active", true)
+    .eq("consumer_visible", true)
+    .order("sort_order");
+  return data ?? [];
+}
+
 /** Market Management + Plan Market Allowances V1 — the one shared
  * resolver for a Market's CONSUMER-facing label. "Market" stays the
  * internal/admin/business term everywhere else (business_markets,

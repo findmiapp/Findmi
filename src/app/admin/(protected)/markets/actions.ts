@@ -49,6 +49,7 @@ export async function saveMarket(id: string | null, formData: FormData) {
     description: str(formData, "description"),
     areas_included: parseAreasIncluded(str(formData, "areas_included")),
     active: bool(formData, "active"),
+    consumer_visible: bool(formData, "consumer_visible"),
     sort_order: sortOrder ?? 0,
   };
 

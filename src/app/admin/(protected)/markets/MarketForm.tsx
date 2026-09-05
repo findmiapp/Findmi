@@ -26,6 +26,18 @@ export default function MarketForm({ market, error }: { market: Market | null; e
         hint="Off = hidden from every active-Market picker (consumer Area selectors, admin Location/Event/Business Market pickers) — existing assignments referencing this Market are never touched or removed."
       />
 
+      {/* Consumer Area Picker + Market Requests V1 — a SEPARATE toggle
+          from Active above: a Market can be valid/assignable internally
+          (business/event creation, admin pickers) while NOT yet showing
+          in the consumer Area picker. Lets supply exist before a public
+          Area "launch". */}
+      <CheckboxField
+        label="Show in consumer Area picker"
+        name="consumer_visible"
+        defaultChecked={market ? market.consumer_visible !== false : true}
+        hint="When off, this Market can still be used internally (business/event/location assignment) but will not appear in consumer Area discovery (homepage, /businesses, /events)."
+      />
+
       <NameSlugFields
         isNew={!market}
         nameLabel="Internal / Admin Name"

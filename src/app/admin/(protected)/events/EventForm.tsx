@@ -139,6 +139,20 @@ export default function EventForm({
         hint="This is the event's normal physical Market. Occurrences inherit it unless a linked Location or occurrence override supplies another Market."
       />
 
+      {/* Consumer Area Picker + Market Requests V1 — lets an admin
+          continue creating/saving an event whose physical Market isn't
+          in the list yet. Leaves market_id exactly as selected above
+          (Unassigned unless a real Market was also chosen) and creates a
+          linked, admin-reviewable market_requests row instead — see
+          saveEvent. Never writes the requested text into market_id. */}
+      <TextField
+        label="Request a new Market (optional)"
+        name="requested_market_text"
+        defaultValue={undefined}
+        placeholder="e.g. Austin, TX"
+        hint="If this event's Market isn't listed above, note it here — the event saves normally and FindMi reviews the request at /admin/market-requests. Leave Default FindMi Market Unassigned when using this."
+      />
+
       <div className="rounded-2xl border border-black/10 p-4">
         <GalleryField
           label="About the Venue — Gallery"

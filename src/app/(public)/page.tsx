@@ -11,11 +11,11 @@ import HomeHero from "@/components/HomeHero";
 import Logo from "@/components/Logo";
 import SearchBar from "@/components/SearchBar";
 import HomeEventDiscovery from "@/components/HomeEventDiscovery";
-import SortSelect from "@/components/discover/SortSelect";
+import AreaPicker from "@/components/discover/AreaPicker";
 import {
   attachEventCategories,
-  getActiveMarkets,
   getCategoriesForDynamicBusinessRow,
+  getConsumerVisibleMarkets,
   getEventCategories,
   getFeaturedBusinesses,
   getHomeCategories,
@@ -69,7 +69,7 @@ export default async function HomePage({
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
-    getActiveMarkets(), // Homepage Market Filtering V1 — same public list /businesses already uses
+    getConsumerVisibleMarkets(), // Consumer Area Picker V1 — same public list /businesses already uses
   ]);
 
   const [upNextEvents, todayEvents, weekendEvents, anytimeEvents] = await Promise.all([
@@ -143,29 +143,21 @@ export default async function HomePage({
 
       <HomeHero images={heroImages} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Homepage Market Filtering V1 — compact, URL-only ("?market=",
-          never persisted to a cookie/localStorage/session — see
-          SortSelect's own note). Reuses that exact URL-param select
-          component (already proven on /businesses for `sort`) rather than
-          building a new one; "All Areas" is options[0], so picking it
-          removes the param entirely. Scopes dynamic business AND event
-          discovery below (rows, category chips, search) — never products,
-          appearances, or venues, which never read this param at all.
-          Deliberately NOT in the global header — page-scoped only.
-          Market Management + Plan Market Allowances V1 — consumer-facing
-          label is "Area" (never "Market", the internal/admin/business
-          term); the ?market= URL param itself is unchanged. Option labels
-          prefer each Market's founder-set consumer display name via
-          getMarketAreaLabel. */}
+      {/* Consumer Area Picker V1 — compact, URL-only ("?market=", never
+          persisted to a cookie/localStorage/session). Searchable — see
+          AreaPicker's own note — suitable for dozens/hundreds of
+          Markets, not just today's 5. Scopes dynamic business AND event
+          discovery below (rows, category chips, search) — never
+          products, appearances, or venues, which never read this param
+          at all. Deliberately NOT in the global header — page-scoped
+          only. Consumer-facing label is "Area" (never "Market", the
+          internal/admin/business term); the ?market= URL param itself
+          is unchanged. Option labels prefer each Market's founder-set
+          consumer display name via getMarketAreaLabel. */}
       {markets.length > 0 && (
         <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-          <SortSelect
-            label="Area"
-            paramName="market"
-            options={[
-              { value: "", label: "All Areas" },
-              ...markets.map((m) => ({ value: m.slug, label: getMarketAreaLabel(m) })),
-            ]}
+          <AreaPicker
+            options={markets.map((m) => ({ slug: m.slug, label: getMarketAreaLabel(m), areasIncluded: m.areas_included }))}
           />
         </div>
       )}

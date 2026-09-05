@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
+import AreaPicker from "@/components/discover/AreaPicker";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import BusinessFilters from "@/components/discover/BusinessFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
 import SortSelect from "@/components/discover/SortSelect";
 import {
-  getActiveMarkets,
   getCategories,
+  getConsumerVisibleMarkets,
   getMarketAreaLabel,
   getNextAppearanceHints,
   searchBusinesses,
@@ -53,7 +54,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
 
   const [categories, markets, fetched] = await Promise.all([
     getCategories(),
-    getActiveMarkets(),
+    getConsumerVisibleMarkets(),
     searchBusinesses({
       q: params.q,
       categorySlug: params.category,
@@ -102,7 +103,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
 
   // Only the fields that actually live inside the Filters sheet count
   // toward its own badge — search has its own always-visible field.
-  const sheetFilterCount = [params.market, params.category, params.location, featured, founding].filter(Boolean).length;
+  const sheetFilterCount = [params.category, params.location, featured, founding].filter(Boolean).length;
 
   const loadMoreHref = (() => {
     const p = new URLSearchParams(baseParams);
@@ -123,11 +124,12 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
       <form method="get" className="mt-5 flex flex-col gap-3">
         <ArchiveSearchField defaultValue={params.q} placeholder="Search by name or description" />
         <div className="flex flex-wrap items-center gap-2.5">
+          <AreaPicker
+            options={markets.map((m) => ({ slug: m.slug, label: getMarketAreaLabel(m), areasIncluded: m.areas_included }))}
+          />
           <FilterSheet activeCount={sheetFilterCount}>
             <BusinessFilters
               categories={categories}
-              markets={markets}
-              defaultMarket={params.market}
               defaultCategory={params.category}
               defaultLocation={params.location}
               defaultFeatured={featured}
