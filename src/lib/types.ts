@@ -382,6 +382,13 @@ export interface FindmiEvent {
   organizer_name: string | null;
   external_url: string | null;
   is_featured: boolean;
+  // Event Market Mapping Foundation V1 — the event's normal/default
+  // physical FindMi Market (reuses the same `markets` table as
+  // business_markets, but is a structurally separate concept: this is
+  // physical event geography, never a business's discovery entitlement).
+  // Null = no Market assigned. See lib/event-markets.ts for the full
+  // occurrence → location → event precedence this feeds into.
+  market_id: string | null;
   // Configurable consumer actions — each _enabled flag gates whether its
   // button/link appears at all; the public event page never renders a
   // disabled or destination-less action.
@@ -435,6 +442,13 @@ export interface EventOccurrence {
   status: EventOccurrenceStatus;
   ticket_url_override: string | null;
   vendor_apply_url_override: string | null;
+  // Event Market Mapping Foundation V1 — an EXPLICIT per-occurrence Market
+  // override only. Null always means "inherit" (from the linked location,
+  // then the parent event — see lib/event-markets.ts); it is never
+  // pre-filled with the inherited value, so changing the location's or
+  // event's own Market later automatically flows through to any
+  // occurrence that hasn't set this.
+  market_id: string | null;
   /** RSVP override — Recurring Events V2. Null means "use the parent
    * event's own rsvp_url", same shape as the two overrides above. */
   rsvp_url_override: string | null;
@@ -524,6 +538,12 @@ export interface FindmiLocation {
   state: string | null;
   latitude: number | null;
   longitude: number | null;
+  // Event Market Mapping Foundation V1 — the physical FindMi Market this
+  // venue belongs to. Null = unassigned. An event occurrence linked to
+  // this location (occurrence.location_id) inherits this Market unless
+  // the occurrence has its own explicit override — see
+  // lib/event-markets.ts.
+  market_id: string | null;
 }
 
 // People — founders, owners, makers, chefs, creators, operators. An

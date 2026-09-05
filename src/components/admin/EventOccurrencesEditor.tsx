@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import type { AdminEventOccurrence, AdminLocation, AdminOccurrenceVendor } from "@/lib/admin/queries";
+import type { AdminMarketOption } from "@/lib/admin/business-markets";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
+import { resolveEffectiveEventMarket } from "@/lib/event-markets";
 import OccurrenceVendorManager from "./OccurrenceVendorManager";
 
 const inputClass =
@@ -31,6 +33,7 @@ interface Row {
   end_at: string; // datetime-local value, in this row's own timezone
   timezone: string; // IANA zone — event_occurrences.timezone
   location_id: string; // "" = none
+  market_id: string; // "" = inherit automatically (DB stays NULL — see F)
   featured: boolean;
   cancelled: boolean;
   ticket_url_override: string;
@@ -44,6 +47,12 @@ function toRow(o: AdminEventOccurrence): Row {
     end_at: isoToLocalDateTime(o.end_at, o.timezone),
     timezone: o.timezone,
     location_id: o.location_id ?? "",
+    // Critical admin semantics (item F) — a saved occurrence with no
+    // explicit override reads market_id as null from the database; this
+    // must map to "" (Inherit automatically) here, never to a computed
+    // inherited value, so the DB's NULL-means-inherit meaning survives an
+    // untouched save.
+    market_id: o.market_id ?? "",
     featured: o.featured,
     cancelled: o.status === "cancelled",
     ticket_url_override: o.ticket_url_override ?? "",
@@ -65,6 +74,7 @@ function emptyRow(inheritTimezone?: string): Row {
     end_at: "",
     timezone: inheritTimezone ?? DEFAULT_ADMIN_TIMEZONE,
     location_id: "",
+    market_id: "",
     featured: false,
     cancelled: false,
     ticket_url_override: "",
@@ -116,11 +126,15 @@ export default function EventOccurrencesEditor({
   eventId,
   initialOccurrences,
   locations,
+  markets,
+  eventMarketId,
   vendorRostersByOccurrence,
 }: {
   eventId: string | null;
   initialOccurrences: AdminEventOccurrence[];
   locations: AdminLocation[];
+  markets: AdminMarketOption[];
+  eventMarketId: string | null;
   vendorRostersByOccurrence: Record<string, AdminOccurrenceVendor[]>;
 }) {
   const [rows, setRows] = useState<Row[]>(initialOccurrences.map(toRow));
@@ -161,6 +175,20 @@ export default function EventOccurrencesEditor({
   };
 
   const existingIds = new Set(initialOccurrences.map((o) => o.id));
+
+  // Compact inherited-Market preview shown under "Inherit automatically" —
+  // always computed with occurrenceMarketId omitted (this is "what would
+  // this occurrence inherit", never the saved override itself), reusing
+  // the one locked resolver rather than re-deriving the precedence here.
+  const inheritedMarketLabel = (row: Row): string => {
+    const locationMarketId = row.location_id
+      ? (locations.find((l) => l.id === row.location_id)?.market_id ?? null)
+      : null;
+    const effective = resolveEffectiveEventMarket({ eventMarketId, locationMarketId });
+    if (!effective.marketId) return "No Market inherited.";
+    const marketName = markets.find((m) => m.id === effective.marketId)?.name ?? "Unknown Market";
+    return effective.source === "location" ? `Inherited from location: ${marketName}` : `Inherited: ${marketName}`;
+  };
 
   const repeatFromLast = () => {
     const template = rows[rows.length - 1];
@@ -342,6 +370,30 @@ export default function EventOccurrencesEditor({
                     className={`${inputClass} w-full`}
                   />
                 </label>
+              </div>
+
+              <div className="mt-2">
+                <label className="block sm:max-w-xs">
+                  <span className="mb-1 block text-xs font-medium text-ink/60">Market Override</span>
+                  <select
+                    name={`market_id_${row.id}`}
+                    value={row.market_id}
+                    onChange={(e) => updateRow(row.id, { market_id: e.target.value })}
+                    className={`${inputClass} w-full`}
+                  >
+                    <option value="">Inherit automatically</option>
+                    {markets
+                      .filter((m) => m.active || m.id === row.market_id)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                {row.market_id === "" && (
+                  <p className="mt-1 text-[11px] text-ink/40">{inheritedMarketLabel(row)}</p>
+                )}
               </div>
 
               {eventId && existingIds.has(row.id) && openVendorsFor === row.id && (

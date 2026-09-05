@@ -1,15 +1,18 @@
-import { CheckboxField, TextField } from "@/components/admin/Fields";
+import { CheckboxField, SelectField, TextField } from "@/components/admin/Fields";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
 import type { AdminLocation } from "@/lib/admin/queries";
+import type { AdminMarketOption } from "@/lib/admin/business-markets";
 import { saveLocation, deleteLocation } from "./actions";
 
 export default function LocationForm({
   location,
+  markets,
   error,
 }: {
   location: AdminLocation | null;
+  markets: AdminMarketOption[];
   error?: string;
 }) {
   const action = saveLocation.bind(null, location?.id ?? null);
@@ -57,6 +60,19 @@ export default function LocationForm({
             hint="Optional."
           />
         </div>
+
+        <SelectField
+          label="FindMi Market"
+          name="market_id"
+          defaultValue={location?.market_id ?? ""}
+          options={[
+            { value: "", label: "Unassigned" },
+            ...markets
+              .filter((m) => m.active || m.id === location?.market_id)
+              .map((m) => ({ value: m.id, label: m.name })),
+          ]}
+          hint="This is the physical FindMi Market this venue belongs to. Event occurrences linked to this location can inherit it."
+        />
 
         <SubmitBar cancelHref="/admin/locations" />
       </form>

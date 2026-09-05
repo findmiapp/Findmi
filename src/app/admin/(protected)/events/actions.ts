@@ -296,6 +296,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
     address: str(formData, "address"),
     city: str(formData, "city"),
     state: str(formData, "state"),
+    market_id: str(formData, "market_id"),
     organizer_name: str(formData, "organizer_name"),
     external_url: str(formData, "external_url"),
     is_featured: bool(formData, "is_featured"),
@@ -369,6 +370,12 @@ export async function saveEvent(id: string | null, formData: FormData) {
       end_at: occEndIso as string,
       timezone: occTimezone,
       location_id: str(formData, `location_id_${occId}`),
+      // Critical admin semantics (item F) — this posts exactly what the
+      // "Market Override" select holds: "" (Inherit automatically) or an
+      // explicit market id. str() turns "" into null, so an occurrence
+      // left on "Inherit automatically" is saved as NULL, never as a
+      // copy of whatever the location/event currently resolve to.
+      market_id: str(formData, `market_id_${occId}`),
       featured: bool(formData, `featured_${occId}`),
       status: bool(formData, `cancelled_${occId}`) ? "cancelled" : "scheduled",
       ticket_url_override: str(formData, `ticket_url_override_${occId}`),

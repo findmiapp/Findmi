@@ -3,6 +3,7 @@ import {
   CheckboxList,
   DateTimeField,
   NumberField,
+  SelectField,
   TextField,
   TextareaField,
 } from "@/components/admin/Fields";
@@ -21,6 +22,7 @@ import type {
   EventFeaturedProduct,
   EventParticipant,
 } from "@/lib/admin/queries";
+import type { AdminMarketOption } from "@/lib/admin/business-markets";
 import type { Category } from "@/lib/types";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveEvent } from "./actions";
@@ -34,6 +36,7 @@ export default function EventForm({
   occurrences,
   vendorRostersByOccurrence,
   locations,
+  markets,
   categories,
   selectedCategoryIds,
   error,
@@ -46,6 +49,7 @@ export default function EventForm({
   occurrences: AdminEventOccurrence[];
   vendorRostersByOccurrence: Record<string, AdminOccurrenceVendor[]>;
   locations: AdminLocation[];
+  markets: AdminMarketOption[];
   categories: Category[];
   selectedCategoryIds: string[];
   error?: string;
@@ -109,6 +113,8 @@ export default function EventForm({
           eventId={event?.id ?? null}
           initialOccurrences={occurrences}
           locations={locations}
+          markets={markets}
+          eventMarketId={event?.market_id ?? null}
           vendorRostersByOccurrence={vendorRostersByOccurrence}
         />
       </div>
@@ -119,6 +125,19 @@ export default function EventForm({
         <TextField label="City" name="city" defaultValue={event?.city} />
         <TextField label="State" name="state" defaultValue={event?.state} />
       </div>
+
+      <SelectField
+        label="Default FindMi Market"
+        name="market_id"
+        defaultValue={event?.market_id ?? ""}
+        options={[
+          { value: "", label: "Unassigned" },
+          ...markets
+            .filter((m) => m.active || m.id === event?.market_id)
+            .map((m) => ({ value: m.id, label: m.name })),
+        ]}
+        hint="This is the event's normal physical Market. Occurrences inherit it unless a linked Location or occurrence override supplies another Market."
+      />
 
       <div className="rounded-2xl border border-black/10 p-4">
         <GalleryField

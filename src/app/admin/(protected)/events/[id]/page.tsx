@@ -7,6 +7,7 @@ import {
   getEventCategoryIds,
 } from "@/lib/admin/queries";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import EventForm from "../EventForm";
 
@@ -41,11 +42,13 @@ export default async function EditEventPage({
 }) {
   const { id } = await params;
   const { error, saved } = await searchParams;
-  const [result, categories, selectedCategoryIds, locations] = await Promise.all([
+  const marketsAdmin = getAdminSupabase();
+  const [result, categories, selectedCategoryIds, locations, markets] = await Promise.all([
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
     getAdminLocations(),
+    marketsAdmin ? getAllMarketsForAdmin(marketsAdmin) : Promise.resolve([]),
   ]);
   if (!result) notFound();
   const vendorRostersByOccurrence = await getAdminOccurrenceVendorRosters(result.occurrences.map((o) => o.id));
@@ -76,6 +79,7 @@ export default async function EditEventPage({
           occurrences={result.occurrences}
           vendorRostersByOccurrence={vendorRostersByOccurrence}
           locations={locations}
+          markets={markets}
           categories={categories}
           selectedCategoryIds={selectedCategoryIds}
           error={error}
