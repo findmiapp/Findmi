@@ -154,12 +154,20 @@ async function releaseReferralPayout(partnerId: string, payoutId: string, status
   const detailPath = `${LIST_PATH}/${partnerId}`;
   const supabase = await requireAdminSupabase();
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("referral_payout_requests")
     .update({ status, processed_at: new Date().toISOString(), admin_note: note })
     .eq("id", payoutId)
-    .in("status", ["requested", "approved"]);
+    .in("status", ["requested", "approved"])
+    .select("id")
+    .maybeSingle();
   if (error) redirect(errorRedirectUrl(detailPath, error.message));
+  // Guards against resetting an already-paid payout's earnings back to
+  // 'available' (e.g. a stale page re-submitting reject/cancel after
+  // markReferralPayoutPaid already ran) — without this check, the
+  // unconditional update below would match on payout_request_id alone
+  // and undo a completed payout, making its earnings requestable again.
+  if (!updated) redirect(errorRedirectUrl(detailPath, "That payout request is no longer pending."));
 
   await supabase
     .from("referral_earnings")
