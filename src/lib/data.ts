@@ -48,7 +48,8 @@ export const PUBLIC_BUSINESS_COLUMNS =
   "publication_status, is_featured, inquiry_cta_label, inquiry_cta_url, " +
   "cta_1_label, cta_1_url, cta_1_enabled, cta_2_label, cta_2_url, " +
   "cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled, " +
-  "bulletin_heading, bulletin_body, bulletin_label, bulletin_url";
+  "bulletin_heading, bulletin_body, bulletin_label, bulletin_url, " +
+  "native_inquiries_enabled";
 // Intentionally excluded (matches the migration exactly — never add these
 // back here without also widening the grant): lead_status,
 // marketplace_fee_percent, processing_fee_payer, payout_method,
@@ -1507,6 +1508,7 @@ export interface ProductWithBusiness extends Product {
     commerce_enabled: boolean;
     city: string | null;
     state: string | null;
+    native_inquiries_enabled: boolean;
     /** Seller's real primary category (business_categories), attached the
      * same way getFeaturedProducts/getMarketplaceProducts already do —
      * products have no taxonomy of their own. This is SELLER identity
@@ -1528,7 +1530,7 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   const { data, error } = await supabase
     .from("products")
     .select(
-      `${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, is_demo, publication_status)`
+      `${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, native_inquiries_enabled, is_demo, publication_status)`
     )
     .eq("slug", slug)
     .eq("is_active", true);

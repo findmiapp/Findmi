@@ -7,7 +7,10 @@ export type LeadStatus =
   | "not_a_fit";
 export type ProductType = "product" | "service";
 export type AppearanceStatus = "confirmed" | "tentative" | "canceled";
-export type InquiryStatus = "new" | "contacted" | "booked" | "closed";
+// Native Inquiries + Private Conversation Threads V1 — "replied" added
+// between "new" and "contacted" (auto-set the first time a business
+// sends a message; see set_inquiry_status()/inquiries_status_check).
+export type InquiryStatus = "new" | "replied" | "contacted" | "booked" | "closed";
 
 export type ProcessingFeePayer = "vendor" | "customer";
 export type PayoutMethod = "manual" | "stripe_connect_future";
@@ -190,6 +193,11 @@ export interface Business {
   // own bulletin fields above are untouched.
   bulletin_label: string | null;
   bulletin_url: string | null;
+  // Native Inquiries + Private Conversation Threads V1 — off by default;
+  // when true, business/product pages offer a native "Message on FindMi"
+  // path (signed-in only) alongside the existing Tally/mailto Inquire
+  // CTA, which is completely unaffected either way.
+  native_inquiries_enabled: boolean;
   // Business Plan Entitlement — not publicly readable (see the PlanTier
   // type above; plan_tier is deliberately off the anon/authenticated
   // column-level grant). Optional here because most existing SELECTs
@@ -594,4 +602,40 @@ export interface PublicProfile {
   avatar_url: string | null;
   bio: string | null;
   location_label: string | null;
+}
+
+// Native Inquiries + Private Conversation Threads V1
+export interface Inquiry {
+  id: string;
+  business_id: string | null;
+  product_id: string | null;
+  // null for a legacy/anonymous inquiry (pre-dating this pass, or a
+  // future deliberate anonymous path) — never inferred from
+  // customer_email, only ever set at creation from an authenticated
+  // session's own auth.uid().
+  user_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
+  event_date: string | null;
+  event_type: string | null;
+  event_location: string | null;
+  guest_count: number | null;
+  budget_range: string | null;
+  message: string | null;
+  allow_findmi_matching: boolean;
+  status: InquiryStatus;
+  source: string | null;
+  customer_last_read_at: string | null;
+  business_last_read_at: string | null;
+  created_at: string;
+}
+
+export interface InquiryMessage {
+  id: string;
+  inquiry_id: string;
+  sender_type: "customer" | "business";
+  sender_user_id: string | null;
+  body: string;
+  created_at: string;
 }

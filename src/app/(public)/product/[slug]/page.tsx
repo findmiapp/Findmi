@@ -252,6 +252,20 @@ export default async function ProductPage({
               />
             </div>
           )}
+
+          {/* Native Inquiries V1 — additive alongside the existing Tally/
+              mailto inquiry action above, never a replacement for it.
+              Opt-in per business (native_inquiries_enabled). */}
+          {product.business.native_inquiries_enabled && (
+            <div className="mt-2 text-center">
+              <Link
+                href={`/account/inquiries/new?business=${product.business.id}&product=${product.id}`}
+                className="text-sm font-semibold text-ink/55 underline underline-offset-2 transition hover:text-ink"
+              >
+                Message {product.business.name} on FindMi
+              </Link>
+            </div>
+          )}
         </div>
       </div>
 

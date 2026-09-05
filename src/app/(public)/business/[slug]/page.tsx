@@ -478,6 +478,21 @@ export default async function BusinessPage({
             </div>
           )}
 
+          {/* Native Inquiries V1 — a SEPARATE, additive entry point next
+              to the existing Tally/mailto Inquire button above, never a
+              replacement for it: opt-in per business
+              (native_inquiries_enabled, off by default), same Pro gate
+              as Inquire itself (contact functionality). Routes into the
+              native compose flow, which itself requires sign-in. */}
+          {pro && business.native_inquiries_enabled && (
+            <Link
+              href={`/account/inquiries/new?business=${business.id}`}
+              className="mt-2 flex h-11 w-full items-center justify-center rounded-full border border-black/10 text-sm font-semibold text-ink transition hover:border-black/20"
+            >
+              Message on FindMi
+            </Link>
+          )}
+
           {/* DetailsBlock covers phone/email/social/website — all
               contact/promotional fields, so Pro-only. */}
           {pro && hasDetails && (

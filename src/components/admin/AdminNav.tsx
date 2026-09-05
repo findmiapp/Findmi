@@ -43,6 +43,7 @@ const MORE_GROUPS: NavGroup[] = [
       { href: "/admin/categories", label: "Categories", hint: "Discovery taxonomy" },
       { href: "/admin/pro-invites", label: "Pro Invites", hint: "Complimentary Pro access codes" },
       { href: "/admin/referrals", label: "Referrals", hint: "Referral partners & commissions" },
+      { href: "/admin/inquiries", label: "Inquiries", hint: "Native FindMi inquiry threads" },
       { href: "/admin/site", label: "Site Editor", hint: "Site content & settings" },
     ],
   },

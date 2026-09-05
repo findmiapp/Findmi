@@ -35,6 +35,8 @@ import { getPublicOrigin } from "@/lib/site-url";
 import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import { getBusinessFollowerSummary } from "@/lib/business-followers";
+import { getBusinessInquiryDetail, getBusinessInquiryList } from "@/lib/inquiries";
+import { sendBusinessReply, setNativeInquiriesEnabled, updateInquiryStatus } from "../inquiries-actions";
 import SupabaseImage from "@/components/SupabaseImage";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -89,6 +91,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "links", label: "Links & Contact" },
   { key: "plan", label: "Plan & Status" },
   { key: "followers", label: "Followers" },
+  { key: "inquiries", label: "Inquiries" },
   // Referral Partner + Discount Foundation — only ever shown/valid when
   // this business actually has a referral_partners row (an admin set
   // them up as a partner); see OWNER_TAB_KEYS/visibleTabs below, which
@@ -144,6 +147,7 @@ export default async function ManageBusinessPage({
     edit_state?: string;
     edit_external_url?: string;
     edit_flyer_image_url?: string;
+    open?: string;
   }>;
 }) {
   const { id } = await params;
@@ -152,6 +156,7 @@ export default async function ManageBusinessPage({
     saved,
     error,
     created,
+    open: openInquiryId,
     pro_payment: proPayment,
     editing,
     add_title,
@@ -209,7 +214,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, slug, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url"
+        "id, name, slug, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -250,6 +255,17 @@ export default async function ManageBusinessPage({
   // admin client already established above (requireBusinessMember(id)
   // ran before `admin` was ever created), never a new/looser access path.
   const followerSummary = await getBusinessFollowerSummary(admin, id);
+  // Native Inquiries V1 — same authorize-then-elevate admin client. The
+  // list is always fetched (cheap, same pattern as followerSummary
+  // above); the detail/thread is only fetched when `open` names one of
+  // THIS business's own inquiries — getBusinessInquiryDetail's own
+  // .eq("business_id", id) means a foreign/mistyped id here just yields
+  // null, never another business's thread.
+  const inquiryList = await getBusinessInquiryList(admin, id);
+  const openInquiry = openInquiryId ? await getBusinessInquiryDetail(admin, openInquiryId, id) : null;
+  if (openInquiry) {
+    await supabase.rpc("mark_inquiry_read", { p_inquiry_id: openInquiryId, p_as: "business" });
+  }
   const activeTab = tab === "referral" && !referralPartner ? "overview" : tab;
   const requestPayoutAction = referralPartner
     ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
@@ -1255,6 +1271,177 @@ export default async function ManageBusinessPage({
                   None of your account followers have a public FindMi profile yet.
                 </p>
               )
+            )}
+          </div>
+        )}
+
+        {/* ── Inquiries (native V1) ────────────────────────────────────
+            List always shows customer public identity when available
+            (never email/phone/user_id) — see getBusinessInquiryList's
+            own privacy note. Opening one (?open=<id>) shows the thread +
+            reply composer + status selector inline, in this same tab,
+            same "?tab=<key>&<extra param>" convention as ?editing=<id>
+            elsewhere on this page. */}
+        {activeTab === "inquiries" && (
+          <div className="flex flex-col gap-3">
+            <form action={setNativeInquiriesEnabled.bind(null, id)} className={cardClass}>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  name="native_inquiries_enabled"
+                  defaultChecked={business.native_inquiries_enabled}
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-findmi"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-ink">Accept native FindMi inquiries</span>
+                  <span className="block text-xs text-ink/45">
+                    Lets signed-in customers message you directly on FindMi from your Business/Product pages —
+                    separate from, and in addition to, your existing Inquire button.
+                  </span>
+                </span>
+              </label>
+              <button
+                type="submit"
+                className="mt-3 rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              >
+                Save
+              </button>
+            </form>
+
+            {!business.native_inquiries_enabled && (
+              <p className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">
+                Native FindMi inquiries aren&rsquo;t enabled for this business yet — turn them on above to let
+                signed-in customers message you directly on FindMi.
+              </p>
+            )}
+
+            {openInquiry ? (
+              <div className={cardClass}>
+                <Link href={`${basePath}?tab=inquiries`} className="text-xs font-semibold text-ink/50 hover:text-ink">
+                  ← All inquiries
+                </Link>
+
+                <div className="mt-2 flex items-center gap-2.5">
+                  <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-mist">
+                    {openInquiry.customerProfile?.avatar_url && (
+                      <SupabaseImage
+                        src={openInquiry.customerProfile.avatar_url}
+                        alt={openInquiry.customerProfile.display_name ?? openInquiry.customerProfile.username}
+                        fill
+                        sizes="36px"
+                        className="object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">
+                      {openInquiry.customerProfile
+                        ? openInquiry.customerProfile.display_name || `@${openInquiry.customerProfile.username}`
+                        : "FindMi customer"}
+                    </p>
+                    {openInquiry.inquiry.product_id && <p className="text-xs text-ink/45">Product inquiry</p>}
+                  </div>
+                </div>
+
+                <form action={updateInquiryStatus.bind(null, id, openInquiry.inquiry.id)} className="mt-3 flex items-center gap-2">
+                  <select
+                    name="status"
+                    defaultValue={openInquiry.inquiry.status}
+                    className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink"
+                  >
+                    {["new", "replied", "contacted", "booked", "closed"].map((s) => (
+                      <option key={s} value={s}>
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="rounded-full bg-black/[0.05] px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:bg-black/[0.08]"
+                  >
+                    Update Status
+                  </button>
+                </form>
+
+                {(openInquiry.inquiry.customer_email || openInquiry.inquiry.customer_phone) && (
+                  <p className="mt-2 text-xs text-ink/40">
+                    Customer-provided contact:{" "}
+                    {[openInquiry.inquiry.customer_email, openInquiry.inquiry.customer_phone].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+
+                <div className="mt-4 flex flex-col gap-3">
+                  {openInquiry.messages.map((m) => (
+                    <div key={m.id} className={`flex flex-col ${m.sender_type === "customer" ? "items-start" : "items-end"}`}>
+                      <div
+                        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+                          m.sender_type === "customer" ? "bg-black/[0.04] text-ink" : "bg-findmi text-white"
+                        }`}
+                      >
+                        <p className="whitespace-pre-line">{m.body}</p>
+                      </div>
+                      <p className="mt-1 px-1 text-[11px] text-ink/35">
+                        {m.sender_type === "customer" ? "Customer" : business.name} · {new Date(m.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <form action={sendBusinessReply.bind(null, id, openInquiry.inquiry.id)} className="mt-4 flex flex-col gap-2">
+                  <textarea
+                    name="body"
+                    required
+                    rows={3}
+                    placeholder={`Reply as ${business.name}…`}
+                    className={`${inputClass} resize-y`}
+                  />
+                  <button
+                    type="submit"
+                    className="self-start rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  >
+                    Send Reply
+                  </button>
+                </form>
+              </div>
+            ) : inquiryList.length === 0 ? (
+              <p className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">No inquiries yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {inquiryList.map((inq) => (
+                  <Link
+                    key={inq.id}
+                    href={`${basePath}?tab=inquiries&open=${inq.id}`}
+                    className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
+                  >
+                    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-mist">
+                      {inq.customerProfile?.avatar_url && (
+                        <SupabaseImage
+                          src={inq.customerProfile.avatar_url}
+                          alt={inq.customerProfile.display_name ?? inq.customerProfile.username}
+                          fill
+                          sizes="36px"
+                          className="object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-sm font-semibold text-ink">
+                          {inq.customerProfile
+                            ? inq.customerProfile.display_name || `@${inq.customerProfile.username}`
+                            : "FindMi customer"}
+                        </p>
+                        {inq.unread && <span className="h-2 w-2 shrink-0 rounded-full bg-findmi" aria-label="Unread" />}
+                      </div>
+                      {inq.productName && <p className="truncate text-xs text-ink/45">Re: {inq.productName}</p>}
+                      {inq.lastMessage && <p className="mt-0.5 truncate text-xs text-ink/55">{inq.lastMessage.body}</p>}
+                    </div>
+                    <span className="shrink-0 rounded-full bg-black/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/55">
+                      {inq.status}
+                    </span>
+                  </Link>
+                ))}
+              </div>
             )}
           </div>
         )}
