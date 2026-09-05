@@ -786,7 +786,7 @@ export default async function ManageBusinessPage({
               </form>
             </div>
           ) : (
-            <UpgradeLockedTab businessId={id} description="Show off your business with additional photos." />
+            <UpgradeLockedTab businessId={id} tabKey="gallery" description="Show off your business with additional photos." />
           ))}
 
         {/* ── Products ─────────────────────────────────────────────── */}
@@ -964,7 +964,7 @@ export default async function ManageBusinessPage({
               </div>
             </div>
           ) : (
-            <UpgradeLockedTab businessId={id} description="Show customers what you make, sell or offer." />
+            <UpgradeLockedTab businessId={id} tabKey="products" description="Show customers what you make, sell or offer." />
           ))}
 
         {/* ── FindMi Here ──────────────────────────────────────────── */}
@@ -1210,7 +1210,7 @@ export default async function ManageBusinessPage({
               </form>
             </div>
           ) : (
-            <UpgradeLockedTab businessId={id} description="Add your website, socials, contact info, and a live announcement." />
+            <UpgradeLockedTab businessId={id} tabKey="links" description="Add your website, socials, contact info, and a live announcement." />
           ))}
 
         {/* ── Plan & Status ────────────────────────────────────────── */}
@@ -1255,23 +1255,24 @@ export default async function ManageBusinessPage({
                   Upgrade to Pro
                 </Link>
 
-                {/* Pro Invite Sharing UX pass — small, secondary alternative
-                    to the Stripe upgrade right above it, for an owner who has
-                    a complimentary invite code instead of paying. Reuses the
-                    exact same goToRedeemCode -> /redeem/[code] routing/
-                    redemption flow as /join and /account (no separate
+                {/* Pro Invite Sharing UX pass, made consistent across every
+                    Pro-gated Business Manager tab by the Pro Invite / Promo
+                    Code Consistency pass — same always-visible treatment as
+                    UpgradeLockedTab below (Gallery/Products/Links & Contact),
+                    same wording, no longer collapsed behind a summary toggle.
+                    Reuses the exact same goToRedeemCode -> /redeem/[code]
+                    routing/redemption flow as /join and /account (no separate
                     redemption implementation), with this already-authorized
                     business_id passed through as a hint so /redeem/[code]
                     can skip straight to "Apply Pro to {business.name}"
                     instead of showing a business selector. */}
-                <details className="group mt-3">
-                  <summary className="cursor-pointer text-center text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-                    Have a Pro invite code instead?
-                  </summary>
-                  <div className="mt-2">
-                    <ProInviteCodeEntry returnTo={`/account/business/${id}?tab=plan`} businessId={id} />
-                  </div>
-                </details>
+                <div className="mt-3">
+                  <ProInviteCodeEntry
+                    returnTo={`/account/business/${id}?tab=plan`}
+                    businessId={id}
+                    heading="Have a Pro Invite or Promo Code?"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -1834,8 +1835,19 @@ export default async function ManageBusinessPage({
 /** Shared "this tab needs Pro" lock state — same shape Products already
  * used before this pass (upgrade CTA, no broken/empty form), now reused
  * for Gallery and Links & Contact too since all three are entirely
- * Pro-only tabs. */
-function UpgradeLockedTab({ businessId, description }: { businessId: string; description: string }) {
+ * Pro-only tabs.
+ *
+ * Business Manager Pro Invite / Promo Code Consistency pass — every one of
+ * these locked tabs now also offers the exact same code redemption entry
+ * point as Plan & Status (see that tab below), so a Free owner who already
+ * has a Pro Invite/Promo code never has to go hunting in a different tab
+ * to use it. Reuses ProInviteCodeEntry unmodified — no second redemption
+ * system, same goToRedeemCode -> /redeem/[code] -> redeemProInvite() ->
+ * redeem_pro_invite() RPC path as everywhere else it appears, with this
+ * already-authorized businessId passed through as the same hint. `tabKey`
+ * only affects returnTo (where a blank/no-op submission lands), never
+ * which business the code applies to. */
+function UpgradeLockedTab({ businessId, tabKey, description }: { businessId: string; tabKey: string; description: string }) {
   return (
     <div className={cardClass}>
       <p className="mt-1 text-sm text-ink/60">{description}</p>
@@ -1846,6 +1858,13 @@ function UpgradeLockedTab({ businessId, description }: { businessId: string; des
       >
         Upgrade to Pro
       </Link>
+      <div className="mt-3">
+        <ProInviteCodeEntry
+          returnTo={`/account/business/${businessId}?tab=${tabKey}`}
+          businessId={businessId}
+          heading="Have a Pro Invite or Promo Code?"
+        />
+      </div>
     </div>
   );
 }
