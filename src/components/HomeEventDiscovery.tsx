@@ -44,7 +44,16 @@ export default function HomeEventDiscovery({
   weekend,
   anytime,
   eventCategories,
-}: Record<TimeKey, EventWithCategories[]> & { eventCategories: Category[] }) {
+  marketSlug,
+}: Record<TimeKey, EventWithCategories[]> & {
+  eventCategories: Category[];
+  /** Consumer Event Market Filtering V1 — the homepage's current
+   * ?market= value, if any. Forwarded into the live category re-filter
+   * fetch below; the parent remounts this component (key={marketSlug})
+   * on a Market change so this cache never serves a stale prior-Market
+   * result — see page.tsx's own note. */
+  marketSlug?: string;
+}) {
   const prefetched: Record<TimeKey, EventWithCategories[]> = { upNext, today, weekend, anytime };
   const [activeTime, setActiveTime] = useState<TimeKey>("upNext");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -74,9 +83,11 @@ export default function HomeEventDiscovery({
     setLoading(true);
     setFailedKey(null);
     try {
-      const res = await fetch(`/api/homepage-events?when=${timeKey}&category=${encodeURIComponent(categorySlug)}`, {
-        cache: "no-store",
-      });
+      const marketParam = marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : "";
+      const res = await fetch(
+        `/api/homepage-events?when=${timeKey}&category=${encodeURIComponent(categorySlug)}${marketParam}`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error(`homepage-events ${res.status}`);
       const data: { events: EventWithCategories[] } = await res.json();
       setCache((prev) => ({ ...prev, [key]: data.events }));

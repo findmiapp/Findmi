@@ -5,7 +5,7 @@ import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
 import EventFilters from "@/components/discover/EventFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
-import { attachEventCategories, getEventCategories, getEventsDiscovery } from "@/lib/data";
+import { attachEventCategories, getActiveMarkets, getEventCategories, getEventsDiscovery } from "@/lib/data";
 import { WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -27,6 +27,13 @@ interface Params {
   q?: string;
   category?: string;
   location?: string;
+  /** Consumer Event Market Filtering V1 — a FindMi Market slug, scoping
+   * by each event occurrence's EFFECTIVE physical Market (see
+   * lib/event-markets.ts). Completely independent of `location` (free-
+   * text city/state) above — same separation /businesses already
+   * established for Market vs. Based In. Absent = "All Markets" =
+   * today's unfiltered behavior, unchanged. */
+  market?: string;
   limit?: string;
 }
 
@@ -43,13 +50,15 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   // getEventCategories()) — never business categories (Discovery/Archive
   // V2 Part 9). Already scoped to categories that can return a real,
   // live, upcoming event — see that function's own note.
-  const [eventCategories, fetchedRaw] = await Promise.all([
+  const [eventCategories, markets, fetchedRaw] = await Promise.all([
     getEventCategories(),
+    getActiveMarkets(),
     getEventsDiscovery({
       when,
       q: params.q,
       categorySlug: params.category,
       location: params.location,
+      marketSlug: params.market,
       limit: limit + 1,
     }),
   ]);
@@ -61,8 +70,10 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   if (params.q) baseParams.set("q", params.q);
   if (params.category) baseParams.set("category", params.category);
   if (params.location) baseParams.set("location", params.location);
+  if (params.market) baseParams.set("market", params.market);
 
   const categoryName = eventCategories.find((c) => c.slug === params.category)?.name;
+  const marketName = markets.find((m) => m.slug === params.market)?.name;
   const chips: ActiveFilterChip[] = [];
   const withoutParam = (key: string) => {
     const p = new URLSearchParams(baseParams);
@@ -70,10 +81,11 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     return `/events${p.toString() ? `?${p.toString()}` : ""}`;
   };
   if (params.q) chips.push({ label: `"${params.q}"`, href: withoutParam("q") });
+  if (params.market) chips.push({ label: marketName ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
 
-  const sheetFilterCount = [params.category, params.location].filter(Boolean).length;
+  const sheetFilterCount = [params.market, params.category, params.location].filter(Boolean).length;
   const filtering = chips.length > 0 || timeKey !== "upNext";
 
   const loadMoreHref = (() => {
@@ -91,8 +103,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   };
 
   const emptyLabel =
-    params.q || params.category || params.location
-      ? `No events matched${categoryName ? ` ${categoryName}` : ""}${params.location ? ` in ${params.location}` : ""}${params.q ? ` for "${params.q}"` : ""}.`
+    params.q || params.category || params.location || params.market
+      ? `No events matched${marketName ? ` in ${marketName}` : params.market ? ` in that market` : ""}${categoryName ? ` ${categoryName}` : ""}${params.location ? ` in ${params.location}` : ""}${params.q ? ` for "${params.q}"` : ""}.`
       : timeKey === "today"
         ? "Nothing today — try This Weekend or All Events."
         : timeKey === "weekend"
@@ -127,7 +139,13 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
         <div className="flex flex-wrap items-center gap-2.5">
           <FilterSheet activeCount={sheetFilterCount}>
-            <EventFilters categories={eventCategories} defaultCategory={params.category} defaultLocation={params.location} />
+            <EventFilters
+              categories={eventCategories}
+              markets={markets}
+              defaultMarket={params.market}
+              defaultCategory={params.category}
+              defaultLocation={params.location}
+            />
           </FilterSheet>
         </div>
         {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref={timeKey === "upNext" ? "/events" : `/events?when=${timeKey}`} />}

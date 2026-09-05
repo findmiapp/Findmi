@@ -31,9 +31,15 @@ const MIN_CHARS = 2;
 //
 // Homepage Market Filtering V1 — `marketSlug` (the homepage's own current
 // ?market= value, if any) is threaded into the live-suggestions fetch and
-// both outbound business-search links (submit + "View all results"), but
-// ONLY affects the business branch server-side (see /api/homepage-search's
-// own note) — event/product suggestions and their links are unaffected.
+// both outbound business-search links (submit + "View all results").
+//
+// Consumer Event Market Filtering V1 — /api/homepage-search now also
+// scopes its EVENT branch by this same param (against each occurrence's
+// effective physical Market, a separate system from the business branch's
+// business_markets — see that route's own note); product suggestions
+// remain Market-independent. This component itself needs no changes for
+// that — it already forwards `market` verbatim; direct suggestion links
+// (/event/[slug] etc.) are untouched and never carry it.
 export default function SearchBar({ marketSlug }: { marketSlug?: string }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);

@@ -15,10 +15,16 @@ export const dynamic = "force-dynamic";
  * minimal fields a dropdown needs.
  *
  * Homepage Market Filtering V1 — optional `market` query param is
- * forwarded ONLY into the searchBusinesses() branch. Events and products
- * never receive it — FindMi Market controls general BUSINESS discovery
- * only (see the locked product rule), and getEventsDiscovery/
- * getMarketplaceProducts have no Market concept to begin with.
+ * forwarded into the searchBusinesses() branch, scoped by
+ * business_markets (the business's discovery/distribution entitlement).
+ *
+ * Consumer Event Market Filtering V1 — the SAME `market` param is now
+ * also forwarded into the getEventsDiscovery() branch, but resolved
+ * there against each occurrence's EFFECTIVE PHYSICAL Market (see
+ * lib/event-markets.ts) — a structurally separate system from
+ * business_markets that never cross-pollinates with it. Products remain
+ * Market-independent — getMarketplaceProducts has no Market concept at
+ * all and never receives this param.
  */
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
@@ -27,7 +33,7 @@ export async function GET(request: NextRequest) {
 
   const [businesses, events, products] = await Promise.all([
     searchBusinesses({ q, marketSlug }),
-    getEventsDiscovery({ q, limit: 4 }),
+    getEventsDiscovery({ q, limit: 4, marketSlug }),
     getMarketplaceProducts({ q, limit: 4 }),
   ]);
 

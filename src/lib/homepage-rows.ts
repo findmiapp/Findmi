@@ -92,9 +92,15 @@ export type ResolvedHomepageRow =
  * DYNAMIC "businesses" row (see getHomepageRowBusinesses). Curated rows
  * are a founder's exact editorial selection — LOCKED V1 policy is that
  * they ignore Market entirely, so `marketSlug` is never passed to
- * getBusinessesByIds, and business_showcase/events/products branches
- * never receive it at all (Market controls general BUSINESS discovery
- * only). */
+ * getBusinessesByIds, and business_showcase/products branches never
+ * receive it at all (Market controls general BUSINESS discovery only).
+ *
+ * Consumer Event Market Filtering V1 — a DYNAMIC "events" row now also
+ * receives `marketSlug` (forwarded into getEventsDiscovery, which scopes
+ * by each occurrence's EFFECTIVE physical Market — see
+ * lib/event-markets.ts — never business Market entitlement). A CURATED
+ * events row stays exactly like curated businesses: the founder's
+ * editorial selection ignores Market entirely. */
 export async function resolveHomepageRowItems(row: HomepageRow, marketSlug?: string): Promise<ResolvedHomepageRow> {
   if (row.content_type === "business_showcase") {
     return { contentType: "business_showcase", items: [] };
@@ -121,6 +127,7 @@ export async function resolveHomepageRowItems(row: HomepageRow, marketSlug?: str
             when: row.time_window ?? "anytime",
             categorySlug: row.category_slug ?? undefined,
             limit: row.item_limit,
+            marketSlug,
           });
     const items = await attachEventCategories(raw);
     return { contentType: "events", items };

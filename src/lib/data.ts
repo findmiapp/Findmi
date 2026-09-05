@@ -7,6 +7,7 @@ import {
   isAppearanceStillAvailable,
   type DiscoveryWindow,
 } from "./format";
+import { resolveEffectiveEventMarket } from "./event-markets";
 import type {
   Appearance,
   Business,
@@ -962,6 +963,14 @@ interface EffectiveUpcomingEventsOptions {
   q?: string;
   city?: string;
   location?: string;
+  /** Consumer Event Market Filtering V1 — scopes results to one FindMi
+   * Market by EFFECTIVE occurrence Market (see resolveEffectiveEventMarket
+   * in lib/event-markets.ts: occurrence override -> linked location ->
+   * parent event -> null), never by business Market entitlement. Omit for
+   * existing unfiltered behavior. An unknown/inactive slug must resolve to
+   * zero results here, never a silent fallback to unfiltered — see the
+   * resolution block inside getEffectiveUpcomingEvents. */
+  marketSlug?: string;
 }
 
 function applyEventTextFilters<
@@ -1016,6 +1025,23 @@ export async function getEffectiveUpcomingEvents(
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  // Consumer Event Market Filtering V1 — resolve the slug to an ACTIVE
+  // market id up front. An unknown/inactive slug returns zero rows for the
+  // whole function (never a silent fallback to unfiltered global results —
+  // same "resolved-but-empty short-circuits" idiom already used for
+  // business Market/category filtering in searchBusinesses).
+  let marketId: string | null = null;
+  if (options.marketSlug) {
+    const { data: marketRow } = await supabase
+      .from("markets")
+      .select("id")
+      .eq("slug", options.marketSlug)
+      .eq("active", true)
+      .maybeSingle();
+    if (!marketRow) return [];
+    marketId = marketRow.id;
+  }
+
   // Which events have ANY occurrence rows at all (any status) — these are
   // judged purely by their occurrences; everything else falls back to its
   // own start_at/end_at.
@@ -1041,12 +1067,55 @@ export async function getEffectiveUpcomingEvents(
     : occQuery.gt("end_at", new Date().toISOString());
   const { data: occRows } = await occQuery.order("start_at", { ascending: true });
 
+  // Consumer Event Market Filtering V1 — when a Market is selected, an
+  // occurrence's EFFECTIVE Market (never just its parent event's) decides
+  // eligibility, computed per-occurrence via the one locked resolver
+  // BEFORE picking each event's nearest occurrence. This is what makes a
+  // multi-Market recurring event correctly surface only its occurrence(s)
+  // in the selected Market (see this pass's own "FindMi Touring Market"
+  // example) instead of being judged by whichever occurrence happens to be
+  // globally nearest.
+  let eligibleOccRows = (occRows ?? []) as EventOccurrence[];
+  if (marketId) {
+    const candidateLocationIds = Array.from(
+      new Set(eligibleOccRows.map((o) => o.location_id).filter((id): id is string => !!id))
+    );
+    const locationMarketById = new Map<string, string | null>();
+    if (candidateLocationIds.length > 0) {
+      const { data: locs } = await supabase
+        .from("locations")
+        .select("id, market_id")
+        .in("id", candidateLocationIds);
+      for (const l of (locs ?? []) as { id: string; market_id: string | null }[]) {
+        locationMarketById.set(l.id, l.market_id);
+      }
+    }
+    const candidateEventIds = Array.from(new Set(eligibleOccRows.map((o) => o.event_id)));
+    const eventMarketById = new Map<string, string | null>();
+    if (candidateEventIds.length > 0) {
+      const { data: evs } = await supabase.from("events").select("id, market_id").in("id", candidateEventIds);
+      for (const e of (evs ?? []) as { id: string; market_id: string | null }[]) {
+        eventMarketById.set(e.id, e.market_id);
+      }
+    }
+    eligibleOccRows = eligibleOccRows.filter((o) => {
+      const effective = resolveEffectiveEventMarket({
+        eventMarketId: eventMarketById.get(o.event_id) ?? null,
+        occurrenceMarketId: o.market_id,
+        locationMarketId: o.location_id ? (locationMarketById.get(o.location_id) ?? null) : null,
+      });
+      return effective.marketId === marketId;
+    });
+  }
+
   // Keep only the nearest (and, separately, nearest-featured) qualifying
   // occurrence per event — rows already arrive start_at-ascending, so the
-  // first one seen per event_id is the nearest.
+  // first one seen per event_id is the nearest. When Market-scoped, this
+  // is the nearest occurrence WITHIN the selected Market, never the
+  // globally-nearest one — see eligibleOccRows above.
   const nearestByEvent = new Map<string, EventOccurrence>();
   const nearestFeaturedByEvent = new Map<string, EventOccurrence>();
-  for (const row of (occRows ?? []) as EventOccurrence[]) {
+  for (const row of eligibleOccRows) {
     if (!nearestByEvent.has(row.event_id)) nearestByEvent.set(row.event_id, row);
     if (row.featured && !nearestFeaturedByEvent.has(row.event_id)) nearestFeaturedByEvent.set(row.event_id, row);
   }
@@ -1066,9 +1135,14 @@ export async function getEffectiveUpcomingEvents(
   }
 
   // Legacy branch — events with zero event_occurrences rows, matched by
-  // their own start_at/end_at exactly as before this feature existed.
+  // their own start_at/end_at exactly as before this feature existed. A
+  // legacy event's effective Market is simply its own events.market_id
+  // (see lib/event-markets.ts's documented legacy case), so Market
+  // scoping here is a plain equality filter — no occurrence/location
+  // resolution needed since there is no occurrence.
   let legacyQuery = supabase.from("events").select("*").eq("is_demo", false);
   if (options.eventIds) legacyQuery = legacyQuery.in("id", options.eventIds);
+  if (marketId) legacyQuery = legacyQuery.eq("market_id", marketId);
   legacyQuery = bounds
     ? legacyQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
     : legacyQuery.gt("end_at", new Date().toISOString());
@@ -1119,10 +1193,11 @@ export async function getEffectiveUpcomingEvents(
 
 export async function getUpcomingEvents(
   limit = 20,
-  when: DiscoveryWindow = "anytime"
+  when: DiscoveryWindow = "anytime",
+  marketSlug?: string
 ): Promise<FindmiEvent[]> {
   const bounds = getDiscoveryWindowBounds(when);
-  const rows = await getEffectiveUpcomingEvents(bounds);
+  const rows = await getEffectiveUpcomingEvents(bounds, { marketSlug });
   return rows.slice(0, limit).map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
 
@@ -1161,6 +1236,10 @@ export interface EventDiscoveryParams {
   location?: string;
   limit?: number;
   offset?: number;
+  /** Consumer Event Market Filtering V1 — see EffectiveUpcomingEventsOptions'
+   * own doc comment. Separate from `location` (free-text city/state) —
+   * the two intersect rather than one replacing the other. */
+  marketSlug?: string;
 }
 
 /** Shared events query — backs /events' "All Events" browse state and
@@ -1205,6 +1284,7 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
     q: params.q,
     city: params.city,
     location: params.location,
+    marketSlug: params.marketSlug,
   });
 
   const offset = params.offset ?? 0;

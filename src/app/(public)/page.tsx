@@ -57,10 +57,14 @@ export default async function HomePage({
   ] = await Promise.all([
     getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
     getEventCategories(), // EVENT categories — the event discovery filter only, see that function's note
-    getUpcomingEvents(10, "anytime"), // "Up Next" — see HomeEventDiscovery's own note on this
-    getUpcomingEvents(10, "now"),
-    getUpcomingEvents(10, "weekend"),
-    getUpcomingEvents(10, "anytime"), // "All Events" — same real chronological query as Up Next
+    // Consumer Event Market Filtering V1 — marketSlug scopes each window
+    // by every candidate occurrence's EFFECTIVE physical Market (see
+    // lib/event-markets.ts), never business Market entitlement. Absent =
+    // today's unfiltered behavior, unchanged.
+    getUpcomingEvents(10, "anytime", marketSlug), // "Up Next" — see HomeEventDiscovery's own note on this
+    getUpcomingEvents(10, "now", marketSlug),
+    getUpcomingEvents(10, "weekend", marketSlug),
+    getUpcomingEvents(10, "anytime", marketSlug), // "All Events" — same real chronological query as Up Next
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
@@ -168,13 +172,25 @@ export default async function HomePage({
           of a page-specific hand-rolled header — the shared architecture
           this item asked for, not a one-off. */}
       <div className="mx-auto max-w-6xl">
-        <Section title={upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!} viewAllHref="/events">
+        <Section
+          title={upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
+          // Consumer Event Market Filtering V1, item I — this section
+          // represents general event browsing (never the curated/editorial
+          // Featured Events concept — see getFeaturedEvents, untouched by
+          // this pass), so its View All propagates the selected Market.
+          viewAllHref={marketSlug ? `/events?market=${encodeURIComponent(marketSlug)}` : "/events"}
+        >
           <HomeEventDiscovery
+            // Remounts (resetting its internal time×category cache) when
+            // the homepage's own Market changes — same lesson already
+            // applied to HomepageBusinessRow's own cache below.
+            key={marketSlug ?? "all"}
             upNext={upNextEvents}
             today={todayEvents}
             weekend={weekendEvents}
             anytime={anytimeEvents}
             eventCategories={eventCategories}
+            marketSlug={marketSlug}
           />
         </Section>
       </div>
@@ -351,8 +367,16 @@ async function HomepageRowSection({
   }
 
   if (resolved.contentType === "events") {
+    // Consumer Event Market Filtering V1 — resolveHomepageRowItems only
+    // ever applies marketSlug to this row's content in DYNAMIC mode (see
+    // that function's own note); View All must match, so a curated row's
+    // link never implies its hand-picked set was Market-scoped, exactly
+    // the same isDynamic-gated pattern the "businesses" branch above uses.
+    const isDynamicEvents = row.mode !== "curated";
+    const eventsViewAllHref =
+      isDynamicEvents && marketSlug ? `/events?market=${encodeURIComponent(marketSlug)}` : "/events";
     return (
-      <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref="/events">
+      <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref={eventsViewAllHref}>
         <HorizontalScroller>
           {resolved.items.map((e) => (
             <div key={e.id} className="w-[74vw] max-w-[320px] shrink-0 sm:w-72">
