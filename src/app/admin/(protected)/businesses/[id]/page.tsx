@@ -25,8 +25,11 @@ import NameSlugFields from "@/components/admin/NameSlugFields";
 import BusinessPeopleRoster from "@/components/admin/BusinessPeopleRoster";
 import { getCurrentAccessByEntity } from "@/lib/admin/claim-queries";
 import {
+  addAdditionalMarket,
   assignBusinessMember,
+  assignPrimaryMarket,
   removeBusinessMember,
+  removeMarketAssignment,
   saveBusinessCategories,
   saveBusinessGallery,
   saveBusinessInternal,
@@ -34,7 +37,9 @@ import {
   saveBusinessPlan,
   saveBusinessProfile,
 } from "../actions";
-import { isBusinessPro, isBusinessProSeller } from "@/lib/entitlements";
+import { getAllMarketsForAdmin, getBusinessMarketAssignments } from "@/lib/admin/business-markets";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getBusinessMarketLimit, isBusinessPro, isBusinessProSeller } from "@/lib/entitlements";
 import type { PublicationStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +80,7 @@ const ADMIN_TABS: TabNavItem[] = [
   { key: "categories", label: "Categories" },
   { key: "ownership", label: "Ownership" },
   { key: "plan", label: "Plan" },
+  { key: "markets", label: "Markets" },
   { key: "moderation", label: "Moderation" },
   { key: "internal", label: "Internal" },
 ];
@@ -107,6 +113,20 @@ export default async function EditBusinessPage({
   ]);
   if (!result) notFound();
   const { business } = result;
+
+  // Markets Foundation V1 — same admin/service-role client every other
+  // read on this page ultimately uses (getAdminBusinessById etc. create
+  // their own internally); business_markets has RLS enabled with zero
+  // policies, so only this client can read it at all.
+  const marketsAdmin = getAdminSupabase();
+  const [allMarkets, marketAssignments] = marketsAdmin
+    ? await Promise.all([getAllMarketsForAdmin(marketsAdmin), getBusinessMarketAssignments(marketsAdmin, id)])
+    : [[], []];
+  const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
+  const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
+  const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
+  const marketLimit = getBusinessMarketLimit(business);
+  const activeMarketableOptions = allMarkets.filter((m) => m.active);
   const publicHref = !business.is_demo && business.publication_status === "live" ? `/business/${business.slug}` : null;
   const members = accessByEntity.get(id) ?? [];
   const assignMember = assignBusinessMember.bind(null, id);
@@ -133,6 +153,8 @@ export default async function EditBusinessPage({
   const planAction = saveBusinessPlan.bind(null, id);
   const moderationAction = saveBusinessModeration.bind(null, id);
   const internalAction = saveBusinessInternal.bind(null, id);
+  const assignPrimaryMarketAction = assignPrimaryMarket.bind(null, id);
+  const addAdditionalMarketAction = addAdditionalMarket.bind(null, id);
 
   return (
     <div>
@@ -571,6 +593,152 @@ export default async function EditBusinessPage({
             </div>
             <SubmitBar cancelHref="/admin/businesses" saveLabel="Save Plan" />
           </form>
+        )}
+
+        {/* ── Markets (Markets Foundation V1) ─────────────────────────
+            Business-level general discovery/distribution entitlement —
+            a SEPARATE concept from Based In (home address, Profile tab)
+            and from Appearance geography (FindMi Here), which stay fully
+            independent. No discovery query reads business_markets yet —
+            this tab exists purely to let admin start assigning Markets
+            ahead of that. Owner-facing editing intentionally doesn't
+            exist yet. */}
+        {tab === "markets" && (
+          <div className="flex flex-col gap-5">
+            <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 text-sm">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Based In (unchanged)</p>
+              <p className="mt-1 text-ink/70">{[business.city, business.state].filter(Boolean).join(", ") || "Not set"}</p>
+              <p className="mt-3 text-xs text-ink/45">
+                This is the business&rsquo;s home address only — it has no effect on Market entitlement below, and
+                Market entitlement has no effect on it.
+              </p>
+              <p className="mt-2 text-xs font-semibold text-ink/60">
+                Entitled to {marketLimit} active market{marketLimit === 1 ? "" : "s"} on the current plan (
+                {business.plan_tier ?? "free"}).
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-black/10 bg-white p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Primary Market</p>
+              {activePrimaryMarket ? (
+                <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-findmi/30 bg-findmi-50 px-3.5 py-2.5">
+                  <div>
+                    <p className="text-sm font-semibold text-findmi-700">{activePrimaryMarket.marketName}</p>
+                    {activePrimaryMarket.provenance && (
+                      <p className="text-xs text-findmi-700/70">Provenance: {activePrimaryMarket.provenance}</p>
+                    )}
+                  </div>
+                  <form action={removeMarketAssignment.bind(null, id, activePrimaryMarket.id)}>
+                    <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                      Remove
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <p className="mt-1 text-sm text-ink/50">None assigned.</p>
+              )}
+
+              <form action={assignPrimaryMarketAction} className="mt-4 flex flex-col gap-4">
+                <SelectField
+                  label={activePrimaryMarket ? "Reassign Primary Market" : "Assign Primary Market"}
+                  name="market_id"
+                  defaultValue={activePrimaryMarket?.marketId ?? ""}
+                  options={[
+                    { value: "", label: "— Choose a market —" },
+                    ...activeMarketableOptions.map((m) => ({ value: m.id, label: m.name })),
+                  ]}
+                />
+                <SelectField
+                  label="Provenance"
+                  name="provenance"
+                  defaultValue={activePrimaryMarket?.provenance ?? ""}
+                  options={[
+                    { value: "", label: "— Not recorded —" },
+                    { value: "paid", label: "Paid" },
+                    { value: "complimentary", label: "Complimentary" },
+                    { value: "promotional", label: "Promotional" },
+                    { value: "admin", label: "Admin-granted" },
+                  ]}
+                />
+                <CheckboxField
+                  label="Override limit"
+                  name="override_limit"
+                  hint="Only for correcting legacy/data issues — normal assignment is blocked from exceeding the plan's market limit above."
+                />
+                <SubmitBar cancelHref="/admin/businesses" saveLabel="Save Primary Market" />
+              </form>
+            </div>
+
+            <div className="rounded-2xl border border-black/10 bg-white p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Markets</p>
+              {activeAdditionalMarkets.length > 0 ? (
+                <ul className="mt-2 flex flex-col gap-2">
+                  {activeAdditionalMarkets.map((m) => (
+                    <li
+                      key={m.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-2.5"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-ink">{m.marketName}</p>
+                        {m.provenance && <p className="text-xs text-ink/45">Provenance: {m.provenance}</p>}
+                      </div>
+                      <form action={removeMarketAssignment.bind(null, id, m.id)}>
+                        <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                          Remove
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-sm text-ink/50">None assigned.</p>
+              )}
+
+              <form action={addAdditionalMarketAction} className="mt-4 flex flex-col gap-4">
+                <SelectField
+                  label="Add Additional Market"
+                  name="market_id"
+                  defaultValue=""
+                  options={[
+                    { value: "", label: "— Choose a market —" },
+                    ...activeMarketableOptions.map((m) => ({ value: m.id, label: m.name })),
+                  ]}
+                />
+                <SelectField
+                  label="Provenance"
+                  name="provenance"
+                  defaultValue=""
+                  options={[
+                    { value: "", label: "— Not recorded —" },
+                    { value: "paid", label: "Paid" },
+                    { value: "complimentary", label: "Complimentary" },
+                    { value: "promotional", label: "Promotional" },
+                    { value: "admin", label: "Admin-granted" },
+                  ]}
+                />
+                <CheckboxField
+                  label="Override limit"
+                  name="override_limit"
+                  hint="Only for correcting legacy/data issues — normal assignment is blocked from exceeding the plan's market limit above."
+                />
+                <SubmitBar cancelHref="/admin/businesses" saveLabel="Add Additional Market" />
+              </form>
+            </div>
+
+            {inactiveMarketAssignments.length > 0 && (
+              <div className="rounded-2xl border border-black/10 bg-mist/20 p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Removed / Inactive (history)</p>
+                <ul className="mt-2 flex flex-col gap-1.5 text-xs text-ink/50">
+                  {inactiveMarketAssignments.map((m) => (
+                    <li key={m.id}>
+                      {m.marketName} — was {m.relationship}
+                      {m.provenance ? ` · ${m.provenance}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         )}
 
         {/* ── Moderation ───────────────────────────────────────────── */}

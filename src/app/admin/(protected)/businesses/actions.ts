@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import { validateCustomDestination } from "@/lib/navigation";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
+import { getBusinessMarketLimit } from "@/lib/entitlements";
 
 /**
  * Tabbed Business Edit pass — every save action below that's scoped to
@@ -444,6 +446,195 @@ export async function saveBusinessInternal(id: string, formData: FormData) {
 
   const { error } = await supabase.from("businesses").update(payload).eq("id", id);
   if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  revalidatePath(editPath);
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+// ── Markets (Markets Foundation V1) ──────────────────────────────────────
+// Admin-only for now — no owner-facing Market editing exists yet (out of
+// scope for this pass). All three actions below write business_markets
+// through THIS admin/service-role client only (RLS on that table has zero
+// policies for anon/authenticated — see migration business_markets), and
+// every write is scoped by `.eq("business_id", businessId)` so a forged
+// assignment id can never touch another business's row.
+//
+// "Normal" changes (no override_limit) are blocked from pushing a
+// business's total ACTIVE market count above getBusinessMarketLimit() —
+// the one centralized resolver (lib/entitlements.ts). override_limit is
+// an explicit, visible admin checkbox for correcting legacy/data issues
+// (task's own requirement) — it never bypasses the structural rules (one
+// active primary, no duplicate business+market row, market must exist and
+// be active for a brand-new assignment), only the numeric limit.
+
+async function countActiveBusinessMarkets(supabase: SupabaseClient, businessId: string): Promise<number> {
+  const { count } = await supabase
+    .from("business_markets")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .eq("active", true);
+  return count ?? 0;
+}
+
+/** Assign/reassign this business's Primary Market. Demotes whichever
+ * market was previously primary (if different) — the partial unique index
+ * business_markets_one_active_primary means a naive insert/activate would
+ * otherwise fail outright rather than silently double up. */
+export async function assignPrimaryMarket(businessId: string, formData: FormData) {
+  const editPath = `/admin/businesses/${businessId}?tab=markets`;
+  const supabase = await requireAdminSupabase();
+
+  const marketId = str(formData, "market_id");
+  if (!marketId) redirect(appendQuery(editPath, { error: "Choose a market." }));
+
+  const [{ data: business }, { data: existing }, { data: currentPrimary }] = await Promise.all([
+    supabase.from("businesses").select("plan_tier").eq("id", businessId).maybeSingle(),
+    supabase.from("business_markets").select("*").eq("business_id", businessId).eq("market_id", marketId!).maybeSingle(),
+    supabase
+      .from("business_markets")
+      .select("*")
+      .eq("business_id", businessId)
+      .eq("relationship", "primary")
+      .eq("active", true)
+      .maybeSingle(),
+  ]);
+  if (!business) redirect(errorRedirectUrl("/admin/businesses", "Business not found."));
+
+  const isNewAssignment = !existing;
+  if (isNewAssignment) {
+    const { data: market } = await supabase.from("markets").select("id, active").eq("id", marketId!).maybeSingle();
+    if (!market || !market.active) {
+      redirect(appendQuery(editPath, { error: "That market doesn't exist or isn't active." }));
+    }
+  }
+
+  const override = bool(formData, "override_limit");
+  if (!override) {
+    const activeCount = await countActiveBusinessMarkets(supabase, businessId);
+    const targetAlreadyActive = Boolean(existing?.active);
+    const demotesAnotherPrimary = Boolean(currentPrimary && currentPrimary.market_id !== marketId);
+    const prospective = activeCount - (demotesAnotherPrimary ? 1 : 0) + (targetAlreadyActive ? 0 : 1);
+    const limit = getBusinessMarketLimit({ plan_tier: business.plan_tier });
+    if (prospective > limit) {
+      redirect(
+        appendQuery(editPath, {
+          error: `This plan is entitled to ${limit} active market${limit === 1 ? "" : "s"} — assigning this would exceed it. Check "Override limit" to correct this deliberately.`,
+        })
+      );
+    }
+  }
+
+  const provenance = str(formData, "provenance");
+
+  if (currentPrimary && currentPrimary.market_id !== marketId) {
+    await supabase.from("business_markets").update({ active: false }).eq("id", currentPrimary.id);
+  }
+
+  if (existing) {
+    const { error } = await supabase
+      .from("business_markets")
+      .update({ relationship: "primary", active: true, provenance })
+      .eq("id", existing.id)
+      .eq("business_id", businessId);
+    if (error) redirect(appendQuery(editPath, { error: error.message }));
+  } else {
+    const { error } = await supabase
+      .from("business_markets")
+      .insert({ business_id: businessId, market_id: marketId, relationship: "primary", active: true, provenance });
+    if (error) redirect(appendQuery(editPath, { error: error.message }));
+  }
+
+  revalidatePath(editPath);
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+/** Add an Additional Market. Never touches the Primary Market row —
+ * assigning a market that's already this business's active primary (or
+ * already an active additional market) is rejected with a clear message
+ * rather than silently reinterpreted. */
+export async function addAdditionalMarket(businessId: string, formData: FormData) {
+  const editPath = `/admin/businesses/${businessId}?tab=markets`;
+  const supabase = await requireAdminSupabase();
+
+  const marketId = str(formData, "market_id");
+  if (!marketId) redirect(appendQuery(editPath, { error: "Choose a market." }));
+
+  const [{ data: business }, { data: existing }] = await Promise.all([
+    supabase.from("businesses").select("plan_tier").eq("id", businessId).maybeSingle(),
+    supabase.from("business_markets").select("*").eq("business_id", businessId).eq("market_id", marketId!).maybeSingle(),
+  ]);
+  if (!business) redirect(errorRedirectUrl("/admin/businesses", "Business not found."));
+
+  if (existing?.active) {
+    redirect(
+      appendQuery(editPath, {
+        error:
+          existing.relationship === "primary"
+            ? "That market is already this business's Primary Market."
+            : "That market is already an Additional Market for this business.",
+      })
+    );
+  }
+
+  if (!existing) {
+    const { data: market } = await supabase.from("markets").select("id, active").eq("id", marketId!).maybeSingle();
+    if (!market || !market.active) {
+      redirect(appendQuery(editPath, { error: "That market doesn't exist or isn't active." }));
+    }
+  }
+
+  const override = bool(formData, "override_limit");
+  if (!override) {
+    const activeCount = await countActiveBusinessMarkets(supabase, businessId);
+    const limit = getBusinessMarketLimit({ plan_tier: business.plan_tier });
+    if (activeCount + 1 > limit) {
+      redirect(
+        appendQuery(editPath, {
+          error: `This plan is entitled to ${limit} active market${limit === 1 ? "" : "s"} — adding this would exceed it. Check "Override limit" to correct this deliberately.`,
+        })
+      );
+    }
+  }
+
+  const provenance = str(formData, "provenance");
+
+  if (existing) {
+    const { error } = await supabase
+      .from("business_markets")
+      .update({ relationship: "additional", active: true, provenance })
+      .eq("id", existing.id)
+      .eq("business_id", businessId);
+    if (error) redirect(appendQuery(editPath, { error: error.message }));
+  } else {
+    const { error } = await supabase
+      .from("business_markets")
+      .insert({ business_id: businessId, market_id: marketId, relationship: "additional", active: true, provenance });
+    if (error) redirect(appendQuery(editPath, { error: error.message }));
+  }
+
+  revalidatePath(editPath);
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+/** Soft-removes one assignment (active = false) rather than deleting the
+ * row — preserves provenance/history for later reference, same
+ * "never delete data to clean up" discipline as the rest of admin. Works
+ * for either a Primary or an Additional row. */
+export async function removeMarketAssignment(businessId: string, assignmentId: string) {
+  const editPath = `/admin/businesses/${businessId}?tab=markets`;
+  const supabase = await requireAdminSupabase();
+
+  const { data, error } = await supabase
+    .from("business_markets")
+    .update({ active: false })
+    .eq("id", assignmentId)
+    .eq("business_id", businessId)
+    .select()
+    .maybeSingle();
+
+  if (error || !data) {
+    redirect(appendQuery(editPath, { error: "Couldn't remove that market assignment." }));
+  }
 
   revalidatePath(editPath);
   redirect(appendQuery(editPath, { saved: "1" }));

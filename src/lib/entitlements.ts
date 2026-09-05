@@ -50,3 +50,36 @@ export function isBusinessProSeller(business: Pick<Business, "plan_tier">): bool
 export function isPlanTierProSeller(planTier: PlanTier | null | undefined): boolean {
   return planTier === "pro_seller";
 }
+
+/**
+ * Markets Foundation V1 — the one centralized resolver for how many
+ * FindMi Markets (business_markets rows, active primary + additional
+ * combined) a business is entitled to hold. Every tier resolves to 1
+ * today; callers must always go through this function rather than
+ * re-deriving the number from plan_tier themselves, so a later change
+ * (Multi-Market, a configurable Pro Seller allowance, a per-business
+ * override column) only ever needs to change the body of this one
+ * function, never its callers.
+ */
+export function getBusinessMarketLimit(business: Pick<Business, "plan_tier">): number {
+  return getMarketLimitForPlanTier(business.plan_tier);
+}
+
+/** Bare-value counterpart to getBusinessMarketLimit, same relationship as
+ * isPlanTierPro above — for a caller that only has the plan_tier column
+ * (e.g. a narrow admin query) rather than a full Business row. */
+export function getMarketLimitForPlanTier(planTier: PlanTier | null | undefined): number {
+  switch (planTier) {
+    case "free":
+      return 1;
+    case "pro":
+      return 1;
+    case "pro_seller":
+      // Future Pro Seller allowance is meant to become configurable
+      // without a schema redesign (see this pass's task) — still a flat
+      // 1 for now since nothing seller-specific exists yet.
+      return 1;
+    default:
+      return 1;
+  }
+}
