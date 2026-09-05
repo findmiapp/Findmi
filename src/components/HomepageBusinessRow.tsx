@@ -18,12 +18,21 @@ import type { BusinessWithCategories, Category } from "@/lib/types";
  *
  * A fetch failure is tracked separately from "the combo genuinely has no
  * businesses" (live-QA fix pass) — previously indistinguishable, so a
- * transient failure silently read as "the filter is broken." */
+ * transient failure silently read as "the filter is broken."
+ *
+ * Homepage Market Filtering V1 — `marketSlug` is passed down from the
+ * page's own ?market= only for a DYNAMIC row (the parent never passes it
+ * for a curated row — see page.tsx's HomepageRowSection — so a curated
+ * row's re-fetch here is byte-identical to before this pass regardless of
+ * the homepage's selected Market). When present, every category re-fetch
+ * stays scoped to that same Market — no separate persistence, just the
+ * one value already threaded down from the page's own query string. */
 export default function HomepageBusinessRow({
   rowId,
   initialItems,
   categories,
   appearanceHints,
+  marketSlug,
 }: {
   rowId: string;
   initialItems: BusinessWithCategories[];
@@ -33,6 +42,7 @@ export default function HomepageBusinessRow({
    * nothing upcoming just has no entry, so BusinessLogoCard's NEXT UP
    * module correctly omits itself rather than fabricating anything. */
   appearanceHints: Record<string, NextAppearanceHint>;
+  marketSlug?: string;
 }) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, BusinessWithCategories[]>>({});
@@ -49,9 +59,11 @@ export default function HomepageBusinessRow({
     setLoading(true);
     setFailedCategory(null);
     try {
-      const res = await fetch(`/api/homepage-business-row?rowId=${rowId}&category=${encodeURIComponent(slug)}`, {
-        cache: "no-store",
-      });
+      const marketParam = marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : "";
+      const res = await fetch(
+        `/api/homepage-business-row?rowId=${rowId}&category=${encodeURIComponent(slug)}${marketParam}`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error(`homepage-business-row ${res.status}`);
       const data: { businesses: BusinessWithCategories[]; appearanceHints: Record<string, NextAppearanceHint> } =
         await res.json();

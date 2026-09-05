@@ -86,8 +86,16 @@ export type ResolvedHomepageRow =
  * a deleted/unpublished curated record just drops out, never errors). The
  * business_showcase content type has no queryable content of its own —
  * it's the existing BusinessShowcaseCarousel, just hideable/reorderable
- * through this same row system now instead of a fixed page position. */
-export async function resolveHomepageRowItems(row: HomepageRow): Promise<ResolvedHomepageRow> {
+ * through this same row system now instead of a fixed page position.
+ *
+ * Homepage Market Filtering V1 — `marketSlug` is ONLY ever applied to a
+ * DYNAMIC "businesses" row (see getHomepageRowBusinesses). Curated rows
+ * are a founder's exact editorial selection — LOCKED V1 policy is that
+ * they ignore Market entirely, so `marketSlug` is never passed to
+ * getBusinessesByIds, and business_showcase/events/products branches
+ * never receive it at all (Market controls general BUSINESS discovery
+ * only). */
+export async function resolveHomepageRowItems(row: HomepageRow, marketSlug?: string): Promise<ResolvedHomepageRow> {
   if (row.content_type === "business_showcase") {
     return { contentType: "business_showcase", items: [] };
   }
@@ -100,6 +108,7 @@ export async function resolveHomepageRowItems(row: HomepageRow): Promise<Resolve
             categorySlug: row.category_slug ?? undefined,
             featuredOnly: row.featured_only,
             limit: row.item_limit,
+            marketSlug,
           });
     return { contentType: "businesses", items };
   }

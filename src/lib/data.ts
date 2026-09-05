@@ -339,6 +339,13 @@ export interface HomepageRowBusinessParams {
   categorySlug?: string;
   featuredOnly?: boolean;
   limit?: number;
+  /** Homepage Market Filtering V1 — DYNAMIC rows only (see
+   * lib/homepage-rows.ts's resolveHomepageRowItems, which never passes
+   * this for curated/business_showcase rows — those are editorial
+   * selections and ignore Market entirely by design). Reuses
+   * getBusinessIdsInMarket exactly like searchBusinesses does; omitted
+   * preserves current behavior exactly. */
+  marketSlug?: string;
 }
 
 /** Dynamic-mode businesses feed for a founder-configured homepage row
@@ -349,6 +356,15 @@ export interface HomepageRowBusinessParams {
 export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams = {}): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
+
+  // Resolved and short-circuited exactly like searchBusinesses's own
+  // marketSlug handling — an unknown/inactive slug or a market with
+  // nobody in it yet returns [] immediately, never an unfiltered row.
+  let marketBusinessIds: string[] | null = null;
+  if (params.marketSlug) {
+    marketBusinessIds = await getBusinessIdsInMarket(params.marketSlug);
+    if (marketBusinessIds.length === 0) return [];
+  }
 
   let categoryBusinessIds: string[] | null = null;
   if (params.categorySlug) {
@@ -366,6 +382,9 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
 
   let query = supabase.from("businesses").select(PUBLIC_BUSINESS_COLUMNS).eq("is_demo", false).eq("publication_status", "live");
   if (categoryBusinessIds) query = query.in("id", categoryBusinessIds);
+  // Second .in("id", ...) call ANDs with the category one above — same
+  // idiom searchBusinesses already uses to intersect the two id sets.
+  if (marketBusinessIds) query = query.in("id", marketBusinessIds);
   if (params.featuredOnly) query = query.eq("is_featured", true);
 
   const { data, error } = await query
@@ -390,13 +409,28 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
  * that chip could only ever return zero results. This scopes the chip
  * list itself to categories with at least one business that would
  * actually survive this row's own filters, so a shown chip is never a
- * dead end. */
-export async function getCategoriesForDynamicBusinessRow(featuredOnly: boolean): Promise<Category[]> {
+ * dead end.
+ *
+ * Homepage Market Filtering V1 — optional marketSlug applies the exact
+ * same "never a dead end" fix to Market: when a dynamic row is scoped to
+ * a Market, a chip must also only appear if it has a business eligible
+ * for THAT Market, or selecting it would be the same "chip exists,
+ * always empty" bug this function was written to prevent for is_demo/
+ * publication_status. Never applied to curated rows, which ignore
+ * Market entirely (see resolveHomepageRowItems's own note). */
+export async function getCategoriesForDynamicBusinessRow(featuredOnly: boolean, marketSlug?: string): Promise<Category[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  let marketBusinessIds: string[] | null = null;
+  if (marketSlug) {
+    marketBusinessIds = await getBusinessIdsInMarket(marketSlug);
+    if (marketBusinessIds.length === 0) return [];
+  }
+
   let query = supabase.from("businesses").select("id").eq("is_demo", false).eq("publication_status", "live");
   if (featuredOnly) query = query.eq("is_featured", true);
+  if (marketBusinessIds) query = query.in("id", marketBusinessIds);
   const { data: eligible } = await query;
   const eligibleIds = new Set((eligible ?? []).map((b) => b.id));
   if (eligibleIds.size === 0) return [];

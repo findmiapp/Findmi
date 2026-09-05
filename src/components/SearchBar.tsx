@@ -28,7 +28,13 @@ const MIN_CHARS = 2;
 // /api/homepage-search, which just fans out to the same existing public
 // search functions used elsewhere (see that route). No parallel search
 // system, no fabricated results.
-export default function SearchBar() {
+//
+// Homepage Market Filtering V1 — `marketSlug` (the homepage's own current
+// ?market= value, if any) is threaded into the live-suggestions fetch and
+// both outbound business-search links (submit + "View all results"), but
+// ONLY affects the business branch server-side (see /api/homepage-search's
+// own note) — event/product suggestions and their links are unaffected.
+export default function SearchBar({ marketSlug }: { marketSlug?: string }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [q, setQ] = useState("");
@@ -46,7 +52,8 @@ export default function SearchBar() {
     setLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/homepage-search?q=${encodeURIComponent(term)}`, { cache: "no-store" });
+        const marketParam = marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : "";
+        const res = await fetch(`/api/homepage-search?q=${encodeURIComponent(term)}${marketParam}`, { cache: "no-store" });
         const data: SearchResults = await res.json();
         setResults(data);
       } catch {
@@ -56,7 +63,7 @@ export default function SearchBar() {
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [q]);
+  }, [q, marketSlug]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -71,6 +78,7 @@ export default function SearchBar() {
     setOpen(false);
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
+    if (marketSlug) params.set("market", marketSlug);
     router.push(`/businesses${params.toString() ? `?${params.toString()}` : ""}`);
   }
 
@@ -128,7 +136,7 @@ export default function SearchBar() {
               <ResultGroup label="Events" items={results.events} onSelect={() => setOpen(false)} />
               <ResultGroup label="Products" items={results.products} onSelect={() => setOpen(false)} />
               <Link
-                href={`/businesses?q=${encodeURIComponent(term)}`}
+                href={`/businesses?q=${encodeURIComponent(term)}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}`}
                 onClick={() => setOpen(false)}
                 className="mt-1 block rounded-xl px-3 py-2.5 text-center text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
               >

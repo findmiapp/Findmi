@@ -13,13 +13,20 @@ export const dynamic = "force-dynamic";
  * ='live' the same way everywhere else on the public site). This route
  * only fans them out in parallel and trims each result down to the
  * minimal fields a dropdown needs.
+ *
+ * Homepage Market Filtering V1 — optional `market` query param is
+ * forwarded ONLY into the searchBusinesses() branch. Events and products
+ * never receive it — FindMi Market controls general BUSINESS discovery
+ * only (see the locked product rule), and getEventsDiscovery/
+ * getMarketplaceProducts have no Market concept to begin with.
  */
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
+  const marketSlug = request.nextUrl.searchParams.get("market")?.trim() || undefined;
   if (q.length < 2) return NextResponse.json({ businesses: [], events: [], products: [] });
 
   const [businesses, events, products] = await Promise.all([
-    searchBusinesses({ q }),
+    searchBusinesses({ q, marketSlug }),
     getEventsDiscovery({ q, limit: 4 }),
     getMarketplaceProducts({ q, limit: 4 }),
   ]);

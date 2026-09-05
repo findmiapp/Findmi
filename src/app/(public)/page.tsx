@@ -11,8 +11,10 @@ import HomeHero from "@/components/HomeHero";
 import Logo from "@/components/Logo";
 import SearchBar from "@/components/SearchBar";
 import HomeEventDiscovery from "@/components/HomeEventDiscovery";
+import SortSelect from "@/components/discover/SortSelect";
 import {
   attachEventCategories,
+  getActiveMarkets,
   getCategoriesForDynamicBusinessRow,
   getEventCategories,
   getFeaturedBusinesses,
@@ -34,7 +36,13 @@ import { getWeatherContext } from "@/lib/weather";
 
 export const revalidate = 60;
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ market?: string }>;
+}) {
+  const { market: marketSlug } = await searchParams;
+
   const [
     categories,
     eventCategories,
@@ -45,6 +53,7 @@ export default async function HomePage() {
     heroFallbackBrands,
     homepageRows,
     siteSections,
+    markets,
   ] = await Promise.all([
     getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
     getEventCategories(), // EVENT categories — the event discovery filter only, see that function's note
@@ -52,9 +61,10 @@ export default async function HomePage() {
     getUpcomingEvents(10, "now"),
     getUpcomingEvents(10, "weekend"),
     getUpcomingEvents(10, "anytime"), // "All Events" — same real chronological query as Up Next
-    getFeaturedBusinesses(3), // hero collage fallback imagery only, see below
+    getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
+    getActiveMarkets(), // Homepage Market Filtering V1 — same public list /businesses already uses
   ]);
 
   const [upNextEvents, todayEvents, weekendEvents, anytimeEvents] = await Promise.all([
@@ -67,8 +77,11 @@ export default async function HomePage() {
   // Each row's content is resolved in parallel — one query per row
   // (dynamic mode) or a curated-id lookup (curated mode), same shared
   // query functions every other feed on the site already uses. See
-  // lib/homepage-rows.ts.
-  const resolvedRows = await Promise.all(homepageRows.map((row) => resolveHomepageRowItems(row)));
+  // lib/homepage-rows.ts. marketSlug is passed through unconditionally —
+  // resolveHomepageRowItems itself only ever applies it to a DYNAMIC
+  // "businesses" row (curated rows/business_showcase/events/products all
+  // ignore it, per that function's own note).
+  const resolvedRows = await Promise.all(homepageRows.map((row) => resolveHomepageRowItems(row, marketSlug)));
 
   // Founder Site Editor overrides for the structural sections that stay
   // fixed-position (hero, event discovery heading/copy, explore by
@@ -125,6 +138,25 @@ export default async function HomePage() {
 
       <HomeHero images={heroImages} heading={heroSec.heading} description={heroSec.body} />
 
+      {/* Homepage Market Filtering V1 — compact, URL-only ("?market=",
+          never persisted to a cookie/localStorage/session — see
+          SortSelect's own note). Reuses that exact URL-param select
+          component (already proven on /businesses for `sort`) rather than
+          building a new one; "All Markets" is options[0], so picking it
+          removes the param entirely. Scopes ONLY dynamic business
+          discovery below (rows, category chips, search) — never events,
+          products, appearances, or venues, which never read this param at
+          all. Deliberately NOT in the global header — page-scoped only. */}
+      {markets.length > 0 && (
+        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+          <SortSelect
+            label="Market"
+            paramName="market"
+            options={[{ value: "", label: "All Markets" }, ...markets.map((m) => ({ value: m.slug, label: m.name }))]}
+          />
+        </div>
+      )}
+
       {/* Discovery filters (Up Next default) + first live feed — heading
           is exactly "Upcoming Events Near You" (see HOMEPAGE_SECTIONS'
           featured_events default). Begins immediately after the Hero now
@@ -153,7 +185,7 @@ export default async function HomePage() {
           behavior/styling untouched. */}
       <section className="border-b border-black/5 bg-white px-4 py-3 sm:px-6 sm:py-4">
         <div className="mx-auto max-w-6xl">
-          <SearchBar />
+          <SearchBar marketSlug={marketSlug} />
         </div>
       </section>
 
@@ -168,7 +200,7 @@ export default async function HomePage() {
           rendering after every row if no businesses row exists. */}
       {homepageRows.map((row, i) => (
         <Fragment key={row.id}>
-          <HomepageRowSection row={row} resolved={resolvedRows[i]} />
+          <HomepageRowSection row={row} resolved={resolvedRows[i]} marketSlug={marketSlug} />
           {i === brandsRowIndex && <DiscoveryTopics topics={discoveryTopics} />}
         </Fragment>
       ))}
@@ -186,7 +218,7 @@ export default async function HomePage() {
               {categories.map((c) => (
                 <Link
                   key={c.id}
-                  href={`/businesses?category=${c.slug}`}
+                  href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}`}
                   className="flex shrink-0 items-center gap-2 rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:border-findmi/50 hover:bg-findmi-50"
                 >
                   {c.name}
@@ -226,9 +258,15 @@ export default async function HomePage() {
 async function HomepageRowSection({
   row,
   resolved,
+  marketSlug,
 }: {
   row: HomepageRow;
   resolved: Awaited<ReturnType<typeof resolveHomepageRowItems>>;
+  /** Homepage Market Filtering V1 — only ever applied below for a
+   * DYNAMIC "businesses" row (chip eligibility, View All link, and the
+   * client-side re-filter route). Curated rows and every other content
+   * type ignore it entirely, per LOCKED V1 policy. */
+  marketSlug?: string;
 }) {
   if (resolved.contentType === "business_showcase") {
     // Real demo business (The Native Rose) — fetched only when a
@@ -272,10 +310,10 @@ async function HomepageRowSection({
     // chips straight from the businesses actually in the row; dynamic
     // rows ask which categories have a business that would survive this
     // row's own featured_only/is_demo/publication_status rules.
-    const rowCategories =
-      row.mode === "curated"
-        ? dedupeCategories(resolved.items.flatMap((b) => b.categories))
-        : await getCategoriesForDynamicBusinessRow(row.featured_only);
+    const isDynamic = row.mode !== "curated";
+    const rowCategories = isDynamic
+      ? await getCategoriesForDynamicBusinessRow(row.featured_only, marketSlug)
+      : dedupeCategories(resolved.items.flatMap((b) => b.categories));
     // Bulk-fetched once per row (not once per card) via the same
     // appearances architecture /businesses already uses for its own card
     // hint (getNextAppearanceHints) — BusinessLogoCard's NEXT UP module,
@@ -284,16 +322,29 @@ async function HomepageRowSection({
     const appearanceHints = Object.fromEntries(
       await getNextAppearanceHints(resolved.items.map((b) => b.id))
     );
+    // Homepage Market Filtering V1 — Market only ever propagates into
+    // /businesses from a DYNAMIC row's View All link; a curated row
+    // ignores Market for its own content (LOCKED V1 policy), so its View
+    // All link stays exactly as it always was too — never implying the
+    // curated set itself was Market-scoped.
+    const viewAllHref = isDynamic && marketSlug ? `/businesses?market=${encodeURIComponent(marketSlug)}` : "/businesses";
     return (
       // Launch-polish pass item 2 — /businesses (Discovery/Archive V2) is
       // a real canonical destination regardless of this row's own
       // curated/dynamic filters, so every "businesses" row gets View All.
-      <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref="/businesses">
+      <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref={viewAllHref}>
         <HomepageBusinessRow
+          // Remounts (resetting its internal category cache/selection)
+          // whenever the homepage's own Market changes — without this, a
+          // previously-cached category's businesses could keep showing
+          // stale results from the PRIOR Market after switching (the
+          // component's cache is keyed only by category slug, not Market).
+          key={`${row.id}-${marketSlug ?? "all"}`}
           rowId={row.id}
           initialItems={resolved.items}
           categories={rowCategories}
           appearanceHints={appearanceHints}
+          marketSlug={isDynamic ? marketSlug : undefined}
         />
       </Section>
     );

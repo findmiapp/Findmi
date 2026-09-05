@@ -20,10 +20,16 @@ export const dynamic = "force-dynamic";
  * picked category overriding the row's own configured category (if any)
  * — combining two single-category filters would almost always yield
  * nothing, since a business typically carries one category.
+ *
+ * Homepage Market Filtering V1 — optional `market` query param, forwarded
+ * into getHomepageRowBusinesses for a DYNAMIC row only. A curated row's
+ * `mode === "curated"` branch never reads it at all — curated rows ignore
+ * Market entirely (LOCKED V1 policy, same as the initial server render).
  */
 export async function GET(request: NextRequest) {
   const rowId = request.nextUrl.searchParams.get("rowId");
   const category = request.nextUrl.searchParams.get("category")?.trim() || null;
+  const marketSlug = request.nextUrl.searchParams.get("market")?.trim() || undefined;
   if (!rowId) return NextResponse.json({ error: "rowId is required" }, { status: 400 });
 
   const supabase = getSupabase();
@@ -51,6 +57,7 @@ export async function GET(request: NextRequest) {
     categorySlug: category ?? typedRow.category_slug ?? undefined,
     featuredOnly: typedRow.featured_only,
     limit: typedRow.item_limit,
+    marketSlug,
   });
   // Bulk-fetched here too (not per card) so BusinessLogoCard's NEXT UP
   // module keeps working after a live category-chip re-fetch, not just on
