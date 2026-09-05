@@ -917,6 +917,12 @@ const CREATE_FRIENDLY_ERROR: Record<string, string> = {
   name_required: "Business name is required.",
   slug_required: "Business name is required to generate a URL.",
   invalid_category: "Choose a valid category.",
+  // Primary Market During Business Creation V1 — market_required/
+  // invalid_market are raised by create_owned_business() itself (see
+  // that migration); mapped here the same way every other RPC exception
+  // already is, never trusted as a client-side-only validation.
+  market_required: "Choose a Primary Market.",
+  invalid_market: "That market isn't available. Choose another.",
 };
 
 /** Creates a brand-new business natively — free, no payment, starting
@@ -926,6 +932,16 @@ const CREATE_FRIENDLY_ERROR: Record<string, string> = {
  * atomically with the business itself (same RPC, one transaction) — see
  * that migration's own comment for why this needed a small SECURITY
  * DEFINER function rather than two separate inserts from here.
+ *
+ * Primary Market During Business Creation V1 — market_id is now a
+ * required part of that same atomic RPC call: relationship='primary' and
+ * provenance='self_selected' are hardcoded inside create_owned_business()
+ * itself, never accepted as input here, so this action can only ever
+ * choose WHICH active market, never how it's categorized. If the RPC
+ * fails for any reason (including an invalid/inactive market), no
+ * business, owner membership, or market row exists at all — see that
+ * migration's own comment on why a single SECURITY DEFINER function call
+ * gives this real atomicity without a separate BEGIN/COMMIT.
  *
  * city/state/website_url/instagram_url are collected for identity,
  * duplicate detection, and moderation ONLY — they're stored on the new
@@ -951,10 +967,18 @@ export async function createMemberBusiness(formData: FormData) {
   const state = str(formData, "state");
   const websiteUrl = str(formData, "website_url");
   const instagramUrl = str(formData, "instagram_url");
+  const marketId = str(formData, "market_id");
   const authorized = bool(formData, "authorized");
 
   if (!name) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Business name is required."));
   if (!categoryId) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose a category."));
+  // Primary Market During Business Creation V1 — checked here for a fast,
+  // friendly error before any duplicate-check/slug work runs, but
+  // create_owned_business() re-validates existence/active status itself
+  // (market_required/invalid_market) as the real, untrusted-client-input
+  // enforcement — this is only a UX shortcut for the "field left blank"
+  // case, never the actual security boundary.
+  if (!marketId) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose a Primary Market."));
   if (!authorized) {
     redirect(
       errorRedirectUrl(CREATE_BUSINESS_PATH, "Please confirm you're authorized to create and manage this business.")
@@ -997,6 +1021,7 @@ export async function createMemberBusiness(formData: FormData) {
     p_state: state,
     p_website_url: websiteUrl,
     p_instagram_url: instagramUrl,
+    p_market_id: marketId,
   });
 
   if (error || !created) {

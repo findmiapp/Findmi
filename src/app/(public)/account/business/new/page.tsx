@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { getCategories } from "@/lib/data";
+import { getActiveMarkets, getCategories } from "@/lib/data";
 import { createMemberBusiness } from "../actions";
 
 export const metadata: Metadata = {
@@ -75,7 +75,7 @@ export default async function AddBusinessPage({
     redirect(`/login?next=${encodeURIComponent(next)}`);
   }
 
-  const categories = await getCategories();
+  const [categories, markets] = await Promise.all([getCategories(), getActiveMarkets()]);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -152,6 +152,30 @@ export default async function AddBusinessPage({
               <input type="text" name="state" className={inputClass} />
             </label>
           </div>
+
+          {/* Markets Foundation V1 follow-up — required, distinct from
+              Based In above (home address, purely descriptive) and from
+              FindMi Here (actual appearance geography, unaffected by
+              this). "Region" is deliberately never surfaced — the
+              customer-facing name for this concept is Market only. */}
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-ink">Primary Market</span>
+            <select name="market_id" required defaultValue="" className={inputClass}>
+              <option value="" disabled>
+                Choose a market…
+              </option>
+              {markets.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-ink/45">Where should people generally discover this business on FindMi?</p>
+            <p className="mt-0.5 text-xs text-ink/40">
+              This is separate from where you appear at events — you can still add appearances outside your Primary
+              Market.
+            </p>
+          </label>
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
