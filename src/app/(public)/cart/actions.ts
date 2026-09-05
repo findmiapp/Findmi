@@ -1,6 +1,7 @@
 "use server";
 
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/commerce/stripe";
 import { computeOrderDraft } from "@/lib/commerce/quote";
 import { createPendingOrder } from "@/lib/commerce/createOrder";
@@ -34,6 +35,14 @@ export async function startCheckout(
   const stripe = getStripe();
   if (!stripe) return { error: "Payments aren't configured yet — missing STRIPE_SECRET_KEY." };
 
+  // Best-effort: a signed-in customer's order gets linked to their account
+  // (orders.user_id) so it shows up in /account/orders. Checkout works
+  // identically for a signed-out guest — this is purely additive.
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+
   const order = await createPendingOrder({
     lines: input.lines,
     customerEmail: input.customerEmail,
@@ -41,6 +50,7 @@ export async function startCheckout(
     customerPhone: input.customerPhone,
     sourceEventId: input.sourceEventId,
     sourceAppearanceId: input.sourceAppearanceId,
+    userId: user?.id ?? null,
   });
   if ("error" in order) return order;
 

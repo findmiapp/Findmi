@@ -12,7 +12,11 @@ export type AppliedFeeSource =
 
 export type OrderPaymentStatus = "pending" | "paid" | "failed" | "canceled";
 export type OrderRefundStatus = "none" | "partial" | "full";
-export type FulfillmentStatus = "unfulfilled" | "fulfilled";
+// Business Order Management Overhaul V1 — widened from a plain
+// unfulfilled/fulfilled toggle to a real per-item workflow (see migration
+// business_order_management; "unfulfilled" is no longer a valid stored
+// value at all — existing rows were backfilled to "new").
+export type FulfillmentStatus = "new" | "confirmed" | "ready" | "fulfilled" | "cancelled";
 export type AllocationStatus = "held" | "partially_paid" | "paid" | "refunded" | "cancelled";
 export type SettlementMethod = "ach" | "zelle" | "check" | "cash" | "other";
 

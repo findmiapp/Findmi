@@ -120,11 +120,17 @@ export async function issueRefund(orderItemId: string, formData: FormData) {
   );
 }
 
+// Business Order Management Overhaul V1 — fulfillment_status widened from
+// a plain unfulfilled/fulfilled toggle to a real workflow (new/confirmed/
+// ready/fulfilled/cancelled; see that migration). "unfulfilled" is no
+// longer a valid value at all, so un-marking fulfilled here now reverts
+// to "new" (the same "not yet handled" starting state "unfulfilled" used
+// to mean) rather than a value the DB would now reject outright.
 export async function toggleItemFulfilled(orderItemId: string, orderId: string, fulfilled: boolean) {
   const supabase = await requireAdminSupabase();
   await supabase
     .from("order_items")
-    .update({ fulfillment_status: fulfilled ? "fulfilled" : "unfulfilled" })
+    .update({ fulfillment_status: fulfilled ? "fulfilled" : "new" })
     .eq("id", orderItemId);
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");

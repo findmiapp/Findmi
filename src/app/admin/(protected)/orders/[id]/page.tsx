@@ -128,6 +128,12 @@ export default async function AdminOrderDetailPage({
                         Vendor gross ${item.vendor_gross.toFixed(2)} → net ${item.vendor_net.toFixed(2)}
                         {item.refunded_amount > 0 && ` · Refunded $${item.refunded_amount.toFixed(2)}`}
                       </p>
+                      <p className="mt-1 text-xs text-ink/40">Status: {item.fulfillment_status}</p>
+                      {item.internal_note && (
+                        <p className="mt-1 rounded-lg bg-black/[0.03] px-2 py-1 text-xs text-ink/60">
+                          Vendor note: {item.internal_note}
+                        </p>
+                      )}
 
                       {/* Refund is only ever offered for a genuinely paid
                           order — payment_status/stripe_payment_intent_id

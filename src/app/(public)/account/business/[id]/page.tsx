@@ -30,13 +30,21 @@ import MemberGalleryField from "./MemberGalleryField";
 import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
-import { formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
+import { formatAppearanceDateRange, formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
 import { getPublicOrigin } from "@/lib/site-url";
 import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import { getBusinessFollowerSummary } from "@/lib/business-followers";
 import { getBusinessInquiryDetail, getBusinessInquiryList } from "@/lib/inquiries";
 import { sendBusinessReply, setNativeInquiriesEnabled, updateInquiryStatus } from "../inquiries-actions";
+import {
+  getBusinessOrderDetail,
+  getBusinessOrderList,
+  getBusinessOrderSummary,
+  type BusinessOrderStatusFilter,
+} from "@/lib/business-orders";
+import { updateOrderItemFulfillment } from "../orders-actions";
+import { FULFILLMENT_LABELS } from "@/lib/commerce/quote";
 import SupabaseImage from "@/components/SupabaseImage";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -92,6 +100,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "plan", label: "Plan & Status" },
   { key: "followers", label: "Followers" },
   { key: "inquiries", label: "Inquiries" },
+  { key: "orders", label: "Orders" },
   // Referral Partner + Discount Foundation — only ever shown/valid when
   // this business actually has a referral_partners row (an admin set
   // them up as a partner); see OWNER_TAB_KEYS/visibleTabs below, which
@@ -99,6 +108,14 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "referral", label: "Referral" },
 ];
 const OWNER_TAB_KEYS = new Set(OWNER_TABS.map((t) => t.key));
+
+const ORDER_STATUS_LABELS: Record<"new" | "confirmed" | "ready" | "fulfilled" | "cancelled", string> = {
+  new: "New",
+  confirmed: "Confirmed",
+  ready: "Ready",
+  fulfilled: "Fulfilled",
+  cancelled: "Cancelled",
+};
 
 /** MY FINDMI — MANAGE BUSINESS PAGE. The owner-facing editor for a
  * claimed business, calling the existing split Server Actions directly
@@ -148,6 +165,8 @@ export default async function ManageBusinessPage({
     edit_external_url?: string;
     edit_flyer_image_url?: string;
     open?: string;
+    order?: string;
+    order_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -157,6 +176,8 @@ export default async function ManageBusinessPage({
     error,
     created,
     open: openInquiryId,
+    order: openOrderId,
+    order_status: orderStatusFilter,
     pro_payment: proPayment,
     editing,
     add_title,
@@ -266,6 +287,17 @@ export default async function ManageBusinessPage({
   if (openInquiry) {
     await supabase.rpc("mark_inquiry_read", { p_inquiry_id: openInquiryId, p_as: "business" });
   }
+  // Business Order Management Overhaul V1 — same authorize-then-elevate
+  // admin client; every query inside these helpers is itself filtered by
+  // business_id, so this business can never see another business's order
+  // items even within the same multi-vendor order (see lib/business-orders.ts).
+  const validOrderFilters = new Set<BusinessOrderStatusFilter>(["new", "open", "ready", "fulfilled", "cancelled"]);
+  const orderStatus = orderStatusFilter && validOrderFilters.has(orderStatusFilter as BusinessOrderStatusFilter)
+    ? (orderStatusFilter as BusinessOrderStatusFilter)
+    : undefined;
+  const orderSummary = await getBusinessOrderSummary(admin, id);
+  const orderList = await getBusinessOrderList(admin, id, orderStatus);
+  const openOrder = openOrderId ? await getBusinessOrderDetail(admin, openOrderId, id) : null;
   const activeTab = tab === "referral" && !referralPartner ? "overview" : tab;
   const requestPayoutAction = referralPartner
     ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
@@ -1441,6 +1473,198 @@ export default async function ManageBusinessPage({
                     </span>
                   </Link>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Orders (Business Order Management Overhaul V1) ──────────
+            Every read here comes from lib/business-orders.ts, which is
+            itself always filtered by business_id — a multi-vendor order
+            can never surface another business's items/revenue/fulfillment
+            data in this tab. Payment status is shown read-only; a
+            business can only ever move ITS OWN items' fulfillment_status
+            and internal_note (updateOrderItemFulfillment), never
+            payment_status/total_charged/fees. */}
+        {activeTab === "orders" && (
+          <div className="flex flex-col gap-3">
+            {!openOrder && (
+              <>
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  {(
+                    [
+                      { key: "new", label: "New", count: orderSummary.newCount },
+                      { key: "open", label: "Open", count: orderSummary.openCount },
+                      { key: "ready", label: "Ready", count: orderSummary.readyCount },
+                      { key: "fulfilled", label: "Fulfilled", count: orderSummary.fulfilledCount },
+                    ] as const
+                  ).map((s) => (
+                    <Link
+                      key={s.key}
+                      href={`${basePath}?tab=orders&order_status=${s.key}`}
+                      className={`rounded-2xl border p-3 text-center transition ${
+                        orderStatus === s.key ? "border-findmi bg-findmi-50" : "border-black/5 bg-white hover:border-black/10"
+                      }`}
+                    >
+                      <p className="font-display text-xl font-bold tracking-tight text-ink">{s.count}</p>
+                      <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-ink/50">{s.label}</p>
+                    </Link>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <Link
+                    href={`${basePath}?tab=orders`}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                      !orderStatus ? "bg-ink text-white" : "bg-black/[0.05] text-ink/60 hover:bg-black/[0.08]"
+                    }`}
+                  >
+                    All
+                  </Link>
+                  {(["new", "open", "ready", "fulfilled", "cancelled"] as const).map((s) => (
+                    <Link
+                      key={s}
+                      href={`${basePath}?tab=orders&order_status=${s}`}
+                      className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                        orderStatus === s ? "bg-ink text-white" : "bg-black/[0.05] text-ink/60 hover:bg-black/[0.08]"
+                      }`}
+                    >
+                      {s === "open" ? "Confirmed" : s.charAt(0).toUpperCase() + s.slice(1)}
+                    </Link>
+                  ))}
+                </div>
+
+                {orderList.length === 0 ? (
+                  <p className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">No orders yet.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {orderList.map((o) => (
+                      <Link
+                        key={o.orderId}
+                        href={`${basePath}?tab=orders&order=${o.orderId}`}
+                        className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate text-sm font-semibold text-ink">#{o.orderNumber}</p>
+                            <span className="shrink-0 rounded-full bg-black/[0.05] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/55">
+                              {ORDER_STATUS_LABELS[o.status]}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 truncate text-xs text-ink/50">
+                            {o.customerName || o.customerEmail} · {formatDateShort(o.createdAt)}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-ink/45">
+                            {o.itemCount} item{o.itemCount === 1 ? "" : "s"} · {o.quantityTotal} qty ·{" "}
+                            {o.fulfillmentMethods.map((m) => FULFILLMENT_LABELS[m]).join(", ")}
+                          </p>
+                        </div>
+                        <p className="shrink-0 text-sm font-bold text-ink">${o.businessSubtotal.toFixed(2)}</p>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {openOrder && (
+              <div className={cardClass}>
+                <Link
+                  href={`${basePath}?tab=orders${orderStatus ? `&order_status=${orderStatus}` : ""}`}
+                  className="text-xs font-semibold text-ink/50 hover:text-ink"
+                >
+                  ← All orders
+                </Link>
+
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-ink">Order #{openOrder.orderNumber}</p>
+                  <span className="rounded-full bg-black/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/55">
+                    {ORDER_STATUS_LABELS[openOrder.status]}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-ink/45">
+                  {formatDateShort(openOrder.createdAt)} · Payment: {openOrder.paymentStatus}
+                </p>
+
+                <div className="mt-3 rounded-2xl bg-black/[0.02] p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Customer</p>
+                  <p className="mt-1 text-sm text-ink">{openOrder.customerName || "—"}</p>
+                  <p className="text-xs text-ink/55">
+                    {[openOrder.customerEmail, openOrder.customerPhone].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-3">
+                  {openOrder.items.map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-black/5 p-3.5">
+                      <div className="flex items-start gap-3">
+                        <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-mist">
+                          {item.productImageUrl && (
+                            <SupabaseImage src={item.productImageUrl} alt={item.productName} fill sizes="48px" className="object-cover" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-ink">{item.productName}</p>
+                          <p className="text-xs text-ink/55">
+                            Qty {item.quantity} × ${item.unitPrice.toFixed(2)} = ${item.lineMerchandiseTotal.toFixed(2)}
+                          </p>
+                          <p className="mt-0.5 text-xs text-ink/45">{FULFILLMENT_LABELS[item.fulfillmentMethod]}</p>
+                          {item.refundedAmount > 0 && (
+                            <p className="mt-0.5 text-xs text-red-600">${item.refundedAmount.toFixed(2)} refunded</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {item.eventContext && (
+                        <div className="mt-2.5 rounded-xl bg-findmi-50 p-2.5 text-xs text-findmi-700">
+                          <p className="font-semibold">{item.eventContext.eventName}</p>
+                          <p className="mt-0.5">
+                            {formatAppearanceDateRange(item.eventContext.startAt, item.eventContext.endAt, item.eventContext.description)}
+                          </p>
+                          {(item.eventContext.venueName || item.eventContext.address) && (
+                            <p className="mt-0.5">
+                              {[item.eventContext.venueName, item.eventContext.address, item.eventContext.city, item.eventContext.state]
+                                .filter(Boolean)
+                                .join(", ")}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <form action={updateOrderItemFulfillment.bind(null, id, item.id)} className="mt-3 flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="order_id" value={openOrder.orderId} />
+                        <select
+                          name="fulfillment_status"
+                          defaultValue={item.fulfillmentStatus}
+                          className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink"
+                        >
+                          {(["new", "confirmed", "ready", "fulfilled", "cancelled"] as const).map((s) => (
+                            <option key={s} value={s}>
+                              {ORDER_STATUS_LABELS[s]}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          name="internal_note"
+                          defaultValue={item.internalNote ?? ""}
+                          placeholder="Internal note (e.g. Hold until 2 PM)"
+                          maxLength={500}
+                          className={`${inputClass} min-w-[180px] flex-1`}
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                        >
+                          Save
+                        </button>
+                      </form>
+                      <p className="mt-1.5 text-[11px] text-ink/35">Only visible to you and FindMi admin — never shown to the customer.</p>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="mt-3 text-right text-sm font-bold text-ink">Your total: ${openOrder.businessSubtotal.toFixed(2)}</p>
               </div>
             )}
           </div>

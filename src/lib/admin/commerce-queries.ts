@@ -128,6 +128,7 @@ export interface AdminOrderItemRow {
   source_channel: string | null;
   fulfillment_status: FulfillmentStatus;
   refunded_amount: number;
+  internal_note: string | null;
 }
 
 export interface AdminVendorAllocationRow {

@@ -11,7 +11,7 @@ import type { CartLine, CartLineQuote, CartQuote } from "./types";
 import type { AppliedFeeSource, FulfillmentStatus } from "./types";
 import type { Business, FulfillmentMethod, ProcessingFeePayer, Product } from "@/lib/types";
 
-const FULFILLMENT_LABELS: Record<FulfillmentMethod, string> = {
+export const FULFILLMENT_LABELS: Record<FulfillmentMethod, string> = {
   shipping: "Shipping",
   local_delivery: "Local Delivery",
   pickup: "Pickup",
@@ -351,7 +351,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
       vendorGross,
       vendorNet: 0, // filled in below
       sourceChannel: line.sourceChannel ?? null,
-      fulfillmentStatus: "unfulfilled",
+      fulfillmentStatus: "new",
     });
   }
 

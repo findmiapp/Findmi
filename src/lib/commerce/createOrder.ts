@@ -10,6 +10,11 @@ export interface CreateOrderInput {
   customerPhone?: string | null;
   sourceEventId?: string | null;
   sourceAppearanceId?: string | null;
+  /** The signed-in customer's auth id, if any — populates orders.user_id
+   * so /account/orders can show real order history (see business_order_
+   * management migration). Guest checkout passes null/undefined and is
+   * completely unaffected. */
+  userId?: string | null;
 }
 
 export interface CreateOrderResult {
@@ -45,6 +50,7 @@ export async function createPendingOrder(
       .from("orders")
       .insert({
         order_number: orderNumber,
+        user_id: input.userId ?? null,
         customer_email: input.customerEmail.trim(),
         customer_name: input.customerName?.trim() || null,
         customer_phone: input.customerPhone?.trim() || null,
