@@ -59,19 +59,33 @@ const PRO_CTA_LABEL = "Get FindMi Pro";
  * is the invite link's public entry point. This page has no other use for
  * that param, so it just hands off straight to the real redemption flow
  * (/redeem/[code], which handles auth/business-selection/redemption
- * itself) rather than growing invite-aware UI here. */
+ * itself) rather than growing invite-aware UI here.
+ *
+ * Referral Partner + Discount Foundation — findmi.app/join?ref=CODE is
+ * the referral link's own entry point, deliberately handled completely
+ * differently from ?invite= above: a referral code is never redeemed
+ * here (there is no /join redemption UI to build at all — see this
+ * pass's own "without cluttering the UI" instruction) — it's carried
+ * straight through into the Free/Pro CTA links below as ?ref=, so it
+ * survives into account/business/new's create form, which is the only
+ * place attribution is ever actually recorded (createMemberBusiness ->
+ * attribute_referral()). Never confused with invite: entirely separate
+ * query param, separate field name, separate backend system. */
 export default async function JoinPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invite?: string }>;
+  searchParams: Promise<{ invite?: string; ref?: string }>;
 }) {
-  const { invite } = await searchParams;
+  const { invite, ref } = await searchParams;
   if (invite) redirect(`/redeem/${encodeURIComponent(invite)}`);
 
   const overrides = await getJoinPageSections();
 
   const hero = resolveJoinHero(overrides);
   const global = resolveJoinGlobal(overrides);
+
+  const refQuery = ref ? `&ref=${encodeURIComponent(ref)}` : "";
+  const freeCtaHref = ref ? `/account/business/new?ref=${encodeURIComponent(ref)}` : "/account/business/new";
 
   // Pro Positioning pass — the Pro card (card_discovery_pro) is the one
   // core Free/Pro business-acquisition path, so its CTA must always lead
@@ -83,9 +97,12 @@ export default async function JoinPage({
   // resolve to their own CMS/global cta_url exactly as before). Every
   // other Pro field (heading, price, tagline, features, emphasis) stays
   // fully founder-editable via the CMS as before — only this one card's
-  // CTA destination/label is now fixed in code.
+  // CTA destination/label is now fixed in code. `refQuery` appends the
+  // referral code through unchanged when present (Referral Partner +
+  // Discount Foundation pass) — blank string, so nothing changes when
+  // there isn't one.
   const allCards = JOIN_CARD_KEYS.map((key) => resolveJoinCard(overrides, key, global.ctaUrl)).map((c) =>
-    c.key === "card_discovery_pro" ? { ...c, ctaUrl: PRO_NATIVE_CTA_URL, ctaLabel: PRO_CTA_LABEL } : c
+    c.key === "card_discovery_pro" ? { ...c, ctaUrl: `${PRO_NATIVE_CTA_URL}${refQuery}`, ctaLabel: PRO_CTA_LABEL } : c
   );
   const cards = allCards.filter((c) => c.visible);
   const proCard = cards.find((c) => c.key === "card_discovery_pro") ?? null;
@@ -138,7 +155,7 @@ export default async function JoinPage({
             own report on what would need a later admin-editability
             pass). Always shown, genuinely selectable on its own. */}
         <div className="mx-auto mt-4 max-w-xl">
-          <FreeBasicBox />
+          <FreeBasicBox ctaHref={freeCtaHref} />
         </div>
 
         {proCard && (
@@ -442,7 +459,7 @@ function ProCard({ card }: { card: ResolvedJoinCard }) {
  * language); Pro's distinction is showing the FULL upcoming schedule
  * publicly, plus gallery/products/full profile/outbound links.
  * Presentation only — no permissions/features changed. */
-function FreeBasicBox() {
+function FreeBasicBox({ ctaHref }: { ctaHref: string }) {
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 sm:p-5">
       {/* Typography Polish pass — "Free" and "$0" now match the Pro
@@ -519,7 +536,7 @@ function FreeBasicBox() {
           (next-1 vs. full schedule) is already stated in the Included/
           Requires Pro comparison above; no replacement note needed. */}
       <Link
-        href="/account/business/new"
+        href={ctaHref}
         className="mt-4 flex h-11 items-center justify-center rounded-full border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
       >
         Start with Basic

@@ -29,9 +29,16 @@ const primaryButtonClass =
 export default async function AddBusinessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; duplicate_slug?: string; duplicate_name?: string; plan?: string; invite?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    duplicate_slug?: string;
+    duplicate_name?: string;
+    plan?: string;
+    invite?: string;
+    ref?: string;
+  }>;
 }) {
-  const { error, duplicate_slug: duplicateSlug, duplicate_name: duplicateName, plan, invite } = await searchParams;
+  const { error, duplicate_slug: duplicateSlug, duplicate_name: duplicateName, plan, invite, ref } = await searchParams;
   // Join + Add Business Plan UX Alignment pass — /join's Pro card links
   // here with ?plan=pro so Pro intent is preselected instead of the
   // default Free radio. Free needs no param (it's already the default).
@@ -58,6 +65,11 @@ export default async function AddBusinessPage({
     const params = new URLSearchParams();
     if (hasInvite) params.set("invite", invite!);
     else if (wantsPro) params.set("plan", "pro");
+    // Referral Partner + Discount Foundation — preserved through sign-in
+    // the same way, independent of invite/plan: a referral code and a
+    // Pro Invite are separate systems and can both survive the same
+    // login round-trip.
+    if (ref) params.set("ref", ref);
     const query = params.toString();
     const next = `/account/business/new${query ? `?${query}` : ""}`;
     redirect(`/login?next=${encodeURIComponent(next)}`);
@@ -278,6 +290,33 @@ export default async function AddBusinessPage({
               </details>
             </div>
           )}
+
+          {/* Referral Partner + Discount Foundation — a plain field
+              inside this SAME create-business form, name="ref", entirely
+              independent of the Pro Invite field above: a business can
+              carry both. createMemberBusiness reads this and calls
+              attribute_referral() right after creating the business —
+              never blocking creation on an invalid code, never itself
+              deciding a discount or commission (that happens later, at
+              actual Pro checkout / a real paid conversion). Pre-filled
+              from ?ref=CODE (findmi.app/join?ref=CODE or a direct link)
+              but still editable — the same field serves both the
+              preserved-link case and manual entry. */}
+          <details className="group mt-1" open={Boolean(ref)}>
+            <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+              Have a Referral Code?
+            </summary>
+            <input
+              type="text"
+              name="ref"
+              defaultValue={ref ?? ""}
+              placeholder="Enter Referral Code"
+              className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+            />
+            <p className="mt-1.5 text-xs text-ink/40">
+              A valid referral code may reduce the price of FindMi Pro if you upgrade.
+            </p>
+          </details>
 
           <label className="mt-1 flex items-start gap-2.5">
             <input

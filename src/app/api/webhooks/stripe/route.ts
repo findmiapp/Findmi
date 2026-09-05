@@ -4,6 +4,8 @@ import { getStripe } from "@/lib/commerce/stripe";
 import { settleOrder } from "@/lib/commerce/settleOrder";
 import { activateMembership } from "@/lib/commerce/membershipActivation";
 import { activateBusinessPro } from "@/lib/commerce/businessProActivation";
+import { BUSINESS_PRO_INTRO_PRICE_CENTS } from "@/lib/commerce/businessProCheckout";
+import { qualifyReferralEarning } from "@/lib/commerce/referrals";
 
 // Stripe calls this directly — not gated by /admin's cookie auth, so the
 // Stripe signature itself is the only authentication. Never trust the
@@ -43,6 +45,23 @@ export async function POST(request: NextRequest) {
     // signature-verified event.
     if (businessProPurpose === "business_pro_intro" && businessProBusinessId) {
       await activateBusinessPro(businessProBusinessId, session.id);
+
+      // Referral Partner + Discount Foundation — a SEPARATE, independent
+      // step from activation above: qualifies a commission ONLY when this
+      // exact business has its own stored referral attribution (looked up
+      // fresh server-side, never from Stripe metadata) and is fully
+      // idempotent against this same webhook event being redelivered —
+      // see qualify_referral_earning()'s own migration comment. A Pro
+      // Invite's complimentary activation never fires this event at all
+      // (no Stripe checkout involved), so it can never reach this line —
+      // that's the whole mechanism behind "no paid commission from a $0
+      // complimentary activation."
+      await qualifyReferralEarning(
+        businessProBusinessId,
+        session.id,
+        session.amount_total ?? BUSINESS_PRO_INTRO_PRICE_CENTS,
+        BUSINESS_PRO_INTRO_PRICE_CENTS
+      );
     }
 
     // Membership billing (Part 11) is a separate system from marketplace

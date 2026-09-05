@@ -13,6 +13,7 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
+import { attributeReferral } from "@/lib/commerce/referrals";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 
 const UPLOAD_BUCKET = "findmi-media";
@@ -435,6 +436,46 @@ async function requireAuthorizedBusinessMember(businessId: string, redirectPath:
   if (!admin) redirect(appendQuery(redirectPath, { error: "Server isn't configured." }));
 
   return admin;
+}
+
+// ── Referral Partner + Discount Foundation — partner-facing payout ──────
+//
+// The one owner-facing mutation this feature needs: requesting payout of
+// a referral partner's currently-available balance. Same authorize-then-
+// elevate shape as every other action in this file — requireBusinessMember
+// re-derives real membership from the caller's own session, never trusted
+// from the client beyond the business_id itself — plus an explicit
+// re-check that the partner record actually belongs to THIS business
+// before ever reaching the RPC, so a crafted partnerId for a different
+// business can never be used to drain someone else's balance. The actual
+// balance calculation, row-locking, and earnings bundling all happen
+// inside request_referral_payout() (service_role-only RPC, see the
+// referral_partners migration) — this action never computes or trusts a
+// balance itself.
+export async function requestReferralPartnerPayout(businessId: string, partnerId: string) {
+  const redirectPath = `/account/business/${businessId}?tab=referral`;
+  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
+
+  const { data: partner } = await admin
+    .from("referral_partners")
+    .select("id, business_id")
+    .eq("id", partnerId)
+    .maybeSingle();
+  if (!partner || partner.business_id !== businessId) {
+    redirect(appendQuery(redirectPath, { error: "That referral partner record doesn't belong to this business." }));
+  }
+
+  const { data, error } = await admin.rpc("request_referral_payout", { p_referral_partner_id: partnerId });
+  if (error || !data) {
+    const message =
+      error?.message === "no_available_balance"
+        ? "There's no available balance to request right now."
+        : "Couldn't request a payout. Please try again.";
+    redirect(appendQuery(redirectPath, { error: message }));
+  }
+
+  revalidatePath(redirectPath);
+  redirect(appendQuery(redirectPath, { saved: "1" }));
 }
 
 /** Option 1 — "Choose an existing FindMi event." `target` is one of:
@@ -965,6 +1006,24 @@ export async function createMemberBusiness(formData: FormData) {
 
   const businessId = (created as { id: string }).id;
   revalidatePath("/account");
+
+  // Referral Partner + Discount Foundation — attribution happens exactly
+  // ONCE, right here, at business-creation time only (see
+  // attribute_referral()'s own migration comment for why an already-
+  // existing business can never be attributed later). Never blocks
+  // signup on a bad code: an invalid/expired/exhausted referral code is
+  // silently ignored (the business is still created normally) — a
+  // referral is an attribution nice-to-have, never a signup requirement.
+  // Deliberately independent of the invite/plan_choice branches below:
+  // a business can carry BOTH a referral attribution AND redeem a Pro
+  // Invite — if it does, the invite branch below still wins and this
+  // business is never routed through Stripe, so no paid-Pro commission
+  // can ever be generated from that $0 complimentary activation.
+  const referralCode = str(formData, "ref");
+  if (referralCode) {
+    const planChoiceForReferral = str(formData, "plan_choice") === "pro" ? "pro" : "free";
+    await attributeReferral(admin, businessId, referralCode, planChoiceForReferral, user.id);
+  }
 
   // Pro Invite / Complimentary Access Codes pass — an invite in play
   // always wins over any plan_choice/Stripe path below: the business is

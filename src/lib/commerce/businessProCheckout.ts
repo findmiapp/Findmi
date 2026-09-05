@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getStripe } from "./stripe";
 import { getPublicOrigin } from "@/lib/site-url";
 import { isBusinessPro } from "@/lib/entitlements";
+import { applyReferralDiscount, getActiveReferralDiscount } from "./referrals";
 
 // Native Business Onboarding Pass 3 — the native FindMi Pro offer,
 // deliberately separate from the marketplace order checkout
@@ -71,6 +72,18 @@ export async function createBusinessProCheckoutSession(
   const siteUrl = getPublicOrigin();
   const manageUrl = `${siteUrl}/account/business/${businessId}`;
 
+  // Referral Partner + Discount Foundation — this business's OWN
+  // established referral attribution (if any), re-validated fresh here
+  // (never cached, never accepted from the client): a code deactivated/
+  // expired since attribution simply stops discounting from here on,
+  // while the attribution row itself is never touched. Falls back to the
+  // plain, undiscounted price for every other business, exactly as
+  // before this feature existed.
+  const referralDiscount = await getActiveReferralDiscount(admin, businessId);
+  const unitAmount = referralDiscount
+    ? applyReferralDiscount(BUSINESS_PRO_INTRO_PRICE_CENTS, referralDiscount.discountPercent)
+    : BUSINESS_PRO_INTRO_PRICE_CENTS;
+
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -81,11 +94,15 @@ export async function createBusinessProCheckoutSession(
             currency: "usd",
             // Server-controlled amount — never derived from anything the
             // client submitted. The ONLY input from the caller is which
-            // business_id this charge is for.
-            unit_amount: BUSINESS_PRO_INTRO_PRICE_CENTS,
+            // business_id this charge is for; any discount applied above
+            // was itself resolved entirely server-side from this exact
+            // business's own stored referral attribution.
+            unit_amount: unitAmount,
             product_data: {
               name: `FindMi Pro — ${business.name}`,
-              description: "$99 for one year of FindMi Pro.",
+              description: referralDiscount
+                ? `$99 for one year of FindMi Pro, less a ${referralDiscount.discountPercent}% referral discount.`
+                : "$99 for one year of FindMi Pro.",
             },
           },
         },

@@ -15,6 +15,7 @@ import {
   addManualAppearance,
   createMemberProduct,
   removeOwnerAppearance,
+  requestReferralPartnerPayout,
   returnProductToCatalog,
   setMemberProductActive,
   submitProductToMarketplace,
@@ -30,6 +31,9 @@ import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
 import { formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
+import { getPublicOrigin } from "@/lib/site-url";
+import CopyButton from "@/components/CopyButton";
+import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import type { EventParticipationStatus } from "@/lib/types";
 
 const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
@@ -82,6 +86,11 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "findmi-here", label: "FindMi Here" },
   { key: "links", label: "Links & Contact" },
   { key: "plan", label: "Plan & Status" },
+  // Referral Partner + Discount Foundation — only ever shown/valid when
+  // this business actually has a referral_partners row (an admin set
+  // them up as a partner); see OWNER_TAB_KEYS/visibleTabs below, which
+  // filter this key out entirely otherwise.
+  { key: "referral", label: "Referral" },
 ];
 const OWNER_TAB_KEYS = new Set(OWNER_TABS.map((t) => t.key));
 
@@ -225,6 +234,19 @@ export default async function ManageBusinessPage({
   const profileAction = updateBusinessProfile.bind(null, id);
   const linksAction = updateBusinessLinks.bind(null, id);
   const galleryAction = updateBusinessGallery.bind(null, id);
+
+  // Referral Partner + Discount Foundation — this business's OWN
+  // referral-partner record, if an admin has ever set one up for it
+  // (unrelated to whether THIS business was itself referred — see
+  // referral_attributions, never read here). null for the overwhelming
+  // majority of businesses, in which case the whole Referral tab is
+  // simply omitted below — never an empty/broken tab.
+  const referralPartner = await getReferralPartnerByBusinessId(id);
+  const visibleTabs = referralPartner ? OWNER_TABS : OWNER_TABS.filter((t) => t.key !== "referral");
+  const activeTab = tab === "referral" && !referralPartner ? "overview" : tab;
+  const requestPayoutAction = referralPartner
+    ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
+    : null;
 
   // Legacy categories stay in the DB for existing relationships but are no
   // longer offered as a new choice — except for a business already
@@ -503,7 +525,7 @@ export default async function ManageBusinessPage({
       </div>
 
       <div className="mx-auto mt-5 max-w-md">
-        <TabNav items={OWNER_TABS} activeKey={tab} basePath={basePath} />
+        <TabNav items={visibleTabs} activeKey={activeTab} basePath={basePath} />
       </div>
 
       <div className="mx-auto mt-5 max-w-md">
@@ -517,7 +539,7 @@ export default async function ManageBusinessPage({
         )}
 
         {/* ── Overview ─────────────────────────────────────────────── */}
-        {tab === "overview" && (
+        {activeTab === "overview" && (
           <div className="flex flex-col gap-4">
             {created && (
               <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
@@ -574,7 +596,7 @@ export default async function ManageBusinessPage({
             <div className={cardClass}>
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Quick Links</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {OWNER_TABS.filter((t) => t.key !== "overview").map((t) => (
+                {visibleTabs.filter((t) => t.key !== "overview").map((t) => (
                   <Link
                     key={t.key}
                     href={`${basePath}?tab=${t.key}`}
@@ -589,7 +611,7 @@ export default async function ManageBusinessPage({
         )}
 
         {/* ── Profile ──────────────────────────────────────────────── */}
-        {tab === "profile" && (
+        {activeTab === "profile" && (
           <div className={cardClass}>
             <form action={profileAction} className="flex flex-col gap-4">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Business Basics</p>
@@ -681,7 +703,7 @@ export default async function ManageBusinessPage({
         )}
 
         {/* ── Gallery ──────────────────────────────────────────────── */}
-        {tab === "gallery" &&
+        {activeTab === "gallery" &&
           (pro ? (
             <div className={cardClass}>
               <form action={galleryAction} className="flex flex-col gap-4">
@@ -697,7 +719,7 @@ export default async function ManageBusinessPage({
           ))}
 
         {/* ── Products ─────────────────────────────────────────────── */}
-        {tab === "products" &&
+        {activeTab === "products" &&
           (pro ? (
             <div className={cardClass}>
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Products</p>
@@ -875,7 +897,7 @@ export default async function ManageBusinessPage({
           ))}
 
         {/* ── FindMi Here ──────────────────────────────────────────── */}
-        {tab === "findmi-here" && (
+        {activeTab === "findmi-here" && (
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">FindMi Here</p>
             <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
@@ -1005,7 +1027,7 @@ export default async function ManageBusinessPage({
         )}
 
         {/* ── Links & Contact ──────────────────────────────────────── */}
-        {tab === "links" &&
+        {activeTab === "links" &&
           (pro ? (
             <div className={cardClass}>
               <form action={linksAction} className="flex flex-col gap-4">
@@ -1121,7 +1143,7 @@ export default async function ManageBusinessPage({
           ))}
 
         {/* ── Plan & Status ────────────────────────────────────────── */}
-        {tab === "plan" && (
+        {activeTab === "plan" && (
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Plan &amp; Status</p>
             <span
@@ -1181,6 +1203,91 @@ export default async function ManageBusinessPage({
                 </details>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Referral (partner-facing) ────────────────────────────── */}
+        {activeTab === "referral" && referralPartner && (
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Referral Program</p>
+            <p className="mt-1 text-sm text-ink/60">
+              Share your code — you&rsquo;ll earn a commission when a business you refer upgrades to paid FindMi
+              Pro.
+            </p>
+
+            {referralPartner.activeCodes.length > 0 ? (
+              <div className="mt-4 flex flex-col gap-3">
+                {referralPartner.activeCodes.map((code) => {
+                  const referralLink = `${getPublicOrigin()}/join?ref=${code}`;
+                  return (
+                    <div key={code} className="rounded-2xl bg-findmi-50 p-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Referral Code</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="font-mono text-sm font-semibold text-ink">{code}</p>
+                        <CopyButton
+                          value={code}
+                          label="Copy Code"
+                          className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                        />
+                      </div>
+                      <p className="mt-2 break-all font-mono text-xs text-ink/70">{referralLink}</p>
+                      <CopyButton
+                        value={referralLink}
+                        label="Copy Link"
+                        className="mt-2 shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-ink/50">No active referral code yet — check back soon.</p>
+            )}
+
+            <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Referred</dt>
+                <dd className="mt-1 text-ink">{referralPartner.referralCount}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Free / Paid Pro</dt>
+                <dd className="mt-1 text-ink">
+                  {referralPartner.freeReferralCount} / {referralPartner.paidReferralCount}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Total Earned</dt>
+                <dd className="mt-1 text-ink">${(referralPartner.earnedCommissionCents / 100).toFixed(2)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Total Paid</dt>
+                <dd className="mt-1 text-ink">${(referralPartner.paidCommissionCents / 100).toFixed(2)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Available Balance</dt>
+                <dd className="mt-1 font-semibold text-findmi-700">
+                  ${(referralPartner.availableCommissionCents / 100).toFixed(2)}
+                </dd>
+              </div>
+            </dl>
+
+            {requestPayoutAction && (
+              <form action={requestPayoutAction} className="mt-4">
+                <button
+                  type="submit"
+                  disabled={referralPartner.availableCommissionCents <= 0}
+                  className="flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Request Payout
+                  {referralPartner.availableCommissionCents > 0
+                    ? ` of $${(referralPartner.availableCommissionCents / 100).toFixed(2)}`
+                    : ""}
+                </button>
+              </form>
+            )}
+            <p className="mt-2 text-xs text-ink/40">
+              Payouts are reviewed and paid out manually by FindMi — no automatic transfers.
+            </p>
           </div>
         )}
       </div>
