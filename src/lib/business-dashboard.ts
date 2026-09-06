@@ -279,8 +279,8 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
   if (input.upcomingAppearances.length === 0) {
     items.push({
       id: "no-appearances",
-      message: "You don't have any upcoming appearances yet.",
-      actionLabel: "Add Appearance",
+      message: "You haven't added where you'll be yet.",
+      actionLabel: "Add Where You'll Be",
       actionHref: `${base}?tab=findmi-here`,
     });
   } else {

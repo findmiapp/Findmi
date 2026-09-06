@@ -63,7 +63,7 @@ export default function AppearanceFieldsForm({
         name="title"
         required
         defaultValue={defaultValues.title}
-        placeholder="Appearance/Event Name"
+        placeholder="Event/Place Name"
         className={inputClass}
       />
       <div className="grid grid-cols-3 gap-2">
@@ -93,7 +93,7 @@ export default function AppearanceFieldsForm({
       />
       <MemberImageField
         businessId={businessId}
-        label="Appearance Image (optional)"
+        label="Photo (optional)"
         name="flyer_image_url"
         defaultValue={defaultValues.flyer_image_url}
       />

@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireLocationMember } from "@/lib/permissions";
+import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getAdminLocationById } from "@/lib/admin/queries";
 import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import { getPendingMarketRequestForLocation } from "@/lib/market-requests";
@@ -90,6 +92,22 @@ export default async function ManageLocationPage({
     getUpcomingAtLocation({ id, name: location.name }),
   ]);
 
+  // Venue owner -> Add Event access UX (Stage 4) — Location ownership
+  // does NOT grant Event Management (see this stage's Locked rule), so a
+  // venue owner may legitimately lack Organizer Access. This is a
+  // cosmetic, non-authorizing hint only — checked against the caller's
+  // OWN real Supabase Auth session, never the Location membership itself
+  // (an admin-elevated session with no real user has neither) — the real
+  // gate stays entirely in /account/event/new, which re-derives this
+  // independently and shows its own graceful explainer either way. This
+  // just lets the Overview tab set expectations before the click instead
+  // of after.
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user: sessionUser },
+  } = await sessionSupabase.auth.getUser();
+  const eventEligible = sessionUser ? await canCurrentUserManageEvents(admin, sessionUser.id) : false;
+
   const publicHref = !location.is_demo ? `/location/${location.slug}` : null;
   const selectedMarket = markets.find((m) => m.id === location.market_id) ?? null;
 
@@ -169,6 +187,11 @@ export default async function ManageLocationPage({
             <Link href={`/account/event/new?location_id=${id}`} className={`mt-4 inline-flex w-fit ${primaryButtonClass}`}>
               + Add an Event Here
             </Link>
+            {!eventEligible && (
+              <p className="mt-2 text-xs text-ink/45">
+                Requires Organizer Access / qualifying FindMi membership — the next screen explains how to get it.
+              </p>
+            )}
           </div>
         )}
 
@@ -285,7 +308,7 @@ export default async function ManageLocationPage({
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">What&rsquo;s Happening Here</p>
             <p className="mt-1 text-sm text-ink/60">
-              Events and FindMi Here appearances scheduled at this venue. To add one, use &ldquo;+ Add an Event
+              Events and businesses scheduled to be at this venue. To add one, use &ldquo;+ Add an Event
               Here&rdquo; from the Overview tab.
             </p>
             {happenings.length === 0 ? (

@@ -786,7 +786,7 @@ export default async function ManageBusinessPage({
                   <p className="text-sm text-ink/50">Nothing scheduled today.</p>
                   {upcomingAppearances[0] && (
                     <p className="mt-1 text-xs text-ink/40">
-                      Next appearance: {formatDateShort(upcomingAppearances[0].startAt)}
+                      Next: {formatDateShort(upcomingAppearances[0].startAt)}
                       {upcomingAppearances[0].venueName || upcomingAppearances[0].city
                         ? ` · ${[upcomingAppearances[0].venueName, upcomingAppearances[0].city].filter(Boolean).join(", ")}`
                         : ""}
@@ -835,7 +835,7 @@ export default async function ManageBusinessPage({
                   href={`${basePath}?tab=findmi-here`}
                   className="text-xs font-semibold text-findmi-700 underline underline-offset-2"
                 >
-                  View all appearances
+                  View Full Schedule
                 </Link>
               </div>
               {upcomingAppearances.length > 0 ? (
@@ -845,7 +845,7 @@ export default async function ManageBusinessPage({
                   ))}
                 </ul>
               ) : (
-                <p className="mt-2 text-sm text-ink/50">No upcoming appearances yet.</p>
+                <p className="mt-2 text-sm text-ink/50">You haven&rsquo;t added where you&rsquo;ll be yet.</p>
               )}
             </div>
 
@@ -854,7 +854,7 @@ export default async function ManageBusinessPage({
             <div className={cardClass}>
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Performance Snapshot</p>
               <div className="mt-3 grid grid-cols-2 gap-2.5">
-                <MetricTile label="Upcoming Appearances" value={dashboardAppearances.length} />
+                <MetricTile label="Upcoming" value={dashboardAppearances.length} />
                 <MetricTile label="Completed This Month" value={completedThisMonth} />
                 <MetricTile label="Followers" value={followerSummary.totalCount} />
                 <MetricTile label="Products" value={products.length} />
@@ -868,33 +868,33 @@ export default async function ManageBusinessPage({
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Link
                   href={`${basePath}?tab=findmi-here`}
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
                 >
-                  + Add Appearance
+                  + Add Where You&rsquo;ll Be
                 </Link>
                 <Link
                   href={`${basePath}?tab=profile`}
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
                 >
                   Edit Profile
                 </Link>
                 <Link
                   href={`${basePath}?tab=products`}
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
                 >
                   Manage Products
                 </Link>
                 {business.slug && (
                   <Link
                     href={`/business/${business.slug}`}
-                    className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                    className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
                   >
                     View Public Profile
                   </Link>
                 )}
                 <Link
                   href="/events"
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
                 >
                   Browse Events
                 </Link>
@@ -1244,7 +1244,12 @@ export default async function ManageBusinessPage({
                     <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
+                            <span className="shrink-0 rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
+                              {a.event_id ? "FindMi Event" : "Added by you"}
+                            </span>
+                          </div>
                           <p className="mt-0.5 text-xs text-ink/60">
                             {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
                           </p>
@@ -1282,14 +1287,14 @@ export default async function ManageBusinessPage({
                 })}
               </ul>
             ) : (
-              <p className="mt-3 text-sm text-ink/50">No upcoming appearances yet.</p>
+              <p className="mt-3 text-sm text-ink/50">You haven&rsquo;t added where you&rsquo;ll be yet.</p>
             )}
 
             <div className="mt-5 border-t border-black/10 pt-4">
-              <p className="text-sm font-medium text-ink">Add an Appearance</p>
+              <p className="text-sm font-medium text-ink">Add Where You&rsquo;ll Be</p>
 
               <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Option 1 — Choose an existing FindMi event
+                Find your event on FindMi
               </p>
               {requestOptions.length > 0 ? (
                 <form action={addFromEvent} className="mt-2 flex flex-wrap items-center gap-2">
@@ -1315,14 +1320,14 @@ export default async function ManageBusinessPage({
               )}
 
               <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Option 2 — Add an appearance manually
+                Can&rsquo;t find it? Add where you&rsquo;ll be anyway
               </p>
               <div className="mt-2">
                 <AppearanceFieldsForm
                   businessId={id}
                   action={addManual}
                   defaultValues={addDefaultValues}
-                  submitLabel="Add Appearance"
+                  submitLabel="Add to My Schedule"
                 />
               </div>
             </div>
@@ -1561,8 +1566,8 @@ export default async function ManageBusinessPage({
                 <>
                   <p className="mt-1.5 text-sm font-semibold text-ink/60">Not assigned yet</p>
                   <p className="mt-2 text-xs text-ink/45">
-                    Your FindMi Market determines where your business receives general discovery. Your event and
-                    pop-up appearances can still happen anywhere.
+                    Your FindMi Market determines where your business receives general discovery. Where you&rsquo;ll be
+                    — events and pop-ups — can still happen anywhere.
                   </p>
                   <p className="mt-2 text-xs text-ink/40">Contact FindMi to update this.</p>
                 </>

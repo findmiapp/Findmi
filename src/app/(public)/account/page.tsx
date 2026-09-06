@@ -7,7 +7,6 @@ import NavIcon from "@/components/NavIcon";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import type { Profile } from "@/lib/types";
 import AccountSync from "./AccountSync";
-import { signOut } from "./profile/actions";
 
 export const metadata: Metadata = {
   title: "My FindMi",
@@ -149,25 +148,21 @@ export default async function AccountHomePage({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountSync />
 
-      {/* 1. Header */}
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi</p>
-          <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">
-            Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
-          </h1>
-          <p className="mt-2 text-sm text-ink/60">
-            Manage the businesses, events, and places you run on FindMi — and keep track of what you discover —
-            all from one account.
-          </p>
-        </div>
-        {/* Account Hub V1 — Sign Out must always be reachable from here,
-            never only from Profile. */}
-        <form action={signOut}>
-          <button type="submit" className="text-xs font-semibold text-ink/40 hover:text-ink/70">
-            Sign Out
-          </button>
-        </form>
+      {/* 1. Header — Stage 4 mobile polish: the standalone hero Sign Out
+          link was redundant with Quick Access's own Profile card ("Name,
+          email & sign out" below, which links to a working Sign Out on
+          /account/profile) and is removed here; sign-out access is
+          preserved, just no longer duplicated in two places on this one
+          page. */}
+      <header>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi</p>
+        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">
+          Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
+        </h1>
+        <p className="mt-2 text-sm text-ink/60">
+          Manage the businesses, events, and places you run on FindMi — and keep track of what you discover — all
+          from one account.
+        </p>
       </header>
 
       {error && (
@@ -229,7 +224,7 @@ export default async function AccountHomePage({
             href="/account/business/new"
             className="rounded-full bg-findmi px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
-            + Add a Business or Brand
+            + Add Business
           </Link>
         </div>
 
@@ -295,7 +290,7 @@ export default async function AccountHomePage({
             href="/account/event/new"
             className="rounded-full bg-findmi px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
-            + Add an Event
+            + Add Event
           </Link>
         </div>
 
@@ -346,7 +341,7 @@ export default async function AccountHomePage({
             href="/account/location/new"
             className="rounded-full bg-findmi px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
-            + Add a Venue
+            + Add Venue
           </Link>
         </div>
 

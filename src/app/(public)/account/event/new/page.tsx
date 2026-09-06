@@ -74,6 +74,11 @@ export default async function AddEventPage({
             Get FindMi Pro (or redeem a Pro Invite) on a business you manage to create and manage Events — no
             separate Event fee.
           </p>
+          {locationHint && (
+            <p className="mt-2 text-sm text-ink/60">
+              Once you have Organizer Access, come back here to add your event at {locationHint.name} directly.
+            </p>
+          )}
           <Link href="/account/business/new" className={`mt-5 ${primaryButtonClass}`}>
             Add a Business
           </Link>
