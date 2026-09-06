@@ -6,7 +6,14 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
-import { getCategories, getProductCategories } from "@/lib/data";
+import { getCategories, getMarketAreaLabel, getProductCategories } from "@/lib/data";
+import {
+  buildNeedsAttentionItems,
+  getCompletedAppearancesThisMonthCount,
+  resolveDashboardAppearances,
+  type DashboardAppearance,
+  type DashboardAppearanceSource,
+} from "@/lib/business-dashboard";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import AccountNav from "../../AccountNav";
@@ -239,7 +246,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, slug, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled"
+        "id, name, slug, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, market_area_id"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -437,6 +444,39 @@ export default async function ManageBusinessPage({
     }
   }
 
+  // Command Center V1 — resolves the same appearances array above
+  // (standalone AND Event-linked alike, already carrying its
+  // participation status) into one flat, presentation-ready view-model,
+  // and separately resolves this business's own "Area · Market" label
+  // for the header — see lib/business-dashboard.ts for exactly how an
+  // Event-linked appearance's geography is derived and why it's a
+  // deliberately simpler lookup than the full occurrence-override
+  // precedence chain used elsewhere.
+  const { appearances: dashboardAppearances, businessGeographyLabel } = await resolveDashboardAppearances(
+    admin,
+    id,
+    appearances as DashboardAppearanceSource[],
+    { primaryMarketId: primaryMarket?.marketId ?? null, marketAreaId: business.market_area_id ?? null }
+  );
+  const todayAppearances = dashboardAppearances.filter((a) => a.isToday);
+  const upcomingAppearances = dashboardAppearances.filter((a) => !a.isToday).slice(0, 5);
+  const completedThisMonth = await getCompletedAppearancesThisMonthCount(admin, id);
+  const unreadInquiryCount = inquiryList.filter((i) => i.unread).length;
+  // "Materially affects discovery" — the same fields a visitor would
+  // actually need to find/trust this business, not every optional field
+  // on the Profile tab (e.g. website/social links are never required here).
+  const profileIncomplete = !business.logo_url || !business.short_description || !business.city || !business.state || !currentCategoryId;
+  const needsAttention = buildNeedsAttentionItems({
+    businessId: id,
+    hasPrimaryMarket: Boolean(primaryMarket),
+    pendingMarketRequestText: pendingMarketRequest?.requestedText ?? null,
+    upcomingAppearances: dashboardAppearances,
+    unreadInquiryCount,
+    nativeInquiriesEnabled: business.native_inquiries_enabled,
+    newOrderCount: orderSummary.newCount,
+    profileIncomplete,
+  });
+
   // Pro Products Foundation pass — Products are genuinely Pro/Pro
   // Seller-only (locked rule), unlike appearances above. Fetched via the
   // service-role client directly (not getProductsForBusiness, which is
@@ -592,16 +632,43 @@ export default async function ManageBusinessPage({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
 
-      <div className="mx-auto max-w-md">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Manage Business</p>
-        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">{business.name}</h1>
-        <span
-          className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-            pro ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/60"
-          }`}
-        >
-          {pro ? "Pro" : "Free"} Plan
-        </span>
+      {/* Command Center V1 — compact business context, shown above every
+          tab (not just Overview) so it always orients the owner to which
+          business they're managing. Logo/Area/Market are purely
+          presentational reads already fetched above; no new plan logic. */}
+      <div className="mx-auto flex max-w-md items-start gap-3">
+        {business.logo_url ? (
+          <SupabaseImage
+            src={business.logo_url}
+            alt=""
+            width={48}
+            height={48}
+            className="h-12 w-12 shrink-0 rounded-2xl border border-black/5 object-cover"
+          />
+        ) : (
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-findmi-50 font-display text-lg font-bold text-findmi-700">
+            {business.name.charAt(0).toUpperCase()}
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Manage Business</p>
+          <h1 className="mt-0.5 truncate font-display text-2xl font-bold tracking-tight text-ink">{business.name}</h1>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span
+              className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                pro ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/60"
+              }`}
+            >
+              {pro ? "Pro" : "Free"} Plan
+            </span>
+            {businessGeographyLabel && <span className="text-xs text-ink/50">{businessGeographyLabel}</span>}
+            {business.slug && (
+              <Link href={`/business/${business.slug}`} className="text-xs font-semibold text-findmi-700 underline underline-offset-2">
+                View Public Profile →
+              </Link>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="mx-auto mt-5 max-w-md">
@@ -673,18 +740,136 @@ export default async function ManageBusinessPage({
               </div>
             )}
 
+            {/* Command Center V1 — Today is the most prominent operational
+                section: appearances (standalone or Event-linked, both
+                unified via lib/business-dashboard.ts) actually happening
+                today, with a "Live now" state when the current time falls
+                inside the window. */}
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Quick Links</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Today</p>
+              {todayAppearances.length > 0 ? (
+                <ul className="mt-3 flex flex-col gap-3">
+                  {todayAppearances.map((a) => (
+                    <DashboardAppearanceRow key={a.id} appearance={a} showDate={false} />
+                  ))}
+                </ul>
+              ) : (
+                <div className="mt-2">
+                  <p className="text-sm text-ink/50">Nothing scheduled today.</p>
+                  {upcomingAppearances[0] && (
+                    <p className="mt-1 text-xs text-ink/40">
+                      Next appearance: {formatDateShort(upcomingAppearances[0].startAt)}
+                      {upcomingAppearances[0].venueName || upcomingAppearances[0].city
+                        ? ` · ${[upcomingAppearances[0].venueName, upcomingAppearances[0].city].filter(Boolean).join(", ")}`
+                        : ""}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Needs Attention — every item is derived from data already
+                on this page (see buildNeedsAttentionItems); nothing here
+                is a fabricated alert, and an item simply stops appearing
+                once its underlying condition is resolved. */}
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Attention</p>
+              {needsAttention.length === 0 ? (
+                <p className="mt-2 text-sm text-ink/50">You&rsquo;re all caught up.</p>
+              ) : (
+                <ul className="mt-3 flex flex-col gap-2">
+                  {needsAttention.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3"
+                    >
+                      <p className="text-sm text-amber-900/90">{item.message}</p>
+                      <Link
+                        href={item.actionHref}
+                        className="shrink-0 text-xs font-bold uppercase tracking-wide text-amber-800 underline underline-offset-2"
+                      >
+                        {item.actionLabel}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Upcoming — next ~5 appearances chronologically, standalone
+                and Event-linked in one unified list. Full management
+                still lives in the existing FindMi Here tab — no separate
+                calendar UI built here. */}
+            <div className={cardClass}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Upcoming</p>
+                <Link
+                  href={`${basePath}?tab=findmi-here`}
+                  className="text-xs font-semibold text-findmi-700 underline underline-offset-2"
+                >
+                  View all appearances
+                </Link>
+              </div>
+              {upcomingAppearances.length > 0 ? (
+                <ul className="mt-3 flex flex-col gap-3">
+                  {upcomingAppearances.map((a) => (
+                    <DashboardAppearanceRow key={a.id} appearance={a} showDate />
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-ink/50">No upcoming appearances yet.</p>
+              )}
+            </div>
+
+            {/* Performance Snapshot — reliable operational counts only;
+                no manufactured engagement metrics. */}
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Performance Snapshot</p>
+              <div className="mt-3 grid grid-cols-2 gap-2.5">
+                <MetricTile label="Upcoming Appearances" value={dashboardAppearances.length} />
+                <MetricTile label="Completed This Month" value={completedThisMonth} />
+                <MetricTile label="Followers" value={followerSummary.totalCount} />
+                <MetricTile label="Products" value={products.length} />
+              </div>
+            </div>
+
+            {/* Quick Actions — the most common workflows, every link a
+                real existing route/tab (no dead buttons). */}
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Quick Actions</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {visibleTabs.filter((t) => t.key !== "overview").map((t) => (
+                <Link
+                  href={`${basePath}?tab=findmi-here`}
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                >
+                  + Add Appearance
+                </Link>
+                <Link
+                  href={`${basePath}?tab=profile`}
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                >
+                  Edit Profile
+                </Link>
+                <Link
+                  href={`${basePath}?tab=products`}
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                >
+                  Manage Products
+                </Link>
+                {business.slug && (
                   <Link
-                    key={t.key}
-                    href={`${basePath}?tab=${t.key}`}
-                    className="rounded-xl border border-black/10 px-3.5 py-3 text-sm font-semibold text-ink transition hover:border-black/20"
+                    href={`/business/${business.slug}`}
+                    className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
                   >
-                    {t.label}
+                    View Public Profile
                   </Link>
-                ))}
+                )}
+                <Link
+                  href="/events"
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-center text-sm font-semibold text-ink transition hover:border-black/20"
+                >
+                  Browse Events
+                </Link>
               </div>
             </div>
           </div>
@@ -1890,6 +2075,67 @@ function UpgradeLockedTab({ businessId, tabKey, description }: { businessId: str
           heading="Have a Pro Invite or Promo Code?"
         />
       </div>
+    </div>
+  );
+}
+
+/** Command Center V1 — one shared row for both the Today and Upcoming
+ * sections, rendering a DashboardAppearance (lib/business-dashboard.ts)
+ * without any standalone-vs-Event-linked branching of its own — that
+ * distinction was already resolved into plain fields (eventName/eventHref/
+ * geographyLabel/statusLabel) before this component ever sees it. */
+function DashboardAppearanceRow({ appearance, showDate }: { appearance: DashboardAppearance; showDate: boolean }) {
+  const locationLine = [appearance.venueName, [appearance.city, appearance.state].filter(Boolean).join(", ")]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <li className="rounded-2xl border border-black/10 p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                appearance.temporal.live ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/50"
+              }`}
+            >
+              {appearance.temporal.label}
+            </span>
+            <p className="truncate text-sm font-semibold text-ink">{appearance.title}</p>
+          </div>
+          <p className="mt-1 text-xs text-ink/60">
+            {showDate ? `${formatDateShort(appearance.startAt)} · ` : ""}
+            {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
+          </p>
+          {locationLine && <p className="mt-0.5 truncate text-xs text-ink/50">{locationLine}</p>}
+          {appearance.geographyLabel && <p className="mt-0.5 text-xs text-ink/40">{appearance.geographyLabel}</p>}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-findmi-700">
+              {appearance.statusLabel}
+            </span>
+            {appearance.eventName &&
+              (appearance.eventHref ? (
+                <Link href={appearance.eventHref} className="text-[11px] text-ink/45 underline underline-offset-2">
+                  Part of {appearance.eventName}
+                </Link>
+              ) : (
+                <span className="text-[11px] text-ink/45">Part of {appearance.eventName}</span>
+              ))}
+          </div>
+        </div>
+        <Link href={appearance.editHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+          Manage
+        </Link>
+      </div>
+    </li>
+  );
+}
+
+/** Command Center V1 — one compact Performance Snapshot number. */
+function MetricTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-black/5 bg-mist/30 p-3">
+      <p className="font-display text-xl font-bold text-ink">{value}</p>
+      <p className="mt-0.5 text-[11px] font-medium text-ink/50">{label}</p>
     </div>
   );
 }

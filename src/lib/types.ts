@@ -556,10 +556,23 @@ export type EventParticipationStatus =
   | "approved"
   | "declined";
 
+// Appearance Provenance pass — how this Appearance row came to exist:
+// "manual" (owner-typed, no event link), "event_self_added" (owner chose
+// a real FindMi event/occurrence themselves), or "official_participation"
+// (admin approved this business onto an event's official roster). Never
+// used to gate display — only for internal bookkeeping (e.g. so a later
+// admin roster approval doesn't overwrite an owner's own edits).
+export type AppearanceSource = "manual" | "event_self_added" | "official_participation";
+
 export interface Appearance {
   id: string;
   business_id: string;
   event_id: string | null;
+  // Event Occurrences foundation — set alongside event_id when this
+  // Appearance is linked to one specific recurring occurrence rather than
+  // a whole (non-recurring) event; null for a non-recurring event link or
+  // a standalone Appearance.
+  event_occurrence_id: string | null;
   title: string;
   description: string | null;
   start_at: string;
@@ -571,6 +584,7 @@ export interface Appearance {
   latitude: number | null;
   longitude: number | null;
   status: AppearanceStatus;
+  source: AppearanceSource;
   is_featured: boolean;
   // Brand bulletin (Part 3F) — a founder-written "here's what's happening"
   // line for this appearance. show_on_home gates homepage placement
