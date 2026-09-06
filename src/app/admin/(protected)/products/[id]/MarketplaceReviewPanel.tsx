@@ -18,16 +18,35 @@ export default function MarketplaceReviewPanel({
   businessName,
   categoryName,
   businessFeePercent,
+  businessCommerceEnabled,
+  businessNativeInquiriesEnabled,
 }: {
   product: AdminProduct;
   businessName: string;
   categoryName: string | null;
   businessFeePercent: number | null;
+  /** Marketplace Approval Safety V1 — the same two business-level fields
+   * the public product page's own CTA logic keys off (product/[slug]/
+   * page.tsx), passed in here purely to warn admin, never to block
+   * approval — FindMi may legitimately want a discovery-only Marketplace
+   * product later. */
+  businessCommerceEnabled: boolean;
+  businessNativeInquiriesEnabled: boolean;
 }) {
   const marketplaceStatus = product.marketplace_status ?? "catalog_only";
   if (marketplaceStatus !== "submitted" && marketplaceStatus !== "approved" && marketplaceStatus !== "paused") {
     return null;
   }
+
+  // Marketplace Approval Safety V1 — mirrors the exact CTA fallback chain
+  // the public product page already uses (Add to Cart -> Shop Now ->
+  // Contact Seller -> dead end): purchasable requires the business to
+  // also have commerce on, same as ProductCard/product page's own
+  // `canAddToCart`. A warning only, never a block — see the panel's own
+  // note above.
+  const hasPurchaseMechanism = product.purchasable && businessCommerceEnabled;
+  const hasExternalUrl = Boolean(product.external_purchase_url);
+  const hasAnyCustomerAction = hasPurchaseMechanism || hasExternalUrl || businessNativeInquiriesEnabled;
 
   const contentLive = (product.moderation_status ?? "live") === "live";
   // Business.marketplace_fee_percent is typed as a required `number`, but
@@ -108,6 +127,19 @@ export default function MarketplaceReviewPanel({
           Approve this product&rsquo;s content first — Marketplace approval is blocked until it&rsquo;s live.
         </p>
       )}
+
+      {/* Marketplace Approval Safety V1 — warning only, never a block:
+          there may be legitimate reasons FindMi wants a discovery-only
+          Marketplace product with no purchase/contact mechanism yet. */}
+      {marketplaceStatus === "submitted" &&
+        (hasAnyCustomerAction ? (
+          <p className="mt-3 text-xs font-semibold text-green-700">Customer action available</p>
+        ) : (
+          <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            This product currently has no way for a customer to buy or inquire. If approved, customers may reach a
+            dead end on the product page.
+          </p>
+        ))}
 
       <div className="mt-4 flex flex-wrap gap-2">
         {marketplaceStatus === "submitted" && (

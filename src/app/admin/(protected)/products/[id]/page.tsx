@@ -49,9 +49,20 @@ export default async function EditProductPage({
   // (it's a generic RelationPicker option, used far beyond this one
   // panel) — fetched directly here instead of widening that shared
   // helper for one caller's need.
+  //
+  // Marketplace Approval Safety V1 — commerce_enabled/native_inquiries_enabled
+  // are read in the same query, purely so MarketplaceReviewPanel can tell
+  // admin whether a customer has ANY way to buy/inquire before Marketplace
+  // approval — same two business-level fields the public product page's own
+  // CTA logic already keys off (see product/[slug]/page.tsx), just read
+  // here instead of re-derived.
   const adminSupabase = getAdminSupabase();
   const { data: businessFeeRow } = adminSupabase
-    ? await adminSupabase.from("businesses").select("marketplace_fee_percent").eq("id", product.business_id).maybeSingle()
+    ? await adminSupabase
+        .from("businesses")
+        .select("marketplace_fee_percent, commerce_enabled, native_inquiries_enabled")
+        .eq("id", product.business_id)
+        .maybeSingle()
     : { data: null };
   const categoryName = categories.find((c) => c.id === selectedCategoryIds[0])?.name ?? null;
   // Business demo/publication status isn't loaded here (see
@@ -120,6 +131,8 @@ export default async function EditProductPage({
           businessName={initialBusiness?.label ?? "—"}
           categoryName={categoryName}
           businessFeePercent={businessFeeRow?.marketplace_fee_percent ?? null}
+          businessCommerceEnabled={businessFeeRow?.commerce_enabled ?? false}
+          businessNativeInquiriesEnabled={businessFeeRow?.native_inquiries_enabled ?? false}
         />
       </div>
 

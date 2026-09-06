@@ -251,6 +251,18 @@ export async function approveMarketplaceSubmission(id: string) {
   const product = await getProductForMarketplaceReview(supabase, id);
   if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
 
+  // Marketplace Approval Safety V1 — this action must never be the path
+  // that takes a product straight from "catalog_only" (or "rejected") to
+  // "approved". The UI already only ever renders the Approve button for a
+  // "submitted" product (see MarketplaceReviewPanel), but this guard makes
+  // that a real server-side requirement rather than something only the UI
+  // happens to enforce.
+  if (product.marketplace_status !== "submitted") {
+    redirect(
+      errorRedirectUrl(`/admin/products/${id}`, "This product hasn't been submitted to Marketplace — nothing to approve.")
+    );
+  }
+
   if (product.moderation_status !== "live") {
     redirect(
       errorRedirectUrl(`/admin/products/${id}`, "Approve this product's content first — Marketplace approval requires it to be live.")
