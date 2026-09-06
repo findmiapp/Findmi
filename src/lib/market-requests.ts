@@ -1,11 +1,14 @@
-// Consumer Area Picker + Market Requests V1 — shared server-only helpers
-// for the market_requests / market_request_interests tables. Plain
-// functions taking an already-obtained admin (service-role) client, same
-// shape as lib/admin/business-markets.ts — never "use server" here since
-// these aren't meant to be called directly from a client component (the
-// one public-facing entry point is the "use server" action in
-// src/app/(public)/actions/area-requests.ts, which calls into this file).
+// Consumer Area Picker + Market Requests V1, extended by the Market ->
+// Area/Submarket Hierarchy V2 pass — shared server-only helpers for the
+// market_requests / market_request_interests / market_areas tables.
+// Plain functions taking an already-obtained admin (service-role)
+// client, same shape as lib/admin/business-markets.ts — never
+// "use server" here since these aren't meant to be called directly from
+// a client component (the one public-facing entry point is the
+// "use server" action in src/app/(public)/actions/area-requests.ts,
+// which calls into this file).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { MarketRequestResolutionType } from "./types";
 
 const US_STATE_ABBREVIATIONS = new Set([
   "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -33,53 +36,177 @@ export function normalizeMarketRequestKey(raw: string): string {
   return tokens.join(" ");
 }
 
+/** Plain Levenshtein edit distance — the only "fuzzy" matching this pass
+ * uses (per its own explicit "no external geography/geocoding API"
+ * scope). Fine for short city/area names against a small (dozens, not
+ * millions) candidate set. */
+function levenshtein(a: string, b: string): number {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp: number[][] = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
+  for (let i = 0; i < rows; i++) dp[i][0] = i;
+  for (let j = 0; j < cols; j++) dp[0][j] = j;
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[rows - 1][cols - 1];
+}
+
+const FUZZY_MAX_DISTANCE = 2;
+const FUZZY_MAX_LENGTH = 24;
+
+function isCloseMatch(query: string, candidate: string): boolean {
+  if (!query || !candidate) return false;
+  if (query === candidate) return true;
+  if (candidate.includes(query) || query.includes(candidate)) return true;
+  if (Math.max(query.length, candidate.length) > FUZZY_MAX_LENGTH) return false;
+  return levenshtein(query, candidate) <= FUZZY_MAX_DISTANCE;
+}
+
+export interface GeographyMatch {
+  type: "market" | "area";
+  marketId: string;
+  marketLabel: string;
+  areaId?: string;
+  areaLabel?: string;
+  /** Full display label, e.g. "Hamptons — Long Island" or "New York City". */
+  label: string;
+}
+
+type MinimalMarketRow = { id: string; name: string; display_name: string | null; slug: string; areas_included: string[] | null };
+type MinimalAreaRow = {
+  id: string;
+  market_id: string;
+  name: string;
+  display_name: string | null;
+  slug: string;
+  aliases: string[] | null;
+};
+
+/** Searches BOTH existing Markets and existing Areas/Submarkets for a
+ * plausible match to free-typed geography text — exact/substring/close-
+ * edit-distance only, never geocoding. Areas are checked first so a
+ * precise match (e.g. "Hamptons") wins over a looser match against an
+ * unrelated Market's own name/areas_included text. Returns null when
+ * nothing plausible is found — callers must never invent geography from
+ * a non-match. Considers ALL active rows regardless of consumer_visible
+ * (per this pass's own "a legitimate business geography may already
+ * exist internally even if not yet consumer-visible" instruction). */
+export async function findExistingGeographyMatch(admin: SupabaseClient, text: string): Promise<GeographyMatch | null> {
+  const key = normalizeMarketRequestKey(text);
+  if (!key) return null;
+
+  const [{ data: marketRows }, { data: areaRows }] = await Promise.all([
+    admin.from("markets").select("id, name, display_name, slug, areas_included").eq("active", true),
+    admin.from("market_areas").select("id, market_id, name, display_name, slug, aliases").eq("active", true),
+  ]);
+  const markets = (marketRows ?? []) as MinimalMarketRow[];
+  const areas = (areaRows ?? []) as MinimalAreaRow[];
+  const marketById = new Map(markets.map((m) => [m.id, m]));
+
+  for (const area of areas) {
+    const candidates = [area.name, area.display_name, area.slug, ...(area.aliases ?? [])]
+      .filter((v): v is string => Boolean(v))
+      .map(normalizeMarketRequestKey);
+    if (candidates.some((c) => isCloseMatch(key, c))) {
+      const market = marketById.get(area.market_id);
+      const marketLabel = market?.display_name || market?.name || "Unknown Market";
+      const areaLabel = area.display_name || area.name;
+      return { type: "area", marketId: area.market_id, marketLabel, areaId: area.id, areaLabel, label: `${areaLabel} — ${marketLabel}` };
+    }
+  }
+
+  for (const market of markets) {
+    const candidates = [market.name, market.display_name, market.slug, ...(market.areas_included ?? [])]
+      .filter((v): v is string => Boolean(v))
+      .map(normalizeMarketRequestKey);
+    if (candidates.some((c) => isCloseMatch(key, c))) {
+      const label = market.display_name || market.name;
+      return { type: "market", marketId: market.id, marketLabel: label, label };
+    }
+  }
+
+  return null;
+}
+
 export interface ConsumerMarketRequestInput {
   text: string;
   city?: string | null;
   state?: string | null;
 }
 
-/** Consumer requests are deduped onto ONE pending row per normalized_key
- * — repeat interest in the same geography is recorded via
+export interface ConsumerMarketRequestResult {
+  requestId: string;
+  /** Non-null when the request auto-resolved onto existing geography
+   * (see below) — the caller uses this to show an honest "this Area
+   * already exists" message rather than a generic "you're on the list". */
+  match: GeographyMatch | null;
+}
+
+/** Consumer requests are deduped onto ONE row per EFFECTIVE normalized
+ * key — repeat interest in the same geography is recorded via
  * market_request_interests (see recordMarketRequestInterest), never as
- * additional market_requests rows. Returns the request id either way. */
+ * additional market_requests rows.
+ *
+ * Market -> Area/Submarket Hierarchy V2 — before creating a new pending
+ * row, this checks for an existing Market/Area match (findExistingGeographyMatch).
+ * A match means the geography already exists, so the row is created (or
+ * reused) already RESOLVED (status='mapped', mapped_market_id/
+ * mapped_area_id/resolution_type set, reviewed_at stamped) instead of
+ * 'pending' — no admin action needed, no duplicate Market/Area risk, and
+ * the interest record still has a real request to attach to for a future
+ * notification pass. Genuinely unmatched geography still creates a
+ * normal pending row exactly as V1 did. */
 export async function findOrCreateConsumerMarketRequest(
   admin: SupabaseClient,
   input: ConsumerMarketRequestInput
-): Promise<string> {
-  const normalizedKey = normalizeMarketRequestKey(input.text);
+): Promise<ConsumerMarketRequestResult> {
+  const match = await findExistingGeographyMatch(admin, input.text);
+  const effectiveKey = match ? normalizeMarketRequestKey(match.type === "area" ? match.areaLabel! : match.marketLabel) : normalizeMarketRequestKey(input.text);
+
   const { data: existing } = await admin
     .from("market_requests")
     .select("id")
     .eq("source", "consumer")
-    .eq("normalized_key", normalizedKey)
-    .eq("status", "pending")
+    .eq("effective_normalized_key", effectiveKey)
+    .neq("status", "rejected")
     .maybeSingle();
-  if (existing) return existing.id;
+  if (existing) return { requestId: existing.id, match };
 
+  const resolutionType: MarketRequestResolutionType | null = match ? (match.type === "area" ? "existing_area" : "existing_market") : null;
   const { data, error } = await admin
     .from("market_requests")
     .insert({
       requested_text: input.text.trim(),
       city: input.city?.trim() || null,
       state: input.state?.trim() || null,
-      normalized_key: normalizedKey,
+      normalized_key: normalizeMarketRequestKey(input.text),
+      effective_normalized_key: effectiveKey,
       source: "consumer",
-      status: "pending",
+      status: match ? "mapped" : "pending",
+      mapped_market_id: match?.marketId ?? null,
+      mapped_area_id: match?.areaId ?? null,
+      resolution_type: resolutionType,
+      reviewed_at: match ? new Date().toISOString() : null,
     })
     .select("id")
     .single();
   if (error || !data) throw new Error(error?.message ?? "Could not create Area request.");
-  return data.id;
+  return { requestId: data.id, match };
 }
 
 /** One row per distinct person (signed-in user OR email) expressing
- * interest in a pending request — a demand COUNT, never additional
- * pending market_requests rows. 23505 (unique_violation, from the
- * partial unique indexes on (request_id, user_id)/(request_id, email))
- * means this exact person already recorded interest here — a safe,
- * expected no-op, not an error, same idiom as addOccurrenceVendor's own
- * ignoreDuplicates handling elsewhere in this codebase. */
+ * interest in a request — a demand COUNT, never additional
+ * market_requests rows. 23505 (unique_violation, from the partial unique
+ * indexes on (request_id, user_id)/(request_id, email)) means this exact
+ * person already recorded interest here — a safe, expected no-op, not an
+ * error, same idiom as addOccurrenceVendor's own ignoreDuplicates
+ * handling elsewhere in this codebase. Recorded the same way whether the
+ * request ended up 'pending' or auto-resolved to 'mapped' — either way
+ * this person should hear about it once the geography is truly live. */
 export async function recordMarketRequestInterest(
   admin: SupabaseClient,
   input: { requestId: string; userId?: string | null; email?: string | null }
@@ -92,27 +219,32 @@ export async function recordMarketRequestInterest(
   if (error && error.code !== "23505") throw new Error(error.message);
 }
 
+export interface LinkedMarketRequestInput {
+  text: string;
+  city?: string | null;
+  state?: string | null;
+  source: "business_creation" | "event_creation";
+  sourceBusinessId?: string | null;
+  sourceEventId?: string | null;
+}
+
 /** Business/event creation each get their OWN request row (1:1 with the
  * business/event that couldn't find its Market) — never deduped against
  * a consumer request or another business/event's request, since each
  * one is tied to a real linked record an admin needs to resolve
- * individually. */
-export async function createLinkedMarketRequest(
-  admin: SupabaseClient,
-  input: {
-    text: string;
-    city?: string | null;
-    state?: string | null;
-    source: "business_creation" | "event_creation";
-    sourceBusinessId?: string | null;
-    sourceEventId?: string | null;
-  }
-): Promise<void> {
+ * individually. Callers (createMemberBusiness, saveEvent) are expected
+ * to have ALREADY checked findExistingGeographyMatch themselves and used
+ * the match directly when found — this function is only reached for
+ * genuinely unmatched geography, so it always creates a plain 'pending'
+ * row. */
+export async function createLinkedMarketRequest(admin: SupabaseClient, input: LinkedMarketRequestInput): Promise<void> {
+  const normalizedKey = normalizeMarketRequestKey(input.text);
   const { error } = await admin.from("market_requests").insert({
     requested_text: input.text.trim(),
     city: input.city?.trim() || null,
     state: input.state?.trim() || null,
-    normalized_key: normalizeMarketRequestKey(input.text),
+    normalized_key: normalizedKey,
+    effective_normalized_key: normalizedKey,
     source: input.source,
     source_business_id: input.sourceBusinessId ?? null,
     source_event_id: input.sourceEventId ?? null,

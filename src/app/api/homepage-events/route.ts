@@ -18,14 +18,25 @@ export const dynamic = "force-dynamic";
  * each candidate occurrence's EFFECTIVE physical Market (see
  * lib/event-markets.ts). An unknown/inactive slug resolves to zero
  * results there — never a silent fallback to the unfiltered/global set.
+ *
+ * Market -> Area/Submarket Hierarchy V2 — optional `area` query param,
+ * only meaningful alongside `market` (same ?market=&area= contract as
+ * every other consumer page).
  */
 export async function GET(request: NextRequest) {
   const timeKey = request.nextUrl.searchParams.get("when") ?? "upNext";
   const category = request.nextUrl.searchParams.get("category")?.trim() || undefined;
   const market = request.nextUrl.searchParams.get("market")?.trim() || undefined;
+  const area = request.nextUrl.searchParams.get("area")?.trim() || undefined;
   const when = WINDOW_BY_TIME_KEY[timeKey as DiscoveryTimeKey] ?? "anytime";
 
-  const events = await getEventsDiscovery({ when, categorySlug: category, marketSlug: market, limit: 20 });
+  const events = await getEventsDiscovery({
+    when,
+    categorySlug: category,
+    marketSlug: market,
+    areaSlug: market ? area : undefined,
+    limit: 20,
+  });
   const withCategories = await attachEventCategories(events);
   return NextResponse.json({ events: withCategories });
 }

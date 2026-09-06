@@ -210,6 +210,11 @@ export interface Business {
   plan_started_at?: string | null;
   plan_expires_at?: string | null;
   plan_payment_reference?: string | null;
+  // Market -> Area/Submarket Hierarchy V2 — an OPTIONAL, more precise
+  // structured Area alongside (never replacing) this business's Primary
+  // Market entitlement (business_markets). Never consulted by Market
+  // entitlement/limit logic — purely additional precision.
+  market_area_id?: string | null;
 }
 
 export interface Market {
@@ -241,9 +246,29 @@ export interface Market {
   consumer_visible?: boolean;
 }
 
-// Consumer Area Picker + Market Requests V1
+// Market -> Area/Submarket Hierarchy V2 — a structured, id-addressable
+// Area/Submarket belonging to exactly one parent Market. Additive
+// alongside (never replacing) markets.areas_included, which stays plain
+// descriptive text. Same active/consumer_visible split as Market itself.
+export interface MarketArea {
+  id: string;
+  market_id: string;
+  name: string;
+  slug: string;
+  display_name: string | null;
+  aliases: string[] | null;
+  active: boolean;
+  consumer_visible: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Consumer Area Picker + Market Requests V1, extended by V2 (canonical
+// correction + Market/Area resolution)
 export type MarketRequestSource = "consumer" | "business_creation" | "event_creation";
 export type MarketRequestStatus = "pending" | "approved" | "mapped" | "rejected";
+export type MarketRequestResolutionType = "existing_market" | "existing_area" | "new_market" | "new_area";
 
 export interface MarketRequest {
   id: string;
@@ -262,6 +287,14 @@ export interface MarketRequest {
   admin_note: string | null;
   created_at: string;
   reviewed_at: string | null;
+  // V2 — canonical_text is an OPTIONAL admin correction; requested_text
+  // above is NEVER overwritten and stays the immutable original
+  // submission. effective_normalized_key = normalize(canonical_text ??
+  // requested_text) and is what grouping/matching uses from here on.
+  canonical_text: string | null;
+  effective_normalized_key: string;
+  mapped_area_id: string | null;
+  resolution_type: MarketRequestResolutionType | null;
 }
 
 export interface MembershipPlan {
@@ -433,6 +466,12 @@ export interface FindmiEvent {
   // Null = no Market assigned. See lib/event-markets.ts for the full
   // occurrence → location → event precedence this feeds into.
   market_id: string | null;
+  // Market -> Area/Submarket Hierarchy V2 — an OPTIONAL, more precise
+  // structured Area within market_id above (e.g. Market = New York City,
+  // Area = Staten Island). Additive alongside market_id, never a
+  // replacement — event Market resolution precedence (lib/event-markets.ts)
+  // is unchanged and does not read this field.
+  market_area_id: string | null;
   // Configurable consumer actions — each _enabled flag gates whether its
   // button/link appears at all; the public event page never renders a
   // disabled or destination-less action.

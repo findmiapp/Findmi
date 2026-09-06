@@ -9,7 +9,7 @@ import FilterSheet from "@/components/discover/FilterSheet";
 import SortSelect from "@/components/discover/SortSelect";
 import {
   getCategories,
-  getConsumerVisibleMarkets,
+  getConsumerVisibleMarketsWithAreas,
   getMarketAreaLabel,
   getNextAppearanceHints,
   searchBusinesses,
@@ -39,6 +39,10 @@ interface Params {
    * behavior, unchanged. Shown to consumers as "Area" (Market Management
    * + Plan Market Allowances V1) — the `market` param name is unchanged. */
   market?: string;
+  /** Market -> Area/Submarket Hierarchy V2 — a structured Area slug
+   * scoped WITHIN `market` (never meaningful alone). Absent = the whole
+   * Market (unchanged V1 behavior). */
+  area?: string;
   featured?: string;
   founding?: string;
   sort?: string;
@@ -54,12 +58,13 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
 
   const [categories, markets, fetched] = await Promise.all([
     getCategories(),
-    getConsumerVisibleMarkets(),
+    getConsumerVisibleMarketsWithAreas(),
     searchBusinesses({
       q: params.q,
       categorySlug: params.category,
       location: params.location,
       marketSlug: params.market,
+      areaSlug: params.market ? params.area : undefined,
       featuredOnly: featured,
       foundingMemberOnly: founding,
       sort,
@@ -79,19 +84,24 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   if (params.category) baseParams.set("category", params.category);
   if (params.location) baseParams.set("location", params.location);
   if (params.market) baseParams.set("market", params.market);
+  if (params.market && params.area) baseParams.set("area", params.area);
   if (featured) baseParams.set("featured", "1");
   if (founding) baseParams.set("founding", "1");
   if (sort !== "recommended") baseParams.set("sort", sort);
 
   const categoryName = categories.find((c) => c.slug === params.category)?.name;
-  const marketAreaLabel = (() => {
-    const found = markets.find((m) => m.slug === params.market);
-    return found ? getMarketAreaLabel(found) : undefined;
-  })();
+  const selectedMarket = markets.find((m) => m.slug === params.market);
+  const selectedArea = params.market ? selectedMarket?.areas.find((a) => a.slug === params.area) : undefined;
+  const marketAreaLabel = selectedArea
+    ? `${selectedArea.display_name || selectedArea.name} — ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
+    : selectedMarket
+      ? getMarketAreaLabel(selectedMarket)
+      : undefined;
   const chips: ActiveFilterChip[] = [];
   const withoutParam = (key: string) => {
     const p = new URLSearchParams(baseParams);
     p.delete(key);
+    if (key === "market") p.delete("area");
     return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
   };
   if (params.q) chips.push({ label: `"${params.q}"`, href: withoutParam("q") });
@@ -125,7 +135,12 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
         <ArchiveSearchField defaultValue={params.q} placeholder="Search by name or description" />
         <div className="flex flex-wrap items-center gap-2.5">
           <AreaPicker
-            options={markets.map((m) => ({ slug: m.slug, label: getMarketAreaLabel(m), areasIncluded: m.areas_included }))}
+            options={markets.map((m) => ({
+              slug: m.slug,
+              label: getMarketAreaLabel(m),
+              areasIncluded: m.areas_included,
+              areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+            }))}
           />
           <FilterSheet activeCount={sheetFilterCount}>
             <BusinessFilters

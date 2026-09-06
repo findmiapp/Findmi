@@ -7,7 +7,7 @@ import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { bool, DEFAULT_ADMIN_TIMEZONE, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
-import { createLinkedMarketRequest } from "@/lib/market-requests";
+import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
 import type { EventParticipationStatus } from "@/lib/types";
 
 // ── Approval <-> FindMi Here sync (Admin Approval → FindMi Here Sync pass,
@@ -286,6 +286,24 @@ export async function saveEvent(id: string | null, formData: FormData) {
     isSlugTaken("events", candidate, id ?? undefined)
   );
 
+  // Market -> Area/Submarket Hierarchy V2 — a typed "Request a new Market"
+  // value is checked against existing Markets/Areas BEFORE falling back to
+  // a Market Request. A match sets market_id/market_area_id directly (no
+  // request row at all) — this is what stops "Williamsburg" from creating
+  // a pending request when NYC + a matching Area already exist.
+  const requestedMarketTextRaw = str(formData, "requested_market_text");
+  let matchedMarketId: string | null = null;
+  let matchedAreaId: string | null = null;
+  let requestedMarketText = requestedMarketTextRaw;
+  if (requestedMarketTextRaw) {
+    const match = await findExistingGeographyMatch(supabase, requestedMarketTextRaw);
+    if (match) {
+      matchedMarketId = match.marketId;
+      matchedAreaId = match.type === "area" ? (match.areaId ?? null) : null;
+      requestedMarketText = null;
+    }
+  }
+
   const payload = {
     name,
     slug,
@@ -297,7 +315,12 @@ export async function saveEvent(id: string | null, formData: FormData) {
     address: str(formData, "address"),
     city: str(formData, "city"),
     state: str(formData, "state"),
-    market_id: str(formData, "market_id"),
+    market_id: matchedMarketId ?? str(formData, "market_id"),
+    // Only ever set when THIS save matched a structured Area — omitted
+    // (never forced to null) otherwise, so a save with no new "Request a
+    // new Market" text never wipes out an Area a prior save already
+    // attached to this event.
+    ...(matchedAreaId ? { market_area_id: matchedAreaId } : {}),
     organizer_name: str(formData, "organizer_name"),
     external_url: str(formData, "external_url"),
     is_featured: bool(formData, "is_featured"),
@@ -332,13 +355,15 @@ export async function saveEvent(id: string | null, formData: FormData) {
     eventId = data.id;
   }
 
-  // Consumer Area Picker + Market Requests V1 — never writes into
-  // event.market_id; only creates a linked, admin-reviewable request.
+  // Consumer Area Picker + Market Requests V1, extended by Market ->
+  // Area/Submarket Hierarchy V2 — never writes into event.market_id
+  // directly; only creates a linked, admin-reviewable request, and only
+  // when requestedMarketText is still non-null here (i.e. the geography
+  // typed above did NOT match an existing Market/Area — see that check).
   // Admin can resubmit this field on a later save (e.g. to note a
-  // different Market) — each non-blank submission creates its own row,
-  // same as business/event creation always creating a fresh request
-  // rather than editing a prior one.
-  const requestedMarketText = str(formData, "requested_market_text");
+  // different Market) — each non-blank, still-unmatched submission
+  // creates its own row, same as business/event creation always creating
+  // a fresh request rather than editing a prior one.
   if (requestedMarketText) {
     await createLinkedMarketRequest(supabase, {
       text: requestedMarketText,

@@ -45,6 +45,7 @@ export default function HomeEventDiscovery({
   anytime,
   eventCategories,
   marketSlug,
+  areaSlug,
 }: Record<TimeKey, EventWithCategories[]> & {
   eventCategories: Category[];
   /** Consumer Event Market Filtering V1 — the homepage's current
@@ -53,6 +54,10 @@ export default function HomeEventDiscovery({
    * on a Market change so this cache never serves a stale prior-Market
    * result — see page.tsx's own note. */
   marketSlug?: string;
+  /** Market -> Area/Submarket Hierarchy V2 — the homepage's current
+   * ?area= value, only meaningful alongside marketSlug. Same remount-on-
+   * change handling as marketSlug (see page.tsx's key={...}). */
+  areaSlug?: string;
 }) {
   const prefetched: Record<TimeKey, EventWithCategories[]> = { upNext, today, weekend, anytime };
   const [activeTime, setActiveTime] = useState<TimeKey>("upNext");
@@ -84,8 +89,9 @@ export default function HomeEventDiscovery({
     setFailedKey(null);
     try {
       const marketParam = marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : "";
+      const areaParam = marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : "";
       const res = await fetch(
-        `/api/homepage-events?when=${timeKey}&category=${encodeURIComponent(categorySlug)}${marketParam}`,
+        `/api/homepage-events?when=${timeKey}&category=${encodeURIComponent(categorySlug)}${marketParam}${areaParam}`,
         { cache: "no-store" }
       );
       if (!res.ok) throw new Error(`homepage-events ${res.status}`);

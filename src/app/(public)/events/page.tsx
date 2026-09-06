@@ -8,7 +8,7 @@ import EventFilters from "@/components/discover/EventFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
 import {
   attachEventCategories,
-  getConsumerVisibleMarkets,
+  getConsumerVisibleMarketsWithAreas,
   getEventCategories,
   getEventsDiscovery,
   getMarketAreaLabel,
@@ -43,6 +43,9 @@ interface Params {
    * (Market Management + Plan Market Allowances V1) — the `market` param
    * name is unchanged. */
   market?: string;
+  /** Market -> Area/Submarket Hierarchy V2 — a structured Area slug
+   * scoped WITHIN `market` (never meaningful alone). */
+  area?: string;
   limit?: string;
 }
 
@@ -61,13 +64,14 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   // live, upcoming event — see that function's own note.
   const [eventCategories, markets, fetchedRaw] = await Promise.all([
     getEventCategories(),
-    getConsumerVisibleMarkets(),
+    getConsumerVisibleMarketsWithAreas(),
     getEventsDiscovery({
       when,
       q: params.q,
       categorySlug: params.category,
       location: params.location,
       marketSlug: params.market,
+      areaSlug: params.market ? params.area : undefined,
       limit: limit + 1,
     }),
   ]);
@@ -80,16 +84,21 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   if (params.category) baseParams.set("category", params.category);
   if (params.location) baseParams.set("location", params.location);
   if (params.market) baseParams.set("market", params.market);
+  if (params.market && params.area) baseParams.set("area", params.area);
 
   const categoryName = eventCategories.find((c) => c.slug === params.category)?.name;
-  const marketAreaLabel = (() => {
-    const found = markets.find((m) => m.slug === params.market);
-    return found ? getMarketAreaLabel(found) : undefined;
-  })();
+  const selectedMarket = markets.find((m) => m.slug === params.market);
+  const selectedArea = params.market ? selectedMarket?.areas.find((a) => a.slug === params.area) : undefined;
+  const marketAreaLabel = selectedArea
+    ? `${selectedArea.display_name || selectedArea.name} — ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
+    : selectedMarket
+      ? getMarketAreaLabel(selectedMarket)
+      : undefined;
   const chips: ActiveFilterChip[] = [];
   const withoutParam = (key: string) => {
     const p = new URLSearchParams(baseParams);
     p.delete(key);
+    if (key === "market") p.delete("area");
     return `/events${p.toString() ? `?${p.toString()}` : ""}`;
   };
   if (params.q) chips.push({ label: `"${params.q}"`, href: withoutParam("q") });
@@ -151,7 +160,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
         <div className="flex flex-wrap items-center gap-2.5">
           <AreaPicker
-            options={markets.map((m) => ({ slug: m.slug, label: getMarketAreaLabel(m), areasIncluded: m.areas_included }))}
+            options={markets.map((m) => ({
+              slug: m.slug,
+              label: getMarketAreaLabel(m),
+              areasIncluded: m.areas_included,
+              areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+            }))}
           />
           <FilterSheet activeCount={sheetFilterCount}>
             <EventFilters

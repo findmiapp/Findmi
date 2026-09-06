@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getDashboardCounts } from "@/lib/admin/queries";
 import { getDashboardGlance, getDashboardNeedsAttention } from "@/lib/admin/dashboard-queries";
+import { getPendingMarketRequestGroups } from "@/lib/admin/market-requests";
 
 export const dynamic = "force-dynamic";
 
@@ -143,11 +144,20 @@ function ManageCard({ letter, label, description, href }: { letter: string; labe
 }
 
 export default async function AdminDashboardPage() {
-  const [counts, needsAttention, glance] = await Promise.all([
+  const [counts, needsAttention, glance, marketRequestGroups] = await Promise.all([
     getDashboardCounts(),
     getDashboardNeedsAttention(),
     getDashboardGlance(),
+    getPendingMarketRequestGroups(),
   ]);
+  // Market -> Area/Submarket Hierarchy V2, Section 3 — most RECENT first
+  // requested here (getPendingMarketRequestGroups itself sorts oldest-
+  // first for the working queue's own FIFO ordering), capped to a
+  // compact 6 rows — the full, unbounded queue lives at
+  // /admin/market-requests.
+  const recentMarketRequestGroups = [...marketRequestGroups]
+    .sort((a, b) => b.oldestCreatedAt.localeCompare(a.oldestCreatedAt))
+    .slice(0, 6);
 
   const attentionItems: AttentionItem[] = needsAttention
     ? [
@@ -234,6 +244,55 @@ export default async function AdminDashboardPage() {
           </div>
         </section>
       )}
+
+      {/* B2. MARKET REQUESTS — Market -> Area/Submarket Hierarchy V2,
+          Section 3. A compact surface for geography demand that hasn't
+          been resolved yet, so a founder doesn't have to remember to
+          check /admin/market-requests on its own. Always renders (even
+          with zero pending) so its absence never reads as "nothing to
+          check" vs. "genuinely nothing pending." */}
+      <section className="mt-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Market Requests</h2>
+          <Link href="/admin/market-requests" className="text-xs font-semibold text-findmi-700 underline underline-offset-2">
+            View all Market Requests
+          </Link>
+        </div>
+        {recentMarketRequestGroups.length === 0 ? (
+          <p className="mt-2 rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">
+            No pending Market Requests.
+          </p>
+        ) : (
+          <div className="mt-2 flex flex-col gap-2">
+            {recentMarketRequestGroups.map((group) => (
+              <Link
+                key={group.effectiveKey}
+                href="/admin/market-requests"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10 hover:shadow-sm"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink">{group.displayText}</p>
+                  <p className="mt-0.5 text-xs text-ink/45">
+                    First requested {new Date(group.oldestCreatedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-3 text-xs text-ink/60">
+                  <span>
+                    Consumers: <strong className="text-ink">{group.consumerInterestCount}</strong>
+                  </span>
+                  <span>
+                    Businesses: <strong className="text-ink">{group.businessCount}</strong>
+                  </span>
+                  <span>
+                    Events: <strong className="text-ink">{group.eventCount}</strong>
+                  </span>
+                  <span className="font-bold uppercase tracking-wide text-findmi-700">Review</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* C. AT A GLANCE */}
       <section className="mt-6">

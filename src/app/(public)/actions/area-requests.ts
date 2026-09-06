@@ -18,6 +18,13 @@ const MAX_TEXT_LENGTH = 120;
 export interface RequestMissingAreaResult {
   ok: boolean;
   error?: string;
+  /** Set when the typed text matched an Area/Market that already exists
+   * internally (see findExistingGeographyMatch) — the request was still
+   * recorded (for interest tracking / a future notification pass), but
+   * no NEW pending review was created and no duplicate geography risk
+   * exists. The client uses this to show an honest message instead of
+   * the generic "you're on the list". */
+  matchedLabel?: string;
 }
 
 export async function requestMissingArea(input: { text: string; email?: string }): Promise<RequestMissingAreaResult> {
@@ -41,11 +48,10 @@ export async function requestMissingArea(input: { text: string; email?: string }
   if (!admin) return { ok: false, error: "Server isn't configured." };
 
   try {
-    const requestId = await findOrCreateConsumerMarketRequest(admin, { text });
+    const { requestId, match } = await findOrCreateConsumerMarketRequest(admin, { text });
     await recordMarketRequestInterest(admin, { requestId, userId: user?.id ?? null, email });
+    return { ok: true, matchedLabel: match?.label };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Couldn't submit your request." };
   }
-
-  return { ok: true };
 }

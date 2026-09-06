@@ -20,6 +20,7 @@ import type {
   FindmiLocation,
   FulfillmentMethod,
   Market,
+  MarketArea,
   MembershipPlan,
   Person,
   PersonWithRole,
@@ -51,7 +52,7 @@ export const PUBLIC_BUSINESS_COLUMNS =
   "cta_1_label, cta_1_url, cta_1_enabled, cta_2_label, cta_2_url, " +
   "cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled, " +
   "bulletin_heading, bulletin_body, bulletin_label, bulletin_url, " +
-  "native_inquiries_enabled";
+  "native_inquiries_enabled, market_area_id";
 // Intentionally excluded (matches the migration exactly — never add these
 // back here without also widening the grant): lead_status,
 // marketplace_fee_percent, processing_fee_payer, payout_method,
@@ -577,6 +578,35 @@ export async function getBusinessIdsInMarket(marketSlug: string): Promise<string
   return (rows ?? []).map((r) => r.business_id as string);
 }
 
+/** Market -> Area/Submarket Hierarchy V2 — resolves an Area SCOPED TO its
+ * declared parent Market slug (area slugs are only unique per-Market, so
+ * `?market=new-york-city&area=williamsburg` always means the Williamsburg
+ * under New York City specifically, never a same-named Area under a
+ * different Market). Unknown/inactive Market or Area returns [] — same
+ * "never fall back to unfiltered" discipline as getBusinessIdsInMarket.
+ * Reads market_areas + businesses via the plain anon client — both have
+ * public SELECT (market_areas' own RLS policy, and businesses.market_area_id's
+ * explicit column grant), no admin client needed. */
+export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string): Promise<string[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  const { data: market } = await supabase.from("markets").select("id").eq("slug", marketSlug).eq("active", true).maybeSingle();
+  if (!market) return [];
+
+  const { data: area } = await supabase
+    .from("market_areas")
+    .select("id")
+    .eq("market_id", market.id)
+    .eq("slug", areaSlug)
+    .eq("active", true)
+    .maybeSingle();
+  if (!area) return [];
+
+  const { data: rows } = await supabase.from("businesses").select("id").eq("market_area_id", area.id).eq("is_demo", false);
+  return (rows ?? []).map((r) => r.id as string);
+}
+
 export type BusinessSort = "recommended" | "newest" | "az";
 
 export interface SearchBusinessesParams {
@@ -599,6 +629,12 @@ export interface SearchBusinessesParams {
    * unfiltered results for an unknown/inactive slug — see that
    * function's own comment. */
   marketSlug?: string;
+  /** Market -> Area/Submarket Hierarchy V2 — a more precise scope INSIDE
+   * marketSlug (never on its own — see getBusinessIdsInArea). Omitted
+   * preserves exact prior (Market-only) behavior. Intersects with
+   * marketSlug the same way categorySlug/marketSlug already intersect
+   * with each other. */
+  areaSlug?: string;
   featuredOnly?: boolean;
   foundingMemberOnly?: boolean;
   /** "recommended" (default) = is_featured desc, founding_member desc,
@@ -626,7 +662,13 @@ export async function searchBusinesses(params: SearchBusinessesParams = {}): Pro
   // (AND, via two separate .in("id", ...) calls further down), never
   // merged into one concept.
   let marketBusinessIds: string[] | null = null;
-  if (params.marketSlug) {
+  if (params.areaSlug && params.marketSlug) {
+    // A precise Area always supersedes the plain Market id list — it's
+    // already scoped to (and validated against) that same Market, so
+    // filtering by both would be redundant, not stricter.
+    marketBusinessIds = await getBusinessIdsInArea(params.marketSlug, params.areaSlug);
+    if (marketBusinessIds.length === 0) return [];
+  } else if (params.marketSlug) {
     marketBusinessIds = await getBusinessIdsInMarket(params.marketSlug);
     if (marketBusinessIds.length === 0) return [];
   }
@@ -971,6 +1013,16 @@ interface EffectiveUpcomingEventsOptions {
    * zero results here, never a silent fallback to unfiltered — see the
    * resolution block inside getEffectiveUpcomingEvents. */
   marketSlug?: string;
+  /** Market -> Area/Submarket Hierarchy V2 — further scopes to one
+   * structured Area WITHIN the already-resolved Market (`market_area_id`
+   * on `events`, set directly at creation time — never derived from
+   * occurrence/location). Deliberately NOT occurrence-aware (there is no
+   * per-occurrence Area column, unlike `resolveEffectiveEventMarket`'s
+   * full Market precedence chain) — a documented, simpler scope for this
+   * pass. Only meaningful alongside `marketSlug`; ignored otherwise. An
+   * unknown/inactive Area slug (once a Market is resolved) returns zero
+   * rows, same "resolved-but-empty" idiom as Market/category filtering. */
+  areaSlug?: string;
 }
 
 function applyEventTextFilters<
@@ -1040,6 +1092,24 @@ export async function getEffectiveUpcomingEvents(
       .maybeSingle();
     if (!marketRow) return [];
     marketId = marketRow.id;
+  }
+
+  // Market -> Area/Submarket Hierarchy V2 — an Area slug is only ever
+  // meaningful alongside a resolved Market (Area slugs are unique per-
+  // Market, not globally). `?area=` without a valid `?market=` is treated
+  // as an unresolvable filter, same as an unknown Market slug.
+  let areaId: string | null = null;
+  if (options.areaSlug) {
+    if (!marketId) return [];
+    const { data: areaRow } = await supabase
+      .from("market_areas")
+      .select("id")
+      .eq("market_id", marketId)
+      .eq("slug", options.areaSlug)
+      .eq("active", true)
+      .maybeSingle();
+    if (!areaRow) return [];
+    areaId = areaRow.id;
   }
 
   // Which events have ANY occurrence rows at all (any status) — these are
@@ -1129,6 +1199,7 @@ export async function getEffectiveUpcomingEvents(
   let occurrenceEvents: FindmiEvent[] = [];
   if (occurrenceEventIds.length > 0) {
     let evQuery = supabase.from("events").select("*").eq("is_demo", false).in("id", occurrenceEventIds);
+    if (areaId) evQuery = evQuery.eq("market_area_id", areaId);
     evQuery = applyEventTextFilters(evQuery, options);
     const { data } = await evQuery;
     occurrenceEvents = data ?? [];
@@ -1143,6 +1214,7 @@ export async function getEffectiveUpcomingEvents(
   let legacyQuery = supabase.from("events").select("*").eq("is_demo", false);
   if (options.eventIds) legacyQuery = legacyQuery.in("id", options.eventIds);
   if (marketId) legacyQuery = legacyQuery.eq("market_id", marketId);
+  if (areaId) legacyQuery = legacyQuery.eq("market_area_id", areaId);
   legacyQuery = bounds
     ? legacyQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
     : legacyQuery.gt("end_at", new Date().toISOString());
@@ -1194,10 +1266,11 @@ export async function getEffectiveUpcomingEvents(
 export async function getUpcomingEvents(
   limit = 20,
   when: DiscoveryWindow = "anytime",
-  marketSlug?: string
+  marketSlug?: string,
+  areaSlug?: string
 ): Promise<FindmiEvent[]> {
   const bounds = getDiscoveryWindowBounds(when);
-  const rows = await getEffectiveUpcomingEvents(bounds, { marketSlug });
+  const rows = await getEffectiveUpcomingEvents(bounds, { marketSlug, areaSlug: marketSlug ? areaSlug : undefined });
   return rows.slice(0, limit).map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
 
@@ -1240,6 +1313,10 @@ export interface EventDiscoveryParams {
    * own doc comment. Separate from `location` (free-text city/state) —
    * the two intersect rather than one replacing the other. */
   marketSlug?: string;
+  /** Market -> Area/Submarket Hierarchy V2 — see
+   * EffectiveUpcomingEventsOptions' own doc comment. Only meaningful
+   * alongside `marketSlug`. */
+  areaSlug?: string;
 }
 
 /** Shared events query — backs /events' "All Events" browse state and
@@ -1285,6 +1362,7 @@ export async function getEventsDiscovery(params: EventDiscoveryParams = {}): Pro
     city: params.city,
     location: params.location,
     marketSlug: params.marketSlug,
+    areaSlug: params.areaSlug,
   });
 
   const offset = params.offset ?? 0;
@@ -2381,6 +2459,39 @@ export async function getConsumerVisibleMarkets(): Promise<Market[]> {
     .eq("consumer_visible", true)
     .order("sort_order");
   return data ?? [];
+}
+
+/** Market -> Area/Submarket Hierarchy V2 — same consumer-visible Market
+ * list as getConsumerVisibleMarkets, each with its own consumer-visible
+ * Areas nested underneath (feeds AreaPicker's hierarchy). A Market with
+ * no consumer-visible Areas simply gets an empty `areas` array — the
+ * picker already renders that identically to a plain V1 Market row. */
+export interface ConsumerMarketWithAreas extends Market {
+  areas: MarketArea[];
+}
+
+export async function getConsumerVisibleMarketsWithAreas(): Promise<ConsumerMarketWithAreas[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const markets = await getConsumerVisibleMarkets();
+  if (markets.length === 0) return [];
+
+  const { data: areaRows } = await supabase
+    .from("market_areas")
+    .select("*")
+    .in(
+      "market_id",
+      markets.map((m) => m.id)
+    )
+    .eq("active", true)
+    .eq("consumer_visible", true)
+    .order("sort_order");
+  const areasByMarket = new Map<string, MarketArea[]>();
+  for (const area of (areaRows ?? []) as MarketArea[]) {
+    areasByMarket.set(area.market_id, [...(areasByMarket.get(area.market_id) ?? []), area]);
+  }
+
+  return markets.map((m) => ({ ...m, areas: areasByMarket.get(m.id) ?? [] }));
 }
 
 /** Market Management + Plan Market Allowances V1 — the one shared

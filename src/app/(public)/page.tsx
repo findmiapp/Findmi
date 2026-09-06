@@ -15,7 +15,7 @@ import AreaPicker from "@/components/discover/AreaPicker";
 import {
   attachEventCategories,
   getCategoriesForDynamicBusinessRow,
-  getConsumerVisibleMarkets,
+  getConsumerVisibleMarketsWithAreas,
   getEventCategories,
   getFeaturedBusinesses,
   getHomeCategories,
@@ -40,9 +40,12 @@ export const revalidate = 60;
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ market?: string }>;
+  searchParams: Promise<{ market?: string; area?: string }>;
 }) {
-  const { market: marketSlug } = await searchParams;
+  const { market: marketSlug, area: areaSlugRaw } = await searchParams;
+  // Market -> Area/Submarket Hierarchy V2 — ?area= is only ever meaningful
+  // alongside ?market= (same contract as /businesses and /events).
+  const areaSlug = marketSlug ? areaSlugRaw : undefined;
 
   const [
     categories,
@@ -62,14 +65,14 @@ export default async function HomePage({
     // by every candidate occurrence's EFFECTIVE physical Market (see
     // lib/event-markets.ts), never business Market entitlement. Absent =
     // today's unfiltered behavior, unchanged.
-    getUpcomingEvents(10, "anytime", marketSlug), // "Up Next" — see HomeEventDiscovery's own note on this
-    getUpcomingEvents(10, "now", marketSlug),
-    getUpcomingEvents(10, "weekend", marketSlug),
-    getUpcomingEvents(10, "anytime", marketSlug), // "All Events" — same real chronological query as Up Next
+    getUpcomingEvents(10, "anytime", marketSlug, areaSlug), // "Up Next" — see HomeEventDiscovery's own note on this
+    getUpcomingEvents(10, "now", marketSlug, areaSlug),
+    getUpcomingEvents(10, "weekend", marketSlug, areaSlug),
+    getUpcomingEvents(10, "anytime", marketSlug, areaSlug), // "All Events" — same real chronological query as Up Next
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
-    getConsumerVisibleMarkets(), // Consumer Area Picker V1 — same public list /businesses already uses
+    getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
   ]);
 
   const [upNextEvents, todayEvents, weekendEvents, anytimeEvents] = await Promise.all([
@@ -157,7 +160,12 @@ export default async function HomePage({
       {markets.length > 0 && (
         <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
           <AreaPicker
-            options={markets.map((m) => ({ slug: m.slug, label: getMarketAreaLabel(m), areasIncluded: m.areas_included }))}
+            options={markets.map((m) => ({
+              slug: m.slug,
+              label: getMarketAreaLabel(m),
+              areasIncluded: m.areas_included,
+              areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+            }))}
           />
         </div>
       )}
@@ -179,19 +187,24 @@ export default async function HomePage({
           // represents general event browsing (never the curated/editorial
           // Featured Events concept — see getFeaturedEvents, untouched by
           // this pass), so its View All propagates the selected Market.
-          viewAllHref={marketSlug ? `/events?market=${encodeURIComponent(marketSlug)}` : "/events"}
+          viewAllHref={
+            marketSlug
+              ? `/events?market=${encodeURIComponent(marketSlug)}${areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`
+              : "/events"
+          }
         >
           <HomeEventDiscovery
             // Remounts (resetting its internal time×category cache) when
-            // the homepage's own Market changes — same lesson already
+            // the homepage's own Market/Area changes — same lesson already
             // applied to HomepageBusinessRow's own cache below.
-            key={marketSlug ?? "all"}
+            key={`${marketSlug ?? "all"}-${areaSlug ?? "all"}`}
             upNext={upNextEvents}
             today={todayEvents}
             weekend={weekendEvents}
             anytime={anytimeEvents}
             eventCategories={eventCategories}
             marketSlug={marketSlug}
+            areaSlug={areaSlug}
           />
         </Section>
       </div>
@@ -235,7 +248,7 @@ export default async function HomePage({
               {categories.map((c) => (
                 <Link
                   key={c.id}
-                  href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}`}
+                  href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}${marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`}
                   className="flex shrink-0 items-center gap-2 rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:border-findmi/50 hover:bg-findmi-50"
                 >
                   {c.name}

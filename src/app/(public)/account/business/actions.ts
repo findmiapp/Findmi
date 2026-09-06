@@ -14,6 +14,7 @@ import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
 import { attributeReferral } from "@/lib/commerce/referrals";
+import { findExistingGeographyMatch } from "@/lib/market-requests";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 
 const UPLOAD_BUCKET = "findmi-media";
@@ -1028,6 +1029,27 @@ export async function createMemberBusiness(formData: FormData) {
   if (!baseSlug) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Business name is required to generate a URL."));
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("businesses", candidate));
 
+  // Market -> Area/Submarket Hierarchy V2 — before falling back to a
+  // Market Request, check whether the typed geography already matches a
+  // real Market or Area. A match is used DIRECTLY (real p_market_id, no
+  // request row created at all) rather than routed through
+  // p_requested_market_text — this is what keeps "Williamsburg" (an
+  // Area inside the existing NYC Market) from ever creating a pending
+  // request when NYC + a matching Area already exist. Genuinely
+  // unmatched geography still goes through the existing
+  // p_requested_market_text path unchanged.
+  let effectiveMarketId = marketId;
+  let effectiveRequestedMarketText = requestedMarketText;
+  let matchedAreaId: string | null = null;
+  if (requestedMarketText) {
+    const match = await findExistingGeographyMatch(admin, requestedMarketText);
+    if (match) {
+      effectiveMarketId = match.marketId;
+      effectiveRequestedMarketText = null;
+      if (match.type === "area") matchedAreaId = match.areaId ?? null;
+    }
+  }
+
   const { data: created, error } = await admin.rpc("create_owned_business", {
     p_user_id: user.id,
     p_name: name,
@@ -1037,8 +1059,8 @@ export async function createMemberBusiness(formData: FormData) {
     p_state: state,
     p_website_url: websiteUrl,
     p_instagram_url: instagramUrl,
-    p_market_id: marketId,
-    p_requested_market_text: requestedMarketText,
+    p_market_id: effectiveMarketId,
+    p_requested_market_text: effectiveRequestedMarketText,
   });
 
   if (error || !created) {
@@ -1048,6 +1070,14 @@ export async function createMemberBusiness(formData: FormData) {
 
   const businessId = (created as { id: string }).id;
   revalidatePath("/account");
+
+  // Best-effort only — the atomic RPC above already succeeded, so a
+  // failure here just means the business keeps its Market without the
+  // more precise Area attached (never a Market Request, since one was
+  // never created for a matched Area).
+  if (matchedAreaId) {
+    await admin.from("businesses").update({ market_area_id: matchedAreaId }).eq("id", businessId);
+  }
 
   // Referral Partner + Discount Foundation — attribution happens exactly
   // ONCE, right here, at business-creation time only (see
