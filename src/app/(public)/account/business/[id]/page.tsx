@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
+import { isAdminSession } from "@/lib/admin/auth";
 import { isBusinessPro } from "@/lib/entitlements";
 import { getCategories, getMarketAreaLabel, getProductCategories } from "@/lib/data";
 import {
@@ -219,17 +220,26 @@ export default async function ManageBusinessPage({
     data: { user },
   } = await supabase.auth.getUser();
   // Same defense-in-depth re-check every other /account Server
-  // Component/Action already does.
-  if (!user) redirect(`/login?next=${encodeURIComponent(`/account/business/${id}`)}`);
+  // Component/Action already does — Admin Manage-As Foundation extends it
+  // to also let a founder admin session through with NO personal Supabase
+  // Auth session at all (requireBusinessMember() below is still the real
+  // authorization for both paths; this is only what decides whether to
+  // bounce to /login before ever reaching it).
+  if (!user && !(await isAdminSession())) {
+    redirect(`/login?next=${encodeURIComponent(`/account/business/${id}`)}`);
+  }
 
   // Real, session-scoped authorization — never trusts anything from the
   // URL beyond the id itself. Same requireBusinessMember() foundation
   // every split action uses; a visitor with no business_members row for
-  // this business never sees the form at all, existing account error
-  // pattern (an ?error= banner on the account home, same shape every
-  // other /account page already uses).
+  // this business (and no admin session — see lib/permissions.ts) never
+  // sees the form at all, existing account error pattern (an ?error=
+  // banner on the account home, same shape every other /account page
+  // already uses).
+  let isAdminElevated = false;
   try {
-    await requireBusinessMember(id);
+    const membership = await requireBusinessMember(id);
+    isAdminElevated = Boolean(membership.viaAdmin);
   } catch (err) {
     const message = err instanceof Error ? err.message : "You don't have access to that business.";
     redirect(errorRedirectUrl("/account", message));
@@ -631,6 +641,24 @@ export default async function ManageBusinessPage({
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
+
+      {/* Admin Manage-As Foundation — persistent, unmissable on every tab.
+          Never impersonation: the founder's own admin session is the
+          actor throughout (see lib/permissions.ts's requireMembership) —
+          this banner exists precisely so that's never ambiguous. */}
+      {isAdminElevated && (
+        <div className="mx-auto mb-4 max-w-md rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-bold text-amber-800">
+            Admin mode — you are managing {business.name} with elevated access.
+          </p>
+          <Link
+            href={`/admin/businesses/${id}`}
+            className="mt-1.5 inline-block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+          >
+            Exit Admin Mode
+          </Link>
+        </div>
+      )}
 
       {/* Command Center V1 — compact business context, shown above every
           tab (not just Overview) so it always orients the owner to which

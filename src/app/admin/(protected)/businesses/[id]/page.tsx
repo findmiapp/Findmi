@@ -171,7 +171,19 @@ export default async function EditBusinessPage({
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Edit Business</h1>
-        <ViewPublicPageLink href={publicHref} />
+        <div className="flex items-center gap-3">
+          {/* Admin Manage-As Foundation — opens the exact same owner-facing
+              Business Manager, with the founder's own admin session
+              granting elevated access there (see lib/permissions.ts) —
+              never impersonation, never a fabricated business_members row. */}
+          <Link
+            href={`/account/business/${id}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-findmi-700 hover:underline"
+          >
+            Open Business Manager <span aria-hidden="true">↗</span>
+          </Link>
+          <ViewPublicPageLink href={publicHref} />
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

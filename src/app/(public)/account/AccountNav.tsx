@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { syncLocalToAccountOnce } from "@/lib/accountSync";
+import { signOut } from "./profile/actions";
 
 const TABS = [
   { href: "/account", label: "Home" },
@@ -33,7 +34,7 @@ export default function AccountNav() {
   }, []);
 
   return (
-    <nav aria-label="Account" className="-mx-4 mb-6 flex gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+    <nav aria-label="Account" className="-mx-4 mb-6 flex items-center gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
       {TABS.map((tab) => {
         const active = tab.href === "/account" ? pathname === "/account" : pathname.startsWith(tab.href);
         return (
@@ -48,6 +49,18 @@ export default function AccountNav() {
           </Link>
         );
       })}
+      {/* Account Hub V1 — Sign Out must always be reachable without a trip
+          to Profile first; this strip is shared by every /account/*
+          subpage (including Business Manager, which renders this same
+          nav), so putting it here covers all of them from one place. */}
+      <form action={signOut} className="ml-auto shrink-0">
+        <button
+          type="submit"
+          className="shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold text-ink/40 transition hover:bg-black/[0.04] hover:text-ink/70"
+        >
+          Sign Out
+        </button>
+      </form>
     </nav>
   );
 }

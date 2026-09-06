@@ -7,6 +7,7 @@ import NavIcon from "@/components/NavIcon";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import type { Profile } from "@/lib/types";
 import AccountSync from "./AccountSync";
+import { signOut } from "./profile/actions";
 
 export const metadata: Metadata = {
   title: "My FindMi",
@@ -97,19 +98,52 @@ export default async function AccountHomePage({
     })
     .filter((c): c is { id: string; name: string; slug: string } => Boolean(c));
 
+  // Multi-Entity Self-Service V1 — Account Hub: "Events You Manage" reads
+  // real event_members rows (the same table a founder-approved Event
+  // claim already populates today — see lib/permissions.ts's
+  // requireEventMember, unused by any surface until now). RLS already
+  // scopes this table's SELECT to auth.uid() = user_id, same as
+  // business_members above. There is no Event Manager yet (that's the
+  // very next pass), so each row links to the event's own real public
+  // page rather than a not-yet-built management route.
+  const { data: eventMemberships } = await supabase
+    .from("event_members")
+    .select("event_id, events(name, slug, is_demo)")
+    .eq("user_id", user.id);
+  type EventMembershipRow = {
+    event_id: string;
+    events: { name: string; slug: string; is_demo: boolean } | { name: string; slug: string; is_demo: boolean }[] | null;
+  };
+  const myEvents = ((eventMemberships ?? []) as EventMembershipRow[])
+    .map((m) => {
+      const event = Array.isArray(m.events) ? m.events[0] : m.events;
+      return event && !event.is_demo ? { id: m.event_id, name: event.name, slug: event.slug } : null;
+    })
+    .filter((e): e is { id: string; name: string; slug: string } => Boolean(e));
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountSync />
 
       {/* 1. Header */}
-      <header>
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">My FindMi</p>
-        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">
-          Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
-        </h1>
-        <p className="mt-2 text-sm text-ink/60">
-          Keep track of what you discover — the businesses, events, and products you save and follow.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi</p>
+          <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">
+            Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
+          </h1>
+          <p className="mt-2 text-sm text-ink/60">
+            Manage the businesses, events, and places you run on FindMi — and keep track of what you discover —
+            all from one account.
+          </p>
+        </div>
+        {/* Account Hub V1 — Sign Out must always be reachable from here,
+            never only from Profile. */}
+        <form action={signOut}>
+          <button type="submit" className="text-xs font-semibold text-ink/40 hover:text-ink/70">
+            Sign Out
+          </button>
+        </form>
       </header>
 
       {error && (
@@ -157,12 +191,12 @@ export default async function AccountHomePage({
           as before). */}
       <section className="mt-8">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">My Businesses</h2>
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Businesses &amp; Brands</h2>
           <Link
             href="/account/business/new"
             className="rounded-full bg-findmi px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
-            + Add a Business
+            + Add a Business or Brand
           </Link>
         </div>
 
@@ -214,6 +248,60 @@ export default async function AccountHomePage({
         )}
       </section>
 
+      {/* Multi-Entity Self-Service V1 — Events You Manage. Real data only
+          (event_members), never fabricated placeholder rows. There is no
+          Event Manager yet — that's the very next pass — so this links
+          out to the event's own real public page, and "+ Add an Event"
+          is a disclosed not-yet-active affordance (the destination route
+          doesn't exist until then) rather than a link that would 404. */}
+      <section className="mt-8">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Events You Manage</h2>
+          <ComingSoonPill label="+ Add an Event" />
+        </div>
+
+        {myEvents.length === 0 ? (
+          <p className="mt-3 text-sm text-ink/50">You don&rsquo;t manage any events yet.</p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-3">
+            {myEvents.map((e) => (
+              <div
+                key={e.id}
+                className="flex items-center gap-3 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+                  <NavIcon name="calendar" className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-ink">{e.name}</p>
+                  <div className="mt-2">
+                    <Link
+                      href={`/event/${e.slug}`}
+                      className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/60 transition hover:border-black/20 hover:text-ink"
+                    >
+                      View Event
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Multi-Entity Self-Service V1 — Places You Manage. location_members
+          doesn't exist yet (a later pass), so this section deliberately
+          queries nothing — an honest "not yet" empty state, never faked
+          data — while keeping the same section shape Events/Businesses
+          use so wiring in real rows later is a clean, additive change. */}
+      <section className="mt-8">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Places You Manage</h2>
+          <ComingSoonPill label="+ Add a Venue" />
+        </div>
+        <p className="mt-3 text-sm text-ink/50">Managing venues on FindMi is coming soon.</p>
+      </section>
+
       {/* Pro Invite Sharing UX pass — lets an existing signed-in vendor
           apply a code they were given verbally/by text/on a printed card,
           against whichever of their businesses they choose on the next
@@ -260,6 +348,23 @@ export default async function AccountHomePage({
         </section>
       )}
     </div>
+  );
+}
+
+/** Multi-Entity Self-Service V1 — an honest, visibly non-interactive
+ * stand-in for a "+ Add" action whose destination route doesn't exist
+ * yet (Event/Location creation land in the next passes). Never a link
+ * that would 404 — same pill shape/weight as the real "+ Add a Business
+ * or Brand" CTA, just muted and inert, so the section's eventual shape
+ * is already right and only needs its href activated later. */
+function ComingSoonPill({ label }: { label: string }) {
+  return (
+    <span
+      title="Coming soon"
+      className="cursor-not-allowed rounded-full bg-black/[0.06] px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/35"
+    >
+      {label}
+    </span>
   );
 }
 
