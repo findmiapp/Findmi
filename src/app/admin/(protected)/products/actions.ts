@@ -325,6 +325,18 @@ export async function resumeMarketplaceListing(id: string) {
   const product = await getProductForMarketplaceReview(supabase, id);
   if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
 
+  // Marketplace Lifecycle QA pass — same bypass this action's sibling
+  // (approveMarketplaceSubmission) was already guarded against: without
+  // this, a catalog_only/submitted/rejected product could be pushed
+  // straight to "approved" via this action (the UI only ever renders its
+  // button for a "paused" product, but that was never a server-side
+  // requirement until now).
+  if (product.marketplace_status !== "paused") {
+    redirect(
+      errorRedirectUrl(`/admin/products/${id}`, "This product isn't paused — nothing to resume.")
+    );
+  }
+
   if (product.moderation_status !== "live") {
     redirect(
       errorRedirectUrl(`/admin/products/${id}`, "Approve this product's content first — Marketplace approval requires it to be live.")
