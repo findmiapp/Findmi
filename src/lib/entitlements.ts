@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabase } from "./supabase";
 import type { Business, PlanTier } from "./types";
 
@@ -76,6 +77,47 @@ export function isPlanTierProSeller(planTier: PlanTier | null | undefined): bool
  */
 export async function getBusinessMarketLimit(business: Pick<Business, "plan_tier">): Promise<number | null> {
   return getMarketLimitForPlanTier(business.plan_tier);
+}
+
+/**
+ * Multi-Entity Self-Service V1 — Event-management entitlement.
+ *
+ * LOCKED RULE: Events are NOT their own paid subscription. An authenticated
+ * user may create/claim/manage Events at no additional Event fee if they
+ * have qualifying FindMi access through EITHER active paid Pro access OR
+ * valid complimentary Pro access through the existing Pro Invite
+ * architecture. There is no user-level "Pro" concept anywhere in this
+ * codebase — Pro is, and remains, a property of a BUSINESS (plan_tier),
+ * reachable via Stripe checkout (businessProCheckout.ts, plan_source left
+ * unset/'stripe'-ish) OR via a Pro Invite redemption (redeem_pro_invite(),
+ * plan_source='complimentary') — both paths converge on the exact same
+ * plan_tier value, so "paid OR complimentary Pro access" is already fully
+ * captured by isPlanTierPro(plan_tier) regardless of which path produced
+ * it. This function therefore does NOT invent a new user-level
+ * entitlement table: it reuses business_members (real, authorized
+ * membership — the same table requireBusinessMember() itself trusts) to
+ * find every business this user actually belongs to, and is satisfied the
+ * moment ANY of them is Pro (or Pro Seller, which inherits Pro). A user
+ * with zero businesses, or only Free businesses, does not qualify.
+ *
+ * Requires the service-role client because plan_tier isn't in the public
+ * column grant (see restrict_internal_commerce_columns) — same
+ * authorize-then-elevate shape used everywhere else a caller needs
+ * plan_tier: the caller already has a verified, real userId (from its own
+ * getServerSupabase().auth.getUser() call) before this ever runs; this
+ * function itself trusts that userId completely, the same way every other
+ * admin-client read in this codebase trusts an already-authorized id.
+ */
+export async function canCurrentUserManageEvents(admin: SupabaseClient, userId: string): Promise<boolean> {
+  const { data } = await admin
+    .from("business_members")
+    .select("businesses(plan_tier)")
+    .eq("user_id", userId);
+  type Row = { businesses: { plan_tier: PlanTier } | { plan_tier: PlanTier }[] | null };
+  return ((data ?? []) as Row[]).some((row) => {
+    const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
+    return business ? isPlanTierPro(business.plan_tier) : false;
+  });
 }
 
 /** Bare-value counterpart to getBusinessMarketLimit, same relationship as

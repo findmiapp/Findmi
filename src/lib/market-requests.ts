@@ -271,3 +271,23 @@ export async function getPendingMarketRequestForBusiness(
     .maybeSingle();
   return data ? { requestedText: data.requested_text } : null;
 }
+
+/** Event-side counterpart to getPendingMarketRequestForBusiness above —
+ * identical shape/reasoning, just source_event_id instead of
+ * source_business_id. Used by Event Manager's Market/Area tab so an event
+ * created via a requested (unmatched) Market shows "Pending review —
+ * <text>" instead of a bare "Not assigned yet". */
+export async function getPendingMarketRequestForEvent(
+  admin: SupabaseClient,
+  eventId: string
+): Promise<{ requestedText: string } | null> {
+  const { data } = await admin
+    .from("market_requests")
+    .select("requested_text")
+    .eq("source_event_id", eventId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ? { requestedText: data.requested_text } : null;
+}

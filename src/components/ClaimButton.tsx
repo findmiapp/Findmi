@@ -3,18 +3,14 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { getAccountSession } from "@/lib/accountSession";
-import { getClaimPaymentFormUrl } from "@/lib/tally";
 
 type ClaimState =
   | "loading"
   | "guest"
   | "none"
-  | "pending_review" // business claims only — free, no payment step
-  | "awaiting_payment" // event claims only
-  | "paid_pending_review" // event claims only
+  | "pending_review" // both types — free, no payment step
+  | "membership_required" // event claims only — no qualifying FindMi access yet
   | "member";
-
-type ContactInfo = { fullName: string; email: string; phone: string };
 
 /** Secondary "Claim this business/event" control — deliberately understated
  * (muted text link, not a button competing with Follow/Save/Inquire).
@@ -27,19 +23,19 @@ type ContactInfo = { fullName: string; email: string; phone: string };
  *   founder approves/rejects.
  *
  * BUSINESS claims are free (see CLAIMS: REMOVE PAYMENT REQUIREMENT ONLY)
- * — submitting goes straight to "under review", no payment step. EVENT
- * claims are unchanged and still require payment before review: submit
- * (unpaid, pending) -> pay $20 via Tally (full_name/email/phone passed
- * through as hidden fields so Tally never has to ask again) -> webhook
- * marks payment_status='paid' -> "under review" -> founder approves/
- * rejects.
+ * — submitting goes straight to "under review", no payment step.
+ * Multi-Entity Self-Service V1 makes EVENT claims free too, with no
+ * separate Event fee ever: submit -> straight to "under review" IF the
+ * claimant already has qualifying FindMi access (active Pro, or a
+ * redeemed Pro Invite, on some business they belong to); otherwise the
+ * API returns "membership_required" and no claim row is even created —
+ * see /api/account/claim's own resolvePendingState.
  *
- * Submitting the claim form never grants access on its own — neither does
- * paying, for an event claim — only founder approval (business_members/
- * event_members) does, and identity is always the session's user_id,
- * never the submitted contact email. This component only ever reads/
- * writes claim state via /api/account/claim; it has no way to mark
- * anything paid or approved itself. */
+ * Submitting the claim form never grants access on its own — only founder
+ * approval (business_members/event_members) does, and identity is always
+ * the session's user_id, never the submitted contact email. This
+ * component only ever reads/writes claim state via /api/account/claim; it
+ * has no way to mark anything approved itself. */
 export default function ClaimButton({
   type,
   slug,
@@ -53,14 +49,11 @@ export default function ClaimButton({
    * used as-is wherever this component was already placed (e.g. the event
    * page). "card" — same flow/modal/state logic, wrapped in a small
    * "Is this your business?" card for the entry-point states (guest/none).
-   * The other states (pending_review/awaiting_payment/paid_pending_review)
-   * already render their own self-contained card and are unaffected by
-   * this prop. */
+   * The other states (pending_review/membership_required) already render
+   * their own self-contained card and are unaffected by this prop. */
   variant?: "inline" | "card";
 }) {
   const [state, setState] = useState<ClaimState>("loading");
-  const [claimId, setClaimId] = useState<string | null>(null);
-  const [contact, setContact] = useState<ContactInfo | null>(null);
   const [open, setOpen] = useState(false);
   const [fullNameInput, setFullNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
@@ -103,10 +96,7 @@ export default function ClaimButton({
             // etc.) already means "don't show a claim CTA" and applies
             // the same regardless of auth.
             setState(!authed && resolved === "none" ? "guest" : resolved);
-            setClaimId(data?.claimId ?? null);
-            if (data?.fullName != null || data?.email != null || data?.phone != null) {
-              setContact({ fullName: data.fullName ?? "", email: data.email ?? "", phone: data.phone ?? "" });
-            } else if (data?.accountEmail) {
+            if (data?.fullName == null && data?.email == null && data?.phone == null && data?.accountEmail) {
               // No claim exists yet — prefill the form's Email field from
               // the account, but this is only a starting point: the
               // claimant can edit it, and nothing is stored until they
@@ -151,8 +141,6 @@ export default function ClaimButton({
       const data = await res.json().catch(() => null);
       if (res.ok && data?.state) {
         setState(data.state);
-        setClaimId(data.claimId ?? null);
-        setContact({ fullName: data.fullName ?? fullName, email: data.email ?? email, phone: data.phone ?? phone });
         setOpen(false);
       } else {
         setError(data?.error || "Couldn't submit your claim. Please try again.");
@@ -215,61 +203,54 @@ export default function ClaimButton({
 
         {/* Post-claim Pro offer — priority review only, never a guarantee
             of approval (see below). Not a payment integration: a plain
-            link out to the existing Tally Pro-upgrade form. */}
-        <div className="mt-3 rounded-xl border border-findmi/20 bg-findmi-50 p-3">
-          <p className="text-xs font-bold text-ink">Need access sooner?</p>
-          <p className="mt-1 text-xs text-ink/60">
-            Upgrade to FindMi Pro for priority review, typically within 2 business hours during regular business
-            hours, plus your full business profile, gallery, products, appearances, contact links and more.
-          </p>
-          {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: this
-              claimant doesn't own the business yet (claim still pending
-              founder approval), so this stays a plain link to /join
-              rather than the owner-only /upgrade/pro handoff — a payment
-              must never imply or expedite claim approval. */}
-          <a
-            href="/join"
-            className="mt-2 flex h-9 items-center justify-center rounded-full bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-          >
-            Upgrade to Pro
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === "awaiting_payment") {
-    const payUrl = claimId && contact ? getClaimPaymentFormUrl({ id: claimId, type, ...contact }) : "";
-    return (
-      <div className="max-w-xs rounded-2xl border border-black/10 bg-white p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Almost done</p>
-        <p className="mt-1 text-sm text-ink/70">
-          Your claim has been saved. Complete the $20 listing activation payment to submit it for review.
-        </p>
-        {payUrl ? (
-          <a
-            href={payUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 flex h-11 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-          >
-            Pay $20 &amp; Submit for Review
-          </a>
-        ) : (
-          <p className="mt-3 text-xs text-red-600">Payment isn&rsquo;t configured yet — check back soon.</p>
+            link out to the existing Tally Pro-upgrade form. Business
+            claims only: an event claimant already has qualifying FindMi
+            Pro/Invite access by the time they can reach this state (see
+            /api/account/claim's entitlement gate), so offering them
+            "Upgrade to Pro" here would be redundant/confusing. */}
+        {type === "business" && (
+          <div className="mt-3 rounded-xl border border-findmi/20 bg-findmi-50 p-3">
+            <p className="text-xs font-bold text-ink">Need access sooner?</p>
+            <p className="mt-1 text-xs text-ink/60">
+              Upgrade to FindMi Pro for priority review, typically within 2 business hours during regular business
+              hours, plus your full business profile, gallery, products, appearances, contact links and more.
+            </p>
+            {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: this
+                claimant doesn't own the business yet (claim still pending
+                founder approval), so this stays a plain link to /join
+                rather than the owner-only /upgrade/pro handoff — a payment
+                must never imply or expedite claim approval. */}
+            <a
+              href="/join"
+              className="mt-2 flex h-9 items-center justify-center rounded-full bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            >
+              Upgrade to Pro
+            </a>
+          </div>
         )}
       </div>
     );
   }
 
-  if (state === "paid_pending_review") {
+  if (state === "membership_required") {
+    // Multi-Entity Self-Service V1 — replaces the old $20 Tally payment
+    // step. Event management is included with qualifying FindMi
+    // membership (active Pro, or a redeemed Pro Invite, on some business
+    // the visitor belongs to) — never a separate Event fee, so this links
+    // to the existing Pro/Invite path (/join) rather than any checkout.
     return (
       <div className="max-w-xs rounded-2xl border border-black/10 bg-white p-4">
-        <p className="text-sm font-semibold text-ink">Payment received. Your claim is under review.</p>
-        <p className="mt-1 text-xs text-ink/50">
-          FindMi will manually verify your connection to this {noun} before granting management access — payment
-          doesn&rsquo;t guarantee approval.
+        <p className="text-sm font-semibold text-ink">Event management is included with qualifying FindMi membership.</p>
+        <p className="mt-1 text-xs text-ink/60">
+          Get FindMi Pro (or redeem a Pro Invite) on a business you manage to claim and manage this event — no
+          separate Event fee.
         </p>
+        <a
+          href="/join"
+          className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        >
+          Get FindMi Pro
+        </a>
       </div>
     );
   }
@@ -308,9 +289,9 @@ export default function ClaimButton({
                   </>
                 ) : (
                   <>
-                    Claiming requests management access to this {noun}. A $20 listing activation payment is required
-                    to submit your claim for review — FindMi reviews every request manually, and paying
-                    doesn&rsquo;t guarantee access.
+                    Claiming requests management access to this {noun}. Event management is included with your
+                    qualifying FindMi membership — no separate Event fee. FindMi reviews every request manually;
+                    submitting a claim doesn&rsquo;t guarantee access.
                   </>
                 )}
               </p>
@@ -363,7 +344,7 @@ export default function ClaimButton({
                   disabled={submitting}
                   className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                 >
-                  {submitting ? "…" : type === "business" ? "Submit for Review" : "Continue to Payment"}
+                  {submitting ? "…" : "Submit for Review"}
                 </button>
                 <button
                   type="button"

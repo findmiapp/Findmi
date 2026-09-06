@@ -98,28 +98,30 @@ export default async function AccountHomePage({
     })
     .filter((c): c is { id: string; name: string; slug: string } => Boolean(c));
 
-  // Multi-Entity Self-Service V1 — Account Hub: "Events You Manage" reads
-  // real event_members rows (the same table a founder-approved Event
-  // claim already populates today — see lib/permissions.ts's
-  // requireEventMember, unused by any surface until now). RLS already
+  // Multi-Entity Self-Service V1, Stage 2 — Account Hub: "Events You
+  // Manage" reads real event_members rows (the same table a
+  // founder-approved Event claim, or now native Event creation, already
+  // populates — see lib/permissions.ts's requireEventMember). RLS already
   // scopes this table's SELECT to auth.uid() = user_id, same as
-  // business_members above. There is no Event Manager yet (that's the
-  // very next pass), so each row links to the event's own real public
-  // page rather than a not-yet-built management route.
+  // business_members above. Every event this user manages is shown
+  // (including one still pending review — is_demo:true) since Event
+  // Manager now exists to actually manage it; each row links there
+  // (/account/event/[id]), never to the public page, which 404s for a
+  // pending event anyway (getEventBySlug filters is_demo).
   const { data: eventMemberships } = await supabase
     .from("event_members")
-    .select("event_id, events(name, slug, is_demo)")
+    .select("event_id, events(name, is_demo)")
     .eq("user_id", user.id);
   type EventMembershipRow = {
     event_id: string;
-    events: { name: string; slug: string; is_demo: boolean } | { name: string; slug: string; is_demo: boolean }[] | null;
+    events: { name: string; is_demo: boolean } | { name: string; is_demo: boolean }[] | null;
   };
   const myEvents = ((eventMemberships ?? []) as EventMembershipRow[])
     .map((m) => {
       const event = Array.isArray(m.events) ? m.events[0] : m.events;
-      return event && !event.is_demo ? { id: m.event_id, name: event.name, slug: event.slug } : null;
+      return event ? { id: m.event_id, name: event.name, isDemo: event.is_demo } : null;
     })
-    .filter((e): e is { id: string; name: string; slug: string } => Boolean(e));
+    .filter((e): e is { id: string; name: string; isDemo: boolean } => Boolean(e));
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
@@ -248,16 +250,22 @@ export default async function AccountHomePage({
         )}
       </section>
 
-      {/* Multi-Entity Self-Service V1 — Events You Manage. Real data only
-          (event_members), never fabricated placeholder rows. There is no
-          Event Manager yet — that's the very next pass — so this links
-          out to the event's own real public page, and "+ Add an Event"
-          is a disclosed not-yet-active affordance (the destination route
-          doesn't exist until then) rather than a link that would 404. */}
+      {/* Multi-Entity Self-Service V1, Stage 2 — Events You Manage. Real
+          data only (event_members), never fabricated placeholder rows.
+          Event Manager now exists (/account/event/[id]), so each row
+          links there directly rather than to the public page — and
+          "+ Add an Event" is a real, live link to native Event creation
+          (/account/event/new), which itself shows the membership-required
+          explainer for a non-qualifying user rather than a broken page. */}
       <section className="mt-8">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Events You Manage</h2>
-          <ComingSoonPill label="+ Add an Event" />
+          <Link
+            href="/account/event/new"
+            className="rounded-full bg-findmi px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            + Add an Event
+          </Link>
         </div>
 
         {myEvents.length === 0 ? (
@@ -274,12 +282,17 @@ export default async function AccountHomePage({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-ink">{e.name}</p>
+                  {e.isDemo && (
+                    <p className="mt-0.5 text-xs font-semibold text-amber-700">
+                      Pending Review — visible only to you until FindMi approves it.
+                    </p>
+                  )}
                   <div className="mt-2">
                     <Link
-                      href={`/event/${e.slug}`}
-                      className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/60 transition hover:border-black/20 hover:text-ink"
+                      href={`/account/event/${e.id}`}
+                      className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                     >
-                      View Event
+                      Manage Event
                     </Link>
                   </div>
                 </div>

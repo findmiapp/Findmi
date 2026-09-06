@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { canCurrentUserManageEvents } from "@/lib/entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -32,19 +33,23 @@ async function resolveEntityId(supabase: SupabaseClient, entityTable: string, sl
  *                            prefill hint for the claim form's editable
  *                            Email field — never stored anywhere until the
  *                            claimant actually submits it.
- *   "pending_review"       — BUSINESS claims only (claiming a business is
- *                            free — see CLAIMS: REMOVE PAYMENT REQUIREMENT
- *                            ONLY): a pending claim row exists and goes
- *                            straight to founder review, no payment step.
- *   "awaiting_payment"     — EVENT claims only: a pending, unpaid claim
- *                            row already exists; show the $20 payment
- *                            step. Returns the claim's own stored
- *                            fullName/email/phone (NOT the account email)
- *                            so ClaimButton can rebuild the Tally payment
- *                            link after a page reload.
- *   "paid_pending_review"  — EVENT claims only: the pending claim's
- *                            payment_status is 'paid'; awaiting founder
- *                            review. Payment alone never implies approval.
+ *   "pending_review"       — a pending claim row exists and goes straight
+ *                            to founder review. Claiming a business is
+ *                            free (see CLAIMS: REMOVE PAYMENT REQUIREMENT
+ *                            ONLY). Multi-Entity Self-Service V1 removes
+ *                            the old $20 event claim fee too — an EVENT
+ *                            claim reaches this state once the claimant
+ *                            has qualifying FindMi access (see
+ *                            canCurrentUserManageEvents()); it is no
+ *                            longer gated on payment at all, regardless of
+ *                            this exact claim row's own (now-vestigial)
+ *                            payment_status.
+ *   "membership_required"  — EVENT claims only: the claimant is signed in
+ *                            but doesn't yet have qualifying FindMi access
+ *                            (an active-Pro or Pro-Invite-granted
+ *                            business). Never routed to a $20 payment —
+ *                            just a plain "membership required" message
+ *                            pointing at the existing Pro/Invite path.
  *   "member"               — the entity already has an approved owner
  *                            (this viewer or anyone else), OR a different
  *                            user's claim is already pending on it; claim
@@ -52,13 +57,14 @@ async function resolveEntityId(supabase: SupabaseClient, entityTable: string, sl
  *                            way, never just the owner/claimant.
  * A rejected (or approved, i.e. now covered by "member") claim falls back
  * to "none", intentionally allowing a fresh claim to be submitted — see
- * the claim foundation migration's partial-unique-index note. */
-function resolvePendingState(
-  type: EntityType,
-  paymentStatus: string
-): "pending_review" | "awaiting_payment" | "paid_pending_review" {
+ * the claim foundation migration's partial-unique-index note.
+ *
+ * `entitled` is only ever consulted for type === "event" (a business claim
+ * has never depended on any entitlement check, before or after this
+ * pass) — callers pass `true` for business claims as a harmless default. */
+function resolvePendingState(type: EntityType, entitled: boolean): "pending_review" | "membership_required" {
   if (type === "business") return "pending_review";
-  return paymentStatus === "paid" ? "paid_pending_review" : "awaiting_payment";
+  return entitled ? "pending_review" : "membership_required";
 }
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get("type");
@@ -109,13 +115,21 @@ export async function GET(request: NextRequest) {
   if (user) {
     const { data: pendingClaim } = await supabase
       .from(claimTable)
-      .select("id, payment_status, full_name, email, phone")
+      .select("id, full_name, email, phone")
       .eq("user_id", user.id)
       .eq(column, entityId)
       .eq("status", "pending")
       .maybeSingle();
     if (pendingClaim) {
-      const state = resolvePendingState(type, pendingClaim.payment_status);
+      // Multi-Entity Self-Service V1 — an event claim's resolved state no
+      // longer depends on payment_status (that column is now vestigial
+      // for events — see resolvePendingState's own comment); it depends
+      // entirely on the claimant's CURRENT entitlement, re-checked fresh
+      // on every load so gaining/losing qualifying access is reflected
+      // immediately, not frozen at whatever it was when the claim was
+      // first submitted.
+      const entitled = type === "event" ? await isEventEntitled(user.id) : true;
+      const state = resolvePendingState(type, entitled);
       return NextResponse.json({
         state,
         claimId: pendingClaim.id,
@@ -147,7 +161,27 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Multi-Entity Self-Service V1 — an authenticated visitor with no
+  // pending claim on this event still can't open the claim form unless
+  // they already qualify; a signed-out visitor is unaffected (ClaimButton
+  // overrides "none" to its own "guest" state client-side when !authed,
+  // same as before this pass — entitlement can't be checked without a
+  // real session anyway).
+  if (type === "event" && user) {
+    const entitled = await isEventEntitled(user.id);
+    if (!entitled) return NextResponse.json({ state: "membership_required" });
+  }
+
   return NextResponse.json({ state: "none", accountEmail: user?.email ?? null });
+}
+
+/** Multi-Entity Self-Service V1 — thin wrapper so both GET and POST share
+ * the exact same "no admin client -> fail closed (not entitled)" fallback
+ * rather than each re-deriving it slightly differently. */
+async function isEventEntitled(userId: string): Promise<boolean> {
+  const admin = getAdminSupabase();
+  if (!admin) return false;
+  return canCurrentUserManageEvents(admin, userId);
 }
 
 /** Submits a new claim request. Body: { type, slug, fullName, email,
@@ -160,13 +194,18 @@ export async function GET(request: NextRequest) {
  * service-role), so the insert-own-pending-unpaid-row policy on
  * business_claim_requests/event_claim_requests is the real enforcement
  * here, not just this route's own logic — payment_status is never
- * accepted from the client and always inserts as 'unpaid'. Never grants
- * membership itself, and never marks anything paid — that only ever
- * happens via the payment webhook (see /api/webhooks/tally) after a real
- * $20 payment is verified — event claims only. A business claim skips the
- * payment step entirely (see resolvePendingState above) and goes straight
- * to founder review; even then, only founder approval (see the
- * migration's approve_*_claim() functions) grants membership. */
+ * accepted from the client and always inserts as 'unpaid' (a vestigial
+ * default for events now — see resolvePendingState's own comment; the
+ * /api/webhooks/tally $20 payment webhook still exists for historical
+ * reference but nothing in this flow routes a new event claim through it
+ * anymore). Never grants membership itself — only founder approval (see
+ * the migration's approve_*_claim() functions) grants membership.
+ * Multi-Entity Self-Service V1 — an EVENT claim additionally requires the
+ * claimant to already have qualifying FindMi access (active Pro or a
+ * redeemed Pro Invite on some business they belong to) before a claim row
+ * is even inserted; a non-qualifying signed-in user gets
+ * "membership_required" back instead, with no row created — see this
+ * pass's own Entitlement Rule (no separate Event fee, ever). */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const type = typeof body?.type === "string" ? body.type : null;
@@ -205,13 +244,14 @@ export async function POST(request: NextRequest) {
 
   const { data: pendingClaim } = await supabase
     .from(claimTable)
-    .select("id, payment_status, full_name, email, phone")
+    .select("id, full_name, email, phone")
     .eq("user_id", user.id)
     .eq(column, entityId)
     .eq("status", "pending")
     .maybeSingle();
   if (pendingClaim) {
-    const state = resolvePendingState(type, pendingClaim.payment_status);
+    const entitled = type === "event" ? await isEventEntitled(user.id) : true;
+    const state = resolvePendingState(type, entitled);
     return NextResponse.json({
       state,
       claimId: pendingClaim.id,
@@ -219,6 +259,14 @@ export async function POST(request: NextRequest) {
       email: pendingClaim.email,
       phone: pendingClaim.phone,
     });
+  }
+
+  // Entitlement gate — checked BEFORE inserting anything, so a
+  // non-qualifying user never accumulates a claim row that would just sit
+  // unreachable behind a membership prompt. No separate $20 payment path
+  // exists to fall back to.
+  if (type === "event" && !(await isEventEntitled(user.id))) {
+    return NextResponse.json({ state: "membership_required" });
   }
 
   const { data: inserted, error } = await supabase
@@ -231,8 +279,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Couldn't submit your claim. Please try again." }, { status: 500 });
   }
 
-  // Claiming a business is free — straight to founder review, no payment
-  // step. Event claims are untouched: still require the $20 payment.
-  const state = type === "business" ? "pending_review" : "awaiting_payment";
-  return NextResponse.json({ state, claimId: inserted.id, fullName, email, phone });
+  // Both claim types are now free — straight to founder review, no
+  // payment step for either.
+  return NextResponse.json({ state: "pending_review", claimId: inserted.id, fullName, email, phone });
 }

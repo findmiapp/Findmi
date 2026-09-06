@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import {
   getAdminEventById,
   getAdminLocations,
@@ -57,9 +58,17 @@ export default async function EditEventPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Edit Event</h1>
-        <ViewPublicPageLink href={publicHref} />
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/account/event/${id}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-findmi-700 hover:underline"
+          >
+            Open Event Manager <span aria-hidden="true">↗</span>
+          </Link>
+          <ViewPublicPageLink href={publicHref} />
+        </div>
       </div>
       <p className="mt-1 text-xs text-ink/45">
         {followerCount} follower{followerCount === 1 ? "" : "s"} (email + FindMi accounts combined)

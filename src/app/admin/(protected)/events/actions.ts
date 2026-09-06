@@ -52,8 +52,13 @@ import type { EventParticipationStatus } from "@/lib/types";
  * row (status back to 'confirmed', fields refreshed) instead of inserting
  * a new one — never reuses/reactivates an owner's canceled 'manual' or
  * 'event_self_added' row, since the reactivation lookup itself is scoped
- * to source='official_participation'. */
-async function ensureEventAppearance(supabase: SupabaseClient, eventId: string, businessId: string) {
+ * to source='official_participation'.
+ *
+ * Exported (Multi-Entity Self-Service V1, Stage 2) so the owner-facing
+ * Event Manager's own Participating Businesses approve/decline action
+ * (account/event/actions.ts) can reuse this exact sync — never a second
+ * reimplementation of the same idempotent appearance logic. */
+export async function ensureEventAppearance(supabase: SupabaseClient, eventId: string, businessId: string) {
   const { data: existing } = await supabase
     .from("appearances")
     .select("id")
@@ -119,8 +124,10 @@ async function ensureEventAppearance(supabase: SupabaseClient, eventId: string, 
  * ensureEventAppearance itself checks, so an owner's own 'manual' or
  * 'event_self_added' appearance for the same event can never match. A
  * no-op (0 rows) when no such appearance exists, or it's already
- * canceled — both expected, not errors. */
-async function cancelEventAppearance(supabase: SupabaseClient, eventId: string, businessId: string) {
+ * canceled — both expected, not errors.
+ *
+ * Exported for the same reason as ensureEventAppearance above. */
+export async function cancelEventAppearance(supabase: SupabaseClient, eventId: string, businessId: string) {
   await supabase
     .from("appearances")
     .update({ status: "canceled" })
