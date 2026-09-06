@@ -6,14 +6,16 @@ import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import type { ClaimEntityType } from "@/lib/admin/claim-queries";
 
-const APPROVE_RPC: Record<ClaimEntityType, "approve_business_claim" | "approve_event_claim"> = {
+const APPROVE_RPC: Record<ClaimEntityType, "approve_business_claim" | "approve_event_claim" | "approve_location_claim"> = {
   business: "approve_business_claim",
   event: "approve_event_claim",
+  location: "approve_location_claim",
 };
 
-const CLAIM_TABLE: Record<ClaimEntityType, "business_claim_requests" | "event_claim_requests"> = {
+const CLAIM_TABLE: Record<ClaimEntityType, "business_claim_requests" | "event_claim_requests" | "location_claim_requests"> = {
   business: "business_claim_requests",
   event: "event_claim_requests",
+  location: "location_claim_requests",
 };
 
 // Matches the short exception messages raised by approve_business_claim()/
@@ -31,24 +33,12 @@ const FRIENDLY_ERROR: Record<string, string> = {
  * not at all) — done via a single service-role-only Postgres function
  * (see the migration) rather than a multi-write sequence from here, which
  * would leave a real window for two concurrent approvals to both succeed
- * against the same business/event.
+ * against the same business/event/location.
  *
- * The $20 claim payment is checked HERE, before the RPC is ever called —
- * not inside approve_business_claim()/approve_event_claim() themselves,
- * which stay exactly what they were (membership-grant eligibility only:
- * claim pending, claimant not already a member, entity not already
- * owned). Keeping payment verification a separate, earlier gate matches
- * this pass's explicit "claim payment must never grant permissions on its
- * own" architecture — payment is a precondition for approval, never a
- * path around it. The UI already disables the Approve button for an
- * unpaid claim; this is the required server-side backstop for anyone
- * bypassing that (a replayed/hand-crafted form submission).
- *
- * CLAIMS: REMOVE PAYMENT REQUIREMENT ONLY — claiming a business is now
- * free, so this gate only applies to entityType "event" (unchanged).
- * business_claim_requests.payment_status stays 'unpaid' the whole time
- * for a business claim (accurate — no payment was ever required or
- * taken), it just no longer blocks approval. */
+ * Claiming a business, event, or location is free — there is no payment
+ * gate here. payment_status/payment_amount/paid_at stay on the claim
+ * tables for schema uniformity across the generic claims UI, but they're
+ * never checked before approval for any entity type. */
 export async function approveClaim(entityType: ClaimEntityType, claimId: string) {
   const supabase = await requireAdminSupabase();
 
@@ -59,9 +49,6 @@ export async function approveClaim(entityType: ClaimEntityType, claimId: string)
     .maybeSingle();
   if (!claim) {
     redirect(errorRedirectUrl("/admin/claims", "That claim no longer exists."));
-  }
-  if (entityType === "event" && claim!.payment_status !== "paid") {
-    redirect(errorRedirectUrl("/admin/claims", "Can't approve — the $20 claim payment hasn't been received yet."));
   }
 
   const { error } = await supabase.rpc(APPROVE_RPC[entityType], { p_claim_id: claimId });
@@ -112,9 +99,10 @@ export async function rejectClaim(entityType: ClaimEntityType, claimId: string) 
 // browser beyond the id; the guard re-checks the row's real, current role
 // in the database on every write.
 
-const MEMBER_TABLE: Record<ClaimEntityType, "business_members" | "event_members"> = {
+const MEMBER_TABLE: Record<ClaimEntityType, "business_members" | "event_members" | "location_members"> = {
   business: "business_members",
   event: "event_members",
+  location: "location_members",
 };
 
 const VALID_NON_OWNER_ROLES = ["manager", "staff"];
@@ -176,17 +164,23 @@ export async function removeMember(entityType: ClaimEntityType, memberId: string
 // nothing but: authenticate as founder admin, validate the inputs they
 // were given, and call exactly one of the four service-role-only RPCs.
 
-const TRANSFER_RPC: Record<ClaimEntityType, "transfer_business_ownership" | "transfer_event_ownership"> = {
+const TRANSFER_RPC: Record<
+  ClaimEntityType,
+  "transfer_business_ownership" | "transfer_event_ownership" | "transfer_location_ownership"
+> = {
   business: "transfer_business_ownership",
   event: "transfer_event_ownership",
+  location: "transfer_location_ownership",
 };
-const REMOVE_OWNER_RPC: Record<ClaimEntityType, "remove_business_owner" | "remove_event_owner"> = {
+const REMOVE_OWNER_RPC: Record<ClaimEntityType, "remove_business_owner" | "remove_event_owner" | "remove_location_owner"> = {
   business: "remove_business_owner",
   event: "remove_event_owner",
+  location: "remove_location_owner",
 };
-const ENTITY_ID_PARAM: Record<ClaimEntityType, "p_business_id" | "p_event_id"> = {
+const ENTITY_ID_PARAM: Record<ClaimEntityType, "p_business_id" | "p_event_id" | "p_location_id"> = {
   business: "p_business_id",
   event: "p_event_id",
+  location: "p_location_id",
 };
 
 // Matches the short exception messages raised by the four RPCs above.

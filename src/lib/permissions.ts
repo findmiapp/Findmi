@@ -42,7 +42,11 @@ export interface Membership {
  * requireEventMember() (directly, or via a local wrapper like
  * requireProBusinessMember) inherits Manage-As for free, with no other
  * code needing to change. */
-async function requireMembership(table: "business_members" | "event_members", column: "business_id" | "event_id", entityId: string): Promise<Membership> {
+async function requireMembership(
+  table: "business_members" | "event_members" | "location_members",
+  column: "business_id" | "event_id" | "location_id",
+  entityId: string
+): Promise<Membership> {
   const supabase = await getServerSupabase();
   const {
     data: { user },
@@ -57,7 +61,7 @@ async function requireMembership(table: "business_members" | "event_members", co
     return { id: "admin-override", role: "owner", viaAdmin: true };
   }
 
-  throw new Error("You don't have access to this business or event.");
+  throw new Error("You don't have access to this business, event, or location.");
 }
 
 /** Throws unless the current authenticated session has a business_members
@@ -70,4 +74,15 @@ export async function requireBusinessMember(businessId: string): Promise<Members
  * row for this event. Returns that row (id + role) on success. */
 export async function requireEventMember(eventId: string): Promise<Membership> {
   return requireMembership("event_members", "event_id", eventId);
+}
+
+/** Multi-Entity Self-Service V1, Stage 3 — throws unless the current
+ * authenticated session has a location_members row for this location (or
+ * an explicit founder admin session — see requireMembership's own
+ * comment). Location ownership is deliberately its own independent
+ * membership table, never derived from business_members — see this
+ * stage's Locked Product Model (Location ownership does NOT depend on
+ * Business ownership). */
+export async function requireLocationMember(locationId: string): Promise<Membership> {
+  return requireMembership("location_members", "location_id", locationId);
 }

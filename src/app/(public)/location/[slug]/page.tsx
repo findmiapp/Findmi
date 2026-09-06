@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
+import ClaimButton from "@/components/ClaimButton";
+import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import { HappeningCard, HappeningRow } from "@/components/HappeningCard";
 import { HorizontalScroller } from "@/components/Section";
-import { getLocationBySlug, getUpcomingAtLocation } from "@/lib/data";
+import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation } from "@/lib/data";
 import { cityState } from "@/lib/format";
 
 export const revalidate = 60;
@@ -32,7 +34,10 @@ export default async function LocationPage({
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const happenings = await getUpcomingAtLocation(location.name);
+  const [happenings, galleryImages] = await Promise.all([
+    getUpcomingAtLocation({ id: location.id, name: location.name }),
+    getLocationGalleryImages(location.id),
+  ]);
   const fullAddress = [location.address, cityState(location.city, location.state)]
     .filter(Boolean)
     .join(", ");
@@ -50,8 +55,9 @@ export default async function LocationPage({
           {fullAddress}
         </p>
       )}
+      {location.description && <p className="mt-3 text-sm text-ink/70">{location.description}</p>}
 
-      <div className="mt-4 flex flex-wrap gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <a
           href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
           target="_blank"
@@ -60,6 +66,36 @@ export default async function LocationPage({
         >
           Get Directions
         </a>
+        {location.website_url && (
+          <a
+            href={location.website_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-semibold text-ink/50 hover:text-ink/70"
+          >
+            Website
+          </a>
+        )}
+        {location.phone && (
+          <a href={`tel:${location.phone}`} className="text-xs font-semibold text-ink/50 hover:text-ink/70">
+            {location.phone}
+          </a>
+        )}
+        {location.email && (
+          <a href={`mailto:${location.email}`} className="text-xs font-semibold text-ink/50 hover:text-ink/70">
+            {location.email}
+          </a>
+        )}
+      </div>
+
+      {galleryImages.length > 1 && (
+        <div className="mt-6">
+          <ImageGalleryStrip images={galleryImages} alt={location.name} />
+        </div>
+      )}
+
+      <div className="mt-6">
+        <ClaimButton type="location" slug={location.slug} entityName={location.name} variant="card" />
       </div>
 
       <section className="mt-12">

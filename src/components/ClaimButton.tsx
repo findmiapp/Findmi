@@ -29,20 +29,22 @@ type ClaimState =
  * claimant already has qualifying FindMi access (active Pro, or a
  * redeemed Pro Invite, on some business they belong to); otherwise the
  * API returns "membership_required" and no claim row is even created —
- * see /api/account/claim's own resolvePendingState.
+ * see /api/account/claim's own resolvePendingState. Stage 3 adds LOCATION
+ * claims, free for every signed-in user exactly like business (never
+ * entitlement-gated).
  *
  * Submitting the claim form never grants access on its own — only founder
- * approval (business_members/event_members) does, and identity is always
- * the session's user_id, never the submitted contact email. This
- * component only ever reads/writes claim state via /api/account/claim; it
- * has no way to mark anything approved itself. */
+ * approval (business_members/event_members/location_members) does, and
+ * identity is always the session's user_id, never the submitted contact
+ * email. This component only ever reads/writes claim state via
+ * /api/account/claim; it has no way to mark anything approved itself. */
 export default function ClaimButton({
   type,
   slug,
   entityName,
   variant = "inline",
 }: {
-  type: "business" | "event";
+  type: "business" | "event" | "location";
   slug: string;
   entityName: string;
   /** "inline" (default, unchanged) — the original small muted text link,
@@ -152,7 +154,7 @@ export default function ClaimButton({
     }
   }
 
-  const noun = type === "business" ? "business" : "event";
+  const noun = type === "business" ? "business" : type === "location" ? "venue" : "event";
 
   if (state === "loading" || state === "member") return null;
 
@@ -163,16 +165,16 @@ export default function ClaimButton({
     const next = `${window.location.pathname}?claim=1`;
     const signInHref = `/login?next=${encodeURIComponent(next)}`;
 
-    // Claim auth gate (business only — event claims below are
+    // Claim auth gate (business/location only — event claims below are
     // unchanged): no claim form fields for a logged-out visitor, just
     // this message and the existing /login entry point. next= preserves
-    // this exact business URL, and ?claim=1 is what already reopens the
-    // claim flow automatically once they're back and signed in (see the
-    // mount effect above).
-    if (type === "business") {
+    // this exact business/venue URL, and ?claim=1 is what already reopens
+    // the claim flow automatically once they're back and signed in (see
+    // the mount effect above).
+    if (type === "business" || type === "location") {
       const prompt = (
         <div className={variant === "card" ? "rounded-2xl border border-black/10 bg-white p-5 sm:p-6" : ""}>
-          <p className="text-sm text-ink/60">Create your free FindMi account to claim and manage this business.</p>
+          <p className="text-sm text-ink/60">Create your free FindMi account to claim and manage this {noun}.</p>
           <a
             href={signInHref}
             className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
@@ -189,7 +191,7 @@ export default function ClaimButton({
         Claim this {noun}
       </a>
     );
-    return variant === "card" ? <ClaimCard>{link}</ClaimCard> : link;
+    return variant === "card" ? <ClaimCard noun={noun}>{link}</ClaimCard> : link;
   }
 
   if (state === "pending_review") {
@@ -203,12 +205,12 @@ export default function ClaimButton({
 
         {/* Post-claim Pro offer — priority review only, never a guarantee
             of approval (see below). Not a payment integration: a plain
-            link out to the existing Tally Pro-upgrade form. Business
-            claims only: an event claimant already has qualifying FindMi
-            Pro/Invite access by the time they can reach this state (see
-            /api/account/claim's entitlement gate), so offering them
+            link out to the existing Tally Pro-upgrade form. Business and
+            location claims only: an event claimant already has qualifying
+            FindMi Pro/Invite access by the time they can reach this state
+            (see /api/account/claim's entitlement gate), so offering them
             "Upgrade to Pro" here would be redundant/confusing. */}
-        {type === "business" && (
+        {type !== "event" && (
           <div className="mt-3 rounded-xl border border-findmi/20 bg-findmi-50 p-3">
             <p className="text-xs font-bold text-ink">Need access sooner?</p>
             <p className="mt-1 text-xs text-ink/60">
@@ -267,7 +269,7 @@ export default function ClaimButton({
 
   return (
     <>
-      {variant === "card" ? <ClaimCard>{trigger}</ClaimCard> : trigger}
+      {variant === "card" ? <ClaimCard noun={noun}>{trigger}</ClaimCard> : trigger}
 
       {mounted &&
         open &&
@@ -282,15 +284,15 @@ export default function ClaimButton({
             >
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Claim {entityName}</h2>
               <p className="mt-1.5 text-sm text-ink/60">
-                {type === "business" ? (
+                {type === "event" ? (
                   <>
-                    Claiming requests management access to this business. FindMi reviews every request manually —
+                    Claiming requests management access to this {noun}. Event management is included with your
+                    qualifying FindMi membership — no separate Event fee. FindMi reviews every request manually;
                     submitting a claim doesn&rsquo;t guarantee access.
                   </>
                 ) : (
                   <>
-                    Claiming requests management access to this {noun}. Event management is included with your
-                    qualifying FindMi membership — no separate Event fee. FindMi reviews every request manually;
+                    Claiming requests management access to this {noun}. FindMi reviews every request manually —
                     submitting a claim doesn&rsquo;t guarantee access.
                   </>
                 )}
@@ -365,12 +367,14 @@ export default function ClaimButton({
 /** variant="card" chrome for the entry-point (guest/none) states — same
  * copy/positioning the public business profile places right before
  * "Discover More Like This". Kept local to this file since it only wraps
- * this component's own trigger element. */
-function ClaimCard({ children }: { children: React.ReactNode }) {
+ * this component's own trigger element. `noun` defaults to "business" —
+ * every existing caller predates the location/event nouns and keeps
+ * reading exactly as before. */
+function ClaimCard({ children, noun = "business" }: { children: React.ReactNode; noun?: string }) {
   return (
     <div className="rounded-2xl border border-black/10 bg-white p-5 sm:p-6">
-      <h2 className="font-display text-base font-bold tracking-tight text-ink">Is this your business?</h2>
-      <p className="mt-1.5 text-sm text-ink/60">Claim your free FindMi listing to manage your business information.</p>
+      <h2 className="font-display text-base font-bold tracking-tight text-ink">Is this your {noun}?</h2>
+      <p className="mt-1.5 text-sm text-ink/60">Claim your free FindMi listing to manage your {noun} information.</p>
       <div className="mt-3">{children}</div>
     </div>
   );

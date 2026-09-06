@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAdminLocationById } from "@/lib/admin/queries";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -26,9 +27,21 @@ export default async function EditLocationPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Edit Location</h1>
-        <ViewPublicPageLink href={publicHref} />
+        <div className="flex items-center gap-3">
+          {/* Admin Manage-As — opens the exact same owner-facing Location
+              Manager, with the founder's own admin session granting
+              elevated access there (see lib/permissions.ts) — never
+              impersonation, never a fabricated location_members row. */}
+          <Link
+            href={`/account/location/${id}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-findmi-700 hover:underline"
+          >
+            Open Location Manager <span aria-hidden="true">↗</span>
+          </Link>
+          <ViewPublicPageLink href={publicHref} />
+        </div>
       </div>
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">

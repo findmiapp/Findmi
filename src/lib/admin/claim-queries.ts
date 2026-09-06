@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminSupabase } from "./supabase-admin";
 
-export type ClaimEntityType = "business" | "event";
+export type ClaimEntityType = "business" | "event" | "location";
 export type ClaimStatus = "pending" | "approved" | "rejected";
 export type ClaimPaymentStatus = "unpaid" | "paid" | "refunded";
 
@@ -89,31 +89,42 @@ export async function getAdminClaims(filters: ClaimListFilters = {}): Promise<Ad
 
   const wantBusiness = !filters.entityType || filters.entityType === "business";
   const wantEvent = !filters.entityType || filters.entityType === "event";
+  const wantLocation = !filters.entityType || filters.entityType === "location";
 
-  const [businessRows, eventRows] = await Promise.all([
+  const [businessRows, eventRows, locationRows] = await Promise.all([
     wantBusiness ? fetchClaims(supabase, "business_claim_requests", "businesses", filters) : Promise.resolve([]),
     wantEvent ? fetchClaims(supabase, "event_claim_requests", "events", filters) : Promise.resolve([]),
+    wantLocation ? fetchClaims(supabase, "location_claim_requests", "locations", filters) : Promise.resolve([]),
   ]);
 
   const combined = [
     ...businessRows.map((r) => ({ ...r, entityType: "business" as const })),
     ...eventRows.map((r) => ({ ...r, entityType: "event" as const })),
+    ...locationRows.map((r) => ({ ...r, entityType: "location" as const })),
   ];
 
   const businessIds = Array.from(new Set(combined.filter((c) => c.entityType === "business").map((c) => c.entity?.id).filter((id): id is string => Boolean(id))));
   const eventIds = Array.from(new Set(combined.filter((c) => c.entityType === "event").map((c) => c.entity?.id).filter((id): id is string => Boolean(id))));
+  const locationIds = Array.from(new Set(combined.filter((c) => c.entityType === "location").map((c) => c.entity?.id).filter((id): id is string => Boolean(id))));
 
-  const [{ data: businessOwners }, { data: eventOwners }] = await Promise.all([
+  const [{ data: businessOwners }, { data: eventOwners }, { data: locationOwners }] = await Promise.all([
     businessIds.length
       ? supabase.from("business_members").select("business_id").eq("role", "owner").in("business_id", businessIds)
       : Promise.resolve({ data: [] as { business_id: string }[] }),
     eventIds.length
       ? supabase.from("event_members").select("event_id").eq("role", "owner").in("event_id", eventIds)
       : Promise.resolve({ data: [] as { event_id: string }[] }),
+    locationIds.length
+      ? supabase.from("location_members").select("location_id").eq("role", "owner").in("location_id", locationIds)
+      : Promise.resolve({ data: [] as { location_id: string }[] }),
   ]);
 
   const ownedBusinessIds = new Set(((businessOwners ?? []) as { business_id: string }[]).map((r) => r.business_id));
   const ownedEventIds = new Set(((eventOwners ?? []) as { event_id: string }[]).map((r) => r.event_id));
+  const ownedLocationIds = new Set(((locationOwners ?? []) as { location_id: string }[]).map((r) => r.location_id));
+
+  const ownedIdsFor = (entityType: ClaimEntityType) =>
+    entityType === "business" ? ownedBusinessIds : entityType === "event" ? ownedEventIds : ownedLocationIds;
 
   return combined
     .map((c) => ({
@@ -131,7 +142,7 @@ export async function getAdminClaims(filters: ClaimListFilters = {}): Promise<Ad
       claimantEmail: c.email,
       claimantDisplayName: c.full_name,
       claimantPhone: c.phone,
-      entityAlreadyOwned: c.entityType === "business" ? ownedBusinessIds.has(c.entity?.id ?? "") : ownedEventIds.has(c.entity?.id ?? ""),
+      entityAlreadyOwned: ownedIdsFor(c.entityType).has(c.entity?.id ?? ""),
     }))
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 }
@@ -158,13 +169,15 @@ export interface AdminCurrentAccessMember {
   email: string | null;
 }
 
-const MEMBER_TABLE: Record<ClaimEntityType, "business_members" | "event_members"> = {
+const MEMBER_TABLE: Record<ClaimEntityType, "business_members" | "event_members" | "location_members"> = {
   business: "business_members",
   event: "event_members",
+  location: "location_members",
 };
-const MEMBER_ENTITY_COLUMN: Record<ClaimEntityType, "business_id" | "event_id"> = {
+const MEMBER_ENTITY_COLUMN: Record<ClaimEntityType, "business_id" | "event_id" | "location_id"> = {
   business: "business_id",
   event: "event_id",
+  location: "location_id",
 };
 const ROLE_SORT_ORDER: Record<MemberRole, number> = { owner: 0, manager: 1, staff: 2 };
 

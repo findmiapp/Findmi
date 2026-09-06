@@ -9,6 +9,12 @@ export const dynamic = "force-dynamic";
 const ENTITY = {
   business: { entityTable: "businesses", claimTable: "business_claim_requests", memberTable: "business_members", column: "business_id" },
   event: { entityTable: "events", claimTable: "event_claim_requests", memberTable: "event_members", column: "event_id" },
+  // Multi-Entity Self-Service V1, Stage 3 — Location claiming is free for
+  // every signed-in user, exactly like a business claim (never gated on
+  // entitlement, unlike event) — see this stage's own Location Access
+  // rule. location_claim_requests/location_members mirror business's own
+  // tables structurally.
+  location: { entityTable: "locations", claimTable: "location_claim_requests", memberTable: "location_members", column: "location_id" },
 } as const;
 type EntityType = keyof typeof ENTITY;
 
@@ -18,7 +24,7 @@ type EntityType = keyof typeof ENTITY;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function isEntityType(value: string | null): value is EntityType {
-  return value === "business" || value === "event";
+  return value === "business" || value === "event" || value === "location";
 }
 
 async function resolveEntityId(supabase: SupabaseClient, entityTable: string, slug: string): Promise<string | null> {
@@ -59,11 +65,12 @@ async function resolveEntityId(supabase: SupabaseClient, entityTable: string, sl
  * to "none", intentionally allowing a fresh claim to be submitted — see
  * the claim foundation migration's partial-unique-index note.
  *
- * `entitled` is only ever consulted for type === "event" (a business claim
- * has never depended on any entitlement check, before or after this
- * pass) — callers pass `true` for business claims as a harmless default. */
+ * `entitled` is only ever consulted for type === "event" (business and
+ * location claims have never depended on any entitlement check) —
+ * callers pass `true` for business/location claims as a harmless
+ * default. */
 function resolvePendingState(type: EntityType, entitled: boolean): "pending_review" | "membership_required" {
-  if (type === "business") return "pending_review";
+  if (type !== "event") return "pending_review";
   return entitled ? "pending_review" : "membership_required";
 }
 export async function GET(request: NextRequest) {
@@ -94,17 +101,18 @@ export async function GET(request: NextRequest) {
     if (membership) return NextResponse.json({ state: "member" });
   }
 
-  // Business-claim-only addition: already-claimed-by-anyone check — must
-  // answer the same way for EVERY visitor (owner, other signed-in users,
-  // and signed-out guests alike), not just the current viewer, so it
-  // can't use the RLS-scoped client above (business_members only lets a
-  // user read their own row). Read-only existence check via service-role,
-  // same authorize-elsewhere-then-elevate shape used throughout the app —
-  // no membership/claim record is touched, only reported on.
-  // business_members enforces at most one 'owner' row per business, so
-  // any row here means it's already claimed. Scoped to type === "business"
-  // only — event claim eligibility is untouched by this pass.
-  if (type === "business") {
+  // Business/location-claim addition: already-claimed-by-anyone check —
+  // must answer the same way for EVERY visitor (owner, other signed-in
+  // users, and signed-out guests alike), not just the current viewer, so
+  // it can't use the RLS-scoped client above (business_members/
+  // location_members only let a user read their own row). Read-only
+  // existence check via service-role, same authorize-elsewhere-then-
+  // elevate shape used throughout the app — no membership/claim record is
+  // touched, only reported on. business_members/location_members each
+  // enforce at most one 'owner' row, so any row here means it's already
+  // claimed. Scoped to business/location only — event claim eligibility
+  // is untouched.
+  if (type === "business" || type === "location") {
     const admin = getAdminSupabase();
     if (admin) {
       const { data: anyMember } = await admin.from(memberTable).select("id").eq(column, entityId).limit(1).maybeSingle();
@@ -140,14 +148,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Business-claim-only addition: no pending claim belonging to this
+  // Business/location-claim addition: no pending claim belonging to this
   // viewer (or no viewer at all) — but a DIFFERENT user's claim may
-  // already be pending on this same business (the "one pending claim"
-  // constraint is per-user, not per-entity — see the claim foundation
-  // migration). Never expose that claimant's contact info to anyone else;
-  // just stop offering a competing CTA. Scoped to "business" only — event
-  // claim eligibility is untouched by this pass.
-  if (type === "business") {
+  // already be pending on this same business/location (the "one pending
+  // claim" constraint is per-user, not per-entity — see the claim
+  // foundation migration). Never expose that claimant's contact info to
+  // anyone else; just stop offering a competing CTA. Scoped to business/
+  // location only — event claim eligibility is untouched.
+  if (type === "business" || type === "location") {
     const admin = getAdminSupabase();
     if (admin) {
       const { data: pendingAny } = await admin

@@ -664,6 +664,23 @@ export interface FindmiLocation {
   // the occurrence has its own explicit override — see
   // lib/event-markets.ts.
   market_id: string | null;
+  // Multi-Entity Self-Service V1, Stage 3 — minimal additive venue-profile
+  // fields for real self-service (native creation/claim/Location Manager).
+  description: string | null;
+  website_url: string | null;
+  email: string | null;
+  phone: string | null;
+  cover_image_url: string | null;
+}
+
+/** Multi-Entity Self-Service V1, Stage 3 — Location gallery, same shape
+ * as business_images (id, location_id, url, display_order) — Locations
+ * only ever need one gallery, unlike event_images' two-kind split. */
+export interface LocationImage {
+  id: string;
+  location_id: string;
+  url: string;
+  display_order: number | null;
 }
 
 // People — founders, owners, makers, chefs, creators, operators. An

@@ -123,6 +123,28 @@ export default async function AccountHomePage({
     })
     .filter((e): e is { id: string; name: string; isDemo: boolean } => Boolean(e));
 
+  // Multi-Entity Self-Service V1, Stage 3 — Account Hub: "Places You
+  // Manage" now reads real location_members rows, same shape as
+  // "Events You Manage" above (event_members). RLS already scopes this
+  // table's SELECT to auth.uid() = user_id. Every location this user
+  // manages is shown (including one still pending review — is_demo:true)
+  // since Location Manager now exists to actually manage it; each row
+  // links there (/account/location/[id]).
+  const { data: locationMemberships } = await supabase
+    .from("location_members")
+    .select("location_id, locations(name, is_demo)")
+    .eq("user_id", user.id);
+  type LocationMembershipRow = {
+    location_id: string;
+    locations: { name: string; is_demo: boolean } | { name: string; is_demo: boolean }[] | null;
+  };
+  const myLocations = ((locationMemberships ?? []) as LocationMembershipRow[])
+    .map((m) => {
+      const location = Array.isArray(m.locations) ? m.locations[0] : m.locations;
+      return location ? { id: m.location_id, name: location.name, isDemo: location.is_demo } : null;
+    })
+    .filter((l): l is { id: string; name: string; isDemo: boolean } => Boolean(l));
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountSync />
@@ -311,17 +333,55 @@ export default async function AccountHomePage({
         )}
       </section>
 
-      {/* Multi-Entity Self-Service V1 — Places You Manage. location_members
-          doesn't exist yet (a later pass), so this section deliberately
-          queries nothing — an honest "not yet" empty state, never faked
-          data — while keeping the same section shape Events/Businesses
-          use so wiring in real rows later is a clean, additive change. */}
+      {/* Multi-Entity Self-Service V1, Stage 3 — Places You Manage. Real
+          data only (location_members), never fabricated placeholder rows.
+          Location Manager now exists (/account/location/[id]), so each
+          row links there directly, and "+ Add a Venue" is a real, live
+          link to native Location creation (/account/location/new) — free
+          for every signed-in user, no entitlement gate. */}
       <section className="mt-8">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Places You Manage</h2>
-          <ComingSoonPill label="+ Add a Venue" />
+          <Link
+            href="/account/location/new"
+            className="rounded-full bg-findmi px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            + Add a Venue
+          </Link>
         </div>
-        <p className="mt-3 text-sm text-ink/50">Managing venues on FindMi is coming soon.</p>
+
+        {myLocations.length === 0 ? (
+          <p className="mt-3 text-sm text-ink/50">You don&rsquo;t manage any venues yet.</p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-3">
+            {myLocations.map((l) => (
+              <div
+                key={l.id}
+                className="flex items-center gap-3 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+                  <NavIcon name="pin" className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-ink">{l.name}</p>
+                  {l.isDemo && (
+                    <p className="mt-0.5 text-xs font-semibold text-amber-700">
+                      Pending Review — visible only to you until FindMi approves it.
+                    </p>
+                  )}
+                  <div className="mt-2">
+                    <Link
+                      href={`/account/location/${l.id}`}
+                      className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    >
+                      Manage Venue
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Pro Invite Sharing UX pass — lets an existing signed-in vendor
@@ -370,23 +430,6 @@ export default async function AccountHomePage({
         </section>
       )}
     </div>
-  );
-}
-
-/** Multi-Entity Self-Service V1 — an honest, visibly non-interactive
- * stand-in for a "+ Add" action whose destination route doesn't exist
- * yet (Event/Location creation land in the next passes). Never a link
- * that would 404 — same pill shape/weight as the real "+ Add a Business
- * or Brand" CTA, just muted and inert, so the section's eventual shape
- * is already right and only needs its href activated later. */
-function ComingSoonPill({ label }: { label: string }) {
-  return (
-    <span
-      title="Coming soon"
-      className="cursor-not-allowed rounded-full bg-black/[0.06] px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/35"
-    >
-      {label}
-    </span>
   );
 }
 

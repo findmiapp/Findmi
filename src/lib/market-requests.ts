@@ -223,20 +223,21 @@ export interface LinkedMarketRequestInput {
   text: string;
   city?: string | null;
   state?: string | null;
-  source: "business_creation" | "event_creation";
+  source: "business_creation" | "event_creation" | "location_creation";
   sourceBusinessId?: string | null;
   sourceEventId?: string | null;
+  sourceLocationId?: string | null;
 }
 
-/** Business/event creation each get their OWN request row (1:1 with the
- * business/event that couldn't find its Market) — never deduped against
- * a consumer request or another business/event's request, since each
- * one is tied to a real linked record an admin needs to resolve
- * individually. Callers (createMemberBusiness, saveEvent) are expected
- * to have ALREADY checked findExistingGeographyMatch themselves and used
- * the match directly when found — this function is only reached for
- * genuinely unmatched geography, so it always creates a plain 'pending'
- * row. */
+/** Business/event/location creation each get their OWN request row (1:1
+ * with the business/event/location that couldn't find its Market) —
+ * never deduped against a consumer request or another entity's request,
+ * since each one is tied to a real linked record an admin needs to
+ * resolve individually. Callers (createMemberBusiness, saveEvent,
+ * createMemberLocation) are expected to have ALREADY checked
+ * findExistingGeographyMatch themselves and used the match directly when
+ * found — this function is only reached for genuinely unmatched
+ * geography, so it always creates a plain 'pending' row. */
 export async function createLinkedMarketRequest(admin: SupabaseClient, input: LinkedMarketRequestInput): Promise<void> {
   const normalizedKey = normalizeMarketRequestKey(input.text);
   const { error } = await admin.from("market_requests").insert({
@@ -248,6 +249,7 @@ export async function createLinkedMarketRequest(admin: SupabaseClient, input: Li
     source: input.source,
     source_business_id: input.sourceBusinessId ?? null,
     source_event_id: input.sourceEventId ?? null,
+    source_location_id: input.sourceLocationId ?? null,
     status: "pending",
   });
   if (error) throw new Error(error.message);
@@ -285,6 +287,24 @@ export async function getPendingMarketRequestForEvent(
     .from("market_requests")
     .select("requested_text")
     .eq("source_event_id", eventId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ? { requestedText: data.requested_text } : null;
+}
+
+/** Location-side counterpart to getPendingMarketRequestForBusiness/
+ * getPendingMarketRequestForEvent above — identical shape/reasoning, just
+ * source_location_id. Used by Location Manager's Market/Area tab. */
+export async function getPendingMarketRequestForLocation(
+  admin: SupabaseClient,
+  locationId: string
+): Promise<{ requestedText: string } | null> {
+  const { data } = await admin
+    .from("market_requests")
+    .select("requested_text")
+    .eq("source_location_id", locationId)
     .eq("status", "pending")
     .order("created_at", { ascending: false })
     .limit(1)

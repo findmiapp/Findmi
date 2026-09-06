@@ -7,6 +7,26 @@ import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getActiveMarkets } from "@/lib/data";
 import { createMemberEvent } from "../actions";
 
+/** Multi-Entity Self-Service V1, Stage 3 — Create Event From Venue. A
+ * Location owner's "+ Add an Event Here" link (see the Location Manager's
+ * Overview tab) lands here with ?location_id=<id>; that Location's own
+ * name/address/city/state are copied onto the new event at creation
+ * (see createMemberEvent's own comment) purely as a venue-fields autofill
+ * convenience — it never grants the event's ownership to the Location
+ * owner, and never grants the Location's ownership to the event creator.
+ * The Location's ownership is looked up only to display its name here;
+ * this deliberately does NOT require the current visitor to be a member
+ * of that Location — anyone entitled to create an event may create one at
+ * any existing FindMi venue, same as picking one from the existing
+ * Location search on the Event Manager's own Location tab. */
+async function getLocationHint(locationId: string | undefined): Promise<{ id: string; name: string } | null> {
+  if (!locationId) return null;
+  const admin = getAdminSupabase();
+  if (!admin) return null;
+  const { data } = await admin.from("locations").select("id, name").eq("id", locationId).maybeSingle();
+  return data ?? null;
+}
+
 export const metadata: Metadata = {
   title: "Add an Event",
   robots: { index: false },
@@ -26,8 +46,13 @@ const primaryButtonClass =
  * this page instead of a broken/dead-end form — createMemberEvent itself
  * independently re-checks entitlement too, so this page's own gate is a
  * UX convenience, never the real authorization. */
-export default async function AddEventPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function AddEventPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; location_id?: string }>;
+}) {
+  const { error, location_id: locationIdHint } = await searchParams;
+  const locationHint = await getLocationHint(locationIdHint);
 
   const supabase = await getServerSupabase();
   const {
@@ -75,6 +100,12 @@ export default async function AddEventPage({ searchParams }: { searchParams: Pro
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberEvent} className="flex flex-col gap-4">
+          {locationHint && (
+            <div className="rounded-xl border border-findmi/20 bg-findmi-50 px-3.5 py-2.5">
+              <input type="hidden" name="location_id" value={locationHint.id} />
+              <p className="text-xs font-semibold text-findmi-700">Venue: {locationHint.name}</p>
+            </div>
+          )}
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Event name</span>
             <input type="text" name="name" required placeholder="Your event name" className={inputClass} />

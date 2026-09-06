@@ -200,6 +200,42 @@ export async function createMemberEvent(formData: FormData) {
   }
 
   const eventId = (created as { id: string }).id;
+
+  // Create Event From Venue — Stage 3, Step 9. Copies the chosen
+  // Location's own venue fields onto the brand-new event, same copy
+  // shape updateMemberEventLocation already uses when an owner picks a
+  // Location on the Event Manager's own Location tab. Best-effort only
+  // (the event was already created successfully above regardless): a
+  // missing/invalid location_id just means the event is created without
+  // a venue prefilled, same as leaving that field blank on the form.
+  // This ONLY ever writes to events' own venue_name/address/city/state/
+  // latitude/longitude columns — it never creates a location_members row
+  // for the event creator, and never touches location_members for the
+  // Location itself, so Event ownership stays with this event's own
+  // creator only and Location ownership is completely unaffected either
+  // way (see this stage's Locked Product Model).
+  const locationHintId = str(formData, "location_id");
+  if (locationHintId) {
+    const { data: location } = await admin
+      .from("locations")
+      .select("name, address, city, state, latitude, longitude")
+      .eq("id", locationHintId)
+      .maybeSingle();
+    if (location) {
+      await admin
+        .from("events")
+        .update({
+          venue_name: location.name,
+          address: location.address,
+          city: location.city,
+          state: location.state,
+          latitude: location.latitude,
+          longitude: location.longitude,
+        })
+        .eq("id", eventId);
+    }
+  }
+
   revalidatePath("/account");
   redirect(`/account/event/${eventId}`);
 }

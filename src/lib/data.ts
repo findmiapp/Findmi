@@ -2331,6 +2331,20 @@ export async function getLocationBySlug(slug: string): Promise<FindmiLocation | 
   return data ?? null;
 }
 
+/** Location Manager / venue profile — the location-level gallery
+ * (location_images), same normalized-child-rows pattern as
+ * business_images/event_images. Ordered, public, read-only. */
+export async function getLocationGalleryImages(locationId: string): Promise<string[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("location_images")
+    .select("url")
+    .eq("location_id", locationId)
+    .order("display_order", { ascending: true, nullsFirst: false });
+  return (data ?? []).map((row) => row.url);
+}
+
 export interface LocationHappening {
   id: string;
   title: string;
@@ -2346,14 +2360,51 @@ export interface LocationHappening {
 }
 
 /** Upcoming events and standalone appearances at a location, merged into one
- * chronological feed for that location's page. */
+ * chronological feed for that location's page.
+ *
+ * Events are matched two ways, real FK first: `event_occurrences.location_id`
+ * (Recurring Events V2's real relationship to a location) always wins when
+ * present; the legacy `events.venue_name` ILIKE match — the only signal that
+ * existed before that FK — is then run as a fallback for events NOT already
+ * matched via the FK, so an event with a real occurrence-location link is
+ * never double-counted. `appearances` has no `location_id` column and no
+ * write path that would populate one, so it stays on venue_name text
+ * matching only — adding a column nothing writes to would just be dead
+ * schema. */
 export async function getUpcomingAtLocation(
-  locationName: string,
+  location: { id: string; name: string },
   limit = 12
 ): Promise<LocationHappening[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const nowIso = new Date().toISOString();
+
+  const { data: occurrenceRows } = await supabase
+    .from("event_occurrences")
+    .select("start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo)")
+    .eq("location_id", location.id)
+    .eq("status", "scheduled")
+    .gt("end_at", nowIso)
+    .order("start_at", { ascending: true })
+    .limit(limit);
+
+  const fromOccurrences: LocationHappening[] = [];
+  const matchedEventIds = new Set<string>();
+  for (const row of occurrenceRows ?? []) {
+    const e = Array.isArray(row.event) ? row.event[0] : row.event;
+    if (!e || e.is_demo) continue;
+    matchedEventIds.add(e.id);
+    fromOccurrences.push({
+      id: `occurrence-${e.id}-${row.start_at}`,
+      title: e.name,
+      subtitle: e.organizer_name,
+      start_at: row.start_at,
+      end_at: row.end_at,
+      href: `/event/${e.slug}`,
+      imageUrl: e.cover_image_url,
+      description: null,
+    });
+  }
 
   // Same active-duration principle as the rest of this pass: eligibility
   // is end_at-based (still active or in the future), not start_at-only.
@@ -2365,7 +2416,7 @@ export async function getUpcomingAtLocation(
     supabase
       .from("events")
       .select("id, slug, name, cover_image_url, start_at, end_at, organizer_name")
-      .ilike("venue_name", locationName)
+      .ilike("venue_name", location.name)
       .eq("is_demo", false)
       .gt("end_at", nowIso)
       .order("start_at", { ascending: true })
@@ -2375,7 +2426,7 @@ export async function getUpcomingAtLocation(
       .select(
         "id, title, start_at, end_at, description, business:businesses(slug, name, cover_image_url, is_demo, publication_status)"
       )
-      .ilike("venue_name", locationName)
+      .ilike("venue_name", location.name)
       .is("event_id", null)
       .neq("status", "canceled")
       .gt("end_at", nowIso)
@@ -2383,16 +2434,18 @@ export async function getUpcomingAtLocation(
       .limit(limit),
   ]);
 
-  const fromEvents: LocationHappening[] = (events ?? []).map((e) => ({
-    id: `event-${e.id}`,
-    title: e.name,
-    subtitle: e.organizer_name,
-    start_at: e.start_at,
-    end_at: e.end_at,
-    href: `/event/${e.slug}`,
-    imageUrl: e.cover_image_url,
-    description: null,
-  }));
+  const fromEvents: LocationHappening[] = (events ?? [])
+    .filter((e) => !matchedEventIds.has(e.id))
+    .map((e) => ({
+      id: `event-${e.id}`,
+      title: e.name,
+      subtitle: e.organizer_name,
+      start_at: e.start_at,
+      end_at: e.end_at,
+      href: `/event/${e.slug}`,
+      imageUrl: e.cover_image_url,
+      description: null,
+    }));
 
   const fromAppearances: LocationHappening[] = (appearances ?? [])
     .map((a) => {
@@ -2411,7 +2464,7 @@ export async function getUpcomingAtLocation(
     })
     .filter((x): x is LocationHappening => x !== null);
 
-  return [...fromEvents, ...fromAppearances]
+  return [...fromOccurrences, ...fromEvents, ...fromAppearances]
     .sort((a, b) => a.start_at.localeCompare(b.start_at))
     .slice(0, limit);
 }

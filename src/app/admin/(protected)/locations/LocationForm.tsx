@@ -1,4 +1,5 @@
-import { CheckboxField, SelectField, TextField } from "@/components/admin/Fields";
+import { CheckboxField, SelectField, TextareaField, TextField } from "@/components/admin/Fields";
+import ImageField from "@/components/admin/ImageField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
@@ -46,6 +47,19 @@ export default function LocationForm({
           <TextField label="City" name="city" defaultValue={location?.city} />
           <TextField label="State" name="state" defaultValue={location?.state} />
         </div>
+
+        <TextareaField
+          label="Description"
+          name="description"
+          defaultValue={location?.description}
+          hint="Shown on the public venue page. Owner-editable from the Location Manager too."
+        />
+        <ImageField label="Cover Image" name="cover_image_url" defaultValue={location?.cover_image_url} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField label="Website" name="website_url" type="url" defaultValue={location?.website_url} />
+          <TextField label="Email" name="email" type="email" defaultValue={location?.email} />
+        </div>
+        <TextField label="Phone" name="phone" type="tel" defaultValue={location?.phone} />
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             label="Latitude"

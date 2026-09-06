@@ -37,6 +37,11 @@ export async function saveLocation(id: string | null, formData: FormData) {
     longitude: num(formData, "longitude"),
     is_demo: !bool(formData, "published"),
     market_id: str(formData, "market_id"),
+    description: str(formData, "description"),
+    cover_image_url: str(formData, "cover_image_url"),
+    website_url: str(formData, "website_url"),
+    email: str(formData, "email"),
+    phone: str(formData, "phone"),
   };
 
   let locationId = id;
