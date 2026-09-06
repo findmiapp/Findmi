@@ -30,8 +30,10 @@ export default async function AdminProInvitesPage({
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Pro Invites</h1>
       <p className="mt-1 text-sm text-ink/60">
-        Codes that grant complimentary FindMi Pro to one business — no Stripe payment required. Redeeming a
-        code never publishes a business or changes its review status; those stay completely independent.
+        Codes that grant complimentary access — no Stripe payment required. A Business Pro invite grants Pro to one
+        chosen business; an Event Management invite grants Organizer access directly to the recipient&rsquo;s
+        account, no business involved at all. Redeeming a code never publishes a business or changes its review
+        status; those stay completely independent.
       </p>
 
       {error && (
@@ -65,8 +67,23 @@ export default async function AdminProInvitesPage({
               className="rounded-xl border border-black/10 px-3 py-2 text-sm text-ink"
             />
           </label>
+          {/* Multi-Entity Self-Service V1, Stage 2B — the recipient never
+              chooses or submits this; whatever the founder picks here is
+              the ONLY thing that decides what redemption grants (see
+              createProInvite/redeem_event_management_invite). */}
           <label className="flex flex-col gap-1 text-xs font-semibold text-ink/60">
-            Pro Duration (days)
+            Grant Purpose
+            <select
+              name="grant_purpose"
+              defaultValue="business_pro"
+              className="rounded-xl border border-black/10 px-3 py-2 text-sm text-ink"
+            >
+              <option value="business_pro">Business Pro</option>
+              <option value="event_management">Event Management</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-ink/60">
+            Access Duration (days)
             <input
               name="duration_days"
               type="number"
@@ -124,6 +141,7 @@ export default async function AdminProInvitesPage({
             <tr>
               <th className="px-4 py-3">Code</th>
               <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Purpose</th>
               <th className="px-4 py-3">Duration</th>
               <th className="px-4 py-3">Redemptions</th>
               <th className="px-4 py-3">Expires</th>
@@ -140,6 +158,17 @@ export default async function AdminProInvitesPage({
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-ink/70">{invite.name ?? "—"}</td>
+                <td className="px-4 py-3">
+                  <span
+                    className={
+                      invite.grant_purpose === "event_management"
+                        ? "rounded-full bg-black/[0.06] px-2.5 py-1 text-xs font-semibold text-ink/70"
+                        : "rounded-full bg-findmi-50 px-2.5 py-1 text-xs font-semibold text-findmi-700"
+                    }
+                  >
+                    {invite.grant_purpose === "event_management" ? "Event Management" : "Business Pro"}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-ink/70">{invite.duration_days} days</td>
                 <td className="px-4 py-3 text-ink/70">
                   {invite.redemption_count}
@@ -174,7 +203,7 @@ export default async function AdminProInvitesPage({
             ))}
             {invites.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-ink/50">
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-ink/50">
                   No invites yet.
                 </td>
               </tr>

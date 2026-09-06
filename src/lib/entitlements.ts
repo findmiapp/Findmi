@@ -84,40 +84,61 @@ export async function getBusinessMarketLimit(business: Pick<Business, "plan_tier
  *
  * LOCKED RULE: Events are NOT their own paid subscription. An authenticated
  * user may create/claim/manage Events at no additional Event fee if they
- * have qualifying FindMi access through EITHER active paid Pro access OR
- * valid complimentary Pro access through the existing Pro Invite
- * architecture. There is no user-level "Pro" concept anywhere in this
- * codebase — Pro is, and remains, a property of a BUSINESS (plan_tier),
- * reachable via Stripe checkout (businessProCheckout.ts, plan_source left
- * unset/'stripe'-ish) OR via a Pro Invite redemption (redeem_pro_invite(),
- * plan_source='complimentary') — both paths converge on the exact same
- * plan_tier value, so "paid OR complimentary Pro access" is already fully
- * captured by isPlanTierPro(plan_tier) regardless of which path produced
- * it. This function therefore does NOT invent a new user-level
- * entitlement table: it reuses business_members (real, authorized
- * membership — the same table requireBusinessMember() itself trusts) to
- * find every business this user actually belongs to, and is satisfied the
- * moment ANY of them is Pro (or Pro Seller, which inherits Pro). A user
- * with zero businesses, or only Free businesses, does not qualify.
+ * have qualifying FindMi access through EITHER:
+ *   (a) active paid OR complimentary Business Pro access on ANY business
+ *       they belong to (business_members join businesses.plan_tier — Pro
+ *       is, and remains, a property of a BUSINESS; Stripe checkout and a
+ *       Pro Invite redemption both converge on the same plan_tier value,
+ *       so this one check already covers "paid OR complimentary"), OR
+ *   (b) Stage 2B addition — an active, non-expired account-level
+ *       'event_management' row in account_entitlements, granted directly
+ *       to the USER by redeeming an Event-Management-purpose Pro Invite
+ *       (redeem_event_management_invite()) with NO Business involved at
+ *       all. This is what lets an organizer with zero Businesses qualify
+ *       (see the Event Entitlement Edge-Case audit) without fabricating a
+ *       placeholder Business or touching any businesses.plan_tier row.
+ * A user with zero businesses and no account entitlement, or only Free
+ * businesses and no account entitlement, does not qualify.
  *
  * Requires the service-role client because plan_tier isn't in the public
- * column grant (see restrict_internal_commerce_columns) — same
- * authorize-then-elevate shape used everywhere else a caller needs
- * plan_tier: the caller already has a verified, real userId (from its own
- * getServerSupabase().auth.getUser() call) before this ever runs; this
- * function itself trusts that userId completely, the same way every other
- * admin-client read in this codebase trusts an already-authorized id.
+ * column grant (see restrict_internal_commerce_columns), and
+ * account_entitlements has zero RLS policies for authenticated/anon (see
+ * its own migration) — same authorize-then-elevate shape used everywhere
+ * else a caller needs either: the caller already has a verified, real
+ * userId (from its own getServerSupabase().auth.getUser() call) before
+ * this ever runs; this function itself trusts that userId completely, the
+ * same way every other admin-client read in this codebase trusts an
+ * already-authorized id.
+ *
+ * IMPORTANT — this is a ONE-WAY OR: account_entitlements is consulted
+ * ONLY by this function. No Business Pro feature check anywhere in the
+ * codebase (isBusinessPro, the Business Manager's Pro-gated tabs, product
+ * limits, etc.) reads account_entitlements, and this function never
+ * writes to businesses.plan_tier — an account 'event_management' grant
+ * unlocks Event management ONLY, never any Business Pro feature.
  */
 export async function canCurrentUserManageEvents(admin: SupabaseClient, userId: string): Promise<boolean> {
-  const { data } = await admin
-    .from("business_members")
-    .select("businesses(plan_tier)")
-    .eq("user_id", userId);
-  type Row = { businesses: { plan_tier: PlanTier } | { plan_tier: PlanTier }[] | null };
-  return ((data ?? []) as Row[]).some((row) => {
+  const [{ data: memberships }, { data: entitlements }] = await Promise.all([
+    admin.from("business_members").select("businesses(plan_tier)").eq("user_id", userId),
+    admin
+      .from("account_entitlements")
+      .select("expires_at")
+      .eq("user_id", userId)
+      .eq("entitlement_key", "event_management"),
+  ]);
+
+  type MembershipRow = { businesses: { plan_tier: PlanTier } | { plan_tier: PlanTier }[] | null };
+  const hasBusinessPro = ((memberships ?? []) as MembershipRow[]).some((row) => {
     const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
     return business ? isPlanTierPro(business.plan_tier) : false;
   });
+  if (hasBusinessPro) return true;
+
+  const now = Date.now();
+  type EntitlementRow = { expires_at: string | null };
+  return ((entitlements ?? []) as EntitlementRow[]).some(
+    (row) => row.expires_at === null || new Date(row.expires_at).getTime() > now
+  );
 }
 
 /** Bare-value counterpart to getBusinessMarketLimit, same relationship as

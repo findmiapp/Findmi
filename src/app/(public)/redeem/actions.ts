@@ -38,8 +38,17 @@ const REDEEM_ERROR_MESSAGES: Record<string, string> = {
   invite_redemption_limit_reached: "This invite has already reached its redemption limit.",
   already_redeemed_by_business: "This business has already redeemed this invite.",
   business_not_found: "That business no longer exists.",
+  wrong_invite_purpose: "This invite isn't valid for that action.",
 };
 
+/**
+ * Multi-Entity Self-Service V1, Stage 2B — the invite's own STORED
+ * grant_purpose column decides which redemption path runs; the client
+ * never submits or influences it (no "purpose" field is ever read from
+ * formData here). Looked up fresh, server-side, on every submit — never
+ * cached from an earlier page render — so a founder editing an invite's
+ * purpose between page-load and submit is still honored correctly.
+ */
 export async function redeemProInvite(code: string, formData: FormData) {
   const redirectPath = `/redeem/${encodeURIComponent(code)}`;
 
@@ -59,6 +68,36 @@ export async function redeemProInvite(code: string, formData: FormData) {
     redirect(`/login?next=${encodeURIComponent(redirectPath)}`);
   }
 
+  const admin = getAdminSupabase();
+  if (!admin) redirect(errorRedirectUrl(redirectPath, "Server isn't configured."));
+
+  const { data: invite } = await admin
+    .from("pro_invites")
+    .select("grant_purpose")
+    .ilike("code", code)
+    .maybeSingle();
+  if (!invite) redirect(errorRedirectUrl(redirectPath, "This invite code isn't valid."));
+
+  if (invite.grant_purpose === "event_management") {
+    // No Business involved at all — the recipient needs only a signed-in
+    // account. Ignores any business_id the client might submit (there is
+    // no field for it in this flow's own form — see [code]/page.tsx — but
+    // even a crafted one would simply be unused: this RPC call never
+    // reads it).
+    const { data, error } = await admin.rpc("redeem_event_management_invite", {
+      p_code: code,
+      p_user_id: user.id,
+    });
+    if (error || !data) {
+      const message = REDEEM_ERROR_MESSAGES[error?.message ?? ""] ?? "Couldn't redeem this invite. Please try again.";
+      redirect(errorRedirectUrl(redirectPath, message));
+    }
+    // Straight to the Account Hub — "+ Add an Event" works immediately,
+    // no business-scoped success screen needed since no Business was
+    // ever touched.
+    redirect("/account?event_management=1");
+  }
+
   const businessId = str(formData, "business_id");
   if (!businessId) redirect(errorRedirectUrl(redirectPath, "Choose a business to apply this invite to."));
 
@@ -68,9 +107,6 @@ export async function redeemProInvite(code: string, formData: FormData) {
     const message = err instanceof Error ? err.message : "You don't have access to that business.";
     redirect(errorRedirectUrl(redirectPath, message));
   }
-
-  const admin = getAdminSupabase();
-  if (!admin) redirect(errorRedirectUrl(redirectPath, "Server isn't configured."));
 
   const { data, error } = await admin.rpc("redeem_pro_invite", {
     p_code: code,

@@ -54,8 +54,10 @@ export default async function AdminProInviteDetailPage({ params }: { params: Pro
 
       <dl className="mt-6 grid grid-cols-2 gap-4 rounded-2xl border border-black/10 p-4 text-sm sm:grid-cols-4">
         <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Plan</dt>
-          <dd className="mt-1 text-ink">Pro</dd>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Grant Purpose</dt>
+          <dd className="mt-1 text-ink">
+            {invite.grant_purpose === "event_management" ? "Event Management" : "Business Pro"}
+          </dd>
         </div>
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Duration</dt>
@@ -103,35 +105,50 @@ export default async function AdminProInviteDetailPage({ params }: { params: Pro
       </div>
 
       <h2 className="mt-8 font-display text-lg font-semibold tracking-tight text-ink">Redemption History</h2>
-      <div className="mt-3 overflow-x-auto rounded-2xl border border-black/10">
-        <table className="w-full min-w-[560px] text-left text-sm">
-          <thead className="bg-black/[0.02] text-xs font-semibold uppercase tracking-wide text-ink/50">
-            <tr>
-              <th className="px-4 py-3">Business</th>
-              <th className="px-4 py-3">Redeemed</th>
-              <th className="px-4 py-3">Previous Tier</th>
-              <th className="px-4 py-3">Granted Until</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-black/5">
-            {redemptions.map((r) => (
-              <tr key={r.id}>
-                <td className="px-4 py-3 text-ink">{r.business_name ?? r.business_id}</td>
-                <td className="px-4 py-3 text-ink/70">{formatDateShort(r.redeemed_at)}</td>
-                <td className="px-4 py-3 text-ink/70">{r.previous_plan_tier ?? "free"}</td>
-                <td className="px-4 py-3 text-ink/70">{formatDateShort(r.granted_until)}</td>
-              </tr>
-            ))}
-            {redemptions.length === 0 && (
+      {invite.grant_purpose === "event_management" ? (
+        // Event Management redemptions grant an account_entitlements row,
+        // never a pro_invite_redemptions row (that table is Business-Pro
+        // specific — see its own FK to businesses) — this table would
+        // always read empty for this purpose. The shared Redemptions
+        // count above (incremented by both redemption paths) is the
+        // source of truth here instead of a per-account business-style
+        // ledger, per this pass's own "don't overbuild a billing system"
+        // scope.
+        <p className="mt-3 rounded-2xl border border-black/10 bg-black/[0.015] px-4 py-4 text-sm text-ink/50">
+          Event Management invites grant account-level access directly — see the Redemptions count above for how many
+          times this code has been used.
+        </p>
+      ) : (
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-black/10">
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead className="bg-black/[0.02] text-xs font-semibold uppercase tracking-wide text-ink/50">
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-sm text-ink/50">
-                  Not redeemed yet.
-                </td>
+                <th className="px-4 py-3">Business</th>
+                <th className="px-4 py-3">Redeemed</th>
+                <th className="px-4 py-3">Previous Tier</th>
+                <th className="px-4 py-3">Granted Until</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-black/5">
+              {redemptions.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-4 py-3 text-ink">{r.business_name ?? r.business_id}</td>
+                  <td className="px-4 py-3 text-ink/70">{formatDateShort(r.redeemed_at)}</td>
+                  <td className="px-4 py-3 text-ink/70">{r.previous_plan_tier ?? "free"}</td>
+                  <td className="px-4 py-3 text-ink/70">{formatDateShort(r.granted_until)}</td>
+                </tr>
+              ))}
+              {redemptions.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-ink/50">
+                    Not redeemed yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

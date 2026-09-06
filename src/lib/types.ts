@@ -50,6 +50,14 @@ export interface ProInvite {
   code: string;
   name: string | null;
   plan_tier: "pro";
+  // Multi-Entity Self-Service V1, Stage 2B — which grant this invite
+  // produces at redemption time. "business_pro" (default) preserves the
+  // original behavior exactly (grants Pro to a chosen Business).
+  // "event_management" grants an account-level entitlement instead (see
+  // account_entitlements) and never touches any Business at all. Decided
+  // entirely by the founder at creation time; the redeeming visitor never
+  // chooses or submits this value.
+  grant_purpose: "business_pro" | "event_management";
   duration_days: number;
   max_redemptions: number | null;
   redemption_count: number;
@@ -58,6 +66,21 @@ export interface ProInvite {
   created_by_note: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Multi-Entity Self-Service V1, Stage 2B — account-level entitlement
+ * grant (see account_entitlements). "event_management" is the only
+ * entitlement_key today (V1 scope, same single-value convention as
+ * ProInvite.plan_tier) — a signed-in user with an active (non-expired)
+ * row here qualifies to create/claim/manage Events even with zero
+ * Businesses. Never confers any Business Pro feature. */
+export interface AccountEntitlement {
+  id: string;
+  user_id: string;
+  entitlement_key: "event_management";
+  source: string;
+  granted_at: string;
+  expires_at: string | null;
 }
 
 export interface ProInviteRedemption {

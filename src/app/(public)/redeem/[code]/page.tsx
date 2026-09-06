@@ -37,6 +37,16 @@ interface OwnedBusiness {
  * This lookup is display-only — the actual enforcement (active/expired/
  * limit/already-redeemed/authorized-business) happens again, atomically,
  * inside redeem_pro_invite() itself when the form is submitted.
+ *
+ * Multi-Entity Self-Service V1, Stage 2B — invite.grant_purpose (read
+ * from the same row, display-only here exactly like every other field on
+ * it) decides which UI renders below for a signed-in visitor: the
+ * original Business-selection flow for "business_pro" (byte-for-byte
+ * unchanged), or a Business-free "Event Management Access" card for
+ * "event_management" that posts straight to redeemProInvite with no
+ * business_id field at all — actions.ts itself re-derives grant_purpose
+ * server-side before deciding what to grant, so this page's own branch is
+ * a UX convenience, never the real authorization boundary.
  */
 export default async function RedeemInvitePage({
   params,
@@ -141,12 +151,19 @@ export default async function RedeemInvitePage({
     return (
       <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
         <div className="rounded-3xl border border-findmi/30 bg-findmi-50 p-6 text-center sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Complimentary FindMi Pro</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">
+            {invite.grant_purpose === "event_management" ? "Event Management Access" : "Complimentary FindMi Pro"}
+          </p>
           <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink">
-            {invite.name || "You've been invited to FindMi Pro"}
+            {invite.name ||
+              (invite.grant_purpose === "event_management"
+                ? "You've been invited to manage Events on FindMi"
+                : "You've been invited to FindMi Pro")}
           </h1>
           <p className="mt-2 text-sm text-ink/70">
-            Sign in or create a FindMi account to apply this to your business.
+            {invite.grant_purpose === "event_management"
+              ? "Sign in or create a FindMi account to claim this Organizer access."
+              : "Sign in or create a FindMi account to apply this to your business."}
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
@@ -162,6 +179,43 @@ export default async function RedeemInvitePage({
               Log In
             </Link>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Multi-Entity Self-Service V1, Stage 2B — Event Management invites need
+  // no Business at all: skip the ownedBusinesses lookup entirely and post
+  // straight to redeemProInvite with no business_id field. That action
+  // re-derives grant_purpose from the invite row itself before deciding
+  // what to grant — this branch is only the matching UI, never the
+  // authorization boundary.
+  if (invite.grant_purpose === "event_management") {
+    const redeemAction = redeemProInvite.bind(null, code);
+    return (
+      <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
+        <div className="rounded-3xl border border-findmi/30 bg-findmi-50 p-6 text-center sm:p-8">
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Event Management Access</p>
+          <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink">
+            {invite.name || "You've been invited to manage Events on FindMi"}
+          </h1>
+          <p className="mt-2 text-sm text-ink/70">
+            No Business required. This gives your account Organizer access to create, claim, and manage Events on
+            FindMi — no separate Event fee, ever.
+          </p>
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-700">
+              {error}
+            </p>
+          )}
+          <form action={redeemAction} className="mt-6">
+            <button
+              type="submit"
+              className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            >
+              Redeem Organizer Access
+            </button>
+          </form>
         </div>
       </div>
     );

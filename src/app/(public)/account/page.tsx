@@ -23,9 +23,9 @@ export const dynamic = "force-dynamic";
 export default async function AccountHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; event_management?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, event_management: eventManagementGranted } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
@@ -150,6 +150,15 @@ export default async function AccountHomePage({
 
       {error && (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      )}
+      {/* Multi-Entity Self-Service V1, Stage 2B — redeemProInvite redirects
+          straight here (no separate business-scoped success screen, since
+          no Business was ever touched) after an Event Management invite
+          redemption. */}
+      {eventManagementGranted === "1" && !error && (
+        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          Event Management access activated — you can now add an Event below.
+        </p>
       )}
 
       {/* 2. Quick Access */}
