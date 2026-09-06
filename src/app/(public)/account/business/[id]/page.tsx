@@ -1008,7 +1008,12 @@ export default async function ManageBusinessPage({
               </form>
             </div>
           ) : (
-            <UpgradeLockedTab businessId={id} tabKey="gallery" description="Show off your business with additional photos." />
+            <UpgradeLockedTab
+              businessId={id}
+              tabKey="gallery"
+              description="Show off your business with additional photos."
+              isAdminElevated={isAdminElevated}
+            />
           ))}
 
         {/* ── Products ─────────────────────────────────────────────── */}
@@ -1186,7 +1191,12 @@ export default async function ManageBusinessPage({
               </div>
             </div>
           ) : (
-            <UpgradeLockedTab businessId={id} tabKey="products" description="Show customers what you make, sell or offer." />
+            <UpgradeLockedTab
+              businessId={id}
+              tabKey="products"
+              description="Show customers what you make, sell or offer."
+              isAdminElevated={isAdminElevated}
+            />
           ))}
 
         {/* ── FindMi Here ──────────────────────────────────────────── */}
@@ -1432,7 +1442,12 @@ export default async function ManageBusinessPage({
               </form>
             </div>
           ) : (
-            <UpgradeLockedTab businessId={id} tabKey="links" description="Add your website, socials, contact info, and a live announcement." />
+            <UpgradeLockedTab
+              businessId={id}
+              tabKey="links"
+              description="Add your website, socials, contact info, and a live announcement."
+              isAdminElevated={isAdminElevated}
+            />
           ))}
 
         {/* ── Plan & Status ────────────────────────────────────────── */}
@@ -1465,36 +1480,46 @@ export default async function ManageBusinessPage({
                   Upgrade to Pro for your full business details, contact links, gallery, products, and your complete
                   upcoming schedule.
                 </p>
-                {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: an
-                    exact, owned business_id is already known here (this page
-                    already required requireBusinessMember(id) above), so this
-                    routes through the internal /upgrade/pro handoff instead of
-                    straight to the external Tally form. */}
-                <Link
-                  href={`/upgrade/pro?business=${id}`}
-                  className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                >
-                  Upgrade to Pro
-                </Link>
+                {isAdminElevated ? (
+                  // Admin Manage-As V1 — starting a Stripe checkout or
+                  // redeeming a Pro Invite is identity-sensitive/financial
+                  // (see this pass's Step 4), so it stays hidden in Admin
+                  // Mode rather than leading to a dead end.
+                  <AdminElevatedActionNotice businessId={id} />
+                ) : (
+                  <>
+                    {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: an
+                        exact, owned business_id is already known here (this page
+                        already required requireBusinessMember(id) above), so this
+                        routes through the internal /upgrade/pro handoff instead of
+                        straight to the external Tally form. */}
+                    <Link
+                      href={`/upgrade/pro?business=${id}`}
+                      className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    >
+                      Upgrade to Pro
+                    </Link>
 
-                {/* Pro Invite Sharing UX pass, made consistent across every
-                    Pro-gated Business Manager tab by the Pro Invite / Promo
-                    Code Consistency pass — same always-visible treatment as
-                    UpgradeLockedTab below (Gallery/Products/Links & Contact),
-                    same wording, no longer collapsed behind a summary toggle.
-                    Reuses the exact same goToRedeemCode -> /redeem/[code]
-                    routing/redemption flow as /join and /account (no separate
-                    redemption implementation), with this already-authorized
-                    business_id passed through as a hint so /redeem/[code]
-                    can skip straight to "Apply Pro to {business.name}"
-                    instead of showing a business selector. */}
-                <div className="mt-3">
-                  <ProInviteCodeEntry
-                    returnTo={`/account/business/${id}?tab=plan`}
-                    businessId={id}
-                    heading="Have a Pro Invite or Promo Code?"
-                  />
-                </div>
+                    {/* Pro Invite Sharing UX pass, made consistent across every
+                        Pro-gated Business Manager tab by the Pro Invite / Promo
+                        Code Consistency pass — same always-visible treatment as
+                        UpgradeLockedTab below (Gallery/Products/Links & Contact),
+                        same wording, no longer collapsed behind a summary toggle.
+                        Reuses the exact same goToRedeemCode -> /redeem/[code]
+                        routing/redemption flow as /join and /account (no separate
+                        redemption implementation), with this already-authorized
+                        business_id passed through as a hint so /redeem/[code]
+                        can skip straight to "Apply Pro to {business.name}"
+                        instead of showing a business selector. */}
+                    <div className="mt-3">
+                      <ProInviteCodeEntry
+                        returnTo={`/account/business/${id}?tab=plan`}
+                        businessId={id}
+                        heading="Have a Pro Invite or Promo Code?"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -2085,24 +2110,64 @@ export default async function ManageBusinessPage({
  * already-authorized businessId passed through as the same hint. `tabKey`
  * only affects returnTo (where a blank/no-op submission lands), never
  * which business the code applies to. */
-function UpgradeLockedTab({ businessId, tabKey, description }: { businessId: string; tabKey: string; description: string }) {
+function UpgradeLockedTab({
+  businessId,
+  tabKey,
+  description,
+  isAdminElevated,
+}: {
+  businessId: string;
+  tabKey: string;
+  description: string;
+  isAdminElevated?: boolean;
+}) {
   return (
     <div className={cardClass}>
       <p className="mt-1 text-sm text-ink/60">{description}</p>
       <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">Available with FindMi Pro</p>
+      {isAdminElevated ? (
+        // Admin Manage-As V1 — starting a Stripe checkout or redeeming a
+        // Pro Invite is identity-sensitive/financial (see Step 4 of this
+        // pass), so these CTAs stay hidden in Admin Mode rather than
+        // leading to a dead end — see AdminElevatedActionNotice below.
+        <AdminElevatedActionNotice businessId={businessId} />
+      ) : (
+        <>
+          <Link
+            href={`/upgrade/pro?business=${businessId}`}
+            className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Upgrade to Pro
+          </Link>
+          <div className="mt-3">
+            <ProInviteCodeEntry
+              returnTo={`/account/business/${businessId}?tab=${tabKey}`}
+              businessId={businessId}
+              heading="Have a Pro Invite or Promo Code?"
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Admin Manage-As V1 — the shared "this is account-specific, not
+ * entity management" notice for the handful of Business Manager CTAs
+ * that intentionally stay real-owner-only (starting a Stripe checkout,
+ * redeeming a Pro Invite — see this pass's Step 4). Shown instead of the
+ * CTA itself, never as a dead link that would bounce an admin-only
+ * session to /login. */
+function AdminElevatedActionNotice({ businessId }: { businessId: string }) {
+  return (
+    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+      <p className="text-xs font-semibold text-amber-800">Exit Admin Mode to perform this account-specific action.</p>
       <Link
-        href={`/upgrade/pro?business=${businessId}`}
-        className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        href={`/admin/businesses/${businessId}`}
+        className="mt-1.5 inline-block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
       >
-        Upgrade to Pro
+        Exit Admin Mode
       </Link>
-      <div className="mt-3">
-        <ProInviteCodeEntry
-          returnTo={`/account/business/${businessId}?tab=${tabKey}`}
-          businessId={businessId}
-          heading="Have a Pro Invite or Promo Code?"
-        />
-      </div>
     </div>
   );
 }

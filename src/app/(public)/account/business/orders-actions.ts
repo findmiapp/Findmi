@@ -2,7 +2,6 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember } from "@/lib/permissions";
 import type { FulfillmentStatus } from "@/lib/commerce/types";
@@ -28,12 +27,11 @@ function appendQuery(base: string, params: Record<string, string>): string {
 export async function updateOrderItemFulfillment(businessId: string, orderItemId: string, formData: FormData) {
   const orderId = String(formData.get("order_id") ?? "");
   const tabPath = appendQuery(`/account/business/${businessId}`, { tab: "orders", open: orderId });
-  const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(tabPath)}`);
 
+  // Admin Manage-As V1 — no premature "if (!user) redirect('/login')":
+  // requireBusinessMember() is itself the complete authorization (real
+  // member OR admin-elevated), and this action's actual write never
+  // reads the caller's own user id.
   try {
     await requireBusinessMember(businessId);
   } catch (err) {

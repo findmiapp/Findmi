@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember } from "@/lib/permissions";
+import { isAdminSession } from "@/lib/admin/auth";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 
@@ -46,7 +47,17 @@ export async function redeemProInvite(code: string, formData: FormData) {
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(redirectPath)}`);
+  if (!user) {
+    // Admin Manage-As V1 — redemption is tied to a real redeeming user's
+    // identity (p_user_id below), genuinely identity-sensitive, so it
+    // deliberately stays real-user-only (see this pass's own Step 4 rule)
+    // rather than being admin-elevated. A bare admin-only session gets a
+    // clear explanation instead of a confusing bounce to /login.
+    if (await isAdminSession()) {
+      redirect(errorRedirectUrl(redirectPath, "Exit Admin Mode to redeem a Pro invite."));
+    }
+    redirect(`/login?next=${encodeURIComponent(redirectPath)}`);
+  }
 
   const businessId = str(formData, "business_id");
   if (!businessId) redirect(errorRedirectUrl(redirectPath, "Choose a business to apply this invite to."));

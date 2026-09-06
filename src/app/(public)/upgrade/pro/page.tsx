@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
+import { isAdminSession } from "@/lib/admin/auth";
 import { isBusinessPro } from "@/lib/entitlements";
 import { startBusinessProCheckout } from "@/app/(public)/account/business/actions";
 
@@ -70,7 +71,18 @@ export default async function UpgradeToProPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(`/upgrade/pro?business=${businessId}`)}`);
+  if (!user) {
+    // Admin Manage-As V1 — this page starts a real Stripe payment session,
+    // identity-sensitive/financial (see this pass's own Step 4 rule), so it
+    // deliberately stays real-user-only. The Business Manager UI already
+    // hides its own "Upgrade to Pro" CTA in Admin Mode; this is only a
+    // defense-in-depth backstop against direct navigation, giving a clear
+    // explanation instead of a confusing bounce to /login.
+    if (await isAdminSession()) {
+      redirect(errorRedirectUrl(`/account/business/${businessId}`, "Exit Admin Mode to start a Pro checkout for this business."));
+    }
+    redirect(`/login?next=${encodeURIComponent(`/upgrade/pro?business=${businessId}`)}`);
+  }
 
   // Real, session-scoped authorization — never trusts the business
   // identity from the URL/client beyond the id itself. Same

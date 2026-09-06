@@ -185,12 +185,12 @@ const LINKS_COLUMNS = [
 export async function updateBusinessProfile(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}?tab=profile`;
 
-  const sessionSupabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await sessionSupabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(redirectPath)}`);
-
+  // Admin Manage-As V1 — no premature "if (!user) redirect('/login')" here:
+  // requireBusinessMember() below is itself the real, complete
+  // authorization (real member OR admin-elevated), so gating on a personal
+  // Supabase session first would only ever block a valid admin-only
+  // session from ever reaching it. Nothing else in this action reads the
+  // caller's own user id, so there's nothing lost by not fetching it.
   try {
     await requireBusinessMember(businessId);
   } catch (err) {
@@ -375,12 +375,9 @@ export async function updateBusinessGallery(businessId: string, formData: FormDa
  * extra read for it. Message generalized from its old FindMi-Here-
  * specific wording since it's shared across features now. */
 async function requireProBusinessMember(businessId: string, redirectPath: string) {
-  const sessionSupabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await sessionSupabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(redirectPath)}`);
-
+  // Admin Manage-As V1 — same reasoning as updateBusinessProfile above: no
+  // premature personal-session check ahead of requireBusinessMember(),
+  // which already covers real member OR admin-elevated on its own.
   try {
     await requireBusinessMember(businessId);
   } catch (err) {
@@ -420,12 +417,7 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
  * pass's spec names (addAppearanceFromEvent, addManualAppearance,
  * updateOwnerAppearance, removeOwnerAppearance) now call this one. */
 async function requireAuthorizedBusinessMember(businessId: string, redirectPath: string) {
-  const sessionSupabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await sessionSupabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(redirectPath)}`);
-
+  // Admin Manage-As V1 — same reasoning as requireProBusinessMember above.
   try {
     await requireBusinessMember(businessId);
   } catch (err) {
@@ -1140,11 +1132,23 @@ export async function createMemberBusiness(formData: FormData) {
 export async function startBusinessProCheckout(businessId: string) {
   const upgradePath = `/upgrade/pro?business=${businessId}`;
 
+  let membership;
   try {
-    await requireBusinessMember(businessId);
+    membership = await requireBusinessMember(businessId);
   } catch (err) {
     const message = err instanceof Error ? err.message : "You don't have access to this business.";
     redirect(errorRedirectUrl("/account", message));
+  }
+  // Admin Manage-As V1 — starting a real Stripe payment session is
+  // identity-sensitive/financial, not entity management (see this pass's
+  // own Step 4 rule); it deliberately stays real-member-only even though
+  // requireBusinessMember() above would otherwise allow an admin-elevated
+  // session through. The Business Manager UI itself hides this CTA in
+  // Admin Mode (see UpgradeLockedTab / the Plan & Status tab), so a real
+  // owner never sees this message — it's only a defense-in-depth backstop
+  // against a direct/crafted submit.
+  if (membership.viaAdmin) {
+    redirect(errorRedirectUrl(upgradePath, "Exit Admin Mode to start a Pro checkout for this business."));
   }
 
   const admin = getAdminSupabase();
