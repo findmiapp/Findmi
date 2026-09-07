@@ -25,7 +25,7 @@ export default async function SignupPage({
   return (
     <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Get started</p>
-      <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Create your FindMi account</h1>
+      <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Create your Findmi account</h1>
       <p className="mt-2 text-sm text-ink/60">
         Save your favorite finds, follow businesses, and keep track of what you discover.
       </p>

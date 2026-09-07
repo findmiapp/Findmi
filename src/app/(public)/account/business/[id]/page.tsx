@@ -106,7 +106,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "profile", label: "Profile" },
   { key: "gallery", label: "Gallery" },
   { key: "products", label: "Products" },
-  { key: "findmi-here", label: "FindMi Here" },
+  { key: "findmi-here", label: "Findmi Here" },
   { key: "links", label: "Links & Contact" },
   { key: "plan", label: "Plan & Status" },
   { key: "market", label: "Market" },
@@ -749,7 +749,7 @@ export default async function ManageBusinessPage({
             {proPayment === "success" &&
               (pro ? (
                 <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-                  Payment received — FindMi Pro is active. Full Pro tools are unlocked below.
+                  Payment received — Findmi Pro is active. Full Pro tools are unlocked below.
                 </p>
               ) : (
                 <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
@@ -767,7 +767,7 @@ export default async function ManageBusinessPage({
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-sm font-bold text-amber-800">Pending Review</p>
                 <p className="mt-1 text-sm text-amber-900/80">
-                  Your business is saved and you can continue building your profile. It will appear in FindMi
+                  Your business is saved and you can continue building your profile. It will appear in Findmi
                   discovery after review.
                 </p>
                 {/* Onboarding UX Polish pass — explicit action into the
@@ -1100,18 +1100,18 @@ export default async function ManageBusinessPage({
 
                       {p.moderationStatus === "pending_review" && (
                         <p className="mt-2 text-xs text-ink/50">
-                          This product will appear publicly after FindMi approves it.
+                          This product will appear publicly after Findmi approves it.
                         </p>
                       )}
                       {p.hasPendingChanges && (
                         <p className="mt-2 text-xs text-ink/50">
-                          Your submitted changes are waiting on FindMi&rsquo;s approval — the version above stays
+                          Your submitted changes are waiting on Findmi&rsquo;s approval — the version above stays
                           publicly visible until then.
                         </p>
                       )}
                       {p.moderationStatus === "rejected" && (
                         <p className="mt-2 text-xs text-ink/50">
-                          FindMi didn&rsquo;t approve this product. Edit and resubmit it for another review.
+                          Findmi didn&rsquo;t approve this product. Edit and resubmit it for another review.
                         </p>
                       )}
 
@@ -1132,10 +1132,10 @@ export default async function ManageBusinessPage({
                             <p className="text-xs font-semibold text-ink">Where This Product Appears</p>
                             <p className="mt-1 text-xs text-ink/60">
                               {p.marketplaceStatus === "catalog_only" &&
-                                "Catalog Only — shown on your FindMi business profile and storefront only."}
-                              {p.marketplaceStatus === "submitted" && "Marketplace Review Pending — awaiting FindMi's decision."}
+                                "Catalog Only — shown on your Findmi business profile and storefront only."}
+                              {p.marketplaceStatus === "submitted" && "Marketplace Review Pending — awaiting Findmi's decision."}
                               {p.marketplaceStatus === "approved" &&
-                                "Marketplace Approved — may also appear across FindMi Marketplace and discovery."}
+                                "Marketplace Approved — may also appear across Findmi Marketplace and discovery."}
                               {p.marketplaceStatus === "rejected" &&
                                 "Marketplace Not Approved — still shown on your business profile and storefront."}
                               {p.marketplaceStatus === "paused" &&
@@ -1164,7 +1164,7 @@ export default async function ManageBusinessPage({
                             )}
                             {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
                               <p className="mt-1 text-xs text-ink/40">
-                                Marketplace placement is managed by FindMi and can&rsquo;t be changed here.
+                                Marketplace placement is managed by Findmi and can&rsquo;t be changed here.
                               </p>
                             )}
                           </div>
@@ -1221,7 +1221,7 @@ export default async function ManageBusinessPage({
         {/* ── FindMi Here ──────────────────────────────────────────── */}
         {activeTab === "findmi-here" && (
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">FindMi Here</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Here</p>
             <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
 
             {appearances.length > 0 ? (
@@ -1266,7 +1266,7 @@ export default async function ManageBusinessPage({
                           <div className="flex flex-wrap items-center gap-1.5">
                             <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
                             <span className="shrink-0 rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
-                              {a.event_id ? "FindMi Event" : "Added by you"}
+                              {a.event_id ? "Findmi Event" : "Added by you"}
                             </span>
                           </div>
                           <p className="mt-0.5 text-xs text-ink/60">
@@ -1313,7 +1313,7 @@ export default async function ManageBusinessPage({
               <p className="text-sm font-medium text-ink">Add Where You&rsquo;ll Be</p>
 
               <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Find your event on FindMi
+                Find your event on Findmi
               </p>
               {requestOptions.length > 0 ? (
                 <form action={addFromEvent} className="mt-2 flex flex-wrap items-center gap-2">
@@ -1335,7 +1335,7 @@ export default async function ManageBusinessPage({
                   </button>
                 </form>
               ) : (
-                <p className="mt-2 text-sm text-ink/50">No upcoming FindMi events available right now.</p>
+                <p className="mt-2 text-sm text-ink/50">No upcoming Findmi events available right now.</p>
               )}
 
               <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
@@ -1488,12 +1488,12 @@ export default async function ManageBusinessPage({
 
             {pro ? (
               <p className="mt-3 text-sm text-ink/60">
-                FindMi Pro is active — your full business profile, gallery, products, and complete upcoming schedule
+                Findmi Pro is active — your full business profile, gallery, products, and complete upcoming schedule
                 are all unlocked.
               </p>
             ) : (
               <div className="mt-3 rounded-2xl border border-findmi/20 bg-findmi-50 p-4 sm:p-5">
-                <p className="text-sm font-bold text-ink">Unlock your full FindMi presence</p>
+                <p className="text-sm font-bold text-ink">Unlock your full Findmi presence</p>
                 {/* Final Conversion Consistency pass — "appearances" removed:
                     Free can already add/manage appearances (Passes 1-2), so
                     naming it here as a Pro upgrade reason was stale. Replaced
@@ -1577,7 +1577,7 @@ export default async function ManageBusinessPage({
                     Pending review — {pendingMarketRequest.requestedText}
                   </p>
                   <p className="mt-2 text-xs text-ink/45">
-                    FindMi is reviewing your requested Market. Your business is live in the meantime, but won&rsquo;t
+                    Findmi is reviewing your requested Market. Your business is live in the meantime, but won&rsquo;t
                     appear in general Market-based discovery until this is approved.
                   </p>
                 </>
@@ -1585,10 +1585,10 @@ export default async function ManageBusinessPage({
                 <>
                   <p className="mt-1.5 text-sm font-semibold text-ink/60">Not assigned yet</p>
                   <p className="mt-2 text-xs text-ink/45">
-                    Your FindMi Market determines where your business receives general discovery. Where you&rsquo;ll be
+                    Your Findmi Market determines where your business receives general discovery. Where you&rsquo;ll be
                     — events and pop-ups — can still happen anywhere.
                   </p>
-                  <p className="mt-2 text-xs text-ink/40">Contact FindMi to update this.</p>
+                  <p className="mt-2 text-xs text-ink/40">Contact Findmi to update this.</p>
                 </>
               )}
             </div>
@@ -1633,7 +1633,7 @@ export default async function ManageBusinessPage({
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Followers</p>
             <p className="mt-2 font-display text-3xl font-bold tracking-tight text-ink">{followerSummary.totalCount}</p>
             <p className="mt-1 text-sm text-ink/50">
-              {followerSummary.accountCount} with a FindMi account
+              {followerSummary.accountCount} with a Findmi account
               {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount} email-only (legacy)`}
             </p>
 
@@ -1660,7 +1660,7 @@ export default async function ManageBusinessPage({
             ) : (
               followerSummary.accountCount > 0 && (
                 <p className="mt-4 text-xs text-ink/40">
-                  None of your account followers have a public FindMi profile yet.
+                  None of your account followers have a public Findmi profile yet.
                 </p>
               )
             )}
@@ -1685,9 +1685,9 @@ export default async function ManageBusinessPage({
                   className="mt-0.5 h-5 w-5 shrink-0 accent-findmi"
                 />
                 <span>
-                  <span className="block text-sm font-medium text-ink">Accept native FindMi inquiries</span>
+                  <span className="block text-sm font-medium text-ink">Accept native Findmi inquiries</span>
                   <span className="block text-xs text-ink/45">
-                    Lets signed-in customers message you directly on FindMi from your Business/Product pages —
+                    Lets signed-in customers message you directly on Findmi from your Business/Product pages —
                     separate from, and in addition to, your existing Inquire button.
                   </span>
                 </span>
@@ -1702,8 +1702,8 @@ export default async function ManageBusinessPage({
 
             {!business.native_inquiries_enabled && (
               <p className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">
-                Native FindMi inquiries aren&rsquo;t enabled for this business yet — turn them on above to let
-                signed-in customers message you directly on FindMi.
+                Native Findmi inquiries aren&rsquo;t enabled for this business yet — turn them on above to let
+                signed-in customers message you directly on Findmi.
               </p>
             )}
 
@@ -1729,7 +1729,7 @@ export default async function ManageBusinessPage({
                     <p className="truncate text-sm font-semibold text-ink">
                       {openInquiry.customerProfile
                         ? openInquiry.customerProfile.display_name || `@${openInquiry.customerProfile.username}`
-                        : "FindMi customer"}
+                        : "Findmi customer"}
                     </p>
                     {openInquiry.inquiry.product_id && <p className="text-xs text-ink/45">Product inquiry</p>}
                   </div>
@@ -1821,7 +1821,7 @@ export default async function ManageBusinessPage({
                         <p className="truncate text-sm font-semibold text-ink">
                           {inq.customerProfile
                             ? inq.customerProfile.display_name || `@${inq.customerProfile.username}`
-                            : "FindMi customer"}
+                            : "Findmi customer"}
                         </p>
                         {inq.unread && <span className="h-2 w-2 shrink-0 rounded-full bg-findmi" aria-label="Unread" />}
                       </div>
@@ -2019,7 +2019,7 @@ export default async function ManageBusinessPage({
                           Save
                         </button>
                       </form>
-                      <p className="mt-1.5 text-[11px] text-ink/35">Only visible to you and FindMi admin — never shown to the customer.</p>
+                      <p className="mt-1.5 text-[11px] text-ink/35">Only visible to you and Findmi admin — never shown to the customer.</p>
                     </div>
                   ))}
                 </div>
@@ -2035,7 +2035,7 @@ export default async function ManageBusinessPage({
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Referral Program</p>
             <p className="mt-1 text-sm text-ink/60">
-              Share your code — you&rsquo;ll earn a commission when a business you refer upgrades to paid FindMi
+              Share your code — you&rsquo;ll earn a commission when a business you refer upgrades to paid Findmi
               Pro.
             </p>
 
@@ -2110,7 +2110,7 @@ export default async function ManageBusinessPage({
               </form>
             )}
             <p className="mt-2 text-xs text-ink/40">
-              Payouts are reviewed and paid out manually by FindMi — no automatic transfers.
+              Payouts are reviewed and paid out manually by Findmi — no automatic transfers.
             </p>
           </div>
         )}
@@ -2148,7 +2148,7 @@ function UpgradeLockedTab({
   return (
     <div className={cardClass}>
       <p className="mt-1 text-sm text-ink/60">{description}</p>
-      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">Available with FindMi Pro</p>
+      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">Available with Findmi Pro</p>
       {isAdminElevated ? (
         // Admin Manage-As V1 — starting a Stripe checkout or redeeming a
         // Pro Invite is identity-sensitive/financial (see Step 4 of this

@@ -23,7 +23,7 @@ export default function AddParticipantSearch({ eventId, excludeIds }: { eventId:
     <div>
       <AccountEntitySearchAdd
         entity="businesses"
-        placeholder="Search FindMi businesses to invite…"
+        placeholder="Search Findmi businesses to invite…"
         excludeIds={new Set(excludeIds)}
         onAdd={handleAdd}
       />

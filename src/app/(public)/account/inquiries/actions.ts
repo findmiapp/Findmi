@@ -40,7 +40,7 @@ export async function createNativeInquiry(formData: FormData) {
     .eq("id", businessId)
     .maybeSingle();
   if (!business || !(business as { native_inquiries_enabled: boolean }).native_inquiries_enabled) {
-    redirect(appendQuery("/account/inquiries", { error: "This business isn't accepting FindMi inquiries." }));
+    redirect(appendQuery("/account/inquiries", { error: "This business isn't accepting Findmi inquiries." }));
   }
 
   if (productId) {

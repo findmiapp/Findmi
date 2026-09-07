@@ -126,8 +126,8 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // fixed copy in BusinessShowcaseCarousel.tsx, not a new per-slide CMS.
     label: "Business Showcase",
     heading: "Have a business or brand?",
-    body: "Get discovered on FindMi.",
-    ctaLabel: "Join FindMi →",
+    body: "Get discovered on Findmi.",
+    ctaLabel: "Join Findmi →",
     ctaUrl: "/join",
     order: 45,
     fields: ["heading", "body", "cta"],
@@ -162,9 +162,9 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   // page.tsx/the admin editor) rather than deleted, since deleting a
   // registry key isn't a data operation this pass needs to make.
   shop_findmi: {
-    label: "Shop FindMi",
+    label: "Shop Findmi",
     heading: "Shop Local",
-    body: "Real products from FindMi businesses",
+    body: "Real products from Findmi businesses",
     ctaLabel: "View all",
     ctaUrl: "/marketplace",
     order: 30,
@@ -174,7 +174,7 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // Repurposed as "Around You Right Now", the homepage's second live
     // feed — same underlying appearances/FindMi Here concept, new
     // copy/position (was previously further down the page).
-    label: "FindMi Here",
+    label: "Findmi Here",
     heading: "Around You Right Now",
     body: "Vendors, pop-ups, and businesses showing up nearby",
     ctaLabel: "View all",
@@ -189,7 +189,7 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   featured_brands: {
     label: "Featured Brands",
     heading: "Featured Brands",
-    body: "Discover businesses on FindMi",
+    body: "Discover businesses on Findmi",
     ctaLabel: "View all",
     ctaUrl: "/businesses",
     order: 50,
@@ -214,11 +214,11 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     fields: ["heading", "body"],
   },
   findmi_for_business: {
-    label: "FindMi For Business",
-    eyebrow: "FindMi For Business",
+    label: "Findmi For Business",
+    eyebrow: "Findmi For Business",
     heading: "Ready to be found?",
-    body: "FindMi gives your business one presence for discovery, products, appearances, events, and staying connected with customers who follow you. We help with setup, so joining doesn't feel like another platform you have to build and maintain from scratch.",
-    ctaLabel: "Join FindMi",
+    body: "Findmi gives your business one presence for discovery, products, appearances, events, and staying connected with customers who follow you. We help with setup, so joining doesn't feel like another platform you have to build and maintain from scratch.",
+    ctaLabel: "Join Findmi",
     ctaUrl: "/join",
     order: 80,
     fields: ["eyebrow", "heading", "body", "cta"],
@@ -244,7 +244,7 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     eyebrow: "Founding 500 · $99/year",
     heading: "More visibility.\nMore customers.\nMore growth.",
     body: "List your business, promote events, sell products, and connect with your community.",
-    ctaLabel: "Join FindMi →",
+    ctaLabel: "Join Findmi →",
     ctaUrl: "/join",
     order: 110,
     fields: ["eyebrow", "heading", "body", "cta"],

@@ -57,7 +57,7 @@ export default function EventDateFieldsForm({
         name="location_id"
         entity="locations"
         initial={defaultValues.location}
-        placeholder="Search FindMi Locations…"
+        placeholder="Search Findmi Locations…"
         clearLabel="No specific Location"
       />
       <button

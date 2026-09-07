@@ -22,7 +22,7 @@ export async function generateMetadata({
   if (!profile) return { title: "Profile not found" };
   return {
     title: profile.display_name ? `${profile.display_name} (@${profile.username})` : `@${profile.username}`,
-    description: profile.bio ?? `@${profile.username} on FindMi.`,
+    description: profile.bio ?? `@${profile.username} on Findmi.`,
   };
 }
 

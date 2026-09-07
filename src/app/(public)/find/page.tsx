@@ -9,7 +9,7 @@ import LiveDot from "@/components/LiveDot";
 
 export const metadata: Metadata = {
   title: "Find",
-  description: "Help me find something specific — search FindMi by what, where, and when.",
+  description: "Help me find something specific — search Findmi by what, where, and when.",
 };
 
 const TABS: { value: FindWindow; label: string }[] = [
@@ -50,7 +50,7 @@ export default async function FindPage({
   return (
     <div className="min-h-screen bg-ink pb-14">
       <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi">FindMi Here</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi">Findmi Here</p>
         <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
           Help me find something specific
         </h1>

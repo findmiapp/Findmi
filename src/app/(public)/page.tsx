@@ -322,7 +322,7 @@ async function HomepageRowSection({
               href="/join"
               className="inline-flex items-center justify-center rounded-full bg-findmi px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-findmi-600"
             >
-              Join FindMi →
+              Join Findmi →
             </Link>
           </div>
         </div>

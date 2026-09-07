@@ -38,8 +38,8 @@ import {
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Join FindMi",
-  description: "Get discovered on FindMi — tell us about your business or event and we'll be in touch.",
+  title: "Join Findmi",
+  description: "Get discovered on Findmi — tell us about your business or event and we'll be in touch.",
 };
 
 // Join + Add Business Plan UX Alignment pass — the fields PlanCard

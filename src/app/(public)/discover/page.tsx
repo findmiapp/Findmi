@@ -17,7 +17,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Discover",
-  description: "Inspire me — mixed discovery across FindMi businesses, events, and products.",
+  description: "Inspire me — mixed discovery across Findmi businesses, events, and products.",
 };
 export const revalidate = 60;
 
@@ -51,7 +51,7 @@ export default async function DiscoverPage() {
     <div className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Discover</h1>
       <p className="mt-2 text-ink/60">
-        Inspire me — a mix of what&rsquo;s happening, what&rsquo;s new, and who to know on FindMi. Looking
+        Inspire me — a mix of what&rsquo;s happening, what&rsquo;s new, and who to know on Findmi. Looking
         for something specific? Try{" "}
         <Link href="/find" className="font-medium text-ink underline underline-offset-2">
           Find

@@ -322,7 +322,7 @@ export async function POST(request: NextRequest) {
   const existingBusinessIdField = findValue(byLabel, ["existing_business_id"]);
 
   if (!membershipId) {
-    return NextResponse.json({ error: "Missing membership_id — this form must be opened via a FindMi invite/checkout link." }, { status: 400 });
+    return NextResponse.json({ error: "Missing membership_id — this form must be opened via a Findmi invite/checkout link." }, { status: 400 });
   }
 
   const supabase = getAdminSupabase();
@@ -364,7 +364,7 @@ export async function POST(request: NextRequest) {
   // build out via the full admin CRUD after approval, per Part 7's "not
   // 80 required fields" guidance rather than parsing into child records.
   const notesParts = [
-    ["Primary FindMi market", findValue(byLabel, ["primary findmi market", "primary market"])],
+    ["Primary Findmi market", findValue(byLabel, ["primary findmi market", "primary market"])],
     ["Service area", findValue(byLabel, ["service area"])],
     ["Products / services", findValue(byLabel, ["products services", "products and services"])],
     ["Accepts bookings/inquiries?", findValue(byLabel, ["do you accept bookings inquiries", "accepts bookings inquiries", "accepts bookings"])],

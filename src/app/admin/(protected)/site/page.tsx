@@ -16,7 +16,7 @@ export default function SiteEditorPage() {
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Site Editor</h1>
       <p className="mt-1 text-sm text-ink/50">
-        Edit headlines, descriptions, CTAs, section visibility, and section order on FindMi&rsquo;s
+        Edit headlines, descriptions, CTAs, section visibility, and section order on Findmi&rsquo;s
         public pages — without a code change.
       </p>
 

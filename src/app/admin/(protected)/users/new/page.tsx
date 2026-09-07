@@ -21,7 +21,7 @@ export default async function NewAdminUserPage({
         </Link>
       </div>
       <p className="mt-1 text-sm text-ink/50">
-        Creates a real FindMi account (Supabase Auth) for a consumer or vendor — not a founder admin login.
+        Creates a real Findmi account (Supabase Auth) for a consumer or vendor — not a founder admin login.
       </p>
 
       {error && (

@@ -30,7 +30,7 @@ export default async function AdminInquiriesPage() {
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Inquiries</h1>
       <p className="mt-1 text-sm text-ink/50">
-        Every native FindMi inquiry across all businesses — read-only. Replies happen in the business&rsquo;s own
+        Every native Findmi inquiry across all businesses — read-only. Replies happen in the business&rsquo;s own
         Business Manager.
       </p>
 
@@ -56,7 +56,7 @@ export default async function AdminInquiriesPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-ink/70">
-                    {profile ? `${profile.display_name || `@${profile.username}`}` : r.user_id ? "FindMi account" : "Anonymous"}
+                    {profile ? `${profile.display_name || `@${profile.username}`}` : r.user_id ? "Findmi account" : "Anonymous"}
                   </td>
                   <td className="px-4 py-3 text-ink/50">{r.product?.name ?? "General"}</td>
                   <td className="px-4 py-3 text-ink/70">{r.status}</td>

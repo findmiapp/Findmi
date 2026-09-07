@@ -18,7 +18,7 @@ export default async function AdminUsersPage({
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Users</h1>
           <p className="mt-1 text-sm text-ink/50">
-            Consumer &amp; vendor FindMi accounts. Founder admin sign-in is separate and isn&rsquo;t managed here.
+            Consumer &amp; vendor Findmi accounts. Founder admin sign-in is separate and isn&rsquo;t managed here.
           </p>
         </div>
         <Link

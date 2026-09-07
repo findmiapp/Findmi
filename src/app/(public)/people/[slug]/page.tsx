@@ -18,7 +18,7 @@ export async function generateMetadata({
   if (!person) return { title: "Person not found" };
   return {
     title: person.name,
-    description: person.short_bio ?? `Meet ${person.name} on FindMi.`,
+    description: person.short_bio ?? `Meet ${person.name} on Findmi.`,
     openGraph: {
       title: person.name,
       description: person.short_bio ?? undefined,
@@ -84,7 +84,7 @@ export default async function PersonPage({
       <section className="mt-10">
         <h2 className="font-display text-lg font-semibold tracking-tight text-ink">Brands</h2>
         {businesses.length === 0 ? (
-          <p className="mt-3 text-sm text-ink/50">No public FindMi brands linked yet.</p>
+          <p className="mt-3 text-sm text-ink/50">No public Findmi brands linked yet.</p>
         ) : (
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {businesses.map((b) => (

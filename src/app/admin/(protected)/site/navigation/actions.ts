@@ -31,7 +31,7 @@ function readAndValidate(formData: FormData): { fields: Record<string, unknown> 
   if (destination_type === "route") {
     const key = str(formData, "route_key");
     if (key) {
-      if (!findPublicRoute(key)) return { error: "Choose an existing FindMi page." };
+      if (!findPublicRoute(key)) return { error: "Choose an existing Findmi page." };
       route_key = key;
     }
   } else {

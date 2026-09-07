@@ -17,7 +17,7 @@ import { WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Events",
-  description: "Browse upcoming markets, pop-ups, and events on FindMi.",
+  description: "Browse upcoming markets, pop-ups, and events on Findmi.",
 };
 export const revalidate = 60;
 

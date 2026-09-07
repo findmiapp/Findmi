@@ -133,13 +133,13 @@ export async function generateMetadata({
     ? business.description?.trim().slice(0, 160) ||
       business.short_description?.trim().slice(0, 160) ||
       [business.categories[0]?.name, location].filter(Boolean).join(" · ") ||
-      `Discover ${business.name} on FindMi.`
-    : business.categories[0]?.name || `Discover ${business.name} on FindMi.`;
+      `Discover ${business.name} on Findmi.`
+    : business.categories[0]?.name || `Discover ${business.name} on Findmi.`;
   const ogImage = business.cover_image_url ?? business.logo_url ?? undefined;
   const url = `${getPublicOrigin()}/business/${business.slug}`;
 
   return {
-    title: `${business.name} | FindMi`,
+    title: `${business.name} | Findmi`,
     description,
     alternates: { canonical: url },
     // Owner-preview pages (not yet approved — see resolveOwnerPreviewBusiness)
@@ -148,7 +148,7 @@ export async function generateMetadata({
     // page is unaffected and stays indexable exactly as before.
     ...(ownerPreview ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
-      title: `${business.name} | FindMi`,
+      title: `${business.name} | Findmi`,
       description,
       images: ogImage ? [ogImage] : undefined,
       url,
@@ -226,7 +226,7 @@ export default async function BusinessPage({
   // defaulting to "Inquire" exactly as before when unset.
   const mailtoFallback = business.email
     ? {
-        url: `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via FindMi — ${business.name}`)}`,
+        url: `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via Findmi — ${business.name}`)}`,
         displayMode: "external" as const,
       }
     : null;
@@ -314,7 +314,7 @@ export default async function BusinessPage({
           <div className="flex flex-col gap-2 rounded-2xl border border-findmi/20 bg-findmi-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Preview Mode — Pending Review</p>
-              <p className="mt-0.5 text-sm text-ink/70">This page is only visible to you until FindMi approves it.</p>
+              <p className="mt-0.5 text-sm text-ink/70">This page is only visible to you until Findmi approves it.</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Link
@@ -489,7 +489,7 @@ export default async function BusinessPage({
               href={`/account/inquiries/new?business=${business.id}`}
               className="mt-2 flex h-11 w-full items-center justify-center rounded-full border border-black/10 text-sm font-semibold text-ink transition hover:border-black/20"
             >
-              Message on FindMi
+              Message on Findmi
             </Link>
           )}
 
@@ -534,7 +534,7 @@ export default async function BusinessPage({
             // mobile); desktop is unaffected (lg:mt-0, separated by the
             // column layout instead).
             <section className="mt-6 lg:mt-0">
-              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Here</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Here</p>
               <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Find {business.name} Here</h2>
               <div className="mt-3 flex flex-col gap-2">
                 {appearances.slice(0, 3).map((a) => (

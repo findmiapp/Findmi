@@ -274,7 +274,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
   // be silently defaulted or guessed here; it has to block the save with
   // a clear message instead.
   if (!endLocal) {
-    redirect(errorRedirectUrl(editPath, "End date/time is required — FindMi uses it to know when the event is over."));
+    redirect(errorRedirectUrl(editPath, "End date/time is required — Findmi uses it to know when the event is over."));
   }
   const startIso = localDateTimeToIso(startLocal);
   const endIso = localDateTimeToIso(endLocal);

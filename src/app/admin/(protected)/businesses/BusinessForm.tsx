@@ -94,7 +94,7 @@ export default function BusinessForm({
         name="publication_status"
         defaultValue={business?.publication_status ?? "live"}
         options={LISTING_STATUS_OPTIONS}
-        hint="Pending Review businesses are excluded from FindMi discovery until you set this to Published / Live. This is what approves the listing — the Real Business toggle below does not."
+        hint="Pending Review businesses are excluded from Findmi discovery until you set this to Published / Live. This is what approves the listing — the Real Business toggle below does not."
       />
       <CheckboxField
         label="Real Business (Not Demo/Test)"
@@ -373,7 +373,7 @@ export default function BusinessForm({
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <NumberField
-              label="FindMi Fee %"
+              label="Findmi Fee %"
               name="marketplace_fee_percent"
               defaultValue={business?.marketplace_fee_percent ?? 5}
               step="0.01"

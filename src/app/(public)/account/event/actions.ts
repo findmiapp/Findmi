@@ -167,7 +167,7 @@ export async function createMemberEvent(formData: FormData) {
   const entitled = await canCurrentUserManageEvents(admin, user.id);
   if (!entitled) {
     fail(
-      "Event management is included with qualifying FindMi membership — get FindMi Pro (or redeem a Pro Invite) on a business you manage first."
+      "Event management is included with qualifying Findmi membership — get Findmi Pro (or redeem a Pro Invite) on a business you manage first."
     );
   }
 

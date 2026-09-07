@@ -52,7 +52,7 @@ export default function FormDefinitionForm({
           defaultValue={form?.display_mode ?? "external"}
           options={[
             { value: "external", label: "External — opens in a new tab" },
-            { value: "embed", label: "Embed — opens inside FindMi" },
+            { value: "embed", label: "Embed — opens inside Findmi" },
           ]}
         />
       </div>

@@ -50,7 +50,7 @@ export default async function AdminMarketRequestsPage({
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Market Requests</h1>
       <p className="mt-1 text-sm text-ink/60">
-        Geography consumers, businesses, or events have asked for that isn&rsquo;t a FindMi Market or Area yet. Map
+        Geography consumers, businesses, or events have asked for that isn&rsquo;t a Findmi Market or Area yet. Map
         each to an existing Market or Area, create a new Area under an existing Market, approve a genuinely new
         Market, or reject it — nothing here grants discovery until you do.
       </p>

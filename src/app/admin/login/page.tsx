@@ -25,7 +25,7 @@ export default async function AdminLoginPage({
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-6">
       <div className="w-full max-w-sm">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi</p>
         <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">
           Admin
         </h1>

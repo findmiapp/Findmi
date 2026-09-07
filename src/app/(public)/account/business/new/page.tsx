@@ -109,10 +109,10 @@ export default async function AddBusinessPage({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">My FindMi</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">My Findmi</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add a Business</h1>
       <p className="mt-2 text-sm text-ink/60">
-        You&rsquo;ll own and manage it right away, and FindMi will review it before it appears in discovery. Choose
+        You&rsquo;ll own and manage it right away, and Findmi will review it before it appears in discovery. Choose
         Free or Pro below — Free never requires payment.
       </p>
 
@@ -122,7 +122,7 @@ export default async function AddBusinessPage({
             {error ?? "We found a business that looks like a match."}
           </p>
           <p className="mt-1.5 text-sm text-ink/70">
-            {duplicateName ?? "An existing business"} may already be on FindMi. If this is your business, claim it
+            {duplicateName ?? "An existing business"} may already be on Findmi. If this is your business, claim it
             instead of creating a duplicate listing.
           </p>
           <Link
@@ -211,7 +211,7 @@ export default async function AddBusinessPage({
                 </option>
               ))}
             </select>
-            <p className="mt-1.5 text-xs text-ink/45">Where should people generally discover this business on FindMi?</p>
+            <p className="mt-1.5 text-xs text-ink/45">Where should people generally discover this business on Findmi?</p>
             <p className="mt-0.5 text-xs text-ink/40">
               This is separate from where you appear at events — you can still add appearances outside your Primary
               Market.
@@ -234,7 +234,7 @@ export default async function AddBusinessPage({
                 />
               </label>
               <p className="mt-1.5 text-xs text-ink/45">
-                Your business will still be created — FindMi will review your request and follow up once your Market
+                Your business will still be created — Findmi will review your request and follow up once your Market
                 is available. You won&rsquo;t show up in general discovery until then.
               </p>
               <p className="mt-1 text-xs text-ink/40">
@@ -294,7 +294,7 @@ export default async function AddBusinessPage({
             <>
               <input type="hidden" name="invite" value={invite} />
               <div className="rounded-2xl border border-findmi/30 bg-findmi-50 p-4 text-sm text-findmi-700">
-                You have a complimentary FindMi Pro invite — you&rsquo;ll apply it to this business right after it&rsquo;s
+                You have a complimentary Findmi Pro invite — you&rsquo;ll apply it to this business right after it&rsquo;s
                 created. No payment required.
               </div>
             </>
@@ -306,7 +306,7 @@ export default async function AddBusinessPage({
                     /join's ProCard, FindMi Here spotlighted inside it. */}
                 <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Pro</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
                     <input type="radio" name="plan_choice" value="pro" defaultChecked={wantsPro} className="h-4 w-4 accent-findmi" />
                   </div>
                   <p className="flex items-baseline gap-1">
@@ -323,7 +323,7 @@ export default async function AddBusinessPage({
                       Pro" eyebrow (implied FindMi itself features the
                       business), matching join/page.tsx's ProCard. */}
                   <div className="rounded-2xl bg-findmi-50 p-3">
-                    <p className="text-sm font-bold text-ink">FindMi Here</p>
+                    <p className="text-sm font-bold text-ink">Findmi Here</p>
                     <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers where to find you next.</p>
                     <p className="mt-1 text-xs text-ink/60">
                       Your full upcoming schedule shows on your public profile — not just your next appearance.
@@ -350,13 +350,13 @@ export default async function AddBusinessPage({
                     <span className="text-sm font-bold text-ink">Free Basic Index</span>
                     <span className="text-sm text-ink/45">· $0</span>
                   </p>
-                  <p className="text-xs text-ink/60">Get your name, logo, category and short description into FindMi.</p>
+                  <p className="text-xs text-ink/60">Get your name, logo, category and short description into Findmi.</p>
                   <p className="mt-1 text-xs text-ink/35 line-through decoration-ink/25">
-                    Full About section · Gallery · Website + social links · FindMi Here · Business updates
+                    Full About section · Gallery · Website + social links · Findmi Here · Business updates
                   </p>
                 </label>
               </div>
-              <p className="mt-1.5 text-xs text-ink/40">$99 for one year of FindMi Pro.</p>
+              <p className="mt-1.5 text-xs text-ink/40">$99 for one year of Findmi Pro.</p>
 
               {/* Make Pro Invite First-Class pass — a first-time vendor
                   with a complimentary code should never have to choose
@@ -416,7 +416,7 @@ export default async function AddBusinessPage({
               className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
             />
             <p className="mt-1.5 text-xs text-ink/40">
-              A valid referral code may reduce the price of FindMi Pro if you upgrade.
+              A valid referral code may reduce the price of Findmi Pro if you upgrade.
             </p>
           </details>
 
@@ -429,7 +429,7 @@ export default async function AddBusinessPage({
               className="mt-0.5 h-4 w-4 shrink-0 accent-findmi"
             />
             <span className="text-sm text-ink/70">
-              I confirm that I am authorized to create and manage this business on FindMi.
+              I confirm that I am authorized to create and manage this business on Findmi.
             </span>
           </label>
 

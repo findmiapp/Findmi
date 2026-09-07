@@ -41,7 +41,7 @@ export default async function ProfilePage({
       <AccountNav />
 
       <div className="mx-auto max-w-md">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi account</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi account</p>
         <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Profile</h1>
         <p className="mt-2 text-sm text-ink/50">{user.email}</p>
 
@@ -70,7 +70,7 @@ export default async function ProfilePage({
           </p>
         ) : (
           <p className="mt-4 rounded-xl border border-findmi/20 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-            Choose a username below to finish setting up your public FindMi profile — optional, but it&rsquo;s how
+            Choose a username below to finish setting up your public Findmi profile — optional, but it&rsquo;s how
             businesses and events you follow will recognize you.
           </p>
         )}

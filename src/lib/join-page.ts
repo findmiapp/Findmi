@@ -39,9 +39,9 @@ export interface JoinCardDefaults {
 
 export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
   card_discovery_pro: {
-    label: "Card 1 — FindMi Pro",
+    label: "Card 1 — Findmi Pro",
     eyebrow: "For businesses",
-    title: "FindMi Pro",
+    title: "Findmi Pro",
     // Admin Join Page Editor pass — synced to match the current live
     // site_sections override exactly (was stale from an earlier $20/90-day
     // offer that no longer renders anywhere in code). This fallback only
@@ -53,17 +53,17 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     price: "$99",
     priceSuffix: "/year",
     tagline:
-      "Built for independent businesses, makers, vendors and brands that want to be discovered wherever they show up.\n\n$99 for one year of FindMi Pro.",
+      "Built for independent businesses, makers, vendors and brands that want to be discovered wherever they show up.\n\n$99 for one year of Findmi Pro.",
     features: [
       "Full business profile",
       "Photos, About & links",
       "Manage Products / Bookings / Inquiries",
       "Add & manage appearances",
-      "Connect with FindMi events",
+      "Connect with Findmi events",
       "Business updates",
       "Enhanced discovery",
     ],
-    ctaLabel: "Get FindMi Pro",
+    ctaLabel: "Get Findmi Pro",
     emphasis: true,
   },
   card_events_markets: {
@@ -75,12 +75,12 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     tagline:
       "Hosting something people should discover? List your event, connect participating businesses, and help people discover what's happening and who's going to be there.",
     features: [
-      "FindMi Event page",
+      "Findmi Event page",
       "Event discovery",
       "Participating businesses/vendors",
       "Vendor Appearance connections",
       "Event details and links",
-      "Visibility within FindMi discovery",
+      "Visibility within Findmi discovery",
     ],
     ctaLabel: "List an Event",
     emphasis: false,
@@ -97,32 +97,32 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
       "Multiple regions/markets",
       "Multi-location support",
       "Touring / traveling brand support",
-      "Expanded FindMi presence",
+      "Expanded Findmi presence",
       "Event/campaign opportunities",
       "Custom onboarding and support",
     ],
-    ctaLabel: "Talk to FindMi",
+    ctaLabel: "Talk to Findmi",
     emphasis: false,
   },
 };
 
 export const JOIN_HERO_DEFAULTS = {
-  heading: "Get discovered on FindMi.",
+  heading: "Get discovered on Findmi.",
   body: "Choose how you’d like to join, tell us a bit about you, and we’ll follow up to get you set up.",
 };
 
 export const JOIN_GLOBAL_DEFAULTS = {
   message:
-    "No payment today. Tell us about your business or event and we’ll contact you to complete your FindMi setup.",
+    "No payment today. Tell us about your business or event and we’ll contact you to complete your Findmi setup.",
   supportingText: "",
   ctaUrl: JOIN_FORM_URL_DEFAULT,
 };
 
 export const JOIN_WHAT_YOU_GET_DEFAULTS = {
   eyebrow: "What you get",
-  heading: "One FindMi page. Everything a customer needs.",
+  heading: "One Findmi page. Everything a customer needs.",
   body: "",
-  ctaLabel: "See a real FindMi profile: The Native Rose",
+  ctaLabel: "See a real Findmi profile: The Native Rose",
   ctaUrl: "/business/the-native-rose",
 };
 
@@ -214,7 +214,7 @@ export interface JoinTile {
 export const JOIN_WHAT_YOU_GET_TILE_DEFAULTS: JoinTile[] = [
   { label: "Business Profile", detail: "Your story, photos, categories, and contact info in one place." },
   { label: "Products & Services", detail: "A real catalog customers can browse — and buy, where you enable it." },
-  { label: "FindMi Here", detail: "Appearance cards so customers always know where you'll be next." },
+  { label: "Findmi Here", detail: "Appearance cards so customers always know where you'll be next." },
   { label: "Events", detail: "Join markets and pop-ups as a participating, featured vendor." },
 ];
 
@@ -249,14 +249,14 @@ export function resolveJoinWhatYouGet(overrides: Map<string, SiteSection>) {
 export const JOIN_FREE_CARD_DEFAULTS = {
   title: "Free",
   price: "$0",
-  shortTagline: "Get Your Business On FindMi.",
+  shortTagline: "Get Your Business On Findmi.",
   description: "Create Your Basic Profile And Appear On Event Pages When Participating Organizers Add Your Business.",
   disclosureLabel: "View What's Included",
   includedFeatures: [
     "Logo + Cover Image & Basic Profile",
     "Show Your Next Upcoming Appearance",
     "Appear On Participating Event/Vendor Rosters",
-    "FindMi Search & Discovery",
+    "Findmi Search & Discovery",
   ],
   requiresProFeatures: ["Full Upcoming Schedule", "Gallery", "Products & Services", "Website & Social Links", "Full Business Profile"],
   ctaLabel: "Start with Basic",
@@ -305,16 +305,16 @@ export function resolveJoinFreeCard(overrides: Map<string, SiteSection>): Resolv
 // saving one never wipes the other's fields (see actions.ts).
 
 export const JOIN_PRO_EXTRA_DEFAULTS = {
-  billingLabel: "Build Out Your Complete FindMi Presence.",
+  billingLabel: "Build Out Your Complete Findmi Presence.",
   noRenewalNote: "No Automatic Renewal.",
-  highlightHeading: "FindMi Here",
+  highlightHeading: "Findmi Here",
   highlightSubheading: "Show Customers Where To Find You Next.",
   highlightBody: "Your Full Upcoming Schedule Shows On Your Public Profile — Not Just Your Next Appearance.",
   // Display copy only — see this pass's own report / the admin field's own
   // hint. The actual charged amount always comes from
   // BUSINESS_PRO_INTRO_PRICE_CENTS (businessProCheckout.ts), never from
   // this text, no matter what an admin types here.
-  priceFootnote: "$99 For One Year Of FindMi Pro.",
+  priceFootnote: "$99 For One Year Of Findmi Pro.",
 };
 
 export interface ResolvedJoinProExtra {
@@ -361,7 +361,7 @@ export function resolveJoinInviteSection(overrides: Map<string, SiteSection>) {
 // ── "Already listed on FindMi? Claim your business" line ────────────────
 
 export const JOIN_CLAIM_BUSINESS_DEFAULTS = {
-  body: "Already listed on FindMi?",
+  body: "Already listed on Findmi?",
   ctaLabel: "Claim your business →",
   ctaUrl: "/businesses",
 };
@@ -391,7 +391,7 @@ export function resolveJoinReassurance(overrides: Map<string, SiteSection>) {
 
 // ── "More Ways To Join FindMi" heading above the secondary cards ────────
 
-export const JOIN_MORE_WAYS_DEFAULT = "More Ways To Join FindMi";
+export const JOIN_MORE_WAYS_DEFAULT = "More Ways To Join Findmi";
 
 export function resolveJoinMoreWays(overrides: Map<string, SiteSection>) {
   const row = overrides.get("more_ways");

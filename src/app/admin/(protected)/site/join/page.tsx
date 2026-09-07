@@ -100,7 +100,7 @@ export default async function JoinSiteEditorPage({
           /join
         </a>{" "}
         page — changes go live within a minute, no code change or deploy needed. Every field already shows what&rsquo;s
-        currently live; clear a field back to empty and save to reset just that field to FindMi&rsquo;s default.
+        currently live; clear a field back to empty and save to reset just that field to Findmi&rsquo;s default.
       </p>
       <p className="mt-1 text-sm text-ink/50">
         Nothing here changes how Free/Pro actually work — pricing text is display copy only; the real $99 Pro charge,
@@ -146,7 +146,7 @@ export default async function JoinSiteEditorPage({
         <div className="mt-4 flex flex-col gap-3">
           <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Pro Plan</p>
           <p className="text-xs text-ink/45">
-            The $99/year FindMi Pro card. The button always leads to the real native signup flow (and preserves any
+            The $99/year Findmi Pro card. The button always leads to the real native signup flow (and preserves any
             referral code) no matter what&rsquo;s typed below — only its label text is editable.
           </p>
           <JoinCardEditor cardKey="card_discovery_pro" overrides={overrides} globalCtaUrl={global.ctaUrl} hideCtaUrl />
@@ -160,7 +160,7 @@ export default async function JoinSiteEditorPage({
           <p className="mt-1 text-xs text-ink/45">
             The manual invite-code entry box shown between the Pro card and the rest of the page. The actual code
             validation/redemption is unaffected by anything here — only this box&rsquo;s heading, helper text, and
-            visibility are editable. FindMi doesn&rsquo;t currently show any separate referral-specific copy on
+            visibility are editable. Findmi doesn&rsquo;t currently show any separate referral-specific copy on
             /join (a referral code is only ever carried silently through the Free/Pro buttons), so there&rsquo;s
             nothing referral-specific to edit here yet.
           </p>
@@ -179,7 +179,7 @@ export default async function JoinSiteEditorPage({
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">&ldquo;Already listed?&rdquo; line</p>
             <p className="mt-1 text-xs text-ink/45">
-              The quiet text link under the invite box, for a business that already has a FindMi profile.
+              The quiet text link under the invite box, for a business that already has a Findmi profile.
             </p>
             <ClaimBusinessEditor claim={claim} />
           </div>
@@ -249,7 +249,7 @@ export default async function JoinSiteEditorPage({
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">&ldquo;What you get&rdquo; section</p>
             <p className="mt-1 text-xs text-ink/45">
-              The section further down the page that previews a real FindMi profile, below the cards.
+              The section further down the page that previews a real Findmi profile, below the cards.
             </p>
             <WhatYouGetEditor overrides={overrides} />
             <div className="mt-3">
@@ -320,7 +320,7 @@ function JoinCardEditor({
           name="features"
           defaultValue={resolved.features.join("\n")}
           rows={Math.max(4, resolved.features.length)}
-          hint="One item per line — each line becomes one checked bullet on the card. Reorder lines to reorder bullets. Leave the whole box blank to reset to FindMi's default list."
+          hint="One item per line — each line becomes one checked bullet on the card. Reorder lines to reorder bullets. Leave the whole box blank to reset to Findmi's default list."
         />
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -369,7 +369,7 @@ function ProExtraEditor({ proExtra }: { proExtra: ReturnType<typeof resolveJoinP
           name="no_renewal_note"
           defaultValue={proExtra.noRenewalNote}
         />
-        <p className="text-xs font-bold uppercase tracking-wide text-ink/35">FindMi Here highlight block</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-ink/35">Findmi Here highlight block</p>
         <TextField label="Highlight heading" name="highlight_heading" defaultValue={proExtra.highlightHeading} />
         <TextField label="Highlight subheading" name="highlight_subheading" defaultValue={proExtra.highlightSubheading} />
         <TextareaField label="Highlight body" name="highlight_body" defaultValue={proExtra.highlightBody} rows={2} />
@@ -413,14 +413,14 @@ function FreeCardEditor({ free }: { free: ReturnType<typeof resolveJoinFreeCard>
         name="included_features"
         defaultValue={free.includedFeatures.join("\n")}
         rows={Math.max(4, free.includedFeatures.length)}
-        hint="One item per line. Reorder lines to reorder bullets. Leave blank to reset to FindMi's default list."
+        hint="One item per line. Reorder lines to reorder bullets. Leave blank to reset to Findmi's default list."
       />
       <TextareaField
         label="Requires Pro (shown muted/struck-through)"
         name="requires_pro_features"
         defaultValue={free.requiresProFeatures.join("\n")}
         rows={Math.max(4, free.requiresProFeatures.length)}
-        hint="One item per line. Leave blank to reset to FindMi's default list."
+        hint="One item per line. Leave blank to reset to Findmi's default list."
       />
       <TextField label="Button text" name="cta_label" defaultValue={free.ctaLabel} />
       <SaveButton />
@@ -480,7 +480,7 @@ function ClaimBusinessEditor({ claim }: { claim: ReturnType<typeof resolveJoinCl
           label="Link destination"
           name="cta_url"
           defaultValue={claim.ctaUrl}
-          hint="A page on FindMi (e.g. /businesses) or a full https:// URL."
+          hint="A page on Findmi (e.g. /businesses) or a full https:// URL."
         />
       </div>
       <SaveButton />
@@ -531,7 +531,7 @@ function WhatYouGetEditor({ overrides }: { overrides: Awaited<ReturnType<typeof 
           label="Link destination"
           name="cta_url"
           defaultValue={resolved.ctaUrl}
-          hint="A page on FindMi (e.g. /business/the-native-rose) or a full https:// URL."
+          hint="A page on Findmi (e.g. /business/the-native-rose) or a full https:// URL."
         />
       </div>
       <SaveButton />
@@ -548,7 +548,7 @@ function WhatYouGetTilesEditor({ whatYouGet }: { whatYouGet: ReturnType<typeof r
       <p className="text-sm font-semibold text-ink">Preview tiles</p>
       <p className="text-xs text-ink/45">
         The four small tiles in a grid under the heading above. Leave every field below blank to reset all four to
-        FindMi&rsquo;s default tiles.
+        Findmi&rsquo;s default tiles.
       </p>
       {whatYouGet.tiles.map((tile, i) => (
         <div key={i} className="grid gap-3 rounded-xl border border-black/5 p-3 sm:grid-cols-2">

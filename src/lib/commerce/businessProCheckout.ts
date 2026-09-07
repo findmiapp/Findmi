@@ -99,10 +99,10 @@ export async function createBusinessProCheckoutSession(
             // business's own stored referral attribution.
             unit_amount: unitAmount,
             product_data: {
-              name: `FindMi Pro — ${business.name}`,
+              name: `Findmi Pro — ${business.name}`,
               description: referralDiscount
-                ? `$99 for one year of FindMi Pro, less a ${referralDiscount.discountPercent}% referral discount.`
-                : "$99 for one year of FindMi Pro.",
+                ? `$99 for one year of Findmi Pro, less a ${referralDiscount.discountPercent}% referral discount.`
+                : "$99 for one year of Findmi Pro.",
             },
           },
         },

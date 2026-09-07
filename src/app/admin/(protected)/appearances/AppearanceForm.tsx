@@ -41,12 +41,12 @@ export default function AppearanceForm({
         />
 
         <RelationField
-          label="Related FindMi Event"
+          label="Related Findmi Event"
           name="event_id"
           entity="events"
           initial={initialEvent}
           clearLabel="No event — link to Google Maps directions instead"
-          hint="If set, the public appearance card links to this FindMi event page instead of Maps."
+          hint="If set, the public appearance card links to this Findmi event page instead of Maps."
           createHref="/admin/events/new"
           createLabel="New Event"
         />

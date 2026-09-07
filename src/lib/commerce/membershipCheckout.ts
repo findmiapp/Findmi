@@ -46,7 +46,7 @@ export async function createMembershipCheckoutSession(input: {
   ]);
 
   if (!plan) return { error: "That plan isn't available." };
-  if (marketIds.length === 0) return { error: "Choose at least one FindMi market." };
+  if (marketIds.length === 0) return { error: "Choose at least one Findmi market." };
   if (plan.market_limit !== null && marketIds.length > plan.market_limit) {
     return {
       error: `${plan.name} includes up to ${plan.market_limit} market${plan.market_limit === 1 ? "" : "s"}. Choose fewer markets, or pick a plan with broader coverage.`,
@@ -99,7 +99,7 @@ export async function createMembershipCheckoutSession(input: {
               unit_amount: Math.round(Number(plan.annual_price) * 100),
               recurring: { interval: "year" },
               product_data: {
-                name: `FindMi ${plan.name} Membership`,
+                name: `Findmi ${plan.name} Membership`,
                 description: plan.description ?? undefined,
               },
             },

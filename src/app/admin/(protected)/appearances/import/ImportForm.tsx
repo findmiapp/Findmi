@@ -402,7 +402,7 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
                         </p>
                         <div className="mt-2 max-w-xs">
                           <RelationField
-                            label="Link to FindMi Event"
+                            label="Link to Findmi Event"
                             name={`event_id_${row.key}`}
                             entity="events"
                             initial={row.eventInitial}

@@ -135,7 +135,7 @@ export default function ProductForm({
             />
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField
-                label="FindMi Fee % Override"
+                label="Findmi Fee % Override"
                 name="marketplace_fee_override_percent"
                 defaultValue={product?.marketplace_fee_override_percent ?? undefined}
                 hint="Leave blank to use the business's fee %."
@@ -169,7 +169,7 @@ export default function ProductForm({
         <div className="border-t border-black/5 pt-5">
           <DeleteButton
             action={deleteProduct.bind(null, product.id)}
-            confirmMessage="Delete This Product Permanently?\n\nThis Cannot Be Undone. The Product And Its FindMi Listing Will Be Removed."
+            confirmMessage="Delete This Product Permanently?\n\nThis Cannot Be Undone. The Product And Its Findmi Listing Will Be Removed."
             label="Delete Product Permanently"
           />
         </div>

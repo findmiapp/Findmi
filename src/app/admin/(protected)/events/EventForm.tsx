@@ -127,7 +127,7 @@ export default function EventForm({
       </div>
 
       <SelectField
-        label="Default FindMi Market"
+        label="Default Findmi Market"
         name="market_id"
         defaultValue={event?.market_id ?? ""}
         options={[
@@ -150,7 +150,7 @@ export default function EventForm({
         name="requested_market_text"
         defaultValue={undefined}
         placeholder="e.g. Austin, TX"
-        hint="If this event's Market isn't listed above, note it here — the event saves normally and FindMi reviews the request at /admin/market-requests. Leave Default FindMi Market Unassigned when using this."
+        hint="If this event's Market isn't listed above, note it here — the event saves normally and Findmi reviews the request at /admin/market-requests. Leave Default Findmi Market Unassigned when using this."
       />
 
       <div className="rounded-2xl border border-black/10 p-4">
@@ -158,7 +158,7 @@ export default function EventForm({
           label="About the Venue — Gallery"
           name="venue_image_url"
           initialUrls={venueImages}
-          hint="Optional photos of the venue itself, shown under About the Venue. Events don't have a real FindMi Location relationship yet, so this stays event-specific for now."
+          hint="Optional photos of the venue itself, shown under About the Venue. Events don't have a real Findmi Location relationship yet, so this stays event-specific for now."
         />
       </div>
 

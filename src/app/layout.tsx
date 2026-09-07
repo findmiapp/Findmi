@@ -23,16 +23,16 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://findmi.app";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "FindMi — Find what you're looking for. And where it'll be next.",
-    template: "%s · FindMi",
+    default: "Findmi — Find what you're looking for. And where it'll be next.",
+    template: "%s · Findmi",
   },
   description:
-    "FindMi helps you discover brands, vendors, mobile businesses, and events — and always know where they'll be next.",
+    "Findmi helps you discover brands, vendors, mobile businesses, and events — and always know where they'll be next.",
   openGraph: {
-    title: "FindMi",
+    title: "Findmi",
     description:
       "Find what you're looking for. And where it'll be next.",
-    siteName: "FindMi",
+    siteName: "Findmi",
     type: "website",
   },
 };

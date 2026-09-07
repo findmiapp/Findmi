@@ -5,7 +5,7 @@ import { getFeaturedPeople, getPublicPeople } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "People",
-  description: "Meet the founders, owners, makers, and creators behind FindMi brands.",
+  description: "Meet the founders, owners, makers, and creators behind Findmi brands.",
 };
 export const revalidate = 60;
 
@@ -20,7 +20,7 @@ export default async function PeoplePage({
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">People</h1>
-      <p className="mt-2 text-ink/60">The founders, owners, makers, and creators behind FindMi brands.</p>
+      <p className="mt-2 text-ink/60">The founders, owners, makers, and creators behind Findmi brands.</p>
 
       <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
         <input
@@ -40,7 +40,7 @@ export default async function PeoplePage({
 
       {!q && featured.length > 0 && (
         <div className="-mx-6 mt-6">
-          <Section title="Featured People" subtitle="People to know on FindMi">
+          <Section title="Featured People" subtitle="People to know on Findmi">
             <HorizontalScroller>
               {featured.map((p) => (
                 <div key={p.id} className="w-44 shrink-0">

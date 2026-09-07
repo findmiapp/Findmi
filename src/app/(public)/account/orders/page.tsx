@@ -35,14 +35,14 @@ export default async function OrdersPage() {
       <AccountNav />
 
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Orders</h1>
-      <p className="mt-1.5 text-sm text-ink/50">A record of what you&rsquo;ve bought on FindMi.</p>
+      <p className="mt-1.5 text-sm text-ink/50">A record of what you&rsquo;ve bought on Findmi.</p>
 
       {orders.length === 0 ? (
         <div className="mt-8 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm sm:p-8">
           <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
             <NavIcon name="cart" className="h-5 w-5" />
           </div>
-          <p className="mt-4 text-sm font-semibold text-ink">Your FindMi orders will appear here</p>
+          <p className="mt-4 text-sm font-semibold text-ink">Your Findmi orders will appear here</p>
           <p className="mx-auto mt-1.5 max-w-xs text-sm text-ink/50">Nothing purchased yet while signed in.</p>
         </div>
       ) : (

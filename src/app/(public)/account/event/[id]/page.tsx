@@ -194,7 +194,7 @@ export default async function ManageEventPage({
             View Public Event ↗
           </Link>
         ) : (
-          <span className="rounded-full bg-black/[0.06] px-3.5 py-2 text-xs font-semibold text-ink/40" title="Pending FindMi review">
+          <span className="rounded-full bg-black/[0.06] px-3.5 py-2 text-xs font-semibold text-ink/40" title="Pending Findmi review">
             In Review
           </span>
         )}
@@ -221,7 +221,7 @@ export default async function ManageEventPage({
                   <p className="text-xs text-ink/40">Not public yet</p>
                 </div>
                 <p className="mt-2 text-sm text-ink/70">
-                  Keep building your listing while FindMi reviews it.
+                  Keep building your listing while Findmi reviews it.
                 </p>
               </div>
             )}
@@ -463,11 +463,11 @@ export default async function ManageEventPage({
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
             <p className="mt-1 text-sm text-ink/60">
-              Search for an existing FindMi Location to autofill the fields below, or enter your venue manually.
+              Search for an existing Findmi Location to autofill the fields below, or enter your venue manually.
             </p>
             <form action={updateMemberEventLocation.bind(null, id)} className="mt-3 flex flex-col gap-3">
               <AccountRelationField
-                label="Search FindMi Locations"
+                label="Search Findmi Locations"
                 name="location_id"
                 entity="locations"
                 initial={null}
@@ -537,7 +537,7 @@ export default async function ManageEventPage({
                     <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
                   </label>
                   <p className="mt-1.5 text-xs text-ink/45">
-                    FindMi will review your request. Leave Market above set to &ldquo;Unassigned&rdquo; when using this.
+                    Findmi will review your request. Leave Market above set to &ldquo;Unassigned&rdquo; when using this.
                   </p>
                 </div>
               </details>
@@ -572,7 +572,7 @@ export default async function ManageEventPage({
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Participating Businesses</p>
             <p className="mt-1 text-sm text-ink/60">
-              Invite an existing FindMi business, or approve/decline a business that applied to participate.
+              Invite an existing Findmi business, or approve/decline a business that applied to participate.
             </p>
 
             <div className="mt-3">
@@ -629,8 +629,8 @@ export default async function ManageEventPage({
             </span>
             <p className="mt-3 text-sm text-ink/60">
               {event.is_demo
-                ? "Not public yet. Keep building your listing while FindMi reviews it — you can keep editing details, dates, photos, and participants in the meantime."
-                : "This event is live and visible in FindMi discovery."}
+                ? "Not public yet. Keep building your listing while Findmi reviews it — you can keep editing details, dates, photos, and participants in the meantime."
+                : "This event is live and visible in Findmi discovery."}
             </p>
           </div>
         )}

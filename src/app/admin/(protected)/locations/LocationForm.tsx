@@ -76,7 +76,7 @@ export default function LocationForm({
         </div>
 
         <SelectField
-          label="FindMi Market"
+          label="Findmi Market"
           name="market_id"
           defaultValue={location?.market_id ?? ""}
           options={[
@@ -85,7 +85,7 @@ export default function LocationForm({
               .filter((m) => m.active || m.id === location?.market_id)
               .map((m) => ({ value: m.id, label: m.name })),
           ]}
-          hint="This is the physical FindMi Market this venue belongs to. Event occurrences linked to this location can inherit it."
+          hint="This is the physical Findmi Market this venue belongs to. Event occurrences linked to this location can inherit it."
         />
 
         <SubmitBar cancelHref="/admin/locations" />

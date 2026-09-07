@@ -5,7 +5,7 @@ import MembershipConfirmation from "./MembershipConfirmation";
 import { SuccessPanel, UnverifiedPanel } from "./panels";
 
 export const metadata: Metadata = {
-  title: "Welcome to FindMi",
+  title: "Welcome to Findmi",
   robots: { index: false },
 };
 

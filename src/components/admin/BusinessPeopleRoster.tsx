@@ -79,7 +79,7 @@ export default function BusinessPeopleRoster({
       <span className="mb-1.5 block text-sm font-medium text-ink">People Behind This Business</span>
       <p className="mb-3 text-xs text-ink/45">
         Add the founders, owners, makers or team members you want shown on this business profile.
-        &ldquo;Remove&rdquo; only takes someone off this one business — it never deletes their FindMi
+        &ldquo;Remove&rdquo; only takes someone off this one business — it never deletes their Findmi
         profile or removes them from any other business they&rsquo;re attached to.
       </p>
 
@@ -111,7 +111,7 @@ export default function BusinessPeopleRoster({
 
               {!row.is_public && (
                 <p className="mt-1.5 text-xs text-amber-700">
-                  This person is currently hidden site-wide (Public is off on their FindMi profile) — they
+                  This person is currently hidden site-wide (Public is off on their Findmi profile) — they
                   won&rsquo;t actually show here until that&rsquo;s turned back on in People.
                 </p>
               )}

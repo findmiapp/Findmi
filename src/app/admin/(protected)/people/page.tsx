@@ -23,7 +23,7 @@ export default async function AdminPeoplePage({
         </Link>
       </div>
       <p className="mt-1 text-sm text-ink/50">
-        Founders, owners, makers, chefs, creators, operators — the people behind FindMi brands.
+        Founders, owners, makers, chefs, creators, operators — the people behind Findmi brands.
       </p>
       {error && (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>

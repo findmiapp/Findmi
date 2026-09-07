@@ -30,7 +30,7 @@ export default async function ForgotPasswordPage({
 
       {sent && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          If that address has a FindMi account, a reset link is on its way.
+          If that address has a Findmi account, a reset link is on its way.
         </p>
       )}
       {error === "expired" && (

@@ -42,7 +42,7 @@ export default async function NavigationAdminPage({
       </div>
       <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">Navigation</h1>
       <p className="mt-1 max-w-xl text-sm text-ink/50">
-        Control the menu behind FindMi&rsquo;s header menu button — add, rename, hide, reorder, or delete
+        Control the menu behind Findmi&rsquo;s header menu button — add, rename, hide, reorder, or delete
         items without a code change. Nest an item under another (one level) to make an expandable
         submenu. Mark one item Highlight to make it stand out as a call-to-action.
       </p>
@@ -73,7 +73,7 @@ export default async function NavigationAdminPage({
 
       {topLevel.length === 0 ? (
         <p className="mt-6 text-sm text-ink/45">
-          No menu items yet — visitors see a safe default menu (Events, Brands, Marketplace, FindMi for
+          No menu items yet — visitors see a safe default menu (Events, Brands, Marketplace, Findmi for
           Business, About, You) until you add at least one item here.
         </p>
       ) : (

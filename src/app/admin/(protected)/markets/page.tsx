@@ -12,7 +12,7 @@ export default async function AdminMarketsPage() {
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Markets</h1>
           <p className="mt-1 text-sm text-ink/60">
-            The canonical FindMi Markets used for business distribution/entitlement and event geography — shown
+            The canonical Findmi Markets used for business distribution/entitlement and event geography — shown
             to consumers as &ldquo;Area&rdquo;.
           </p>
         </div>

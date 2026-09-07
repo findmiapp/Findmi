@@ -174,7 +174,7 @@ export default function ClaimButton({
     if (type === "business" || type === "location") {
       const prompt = (
         <div className={variant === "card" ? "rounded-2xl border border-black/10 bg-white p-5 sm:p-6" : ""}>
-          <p className="text-sm text-ink/60">Create your free FindMi account to claim and manage this {noun}.</p>
+          <p className="text-sm text-ink/60">Create your free Findmi account to claim and manage this {noun}.</p>
           <a
             href={signInHref}
             className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
@@ -199,7 +199,7 @@ export default function ClaimButton({
       <div className="max-w-sm rounded-2xl border border-black/10 bg-white p-4">
         <p className="text-sm font-semibold text-ink">Claim submitted. Your claim is under review.</p>
         <p className="mt-1 text-xs text-ink/50">
-          FindMi will manually verify your connection to this {noun} before granting management access.
+          Findmi will manually verify your connection to this {noun} before granting management access.
         </p>
         <p className="mt-1 text-xs text-ink/50">Standard claims are typically reviewed within 48–72 hours.</p>
 
@@ -214,7 +214,7 @@ export default function ClaimButton({
           <div className="mt-3 rounded-xl border border-findmi/20 bg-findmi-50 p-3">
             <p className="text-xs font-bold text-ink">Need access sooner?</p>
             <p className="mt-1 text-xs text-ink/60">
-              Upgrade to FindMi Pro for priority review, typically within 2 business hours during regular business
+              Upgrade to Findmi Pro for priority review, typically within 2 business hours during regular business
               hours, plus your full business profile, gallery, products, appearances, contact links and more.
             </p>
             {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: this
@@ -242,16 +242,16 @@ export default function ClaimButton({
     // to the existing Pro/Invite path (/join) rather than any checkout.
     return (
       <div className="max-w-xs rounded-2xl border border-black/10 bg-white p-4">
-        <p className="text-sm font-semibold text-ink">Event management is included with qualifying FindMi membership.</p>
+        <p className="text-sm font-semibold text-ink">Event management is included with qualifying Findmi membership.</p>
         <p className="mt-1 text-xs text-ink/60">
-          Get FindMi Pro (or redeem a Pro Invite) on a business you manage to claim and manage this event — no
+          Get Findmi Pro (or redeem a Pro Invite) on a business you manage to claim and manage this event — no
           separate Event fee.
         </p>
         <a
           href="/join"
           className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
-          Get FindMi Pro
+          Get Findmi Pro
         </a>
       </div>
     );
@@ -287,12 +287,12 @@ export default function ClaimButton({
                 {type === "event" ? (
                   <>
                     Claiming requests management access to this {noun}. Event management is included with your
-                    qualifying FindMi membership — no separate Event fee. FindMi reviews every request manually;
+                    qualifying Findmi membership — no separate Event fee. Findmi reviews every request manually;
                     submitting a claim doesn&rsquo;t guarantee access.
                   </>
                 ) : (
                   <>
-                    Claiming requests management access to this {noun}. FindMi reviews every request manually —
+                    Claiming requests management access to this {noun}. Findmi reviews every request manually —
                     submitting a claim doesn&rsquo;t guarantee access.
                   </>
                 )}
@@ -374,7 +374,7 @@ function ClaimCard({ children, noun = "business" }: { children: React.ReactNode;
   return (
     <div className="rounded-2xl border border-black/10 bg-white p-5 sm:p-6">
       <h2 className="font-display text-base font-bold tracking-tight text-ink">Is this your {noun}?</h2>
-      <p className="mt-1.5 text-sm text-ink/60">Claim your free FindMi listing to manage your {noun} information.</p>
+      <p className="mt-1.5 text-sm text-ink/60">Claim your free Findmi listing to manage your {noun} information.</p>
       <div className="mt-3">{children}</div>
     </div>
   );

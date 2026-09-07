@@ -41,12 +41,12 @@ export default function DrawerUtilityStrip({
   return (
     <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-4 py-2">
       {email && (
-        <a href={`mailto:${email}`} onClick={onNavigate} aria-label="Email FindMi" className={iconButtonClass}>
+        <a href={`mailto:${email}`} onClick={onNavigate} aria-label="Email Findmi" className={iconButtonClass}>
           <EmailGlyph className="h-5 w-5" />
         </a>
       )}
       {phone && (
-        <a href={`tel:${phone}`} onClick={onNavigate} aria-label="Call FindMi" className={iconButtonClass}>
+        <a href={`tel:${phone}`} onClick={onNavigate} aria-label="Call Findmi" className={iconButtonClass}>
           <PhoneGlyph className="h-5 w-5" />
         </a>
       )}

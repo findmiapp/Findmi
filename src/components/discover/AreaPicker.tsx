@@ -253,12 +253,12 @@ function RequestAreaPanel({ query, onSubmitted }: { query: string; onSubmitted: 
     return (
       <div className="rounded-2xl border border-findmi/20 bg-findmi-50 p-4 text-center">
         <p className="text-sm font-semibold text-findmi-700">
-          {matchedLabel ? <>{matchedLabel} is already known to FindMi!</> : "You're on the list!"}
+          {matchedLabel ? <>{matchedLabel} is already known to Findmi!</> : "You're on the list!"}
         </p>
         <p className="mt-1 text-xs text-findmi-700/80">
           {matchedLabel
             ? "We'll notify you when it opens for discovery."
-            : "We'll notify you when FindMi launches there."}
+            : "We'll notify you when Findmi launches there."}
         </p>
         <button
           type="button"
@@ -274,9 +274,9 @@ function RequestAreaPanel({ query, onSubmitted }: { query: string; onSubmitted: 
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/30 p-4 text-center">
       <p className="text-sm font-semibold text-ink">
-        {query ? <>&ldquo;{query}&rdquo; isn&rsquo;t on FindMi yet.</> : "Don't see your area?"}
+        {query ? <>&ldquo;{query}&rdquo; isn&rsquo;t on Findmi yet.</> : "Don't see your area?"}
       </p>
-      <p className="mt-1 text-xs text-ink/55">Notify me when FindMi launches here.</p>
+      <p className="mt-1 text-xs text-ink/55">Notify me when Findmi launches here.</p>
 
       {!checkingSession && !signedIn && (
         <input

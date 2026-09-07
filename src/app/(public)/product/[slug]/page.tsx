@@ -39,12 +39,12 @@ export async function generateMetadata({
   if (!product) return { title: "Product not found" };
 
   const description =
-    product.description?.trim().slice(0, 160) || `${product.name} from ${product.business.name} on FindMi.`;
+    product.description?.trim().slice(0, 160) || `${product.name} from ${product.business.name} on Findmi.`;
   const ogImage = product.image_url ?? product.business.cover_image_url ?? product.business.logo_url ?? undefined;
   const url = `${getPublicOrigin()}/product/${product.slug}`;
 
   return {
-    title: `${product.name} | ${product.business.name} | FindMi`,
+    title: `${product.name} | ${product.business.name} | Findmi`,
     description,
     alternates: { canonical: url },
     openGraph: {
@@ -262,7 +262,7 @@ export default async function ProductPage({
                 href={`/account/inquiries/new?business=${product.business.id}&product=${product.id}`}
                 className="text-sm font-semibold text-ink/55 underline underline-offset-2 transition hover:text-ink"
               >
-                Message {product.business.name} on FindMi
+                Message {product.business.name} on Findmi
               </Link>
             </div>
           )}
@@ -311,7 +311,7 @@ export default async function ProductPage({
           href={`/business/${product.business.slug}`}
           className="rounded-full border border-black/10 px-6 py-3 text-sm font-semibold text-ink transition hover:border-ink/30"
         >
-          View {product.business.name} on FindMi →
+          View {product.business.name} on Findmi →
         </Link>
       </div>
     </div>

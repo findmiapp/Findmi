@@ -92,7 +92,7 @@ export default async function RedeemInvitePage({
     return (
       <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
         <div className="rounded-3xl border border-findmi/30 bg-findmi-50 p-6 text-center sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Pro Activated</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro Activated</p>
           <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
             {business_name} now has Pro access
           </h1>
@@ -103,8 +103,8 @@ export default async function RedeemInvitePage({
               and only when it's actually still pending. */}
           {pendingReview && (
             <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              This business is still pending review before it appears publicly on FindMi — Pro access doesn&rsquo;t
-              change that, and FindMi will review it separately.
+              This business is still pending review before it appears publicly on Findmi — Pro access doesn&rsquo;t
+              change that, and Findmi will review it separately.
             </p>
           )}
 
@@ -125,14 +125,14 @@ export default async function RedeemInvitePage({
         <div className="rounded-3xl border border-black/10 bg-white p-6 text-center sm:p-8">
           <h1 className="font-display text-xl font-bold tracking-tight text-ink">This invite isn&rsquo;t valid</h1>
           <p className="mt-2 text-sm text-ink/60">
-            This code may have expired, been deactivated, or already been fully redeemed. Contact FindMi if you
+            This code may have expired, been deactivated, or already been fully redeemed. Contact Findmi if you
             believe this is a mistake.
           </p>
           <Link
             href="/join"
             className="mt-6 inline-flex h-11 items-center justify-center rounded-full border border-black/10 px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
           >
-            Back to Join FindMi
+            Back to Join Findmi
           </Link>
         </div>
       </div>
@@ -152,18 +152,18 @@ export default async function RedeemInvitePage({
       <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
         <div className="rounded-3xl border border-findmi/30 bg-findmi-50 p-6 text-center sm:p-8">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">
-            {invite.grant_purpose === "event_management" ? "Event Management Access" : "Complimentary FindMi Pro"}
+            {invite.grant_purpose === "event_management" ? "Event Management Access" : "Complimentary Findmi Pro"}
           </p>
           <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink">
             {invite.name ||
               (invite.grant_purpose === "event_management"
-                ? "You've been invited to manage Events on FindMi"
-                : "You've been invited to FindMi Pro")}
+                ? "You've been invited to manage Events on Findmi"
+                : "You've been invited to Findmi Pro")}
           </h1>
           <p className="mt-2 text-sm text-ink/70">
             {invite.grant_purpose === "event_management"
-              ? "Sign in or create a FindMi account to claim this Organizer access."
-              : "Sign in or create a FindMi account to apply this to your business."}
+              ? "Sign in or create a Findmi account to claim this Organizer access."
+              : "Sign in or create a Findmi account to apply this to your business."}
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
@@ -197,11 +197,11 @@ export default async function RedeemInvitePage({
         <div className="rounded-3xl border border-findmi/30 bg-findmi-50 p-6 text-center sm:p-8">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Event Management Access</p>
           <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink">
-            {invite.name || "You've been invited to manage Events on FindMi"}
+            {invite.name || "You've been invited to manage Events on Findmi"}
           </h1>
           <p className="mt-2 text-sm text-ink/70">
             No Business required. This gives your account Organizer access to create, claim, and manage Events on
-            FindMi — no separate Event fee, ever.
+            Findmi — no separate Event fee, ever.
           </p>
           {error && (
             <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-700">
@@ -243,12 +243,12 @@ export default async function RedeemInvitePage({
     return (
       <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
         <div className="rounded-3xl border border-findmi/30 bg-findmi-50 p-6 text-center sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Complimentary FindMi Pro</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Complimentary Findmi Pro</p>
           <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink">
-            {invite.name || "You've been invited to FindMi Pro"}
+            {invite.name || "You've been invited to Findmi Pro"}
           </h1>
           <p className="mt-2 text-sm text-ink/70">
-            You don&rsquo;t have a business on FindMi yet. Add one — it&rsquo;s free — and you can apply this invite
+            You don&rsquo;t have a business on Findmi yet. Add one — it&rsquo;s free — and you can apply this invite
             right after.
           </p>
           <Link
@@ -273,12 +273,12 @@ export default async function RedeemInvitePage({
   return (
     <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
       <div className="rounded-3xl border border-findmi/30 bg-findmi-50 p-6 sm:p-8">
-        <p className="text-center text-xs font-bold uppercase tracking-wide text-findmi-700">Complimentary FindMi Pro</p>
+        <p className="text-center text-xs font-bold uppercase tracking-wide text-findmi-700">Complimentary Findmi Pro</p>
         <h1 className="mt-2 text-center font-display text-2xl font-bold tracking-tight text-ink">
-          {invite.name || "You've been invited to FindMi Pro"}
+          {invite.name || "You've been invited to Findmi Pro"}
         </h1>
         <p className="mt-2 text-center text-sm text-ink/70">
-          {invite.duration_days} days of FindMi Pro, no payment required.
+          {invite.duration_days} days of Findmi Pro, no payment required.
         </p>
 
         {error && (

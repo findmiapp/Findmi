@@ -82,12 +82,12 @@ export default async function AddEventPage({
   if (!entitled) {
     return (
       <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
         <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add an Event</h1>
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-          <p className="text-sm font-semibold text-ink">Event management is included with qualifying FindMi membership.</p>
+          <p className="text-sm font-semibold text-ink">Event management is included with qualifying Findmi membership.</p>
           <p className="mt-2 text-sm text-ink/60">
-            Get FindMi Pro (or redeem a Pro Invite) on a business you manage to create and manage Events — no
+            Get Findmi Pro (or redeem a Pro Invite) on a business you manage to create and manage Events — no
             separate Event fee.
           </p>
           {locationHint && (
@@ -99,7 +99,7 @@ export default async function AddEventPage({
             Add a Business
           </Link>
           <Link href="/join" className="mt-3 flex h-11 w-full items-center justify-center text-xs font-semibold text-ink/50 transition hover:text-ink">
-            Learn about FindMi Pro
+            Learn about Findmi Pro
           </Link>
         </div>
       </div>
@@ -110,10 +110,10 @@ export default async function AddEventPage({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add an Event</h1>
       <p className="mt-2 text-sm text-ink/60">
-        Create your event, then finish the details in Event Manager. FindMi will review it before it appears
+        Create your event, then finish the details in Event Manager. Findmi will review it before it appears
         publicly.
       </p>
 
@@ -193,7 +193,7 @@ export default async function AddEventPage({
                 />
               </label>
               <p className="mt-1.5 text-xs text-ink/45">
-                Your event will still be created — FindMi will review your request and follow up once your Market is
+                Your event will still be created — Findmi will review your request and follow up once your Market is
                 available.
               </p>
               <p className="mt-1 text-xs text-ink/40">
@@ -206,7 +206,7 @@ export default async function AddEventPage({
             Create My Event
           </button>
           <p className="text-center text-xs text-ink/40">
-            No separate Event fee — included with your qualifying FindMi membership.
+            No separate Event fee — included with your qualifying Findmi membership.
           </p>
         </form>
       </div>

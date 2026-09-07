@@ -32,7 +32,7 @@ function buildIcs({
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//FindMi//Event//EN",
+    "PRODID:-//Findmi//Event//EN",
     "BEGIN:VEVENT",
     `UID:${crypto.randomUUID()}@findmi.app`,
     `DTSTAMP:${toIcsDate(new Date().toISOString())}`,

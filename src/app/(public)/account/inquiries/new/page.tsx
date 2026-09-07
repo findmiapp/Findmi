@@ -84,8 +84,8 @@ export default async function NewInquiryPage({
         <div>
           <p className="text-sm font-medium text-ink">Share contact info (optional)</p>
           <p className="mt-1 text-xs text-ink/45">
-            Your FindMi account email/phone are never shared automatically. Only fill these in if you want this
-            business to be able to reach you directly outside FindMi.
+            Your Findmi account email/phone are never shared automatically. Only fill these in if you want this
+            business to be able to reach you directly outside Findmi.
           </p>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
             <input type="text" name="customer_name" placeholder="Name (optional)" className={inputClass} />

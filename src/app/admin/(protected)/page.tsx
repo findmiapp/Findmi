@@ -173,7 +173,7 @@ export default async function AdminDashboardPage() {
       {/* A. HEADER */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">FindMi Admin</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Findmi Admin</h1>
           <p className="mt-1 text-sm text-ink/60">Manage the platform, listings and activity.</p>
         </div>
         <a
@@ -222,7 +222,7 @@ export default async function AdminDashboardPage() {
               Marketplace/discovery placement approval. */}
           <ReviewCard
             title="Marketplace Reviews"
-            description="Review products submitted for broader FindMi Marketplace placement."
+            description="Review products submitted for broader Findmi Marketplace placement."
             cta="Review Marketplace Requests"
             count={needsAttention.pendingMarketplaceReviews}
             href="/admin/products?status=marketplace_review"
@@ -346,7 +346,7 @@ export default async function AdminDashboardPage() {
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Site &amp; Discovery</h2>
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <ManageCard letter="Ca" label="Categories" description="Homepage category controls." href="/admin/categories" />
-          <ManageCard letter="Ma" label="Markets" description="FindMi Markets, consumer Area names, and areas included." href="/admin/markets" />
+          <ManageCard letter="Ma" label="Markets" description="Findmi Markets, consumer Area names, and areas included." href="/admin/markets" />
           <ManageCard letter="Mr" label="Market Requests" description="Geography consumers/businesses/events have asked for." href="/admin/market-requests" />
           <ManageCard letter="S" label="Site Editor" description="Homepage, navigation, and site content." href="/admin/site" />
         </div>

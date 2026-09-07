@@ -1957,7 +1957,7 @@ export async function getHomeAppearanceBulletins(limit = 6): Promise<HomeBulleti
       const { is_demo: _isDemo, publication_status: _pubStatus, ...cleanBusiness } = business;
       return {
         id: row.id,
-        bulletinText: row.bulletin_text?.trim() || `${row.title} at ${row.venue_name ?? "a FindMi location"}`,
+        bulletinText: row.bulletin_text?.trim() || `${row.title} at ${row.venue_name ?? "a Findmi location"}`,
         startAt: row.start_at,
         endAt: row.end_at,
         business: cleanBusiness,

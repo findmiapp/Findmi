@@ -37,7 +37,7 @@ export default async function AccountInquiriesPage({
       <AccountNav />
 
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Inquiries</h1>
-      <p className="mt-1.5 text-sm text-ink/50">Conversations you&rsquo;ve started with FindMi businesses.</p>
+      <p className="mt-1.5 text-sm text-ink/50">Conversations you&rsquo;ve started with Findmi businesses.</p>
 
       {error && (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
@@ -47,7 +47,7 @@ export default async function AccountInquiriesPage({
         <div className="mt-8 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm">
           <p className="text-sm font-semibold text-ink">No inquiries yet</p>
           <p className="mt-1 text-sm text-ink/50">
-            Send a message from a business&rsquo;s FindMi profile when they offer it, and the conversation will show
+            Send a message from a business&rsquo;s Findmi profile when they offer it, and the conversation will show
             up here.
           </p>
         </div>

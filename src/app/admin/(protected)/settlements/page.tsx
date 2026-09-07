@@ -10,7 +10,7 @@ export default async function AdminSettlementsPage() {
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Settlements</h1>
       <p className="mt-1 text-sm text-ink/60">
-        What FindMi owes each vendor, and what&rsquo;s already been paid out manually. No money moves automatically.
+        What Findmi owes each vendor, and what&rsquo;s already been paid out manually. No money moves automatically.
       </p>
 
       <div className="mt-4 flex flex-col gap-2">

@@ -483,7 +483,7 @@ export default async function EditBusinessPage({
         {tab === "appearances" && (
           <div className="rounded-2xl border border-black/10 bg-white p-4">
             <p className="text-sm font-semibold text-ink">Appearances</p>
-            <p className="mt-1 text-xs text-ink/45">FindMi Here — where this business is scheduled to appear.</p>
+            <p className="mt-1 text-xs text-ink/45">Findmi Here — where this business is scheduled to appear.</p>
             <div className="mt-3 flex flex-col gap-2">
               <Link href={`/admin/appearances?business=${id}`} className="text-sm font-semibold text-findmi-700 hover:underline">
                 View Appearances →
@@ -513,7 +513,7 @@ export default async function EditBusinessPage({
           <div className="rounded-2xl border border-black/10 bg-mist/40 p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Business Access</p>
             <p className="mt-1 text-xs text-ink/45">
-              Grants management access to an existing FindMi account (Manage Business, this business&rsquo;s own
+              Grants management access to an existing Findmi account (Manage Business, this business&rsquo;s own
               editor). Doesn&rsquo;t create accounts or change ownership.
             </p>
 
@@ -789,7 +789,7 @@ export default async function EditBusinessPage({
                 name="publication_status"
                 defaultValue={business.publication_status ?? "live"}
                 options={LISTING_STATUS_OPTIONS}
-                hint="Pending Review businesses are excluded from FindMi discovery until you set this to Published / Live. This is what approves the listing — the Real Business toggle below does not."
+                hint="Pending Review businesses are excluded from Findmi discovery until you set this to Published / Live. This is what approves the listing — the Real Business toggle below does not."
               />
               <CheckboxField
                 label="Real Business (Not Demo/Test)"
@@ -902,7 +902,7 @@ export default async function EditBusinessPage({
                 />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <NumberField
-                    label="FindMi Fee %"
+                    label="Findmi Fee %"
                     name="marketplace_fee_percent"
                     defaultValue={business.marketplace_fee_percent ?? 5}
                     step="0.01"

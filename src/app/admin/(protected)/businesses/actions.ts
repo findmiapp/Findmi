@@ -677,7 +677,7 @@ export async function assignBusinessMember(businessId: string, formData: FormDat
     redirect(appendQuery(editPath, { error: "Couldn't look up that email. Please try again." }));
   }
   if (!userId) {
-    redirect(appendQuery(editPath, { error: "No FindMi account found with that email." }));
+    redirect(appendQuery(editPath, { error: "No Findmi account found with that email." }));
   }
 
   const { data: existing } = await supabase

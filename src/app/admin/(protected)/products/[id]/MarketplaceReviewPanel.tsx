@@ -72,9 +72,9 @@ export default function MarketplaceReviewPanel({
       </p>
       <p className="mt-0.5 text-xs text-sky-900/70">
         {marketplaceStatus === "submitted"
-          ? "The owner requested broader FindMi Marketplace/discovery placement for this product."
+          ? "The owner requested broader Findmi Marketplace/discovery placement for this product."
           : marketplaceStatus === "approved"
-            ? "This product may appear in broader FindMi Marketplace/discovery surfaces, in addition to its own business profile."
+            ? "This product may appear in broader Findmi Marketplace/discovery surfaces, in addition to its own business profile."
             : "Marketplace/discovery visibility is temporarily paused. The product remains visible on its own business profile."}
       </p>
 

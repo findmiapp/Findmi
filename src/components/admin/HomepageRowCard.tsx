@@ -104,7 +104,7 @@ export default function HomepageRowCard({
 
         {isShowcase ? (
           <p className="rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-3 text-xs text-ink/50">
-            This row shows FindMi&rsquo;s existing business-acquisition showcase — no items to pick. Use
+            This row shows Findmi&rsquo;s existing business-acquisition showcase — no items to pick. Use
             Visible and Move Up/Down below to control whether and where it appears.
           </p>
         ) : (

@@ -4,7 +4,7 @@ import { getLocations } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Locations",
-  description: "Markets, venues, and spots where FindMi businesses show up.",
+  description: "Markets, venues, and spots where Findmi businesses show up.",
 };
 export const revalidate = 60;
 

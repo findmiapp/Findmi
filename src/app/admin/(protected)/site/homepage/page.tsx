@@ -45,7 +45,7 @@ export default async function HomepageSiteEditorPage({
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Homepage</h1>
       <p className="mt-1 text-sm text-ink/50">
-        Each card edits one homepage section. Blank fields keep FindMi&rsquo;s current default copy —
+        Each card edits one homepage section. Blank fields keep Findmi&rsquo;s current default copy —
         you never need to fill in every field.
       </p>
       {error && (
@@ -132,7 +132,7 @@ function WeatherCard({ overrides }: { overrides: Awaited<ReturnType<typeof getAd
           name="weather_city"
           defaultValue={config.city}
           placeholder="City, State"
-          hint="A city name FindMi can look up, e.g. &quot;Staten Island, NY&quot;."
+          hint="A city name Findmi can look up, e.g. &quot;Staten Island, NY&quot;."
         />
         <CheckboxField label="Show weather" name="weather_show" defaultChecked={config.show} />
         <button
@@ -261,7 +261,7 @@ function SectionCard({
               ))}
             </div>
             <p className="mt-1.5 text-xs text-ink/45">
-              Leave any slot blank to fall back to a real photo already on FindMi (a featured business or an
+              Leave any slot blank to fall back to a real photo already on Findmi (a featured business or an
               upcoming appearance) — never a placeholder.
             </p>
           </div>

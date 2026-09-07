@@ -31,7 +31,7 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
         {row.business?.name ?? "Unknown business"}
       </h1>
       <p className="mt-1 text-sm text-ink/50">
-        {profile ? `${profile.display_name || `@${profile.username}`}` : row.user_id ? "FindMi account (no public profile)" : "Anonymous inquiry"}
+        {profile ? `${profile.display_name || `@${profile.username}`}` : row.user_id ? "Findmi account (no public profile)" : "Anonymous inquiry"}
         {row.product?.name ? ` · About: ${row.product.name}` : ""} · Status: {row.status}
       </p>
       {(row.customer_email || row.customer_phone) && (

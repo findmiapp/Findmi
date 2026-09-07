@@ -193,7 +193,7 @@ export default function HamburgerMenu({
                     onClick={close}
                     className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-ink transition hover:bg-black/[0.03]"
                   >
-                    Browse FindMi
+                    Browse Findmi
                   </Link>
                 )}
               </nav>

@@ -35,7 +35,7 @@ export default function Footer() {
                 Business
               </p>
               <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                <li><Link href="/join" className="hover:text-ink">Join FindMi</Link></li>
+                <li><Link href="/join" className="hover:text-ink">Join Findmi</Link></li>
                 <li><Link href="/about" className="hover:text-ink">About</Link></li>
               </ul>
             </div>
@@ -60,7 +60,7 @@ export default function Footer() {
         </div>
 
         <p className="mt-6 text-xs text-ink/40 md:mt-10">
-          © {new Date().getFullYear()} FindMi. All rights reserved.
+          © {new Date().getFullYear()} Findmi. All rights reserved.
         </p>
       </div>
     </footer>

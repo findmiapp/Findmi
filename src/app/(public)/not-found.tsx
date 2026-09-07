@@ -19,7 +19,7 @@ export default function PublicNotFound() {
         href="/"
         className="mt-6 rounded-full bg-findmi px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
-        Back to FindMi
+        Back to Findmi
       </Link>
     </div>
   );

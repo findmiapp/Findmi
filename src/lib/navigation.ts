@@ -183,13 +183,13 @@ export const FALLBACK_NAV_ITEMS: ResolvedNavItem[] = [
   { id: "fallback-marketplace", label: "Marketplace", href: "/marketplace", external: false, icon: "tag", highlight: false, children: [] },
   {
     id: "fallback-for-business",
-    label: "FindMi for Business",
+    label: "Findmi for Business",
     href: null,
     external: false,
     icon: null,
     highlight: false,
     children: [
-      { id: "fallback-fb-join", label: "Join FindMi", href: "/join", external: false, icon: null, highlight: true, children: [] },
+      { id: "fallback-fb-join", label: "Join Findmi", href: "/join", external: false, icon: null, highlight: true, children: [] },
     ],
   },
   { id: "fallback-about", label: "About", href: "/about", external: false, icon: null, highlight: false, children: [] },

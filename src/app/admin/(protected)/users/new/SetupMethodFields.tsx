@@ -56,7 +56,7 @@ export default function SetupMethodFields() {
             name="password"
             type="password"
             required
-            hint="At least 8 characters. Shown here once — FindMi never stores or displays it again. Tell the user to change it after they log in."
+            hint="At least 8 characters. Shown here once — Findmi never stores or displays it again. Tell the user to change it after they log in."
           />
         </div>
       )}

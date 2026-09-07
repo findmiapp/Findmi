@@ -143,7 +143,7 @@ export async function getCustomerOrderDetail(
       fulfillmentMethod: row.fulfillment_method,
       fulfillmentAmount: row.fulfillment_amount,
       fulfillmentStatus: row.fulfillment_status,
-      businessName: business?.name ?? "FindMi business",
+      businessName: business?.name ?? "Findmi business",
       businessSlug: business?.slug ?? "",
     };
   });

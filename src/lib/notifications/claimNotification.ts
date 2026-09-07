@@ -41,7 +41,7 @@ export async function notifyFounderOfPaidClaim(params: {
   const { data: entity } = await supabase.from(entityTable).select("name").eq("id", entityId).maybeSingle();
   const entityName = (entity as { name: string } | null)?.name ?? "Unknown";
 
-  const subject = `New Paid FindMi Claim — ${entityName}`;
+  const subject = `New Paid Findmi Claim — ${entityName}`;
   const body = [
     `${claimType === "business" ? "Business" : "Event"}: ${entityName}`,
     `Claimant: ${fullName || "—"}`,

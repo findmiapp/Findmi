@@ -114,7 +114,7 @@ export default async function AdminUserDetailPage({
       <section className="mt-4 rounded-2xl border border-black/10 bg-mist/40 p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Password &amp; Account Access</p>
         <p className="mt-1 text-xs text-ink/45">
-          FindMi never stores or displays this user&rsquo;s password. Choose one of the two options below.
+          Findmi never stores or displays this user&rsquo;s password. Choose one of the two options below.
         </p>
 
         <div className="mt-3 flex flex-col gap-4">

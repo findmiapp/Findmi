@@ -128,7 +128,7 @@ export default function ProductFieldsForm({
             <span>
               <span className="block text-sm font-medium text-ink">Catalog Only</span>
               <span className="block text-xs text-ink/50">
-                Show This Product On Your FindMi Business Profile And Storefront Only.
+                Show This Product On Your Findmi Business Profile And Storefront Only.
               </span>
             </span>
           </label>
@@ -143,7 +143,7 @@ export default function ProductFieldsForm({
             <span>
               <span className="block text-sm font-medium text-ink">Submit To Marketplace</span>
               <span className="block text-xs text-ink/50">
-                Request Broader Placement Across FindMi Marketplace And Discovery. Marketplace Approval And
+                Request Broader Placement Across Findmi Marketplace And Discovery. Marketplace Approval And
                 Commission Terms Apply.
               </span>
             </span>

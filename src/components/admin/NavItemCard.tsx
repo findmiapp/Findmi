@@ -87,7 +87,7 @@ export default function NavItemCard({
             onChange={(e) => setDestinationType(e.target.value as NavDestinationType)}
             className={selectClass}
           >
-            <option value="route">An existing FindMi page</option>
+            <option value="route">An existing Findmi page</option>
             <option value="custom">A custom link</option>
           </select>
         </label>
@@ -146,7 +146,7 @@ export default function NavItemCard({
           label="Highlight"
           name="is_highlight"
           defaultChecked={item.is_highlight}
-          hint="Renders as a stronger FindMi teal call-to-action instead of a plain link."
+          hint="Renders as a stronger Findmi teal call-to-action instead of a plain link."
         />
 
         <button

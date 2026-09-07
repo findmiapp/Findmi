@@ -105,7 +105,7 @@ export default function PlanCheckoutForm({
 
       <div>
         <span className="mb-1.5 block text-sm font-medium text-ink">
-          FindMi Market{limit ? ` (choose up to ${limit})` : "s"}
+          Findmi Market{limit ? ` (choose up to ${limit})` : "s"}
         </span>
         <div className="flex flex-wrap gap-2">
           {markets.map((m) => {

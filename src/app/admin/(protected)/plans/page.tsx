@@ -112,7 +112,7 @@ export default async function AdminPlansPage({
       <div className="mt-10 border-t border-black/10 pt-8">
         <h2 className="font-display text-xl font-semibold tracking-tight text-ink">Business Plan Market Allowance</h2>
         <p className="mt-1 text-sm text-ink/60">
-          Maximum number of active FindMi Markets a business on this plan can appear in. Primary + Additional
+          Maximum number of active Findmi Markets a business on this plan can appear in. Primary + Additional
           Markets count toward the same total. Leave blank for Unlimited.
         </p>
 

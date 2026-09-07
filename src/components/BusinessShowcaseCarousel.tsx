@@ -172,7 +172,7 @@ function RealAppearancesScreen({ demo }: { demo: ShowcaseBusinessData }) {
         </div>
       )}
       <div className="mt-auto rounded-md bg-ink py-1.5 text-center text-[7px] font-bold uppercase text-white">
-        FindMi Here
+        Findmi Here
       </div>
     </div>
   );
@@ -242,7 +242,7 @@ function RealDiscoveryScreen({ demo }: { demo: ShowcaseBusinessData }) {
     <div className="flex h-full flex-col gap-1.5 p-2">
       <div className="flex items-center gap-1 rounded-full border border-black/10 px-1.5 py-1">
         <SearchGlyph className="h-2 w-2 shrink-0 text-ink/35" />
-        <span className="truncate text-[6px] text-ink/40">{category ?? "Search FindMi"}</span>
+        <span className="truncate text-[6px] text-ink/40">{category ?? "Search Findmi"}</span>
       </div>
       {category && (
         <div className="flex gap-1">
@@ -355,7 +355,7 @@ function IllustrativeScreen({ id }: { id: (typeof SLIDES)[number]["id"] }) {
         <div className="flex h-full flex-col gap-1.5 p-2">
           <div className="flex items-center gap-1 rounded-full border border-black/10 px-1.5 py-1">
             <SearchGlyph className="h-2 w-2 shrink-0 text-ink/35" />
-            <span className="truncate text-[6px] text-ink/40">Search FindMi</span>
+            <span className="truncate text-[6px] text-ink/40">Search Findmi</span>
           </div>
           <div className="flex gap-1">
             <span className="shrink-0 rounded-full bg-findmi px-1.5 py-0.5 text-[6px] font-bold uppercase text-white">

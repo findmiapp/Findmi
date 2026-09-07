@@ -18,7 +18,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Businesses",
-  description: "Search and browse businesses and vendors on FindMi.",
+  description: "Search and browse businesses and vendors on Findmi.",
 };
 export const revalidate = 60;
 
@@ -128,7 +128,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Businesses</h1>
       <p className="mt-1.5 text-sm text-ink/60 sm:text-base">
-        Search FindMi&rsquo;s directory of local vendors and brands.
+        Search Findmi&rsquo;s directory of local vendors and brands.
       </p>
 
       <form method="get" className="mt-5 flex flex-col gap-3">

@@ -9,7 +9,7 @@ import type { Profile } from "@/lib/types";
 import AccountSync from "./AccountSync";
 
 export const metadata: Metadata = {
-  title: "My FindMi",
+  title: "My Findmi",
   robots: { index: false },
 };
 // Authenticated, per-user content — must never be statically or
@@ -155,12 +155,12 @@ export default async function AccountHomePage({
           preserved, just no longer duplicated in two places on this one
           page. */}
       <header>
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
         <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">
           Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
         </h1>
         <p className="mt-2 text-sm text-ink/60">
-          Manage the businesses, events, and places you run on FindMi — and keep track of what you discover — all
+          Manage the businesses, events, and places you run on Findmi — and keep track of what you discover — all
           from one account.
         </p>
       </header>
@@ -197,7 +197,7 @@ export default async function AccountHomePage({
           <AccountCard
             href="/account/orders"
             label="Orders"
-            description="Your FindMi purchases"
+            description="Your Findmi purchases"
             icon={<NavIcon name="cart" className="h-5 w-5" />}
           />
           <AccountCard
@@ -230,7 +230,7 @@ export default async function AccountHomePage({
 
         {myBusinesses.length === 0 ? (
           <p className="mt-3 text-sm text-ink/50">
-            Can&rsquo;t find your business on FindMi?{" "}
+            Can&rsquo;t find your business on Findmi?{" "}
             <Link href="/account/business/new" className="font-semibold text-ink underline underline-offset-2">
               Add it
             </Link>{" "}

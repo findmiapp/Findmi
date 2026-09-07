@@ -15,7 +15,7 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
                 control right next to it. */}
             <AdminHeaderControls />
             <Link href="/admin" className="font-display text-sm font-bold tracking-tight text-ink">
-              FindMi Admin
+              Findmi Admin
             </Link>
           </div>
           {/* Shared admin shell (item 5) — one link here covers every

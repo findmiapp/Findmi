@@ -47,7 +47,7 @@ export async function generateMetadata({
 
   return {
     title: event.name,
-    description: event.description ?? `${event.name} on FindMi.`,
+    description: event.description ?? `${event.name} on Findmi.`,
     openGraph: {
       title: event.name,
       description: event.description ?? undefined,

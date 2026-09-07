@@ -59,7 +59,7 @@ export default async function AddLocationPage({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add a Venue</h1>
       <p className="mt-2 text-sm text-ink/60">
         You&rsquo;ll own and manage it right away in your Location Manager, free — no separate Venue fee, ever.
@@ -137,7 +137,7 @@ export default async function AddLocationPage({
                 />
               </label>
               <p className="mt-1.5 text-xs text-ink/45">
-                Your venue will still be created — FindMi will review your request and follow up once your Market is
+                Your venue will still be created — Findmi will review your request and follow up once your Market is
                 available.
               </p>
               <p className="mt-1 text-xs text-ink/40">

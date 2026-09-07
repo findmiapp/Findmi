@@ -142,7 +142,7 @@ export default async function ManageLocationPage({
             View Public Venue ↗
           </Link>
         ) : (
-          <span className="rounded-full bg-black/[0.06] px-3.5 py-2 text-xs font-semibold text-ink/40" title="Pending FindMi review">
+          <span className="rounded-full bg-black/[0.06] px-3.5 py-2 text-xs font-semibold text-ink/40" title="Pending Findmi review">
             Pending Review
           </span>
         )}
@@ -150,7 +150,7 @@ export default async function ManageLocationPage({
 
       {created === "1" && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          Venue created — FindMi will review it before it appears in discovery.
+          Venue created — Findmi will review it before it appears in discovery.
         </p>
       )}
       {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
@@ -189,7 +189,7 @@ export default async function ManageLocationPage({
             </Link>
             {!eventEligible && (
               <p className="mt-2 text-xs text-ink/45">
-                Requires Organizer Access / qualifying FindMi membership — the next screen explains how to get it.
+                Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
               </p>
             )}
           </div>
@@ -209,7 +209,7 @@ export default async function ManageLocationPage({
                 defaultValue={location.cover_image_url}
               />
               <p className="text-xs text-ink/40">
-                Venue name and address are managed by FindMi. Need a correction? Contact FindMi support.
+                Venue name and address are managed by Findmi. Need a correction? Contact Findmi support.
               </p>
               <button type="submit" className={`mt-1 w-fit ${primaryButtonClass}`}>
                 Save Venue Details
@@ -293,7 +293,7 @@ export default async function ManageLocationPage({
                     <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
                   </label>
                   <p className="mt-1.5 text-xs text-ink/45">
-                    FindMi will review your request. Leave Market above set to &ldquo;Unassigned&rdquo; when using this.
+                    Findmi will review your request. Leave Market above set to &ldquo;Unassigned&rdquo; when using this.
                   </p>
                 </div>
               </details>
@@ -345,8 +345,8 @@ export default async function ManageLocationPage({
             </span>
             <p className="mt-3 text-sm text-ink/60">
               {location.is_demo
-                ? "FindMi reviews every new venue before it appears in public discovery. You can keep editing details, photos, and contact info in the meantime."
-                : "This venue is live and visible in FindMi discovery."}
+                ? "Findmi reviews every new venue before it appears in public discovery. You can keep editing details, photos, and contact info in the meantime."
+                : "This venue is live and visible in Findmi discovery."}
             </p>
           </div>
         )}

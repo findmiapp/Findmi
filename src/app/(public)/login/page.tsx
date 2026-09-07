@@ -55,7 +55,7 @@ export default async function LoginPage({
       </div>
 
       <p className="mt-6 text-center text-sm text-ink/50">
-        New to FindMi?{" "}
+        New to Findmi?{" "}
         <Link href={`/signup?next=${encodeURIComponent(safeNext)}`} className="font-semibold text-ink hover:underline">
           Create an account
         </Link>

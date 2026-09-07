@@ -26,7 +26,7 @@ export default async function AdminFormsPage({
         </Link>
       </div>
       <p className="mt-1 text-sm text-ink/50">
-        Which Tally forms FindMi uses for onboarding, inquiries, RSVP, and vendor applications —
+        Which Tally forms Findmi uses for onboarding, inquiries, RSVP, and vendor applications —
         without a code change.
       </p>
 
@@ -55,7 +55,7 @@ export default async function AdminFormsPage({
       <div className="mt-4 flex flex-col gap-2">
         {forms.length === 0 ? (
           <p className="text-sm text-ink/50">
-            No forms yet — create one, or FindMi keeps using the existing environment-variable
+            No forms yet — create one, or Findmi keeps using the existing environment-variable
             forms in the meantime.
           </p>
         ) : (

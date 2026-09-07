@@ -17,7 +17,7 @@ export function SuccessPanel({ onboarding }: { onboarding: OnboardingLink | null
         Payment confirmed
       </span>
       <h1 className="mt-5 font-display text-4xl font-bold tracking-tight text-ink sm:text-5xl">
-        Welcome to FindMi.
+        Welcome to Findmi.
       </h1>
       <p className="mt-4 max-w-md text-lg text-ink/60">
         Your membership is active. Now let&rsquo;s build your profile.
@@ -43,7 +43,7 @@ export function SuccessPanel({ onboarding }: { onboarding: OnboardingLink | null
       <p className="mt-10 text-sm text-ink/50">
         Questions in the meantime?{" "}
         <Link href="/about" className="font-medium text-ink underline underline-offset-2">
-          Learn more about FindMi
+          Learn more about Findmi
         </Link>
         .
       </p>
@@ -70,7 +70,7 @@ export function UnverifiedPanel() {
         href="/join"
         className="mt-8 rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
-        Back to FindMi
+        Back to Findmi
       </Link>
     </div>
   );

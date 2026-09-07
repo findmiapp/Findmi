@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "You",
-  description: "Your FindMi — saved businesses and what you're following.",
+  description: "Your Findmi — saved businesses and what you're following.",
 };
 
 export default function YouPage() {
@@ -11,7 +11,7 @@ export default function YouPage() {
     <div className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">You</h1>
       <p className="mt-3 text-ink/60">
-        FindMi doesn&rsquo;t need an account yet. What you save and follow is kept right on
+        Findmi doesn&rsquo;t need an account yet. What you save and follow is kept right on
         this device.
       </p>
 
@@ -41,7 +41,7 @@ export default function YouPage() {
           href="/join"
           className="mt-3 inline-block rounded-full bg-findmi px-5 py-2.5 text-sm font-bold text-white transition hover:bg-findmi-600"
         >
-          Join FindMi
+          Join Findmi
         </Link>
       </div>
     </div>

@@ -19,8 +19,13 @@ unrelated feature pass.
 
 ## 2. Brand / design system — locked
 
-- Consumer-facing brand capitalization: **FindMi**.
-- Primary brand color, FindMi Aqua: **`#14B0BC`** (Tailwind `findmi`
+- Brand styling: Always render the brand name as **"Findmi"** in
+  user-facing copy. Capital F only — never "FindMi", "FindMI", or
+  "FINDMI". This supersedes any earlier "FindMi" capitalization
+  guidance in this file or elsewhere; existing code comments that still
+  say "FindMi" are historical prose, not a license to reintroduce that
+  casing into rendered copy.
+- Primary brand color, Findmi Aqua: **`#14B0BC`** (Tailwind `findmi`
   color, with a full 50–900 tint/shade scale already defined in
   `tailwind.config.ts`). Sampled directly from the real logo asset — the
   authoritative source, not invented. Used scarcely and intentionally,

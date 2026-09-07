@@ -90,8 +90,8 @@ export default async function AdminClaimsPage({
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Claims</h1>
       <p className="mt-1 text-sm text-ink/50">
-        Requests from signed-in FindMi accounts to manage a business, event, or location. Claiming a business or
-        location is free. Event management is included with qualifying FindMi membership — no separate Event fee.
+        Requests from signed-in Findmi accounts to manage a business, event, or location. Claiming a business or
+        location is free. Event management is included with qualifying Findmi membership — no separate Event fee.
         Approving grants ownership, so review each claim carefully.
       </p>
 

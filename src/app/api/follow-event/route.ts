@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
   const supabase = getSupabase();
   if (!supabase) {
-    return NextResponse.json({ error: "FindMi isn't configured yet" }, { status: 503 });
+    return NextResponse.json({ error: "Findmi isn't configured yet" }, { status: 503 });
   }
 
   // Restore Event Follow pass — routed through follow_event() rather than

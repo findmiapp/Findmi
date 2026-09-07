@@ -120,7 +120,7 @@ export default async function AdminOrderDetailPage({
                         {" · "}Unit ${item.unit_price.toFixed(2)} · Line ${item.line_merchandise_total.toFixed(2)}
                       </p>
                       <p className="mt-1 text-xs text-ink/40">
-                        FindMi fee {item.marketplace_fee_percent}% (${item.marketplace_fee_amount.toFixed(2)}, {item.applied_fee_source}) ·
+                        Findmi fee {item.marketplace_fee_percent}% (${item.marketplace_fee_amount.toFixed(2)}, {item.applied_fee_source}) ·
                         {" "}Processing paid by {item.processing_fee_payer}
                         {item.allocated_processing_fee_amount > 0 && ` ($${item.allocated_processing_fee_amount.toFixed(2)})`}
                       </p>

@@ -7,7 +7,7 @@ import { groupByBusinessCategory } from "@/lib/curation";
 
 export const metadata: Metadata = {
   title: "Marketplace",
-  description: "Shop real products from FindMi businesses — coffee, flowers, goods, and more.",
+  description: "Shop real products from Findmi businesses — coffee, flowers, goods, and more.",
 };
 export const revalidate = 60;
 
@@ -58,9 +58,9 @@ export default async function MarketplacePage({
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Shop FindMi</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Shop Findmi</p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Marketplace</h1>
-      <p className="mt-2 text-ink/60">Real products from real FindMi businesses.</p>
+      <p className="mt-2 text-ink/60">Real products from real Findmi businesses.</p>
 
       <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
         {category && <input type="hidden" name="category" value={category} />}

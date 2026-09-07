@@ -56,7 +56,7 @@ export default async function AccountFollowingPage() {
       <AccountNav />
 
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Following</h1>
-      <p className="mt-1.5 text-sm text-ink/50">Businesses and events you follow with your FindMi account.</p>
+      <p className="mt-1.5 text-sm text-ink/50">Businesses and events you follow with your Findmi account.</p>
 
       {empty ? (
         <div className="mt-8 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm">

@@ -111,10 +111,10 @@ export default async function UpgradeToProPage({
   if (pro) {
     return (
       <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Pro</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
         <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink">{business.name} is already Pro</h1>
         <p className="mt-2 text-sm text-ink/60">
-          This business already has full FindMi Pro access — there&rsquo;s nothing more to upgrade.
+          This business already has full Findmi Pro access — there&rsquo;s nothing more to upgrade.
         </p>
         <Link href={manageHref} className={`mt-6 ${primaryButtonClass}`}>
           Manage Business
@@ -125,15 +125,15 @@ export default async function UpgradeToProPage({
 
   return (
     <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">FindMi Pro</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
-        Upgrade {business.name} to FindMi Pro
+        Upgrade {business.name} to Findmi Pro
       </h1>
 
       <div className="mt-6 rounded-3xl border border-findmi/20 bg-findmi-50 p-5 sm:p-6">
         <p className="font-display text-4xl font-bold tracking-tight text-ink">$99</p>
         <p className="mt-0.5 text-sm font-semibold text-ink/70">/ year</p>
-        <p className="mt-3 text-xs text-ink/60">$99 for one year of FindMi Pro.</p>
+        <p className="mt-3 text-xs text-ink/60">$99 for one year of Findmi Pro.</p>
       </div>
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">

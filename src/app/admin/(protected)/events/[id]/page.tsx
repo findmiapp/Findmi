@@ -71,7 +71,7 @@ export default async function EditEventPage({
         </div>
       </div>
       <p className="mt-1 text-xs text-ink/45">
-        {followerCount} follower{followerCount === 1 ? "" : "s"} (email + FindMi accounts combined)
+        {followerCount} follower{followerCount === 1 ? "" : "s"} (email + Findmi accounts combined)
       </p>
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">

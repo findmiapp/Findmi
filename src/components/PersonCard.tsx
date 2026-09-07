@@ -7,7 +7,7 @@ export default function PersonCard({ person, role }: { person: Person; role?: st
       href={`/people/${person.slug}`}
       image={person.image_url}
       kind="person"
-      badgeLabel={role ?? "FindMi"}
+      badgeLabel={role ?? "Findmi"}
       title={person.name}
       metaLines={person.location ? [{ icon: "pin", text: person.location }] : []}
       excerpt={person.short_bio}

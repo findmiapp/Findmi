@@ -23,7 +23,7 @@ export async function saveAppearance(id: string | null, formData: FormData) {
   // still happening, so a missing/invalid end can't be silently defaulted
   // or guessed here; it has to block the save with a clear message.
   if (!endLocal) {
-    redirect(errorRedirectUrl(editPath, "End date/time is required — FindMi uses it to know when the appearance is over."));
+    redirect(errorRedirectUrl(editPath, "End date/time is required — Findmi uses it to know when the appearance is over."));
   }
   const startIso = localDateTimeToIso(startLocal);
   const endIso = localDateTimeToIso(endLocal);

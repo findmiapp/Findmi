@@ -312,7 +312,7 @@ export default function EventOccurrencesEditor({
                     onChange={(e) => updateRow(row.id, { location_id: e.target.value })}
                     className={`${inputClass} w-full`}
                   >
-                    <option value="">No FindMi Location</option>
+                    <option value="">No Findmi Location</option>
                     {locations.map((loc) => (
                       <option key={loc.id} value={loc.id}>
                         {loc.name}

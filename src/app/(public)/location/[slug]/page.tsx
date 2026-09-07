@@ -21,7 +21,7 @@ export async function generateMetadata({
 
   return {
     title: location.name,
-    description: `See what's happening at ${location.name} on FindMi.`,
+    description: `See what's happening at ${location.name} on Findmi.`,
   };
 }
 
