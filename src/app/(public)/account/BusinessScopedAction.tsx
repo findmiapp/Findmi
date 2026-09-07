@@ -3,9 +3,22 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 
-interface BusinessOption {
+export interface BusinessOption {
   id: string;
   name: string;
+}
+
+/** Global Quick-Create pass — the exact zero/one/many routing decision
+ * BusinessScopedAction itself makes below, pulled out so a second caller
+ * (QuickCreateMenu) can reuse it without re-deciding it. Returns a real
+ * href for zero (Add Business) or one (straight to that Business's tab);
+ * null means "ambiguous" — the caller must render a chooser (see
+ * WhichBusinessPanel) instead of navigating directly, same as this
+ * component's own "many" branches do. */
+export function resolveBusinessScopedHref(businesses: BusinessOption[], tab: string): string | null {
+  if (businesses.length === 0) return "/account/business/new";
+  if (businesses.length === 1) return `/account/business/${businesses[0].id}?tab=${tab}`;
+  return null;
 }
 
 // Account Action Button Cleanup pass — the default ("pill") variant used
@@ -234,7 +247,7 @@ export function ActionStripLink({ href, label }: { href: string; icon?: ReactNod
   );
 }
 
-function WhichBusinessPanel({ businesses, tab, className }: { businesses: BusinessOption[]; tab: string; className?: string }) {
+export function WhichBusinessPanel({ businesses, tab, className }: { businesses: BusinessOption[]; tab: string; className?: string }) {
   return (
     <div className={`absolute top-full z-20 mt-2 rounded-2xl border border-black/10 bg-white p-2 shadow-lg ${className ?? ""}`}>
       <p className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/40">Which business?</p>

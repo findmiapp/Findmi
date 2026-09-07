@@ -6,7 +6,9 @@ import CartBadge from "./CartBadge";
 import HeaderSearch from "./HeaderSearch";
 import Logo from "./Logo";
 import NavIcon from "./NavIcon";
+import QuickCreateMenu from "./QuickCreateMenu";
 import type { ResolvedNavItem } from "@/lib/navigation";
+import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 
 // Desktop/tablet horizontal nav (Tailwind's md: breakpoint and up, so this
 // is also what a real tablet renders — there's no separate tablet
@@ -28,7 +30,17 @@ import type { ResolvedNavItem } from "@/lib/navigation";
 // or nested) is still always pulled out as its own CTA button regardless
 // of nesting — a highlighted item's whole purpose is staying visible, not
 // being buried one click deep in a dropdown.
-export default function NavDesktop({ navItems }: { navItems: ResolvedNavItem[] }) {
+export default function NavDesktop({
+  navItems,
+  authenticated,
+  businesses,
+}: {
+  navItems: ResolvedNavItem[];
+  /** Global Quick-Create pass — see MobileHeader's identical prop for
+   * what these drive (QuickCreateMenu, shared by both headers). */
+  authenticated: boolean;
+  businesses: BusinessOption[];
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
 
@@ -85,6 +97,7 @@ export default function NavDesktop({ navItems }: { navItems: ResolvedNavItem[] }
         </nav>
         <HeaderSearch variant="text" />
         <CartBadge variant="text" />
+        <QuickCreateMenu authenticated={authenticated} businesses={businesses} />
         {highlighted.map((item) => (
           <NavLink
             key={item.id}

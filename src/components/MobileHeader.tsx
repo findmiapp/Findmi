@@ -5,12 +5,15 @@ import CartBadge from "./CartBadge";
 import HamburgerMenu from "./HamburgerMenu";
 import HeaderSearch from "./HeaderSearch";
 import Logo from "./Logo";
+import QuickCreateMenu from "./QuickCreateMenu";
 import type { ResolvedNavItem } from "@/lib/navigation";
+import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 
 export default function MobileHeader({
   navItems,
   adminToolbar = false,
   authenticated,
+  businesses,
   contactEmail,
   contactPhone,
 }: {
@@ -24,6 +27,10 @@ export default function MobileHeader({
   /** Passed straight through to HamburgerMenu's drawer utility strip —
    * see that component and DrawerUtilityStrip for what each drives. */
   authenticated: boolean;
+  /** Global Quick-Create pass — the signed-in visitor's managed
+   * Businesses, for QuickCreateMenu's Business-scoped rows. Always []
+   * when signed out (see (public)/layout.tsx). */
+  businesses: BusinessOption[];
   contactEmail: string | null;
   contactPhone: string | null;
 }) {
@@ -60,6 +67,7 @@ export default function MobileHeader({
       <div className="flex items-center gap-0.5">
         <HeaderSearch variant="icon" />
         <CartBadge />
+        <QuickCreateMenu authenticated={authenticated} businesses={businesses} />
         <HamburgerMenu
           items={navItems}
           authenticated={authenticated}

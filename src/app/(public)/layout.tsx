@@ -6,6 +6,7 @@ import { getVisibleNavItems } from "@/lib/navigation";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSiteContactInfo } from "@/lib/contact-info";
+import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 
 // Nav rarely changes — cache it site-wide for a minute rather than
 // querying nav_items on every single page request (same revalidate
@@ -40,11 +41,31 @@ export default async function PublicLayout({ children }: { children: React.React
   // Admin → Site → Contact Info value (see lib/contact-info.ts) — a
   // missing/blank field resolves to null there, which the utility strip
   // reads as "hide this action."
+  const supabase = await getServerSupabase();
   const {
     data: { user },
-  } = await (await getServerSupabase()).auth.getUser();
+  } = await supabase.auth.getUser();
   const authenticated = Boolean(user);
   const contactInfo = await getSiteContactInfo();
+
+  // Global Quick-Create pass — the same managed-Business list
+  // BusinessScopedAction needs for its zero/one/many routing decision
+  // (see /account/page.tsx's identical query), fetched once here so both
+  // the mobile and desktop headers' QuickCreateMenu share it without a
+  // second round trip each. Empty/unfetched whenever signed out — a
+  // signed-out visitor's business-scoped quick-create actions route
+  // through login instead (see QuickCreateMenu), never through this list.
+  type BusinessMembershipRow = { business_id: string; businesses: { name: string } | { name: string }[] | null };
+  let businesses: BusinessOption[] = [];
+  if (authenticated) {
+    const { data } = await supabase.from("business_members").select("business_id, businesses(name)").eq("user_id", user!.id);
+    businesses = ((data ?? []) as BusinessMembershipRow[])
+      .map((m) => {
+        const business = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
+        return business ? { id: m.business_id, name: business.name } : null;
+      })
+      .filter((b): b is BusinessOption => Boolean(b));
+  }
 
   return (
     <>
@@ -53,10 +74,11 @@ export default async function PublicLayout({ children }: { children: React.React
         navItems={navItems}
         adminToolbar={isAdmin}
         authenticated={authenticated}
+        businesses={businesses}
         contactEmail={contactInfo.email}
         contactPhone={contactInfo.phone}
       />
-      <NavDesktop navItems={navItems} />
+      <NavDesktop navItems={navItems} authenticated={authenticated} businesses={businesses} />
       <div className={`flex-1 ${isAdmin ? "pt-[calc(3.5rem+1.75rem)]" : "pt-14"} md:pt-0`}>{children}</div>
       <Footer />
     </>
