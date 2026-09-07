@@ -1624,15 +1624,34 @@ export type FindWindow = "live" | "today" | "weekend" | "anytime";
  * handful of legacy rows still have one and are excluded across every tab
  * until backfilled (see this pass's report). Optional categorySlug/city
  * back /find's WHAT/WHERE filters — same category-then-filter-ids pattern
- * used by searchBusinesses, applied here via business_id. */
+ * used by searchBusinesses, applied here via business_id.
+ *
+ * Discovery V2 — marketSlug/areaSlug are purely additive (new optional
+ * fields on the same `extra` object): every existing caller (today, just
+ * /find) that doesn't pass them keeps working byte-for-byte unchanged.
+ * Reuses the exact same getBusinessIdsInMarket/getBusinessIdsInArea
+ * helpers searchBusinesses/getEventsDiscovery already use — appearances
+ * were the one discovery surface without Market/Area support at all
+ * before this. Same intersection semantics as those two: an unknown/
+ * inactive Market, or a real one with nobody in it yet, returns []
+ * rather than silently falling back to unfiltered results. */
 export async function getFindMiHereFeed(
   when: FindWindow,
   limit = 30,
-  extra: { categorySlug?: string; city?: string } = {}
+  extra: { categorySlug?: string; city?: string; marketSlug?: string; areaSlug?: string } = {}
 ): Promise<AppearanceFeedItem[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const nowIso = new Date().toISOString();
+
+  let marketBusinessIds: string[] | null = null;
+  if (extra.areaSlug && extra.marketSlug) {
+    marketBusinessIds = await getBusinessIdsInArea(extra.marketSlug, extra.areaSlug);
+    if (marketBusinessIds.length === 0) return [];
+  } else if (extra.marketSlug) {
+    marketBusinessIds = await getBusinessIdsInMarket(extra.marketSlug);
+    if (marketBusinessIds.length === 0) return [];
+  }
 
   let categoryBusinessIds: string[] | null = null;
   if (extra.categorySlug) {
@@ -1668,6 +1687,10 @@ export async function getFindMiHereFeed(
     }
   }
   if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
+  // A second .in("business_id", ...) call ANDs with the category one
+  // above (PostgREST applies every filter conjunctively) — same
+  // intersection-via-chained-.in technique searchBusinesses already uses.
+  if (marketBusinessIds) query = query.in("business_id", marketBusinessIds);
   if (extra.city) query = query.ilike("city", `%${extra.city}%`);
 
   // Featured appearances (see event_businesses.featured / appearances'
