@@ -1,5 +1,6 @@
 import { getAdminSupabase } from "./supabase-admin";
 import { getAdminUserCount } from "./user-queries";
+import { getEventIdsWithOwners } from "./queries";
 
 // Admin Dashboard Redesign — the /admin homepage's own data, kept
 // separate from lib/admin/queries.ts's getDashboardCounts() (still used
@@ -39,6 +40,14 @@ export interface DashboardNeedsAttention {
    * content approval and Marketplace approval are independent decisions.
    * Same queue admin/products' ?status=marketplace_review filter uses. */
   pendingMarketplaceReviews: number;
+  /** Admin Needs Review pass — events with is_demo=true that also have a
+   * real event_members row (i.e. created via native self-service, not
+   * founder/admin/seed-created) — same needsReview=true filter
+   * admin/events now offers (getAdminEvents). Events has no
+   * publication_status column; this is the only existing-schema way to
+   * separate a real organizer's just-submitted event from permanent
+   * is_demo=true seed/demo content. */
+  pendingEventReviews: number;
 }
 
 export interface DashboardGlance {
@@ -48,6 +57,17 @@ export interface DashboardGlance {
    * admin/queries.ts's getAdminEvents({ when: "upcoming" }) already uses. */
   upcomingEvents: number;
   users: number;
+}
+
+async function countPendingEventReviews(supabase: NonNullable<ReturnType<typeof getAdminSupabase>>): Promise<number> {
+  const ownedEventIds = await getEventIdsWithOwners(supabase);
+  if (ownedEventIds.length === 0) return 0;
+  const { count } = await supabase
+    .from("events")
+    .select("id", { count: "exact", head: true })
+    .eq("is_demo", true)
+    .in("id", ownedEventIds);
+  return count ?? 0;
 }
 
 export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttention | null> {
@@ -62,6 +82,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingBusinessReviews,
     pendingProductReviews,
     pendingMarketplaceReviews,
+    pendingEventReviews,
   ] = await Promise.all([
     supabase.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("event_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -83,6 +104,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
       .select("id", { count: "exact", head: true })
       .or("moderation_status.eq.pending_review,pending_changes.not.is.null"),
     supabase.from("products").select("id", { count: "exact", head: true }).eq("marketplace_status", "submitted"),
+    countPendingEventReviews(supabase),
   ]);
 
   return {
@@ -92,6 +114,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingBusinessReviews: pendingBusinessReviews.count ?? 0,
     pendingProductReviews: pendingProductReviews.count ?? 0,
     pendingMarketplaceReviews: pendingMarketplaceReviews.count ?? 0,
+    pendingEventReviews,
   };
 }
 

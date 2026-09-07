@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminSupabase } from "./supabase-admin";
 import { getPeopleForBusinessAdmin, type BusinessPersonRow } from "./people-queries";
 import type {
@@ -182,6 +183,38 @@ export interface EventListFilters {
   when?: "upcoming" | "past";
   vendorAppsOpen?: boolean;
   pendingApplications?: boolean;
+  /** Admin Needs Review pass — events has no publication_status column
+   * (unlike businesses); is_demo is its only publish toggle. But is_demo
+   * alone can't distinguish a real organizer's just-submitted event from
+   * permanent seed/demo content (both are is_demo=true) — admin's own
+   * saveEvent() never creates an event_members row, so ONLY events
+   * created via the native create_owned_event() self-service RPC ever
+   * have one. "Needs review" is therefore is_demo=true AND the event has
+   * at least one event_members row (a real organizer-owned event still
+   * awaiting founder publish) — existing columns/tables only, no new
+   * schema. See getEventIdsWithOwners below. */
+  needsReview?: boolean;
+}
+
+/** Distinct event ids that have at least one event_members row — i.e.
+ * events created through native self-service (create_owned_event()) or
+ * later claimed, as opposed to founder/admin/seed-created events, which
+ * never get an event_members row (admin's saveEvent() never writes to
+ * that table). Shared by getAdminEvents({needsReview}) and the dashboard's
+ * own pendingEventReviews count so they can never drift out of sync. */
+export async function getEventIdsWithOwners(supabase: SupabaseClient): Promise<string[]> {
+  const { data } = await supabase.from("event_members").select("event_id");
+  return Array.from(new Set((data ?? []).map((r) => r.event_id as string)));
+}
+
+/** Page-level convenience wrapper (acquires its own admin client) — used
+ * by admin/events/page.tsx to badge each row "In Review" (is_demo=true +
+ * owned) vs "Demo" (is_demo=true, no owner — permanent seed/admin-draft
+ * content) without threading a client through the page. */
+export async function getEventIdsWithOwnersSet(): Promise<Set<string>> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return new Set();
+  return new Set(await getEventIdsWithOwners(supabase));
 }
 
 export async function getAdminEvents(filters: EventListFilters = {}): Promise<AdminEvent[]> {
@@ -205,6 +238,20 @@ export async function getAdminEvents(filters: EventListFilters = {}): Promise<Ad
     if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
     const { data } = await query.order("start_at", { ascending: false });
     return ((data ?? []) as unknown as AdminEvent[]) ?? [];
+  }
+
+  if (filters.needsReview) {
+    const ownedEventIds = await getEventIdsWithOwners(supabase);
+    if (ownedEventIds.length === 0) return [];
+    let query = supabase.from("events").select("*").eq("is_demo", true).in("id", ownedEventIds);
+    if (filters.q) {
+      const term = `%${filters.q}%`;
+      query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
+    }
+    if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
+    if (filters.when === "past") query = query.lt("start_at", nowIso);
+    const { data } = await query.order("start_at", { ascending: false });
+    return (data as AdminEvent[]) ?? [];
   }
 
   let query = supabase.from("events").select("*");

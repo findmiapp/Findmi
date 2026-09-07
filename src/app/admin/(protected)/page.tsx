@@ -168,6 +168,40 @@ export default async function AdminDashboardPage() {
     : [];
   const attentionTotal = attentionItems.reduce((sum, i) => sum + i.count, 0);
 
+  // Admin Needs Review pass — a prominent, compact "what needs a founder
+  // decision right now" summary, positioned above At a Glance/Quick
+  // Actions. Every count reuses an EXISTING authoritative query
+  // (getDashboardNeedsAttention, itself mirroring the same filters
+  // admin/events, admin/businesses, and admin/products already offer) —
+  // no new moderation state, no duplicate approval action. Locations are
+  // deliberately NOT included: locations have no genuine review queue
+  // (is_demo is a plain publish toggle with no approve/reject workflow
+  // around it), so inventing a count here would misrepresent the
+  // architecture rather than surface it.
+  const needsReviewItems = needsAttention
+    ? [
+        {
+          label: "Event",
+          pluralLabel: "Events",
+          count: needsAttention.pendingEventReviews,
+          href: "/admin/events?needsReview=1",
+        },
+        {
+          label: "Business",
+          pluralLabel: "Businesses",
+          count: needsAttention.pendingBusinessReviews,
+          href: "/admin/businesses?published=pending_review",
+        },
+        {
+          label: "Marketplace Product",
+          pluralLabel: "Marketplace Products",
+          count: needsAttention.pendingMarketplaceReviews,
+          href: "/admin/products?status=marketplace_review",
+        },
+      ]
+    : [];
+  const needsReviewTotal = needsReviewItems.reduce((sum, i) => sum + i.count, 0);
+
   return (
     <div>
       {/* A. HEADER */}
@@ -189,6 +223,39 @@ export default async function AdminDashboardPage() {
           Server-side Supabase access isn&rsquo;t configured (missing SUPABASE_SERVICE_ROLE_KEY). Counts can&rsquo;t
           load, and writes will fail until it&rsquo;s set.
         </p>
+      )}
+
+      {/* A1. NEEDS REVIEW — Admin Needs Review pass. Prominent, compact,
+          above At a Glance/Quick Actions per its own spec — fixes a live
+          gap where a founder had no clear "something needs your decision"
+          signal for a newly self-service-created Event. Non-zero items
+          only (zero states never clutter this list); a single positive
+          line when everything is clear. */}
+      {needsAttention && (
+        <section className="mt-6 rounded-2xl border border-black/5 bg-white p-4">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Review</h2>
+          {needsReviewTotal === 0 ? (
+            <p className="mt-2 text-sm text-ink/50">Nothing waiting for review.</p>
+          ) : (
+            <ul className="mt-2 flex flex-col gap-1">
+              {needsReviewItems
+                .filter((item) => item.count > 0)
+                .map((item) => (
+                  <li key={item.label}>
+                    <Link
+                      href={item.href}
+                      className="flex items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-sm transition hover:bg-black/[0.03]"
+                    >
+                      <span className="font-semibold text-ink">
+                        {item.count} {item.count === 1 ? item.label : item.pluralLabel}
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-wide text-findmi-700">Review →</span>
+                    </Link>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {/* A2. BUSINESS REVIEWS — Onboarding UX Polish pass. Near the top,
@@ -308,7 +375,7 @@ export default async function AdminDashboardPage() {
           <MetricCard label="Pro Businesses" count={glance?.proBusinesses} href="/admin/businesses" />
           <MetricCard label="Free Businesses" count={glance?.freeBusinesses} href="/admin/businesses" />
           <MetricCard label="Upcoming Events" count={glance?.upcomingEvents} href="/admin/events?when=upcoming" />
-          <MetricCard label="Appearances" count={counts?.appearances} href="/admin/appearances" />
+          <MetricCard label="Where You'll Be" count={counts?.appearances} href="/admin/appearances" />
         </div>
       </section>
 
@@ -318,7 +385,7 @@ export default async function AdminDashboardPage() {
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <QuickAction href="/admin/businesses/new" label="Business" />
           <QuickAction href="/admin/events/new" label="Event" />
-          <QuickAction href="/admin/appearances/new" label="Appearance" />
+          <QuickAction href="/admin/appearances/new" label="Where You'll Be" />
           <QuickAction href="/admin/products/new" label="Product" />
           <QuickAction href="/admin/people/new" label="Person" />
           <QuickAction href="/admin/locations/new" label="Location" />
