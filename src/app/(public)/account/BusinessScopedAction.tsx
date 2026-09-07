@@ -8,10 +8,19 @@ interface BusinessOption {
   name: string;
 }
 
-const PILL_CLASS =
-  "flex w-[76px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-black/10 bg-white px-2 py-3 text-center transition hover:border-findmi/40 hover:bg-findmi-50";
-const PILL_ICON_CLASS = "flex h-9 w-9 items-center justify-center rounded-full bg-findmi-50 text-findmi-700";
-const PILL_LABEL_CLASS = "text-[11px] font-bold leading-tight text-ink/70";
+// Account Action Button Cleanup pass — the default ("pill") variant used
+// to be a vertical icon-badge-over-label tile that, at a glance, read like
+// one of the page's own rounded filter/nav pills (Events/Businesses/
+// Products/Venues above it) rather than a button that DOES something.
+// These are the account's CREATE/ADD actions, so they now render as
+// compact, rectangular (modestly rounded, never capsule/rounded-full)
+// buttons with a leading "+" — the same shape language as a real button,
+// distinct from every passive navigation pill elsewhere on this page.
+// This component is only ever used from account/page.tsx (verified —
+// nothing public reuses it), so this change can't affect any consumer-
+// facing filter pill.
+const ACTION_BUTTON_CLASS =
+  "flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-black/10 bg-white px-3.5 text-xs font-bold text-ink transition hover:border-findmi/40 hover:bg-findmi-50 active:scale-[0.98]";
 
 /**
  * Owner Action UX pass — a Business-scoped create action (Schedule,
@@ -173,31 +182,34 @@ export default function BusinessScopedAction({
 
   // Default "pill" variant.
   if (businesses.length === 0) {
-    return <ActionStripLink href={zeroHref} icon={icon} label={label} />;
+    return <ActionStripLink href={zeroHref} label={label} />;
   }
   if (businesses.length === 1) {
-    return <ActionStripLink href={oneHref!} icon={icon} label={label} />;
+    return <ActionStripLink href={oneHref!} label={label} />;
   }
 
   return (
     <div ref={containerRef} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={PILL_CLASS}>
-        <span className={PILL_ICON_CLASS}>{icon}</span>
-        <span className={PILL_LABEL_CLASS}>{label}</span>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={ACTION_BUTTON_CLASS}>
+        <PlusGlyph className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+        {label}
       </button>
-      {open && <WhichBusinessPanel businesses={businesses} tab={tab} className="left-1/2 w-52 -translate-x-1/2" />}
+      {open && <WhichBusinessPanel businesses={businesses} tab={tab} className="left-0 w-52" />}
     </div>
   );
 }
 
-/** Same compact vertical icon+label shape as the chooser button above, so
- * every action-strip item (plain-link or business-scoped) is visually
- * identical regardless of which behavior it has underneath. */
-export function ActionStripLink({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
+/** Compact rectangular create/add button — every action-strip item
+ * (plain-link or business-scoped) shares this shape regardless of which
+ * behavior it has underneath. `icon` is still accepted (other variants of
+ * BusinessScopedAction use it) but intentionally not rendered here: every
+ * create action gets the same leading "+", per this pass's own
+ * requirement that only genuine create/add actions carry that prefix. */
+export function ActionStripLink({ href, label }: { href: string; icon?: ReactNode; label: string }) {
   return (
-    <Link href={href} className={PILL_CLASS}>
-      <span className={PILL_ICON_CLASS}>{icon}</span>
-      <span className={PILL_LABEL_CLASS}>{label}</span>
+    <Link href={href} className={ACTION_BUTTON_CLASS}>
+      <PlusGlyph className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+      {label}
     </Link>
   );
 }

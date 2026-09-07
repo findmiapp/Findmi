@@ -103,20 +103,36 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   // "resolved-or-undefined" treatment area/market already get.
   const q = qParam?.trim() || undefined;
 
-  const [categories, markets, items, matchingEvents] = await Promise.all([
+  // Timeframe Continuation pass — NOW/TODAY/THIS WEEKEND are genuinely
+  // constrained windows (see getFindMiHereFeed's own `when` handling): a
+  // short/empty result there is real and correct, not a bug. But a
+  // dead-ended page right after 1-3 constrained results reads as FindMi
+  // having nothing else — so for these three windows only, a second
+  // "anytime" call to the SAME existing getFindMiHereFeed (same category/
+  // market/area/q constraints — only the time constraint relaxes) supplies
+  // a continuation feed of what's coming up after the window. NEXT UP
+  // (already the broadest window) needs no second query — its own result
+  // set already covers everything, so the existing carousel+diversified-
+  // slice model is untouched for it.
+  const CONSTRAINED_WINDOWS: FindWindow[] = ["live", "today", "weekend"];
+  const isConstrainedWindow = CONSTRAINED_WINDOWS.includes(when);
+
+  const [categories, markets, items, matchingEvents, continuationItems] = await Promise.all([
     getCategories(),
     getConsumerVisibleMarketsWithAreas(),
     getFindMiHereFeed(when, 30, { categorySlug: category, marketSlug, areaSlug, q }),
     category || marketSlug
       ? getEventsDiscovery({ when: eventWindow(when), categorySlug: category, marketSlug, areaSlug, limit: 6 })
       : Promise.resolve([]),
+    isConstrainedWindow
+      ? getFindMiHereFeed("anytime", 20, { categorySlug: category, marketSlug, areaSlug, q })
+      : Promise.resolve([]),
   ]);
 
   // Carousel-First pass — the same filtered `items` result set (unchanged
   // query, unchanged ordering source) is split into an UPCOMING carousel
-  // (first up to 8) and a MORE UPCOMING compact list (the remainder),
-  // replacing the old single-giant-hero + rows split. Never a second
-  // query, never a featured/ranking flag: purely a display-order pass over
+  // (first up to 8) and a continuation feed below it. Never a second
+  // ranking pass, never a featured flag: purely a display-order pass over
   // what the pipeline already returned.
   //
   // Diversification (Section 8): businesses are round-robined — one item
@@ -131,14 +147,35 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   const diversified = diversifyByBusiness(items);
   const CAROUSEL_SIZE = 8;
   const carouselItems = diversified.slice(0, CAROUSEL_SIZE);
-  const moreItems = diversified.slice(CAROUSEL_SIZE);
+
+  // Timeframe Continuation pass — for a constrained window, the feed below
+  // the carousel is the SEPARATE "anytime" query (same category/market/
+  // area/q), minus whatever's already rendered in the carousel above (by
+  // exact appearance id — never by business name/identity, so a business
+  // with more than one real future appearance can still show again below,
+  // per Section 5). For NEXT UP, nothing has changed: the feed is simply
+  // the rest of the same diversified list.
+  const moreItems = isConstrainedWindow
+    ? continuationItems.filter((i) => !carouselItems.some((c) => c.id === i.id))
+    : diversified.slice(CAROUSEL_SIZE);
+
+  const SECTION_LABELS: Record<FindWindow, { top: string; more: string }> = {
+    live: { top: "Happening Now", more: "Coming Up Next" },
+    today: { top: "Today", more: "Coming Up Next" },
+    weekend: { top: "This Weekend", more: "Coming Up After This Weekend" },
+    anytime: { top: "Upcoming", more: "More Upcoming" },
+  };
+
   // A Matching Event that's already visible as an appearance card (carousel
-  // or More Upcoming) would otherwise show the literal same Event twice on
-  // one page — once as "Business @ Event", once again as its own Event
-  // card. Dedup key: event.id against every visible appearance's own
-  // event_id — unchanged from the prior pass, just computed over the same
-  // full `items` set regardless of which section each row lands in.
-  const shownEventIds = new Set(items.filter((i) => i.event_id).map((i) => i.event_id as string));
+  // or the continuation feed) would otherwise show the literal same Event
+  // twice on one page — once as "Business @ Event", once again as its own
+  // Event card. Dedup key: event.id against every ACTUALLY RENDERED
+  // appearance's own event_id — computed from carouselItems+moreItems
+  // (not the raw `items`/`continuationItems` queries) since the
+  // continuation feed can introduce event-linked appearances the original
+  // constrained query never returned.
+  const visibleAppearances = [...carouselItems, ...moreItems];
+  const shownEventIds = new Set(visibleAppearances.filter((i) => i.event_id).map((i) => i.event_id as string));
   const dedupedMatchingEvents = matchingEvents.filter((e) => !shownEventIds.has(e.id));
   const hasFilters = Boolean(category || marketSlug);
 
@@ -239,6 +276,22 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         {marketSlug && <input type="hidden" name="market" value={marketSlug} />}
         {marketSlug && areaSlug && <input type="hidden" name="area" value={areaSlug} />}
 
+        {/* Filter Results UX pass — Area already applies immediately via
+            AreaPicker's own router.push, but Category is a plain <select>
+            inside this form and had no explicit, visually-associated way
+            to submit it (the "Search" button above reads as belonging to
+            the text field, not to What/Where). This is a second submit
+            button for the SAME form/state (q + category + the hidden
+            when/market/area fields) — not a second, incompatible URL
+            model — so pressing it applies whatever What/Where currently
+            show, without disturbing the current search text. */}
+        <button
+          type="submit"
+          className="h-10 w-full rounded-lg bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:w-fit sm:self-start sm:px-6"
+        >
+          Filter Results
+        </button>
+
         <div className="flex flex-wrap gap-1.5">
           {TABS.map((t) => (
             <Link
@@ -300,7 +353,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
       ) : (
         <>
           <div className="mt-5">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Upcoming</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">{SECTION_LABELS[when].top}</p>
             {carouselItems.length === 1 ? (
               // Section 6 — a single result gets one appropriately sized
               // card, never a scroller with nothing to scroll (no snap/
@@ -317,21 +370,36 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
               // on mobile, a fixed sm:w-72 so cards stay sensibly sized
               // (never enormous) on desktop instead of stretching across
               // the results container.
-              <div className="mt-2.5 flex gap-3 overflow-x-auto px-4 pb-1 -mx-4 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:snap-start [scroll-snap-type:x_mandatory]">
+              //
+              // Carousel Alignment fix — the container itself carries NO
+              // horizontal padding of its own; a leading (and trailing)
+              // spacer flex-item does that job instead of `px-4` on the
+              // scroll container. Padding on the leading edge of a
+              // horizontally-scrollable box is exactly the case some
+              // mobile browsers (notably WebKit/Safari) don't reliably
+              // honor at rest — the container's box still starts flush
+              // against the bled-out edge, so the first REAL card ends up
+              // flush against the viewport instead of aligned with the
+              // page's own content inset above it. A real flex item has no
+              // such quirk: it always reserves its own width. `snap-start`
+              // now lives on each card wrapper directly (not the old
+              // `[&>*]:snap-start`, which would otherwise also make the
+              // spacers themselves valid — and empty — snap stops).
+              <div className="mt-2.5 flex gap-3 overflow-x-auto pb-1 -mx-4 sm:mx-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [scroll-snap-type:x_mandatory]">
+                <div className="w-4 shrink-0 sm:hidden" aria-hidden="true" />
                 {carouselItems.map((item) => (
-                  <div key={item.id} className="w-[76vw] max-w-[320px] shrink-0 sm:w-72">
+                  <div key={item.id} className="w-[76vw] max-w-[320px] shrink-0 snap-start sm:w-72">
                     <FindCarouselCard item={item} />
                   </div>
                 ))}
+                <div className="w-4 shrink-0 sm:hidden" aria-hidden="true" />
               </div>
             )}
           </div>
 
           {moreItems.length > 0 && (
             <div className="mt-6">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">
-                {when === "live" ? "Also Happening Now" : "More Upcoming"}
-              </p>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">{SECTION_LABELS[when].more}</p>
               <div className="mt-2.5 flex flex-col gap-2">
                 {moreItems.map((item) => (
                   <FindAppearanceRow key={item.id} item={item} />
