@@ -2,6 +2,7 @@ import Link from "next/link";
 import { logout } from "../login/actions";
 import AdminNav from "@/components/admin/AdminNav";
 import AdminHeaderControls from "@/components/admin/AdminHeaderControls";
+import SignOutConfirm from "@/components/SignOutConfirm";
 
 export default function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,11 +22,12 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
           {/* Shared admin shell (item 5) — one link here covers every
               admin page rather than each page implementing its own. */}
           <div className="flex items-center gap-4">
-            <form action={logout}>
-              <button type="submit" className="text-xs font-semibold text-ink/50 hover:text-ink">
-                Sign Out
-              </button>
-            </form>
+            {/* Sign-Out Confirmation pass — same confirm dialog as the
+                consumer side; admin's own destroySession()/redirect stays
+                exactly as it was. */}
+            <SignOutConfirm action={logout} className="text-xs font-semibold text-ink/50 hover:text-ink">
+              Sign Out
+            </SignOutConfirm>
           </div>
         </div>
         {/* Admin Navigation Simplify + Organize pass — primary destinations

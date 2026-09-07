@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
 import AccountNav from "../AccountNav";
+import SignOutConfirm from "@/components/SignOutConfirm";
 import { updateProfile, signOut } from "./actions";
 
 export const metadata: Metadata = {
@@ -92,11 +93,11 @@ export default async function ProfilePage({
           </form>
         </div>
 
-        <form action={signOut} className="mt-6 text-center">
-          <button type="submit" className="text-xs font-semibold text-ink/40 hover:text-ink/70">
+        <div className="mt-6 text-center">
+          <SignOutConfirm action={signOut} className="text-xs font-semibold text-ink/40 hover:text-ink/70">
             Sign Out
-          </button>
-        </form>
+          </SignOutConfirm>
+        </div>
       </div>
     </div>
   );

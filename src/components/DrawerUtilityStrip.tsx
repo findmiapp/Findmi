@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import CartBadge from "./CartBadge";
+import SignOutConfirm from "./SignOutConfirm";
 import { signOut } from "@/app/(public)/account/profile/actions";
 
 const iconButtonClass =
@@ -54,11 +55,13 @@ export default function DrawerUtilityStrip({
         <CartBadge />
       </span>
       {authenticated ? (
-        <form action={signOut} onSubmit={onNavigate}>
-          <button type="submit" aria-label="Log out" className={iconButtonClass}>
-            <LogoutGlyph className="h-5 w-5" />
-          </button>
-        </form>
+        // Sign-Out Confirmation pass — the drawer itself stays open behind
+        // the confirm dialog (no onNavigate here) rather than closing on
+        // tap: Cancel returns exactly to where the visitor was, and a
+        // confirmed sign-out navigates the whole page away regardless.
+        <SignOutConfirm action={signOut} ariaLabel="Log out" className={iconButtonClass}>
+          <LogoutGlyph className="h-5 w-5" />
+        </SignOutConfirm>
       ) : (
         <Link href="/login" onClick={onNavigate} aria-label="Log in" className={iconButtonClass}>
           <LoginGlyph className="h-5 w-5" />

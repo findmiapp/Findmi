@@ -104,7 +104,7 @@ export default function QuickCreateMenu({
           className="absolute right-0 top-full z-50 mt-2 w-60 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-black/10 bg-white p-1.5 shadow-lg"
         >
           <BusinessScopedRow
-            label="FindMi Here"
+            label="Where I'll Be"
             tab="findmi-here"
             icon={<PlusGlyph className="h-4 w-4" />}
             authenticated={authenticated}

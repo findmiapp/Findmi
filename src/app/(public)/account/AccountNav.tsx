@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { syncLocalToAccountOnce } from "@/lib/accountSync";
+import SignOutConfirm from "@/components/SignOutConfirm";
 import { signOut } from "./profile/actions";
 
 const TABS = [
@@ -52,15 +53,16 @@ export default function AccountNav() {
       {/* Account Hub V1 — Sign Out must always be reachable without a trip
           to Profile first; this strip is shared by every /account/*
           subpage (including Business Manager, which renders this same
-          nav), so putting it here covers all of them from one place. */}
-      <form action={signOut} className="ml-auto shrink-0">
-        <button
-          type="submit"
-          className="shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold text-ink/40 transition hover:bg-black/[0.04] hover:text-ink/70"
-        >
-          Sign Out
-        </button>
-      </form>
+          nav), so putting it here covers all of them from one place.
+          Sign-Out Confirmation pass — wrapped in SignOutConfirm so an
+          accidental tap can't immediately end the session; same signOut
+          action, same styling, just a confirm step first. */}
+      <SignOutConfirm
+        action={signOut}
+        className="ml-auto shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold text-ink/40 transition hover:bg-black/[0.04] hover:text-ink/70"
+      >
+        Sign Out
+      </SignOutConfirm>
     </nav>
   );
 }
