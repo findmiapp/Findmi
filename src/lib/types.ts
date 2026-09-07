@@ -630,6 +630,19 @@ export interface Appearance {
   // (never moderation/visibility/participation/Market-Area). Null means
   // unreviewed. Public code should never read this field.
   admin_reviewed_at: string | null;
+  // Event + Appearance Geography Completion pass — this appearance's OWN
+  // FindMi discovery geography, same nullable-FK shape as events.market_id/
+  // market_area_id. ONLY meaningful when event_id is null (standalone) —
+  // an event-linked appearance's effective geography is always resolved
+  // from its connected Event instead (see getFindMiHereFeed), and save
+  // actions deliberately leave these null on a linked appearance so they
+  // can never drift from the Event. market_area_id, when set, always
+  // belongs to market_id (enforced in application code — see
+  // isAreaInMarket in lib/admin/market-areas.ts — never a DB constraint,
+  // same posture as the identical invariant on events). Never inferred
+  // from the Business's own home market_area_id.
+  market_id: string | null;
+  market_area_id: string | null;
 }
 
 export interface BusinessWithCategories extends Business {

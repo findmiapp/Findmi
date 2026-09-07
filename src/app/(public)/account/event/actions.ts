@@ -13,6 +13,7 @@ import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { cancelEventAppearance, ensureEventAppearance } from "@/app/admin/(protected)/events/actions";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -193,12 +194,18 @@ export async function createMemberEvent(formData: FormData) {
 
   // Same "check for an existing Market/Area match before falling back to
   // a Market Request" shape createMemberBusiness/saveEvent already use.
+  // Event + Appearance Geography Completion pass — the creation form has
+  // no Area picker of its own, but a free-text request can still resolve
+  // to a specific Area (not just its parent Market) via the matcher —
+  // that Area must be captured, not silently dropped on the floor.
   let effectiveMarketId = marketId;
+  let effectiveAreaId: string | null = null;
   let effectiveRequestedMarketText = requestedMarketTextRaw;
   if (requestedMarketTextRaw) {
     const match = await findExistingGeographyMatch(admin, requestedMarketTextRaw);
     if (match) {
       effectiveMarketId = match.marketId;
+      effectiveAreaId = match.areaId ?? null;
       effectiveRequestedMarketText = null;
     }
   }
@@ -219,6 +226,15 @@ export async function createMemberEvent(formData: FormData) {
   }
 
   const eventId = (created as { id: string }).id;
+
+  // create_owned_event() has no p_market_area_id parameter (Area wasn't
+  // part of that RPC's original signature) — rather than widen the RPC,
+  // a matched Area is written with one plain follow-up update. Best-effort
+  // only, same as the Location copy below: the event is already created
+  // either way, this just avoids losing an Area the matcher already found.
+  if (effectiveAreaId) {
+    await admin.from("events").update({ market_area_id: effectiveAreaId }).eq("id", eventId);
+  }
 
   // Create Event From Venue — Stage 3, Step 9. Copies the chosen
   // Location's own venue fields onto the brand-new event, same copy
@@ -505,10 +521,17 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
   }
 
   let effectiveMarketId = marketId;
+  // Event + Appearance Geography Completion pass — an Area picked in the
+  // form only survives if it still belongs to whichever Market ends up
+  // effective (a manually-chosen Market wins as-is; an auto-matched Market
+  // from a free-text request may not be the one the submitted Area
+  // belongs to, so re-validate either way rather than trusting the form).
+  let effectiveAreaId = str(formData, "market_area_id");
   if (requestedMarketTextRaw) {
     const match = await findExistingGeographyMatch(admin, requestedMarketTextRaw);
     if (match) {
       effectiveMarketId = match.marketId;
+      effectiveAreaId = match.areaId ?? null;
     } else {
       const { data: event } = await admin.from("events").select("city, state").eq("id", eventId).maybeSingle();
       await createLinkedMarketRequest(admin, {
@@ -520,8 +543,14 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
       });
     }
   }
+  if (effectiveAreaId && (!effectiveMarketId || !(await isAreaInMarket(effectiveAreaId, effectiveMarketId)))) {
+    effectiveAreaId = null;
+  }
 
-  const { error } = await admin.from("events").update({ market_id: effectiveMarketId }).eq("id", eventId);
+  const { error } = await admin
+    .from("events")
+    .update({ market_id: effectiveMarketId, market_area_id: effectiveAreaId })
+    .eq("id", eventId);
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
 
   revalidatePath(redirectPath);

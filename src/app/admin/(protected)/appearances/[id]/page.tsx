@@ -4,6 +4,7 @@ import {
   getBusinessOptionById,
   getEventOptionById,
 } from "@/lib/admin/queries";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import AppearanceForm from "../AppearanceForm";
 
 export const dynamic = "force-dynamic";
@@ -20,9 +21,10 @@ export default async function EditAppearancePage({
   const appearance = await getAdminAppearanceById(id);
   if (!appearance) notFound();
 
-  const [initialBusiness, initialEvent] = await Promise.all([
+  const [initialBusiness, initialEvent, marketsWithAreas] = await Promise.all([
     getBusinessOptionById(appearance.business_id),
     getEventOptionById(appearance.event_id),
+    getActiveMarketsWithAreaOptions(),
   ]);
 
   return (
@@ -40,6 +42,7 @@ export default async function EditAppearancePage({
           appearance={appearance}
           initialBusiness={initialBusiness}
           initialEvent={initialEvent}
+          marketsWithAreas={marketsWithAreas}
           error={error}
         />
       </div>

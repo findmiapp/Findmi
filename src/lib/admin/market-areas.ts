@@ -48,3 +48,46 @@ export async function isMarketAreaSlugTaken(marketId: string, slug: string, excl
   const { data } = await query;
   return (data?.length ?? 0) > 0;
 }
+
+/** Event + Appearance Geography Completion pass — feeds MarketAreaFields
+ * (the Market -> Area cascading select) on both the Admin Event form and
+ * the owner Event Manager's Market/Area tab. Deliberately `active` only
+ * (NOT also `consumer_visible`, unlike getConsumerVisibleMarketsWithAreas
+ * in lib/data.ts) — an admin/owner needs to be able to assign an Area
+ * that's valid but not yet publicly discoverable; consumer_visible only
+ * ever gates the public AreaPicker. Two cheap queries total (all active
+ * Markets, all active Areas), joined in JS — never one query per Market. */
+export interface ActiveMarketWithAreaOptions {
+  id: string;
+  name: string;
+  areas: { id: string; name: string }[];
+}
+
+export async function getActiveMarketsWithAreaOptions(): Promise<ActiveMarketWithAreaOptions[]> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return [];
+  const [{ data: marketRows }, { data: areaRows }] = await Promise.all([
+    supabase.from("markets").select("id, name").eq("active", true).order("sort_order"),
+    supabase.from("market_areas").select("id, name, market_id").eq("active", true).order("sort_order"),
+  ]);
+  const areasByMarket = new Map<string, { id: string; name: string }[]>();
+  for (const a of (areaRows ?? []) as { id: string; name: string; market_id: string }[]) {
+    areasByMarket.set(a.market_id, [...(areasByMarket.get(a.market_id) ?? []), { id: a.id, name: a.name }]);
+  }
+  return ((marketRows ?? []) as { id: string; name: string }[]).map((m) => ({
+    ...m,
+    areas: areasByMarket.get(m.id) ?? [],
+  }));
+}
+
+/** True when `areaId` belongs to `marketId` — the server-side backstop
+ * behind MarketAreaFields' client-side reset-on-Market-change. Every save
+ * action that writes market_area_id calls this before writing it, so a
+ * stale/tampered submission (JS disabled, race, hand-crafted request)
+ * can never leave an Area attached to the wrong Market. */
+export async function isAreaInMarket(areaId: string, marketId: string): Promise<boolean> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return false;
+  const { data } = await supabase.from("market_areas").select("id").eq("id", areaId).eq("market_id", marketId).maybeSingle();
+  return Boolean(data);
+}

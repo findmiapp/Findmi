@@ -14,6 +14,7 @@ import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
 import EventOccurrencesEditor from "@/components/admin/EventOccurrencesEditor";
+import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
 import type {
   AdminEvent,
   AdminEventOccurrence,
@@ -37,6 +38,7 @@ export default function EventForm({
   vendorRostersByOccurrence,
   locations,
   markets,
+  marketsWithAreas,
   categories,
   selectedCategoryIds,
   error,
@@ -50,6 +52,7 @@ export default function EventForm({
   vendorRostersByOccurrence: Record<string, AdminOccurrenceVendor[]>;
   locations: AdminLocation[];
   markets: AdminMarketOption[];
+  marketsWithAreas: MarketWithAreaOptions[];
   categories: Category[];
   selectedCategoryIds: string[];
   error?: string;
@@ -126,31 +129,41 @@ export default function EventForm({
         <TextField label="State" name="state" defaultValue={event?.state} />
       </div>
 
-      <SelectField
-        label="Default Findmi Market"
-        name="market_id"
-        defaultValue={event?.market_id ?? ""}
-        options={[
-          { value: "", label: "Unassigned" },
-          ...markets
-            .filter((m) => m.active || m.id === event?.market_id)
-            .map((m) => ({ value: m.id, label: m.name })),
-        ]}
-        hint="This is the event's normal physical Market. Occurrences inherit it unless a linked Location or occurrence override supplies another Market."
-      />
+      {/* Event + Appearance Geography Completion pass — Market/Area is
+          FindMi DISCOVERY geography, deliberately its own section, never
+          merged with Venue Name/Address/City/State above (PHYSICAL
+          geography) into one combined "Location" field. */}
+      <div className="rounded-2xl border border-black/10 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Discovery Geography</p>
+        <p className="mt-1 text-xs text-ink/50">
+          Market/Area control where this Event appears in Findmi discovery (homepage, /events, /find). Venue/address
+          above controls where the Event physically happens — the two are independent.
+        </p>
+        <div className="mt-3">
+          <MarketAreaFields
+            markets={marketsWithAreas}
+            defaultMarketId={event?.market_id ?? null}
+            defaultAreaId={event?.market_area_id ?? null}
+          />
+        </div>
+        <p className="mt-2 text-xs text-ink/40">
+          Occurrences inherit this Market unless a linked Location or occurrence override supplies another one.
+        </p>
+      </div>
 
       {/* Consumer Area Picker + Market Requests V1 — lets an admin
           continue creating/saving an event whose physical Market isn't
-          in the list yet. Leaves market_id exactly as selected above
-          (Unassigned unless a real Market was also chosen) and creates a
-          linked, admin-reviewable market_requests row instead — see
-          saveEvent. Never writes the requested text into market_id. */}
+          in the list yet. Leaves market_id/market_area_id exactly as
+          selected above (Unassigned unless a real Market/Area was also
+          chosen) and creates a linked, admin-reviewable market_requests
+          row instead — see saveEvent. Never writes the requested text
+          into market_id/market_area_id. */}
       <TextField
         label="Request a new Market (optional)"
         name="requested_market_text"
         defaultValue={undefined}
         placeholder="e.g. Austin, TX"
-        hint="If this event's Market isn't listed above, note it here — the event saves normally and Findmi reviews the request at /admin/market-requests. Leave Default Findmi Market Unassigned when using this."
+        hint="If this event's Market/Area isn't listed above, note it here — the event saves normally and Findmi reviews the request at /admin/market-requests. Leave Market above Unassigned when using this."
       />
 
       <div className="rounded-2xl border border-black/10 p-4">

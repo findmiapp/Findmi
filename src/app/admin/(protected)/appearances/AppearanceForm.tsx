@@ -3,6 +3,7 @@ import ImageField from "@/components/admin/ImageField";
 import { RelationField } from "@/components/admin/RelationPicker";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
+import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
 import type { AdminAppearance, SelectOption } from "@/lib/admin/queries";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveAppearance, deleteAppearance } from "./actions";
@@ -11,11 +12,13 @@ export default function AppearanceForm({
   appearance,
   initialBusiness,
   initialEvent,
+  marketsWithAreas,
   error,
 }: {
   appearance: AdminAppearance | null;
   initialBusiness: SelectOption | null;
   initialEvent: SelectOption | null;
+  marketsWithAreas: MarketWithAreaOptions[];
   error?: string;
 }) {
   const action = saveAppearance.bind(null, appearance?.id ?? null);
@@ -100,6 +103,29 @@ export default function AppearanceForm({
           <TextField label="Address" name="address" defaultValue={appearance?.address} />
           <TextField label="City" name="city" defaultValue={appearance?.city} />
           <TextField label="State" name="state" defaultValue={appearance?.state} />
+        </div>
+
+        {/* Event + Appearance Geography Completion pass — Market/Area is
+            FindMi DISCOVERY geography, its own section, never merged with
+            Venue/Address/City/State above (PHYSICAL geography). Only
+            takes effect for a STANDALONE appearance (no Related Event
+            selected above) — an event-linked appearance always inherits
+            its Event's geography instead (see saveAppearance/
+            getFindMiHereFeed), so a selection made here is ignored (never
+            silently stored where it could drift) once an Event is set. */}
+        <div className="rounded-2xl border border-black/10 p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Discovery Geography</p>
+          <p className="mt-1 text-xs text-ink/50">
+            Only used when no Related Findmi Event is set above — a linked appearance always inherits that Event&rsquo;s
+            Market/Area instead.
+          </p>
+          <div className="mt-3">
+            <MarketAreaFields
+              markets={marketsWithAreas}
+              defaultMarketId={appearance?.market_id ?? null}
+              defaultAreaId={appearance?.market_area_id ?? null}
+            />
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

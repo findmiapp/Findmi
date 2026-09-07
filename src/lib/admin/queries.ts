@@ -581,7 +581,15 @@ export async function getAdminLocationById(id: string): Promise<AdminLocation | 
 
 export interface AdminAppearanceRow extends AdminAppearance {
   business: { id: string; name: string } | null;
-  event: { id: string; name: string } | null;
+  // Event + Appearance Geography Completion pass — market/market_area
+  // carry the appearance's OWN discovery geography (only meaningful for a
+  // standalone row); event additionally carries its Market/Area since an
+  // event-linked appearance's effective geography is always the Event's,
+  // never its own (see getFindMiHereFeed) — both are fetched here purely
+  // for the admin review list's compact display, nothing else reads them.
+  event: { id: string; name: string; market: { id: string; name: string } | null; market_area: { id: string; name: string } | null } | null;
+  market: { id: string; name: string } | null;
+  market_area: { id: string; name: string } | null;
 }
 
 export interface AppearanceListFilters {
@@ -613,7 +621,9 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
   if (!supabase) return [];
   let query = supabase
     .from("appearances")
-    .select("*, business:businesses(id, name), event:events(id, name)");
+    .select(
+      "*, business:businesses(id, name), event:events(id, name, market:markets(id, name), market_area:market_areas(id, name)), market:markets(id, name), market_area:market_areas(id, name)"
+    );
   if (filters.q) {
     const term = `%${filters.q}%`;
     query = query.or(`title.ilike.${term},venue_name.ilike.${term},city.ilike.${term}`);
@@ -643,15 +653,27 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
   const { data } = await query
     .order(unreviewedInbox ? "created_at" : "start_at", { ascending: unreviewedInbox ? false : filters.when === "upcoming" })
     .limit(APPEARANCE_LIST_LIMIT);
+  const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
   return ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as AdminAppearanceRow & {
       business: AdminAppearanceRow["business"] | AdminAppearanceRow["business"][];
-      event: AdminAppearanceRow["event"] | AdminAppearanceRow["event"][];
+      event:
+        | (AdminAppearanceRow["event"] & {
+            market: AdminAppearanceRow["market"] | AdminAppearanceRow["market"][];
+            market_area: AdminAppearanceRow["market_area"] | AdminAppearanceRow["market_area"][];
+          })
+        | AdminAppearanceRow["event"][]
+        | null;
+      market: AdminAppearanceRow["market"] | AdminAppearanceRow["market"][];
+      market_area: AdminAppearanceRow["market_area"] | AdminAppearanceRow["market_area"][];
     };
+    const event = one(r.event);
     return {
       ...r,
-      business: Array.isArray(r.business) ? (r.business[0] ?? null) : r.business,
-      event: Array.isArray(r.event) ? (r.event[0] ?? null) : r.event,
+      business: one(r.business),
+      event: event ? { ...event, market: one(event.market), market_area: one(event.market_area) } : null,
+      market: one(r.market),
+      market_area: one(r.market_area),
     };
   });
 }

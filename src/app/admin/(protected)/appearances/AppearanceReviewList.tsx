@@ -73,6 +73,13 @@ export default function AppearanceReviewList({
         appearances.map((a) => {
           const location = [a.venue_name, a.address, cityState(a.city, a.state)].filter(Boolean).join(" · ");
           const reviewed = Boolean(a.admin_reviewed_at);
+          // Event + Appearance Geography Completion pass — an event-linked
+          // row's effective geography is always its Event's (see
+          // getFindMiHereFeed), so that's what's shown here too, never the
+          // appearance's own (null-by-design) market/market_area.
+          const geography = a.event ? a.event.market : a.market;
+          const geographyArea = a.event ? a.event.market_area : a.market_area;
+          const geographyLabel = geography ? [geography.name, geographyArea?.name].filter(Boolean).join(" — ") : null;
           return (
             <div key={a.id} className="rounded-xl border border-black/5 bg-white px-4 py-3">
               <div className="flex items-start gap-3">
@@ -106,6 +113,8 @@ export default function AppearanceReviewList({
                   <p className="mt-1 truncate text-[11px] text-ink/40">
                     {a.event ? `Event: ${a.event.name}` : "Standalone"} · Added {formatDateShort(a.created_at)}
                     {reviewed && a.admin_reviewed_at ? ` · Reviewed ${formatDateShort(a.admin_reviewed_at)}` : ""}
+                    {" · "}
+                    {geographyLabel ?? "No Market assigned"}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Link

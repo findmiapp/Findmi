@@ -1,4 +1,5 @@
 import AppearanceForm from "../AppearanceForm";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,7 @@ export default async function NewAppearancePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  const marketsWithAreas = await getActiveMarketsWithAreaOptions();
 
   return (
     <div>
@@ -19,6 +21,7 @@ export default async function NewAppearancePage({
           appearance={null}
           initialBusiness={null}
           initialEvent={null}
+          marketsWithAreas={marketsWithAreas}
           error={error}
         />
       </div>

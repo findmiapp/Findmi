@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { validateCustomDestination } from "@/lib/navigation";
+import { isAreaInMarket } from "@/lib/admin/market-areas";
 
 export async function saveAppearance(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/appearances/${id}` : "/admin/appearances/new";
@@ -44,6 +45,18 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     externalUrl = result.value;
   }
 
+  // Event + Appearance Geography Completion pass — market_id/market_area_id
+  // are ONLY meaningful for a standalone appearance. An event-linked
+  // appearance's effective geography is always resolved from its Event
+  // (see getFindMiHereFeed) — storing a value here too would just be a
+  // second copy that could silently drift, so it's forced null instead.
+  // market_area_id, when present, must belong to market_id — the same
+  // invariant events.market_id/market_area_id already enforces in
+  // application code, never a DB constraint.
+  const marketId = eventId ? null : str(formData, "market_id");
+  let areaId = eventId ? null : str(formData, "market_area_id");
+  if (areaId && (!marketId || !(await isAreaInMarket(areaId, marketId)))) areaId = null;
+
   const payload = {
     business_id: businessId,
     event_id: eventId,
@@ -62,6 +75,8 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     home_sort_order: num(formData, "home_sort_order"),
     external_url: externalUrl,
     flyer_image_url: str(formData, "flyer_image_url"),
+    market_id: marketId,
+    market_area_id: areaId,
   };
 
   let appearanceId = id;

@@ -8,6 +8,7 @@ import { isSlugTaken } from "@/lib/admin/queries";
 import { bool, DEFAULT_ADMIN_TIMEZONE, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { isAreaInMarket } from "@/lib/admin/market-areas";
 import type { EventParticipationStatus } from "@/lib/types";
 
 // ── Approval <-> FindMi Here sync (Admin Approval → FindMi Here Sync pass,
@@ -311,6 +312,21 @@ export async function saveEvent(id: string | null, formData: FormData) {
     }
   }
 
+  // Event + Appearance Geography Completion pass — MarketAreaFields now
+  // gives admins a real, persistent Area select (not just an implicit
+  // side-effect of a free-text match), so a manually-picked Area is just
+  // as authoritative as a matched one. A free-text match still wins when
+  // present (it means "no Market/Area was manually chosen this save" —
+  // the two inputs are mutually exclusive per the form's own hint).
+  // Re-validated against whichever Market ends up effective either way —
+  // never a DB constraint, same posture as every other Area assignment in
+  // this pass.
+  const effectiveMarketId = matchedMarketId ?? str(formData, "market_id");
+  let effectiveAreaId = matchedAreaId ?? str(formData, "market_area_id");
+  if (effectiveAreaId && (!effectiveMarketId || !(await isAreaInMarket(effectiveAreaId, effectiveMarketId)))) {
+    effectiveAreaId = null;
+  }
+
   const payload = {
     name,
     slug,
@@ -322,12 +338,8 @@ export async function saveEvent(id: string | null, formData: FormData) {
     address: str(formData, "address"),
     city: str(formData, "city"),
     state: str(formData, "state"),
-    market_id: matchedMarketId ?? str(formData, "market_id"),
-    // Only ever set when THIS save matched a structured Area — omitted
-    // (never forced to null) otherwise, so a save with no new "Request a
-    // new Market" text never wipes out an Area a prior save already
-    // attached to this event.
-    ...(matchedAreaId ? { market_area_id: matchedAreaId } : {}),
+    market_id: effectiveMarketId,
+    market_area_id: effectiveAreaId,
     organizer_name: str(formData, "organizer_name"),
     external_url: str(formData, "external_url"),
     is_featured: bool(formData, "is_featured"),

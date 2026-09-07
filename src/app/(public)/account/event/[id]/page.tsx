@@ -6,7 +6,9 @@ import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireEventMember } from "@/lib/permissions";
 import { getAdminEventById, getAllCategories, getEventCategoryIds } from "@/lib/admin/queries";
 import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import { getPendingMarketRequestForEvent } from "@/lib/market-requests";
+import MarketAreaFields from "@/components/MarketAreaFields";
 import AccountNav from "../../AccountNav";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import { AccountRelationField } from "@/components/account/AccountRelationPicker";
@@ -124,11 +126,12 @@ export default async function ManageEventPage({
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
-  const [result, categories, selectedCategoryIds, markets, pendingMarketRequest, addLocationHint] = await Promise.all([
+  const [result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, addLocationHint] = await Promise.all([
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
     getAllMarketsForAdmin(admin),
+    getActiveMarketsWithAreaOptions(),
     getPendingMarketRequestForEvent(admin, id),
     // Event Creation + Pending Review UX pass — "Add a Date" preserves its
     // own submitted location_id on a validation error (see
@@ -506,30 +509,32 @@ export default async function ManageEventPage({
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Market / Area</p>
             <p className="mt-1 text-sm text-ink/60">
+              Findmi discovery geography — where this Event appears in Findmi search/browse. Separate from the
+              physical Venue/Address set on the Location tab.
+            </p>
+            <p className="mt-2 text-sm text-ink/60">
               {selectedMarket
-                ? `Current Market: ${selectedMarket.name}`
+                ? `Current Market: ${selectedMarket.name}${
+                    event.market_area_id
+                      ? ` — ${
+                          marketsWithAreas.find((m) => m.id === event.market_id)?.areas.find((a) => a.id === event.market_area_id)
+                            ?.name ?? "Area assigned"
+                        }`
+                      : ""
+                  }`
                 : pendingMarketRequest
                   ? `Pending review — ${pendingMarketRequest.requestedText}`
                   : "Not assigned yet."}
-              {event.market_area_id ? " (Area assigned)" : ""}
             </p>
             <form action={updateMemberEventMarket.bind(null, id)} className="mt-3 flex flex-col gap-3">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-ink/70">Market</span>
-                <select name="market_id" defaultValue={event.market_id ?? ""} className={inputClass}>
-                  <option value="">Unassigned</option>
-                  {markets
-                    .filter((m) => m.active || m.id === event.market_id)
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <MarketAreaFields
+                markets={marketsWithAreas}
+                defaultMarketId={event.market_id}
+                defaultAreaId={event.market_area_id}
+              />
               <details className="group -mt-1">
                 <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-                  Don&rsquo;t see your Market?
+                  Don&rsquo;t see your Market or Area?
                 </summary>
                 <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
                   <label className="block">

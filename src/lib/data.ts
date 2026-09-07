@@ -1626,14 +1626,29 @@ export type FindWindow = "live" | "today" | "weekend" | "anytime";
  * /find's WHAT filter — same category-then-filter-ids pattern used by
  * searchBusinesses, applied here via business_id.
  *
- * Discovery V2 — marketSlug/areaSlug are purely additive (new optional
- * fields on the same `extra` object). Reuses the exact same
- * getBusinessIdsInMarket/getBusinessIdsInArea helpers searchBusinesses/
- * getEventsDiscovery already use — appearances were the one discovery
- * surface without Market/Area support at all before this. Same
- * intersection semantics as those two: an unknown/inactive Market, or a
- * real one with nobody in it yet, returns [] rather than silently
- * falling back to unfiltered results.
+ * Discovery V2, corrected by the Event + Appearance Geography Completion
+ * pass — marketSlug/areaSlug are purely additive (new optional fields on
+ * the same `extra` object).
+ *
+ * Geography Completion pass — this used to filter via
+ * getBusinessIdsInMarket/getBusinessIdsInArea, i.e. the BUSINESS's own
+ * home Market/Area. That was wrong: a business based in Staten Island
+ * that pops up in Philadelphia must not surface under a Staten Island
+ * search just because its home base does. Filtering now reads each
+ * APPEARANCE's own effective geography: an event-linked appearance
+ * (event_id set) always inherits its connected Event's geography —
+ * Market via the same locked resolveEffectiveEventMarket precedence
+ * (occurrence override -> linked location -> parent event) events
+ * themselves use, Area from events.market_area_id directly (there is no
+ * per-occurrence Area column, same documented scope
+ * getEffectiveUpcomingEvents already uses) — never the appearance's own
+ * market_id/market_area_id, which save actions leave null for a linked
+ * appearance specifically so it can never drift from its Event. A
+ * standalone appearance (no event_id) uses its own market_id/
+ * market_area_id, set directly at creation/edit time — never inferred
+ * from its Business. Same intersection semantics as before: an unknown/
+ * inactive Market, or a real one with nothing in it yet, returns []
+ * rather than silently falling back to unfiltered results.
  *
  * Find V2 — the free-text `city` filter this function used to accept is
  * gone (locked decision — structured Market/Area is now the only WHERE
@@ -1648,13 +1663,33 @@ export async function getFindMiHereFeed(
   if (!supabase) return [];
   const nowIso = new Date().toISOString();
 
-  let marketBusinessIds: string[] | null = null;
-  if (extra.areaSlug && extra.marketSlug) {
-    marketBusinessIds = await getBusinessIdsInArea(extra.marketSlug, extra.areaSlug);
-    if (marketBusinessIds.length === 0) return [];
-  } else if (extra.marketSlug) {
-    marketBusinessIds = await getBusinessIdsInMarket(extra.marketSlug);
-    if (marketBusinessIds.length === 0) return [];
+  // Geography Completion pass — resolve the slug(s) to ACTIVE ids up
+  // front, same "resolved-but-empty short-circuits the whole function"
+  // idiom getEffectiveUpcomingEvents already uses for Event Market/Area
+  // filtering, rather than the old business-id-list substitution.
+  let marketId: string | null = null;
+  if (extra.marketSlug) {
+    const { data: marketRow } = await supabase
+      .from("markets")
+      .select("id")
+      .eq("slug", extra.marketSlug)
+      .eq("active", true)
+      .maybeSingle();
+    if (!marketRow) return [];
+    marketId = marketRow.id;
+  }
+  let areaId: string | null = null;
+  if (extra.areaSlug) {
+    if (!marketId) return [];
+    const { data: areaRow } = await supabase
+      .from("market_areas")
+      .select("id")
+      .eq("market_id", marketId)
+      .eq("slug", extra.areaSlug)
+      .eq("active", true)
+      .maybeSingle();
+    if (!areaRow) return [];
+    areaId = areaRow.id;
   }
 
   let categoryBusinessIds: string[] | null = null;
@@ -1673,7 +1708,9 @@ export async function getFindMiHereFeed(
 
   let query = supabase
     .from("appearances")
-    .select("*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status)")
+    .select(
+      "*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id)"
+    )
     .neq("status", "canceled");
 
   if (when === "live") {
@@ -1691,10 +1728,6 @@ export async function getFindMiHereFeed(
     }
   }
   if (categoryBusinessIds) query = query.in("business_id", categoryBusinessIds);
-  // A second .in("business_id", ...) call ANDs with the category one
-  // above (PostgREST applies every filter conjunctively) — same
-  // intersection-via-chained-.in technique searchBusinesses already uses.
-  if (marketBusinessIds) query = query.in("business_id", marketBusinessIds);
 
   // Featured appearances (see event_businesses.featured / appearances'
   // own is_featured — an admin-set editorial flag) sort first within
@@ -1702,21 +1735,84 @@ export async function getFindMiHereFeed(
   // This is what lets the homepage hero legitimately favor a founder-
   // curated appearance over whatever merely happens to start soonest —
   // no name/business-based special-casing.
+  //
+  // Geography Completion pass — when a Market filter is active, Market/
+  // Area eligibility is now decided in JS per-item (below), not by a SQL
+  // .in("business_id", ...) filter, so the over-fetch has to be generous
+  // enough that geographic narrowing doesn't starve the final `limit` —
+  // real appearance volume is small (dozens, not thousands), so a flat
+  // 200-row cap is cheap and safe rather than a cleverer estimate.
   const { data } = await query
     .order("is_featured", { ascending: false })
     .order("start_at", { ascending: true })
-    .limit(limit * 2); // over-fetch since some may be filtered out as demo
+    .limit(marketId ? 200 : limit * 2); // over-fetch since some may be filtered out as demo (or, with a Market filter, out of that geography)
 
   type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean; publication_status: string };
-  return ((data ?? []) as never[])
-    .map((row: unknown) => {
-      const r = row as Appearance & { business: JoinedBusiness | JoinedBusiness[] };
-      const business = Array.isArray(r.business) ? r.business[0] : r.business;
-      return { ...r, business };
-    })
+  type JoinedEvent = { market_id: string | null; market_area_id: string | null };
+  let items = ((data ?? []) as never[]).map((row: unknown) => {
+    const r = row as Appearance & { business: JoinedBusiness | JoinedBusiness[]; event: JoinedEvent | JoinedEvent[] | null };
+    const business = Array.isArray(r.business) ? r.business[0] : r.business;
+    const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
+    return { ...r, business, event };
+  });
+
+  // Geography Completion pass — an event-linked appearance ALWAYS uses
+  // its Event's effective geography (never its own market_id/
+  // market_area_id, which save actions deliberately leave null for a
+  // linked appearance so it can never drift from the Event); a
+  // standalone appearance uses its own. Market via the same locked
+  // resolveEffectiveEventMarket precedence occurrence override -> linked
+  // location -> parent event) events themselves use; Area from
+  // events.market_area_id directly (no per-occurrence Area column
+  // exists). Never substitutes the Business's own home Market/Area.
+  if (marketId) {
+    const occIds = Array.from(
+      new Set(items.filter((i) => i.event_id && i.event_occurrence_id).map((i) => i.event_occurrence_id as string))
+    );
+    const occById = new Map<string, { market_id: string | null; location_id: string | null }>();
+    if (occIds.length > 0) {
+      const { data: occRows } = await supabase.from("event_occurrences").select("id, market_id, location_id").in("id", occIds);
+      for (const o of (occRows ?? []) as { id: string; market_id: string | null; location_id: string | null }[]) {
+        occById.set(o.id, { market_id: o.market_id, location_id: o.location_id });
+      }
+    }
+    const locationIds = Array.from(
+      new Set(Array.from(occById.values()).map((o) => o.location_id).filter((id): id is string => Boolean(id)))
+    );
+    const locationMarketById = new Map<string, string | null>();
+    if (locationIds.length > 0) {
+      const { data: locRows } = await supabase.from("locations").select("id, market_id").in("id", locationIds);
+      for (const l of (locRows ?? []) as { id: string; market_id: string | null }[]) {
+        locationMarketById.set(l.id, l.market_id);
+      }
+    }
+
+    items = items.filter((item) => {
+      let effectiveMarketId: string | null;
+      let effectiveAreaId: string | null;
+      if (item.event_id) {
+        const occ = item.event_occurrence_id ? occById.get(item.event_occurrence_id) : undefined;
+        effectiveMarketId = resolveEffectiveEventMarket({
+          eventMarketId: item.event?.market_id ?? null,
+          occurrenceMarketId: occ?.market_id ?? null,
+          locationMarketId: occ?.location_id ? (locationMarketById.get(occ.location_id) ?? null) : null,
+        }).marketId;
+        effectiveAreaId = item.event?.market_area_id ?? null;
+      } else {
+        effectiveMarketId = item.market_id ?? null;
+        effectiveAreaId = item.market_area_id ?? null;
+      }
+      return areaId ? effectiveAreaId === areaId : effectiveMarketId === marketId;
+    });
+  }
+
+  return items
     .filter((item) => item.business && !item.business.is_demo && item.business.publication_status === "live")
     .slice(0, limit)
-    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, ...rest }) => ({ ...rest, business }));
+    .map(({ business: { is_demo: _isDemo, publication_status: _pubStatus, ...business }, event: _event, ...rest }) => ({
+      ...rest,
+      business,
+    }));
 }
 
 /** Businesses that travel to customers rather than operate from a single

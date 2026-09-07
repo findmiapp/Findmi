@@ -14,7 +14,7 @@ import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
 import { attributeReferral } from "@/lib/commerce/referrals";
-import { findExistingGeographyMatch } from "@/lib/market-requests";
+import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 
 const UPLOAD_BUCKET = "findmi-media";
@@ -758,6 +758,39 @@ function parseAppearanceFields(formData: FormData, onError: (message: string) =>
   };
 }
 
+/** Event + Appearance Geography Completion pass — a standalone
+ * appearance's Market/Area is never picked directly by the owner; it's
+ * derived from the physical city/state they already typed, via the same
+ * matcher every other entity's free-text geography goes through. A match
+ * is applied immediately; no match neither blocks creation nor falls back
+ * to the Business's own home market_id — it just leaves both columns null
+ * and logs a linked, admin-reviewable Market Request (deliberately reusing
+ * the "business_creation" source — there's no appearance-specific source
+ * value in the market_requests table's source CHECK constraint, and adding
+ * one would mean a second migration outside the approved scope of this
+ * pass). No city/state at all means nothing to match — both stay null. */
+async function resolveStandaloneAppearanceGeography(
+  admin: SupabaseClient,
+  businessId: string,
+  city: string | null,
+  state: string | null
+): Promise<{ market_id: string | null; market_area_id: string | null }> {
+  const text = [city, state].filter(Boolean).join(", ");
+  if (!text) return { market_id: null, market_area_id: null };
+
+  const match = await findExistingGeographyMatch(admin, text);
+  if (match) return { market_id: match.marketId, market_area_id: match.areaId ?? null };
+
+  await createLinkedMarketRequest(admin, {
+    text,
+    city,
+    state,
+    source: "business_creation",
+    sourceBusinessId: businessId,
+  });
+  return { market_id: null, market_area_id: null };
+}
+
 /** Option 2 — "Add an appearance manually." Creates a standalone
  * appearances row (no event_id/event_occurrence_id) owned entirely by
  * this business — never touches the official event roster tables at
@@ -772,11 +805,13 @@ export async function addManualAppearance(businessId: string, formData: FormData
     redirect(buildAppearanceErrorUrl(redirectPath, message, "add", formData));
   };
   const fields = parseAppearanceFields(formData, onError);
+  const geography = await resolveStandaloneAppearanceGeography(admin, businessId, fields.city, fields.state);
 
   const { error } = await admin.from("appearances").insert({
     business_id: businessId,
     status: "confirmed",
     ...fields,
+    ...geography,
     // Appearance Provenance pass — a true standalone/manual entry, never
     // linked to a real FindMi event/occurrence (no event_id above). Kept
     // after the ...fields spread so it can never be overridden by it.
@@ -808,7 +843,7 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
 
   const { data: existing } = await admin
     .from("appearances")
-    .select("id")
+    .select("id, event_id, city, state")
     .eq("id", appearanceId)
     .eq("business_id", businessId)
     .maybeSingle();
@@ -816,7 +851,24 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
 
   const fields = parseAppearanceFields(formData, onError);
 
-  const { error } = await admin.from("appearances").update(fields).eq("id", appearanceId).eq("business_id", businessId);
+  // Event + Appearance Geography Completion pass — an event-linked
+  // appearance's geography always comes from its Event (see
+  // getFindMiHereFeed), so market_id/market_area_id are never touched
+  // here for one. For a standalone appearance, only re-resolve geography
+  // when the physical city/state actually changed — re-running the
+  // matcher on every unrelated edit (e.g. just the title) would otherwise
+  // spam a fresh Market Request row each time an unmatched location is
+  // saved again unchanged.
+  const geography =
+    existing && !existing.event_id && (fields.city !== existing.city || fields.state !== existing.state)
+      ? await resolveStandaloneAppearanceGeography(admin, businessId, fields.city, fields.state)
+      : {};
+
+  const { error } = await admin
+    .from("appearances")
+    .update({ ...fields, ...geography })
+    .eq("id", appearanceId)
+    .eq("business_id", businessId);
   if (error) onError("Couldn't update that appearance. Please try again.");
 
   revalidatePath(redirectPath);
