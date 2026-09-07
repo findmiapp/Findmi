@@ -59,6 +59,43 @@ export interface DashboardGlance {
   users: number;
 }
 
+/** Admin Where You'll Be + Event Opportunity pass — a business's own
+ * standalone ("Can't find it? Add where you'll be anyway") schedule
+ * entry, upcoming and for a real (non-demo) business, is potential
+ * intelligence about an Event Findmi doesn't have yet — but it is
+ * DELIBERATELY NOT part of DashboardNeedsAttention above: it requires no
+ * approval and isn't a moderation queue, just something worth a look.
+ *
+ * Provenance limitation (see this pass's own report): appearances.source
+ * ('manual' | 'event_self_added' | 'official_participation') can't
+ * reliably isolate "created through the Business self-service standalone
+ * flow" on its own — neither admin's own single-create (saveAppearance)
+ * nor its bulk AI importer (createAppearancesBulk) ever write `source`
+ * explicitly, so an admin-created standalone entry for a real business
+ * also lands as 'manual' via the column's own default, indistinguishable
+ * from a genuine owner submission. event_id IS NULL is architecturally
+ * exact (Standalone vs Linked Event, same source of truth the list
+ * page's own linkage filter uses) — this count is honestly "current
+ * standalone Where You'll Be entries for real businesses," not a
+ * guaranteed-provenance "Business-submitted Event Opportunities" count.
+ *
+ * Scoped to upcoming only, and excludes demo/seed businesses — a
+ * permanently growing historical count would stop meaning anything; this
+ * answers "is there anything worth a look right now," not "how many
+ * standalone entries have ever existed." */
+export async function getEventOpportunityCount(): Promise<number | null> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return null;
+  const nowIso = new Date().toISOString();
+  const { count } = await supabase
+    .from("appearances")
+    .select("id, businesses!inner(is_demo)", { count: "exact", head: true })
+    .is("event_id", null)
+    .eq("businesses.is_demo", false)
+    .gte("start_at", nowIso);
+  return count ?? 0;
+}
+
 async function countPendingEventReviews(supabase: NonNullable<ReturnType<typeof getAdminSupabase>>): Promise<number> {
   const ownedEventIds = await getEventIdsWithOwners(supabase);
   if (ownedEventIds.length === 0) return 0;

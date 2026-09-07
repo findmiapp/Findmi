@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getDashboardCounts } from "@/lib/admin/queries";
-import { getDashboardGlance, getDashboardNeedsAttention } from "@/lib/admin/dashboard-queries";
+import { getDashboardGlance, getDashboardNeedsAttention, getEventOpportunityCount } from "@/lib/admin/dashboard-queries";
 import { getPendingMarketRequestGroups } from "@/lib/admin/market-requests";
 
 export const dynamic = "force-dynamic";
@@ -144,11 +144,12 @@ function ManageCard({ letter, label, description, href }: { letter: string; labe
 }
 
 export default async function AdminDashboardPage() {
-  const [counts, needsAttention, glance, marketRequestGroups] = await Promise.all([
+  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount] = await Promise.all([
     getDashboardCounts(),
     getDashboardNeedsAttention(),
     getDashboardGlance(),
     getPendingMarketRequestGroups(),
+    getEventOpportunityCount(),
   ]);
   // Market -> Area/Submarket Hierarchy V2, Section 3 — most RECENT first
   // requested here (getPendingMarketRequestGroups itself sorts oldest-
@@ -255,6 +256,55 @@ export default async function AdminDashboardPage() {
                 ))}
             </ul>
           )}
+        </section>
+      )}
+
+      {/* A1b. EVENT OPPORTUNITIES — Admin Where You'll Be + Event
+          Opportunity pass. Deliberately kept OUT of Needs Review above:
+          a standalone Where You'll Be entry ("Can't find it? Add where
+          you'll be anyway") needs no approval and stays fully usable for
+          the business either way — this is informational/actionable
+          intelligence about a possible Event Findmi doesn't have yet,
+          never phrased as "awaiting review." See getEventOpportunityCount
+          (lib/admin/dashboard-queries.ts) for the exact definition used
+          (standalone + real/non-demo business + upcoming only) and its
+          own note on why `source` alone can't guarantee every counted
+          row came from a Business's own submission rather than an
+          admin-created standalone entry — this is honestly "current
+          standalone Where You'll Be entries worth a look," not a
+          guaranteed-provenance count. Always renders (even at zero) so
+          its absence never reads as "not tracked" vs. "genuinely none
+          right now." */}
+      {eventOpportunityCount !== null && (
+        <section className="mt-6">
+          <Link
+            href="/admin/appearances?linkage=standalone&when=upcoming"
+            className={`flex items-center justify-between gap-3 rounded-2xl border p-4 transition hover:shadow-sm ${
+              eventOpportunityCount > 0 ? "border-findmi/30 bg-findmi-50" : "border-black/5 bg-white hover:border-black/10"
+            }`}
+          >
+            <div className="min-w-0">
+              <p
+                className={`text-xs font-bold uppercase tracking-wide ${
+                  eventOpportunityCount > 0 ? "text-findmi-700" : "text-ink/40"
+                }`}
+              >
+                Event Opportunities
+              </p>
+              <p className={`mt-0.5 text-sm font-semibold ${eventOpportunityCount > 0 ? "text-ink" : "text-ink/50"}`}>
+                {eventOpportunityCount > 0
+                  ? `${eventOpportunityCount} standalone Where You'll Be ${eventOpportunityCount === 1 ? "entry" : "entries"}`
+                  : "No current standalone Where You'll Be entries"}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 text-xs font-bold uppercase tracking-wide ${
+                eventOpportunityCount > 0 ? "text-findmi-700" : "text-ink/30"
+              }`}
+            >
+              Review →
+            </span>
+          </Link>
         </section>
       )}
 
@@ -401,7 +451,7 @@ export default async function AdminDashboardPage() {
           <ManageCard letter="E" label="Events" description="Event listings and vendor participation." href="/admin/events" />
           <ManageCard letter="U" label="Users" description="Consumer and vendor accounts." href="/admin/users" />
           <ManageCard letter="C" label="Claims" description="Business and event ownership claims." href="/admin/claims" />
-          <ManageCard letter="A" label="Appearances" description="Where and when businesses show up." href="/admin/appearances" />
+          <ManageCard letter="W" label="Where You'll Be" description="Where and when businesses show up." href="/admin/appearances" />
           <ManageCard letter="Pr" label="Products" description="Marketplace product listings." href="/admin/products" />
           <ManageCard letter="Pe" label="People" description="Public person profiles." href="/admin/people" />
           <ManageCard letter="L" label="Locations" description="Venues and places businesses appear." href="/admin/locations" />

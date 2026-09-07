@@ -586,10 +586,23 @@ export interface AdminAppearanceRow extends AdminAppearance {
 
 export interface AppearanceListFilters {
   q?: string;
-  when?: "upcoming" | "past";
+  // Admin Where You'll Be Organization pass — "all" is now an explicit
+  // value (not "omit `when` entirely") so the page can default to
+  // "upcoming" on first load while still offering a real, distinct "see
+  // everything" option. Omitting `when` altogether behaves exactly like
+  // "all" always did (no date filter, newest-first) for any other caller.
+  when?: "upcoming" | "past" | "all";
   businessId?: string;
   linkage?: "event" | "standalone";
 }
+
+// Admin Where You'll Be Organization pass — 80+ rows today, no
+// pagination UI exists. Rather than build pagination just for this pass,
+// this keeps the query's own result size explicit and predictable at
+// scale (500+ rows) instead of an unbounded fetch — see this pass's own
+// report for why pagination itself was deferred (sorting/filtering meet
+// the immediate need; current real volume is far below this ceiling).
+const APPEARANCE_LIST_LIMIT = 500;
 
 export async function getAdminAppearances(filters: AppearanceListFilters = {}): Promise<AdminAppearanceRow[]> {
   const supabase = getAdminSupabase();
@@ -608,9 +621,15 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
   if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
   if (filters.when === "past") query = query.lt("start_at", nowIso);
   // Upcoming reads soonest-first (ascending) — "what's happening next" is
-  // what you want at the top. Past keeps the existing most-recent-first
-  // (descending), and so does the default "All Dates" view, unchanged.
-  const { data } = await query.order("start_at", { ascending: filters.when === "upcoming" });
+  // what you want at the top. Past reads most-recent-first (descending).
+  // "all" (and any caller that omits `when`) reads reverse-chronological
+  // (descending) too — furthest-future down through most-recent-past — a
+  // single predictable order for "everything," unchanged from before this
+  // pass; it's simply no longer the admin page's own default view (see
+  // appearances/page.tsx).
+  const { data } = await query
+    .order("start_at", { ascending: filters.when === "upcoming" })
+    .limit(APPEARANCE_LIST_LIMIT);
   return ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as AdminAppearanceRow & {
       business: AdminAppearanceRow["business"] | AdminAppearanceRow["business"][];
