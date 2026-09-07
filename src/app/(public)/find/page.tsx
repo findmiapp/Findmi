@@ -33,9 +33,11 @@ const TABS: { value: FindWindow; label: string }[] = [
   { value: "live", label: "Now" },
   { value: "today", label: "Today" },
   { value: "weekend", label: "This Weekend" },
-  // Renamed from "Anytime" — same FindWindow value/semantics, just
-  // clearer consumer copy (Discovery V2 made the same rename on /discover).
-  { value: "anytime", label: "Upcoming" },
+  // Findmi Here Clarity pass — relabeled "Upcoming" -> "Next Up" and made
+  // this the default selection (see the `when` fallback below): NOW was
+  // producing frequent empty states even though upcoming content existed.
+  // Same FindWindow value/semantics — copy only.
+  { value: "anytime", label: "Next Up" },
 ];
 
 // Find's own live/today/weekend/anytime windows map onto events'
@@ -57,7 +59,11 @@ interface Params {
 
 export default async function FindPage({ searchParams }: { searchParams: Promise<Params> }) {
   const { when: whenParam, category, market: marketSlug, area: areaParam } = await searchParams;
-  const when: FindWindow = TABS.some((t) => t.value === whenParam) ? (whenParam as FindWindow) : "today";
+  // Findmi Here Clarity pass — default is Next Up ("anytime"), not Now
+  // ("live"): explicit ?when=live/today/weekend still select exactly that
+  // window (TABS.some(...) below is unchanged), only the no-param fallback
+  // moved to the broader, less-often-empty window.
+  const when: FindWindow = TABS.some((t) => t.value === whenParam) ? (whenParam as FindWindow) : "anytime";
   // Area only ever meaningful alongside a Market — same guard /discover,
   // /businesses, and /events all use.
   const areaSlug = marketSlug ? areaParam : undefined;
@@ -94,7 +100,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
       area: "area" in overrides ? overrides.area : areaSlug,
     };
     const p = new URLSearchParams();
-    if (next.when !== "today") p.set("when", next.when);
+    if (next.when !== "anytime") p.set("when", next.when);
     if (category) p.set("category", category);
     if (next.market) p.set("market", next.market);
     if (next.market && next.area) p.set("area", next.area);
@@ -106,7 +112,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Here</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Explore</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
         Help me find something specific
       </h1>
@@ -189,7 +195,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                 <Link href={viewAllAreasHref} className="text-sm font-semibold text-findmi-700 underline underline-offset-2">
                   View All Areas
                 </Link>
-                {(category || when !== "today") && (
+                {(category || when !== "anytime") && (
                   <Link href="/find" className="text-sm font-semibold text-ink/50 underline underline-offset-2">
                     Adjust filters
                   </Link>
@@ -198,7 +204,9 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
             </>
           ) : (
             <p className="text-sm text-ink/50">
-              Nothing in this window yet — try Upcoming, widen What/Where, or check back soon.
+              {when === "anytime"
+                ? "Nothing here yet — widen What/Where, or check back soon."
+                : "Nothing in this window yet — try Next Up, widen What/Where, or check back soon."}
             </p>
           )}
         </div>

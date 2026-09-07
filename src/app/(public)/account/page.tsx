@@ -283,32 +283,56 @@ export default async function AccountHomePage({
         </div>
       </section>
 
-      {/* 2. CREATE/ADD — Owner Action UX pass. Always present (not
-          conditional on hasAnyManaged) — the one place every "add
-          something" action lives now, so the zero-state block below no
-          longer needs to duplicate Add Business/Event/Venue itself
-          (Section 7's "avoid duplicate CTAs"). + Findmi Here / + Product
-          are Business-scoped: BusinessScopedAction decides (never fakes)
-          the destination — one business routes straight there, several
-          reveal a "Which business?" chooser, zero routes to Add Business
-          — see that component's own doc comment. + Event always links to
-          the existing /account/event/new, which already shows its own
-          graceful non-qualifying-visitor explainer (Multi-Entity
-          Self-Service V1) — entitlement gating stays authoritative there,
-          never re-decided here. */}
+      {/* 2. CREATE ON FINDMI — Findmi Here Clarity pass. Business / Event /
+          Venue only: the entities a user actually creates and manages.
+          Findmi Here used to sit in this same strip, reading as a fourth
+          equivalent entity type — it isn't one (it's telling customers
+          where an existing Business will be, never a thing you "own" the
+          way a Business/Event/Venue is owned), so it now lives in its
+          own distinct CTA card directly below, not this strip. + Event
+          always links to the existing /account/event/new, which already
+          shows its own graceful non-qualifying-visitor explainer
+          (Multi-Entity Self-Service V1) — entitlement gating stays
+          authoritative there, never re-decided here. */}
       <section className="mt-4">
-        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Add to Findmi</h2>
+        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Create on Findmi</h2>
+        <p className="mt-0.5 text-xs text-ink/40">Business, Event, or Venue — things you create and manage.</p>
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
           <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
           <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
+        </div>
+      </section>
+
+      {/* 2b. FINDMI HERE — deliberately its own card, not another strip
+          pill: important, but visually distinct from creating an Event.
+          Business-scoped: BusinessScopedAction decides (never fakes) the
+          destination — one business routes straight there, several
+          reveal a "Which business?" chooser, zero routes to Add Business
+          — see that component's own doc comment. Selecting an existing
+          Event through this flow never grants Event ownership; it only
+          adds a Findmi Here appearance for the Business. Product stays
+          reachable but subordinate — a compact secondary link, not a
+          peer entity action (Section 7). */}
+      <section className="mt-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
+        <BusinessScopedAction
+          variant="card"
+          businesses={myBusinesses}
+          tab="findmi-here"
+          icon={<NavIcon name="target" className="h-4 w-4" />}
+          label="Findmi Here"
+          eyebrow="Findmi Here"
+          headline="Tell people where your business will be next."
+          subtext="Add an upcoming market, pop-up, event, or place →"
+        />
+        <div className="mt-3 flex justify-end border-t border-findmi/20 pt-2.5">
           <BusinessScopedAction
+            variant="link"
             businesses={myBusinesses}
-            tab="findmi-here"
-            icon={<NavIcon name="target" className="h-4 w-4" />}
-            label="Findmi Here"
+            tab="products"
+            icon={<NavIcon name="tag" className="h-3.5 w-3.5" />}
+            label="Add a product"
           />
-          <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
         </div>
       </section>
 
