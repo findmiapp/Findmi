@@ -4,9 +4,10 @@
 // client component), the same "plain async function imported into a
 // client component, no API route" pattern requestMissingArea already uses
 // (see actions/area-requests.ts + AreaPicker.tsx). Read-only: this never
-// claims/reserves anything — the handle only ever becomes owned via a real
-// authenticated save (claim_person_handle, or claimEntityHandle behind
-// requireBusinessMember/requireLocationMember/requireEventMember).
+// claims/reserves anything — a handle only ever becomes owned via a real
+// authenticated save (claimEntityHandle, behind requireBusinessMember/
+// requireLocationMember/requireEventMember). Business/Location/Event only
+// — personal accounts/profiles do not participate in this registry.
 import { getSupabase } from "@/lib/supabase";
 import { validateUsername } from "@/lib/username";
 import type { HandleEntityType } from "@/lib/handles";

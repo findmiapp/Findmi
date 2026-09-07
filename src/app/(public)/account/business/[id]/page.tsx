@@ -35,7 +35,7 @@ import {
   updateOwnerAppearance,
 } from "../actions";
 import { getEntityHandle } from "@/lib/handles";
-import UsernameField from "@/components/UsernameField";
+import FindmiUrlCard from "@/components/FindmiUrlCard";
 import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
 import MemberProductActiveButton from "./MemberProductActiveButton";
@@ -806,29 +806,18 @@ export default async function ManageBusinessPage({
             {/* FindMi Global Handle Registry — deliberately early on
                 Overview (this pass's own "not buried deep in settings"
                 requirement), never mandatory: a business with no username
-                keeps working at its existing /business/[slug] URL. Never
-                auto-suggested from the business name — the field starts
-                blank until the owner explicitly types one. */}
+                keeps working at its existing /business/[slug] URL. This is
+                THE BUSINESS's public identity, never presented as the
+                account owner's own — never auto-suggested from the
+                business name either. */}
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
-              {businessHandle ? (
-                <p className="mt-2 text-sm text-ink/60">
-                  Your business is live at{" "}
-                  <span className="font-semibold text-findmi-700">findmi.app/{businessHandle}</span>
-                </p>
-              ) : (
-                <p className="mt-2 text-sm text-ink/60">
-                  Claim a short, memorable Findmi URL for {business.name} — optional, and easy to promote.
-                </p>
-              )}
-              <form action={updateBusinessHandle.bind(null, id)} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="flex-1">
-                  <UsernameField name="username" defaultValue={businessHandle} current={{ entityType: "business", entityId: id }} />
-                </div>
-                <button type="submit" className={`${primaryButtonClass} sm:w-fit sm:px-6`}>
-                  {businessHandle ? "Update" : "Claim"}
-                </button>
-              </form>
+              <FindmiUrlCard
+                entityType="business"
+                entityId={id}
+                entityLabel={business.name}
+                currentHandle={businessHandle}
+                action={updateBusinessHandle.bind(null, id)}
+              />
             </div>
 
             {/* Command Center V1 — Today is the most prominent operational

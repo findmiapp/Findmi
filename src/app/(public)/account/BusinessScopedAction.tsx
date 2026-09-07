@@ -19,8 +19,28 @@ interface BusinessOption {
 // This component is only ever used from account/page.tsx (verified —
 // nothing public reuses it), so this change can't affect any consumer-
 // facing filter pill.
+// Account Create Strip Wrapping fix — `whitespace-nowrap` is the actual
+// guarantee against a two-word label ("Findmi Here") breaking onto a
+// second line inside the horizontally-scrolling strip; `shrink-0` alone
+// only stops the BUTTON from flex-shrinking, it doesn't stop its own text
+// from wrapping if anything upstream ever constrains its width. Preferred
+// outcome is exactly what the live QA asked for: complete buttons plus a
+// peek of the next one, never squeezed/wrapped text.
 const ACTION_BUTTON_CLASS =
-  "flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-black/10 bg-white px-3.5 text-xs font-bold text-ink transition hover:border-findmi/40 hover:bg-findmi-50 active:scale-[0.98]";
+  "flex h-10 w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 bg-white px-3.5 text-xs font-bold text-ink transition hover:border-findmi/40 hover:bg-findmi-50 active:scale-[0.98]";
+
+/** Small circular "+" badge used inside every create/add action button —
+ * filled Findmi aqua, plus centered inside — distinct from the outer
+ * button's own rectangular/modestly-rounded shape (never a pill). Kept
+ * separate from PlusGlyph itself so the outer button markup stays plain
+ * (`<CirclePlus /> {label}`) at every call site. */
+function CirclePlus({ className }: { className?: string }) {
+  return (
+    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-findmi text-white ${className ?? ""}`}>
+      <PlusGlyph className="h-2.5 w-2.5" />
+    </span>
+  );
+}
 
 /**
  * Owner Action UX pass — a Business-scoped create action (Schedule,
@@ -191,7 +211,7 @@ export default function BusinessScopedAction({
   return (
     <div ref={containerRef} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={ACTION_BUTTON_CLASS}>
-        <PlusGlyph className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+        <CirclePlus />
         {label}
       </button>
       {open && <WhichBusinessPanel businesses={businesses} tab={tab} className="left-0 w-52" />}
@@ -208,7 +228,7 @@ export default function BusinessScopedAction({
 export function ActionStripLink({ href, label }: { href: string; icon?: ReactNode; label: string }) {
   return (
     <Link href={href} className={ACTION_BUTTON_CLASS}>
-      <PlusGlyph className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+      <CirclePlus />
       {label}
     </Link>
   );

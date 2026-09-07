@@ -22,7 +22,7 @@ import {
   updateMemberLocationPhotos,
 } from "../actions";
 import { getEntityHandle } from "@/lib/handles";
-import UsernameField from "@/components/UsernameField";
+import FindmiUrlCard from "@/components/FindmiUrlCard";
 
 export const metadata: Metadata = {
   title: "Manage Venue",
@@ -201,24 +201,13 @@ export default async function ManageLocationPage({
 
         {tab === "overview" && (
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
-            {locationHandle ? (
-              <p className="mt-2 text-sm text-ink/60">
-                This venue is live at <span className="font-semibold text-findmi-700">findmi.app/{locationHandle}</span>
-              </p>
-            ) : (
-              <p className="mt-2 text-sm text-ink/60">
-                Claim a short, memorable Findmi URL for {location.name} — optional, and easy to promote.
-              </p>
-            )}
-            <form action={updateMemberLocationHandle.bind(null, id)} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <UsernameField name="username" defaultValue={locationHandle} current={{ entityType: "location", entityId: id }} />
-              </div>
-              <button type="submit" className={`${primaryButtonClass} sm:w-fit sm:px-6`}>
-                {locationHandle ? "Update" : "Claim"}
-              </button>
-            </form>
+            <FindmiUrlCard
+              entityType="location"
+              entityId={id}
+              entityLabel={location.name}
+              currentHandle={locationHandle}
+              action={updateMemberLocationHandle.bind(null, id)}
+            />
           </div>
         )}
 

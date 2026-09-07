@@ -1,14 +1,17 @@
 // FindMi Global Handle Registry — server-only helpers shared by every
-// entity's "choose a username" write path (Business/Location/Event; the
-// Person case is its own claim_person_handle() RPC, called directly from
-// account/profile/actions.ts since it also has to sync profiles.username).
-// See supabase/migrations/20260907170000_handles_registry.sql for the
-// actual table/constraints — the unique index on `handle` there is the
-// real cross-entity uniqueness guarantee, not anything in this file.
+// vanity-entity's "choose a username" write path. FindMi usernames belong
+// to public Business/Location/Event entities only — never a personal
+// account/profile (Product Model Correction pass; the original schema
+// briefly also supported "person", removed by the corrective migration
+// 20260907180000_handles_registry_entity_only.sql along with
+// claim_person_handle() and every Person-specific call site). See that
+// migration and the original 20260907171457_handles_registry.sql for the
+// table/constraints — the unique index on `handle` there is the real
+// cross-entity uniqueness guarantee, not anything in this file.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateUsername } from "./username";
 
-export type HandleEntityType = "person" | "business" | "location" | "event";
+export type HandleEntityType = "business" | "location" | "event";
 
 export interface ClaimHandleResult {
   ok: boolean;
@@ -16,23 +19,21 @@ export interface ClaimHandleResult {
   error?: string;
 }
 
-/** Business/Location/Event handle claim (Person goes through the separate
- * claim_person_handle() RPC instead — see account/profile/actions.ts).
- * `admin` must already be a service-role client, and the caller must have
- * ALREADY authorized `entityId` against `entityType` (requireBusinessMember/
+/** Business/Location/Event handle claim. `admin` must already be a
+ * service-role client, and the caller must have ALREADY authorized
+ * `entityId` against `entityType` (requireBusinessMember/
  * requireLocationMember/requireEventMember) before calling this — this
  * function performs no authorization of its own, only the claim itself.
  *
  * Upserts on (entity_type, entity_id) — one handle per entity, changing it
  * updates the same row rather than leaving an old one behind (this pass's
  * own "no username history" rule). A collision with a DIFFERENT entity's
- * handle (any type, including Person) surfaces as a 23505 unique_violation
- * on the global `handle` index, caught here and turned into the same
- * clean, non-leaking message every other race-safety path in this app
- * already uses. */
+ * handle (any type) surfaces as a 23505 unique_violation on the global
+ * `handle` index, caught here and turned into the same clean, non-leaking
+ * message every other race-safety path in this app already uses. */
 export async function claimEntityHandle(
   admin: SupabaseClient,
-  entityType: Exclude<HandleEntityType, "person">,
+  entityType: HandleEntityType,
   entityId: string,
   rawHandle: string,
   userId: string | null

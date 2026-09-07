@@ -10,7 +10,7 @@ import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import { getPendingMarketRequestForEvent } from "@/lib/market-requests";
 import MarketAreaFields from "@/components/MarketAreaFields";
 import { getEntityHandle } from "@/lib/handles";
-import UsernameField from "@/components/UsernameField";
+import FindmiUrlCard from "@/components/FindmiUrlCard";
 import AccountNav from "../../AccountNav";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import { AccountRelationField } from "@/components/account/AccountRelationPicker";
@@ -224,24 +224,13 @@ export default async function ManageEventPage({
                 Business/Location. An Event keeps working at its existing
                 /event/[slug] route regardless of whether one is set. */}
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
-              {eventHandle ? (
-                <p className="mt-2 text-sm text-ink/60">
-                  This event is live at <span className="font-semibold text-findmi-700">findmi.app/{eventHandle}</span>
-                </p>
-              ) : (
-                <p className="mt-2 text-sm text-ink/60">
-                  Claim a short, memorable Findmi URL for {event.name} — optional, and easy to promote.
-                </p>
-              )}
-              <form action={updateMemberEventHandle.bind(null, id)} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="flex-1">
-                  <UsernameField name="username" defaultValue={eventHandle} current={{ entityType: "event", entityId: id }} />
-                </div>
-                <button type="submit" className={`${primaryButtonClass} sm:w-fit sm:px-6`}>
-                  {eventHandle ? "Update" : "Claim"}
-                </button>
-              </form>
+              <FindmiUrlCard
+                entityType="event"
+                entityId={id}
+                entityLabel={event.name}
+                currentHandle={eventHandle}
+                action={updateMemberEventHandle.bind(null, id)}
+              />
             </div>
 
             {event.is_demo && (

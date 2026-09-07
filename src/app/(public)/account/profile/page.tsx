@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
-import UsernameField from "@/components/UsernameField";
 import AccountNav from "../AccountNav";
 import { updateProfile, signOut } from "./actions";
 
@@ -55,27 +53,6 @@ export default async function ProfilePage({
           </p>
         )}
 
-        {/* User Identity + Follow Foundation pass — a username is what
-            turns this private account record into a public FindMi
-            identity (@username, shown to Business/Event owners as a
-            follower and visitable at /user/[username]) — never required
-            to use the rest of FindMi (no signup blocker), so this reads
-            as an invitation, not a warning, when one hasn't been chosen
-            yet. */}
-        {profile?.username ? (
-          <p className="mt-4 text-sm text-ink/50">
-            Your public profile:{" "}
-            <Link href={`/user/${profile.username}`} className="font-semibold text-findmi-700 hover:underline">
-              @{profile.username}
-            </Link>
-          </p>
-        ) : (
-          <p className="mt-4 rounded-xl border border-findmi/20 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-            Choose a username below to finish setting up your public Findmi profile — optional, but it&rsquo;s how
-            businesses and events you follow will recognize you.
-          </p>
-        )}
-
         <div className="mt-4 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <form action={updateProfile} className="flex flex-col gap-4">
             <label className="block">
@@ -86,11 +63,6 @@ export default async function ProfilePage({
                 defaultValue={profile?.display_name ?? ""}
                 className={inputClass}
               />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Username</span>
-              <UsernameField name="username" defaultValue={profile?.username} current={{ entityType: "person", entityId: user.id }} />
-              <span className="mt-1 block text-xs text-ink/45">Leave blank to keep things as they are.</span>
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Short bio (optional)</span>
