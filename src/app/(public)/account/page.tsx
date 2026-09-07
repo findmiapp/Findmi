@@ -4,7 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import NavIcon from "@/components/NavIcon";
-import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
+import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import type { Profile } from "@/lib/types";
 import AccountSync from "./AccountSync";
 
@@ -237,38 +237,34 @@ export default async function AccountHomePage({
             — it&rsquo;s free.
           </p>
         ) : (
-          <div className="mt-3 flex flex-col gap-3">
+          <div className="mt-3 flex flex-col gap-2">
             {myBusinesses.map((b) => (
               <div
                 key={b.id}
-                className="flex items-center gap-3 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5"
+                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-2.5 shadow-sm"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
-                  <NavIcon name="storefront" className="h-5 w-5" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+                  <NavIcon name="storefront" className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-ink">{b.name}</p>
-                  {b.pendingReview && (
-                    <p className="mt-0.5 text-xs font-semibold text-amber-700">
-                      Pending Review — visible only to you until FindMi approves it.
-                    </p>
-                  )}
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {b.pendingReview && <PendingBadge />}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Link
+                    href={`/account/business/${b.id}`}
+                    className="rounded-full bg-findmi px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  >
+                    Manage
+                  </Link>
+                  {b.slug && (
                     <Link
-                      href={`/account/business/${b.id}`}
-                      className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                      href={`/business/${b.slug}`}
+                      className="text-[10px] font-semibold text-ink/40 underline underline-offset-2 hover:text-ink/60"
                     >
-                      Manage Business
+                      {b.pendingReview ? "Preview" : "View Profile"}
                     </Link>
-                    {b.slug && (
-                      <Link
-                        href={`/business/${b.slug}`}
-                        className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/60 transition hover:border-black/20 hover:text-ink"
-                      >
-                        {b.pendingReview ? "Preview Your Page" : "View Public Profile"}
-                      </Link>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -297,46 +293,42 @@ export default async function AccountHomePage({
         {myEvents.length === 0 ? (
           <p className="mt-3 text-sm text-ink/50">You don&rsquo;t manage any events yet.</p>
         ) : (
-          <div className="mt-3 flex flex-col gap-3">
+          <div className="mt-3 flex flex-col gap-2">
             {myEvents.map((e) => (
               <div
                 key={e.id}
-                className="flex items-center gap-3 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5"
+                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-2.5 shadow-sm"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
-                  <NavIcon name="calendar" className="h-5 w-5" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+                  <NavIcon name="calendar" className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-ink">{e.name}</p>
-                  {e.isDemo && (
-                    <p className="mt-0.5 text-xs font-semibold text-amber-700">
-                      Pending Review — visible only to you until FindMi approves it.
-                    </p>
-                  )}
-                  <div className="mt-2">
-                    <Link
-                      href={`/account/event/${e.id}`}
-                      className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    >
-                      Manage Event
-                    </Link>
-                  </div>
+                  {e.isDemo && <PendingBadge />}
                 </div>
+                <Link
+                  href={`/account/event/${e.id}`}
+                  className="shrink-0 rounded-full bg-findmi px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Manage
+                </Link>
               </div>
             ))}
           </div>
         )}
       </section>
 
-      {/* Multi-Entity Self-Service V1, Stage 3 — Places You Manage. Real
-          data only (location_members), never fabricated placeholder rows.
-          Location Manager now exists (/account/location/[id]), so each
-          row links there directly, and "+ Add a Venue" is a real, live
-          link to native Location creation (/account/location/new) — free
-          for every signed-in user, no entitlement gate. */}
+      {/* Multi-Entity Self-Service V1, Stage 3, renamed in the Account Hub
+          Mobile Polish pass ("Places" -> "Venues" — owner-facing only;
+          internal Location terminology is unchanged). Real data only
+          (location_members), never fabricated placeholder rows. Location
+          Manager now exists (/account/location/[id]), so each row links
+          there directly, and "+ Add Venue" is a real, live link to native
+          Location creation (/account/location/new) — free for every
+          signed-in user, no entitlement gate. */}
       <section className="mt-8">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Places You Manage</h2>
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Venues You Manage</h2>
           <Link
             href="/account/location/new"
             className="rounded-full bg-findmi px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
@@ -348,44 +340,63 @@ export default async function AccountHomePage({
         {myLocations.length === 0 ? (
           <p className="mt-3 text-sm text-ink/50">You don&rsquo;t manage any venues yet.</p>
         ) : (
-          <div className="mt-3 flex flex-col gap-3">
+          <div className="mt-3 flex flex-col gap-2">
             {myLocations.map((l) => (
               <div
                 key={l.id}
-                className="flex items-center gap-3 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5"
+                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-2.5 shadow-sm"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
-                  <NavIcon name="pin" className="h-5 w-5" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+                  <NavIcon name="pin" className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-ink">{l.name}</p>
-                  {l.isDemo && (
-                    <p className="mt-0.5 text-xs font-semibold text-amber-700">
-                      Pending Review — visible only to you until FindMi approves it.
-                    </p>
-                  )}
-                  <div className="mt-2">
-                    <Link
-                      href={`/account/location/${l.id}`}
-                      className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    >
-                      Manage Venue
-                    </Link>
-                  </div>
+                  {l.isDemo && <PendingBadge />}
                 </div>
+                <Link
+                  href={`/account/location/${l.id}`}
+                  className="shrink-0 rounded-full bg-findmi px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Manage
+                </Link>
               </div>
             ))}
           </div>
         )}
       </section>
 
-      {/* Pro Invite Sharing UX pass — lets an existing signed-in vendor
-          apply a code they were given verbally/by text/on a printed card,
-          against whichever of their businesses they choose on the next
-          screen (/redeem/[code], the same existing secure flow). Placed
-          right under My Businesses since that's who this is for. */}
+      {/* Account Hub Mobile Polish pass — replaces the previously
+          permanent, dashboard-sized invite form (ProInviteCodeEntry,
+          still used unchanged elsewhere — Business Manager's Plan tab,
+          /join) with a small, subtle disclosure here. Renamed from
+          "Pro Invite Code" because an invite can grant Business Pro OR
+          Event Management access, not Pro specifically. Submits through
+          the exact same goToRedeemCode action (normalizes the code and
+          redirects to /redeem/[code], the only place any invite is ever
+          looked up or redeemed) — no backend/grant/redemption behavior
+          changed, only how prominently it's presented on this one page. */}
       <section className="mt-8">
-        <ProInviteCodeEntry returnTo="/account" />
+        <details className="group">
+          <summary className="w-fit cursor-pointer text-xs font-semibold text-ink/45 underline underline-offset-2 transition hover:text-ink/70 [&::-webkit-details-marker]:hidden">
+            Redeem invite code
+          </summary>
+          <form action={goToRedeemCode} className="mt-2 flex max-w-sm flex-col gap-2 sm:flex-row">
+            <input type="hidden" name="return_to" value="/account" />
+            <input
+              type="text"
+              name="code"
+              required
+              placeholder="Enter code"
+              className="w-full min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="shrink-0 rounded-full border border-black/15 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+            >
+              Apply
+            </button>
+          </form>
+        </details>
       </section>
 
       {/* 4. Pending Claims — separate section, same status copy/actions as
@@ -424,6 +435,23 @@ export default async function AccountHomePage({
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+/** Account Hub Mobile Polish pass — replaces the long "Pending Review —
+ * visible only to you until FindMi approves it." sentence with a small
+ * status pill (+ optional muted secondary copy) shared by Business/Event/
+ * Location cards alike. Moderation logic itself is untouched — this only
+ * changes how an already-known is_demo/publication_status="pending_review"
+ * condition is rendered. */
+function PendingBadge() {
+  return (
+    <div className="mt-0.5 flex items-center gap-1.5">
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+        Pending Review
+      </span>
+      <span className="text-[10px] text-ink/40">Not public yet.</span>
     </div>
   );
 }
