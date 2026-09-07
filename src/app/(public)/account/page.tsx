@@ -8,7 +8,7 @@ import NavIcon from "@/components/NavIcon";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import type { Profile } from "@/lib/types";
 import AccountSync from "./AccountSync";
-import BusinessScopedAction, { ActionStripLink } from "./BusinessScopedAction";
+import BusinessScopedAction, { ActionStripLink, PlusGlyph } from "./BusinessScopedAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
 
 export const metadata: Metadata = {
@@ -283,58 +283,79 @@ export default async function AccountHomePage({
         </div>
       </section>
 
-      {/* 2. CREATE ON FINDMI — Findmi Here Clarity pass. Business / Event /
-          Venue only: the entities a user actually creates and manages.
-          Findmi Here used to sit in this same strip, reading as a fourth
-          equivalent entity type — it isn't one (it's telling customers
-          where an existing Business will be, never a thing you "own" the
-          way a Business/Event/Venue is owned), so it now lives in its
-          own distinct CTA card directly below, not this strip. + Event
-          always links to the existing /account/event/new, which already
-          shows its own graceful non-qualifying-visitor explainer
-          (Multi-Entity Self-Service V1) — entitlement gating stays
-          authoritative there, never re-decided here. */}
+      {/* 2. CREATE ON FINDMI — Account Hub Action Hierarchy pass. + Schedule
+          leads and is visually emphasized (filled aqua tile): it's the
+          single highest-value action, business-scoped to the SAME
+          Findmi Here destination the standalone card below also uses —
+          see BusinessScopedAction's own doc comment for why the
+          zero/one/many routing never changes across the two entry
+          points. Business/Venue/Product are also business-scoped (never
+          silently defaulting to the first managed business). Event is
+          last on purpose — creating/managing an Event is a distinct,
+          less frequent action from scheduling an existing Business's
+          appearances (see the "What's the difference?" note below) —
+          and still links to the existing /account/event/new, which
+          already shows its own graceful non-qualifying-visitor
+          explainer (Multi-Entity Self-Service V1); entitlement gating
+          stays authoritative there, never re-decided here. */}
       <section className="mt-4">
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Create on Findmi</h2>
-        <p className="mt-0.5 text-xs text-ink/40">Business, Event, or Venue — things you create and manage.</p>
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <BusinessScopedAction
+            emphasize
+            businesses={myBusinesses}
+            tab="findmi-here"
+            icon={<PlusGlyph className="h-4 w-4" />}
+            label="Schedule"
+          />
           <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
-          <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
           <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
+          <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
+          <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
         </div>
       </section>
 
       {/* 2b. FINDMI HERE — deliberately its own card, not another strip
-          pill: important, but visually distinct from creating an Event.
-          Business-scoped: BusinessScopedAction decides (never fakes) the
-          destination — one business routes straight there, several
+          pill: important, and reworked to clearly read and behave like a
+          tappable action (filled-aqua icon badge instead of the earlier
+          location-style pin/target look, bold "Add to your schedule →"
+          line). Invokes the SAME BusinessScopedAction routing as +
+          Schedule above — one business routes straight there, several
           reveal a "Which business?" chooser, zero routes to Add Business
-          — see that component's own doc comment. Selecting an existing
-          Event through this flow never grants Event ownership; it only
-          adds a Findmi Here appearance for the Business. Product stays
-          reachable but subordinate — a compact secondary link, not a
-          peer entity action (Section 7). */}
+          — never a second, parallel authorization decision. Selecting
+          an existing Event through this flow never grants Event
+          ownership; it only adds a Findmi Here appearance for the
+          Business. Product no longer lives in/under this card — it's
+          back in the Create on Findmi row above. */}
       <section className="mt-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
         <BusinessScopedAction
           variant="card"
           businesses={myBusinesses}
           tab="findmi-here"
-          icon={<NavIcon name="target" className="h-4 w-4" />}
+          icon={<PlusGlyph className="h-4 w-4" />}
           label="Findmi Here"
           eyebrow="Findmi Here"
-          headline="Tell people where your business will be next."
-          subtext="Add an upcoming market, pop-up, event, or place →"
+          headline="Add where your business will be next"
+          description="Markets, pop-ups, events, festivals, and other places you're appearing."
+          cta="Add to your schedule →"
         />
-        <div className="mt-3 flex justify-end border-t border-findmi/20 pt-2.5">
-          <BusinessScopedAction
-            variant="link"
-            businesses={myBusinesses}
-            tab="products"
-            icon={<NavIcon name="tag" className="h-3.5 w-3.5" />}
-            label="Add a product"
-          />
-        </div>
       </section>
+
+      {/* 2c. FINDMI HERE VS EVENT — one compact line, not a new help
+          section: makes the distinction legible without requiring any
+          Findmi data-model knowledge. Links to the existing
+          /account/event/new destination, which already carries its own
+          qualifying/non-qualifying explainer — no new educational
+          route. */}
+      <div className="mt-3 rounded-xl bg-black/[0.02] px-3.5 py-3">
+        <p className="text-xs font-bold text-ink/70">What&rsquo;s the difference?</p>
+        <p className="mt-1 text-xs leading-relaxed text-ink/50">
+          Findmi Here is for places your business will be appearing. Events are for events you organize and manage.
+        </p>
+        <Link href="/account/event/new" className="mt-1.5 inline-block text-xs font-bold text-findmi-700 underline underline-offset-2">
+          Learn about Events →
+        </Link>
+      </div>
 
       {/* 3. MANAGE ON FINDMI — Account Hub V2 pass, extended with
           All/Businesses/Events/Venues filtering (ManageOnFindmiList,
