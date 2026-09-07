@@ -32,9 +32,6 @@ export interface AdminClaimRow {
 export interface ClaimListFilters {
   status?: ClaimStatus;
   entityType?: ClaimEntityType;
-  /** "paid_needs_review" — status='pending' AND paymentStatus='paid',
-   * the operational state the founder should act on first. */
-  view?: "paid_needs_review";
 }
 
 type RawClaimRow = {
@@ -66,7 +63,6 @@ async function fetchClaims(
     )
     .order("created_at", { ascending: false });
   if (filters.status) query = query.eq("status", filters.status);
-  if (filters.view === "paid_needs_review") query = query.eq("status", "pending").eq("payment_status", "paid");
 
   const { data } = await query;
   return ((data ?? []) as never[]).map((row: unknown) => {

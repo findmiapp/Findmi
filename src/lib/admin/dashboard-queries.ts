@@ -13,7 +13,12 @@ import { getEventIdsWithOwners } from "./queries";
 // drift out of sync.
 
 export interface DashboardNeedsAttention {
-  /** business_claim_requests + event_claim_requests, status='pending'. */
+  /** Admin Claims + Marketplace Correctness pass — business_claim_requests
+   * + event_claim_requests + location_claim_requests, status='pending'.
+   * Previously omitted location_claim_requests (a real gap flagged in the
+   * prior Command Center pass's own report) — /admin/claims's Venue type
+   * filter reads the exact same table/status, so this count and that
+   * queue can no longer drift apart. */
   pendingClaims: number;
   /** event_businesses.status in ('applied','pending') — the same
    * pendingApplications filter admin/events already offers. */
@@ -119,6 +124,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
   const [
     pendingBusinessClaims,
     pendingEventClaims,
+    pendingLocationClaims,
     pendingEventApplications,
     pendingOnboardingReview,
     pendingBusinessReviews,
@@ -128,6 +134,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
   ] = await Promise.all([
     supabase.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("event_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("location_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase
       .from("event_businesses")
       .select("id", { count: "exact", head: true })
@@ -150,7 +157,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
   ]);
 
   return {
-    pendingClaims: (pendingBusinessClaims.count ?? 0) + (pendingEventClaims.count ?? 0),
+    pendingClaims: (pendingBusinessClaims.count ?? 0) + (pendingEventClaims.count ?? 0) + (pendingLocationClaims.count ?? 0),
     pendingEventApplications: pendingEventApplications.count ?? 0,
     pendingOnboardingReview: pendingOnboardingReview.count ?? 0,
     pendingBusinessReviews: pendingBusinessReviews.count ?? 0,
