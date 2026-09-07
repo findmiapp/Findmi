@@ -95,3 +95,36 @@ export async function deleteAppearance(id: string) {
   revalidatePath("/find");
   redirect("/admin/appearances");
 }
+
+// ── Admin Where I'll Be Review Inbox V1 ─────────────────────────────────
+// admin_reviewed_at is Admin ACKNOWLEDGEMENT only — never moderation. These
+// three actions touch that one column and nothing else: no status change,
+// no visibility change, no Event/participation/Market-Area write. No
+// redirect (unlike saveAppearance/deleteAppearance above) — these are
+// invoked from plain forms on the list itself, so revalidatePath alone is
+// enough for Next.js to refresh the current URL (filters/search intact)
+// without navigating away.
+
+export async function markAppearanceReviewed(id: string) {
+  const supabase = await requireAdminSupabase();
+  await supabase.from("appearances").update({ admin_reviewed_at: new Date().toISOString() }).eq("id", id);
+  revalidatePath("/admin/appearances");
+}
+
+export async function markAppearanceUnreviewed(id: string) {
+  const supabase = await requireAdminSupabase();
+  await supabase.from("appearances").update({ admin_reviewed_at: null }).eq("id", id);
+  revalidatePath("/admin/appearances");
+}
+
+/** Bulk review — "ids" is always the exact set of currently-selected,
+ * currently-VISIBLE (rendered on this page load) appearance ids the
+ * client sent, never a server-side "select everything matching the
+ * filter" — see AppearanceReviewList's own doc comment for why. */
+export async function markAppearancesReviewed(formData: FormData) {
+  const supabase = await requireAdminSupabase();
+  const ids = formData.getAll("ids").map(String).filter(Boolean);
+  if (ids.length === 0) return;
+  await supabase.from("appearances").update({ admin_reviewed_at: new Date().toISOString() }).in("id", ids);
+  revalidatePath("/admin/appearances");
+}

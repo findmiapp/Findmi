@@ -591,6 +591,11 @@ export interface Appearance {
   id: string;
   business_id: string;
   event_id: string | null;
+  // Was previously untyped even though the column has always existed —
+  // added for the Admin Where I'll Be Review Inbox pass, which needs to
+  // distinguish "when this was added" (created_at) from "when it
+  // happens" (start_at).
+  created_at: string;
   // Event Occurrences foundation — set alongside event_id when this
   // Appearance is linked to one specific recurring occurrence rather than
   // a whole (non-recurring) event; null for a non-recurring event link or
@@ -621,6 +626,10 @@ export interface Appearance {
   // See AppearanceCard.tsx.
   external_url: string | null;
   flyer_image_url: string | null;
+  // Admin Where I'll Be Review Inbox V1 — Admin acknowledgement only
+  // (never moderation/visibility/participation/Market-Area). Null means
+  // unreviewed. Public code should never read this field.
+  admin_reviewed_at: string | null;
 }
 
 export interface BusinessWithCategories extends Business {

@@ -53,6 +53,13 @@ export interface DashboardNeedsAttention {
    * separate a real organizer's just-submitted event from permanent
    * is_demo=true seed/demo content. */
   pendingEventReviews: number;
+  /** Admin Where I'll Be Review Inbox pass — appearances.admin_reviewed_at
+   * IS NULL, for real (non-demo) businesses. Deliberately named
+   * differently from the pendingXxxReviews fields above: this is NOT a
+   * moderation/approval queue — see admin_reviewed_at's own doc comment
+   * on the Appearance type. Same source of truth
+   * /admin/appearances?reviewed=unreviewed uses. */
+  unreviewedAppearances: number;
 }
 
 export interface DashboardGlance {
@@ -131,6 +138,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingProductReviews,
     pendingMarketplaceReviews,
     pendingEventReviews,
+    unreviewedAppearances,
   ] = await Promise.all([
     supabase.from("business_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("event_claim_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -154,6 +162,11 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
       .or("moderation_status.eq.pending_review,pending_changes.not.is.null"),
     supabase.from("products").select("id", { count: "exact", head: true }).eq("marketplace_status", "submitted"),
     countPendingEventReviews(supabase),
+    supabase
+      .from("appearances")
+      .select("id, businesses!inner(is_demo)", { count: "exact", head: true })
+      .is("admin_reviewed_at", null)
+      .eq("businesses.is_demo", false),
   ]);
 
   return {
@@ -164,6 +177,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingProductReviews: pendingProductReviews.count ?? 0,
     pendingMarketplaceReviews: pendingMarketplaceReviews.count ?? 0,
     pendingEventReviews,
+    unreviewedAppearances: unreviewedAppearances.count ?? 0,
   };
 }
 

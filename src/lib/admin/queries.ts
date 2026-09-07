@@ -594,6 +594,10 @@ export interface AppearanceListFilters {
   when?: "upcoming" | "past" | "all";
   businessId?: string;
   linkage?: "event" | "standalone";
+  /** Admin Where I'll Be Review Inbox pass — admin_reviewed_at IS NULL vs
+   * NOT NULL. Acknowledgement only, see that column's own doc comment on
+   * the Appearance type — never a moderation/visibility filter. */
+  reviewed?: "unreviewed" | "reviewed" | "all";
 }
 
 // Admin Where You'll Be Organization pass — 80+ rows today, no
@@ -617,6 +621,8 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
   if (filters.businessId) query = query.eq("business_id", filters.businessId);
   if (filters.linkage === "event") query = query.not("event_id", "is", null);
   if (filters.linkage === "standalone") query = query.is("event_id", null);
+  if (filters.reviewed === "unreviewed") query = query.is("admin_reviewed_at", null);
+  if (filters.reviewed === "reviewed") query = query.not("admin_reviewed_at", "is", null);
   const nowIso = new Date().toISOString();
   if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
   if (filters.when === "past") query = query.lt("start_at", nowIso);
@@ -627,8 +633,15 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
   // single predictable order for "everything," unchanged from before this
   // pass; it's simply no longer the admin page's own default view (see
   // appearances/page.tsx).
+  //
+  // Review Inbox pass — the Unreviewed view sorts by created_at (newest
+  // ADDED first), not start_at: this is an inbox of recently submitted
+  // records, and created_at/start_at deliberately answer different
+  // questions (when it was added vs. when it happens). Reviewed/All keep
+  // the existing start_at-based order unchanged.
+  const unreviewedInbox = filters.reviewed === "unreviewed";
   const { data } = await query
-    .order("start_at", { ascending: filters.when === "upcoming" })
+    .order(unreviewedInbox ? "created_at" : "start_at", { ascending: unreviewedInbox ? false : filters.when === "upcoming" })
     .limit(APPEARANCE_LIST_LIMIT);
   return ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as AdminAppearanceRow & {

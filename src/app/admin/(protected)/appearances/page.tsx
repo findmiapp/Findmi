@@ -1,28 +1,44 @@
 import Link from "next/link";
 import { getAdminAppearances, getBusinessOptionById } from "@/lib/admin/queries";
 import { RelationField } from "@/components/admin/RelationPicker";
-import { formatAppearanceDateRange, cityState } from "@/lib/format";
+import AppearanceReviewList from "./AppearanceReviewList";
 
 export const dynamic = "force-dynamic";
 
 const selectClass =
   "rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none";
 
+const REVIEWED_VIEWS: { value: "unreviewed" | "reviewed" | "all"; label: string }[] = [
+  { value: "unreviewed", label: "Unreviewed" },
+  { value: "reviewed", label: "Reviewed" },
+  { value: "all", label: "All" },
+];
+
 export default async function AdminAppearancesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; when?: string; business?: string; linkage?: string; imported?: string }>;
+  searchParams: Promise<{ q?: string; when?: string; business?: string; linkage?: string; reviewed?: string; imported?: string }>;
 }) {
-  const { q, when, business, linkage, imported } = await searchParams;
-  // Admin Where You'll Be Organization pass — the raw 80+-row, no-default-
-  // filter view was unusable. "Upcoming" (nearest-first) is now the real
-  // default on first load; "all" is an explicit choice, not the absence
-  // of one. Any unrecognized/missing value still falls back to upcoming.
-  const whenFilter = when === "past" || when === "all" ? when : "upcoming";
+  const { q, when, business, linkage, reviewed, imported } = await searchParams;
+  // Admin Where I'll Be Review Inbox pass — Unreviewed is now the real
+  // default (was "Upcoming" reads only). Reviewed/All keep the existing
+  // "Upcoming" default from the prior Organization pass unchanged; the
+  // Unreviewed inbox itself defaults to "all" timing (not just upcoming)
+  // when `when` isn't explicitly set, since this is an inbox of recently
+  // ADDED records — a business could add a standalone entry for a date
+  // that's already passed, and it still deserves acknowledgement. An
+  // explicit ?when= always wins regardless of view.
+  const reviewedFilter = reviewed === "reviewed" || reviewed === "all" ? reviewed : "unreviewed";
+  const whenFilter =
+    when === "past" || when === "all" || when === "upcoming"
+      ? when
+      : reviewedFilter === "unreviewed"
+        ? "all"
+        : "upcoming";
   const linkageFilter = linkage === "event" || linkage === "standalone" ? linkage : undefined;
 
   const [appearances, initialBusiness] = await Promise.all([
-    getAdminAppearances({ q, when: whenFilter, businessId: business, linkage: linkageFilter }),
+    getAdminAppearances({ q, when: whenFilter, businessId: business, linkage: linkageFilter, reviewed: reviewedFilter }),
     getBusinessOptionById(business ?? null),
   ]);
 
@@ -54,7 +70,37 @@ export default async function AdminAppearancesPage({
         </p>
       )}
 
-      <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+      {/* Admin Where I'll Be Review Inbox pass — Unreviewed/Reviewed/All,
+          the primary view switcher (defaults to Unreviewed), separate
+          from the existing search/business/when/linkage filters below.
+          Reviewing is Admin acknowledgement only — see
+          admin_reviewed_at's own doc comment — never moderation, so this
+          is deliberately NOT phrased as an approval queue. */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {REVIEWED_VIEWS.map((v) => {
+          const params = new URLSearchParams();
+          if (q) params.set("q", q);
+          if (business) params.set("business", business);
+          if (when) params.set("when", when);
+          if (linkage) params.set("linkage", linkage);
+          if (v.value !== "unreviewed") params.set("reviewed", v.value);
+          const qs = params.toString();
+          return (
+            <Link
+              key={v.value}
+              href={qs ? `/admin/appearances?${qs}` : "/admin/appearances"}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                reviewedFilter === v.value ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              }`}
+            >
+              {v.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      <form method="get" className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+        {reviewed && <input type="hidden" name="reviewed" value={reviewedFilter} />}
         <input
           type="text"
           name="q"
@@ -98,58 +144,19 @@ export default async function AdminAppearancesPage({
           : `${appearances.length} result${appearances.length === 1 ? "" : "s"}.`}
       </p>
 
-      {/* Admin Where You'll Be Organization pass — row hierarchy is Title
-          (the schedule entry itself) → Business → Date/time, Venue,
-          City/State, so a founder can understand a record without
-          opening it. The Linked Event/Standalone badge reads event_id
-          directly (never inferred from title/name matching — see
-          getAdminAppearances's own linkage filter, same source of
-          truth), stacked above the existing status badge so both stay
-          visible without widening the row. */}
-      <div className="mt-2 flex flex-col gap-2">
-        {appearances.length === 0 ? (
-          <p className="text-sm text-ink/50">No results for this view.</p>
-        ) : (
-          appearances.map((a) => {
-            const location = [a.venue_name, cityState(a.city, a.state)].filter(Boolean).join(" · ");
-            return (
-              <Link
-                key={a.id}
-                href={`/admin/appearances/${a.id}`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
-                  <p className="truncate text-xs text-ink/60">{a.business?.name ?? "—"}</p>
-                  <p className="truncate text-xs text-ink/45">
-                    {formatAppearanceDateRange(a.start_at, a.end_at, a.description)}
-                    {location ? ` · ${location}` : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                      a.event_id ? "bg-findmi-50 text-findmi-700" : "bg-black/[0.06] text-ink/60"
-                    }`}
-                  >
-                    {a.event_id ? "Linked Event" : "Standalone"}
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                      a.status === "canceled"
-                        ? "bg-black/[0.06] text-ink/50"
-                        : a.status === "tentative"
-                          ? "bg-amber-50 text-amber-700"
-                          : "bg-findmi-50 text-findmi-700"
-                    }`}
-                  >
-                    {a.status}
-                  </span>
-                </div>
-              </Link>
-            );
-          })
-        )}
+      {/* Admin Where I'll Be Review Inbox pass — AppearanceReviewList is
+          keyed off the actual id set so its internal selection state
+          resets cleanly both when filters change AND after a successful
+          bulk review (the revalidated appearance list no longer contains
+          the reviewed ids). Bulk controls only render on the Unreviewed
+          view (showBulk), per this pass's own "selection controls on the
+          Unreviewed view" requirement. */}
+      <div className="mt-2">
+        <AppearanceReviewList
+          key={appearances.map((a) => a.id).join(",")}
+          appearances={appearances}
+          showBulk={reviewedFilter === "unreviewed"}
+        />
       </div>
     </div>
   );

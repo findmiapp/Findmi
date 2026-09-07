@@ -159,6 +159,16 @@ export default async function AdminDashboardPage() {
           count: marketRequestGroups.length,
           href: "/admin/market-requests",
         },
+        {
+          // Admin Where I'll Be Review Inbox pass — deliberately NOT
+          // phrased "awaiting review" like the moderation queues above:
+          // acknowledging a Where I'll Be record is not an approval
+          // decision (see admin_reviewed_at's own doc comment).
+          label: "unreviewed Where I’ll Be record",
+          pluralLabel: "unreviewed Where I’ll Be records",
+          count: needsAttention.unreviewedAppearances,
+          href: "/admin/appearances?reviewed=unreviewed",
+        },
       ]
     : [];
   const activeAttentionItems = attentionQueue.filter((item) => item.count > 0);
