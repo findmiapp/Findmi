@@ -55,10 +55,11 @@ interface Params {
   category?: string;
   market?: string;
   area?: string;
+  q?: string;
 }
 
 export default async function FindPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const { when: whenParam, category, market: marketSlug, area: areaParam } = await searchParams;
+  const { when: whenParam, category, market: marketSlug, area: areaParam, q: qParam } = await searchParams;
   // Findmi Here Clarity pass — default is Next Up ("anytime"), not Now
   // ("live"): explicit ?when=live/today/weekend still select exactly that
   // window (TABS.some(...) below is unchanged), only the no-param fallback
@@ -67,17 +68,38 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   // Area only ever meaningful alongside a Market — same guard /discover,
   // /businesses, and /events all use.
   const areaSlug = marketSlug ? areaParam : undefined;
+  // Find V3 — blank q is omitted from the URL entirely (never `?q=`), same
+  // "resolved-or-undefined" treatment area/market already get.
+  const q = qParam?.trim() || undefined;
 
   const [categories, markets, items, matchingEvents] = await Promise.all([
     getCategories(),
     getConsumerVisibleMarketsWithAreas(),
-    getFindMiHereFeed(when, 30, { categorySlug: category, marketSlug, areaSlug }),
+    getFindMiHereFeed(when, 30, { categorySlug: category, marketSlug, areaSlug, q }),
     category || marketSlug
       ? getEventsDiscovery({ when: eventWindow(when), categorySlug: category, marketSlug, areaSlug, limit: 6 })
       : Promise.resolve([]),
   ]);
 
-  const [hero, ...rest] = items;
+  const hero = items[0];
+  // Find V3 — de-duplication. The exact same appearance row can never
+  // appear twice (items is one SQL result set with a real primary key per
+  // row), so the only genuine duplication risk is the SAME BUSINESS
+  // showing up immediately below its own featured result — technically a
+  // different appearance, but reads as a repeat at a glance. Rather than
+  // hiding it (a real, distinct appearance a visitor may still want), it's
+  // reordered behind every other result so the first "More" row is never
+  // the hero's own business. Dedup key: business.id.
+  const restRaw = items.slice(1);
+  const rest = hero
+    ? [...restRaw.filter((i) => i.business.id !== hero.business.id), ...restRaw.filter((i) => i.business.id === hero.business.id)]
+    : restRaw;
+  // A Matching Event that's already visible as an appearance card (hero or
+  // More) would otherwise show the literal same Event twice on one page —
+  // once as "Business @ Event", once again as its own Event card. Dedup
+  // key: event.id against every visible appearance's own event_id.
+  const shownEventIds = new Set(items.filter((i) => i.event_id).map((i) => i.event_id as string));
+  const dedupedMatchingEvents = matchingEvents.filter((e) => !shownEventIds.has(e.id));
   const heroLabel = hero ? getTemporalLabel(hero.start_at, hero.end_at) : null;
   const hasFilters = Boolean(category || marketSlug);
 
@@ -90,20 +112,24 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
       : undefined;
 
   // Shared query-string builder for every internal link on this page (the
-  // When tabs, and "View All Areas" in the empty state) — always carries
-  // the current category/market/area forward unless explicitly overridden,
+  // When tabs, and the empty state's suggestions) — always carries the
+  // current category/market/area/q forward unless explicitly overridden,
   // so switching one dimension never silently drops another (Section 7).
-  function buildHref(overrides: Partial<{ when: FindWindow; market: string | undefined; area: string | undefined }> = {}) {
+  function buildHref(
+    overrides: Partial<{ when: FindWindow; market: string | undefined; area: string | undefined; q: string | undefined }> = {}
+  ) {
     const next = {
       when: overrides.when ?? when,
       market: "market" in overrides ? overrides.market : marketSlug,
       area: "area" in overrides ? overrides.area : areaSlug,
+      q: "q" in overrides ? overrides.q : q,
     };
     const p = new URLSearchParams();
     if (next.when !== "anytime") p.set("when", next.when);
     if (category) p.set("category", category);
     if (next.market) p.set("market", next.market);
     if (next.market && next.area) p.set("area", next.area);
+    if (next.q) p.set("q", next.q);
     const qs = p.toString();
     return qs ? `/find?${qs}` : "/find";
   }
@@ -111,27 +137,44 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   const viewAllAreasHref = buildHref({ market: undefined, area: undefined });
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Explore</p>
-      <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+      <h1 className="mt-0.5 font-display text-xl font-bold tracking-tight text-ink sm:text-3xl">
         Help me find something specific
       </h1>
 
-      {/* WHAT / WHERE / WHEN — structured filtering, not free-text search.
-          Category submits via the form (Find button); Area (AreaPicker)
-          and When (plain links) navigate immediately, same interaction
-          split /businesses and /events already use. Hidden market/area
-          fields mean submitting the category select never drops the
-          currently selected Area (Section 7's "changing category must
-          not clear Area"). */}
-      <form method="get" className="mt-4 flex flex-col gap-2.5">
-        <div className="grid gap-2 sm:grid-cols-[1fr,1fr,auto]">
+      {/* Find V3 — SEARCH + WHAT + WHERE compose with WHEN (Section 3): one
+          form, one submit. Search text and category both need an explicit
+          submit (Where/When act immediately via AreaPicker/Links, exactly
+          as before) — reusing the same "Find" action as search's own
+          submit, rather than a second button, is what keeps this to one
+          compact row instead of a second oversized one (Section 4).
+          Hidden when/market/area fields mean submitting never drops
+          whichever of those the visitor already had selected. */}
+      <form method="get" className="mt-3 flex flex-col gap-2">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            name="q"
+            defaultValue={q ?? ""}
+            placeholder="Search businesses, events…"
+            className="h-11 w-full flex-1 rounded-xl border border-black/10 bg-white px-3.5 text-sm text-ink placeholder:text-ink/40 focus:border-ink/30 focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="h-11 shrink-0 rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Search
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
           <label className="block">
             <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-ink/40">What</span>
             <select
               name="category"
               defaultValue={category ?? ""}
-              className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
+              className="h-10 w-full rounded-xl border border-black/10 bg-white px-3 text-sm text-ink focus:border-ink/30 focus:outline-none"
             >
               <option value="">Any category</option>
               {categories.map((c) => (
@@ -152,43 +195,48 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
               }))}
             />
           </div>
-          <input type="hidden" name="when" value={when} />
-          {marketSlug && <input type="hidden" name="market" value={marketSlug} />}
-          {marketSlug && areaSlug && <input type="hidden" name="area" value={areaSlug} />}
-          <div className="flex flex-col justify-end">
-            <span className="mb-1 hidden text-[11px] font-bold uppercase tracking-wide text-transparent sm:block" aria-hidden>
-              Find
-            </span>
-            <button
-              type="submit"
-              className="h-[42px] rounded-xl bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-            >
-              Find
-            </button>
-          </div>
         </div>
+        <input type="hidden" name="when" value={when} />
+        {marketSlug && <input type="hidden" name="market" value={marketSlug} />}
+        {marketSlug && areaSlug && <input type="hidden" name="area" value={areaSlug} />}
 
-        <div>
-          <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-ink/40">When</span>
-          <div className="flex flex-wrap gap-2">
-            {TABS.map((t) => (
-              <Link
-                key={t.value}
-                href={buildHref({ when: t.value })}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-                  when === t.value ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
-                }`}
-              >
-                {t.label}
-              </Link>
-            ))}
-          </div>
+        <div className="flex flex-wrap gap-1.5">
+          {TABS.map((t) => (
+            <Link
+              key={t.value}
+              href={buildHref({ when: t.value })}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+                when === t.value ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              }`}
+            >
+              {t.label}
+            </Link>
+          ))}
         </div>
       </form>
 
       {items.length === 0 ? (
-        <div className="mt-8 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
-          {areaLabel ? (
+        <div className="mt-5 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
+          {q ? (
+            <>
+              <p className="text-sm text-ink/60">No matches for &ldquo;{q}&rdquo;.</p>
+              <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
+                <Link href={buildHref({ q: "" })} className="text-sm font-semibold text-findmi-700 underline underline-offset-2">
+                  Clear search
+                </Link>
+                {when !== "anytime" && (
+                  <Link href={buildHref({ when: "anytime" })} className="text-sm font-semibold text-ink/50 underline underline-offset-2">
+                    Try Next Up
+                  </Link>
+                )}
+                {(category || marketSlug) && (
+                  <Link href="/find" className="text-sm font-semibold text-ink/50 underline underline-offset-2">
+                    Clear all filters
+                  </Link>
+                )}
+              </div>
+            </>
+          ) : areaLabel ? (
             <>
               <p className="text-sm text-ink/60">Nothing matching this search in {areaLabel} right now.</p>
               <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
@@ -213,26 +261,28 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
       ) : (
         <>
           {hero && (
-            <div className="mt-6 max-w-sm">
+            <div className="mt-5 max-w-sm">
               <PostCard
                 href={`/business/${hero.business.slug}`}
                 image={hero.business.cover_image_url ?? null}
                 logoUrl={hero.business.logo_url}
                 kind="event"
+                aspect="aspect-[4/3]"
                 badgeLabel={heroLabel!.live ? "Happening Now" : heroLabel!.label}
                 badgeVariant={heroLabel!.live ? "live" : "default"}
                 title={hero.business.name}
                 metaLines={[
                   { icon: "tag", text: hero.title },
+                  { icon: "calendar", text: formatAppearanceDateRange(hero.start_at, hero.end_at, hero.description) },
                   ...(hero.city ? [{ icon: "pin" as const, text: cityState(hero.city, hero.state) }] : []),
                 ]}
-                cta="Find Them"
+                cta="See Where They'll Be"
               />
             </div>
           )}
 
           {rest.length > 0 && (
-            <div className="mt-6">
+            <div className="mt-5">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">
                 {when === "live" ? "Also Happening Now" : "More"}
               </p>
@@ -246,11 +296,11 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         </>
       )}
 
-      {hasFilters && matchingEvents.length > 0 && (
+      {hasFilters && dedupedMatchingEvents.length > 0 && (
         <div className="mt-8">
           <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Matching Events</p>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {matchingEvents.map((e) => (
+            {dedupedMatchingEvents.map((e) => (
               <EventCard key={e.id} event={e} />
             ))}
           </div>
@@ -287,7 +337,7 @@ function FindAppearanceRow({ item }: { item: AppearanceFeedItem }) {
           {location && ` · ${location}`} · {formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
         </p>
       </div>
-      <span className="shrink-0 text-[11px] font-bold uppercase text-findmi-700">Find Them</span>
+      <span className="shrink-0 text-[11px] font-bold uppercase text-findmi-700">View Business →</span>
     </Link>
   );
 }

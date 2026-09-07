@@ -1653,11 +1653,18 @@ export type FindWindow = "live" | "today" | "weekend" | "anytime";
  * Find V2 — the free-text `city` filter this function used to accept is
  * gone (locked decision — structured Market/Area is now the only WHERE
  * control on /find, its one caller). Removed rather than left dead:
- * nothing else in the codebase ever called this with `city`. */
+ * nothing else in the codebase ever called this with `city`.
+ *
+ * Find V3 — `q` is a DIFFERENT kind of free text than the removed `city`
+ * filter: it searches identifying name/title text (business name,
+ * appearance title, venue name), not geography — geography stays
+ * exclusively Market/Area. Matches server-side via ilike, same idiom
+ * searchBusinesses already uses for its own `q`; no new search
+ * infrastructure. */
 export async function getFindMiHereFeed(
   when: FindWindow,
   limit = 30,
-  extra: { categorySlug?: string; marketSlug?: string; areaSlug?: string } = {}
+  extra: { categorySlug?: string; marketSlug?: string; areaSlug?: string; q?: string } = {}
 ): Promise<AppearanceFeedItem[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -1706,12 +1713,35 @@ export async function getFindMiHereFeed(
     if (categoryBusinessIds.length === 0) return [];
   }
 
+  // Find V3 — resolves matching business ids up front (same shape as
+  // categoryBusinessIds above) so a name match can be OR'd together with
+  // the appearance's own title/venue_name in one query. Parens/commas are
+  // stripped from the term before it goes into a raw PostgREST `.or()`
+  // string — both are the string's own clause separators, so a term
+  // containing them would otherwise corrupt the filter rather than just
+  // fail to match.
+  let searchTerm: string | null = null;
+  let searchBusinessIds: string[] = [];
+  if (extra.q && extra.q.trim()) {
+    searchTerm = extra.q.trim().slice(0, 80).replace(/[(),]/g, " ").trim();
+    if (searchTerm) {
+      const { data: matches } = await supabase.from("businesses").select("id").ilike("name", `%${searchTerm}%`);
+      searchBusinessIds = (matches ?? []).map((b) => b.id as string);
+    }
+  }
+
   let query = supabase
     .from("appearances")
     .select(
       "*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id)"
     )
     .neq("status", "canceled");
+
+  if (searchTerm) {
+    const orParts = [`title.ilike.%${searchTerm}%`, `venue_name.ilike.%${searchTerm}%`];
+    if (searchBusinessIds.length > 0) orParts.push(`business_id.in.(${searchBusinessIds.join(",")})`);
+    query = query.or(orParts.join(","));
+  }
 
   if (when === "live") {
     query = query.lte("start_at", nowIso).gte("end_at", nowIso);
