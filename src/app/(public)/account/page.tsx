@@ -299,13 +299,18 @@ export default async function AccountHomePage({
           OUTSIDE the horizontally-scrolling row below — see that
           component's own doc comment for why: a scrolling ancestor
           clips the absolutely-positioned "Which business?" chooser and
-          makes a lead tile prone to swipe/tap ambiguity on mobile. The
-          small "Findmi Here" tile below is a second, intentionally
-          repetitive entry point into the SAME BusinessScopedAction /
-          Findmi Here flow (tab="findmi-here", same PlusGlyph — never the
-          location-pin icon) — the CTA explains the action, the tile
-          reinforces the feature name; both share one routing decision,
-          never duplicated. Business/Venue/Product (also business-scoped,
+          makes a lead tile prone to swipe/tap ambiguity on mobile (its own
+          many-Business chooser now escapes that clipping via a portal —
+          see StripChooser in BusinessScopedAction.tsx — but the tile stays
+          out of the scroll row's way regardless). The small "Where I'll
+          Be" tile below is a second, intentionally repetitive entry point
+          into the SAME BusinessScopedAction / Findmi Here flow
+          (tab="findmi-here", same PlusGlyph — never the location-pin
+          icon) — Account Create-Strip Correction pass: this compact tile
+          reads as an action ("Where I'll Be"), not a repeated feature
+          name; the CTA above and the "Findmi Here" card below still carry
+          the feature name itself. Both share one routing decision, never
+          duplicated. Business/Venue/Product (also business-scoped,
           never silently defaulting to the first managed business) keep
           their existing order in the scrolling row, Event last —
           creating/managing an Event is a distinct, less frequent action
@@ -327,7 +332,7 @@ export default async function AccountHomePage({
           />
         </div>
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <BusinessScopedAction businesses={myBusinesses} tab="findmi-here" icon={<PlusGlyph className="h-4 w-4" />} label="Findmi Here" />
+          <BusinessScopedAction businesses={myBusinesses} tab="findmi-here" icon={<PlusGlyph className="h-4 w-4" />} label="Where I'll Be" />
           <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
           <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
           <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 
 export interface BusinessOption {
@@ -227,7 +228,9 @@ export default function BusinessScopedAction({
         <CirclePlus />
         {label}
       </button>
-      {open && <WhichBusinessPanel businesses={businesses} tab={tab} className="left-0 w-52" />}
+      {open && (
+        <StripChooser anchorRef={containerRef} businesses={businesses} tab={tab} onClose={() => setOpen(false)} />
+      )}
     </div>
   );
 }
@@ -247,22 +250,91 @@ export function ActionStripLink({ href, label }: { href: string; icon?: ReactNod
   );
 }
 
-export function WhichBusinessPanel({ businesses, tab, className }: { businesses: BusinessOption[]; tab: string; className?: string }) {
+function ChooserList({ businesses, tab, onSelect }: { businesses: BusinessOption[]; tab: string; onSelect?: () => void }) {
   return (
-    <div className={`absolute top-full z-20 mt-2 rounded-2xl border border-black/10 bg-white p-2 shadow-lg ${className ?? ""}`}>
+    <>
       <p className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/40">Which business?</p>
       <div className="flex flex-col">
         {businesses.map((b) => (
           <Link
             key={b.id}
             href={`/account/business/${b.id}?tab=${tab}`}
+            onClick={onSelect}
             className="truncate rounded-xl px-2 py-2 text-left text-sm font-semibold text-ink transition hover:bg-black/[0.03]"
           >
             {b.name}
           </Link>
         ))}
       </div>
+    </>
+  );
+}
+
+export function WhichBusinessPanel({ businesses, tab, className }: { businesses: BusinessOption[]; tab: string; className?: string }) {
+  return (
+    <div className={`absolute top-full z-20 mt-2 rounded-2xl border border-black/10 bg-white p-2 shadow-lg ${className ?? ""}`}>
+      <ChooserList businesses={businesses} tab={tab} />
     </div>
+  );
+}
+
+/** Account Create-Strip Correction pass — the compact "pill" variant's
+ * many-Business branch is the ONLY one of these four that renders inside
+ * a horizontally-scrolling ancestor (the /account "Create on Findmi"
+ * strip's `overflow-x-auto` row — see account/page.tsx). Per the CSS
+ * overflow spec, `overflow-x: auto` with `overflow-y` otherwise `visible`
+ * forces `overflow-y` to compute as `auto` too, so an ordinary
+ * `position: absolute` descendant like WhichBusinessPanel gets silently
+ * clipped by the row's own box the instant it extends below it — the
+ * click still toggled `open` (nothing was actually broken in the click
+ * handler itself), the chooser was just invisible. Portaling to
+ * document.body with a `fixed` position computed from the trigger's real
+ * screen position sidesteps that clipping entirely, the same reasoning
+ * HamburgerMenu's own portal already uses for an ancestor whose overflow
+ * can't be trusted. Repositions on scroll/resize since the strip itself
+ * can be scrolled horizontally while this is open. `stopPropagation` on
+ * mousedown keeps the outside-click listener (which checks DOM
+ * containment against `anchorRef`, and a portaled node is never a DOM
+ * descendant of it) from treating a click inside this panel as "outside"
+ * and closing it out from under the very tap meant to select a Business. */
+function StripChooser({
+  anchorRef,
+  businesses,
+  tab,
+  onClose,
+}: {
+  anchorRef: RefObject<HTMLElement | null>;
+  businesses: BusinessOption[];
+  tab: string;
+  onClose: () => void;
+}) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    function updatePosition() {
+      const rect = anchorRef.current?.getBoundingClientRect();
+      if (rect) setPos({ top: rect.bottom + 8, left: rect.left });
+    }
+    updatePosition();
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [anchorRef]);
+
+  if (!pos) return null;
+
+  return createPortal(
+    <div
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{ position: "fixed", top: pos.top, left: pos.left }}
+      className="z-50 w-52 rounded-2xl border border-black/10 bg-white p-2 shadow-lg"
+    >
+      <ChooserList businesses={businesses} tab={tab} onSelect={onClose} />
+    </div>,
+    document.body
   );
 }
 
