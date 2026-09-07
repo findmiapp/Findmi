@@ -72,3 +72,25 @@ export async function getEntityHandle(
     .maybeSingle();
   return data?.handle ?? null;
 }
+
+/** Vanity URL rendering pass — the same reverse lookup as getEntityHandle
+ * above, but through the public_handles view (handle/entity_type/
+ * entity_id only) with a plain anon/public client, for use from public
+ * entity pages choosing their own canonical URL (prefer the vanity
+ * handle when one exists — see each entity's generateMetadata). Never
+ * exposes anything getEntityHandle doesn't already: same columns, same
+ * (entity_type, entity_id) lookup, just the public-safe view instead of
+ * the service-role table. */
+export async function getPublicHandleForEntity(
+  supabase: SupabaseClient,
+  entityType: HandleEntityType,
+  entityId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("public_handles")
+    .select("handle")
+    .eq("entity_type", entityType)
+    .eq("entity_id", entityId)
+    .maybeSingle();
+  return data?.handle ?? null;
+}
