@@ -110,8 +110,11 @@ export default function BusinessScopedAction({
   }
 
   if (variant === "full") {
+    // min-h (not a fixed h-12) + text-center — the CTA copy is long
+    // enough on some accounts' locales that it can wrap to two lines on
+    // narrow screens; a fixed height would clip or overlap it there.
     const fullClass =
-      "flex h-12 w-full items-center justify-center gap-2 rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 active:scale-[0.99]";
+      "flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full bg-findmi px-4 py-3 text-center text-sm font-bold uppercase text-white transition hover:bg-findmi-600 active:scale-[0.99]";
     if (businesses.length === 0) {
       return (
         <Link href={zeroHref} className={fullClass}>

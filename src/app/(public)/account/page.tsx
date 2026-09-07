@@ -274,12 +274,6 @@ export default async function AccountHomePage({
           >
             Businesses
           </Link>
-          <Link
-            href="/locations"
-            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
-          >
-            Venues
-          </Link>
           {/* Account Hub Live QA pass — consumer discovery, not owner
               Product creation; routes to the existing public Marketplace
               destination (same route the main nav's "Marketplace" item
@@ -291,27 +285,36 @@ export default async function AccountHomePage({
           >
             Products
           </Link>
+          <Link
+            href="/locations"
+            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
+          >
+            Venues
+          </Link>
         </div>
       </section>
 
-      {/* 2. CREATE ON FINDMI — Account Hub Live QA pass. + Where I'll Be
-          leads, and now renders full-width via BusinessScopedAction's
-          "full" variant OUTSIDE the horizontally-scrolling row below —
-          see that component's own doc comment for why: the old
-          emphasized pill lived first inside that scrolling row, whose
-          overflow-x-auto silently clipped the "Which business?" chooser
-          and made the lead tile prone to swipe/tap ambiguity on mobile.
-          Business-scoped to the SAME Findmi Here destination the
-          standalone card below also uses. Business/Venue/Product (also
-          business-scoped, never silently defaulting to the first
-          managed business) keep their existing order in the scrolling
-          row, Event last — creating/managing an Event is a distinct,
-          less frequent action from scheduling an existing Business's
-          appearances (see the "What's the difference?" note below) —
-          and still links to the existing /account/event/new, which
-          already shows its own graceful non-qualifying-visitor
-          explainer (Multi-Entity Self-Service V1); entitlement gating
-          stays authoritative there, never re-decided here. */}
+      {/* 2. CREATE ON FINDMI — Account Hub Final Micro-Polish pass. The
+          full-width CTA renders via BusinessScopedAction's "full" variant
+          OUTSIDE the horizontally-scrolling row below — see that
+          component's own doc comment for why: a scrolling ancestor
+          clips the absolutely-positioned "Which business?" chooser and
+          makes a lead tile prone to swipe/tap ambiguity on mobile. The
+          small "Findmi Here" tile below is a second, intentionally
+          repetitive entry point into the SAME BusinessScopedAction /
+          Findmi Here flow (tab="findmi-here", same PlusGlyph — never the
+          location-pin icon) — the CTA explains the action, the tile
+          reinforces the feature name; both share one routing decision,
+          never duplicated. Business/Venue/Product (also business-scoped,
+          never silently defaulting to the first managed business) keep
+          their existing order in the scrolling row, Event last —
+          creating/managing an Event is a distinct, less frequent action
+          from scheduling an existing Business's appearances (see the
+          "What's the difference?" note below) — and still links to the
+          existing /account/event/new, which already shows its own
+          graceful non-qualifying-visitor explainer (Multi-Entity
+          Self-Service V1); entitlement gating stays authoritative there,
+          never re-decided here. */}
       <section className="mt-4">
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Create on Findmi</h2>
         <div className="mt-2">
@@ -320,10 +323,11 @@ export default async function AccountHomePage({
             businesses={myBusinesses}
             tab="findmi-here"
             icon={<PlusGlyph className="h-4 w-4" />}
-            label="Where I'll Be"
+            label="Add Where I'll Be (Findmi Here)"
           />
         </div>
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <BusinessScopedAction businesses={myBusinesses} tab="findmi-here" icon={<PlusGlyph className="h-4 w-4" />} label="Findmi Here" />
           <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
           <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
           <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
