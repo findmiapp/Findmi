@@ -18,6 +18,15 @@ export interface AdminMarketRequestRow extends MarketRequest {
    * people (signed-in or by email) who expressed interest in this exact
    * pending row. */
   interestCount: number;
+  /** Reopen Request pass — a PENDING row can still carry a stale
+   * mapped_market_id/mapped_area_id/resolution_type from a resolution an
+   * admin later reopened (see reopenMarketRequestGroup) — a fresh request
+   * never has these set while pending, so their presence here always
+   * means "previously resolved to this, now back under review," shown so
+   * the admin has the exact context that made them reopen it in the first
+   * place, never silently discarded. */
+  previousMarketLabel: string | null;
+  previousAreaLabel: string | null;
 }
 
 export interface MarketRequestGroup {
@@ -47,9 +56,12 @@ export interface MarketRequestGroup {
   suggestedMatch: GeographyMatch | null;
 }
 
+type NameRow = { name: string; display_name: string | null };
 type RequestJoinRow = MarketRequest & {
   businesses: { name: string } | { name: string }[] | null;
   events: { name: string } | { name: string }[] | null;
+  markets: NameRow | NameRow[] | null;
+  market_areas: (NameRow & { markets: NameRow | NameRow[] | null }) | (NameRow & { markets: NameRow | NameRow[] | null })[] | null;
 };
 
 /** All PENDING requests, grouped by EFFECTIVE normalized key — the queue
@@ -63,7 +75,9 @@ export async function getPendingMarketRequestGroups(): Promise<MarketRequestGrou
 
   const { data: requestRows } = await admin
     .from("market_requests")
-    .select("*, businesses(name), events(name)")
+    .select(
+      "*, businesses(name), events(name), markets(name, display_name), market_areas(name, display_name, markets(name, display_name))"
+    )
     .eq("status", "pending")
     .order("created_at", { ascending: true });
   const rows = (requestRows ?? []) as RequestJoinRow[];
@@ -81,14 +95,25 @@ export async function getPendingMarketRequestGroups(): Promise<MarketRequestGrou
 
   const groups = new Map<string, MarketRequestGroup>();
   for (const r of rows) {
-    const { businesses, events, ...requestFields } = r;
+    const { businesses, events, markets, market_areas, ...requestFields } = r;
     const business = Array.isArray(businesses) ? businesses[0] : businesses;
     const event = Array.isArray(events) ? events[0] : events;
+    const market = Array.isArray(markets) ? markets[0] : markets;
+    const areaJoin = Array.isArray(market_areas) ? market_areas[0] : market_areas;
+    const areaParentMarket = areaJoin ? (Array.isArray(areaJoin.markets) ? areaJoin.markets[0] : areaJoin.markets) : null;
     const row: AdminMarketRequestRow = {
       ...requestFields,
       businessName: business?.name ?? null,
       eventName: event?.name ?? null,
       interestCount: interestCounts.get(r.id) ?? 0,
+      // Reopen Request pass — non-null here means this pending row was
+      // previously resolved and then reopened (a fresh request never has
+      // mapped_market_id/mapped_area_id set) — see AdminMarketRequestRow's
+      // own doc comment.
+      previousMarketLabel: market ? market.display_name || market.name : null,
+      previousAreaLabel: areaJoin
+        ? `${areaJoin.display_name || areaJoin.name}${areaParentMarket ? ` — ${areaParentMarket.display_name || areaParentMarket.name}` : ""}`
+        : null,
     };
     const key = r.effective_normalized_key;
     let group = groups.get(key);

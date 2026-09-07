@@ -34,7 +34,7 @@ export interface AreaOption {
  *
  * One shell, two presentations (bottom sheet on mobile, anchored panel
  * from sm: up) — same idea as FilterSheet, kept as its own small
- * component here since the trigger (a live "Area: X" label, not a
+ * component here since the trigger (a live "Filter by City/Area: X" label, not a
  * generic Filters badge) is different enough not to share it outright. */
 export default function AreaPicker({
   options,
@@ -55,6 +55,10 @@ export default function AreaPicker({
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // Goal F: "Don't see your area?" is always reachable as a small secondary
+  // action beneath a non-empty result list, not only when a search comes up
+  // empty (RequestAreaPanel already covers the empty-search case below).
+  const [forceShowRequest, setForceShowRequest] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -70,6 +74,7 @@ export default function AreaPicker({
   function closeAndReset() {
     setOpen(false);
     setQuery("");
+    setForceShowRequest(false);
   }
 
   function selectMarket(slug: string) {
@@ -115,7 +120,7 @@ export default function AreaPicker({
         aria-expanded={open}
         className="flex h-10 items-center gap-1.5 rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
       >
-        <span className="text-ink/40">Area:</span>
+        <span className="text-ink/40">Filter by City/Area:</span>
         <span className="font-semibold text-ink">{currentLabel}</span>
       </button>
 
@@ -157,7 +162,7 @@ export default function AreaPicker({
                 All Areas
               </button>
 
-              {filtered.length > 0 ? (
+              {filtered.length > 0 && !forceShowRequest ? (
                 <>
                   <p className="mb-1 mt-2 px-3 text-[11px] font-bold uppercase tracking-wide text-ink/40">
                     Available Areas
@@ -191,6 +196,13 @@ export default function AreaPicker({
                       ))}
                     </div>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => setForceShowRequest(true)}
+                    className="mt-3 block w-full px-3 py-1.5 text-center text-xs font-semibold text-findmi-700 hover:underline"
+                  >
+                    Don&rsquo;t see your area? Request Findmi expansion →
+                  </button>
                 </>
               ) : (
                 <RequestAreaPanel query={query} onSubmitted={closeAndReset} />

@@ -13,6 +13,7 @@ import {
   approveMarketRequestGroupAsNewMarket,
   rejectMarketRequestGroup,
   correctMarketRequestText,
+  reopenMarketRequest,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -147,6 +148,19 @@ export default async function AdminMarketRequestsPage({
                           </>
                         )}
                       </div>
+                      {/* Reopen Request pass — only ever present on a
+                          reopened row (a fresh pending request has no
+                          mapped_market_id/mapped_area_id yet), so this
+                          context only shows up exactly when it's useful:
+                          right after an admin has sent a mistaken
+                          resolution back for correction. */}
+                      {(r.previousAreaLabel || r.previousMarketLabel) && (
+                        <div className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">
+                          Previously resolved to:{" "}
+                          <span className="font-semibold">{r.previousAreaLabel || r.previousMarketLabel}</span> — reopened for
+                          correction.
+                        </div>
+                      )}
                       <details className="mt-1">
                         <summary className="cursor-pointer text-[11px] font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
                           Edit / Correct
@@ -408,19 +422,39 @@ export default async function AdminMarketRequestsPage({
           <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40">Recently Resolved</h2>
           <ul className="mt-2 flex flex-col gap-1.5">
             {resolved.map((r) => (
-              <li key={r.id} className="rounded-xl border border-black/5 bg-black/[0.015] p-2.5 text-xs text-ink/60">
-                <span className="font-semibold text-ink/80">
-                  {r.canonicalText && r.canonicalText !== r.requestedText ? r.canonicalText : r.requestedText}
+              <li
+                key={r.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/5 bg-black/[0.015] p-2.5 text-xs text-ink/60"
+              >
+                <span>
+                  <span className="font-semibold text-ink/80">
+                    {r.canonicalText && r.canonicalText !== r.requestedText ? r.canonicalText : r.requestedText}
+                  </span>
+                  {r.canonicalText && r.canonicalText !== r.requestedText && (
+                    <span className="text-ink/40"> (originally &ldquo;{r.requestedText}&rdquo;)</span>
+                  )}
+                  {" — "}
+                  <span className="font-semibold">
+                    {r.status === "rejected" ? "Rejected" : (r.resolutionType && RESOLUTION_TYPE_LABEL[r.resolutionType]) || r.status}
+                  </span>
+                  {r.areaLabel ? ` → ${r.areaLabel}` : r.marketLabel ? ` → ${r.marketLabel}` : ""}
+                  {r.adminNote && <span className="text-ink/40"> — {r.adminNote}</span>}
                 </span>
-                {r.canonicalText && r.canonicalText !== r.requestedText && (
-                  <span className="text-ink/40"> (originally &ldquo;{r.requestedText}&rdquo;)</span>
-                )}
-                {" — "}
-                <span className="font-semibold">
-                  {r.status === "rejected" ? "Rejected" : (r.resolutionType && RESOLUTION_TYPE_LABEL[r.resolutionType]) || r.status}
-                </span>
-                {r.areaLabel ? ` → ${r.areaLabel}` : r.marketLabel ? ` → ${r.marketLabel}` : ""}
-                {r.adminNote && <span className="text-ink/40"> — {r.adminNote}</span>}
+                {/* Reopen Request pass — the fix for "resolved requests are
+                    permanent dead ends": sends this exact row back to the
+                    pending queue above (with its prior resolution kept
+                    visible as context) so a mistaken Map/Create/Reject can
+                    be corrected through the same actions, never a raw DB
+                    edit. */}
+                <form action={reopenMarketRequest}>
+                  <input type="hidden" name="request_id" value={r.id} />
+                  <button
+                    type="submit"
+                    className="shrink-0 rounded-full border border-black/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/60 transition hover:border-ink/30 hover:text-ink"
+                  >
+                    Reopen
+                  </button>
+                </form>
               </li>
             ))}
           </ul>

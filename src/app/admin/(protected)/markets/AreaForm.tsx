@@ -81,7 +81,7 @@ export default function AreaForm({
         hint="Lower numbers show first in the consumer Area picker and in this Market's Area list below."
       />
 
-      <SubmitBar cancelHref={cancelHref} />
+      <SubmitBar cancelHref={cancelHref} showAddAnother={!area} />
     </form>
   );
 }

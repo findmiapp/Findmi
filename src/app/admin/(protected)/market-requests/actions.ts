@@ -300,6 +300,35 @@ export async function rejectMarketRequestGroup(formData: FormData) {
   redirect(`${QUEUE_PATH}?saved=1`);
 }
 
+/** Reopen Request pass — undoes the "resolved requests are permanent dead
+ * ends" problem: a mistaken resolution (e.g. Hamptons mapped to New York
+ * City when it should have become its own Area under Long Island) can now
+ * be sent back to the pending queue and resolved again through the exact
+ * same Map/Create actions above, rather than requiring a raw DB edit.
+ *
+ * Deliberately does NOT null mapped_market_id/mapped_area_id/
+ * resolution_type — they're left in place as "previously resolved to"
+ * context on the reopened row (see getPendingMarketRequestGroups'
+ * previousMarketLabel/previousAreaLabel) until the next resolution action
+ * overwrites them, which every existing resolution action already does
+ * unconditionally. requested_text/canonical_text (the actual requested-
+ * geography history) are never touched by this or any resolution action.
+ * Only reachable from an already-resolved (non-pending) row. */
+export async function reopenMarketRequest(formData: FormData) {
+  const supabase = await requireAdminSupabase();
+  const requestId = str(formData, "request_id");
+  if (!requestId) redirect(QUEUE_PATH);
+
+  await supabase
+    .from("market_requests")
+    .update({ status: "pending", reviewed_at: null })
+    .eq("id", requestId!)
+    .neq("status", "pending");
+
+  revalidatePath(QUEUE_PATH);
+  redirect(`${QUEUE_PATH}?saved=1`);
+}
+
 /** V2 — an admin-controlled correction to ONE request's geography text.
  * requested_text (the original submission) is NEVER touched; this only
  * ever writes canonical_text + its recomputed effective_normalized_key,

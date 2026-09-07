@@ -54,6 +54,7 @@ export async function saveMarket(id: string | null, formData: FormData) {
     sort_order: sortOrder ?? 0,
   };
 
+  const wasNew = !id;
   let marketId = id;
   if (marketId) {
     const { error } = await supabase.from("markets").update(payload).eq("id", marketId);
@@ -73,6 +74,17 @@ export async function saveMarket(id: string | null, formData: FormData) {
   revalidatePath("/");
   revalidatePath("/businesses");
   revalidatePath("/events");
+
+  // Rapid Market entry — "Save & Add Another" (SubmitBar's second submit
+  // button) only ever appears on the NEW-market form, so `wasNew` is the
+  // only case this can fire for. Redirecting back to the same /new route
+  // (rather than the just-created Market's edit page) gives a fresh, blank
+  // form via a normal GET — no stale defaultValues, no extra state to
+  // reset by hand — while the PRG redirect itself already prevents a
+  // refresh from resubmitting the create.
+  if (wasNew && str(formData, "intent") === "save_add_another") {
+    redirect("/admin/markets/new?created=1");
+  }
   redirect(`/admin/markets/${marketId}?saved=1`);
 }
 
@@ -136,6 +148,7 @@ export async function saveMarketArea(marketId: string, id: string | null, formDa
     sort_order: sortOrder ?? 0,
   };
 
+  const wasNew = !id;
   let areaId = id;
   if (areaId) {
     const { error } = await supabase.from("market_areas").update(payload).eq("id", areaId);
@@ -147,5 +160,13 @@ export async function saveMarketArea(marketId: string, id: string | null, formDa
   }
 
   revalidateAreaConsumers(marketDetailPath);
+
+  // Rapid Area entry — redirect back to this same Market's /areas/new route
+  // (never a different Market) so the parent-Market context stays fixed
+  // exactly as it was, with a fresh blank form via a normal GET and no
+  // re-submit-on-refresh risk (see saveMarket's identical comment above).
+  if (wasNew && str(formData, "intent") === "save_add_another") {
+    redirect(`${marketDetailPath}/areas/new?created=1`);
+  }
   redirect(`${marketDetailPath}/areas/${areaId}?saved=1`);
 }

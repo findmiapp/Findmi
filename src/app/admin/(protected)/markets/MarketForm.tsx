@@ -78,7 +78,7 @@ export default function MarketForm({ market, error }: { market: Market | null; e
         hint="Lower numbers show first in every consumer Area selector and admin Market list."
       />
 
-      <SubmitBar cancelHref="/admin/markets" />
+      <SubmitBar cancelHref="/admin/markets" showAddAnother={!market} />
     </form>
   );
 }
