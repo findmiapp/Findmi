@@ -12,7 +12,6 @@ import {
   type FindWindow,
 } from "@/lib/data";
 import AreaPicker from "@/components/discover/AreaPicker";
-import PostCard from "@/components/PostCard";
 import EventCard from "@/components/EventCard";
 import LiveDot from "@/components/LiveDot";
 
@@ -58,6 +57,38 @@ interface Params {
   q?: string;
 }
 
+/** Carousel-First pass — stable round-robin by business.id, preserving
+ * each business's own relative order and the order businesses first
+ * appear in. Never hides an item, never scores/ranks anything — just
+ * interleaves so 5 cards from the same Business don't cluster before a
+ * different one shows up (Section 8). A single-business result set (or an
+ * already-alternating one) passes through unchanged. */
+function diversifyByBusiness<T extends { business: { id: string } }>(list: T[]): T[] {
+  const buckets = new Map<string, T[]>();
+  const businessOrder: string[] = [];
+  for (const item of list) {
+    const id = item.business.id;
+    if (!buckets.has(id)) {
+      buckets.set(id, []);
+      businessOrder.push(id);
+    }
+    buckets.get(id)!.push(item);
+  }
+  const result: T[] = [];
+  let remaining = list.length;
+  while (remaining > 0) {
+    for (const id of businessOrder) {
+      const bucket = buckets.get(id)!;
+      const next = bucket.shift();
+      if (next) {
+        result.push(next);
+        remaining--;
+      }
+    }
+  }
+  return result;
+}
+
 export default async function FindPage({ searchParams }: { searchParams: Promise<Params> }) {
   const { when: whenParam, category, market: marketSlug, area: areaParam, q: qParam } = await searchParams;
   // Findmi Here Clarity pass — default is Next Up ("anytime"), not Now
@@ -81,26 +112,34 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
       : Promise.resolve([]),
   ]);
 
-  const hero = items[0];
-  // Find V3 — de-duplication. The exact same appearance row can never
-  // appear twice (items is one SQL result set with a real primary key per
-  // row), so the only genuine duplication risk is the SAME BUSINESS
-  // showing up immediately below its own featured result — technically a
-  // different appearance, but reads as a repeat at a glance. Rather than
-  // hiding it (a real, distinct appearance a visitor may still want), it's
-  // reordered behind every other result so the first "More" row is never
-  // the hero's own business. Dedup key: business.id.
-  const restRaw = items.slice(1);
-  const rest = hero
-    ? [...restRaw.filter((i) => i.business.id !== hero.business.id), ...restRaw.filter((i) => i.business.id === hero.business.id)]
-    : restRaw;
-  // A Matching Event that's already visible as an appearance card (hero or
-  // More) would otherwise show the literal same Event twice on one page —
-  // once as "Business @ Event", once again as its own Event card. Dedup
-  // key: event.id against every visible appearance's own event_id.
+  // Carousel-First pass — the same filtered `items` result set (unchanged
+  // query, unchanged ordering source) is split into an UPCOMING carousel
+  // (first up to 8) and a MORE UPCOMING compact list (the remainder),
+  // replacing the old single-giant-hero + rows split. Never a second
+  // query, never a featured/ranking flag: purely a display-order pass over
+  // what the pipeline already returned.
+  //
+  // Diversification (Section 8): businesses are round-robined — one item
+  // from each distinct business (in the order that business first
+  // appears), then a second item from each that still has one, and so on.
+  // Each business's OWN items keep their existing relative order (the
+  // pipeline's own is_featured/start_at sort); only the interleaving
+  // across businesses changes. With a single business in the result set
+  // (e.g. a name search), the round-robin degrades to a no-op — every item
+  // belongs to the same bucket, so original order is preserved exactly,
+  // never hidden or faked to "look diverse."
+  const diversified = diversifyByBusiness(items);
+  const CAROUSEL_SIZE = 8;
+  const carouselItems = diversified.slice(0, CAROUSEL_SIZE);
+  const moreItems = diversified.slice(CAROUSEL_SIZE);
+  // A Matching Event that's already visible as an appearance card (carousel
+  // or More Upcoming) would otherwise show the literal same Event twice on
+  // one page — once as "Business @ Event", once again as its own Event
+  // card. Dedup key: event.id against every visible appearance's own
+  // event_id — unchanged from the prior pass, just computed over the same
+  // full `items` set regardless of which section each row lands in.
   const shownEventIds = new Set(items.filter((i) => i.event_id).map((i) => i.event_id as string));
   const dedupedMatchingEvents = matchingEvents.filter((e) => !shownEventIds.has(e.id));
-  const heroLabel = hero ? getTemporalLabel(hero.start_at, hero.end_at) : null;
   const hasFilters = Boolean(category || marketSlug);
 
   const selectedMarket = markets.find((m) => m.slug === marketSlug);
@@ -260,34 +299,41 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         </div>
       ) : (
         <>
-          {hero && (
-            <div className="mt-5 max-w-sm">
-              <PostCard
-                href={`/business/${hero.business.slug}`}
-                image={hero.business.cover_image_url ?? null}
-                logoUrl={hero.business.logo_url}
-                kind="event"
-                aspect="aspect-[4/3]"
-                badgeLabel={heroLabel!.live ? "Happening Now" : heroLabel!.label}
-                badgeVariant={heroLabel!.live ? "live" : "default"}
-                title={hero.business.name}
-                metaLines={[
-                  { icon: "tag", text: hero.title },
-                  { icon: "calendar", text: formatAppearanceDateRange(hero.start_at, hero.end_at, hero.description) },
-                  ...(hero.city ? [{ icon: "pin" as const, text: cityState(hero.city, hero.state) }] : []),
-                ]}
-                cta="See Where They'll Be"
-              />
-            </div>
-          )}
+          <div className="mt-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Upcoming</p>
+            {carouselItems.length === 1 ? (
+              // Section 6 — a single result gets one appropriately sized
+              // card, never a scroller with nothing to scroll (no snap/
+              // overflow-x wrapper, no fake peek).
+              <div className="mt-2.5 max-w-sm">
+                <FindCarouselCard item={carouselItems[0]} />
+              </div>
+            ) : (
+              // Native CSS scroll-snap horizontal carousel — same
+              // lightweight, library-free pattern already established by
+              // the homepage's "Upcoming Events Near You" row
+              // (HomeEventDiscovery.tsx): ~76vw-wide cards (capped at
+              // 320px) so a meaningful peek of the next card always shows
+              // on mobile, a fixed sm:w-72 so cards stay sensibly sized
+              // (never enormous) on desktop instead of stretching across
+              // the results container.
+              <div className="mt-2.5 flex gap-3 overflow-x-auto px-4 pb-1 -mx-4 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:snap-start [scroll-snap-type:x_mandatory]">
+                {carouselItems.map((item) => (
+                  <div key={item.id} className="w-[76vw] max-w-[320px] shrink-0 sm:w-72">
+                    <FindCarouselCard item={item} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-          {rest.length > 0 && (
-            <div className="mt-5">
+          {moreItems.length > 0 && (
+            <div className="mt-6">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">
-                {when === "live" ? "Also Happening Now" : "More"}
+                {when === "live" ? "Also Happening Now" : "More Upcoming"}
               </p>
               <div className="mt-2.5 flex flex-col gap-2">
-                {rest.map((item) => (
+                {moreItems.map((item) => (
                   <FindAppearanceRow key={item.id} item={item} />
                 ))}
               </div>
@@ -307,6 +353,70 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         </div>
       )}
     </div>
+  );
+}
+
+/** Carousel-First pass — compact, image-forward carousel card. Landscape
+ * (aspect-[4/3], not PostCard's tall aspect-[3/4] the old single hero
+ * used) so a full card fits comfortably within a fraction of a mobile
+ * viewport. One line each for Business name (most prominent), appearance/
+ * Event title, and date+place combined (avoids repeating date/time/place
+ * across separate lines — Section 4) — clamped/truncated rather than
+ * letting a long title grow the card. The CTA is a plain inline text
+ * link, not a filled full-width band (Section 5). Destination is always
+ * the business profile, same as FindAppearanceRow below, so the CTA never
+ * claims "View Event." */
+function FindCarouselCard({ item }: { item: AppearanceFeedItem }) {
+  const { label, live } = getTemporalLabel(item.start_at, item.end_at);
+  const location = cityState(item.city, item.state);
+  const dateAndPlace = [formatAppearanceDateRange(item.start_at, item.end_at, item.description), location]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <Link
+      href={`/business/${item.business.slug}`}
+      className="group relative block aspect-[4/3] w-full overflow-hidden rounded-2xl bg-black/5 transition active:scale-[0.98]"
+    >
+      {item.business.cover_image_url ? (
+        <SupabaseImage
+          src={item.business.cover_image_url}
+          alt={item.business.name}
+          fill
+          sizes="(min-width: 768px) 288px, 76vw"
+          className="object-cover transition duration-300 group-hover:scale-105"
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-stone to-ink" />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+
+      <div className="absolute left-2.5 top-2.5">
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+            live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/45 text-white backdrop-blur-sm"
+          }`}
+        >
+          {live && <LiveDot className="text-white" />}
+          {live ? "Happening Now" : label}
+        </span>
+      </div>
+
+      {item.business.logo_url && (
+        <div className="absolute right-2.5 top-2.5 h-7 w-7 overflow-hidden rounded-full border-2 border-white/80 bg-white">
+          <SupabaseImage src={item.business.logo_url} alt="" fill sizes="28px" className="object-cover" />
+        </div>
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 p-3">
+        <p className="truncate text-sm font-bold text-white">{item.business.name}</p>
+        <p className="line-clamp-1 text-xs text-white/85">{item.title}</p>
+        {dateAndPlace && <p className="truncate text-[11px] text-white/70">{dateAndPlace}</p>}
+        <span className="mt-0.5 w-fit text-[11px] font-bold uppercase tracking-wide text-white/90 underline underline-offset-2">
+          See where they&rsquo;ll be →
+        </span>
+      </div>
+    </Link>
   );
 }
 
