@@ -51,12 +51,17 @@ export interface DashboardNeedsAttention {
 }
 
 export interface DashboardGlance {
-  proBusinesses: number;
-  freeBusinesses: number;
   /** events with start_at in the future — same "upcoming" definition
    * admin/queries.ts's getAdminEvents({ when: "upcoming" }) already uses. */
   upcomingEvents: number;
   users: number;
+  /** Command Center V1 pass — a single cheap head-count on the existing
+   * `inquiries` table (Native Inquiries V1), added because it's "similarly
+   * cheap and already supported" per this pass's own At a Glance
+   * guidance. Replaces the old proBusinesses/freeBusinesses split, which
+   * this pass's At a Glance no longer displays (net: one fewer query than
+   * before, not two more — see this pass's own query-cost report). */
+  inquiries: number;
 }
 
 /** Admin Where You'll Be + Event Opportunity pass — a business's own
@@ -160,17 +165,118 @@ export async function getDashboardGlance(): Promise<DashboardGlance | null> {
   if (!supabase) return null;
   const nowIso = new Date().toISOString();
 
-  const [proBusinesses, freeBusinesses, upcomingEvents, users] = await Promise.all([
-    supabase.from("businesses").select("id", { count: "exact", head: true }).eq("plan_tier", "pro"),
-    supabase.from("businesses").select("id", { count: "exact", head: true }).eq("plan_tier", "free"),
+  const [upcomingEvents, inquiries, users] = await Promise.all([
     supabase.from("events").select("id", { count: "exact", head: true }).gte("start_at", nowIso),
+    supabase.from("inquiries").select("id", { count: "exact", head: true }),
     getAdminUserCount(),
   ]);
 
   return {
-    proBusinesses: proBusinesses.count ?? 0,
-    freeBusinesses: freeBusinesses.count ?? 0,
     upcomingEvents: upcomingEvents.count ?? 0,
+    inquiries: inquiries.count ?? 0,
     users,
   };
+}
+
+export interface RecentActivityItem {
+  id: string;
+  label: string;
+  title: string;
+  createdAt: string;
+  href: string;
+}
+
+/** Command Center V1 pass — Recent Activity, assembled cheaply from
+ * EXISTING timestamped tables (no activity-log table/migration). Five
+ * small, limit-5, parallel queries — the same tables/columns the rest of
+ * this dashboard and admin/claims, admin/businesses, admin/events,
+ * admin/market-requests already read — merged and re-sorted in JS, capped
+ * to 8 items. Deliberately excludes location claims (this dashboard's
+ * existing pendingClaims count above never counted them either — see
+ * DashboardNeedsAttention.pendingClaims — so Recent Activity stays
+ * consistent with what Needs Attention already tracks) and Marketplace
+ * submissions (products has no distinct "submitted at" timestamp separate
+ * from its own created_at, so a "recent submission" entry here would
+ * really just be "recently created product," which the Marketplace
+ * Reviews queue above already surfaces by count — not worth a
+ * misleading extra timestamp). */
+export async function getRecentActivity(): Promise<RecentActivityItem[] | null> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return null;
+
+  type EntityRow = { id: string; name: string; created_at: string };
+  type ClaimRow = { id: string; created_at: string; entity: { name: string } | { name: string }[] | null };
+  type MarketRequestRow = { id: string; requested_text: string; canonical_text: string | null; created_at: string };
+
+  const [businesses, events, businessClaims, eventClaims, marketRequests] = await Promise.all([
+    supabase
+      .from("businesses")
+      .select("id, name, created_at")
+      .eq("is_demo", false)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("events")
+      .select("id, name, created_at")
+      .eq("is_demo", false)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("business_claim_requests")
+      .select("id, created_at, entity:businesses(name)")
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("event_claim_requests")
+      .select("id, created_at, entity:events(name)")
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("market_requests")
+      .select("id, requested_text, canonical_text, created_at")
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ]);
+
+  const entityName = (entity: ClaimRow["entity"]) => (Array.isArray(entity) ? entity[0]?.name : entity?.name) ?? "Unknown";
+
+  const items: RecentActivityItem[] = [
+    ...((businesses.data ?? []) as EntityRow[]).map((b) => ({
+      id: `business-${b.id}`,
+      label: "New Business",
+      title: b.name,
+      createdAt: b.created_at,
+      href: `/admin/businesses/${b.id}`,
+    })),
+    ...((events.data ?? []) as EntityRow[]).map((e) => ({
+      id: `event-${e.id}`,
+      label: "New Event",
+      title: e.name,
+      createdAt: e.created_at,
+      href: `/admin/events/${e.id}`,
+    })),
+    ...((businessClaims.data ?? []) as ClaimRow[]).map((c) => ({
+      id: `bclaim-${c.id}`,
+      label: "Business Claim",
+      title: entityName(c.entity),
+      createdAt: c.created_at,
+      href: "/admin/claims",
+    })),
+    ...((eventClaims.data ?? []) as ClaimRow[]).map((c) => ({
+      id: `eclaim-${c.id}`,
+      label: "Event Claim",
+      title: entityName(c.entity),
+      createdAt: c.created_at,
+      href: "/admin/claims",
+    })),
+    ...((marketRequests.data ?? []) as MarketRequestRow[]).map((r) => ({
+      id: `mr-${r.id}`,
+      label: "Area Request",
+      title: r.canonical_text || r.requested_text,
+      createdAt: r.created_at,
+      href: "/admin/market-requests",
+    })),
+  ];
+
+  return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 8);
 }

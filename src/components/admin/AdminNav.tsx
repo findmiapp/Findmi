@@ -38,7 +38,7 @@ const MORE_GROUPS: NavGroup[] = [
     label: "Manage",
     items: [
       { href: "/admin/people", label: "People", hint: "Directory people" },
-      { href: "/admin/locations", label: "Locations", hint: "Venues & places" },
+      { href: "/admin/locations", label: "Venues", hint: "Venues & places" },
       { href: "/admin/markets", label: "Markets", hint: "Findmi Markets & Area presentation" },
       { href: "/admin/market-requests", label: "Market Requests", hint: "Geography requested but not yet a Market" },
       { href: "/admin/products", label: "Products", hint: "Business products" },
@@ -73,17 +73,26 @@ const pillBase = "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transi
 const pillInactive = "text-ink/60 hover:bg-black/[0.04] hover:text-ink";
 const pillActive = "bg-findmi-50 text-findmi-700";
 
+/** Command Center V1 pass — the six-pill PRIMARY row plus a "More"
+ * button doesn't fit a ~360-390px phone width without horizontal
+ * scrolling, which can push "More" itself off-screen: an admin has to
+ * hunt sideways to even find the menu. Below `sm`, that whole row is
+ * replaced by ONE compact "Manage" control that opens the SAME dropdown
+ * panel used by desktop's "More" — with PRIMARY listed first inside the
+ * panel (as a mobile-only "Everyday" group) so a phone never needs the
+ * hidden pill row to reach it. Desktop (`sm:` and up) is completely
+ * unchanged: the pill row plus a separate "More" button. */
 export default function AdminNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
+  const activeItem = [...PRIMARY, ...MORE_GROUPS.flatMap((g) => g.items)].find((item) => isActive(pathname, item.href));
   const moreActive = MORE_GROUPS.some((g) => g.items.some((item) => isActive(pathname, item.href)));
 
   return (
-    <nav className="relative mx-auto flex max-w-5xl items-center px-4 pb-2 sm:px-6">
-      {/* Primary set only — the restrained horizontal scroll this pass
-          asks for applies just to these six, never to the whole nav. */}
-      <div className="flex flex-1 gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav className="relative mx-auto max-w-5xl px-4 pb-2 sm:px-6">
+      {/* Desktop/tablet — unchanged pill row + More. */}
+      <div className="hidden gap-1 sm:flex">
         {PRIMARY.map((item) => (
           <Link
             key={item.href}
@@ -104,6 +113,24 @@ export default function AdminNav() {
         </button>
       </div>
 
+      {/* Mobile — one compact control instead of a strip the admin would
+          otherwise have to scroll sideways through. Names the current
+          section so it's still clear at a glance where you are. */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex w-full items-center justify-between rounded-xl border border-black/10 bg-white px-3.5 py-2 text-sm font-semibold text-ink transition hover:border-black/20 sm:hidden"
+      >
+        <span>
+          Manage{activeItem ? <span className="text-ink/40"> · {activeItem.label}</span> : null}
+        </span>
+        <span aria-hidden className="text-ink/40">
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+
       {open && (
         <>
           {/* Transparent, full-viewport — closes the menu on any outside
@@ -111,8 +138,29 @@ export default function AdminNav() {
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} aria-hidden />
           <div
             role="menu"
-            className="absolute right-4 top-full z-30 mt-1 w-72 max-w-[90vw] overflow-hidden rounded-2xl border border-black/10 bg-white py-1 shadow-lg sm:right-6"
+            className="absolute left-4 right-4 top-full z-30 mt-1 max-h-[70vh] overflow-y-auto rounded-2xl border border-black/10 bg-white py-1 shadow-lg sm:left-auto sm:right-6 sm:w-72 sm:max-w-[90vw]"
           >
+            {/* Mobile-only — PRIMARY items live here too, since the pill
+                row above is hidden below `sm`. */}
+            <div className="border-b border-black/5 p-2 sm:hidden">
+              <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Everyday</p>
+              {PRIMARY.map((item) => {
+                const active = isActive(pathname, item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                    className={`flex flex-col rounded-lg px-2 py-1.5 transition hover:bg-black/[0.03] ${
+                      active ? "bg-findmi-50" : ""
+                    }`}
+                  >
+                    <span className={`text-sm font-medium ${active ? "text-findmi-700" : "text-ink"}`}>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
             {MORE_GROUPS.map((group) => (
               <div key={group.label} className="border-b border-black/5 p-2 last:border-b-0">
                 <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">{group.label}</p>

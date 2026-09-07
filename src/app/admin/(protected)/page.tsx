@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { getDashboardCounts } from "@/lib/admin/queries";
-import { getDashboardGlance, getDashboardNeedsAttention, getEventOpportunityCount } from "@/lib/admin/dashboard-queries";
+import {
+  getDashboardGlance,
+  getDashboardNeedsAttention,
+  getEventOpportunityCount,
+  getRecentActivity,
+} from "@/lib/admin/dashboard-queries";
 import { getPendingMarketRequestGroups } from "@/lib/admin/market-requests";
 
 export const dynamic = "force-dynamic";
@@ -17,103 +22,41 @@ function Monogram({ letter }: { letter: string }) {
   );
 }
 
-interface AttentionItem {
+interface AttentionQueueItem {
   label: string;
+  pluralLabel: string;
   count: number;
   href: string;
 }
 
-function AttentionCard({ label, count, href }: AttentionItem) {
-  const needsAction = count > 0;
+/** Command Center V1 pass — ONE row shape for every real queue, replacing
+ * the prior page's four overlapping "needs attention"-flavored sections
+ * (Needs Review / Business+Product+Marketplace ReviewCards / Needs
+ * Attention AttentionCards / Event Opportunities). Every count here is an
+ * EXISTING DashboardNeedsAttention field or the already-fetched
+ * marketRequestGroups length — no new moderation state, no new query,
+ * no duplicated approval action (tapping only routes to the existing
+ * authoritative list/filter). */
+function AttentionRow({ item }: { item: AttentionQueueItem }) {
   return (
     <Link
-      href={href}
-      className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 transition hover:shadow-sm ${
-        needsAction ? "border-amber-300 bg-amber-50" : "border-black/5 bg-white hover:border-black/10"
-      }`}
+      href={item.href}
+      className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 transition hover:border-amber-300"
     >
-      <span className={`text-sm font-medium ${needsAction ? "text-amber-800" : "text-ink/60"}`}>{label}</span>
-      <span
-        className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-bold ${
-          needsAction ? "bg-amber-400 text-white" : "bg-black/[0.06] text-ink/40"
-        }`}
-      >
-        {count}
+      <span className="text-sm font-semibold text-amber-900">
+        {item.count} {item.count === 1 ? item.label : item.pluralLabel}
       </span>
+      <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-amber-700">Review →</span>
     </Link>
   );
 }
 
-function MetricCard({ label, count, href, detail }: { label: string; count: number | undefined; href?: string; detail?: string }) {
-  const content = (
-    <>
-      <p className="font-display text-2xl font-semibold text-ink">{count ?? "—"}</p>
-      <p className="mt-1 text-sm font-medium text-ink">{label}</p>
-      {detail && <p className="text-xs text-ink/45">{detail}</p>}
-    </>
-  );
-  const className = "rounded-2xl border border-black/5 bg-white p-4 transition hover:border-black/10 hover:shadow-sm";
-  return href ? (
-    <Link href={href} className={className}>
-      {content}
-    </Link>
-  ) : (
-    <div className={className}>{content}</div>
-  );
-}
-
-/** Onboarding UX Polish pass — Business Reviews. Distinct from the plain
- * label+badge AttentionCard rows below it: this one has its own
- * description + explicit CTA button, per this pass's exact requested
- * copy, so it stays visually prominent as its own thing rather than
- * blending into the generic Needs Attention row. Always renders (not
- * conditional on count > 0) — the zero state is its own quiet copy/color,
- * never a misleading "0 awaiting review" phrased as if there's an action
- * to take. */
-/** Generalized from its original Business-Reviews-only shape (Onboarding
- * UX Polish pass) so the Product Moderation pass's Product Reviews card
- * (below) can reuse the exact same layout instead of a near-duplicate
- * component. Always renders (not conditional on count > 0) — the zero
- * state is its own quiet copy/color, never a misleading "0 awaiting
- * review" phrased as if there's an action to take. */
-function ReviewCard({
-  title,
-  description,
-  cta,
-  count,
-  href,
-}: {
-  title: string;
-  description: string;
-  cta: string;
-  count: number;
-  href: string;
-}) {
-  const needsAction = count > 0;
+function MetricCard({ label, count, href }: { label: string; count: number | undefined; href: string }) {
   return (
-    <div
-      className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
-        needsAction ? "border-amber-300 bg-amber-50" : "border-black/5 bg-white"
-      }`}
-    >
-      <div className="min-w-0">
-        <p className={`text-sm font-bold ${needsAction ? "text-amber-800" : "text-ink"}`}>{title}</p>
-        <p className={`mt-0.5 text-sm font-semibold ${needsAction ? "text-amber-800" : "text-ink/50"}`}>
-          {needsAction ? `${count} awaiting review` : "Nothing awaiting review"}
-        </p>
-        <p className={`mt-0.5 text-xs ${needsAction ? "text-amber-900/70" : "text-ink/40"}`}>{description}</p>
-      </div>
-      <Link
-        href={href}
-        className={`inline-flex shrink-0 items-center justify-center rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wide transition ${
-          needsAction
-            ? "bg-amber-400 text-white hover:bg-amber-500"
-            : "border border-black/10 text-ink/60 hover:border-black/20"
-        }`}
-      >
-        {cta}
-      </Link>
-    </div>
+    <Link href={href} className="rounded-2xl border border-black/5 bg-white p-3.5 transition hover:border-black/10 hover:shadow-sm">
+      <p className="font-display text-xl font-semibold text-ink">{count ?? "—"}</p>
+      <p className="mt-0.5 text-xs font-medium text-ink/60">{label}</p>
+    </Link>
   );
 }
 
@@ -143,80 +86,90 @@ function ManageCard({ letter, label, description, href }: { letter: string; labe
   );
 }
 
+function relativeDate(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export default async function AdminDashboardPage() {
-  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount] = await Promise.all([
+  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount, recentActivity] = await Promise.all([
     getDashboardCounts(),
     getDashboardNeedsAttention(),
     getDashboardGlance(),
     getPendingMarketRequestGroups(),
     getEventOpportunityCount(),
+    getRecentActivity(),
   ]);
-  // Market -> Area/Submarket Hierarchy V2, Section 3 — most RECENT first
-  // requested here (getPendingMarketRequestGroups itself sorts oldest-
-  // first for the working queue's own FIFO ordering), capped to a
-  // compact 6 rows — the full, unbounded queue lives at
-  // /admin/market-requests.
-  const recentMarketRequestGroups = [...marketRequestGroups]
-    .sort((a, b) => b.oldestCreatedAt.localeCompare(a.oldestCreatedAt))
-    .slice(0, 6);
 
-  const attentionItems: AttentionItem[] = needsAttention
-    ? [
-        { label: "Pending Claims", count: needsAttention.pendingClaims, href: "/admin/claims?status=pending" },
-        { label: "Pending Event Applications", count: needsAttention.pendingEventApplications, href: "/admin/events?pending=1" },
-        { label: "Onboarding Awaiting Review", count: needsAttention.pendingOnboardingReview, href: "/admin/onboarding?view=pending_review" },
-      ]
-    : [];
-  const attentionTotal = attentionItems.reduce((sum, i) => sum + i.count, 0);
-
-  // Admin Needs Review pass — a prominent, compact "what needs a founder
-  // decision right now" summary, positioned above At a Glance/Quick
-  // Actions. Every count reuses an EXISTING authoritative query
-  // (getDashboardNeedsAttention, itself mirroring the same filters
-  // admin/events, admin/businesses, and admin/products already offer) —
-  // no new moderation state, no duplicate approval action. Locations are
-  // deliberately NOT included: locations have no genuine review queue
-  // (is_demo is a plain publish toggle with no approve/reject workflow
-  // around it), so inventing a count here would misrepresent the
-  // architecture rather than surface it.
-  const needsReviewItems = needsAttention
+  // A. NEEDS ATTENTION — every real, existing queue this admin already
+  // has a working list/filter for, as one flat list. Zero-count queues
+  // are filtered out entirely (never a wall of "0" cards) rather than
+  // rendered quiet — with 8 possible queues, a quiet-but-visible zero
+  // row per queue would still be clutter on a normal day.
+  const attentionQueue: AttentionQueueItem[] = needsAttention
     ? [
         {
-          label: "Event",
-          pluralLabel: "Events",
-          count: needsAttention.pendingEventReviews,
-          href: "/admin/events?needsReview=1",
-        },
-        {
-          label: "Business",
-          pluralLabel: "Businesses",
+          label: "Business awaiting review",
+          pluralLabel: "Businesses awaiting review",
           count: needsAttention.pendingBusinessReviews,
           href: "/admin/businesses?published=pending_review",
         },
         {
-          label: "Marketplace Product",
-          pluralLabel: "Marketplace Products",
+          label: "Event awaiting review",
+          pluralLabel: "Events awaiting review",
+          count: needsAttention.pendingEventReviews,
+          href: "/admin/events?needsReview=1",
+        },
+        {
+          label: "Product awaiting review",
+          pluralLabel: "Products awaiting review",
+          count: needsAttention.pendingProductReviews,
+          href: "/admin/products?status=needs_review",
+        },
+        {
+          label: "Marketplace submission awaiting review",
+          pluralLabel: "Marketplace submissions awaiting review",
           count: needsAttention.pendingMarketplaceReviews,
           href: "/admin/products?status=marketplace_review",
         },
+        {
+          label: "Pending claim",
+          pluralLabel: "Pending claims",
+          count: needsAttention.pendingClaims,
+          href: "/admin/claims?status=pending",
+        },
+        {
+          label: "Event application",
+          pluralLabel: "Event applications",
+          count: needsAttention.pendingEventApplications,
+          href: "/admin/events?pending=1",
+        },
+        {
+          label: "Onboarding submission awaiting review",
+          pluralLabel: "Onboarding submissions awaiting review",
+          count: needsAttention.pendingOnboardingReview,
+          href: "/admin/onboarding?view=pending_review",
+        },
+        {
+          label: "Market/Area request",
+          pluralLabel: "Market/Area requests",
+          count: marketRequestGroups.length,
+          href: "/admin/market-requests",
+        },
       ]
     : [];
-  const needsReviewTotal = needsReviewItems.reduce((sum, i) => sum + i.count, 0);
+  const activeAttentionItems = attentionQueue.filter((item) => item.count > 0);
 
   return (
     <div>
-      {/* A. HEADER */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Findmi Admin</h1>
-          <p className="mt-1 text-sm text-ink/60">Manage the platform, listings and activity.</p>
-        </div>
-        <a
-          href="#quick-actions"
-          className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-        >
-          + Add New
-        </a>
+      {/* HEADER */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Admin</p>
+        <h1 className="mt-0.5 font-display text-2xl font-semibold tracking-tight text-ink">Findmi Command Center</h1>
+        <p className="mt-1 text-sm text-ink/60">Review what needs attention and manage what&rsquo;s happening across Findmi.</p>
       </div>
 
       {!counts && (
@@ -226,222 +179,93 @@ export default async function AdminDashboardPage() {
         </p>
       )}
 
-      {/* A1. NEEDS REVIEW — Admin Needs Review pass. Prominent, compact,
-          above At a Glance/Quick Actions per its own spec — fixes a live
-          gap where a founder had no clear "something needs your decision"
-          signal for a newly self-service-created Event. Non-zero items
-          only (zero states never clutter this list); a single positive
-          line when everything is clear. */}
+      {/* A. NEEDS ATTENTION — first, highest priority. Routes to the
+          authoritative list/filter for each queue; no moderation action
+          is duplicated here. */}
       {needsAttention && (
-        <section className="mt-6 rounded-2xl border border-black/5 bg-white p-4">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Review</h2>
-          {needsReviewTotal === 0 ? (
-            <p className="mt-2 text-sm text-ink/50">Nothing waiting for review.</p>
+        <section className="mt-5 rounded-2xl border border-black/5 bg-white p-4">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Attention</h2>
+          {activeAttentionItems.length === 0 ? (
+            <p className="mt-2 text-sm font-semibold text-emerald-700">You&rsquo;re caught up.</p>
           ) : (
-            <ul className="mt-2 flex flex-col gap-1">
-              {needsReviewItems
-                .filter((item) => item.count > 0)
-                .map((item) => (
-                  <li key={item.label}>
-                    <Link
-                      href={item.href}
-                      className="flex items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-sm transition hover:bg-black/[0.03]"
-                    >
-                      <span className="font-semibold text-ink">
-                        {item.count} {item.count === 1 ? item.label : item.pluralLabel}
-                      </span>
-                      <span className="text-xs font-bold uppercase tracking-wide text-findmi-700">Review →</span>
-                    </Link>
-                  </li>
-                ))}
-            </ul>
+            <div className="mt-2 flex flex-col gap-1.5">
+              {activeAttentionItems.map((item) => (
+                <AttentionRow key={item.label} item={item} />
+              ))}
+            </div>
           )}
         </section>
       )}
 
-      {/* A1b. EVENT OPPORTUNITIES — Admin Where You'll Be + Event
-          Opportunity pass. Deliberately kept OUT of Needs Review above:
-          a standalone Where You'll Be entry ("Can't find it? Add where
-          you'll be anyway") needs no approval and stays fully usable for
-          the business either way — this is informational/actionable
-          intelligence about a possible Event Findmi doesn't have yet,
-          never phrased as "awaiting review." See getEventOpportunityCount
-          (lib/admin/dashboard-queries.ts) for the exact definition used
-          (standalone + real/non-demo business + upcoming only) and its
-          own note on why `source` alone can't guarantee every counted
-          row came from a Business's own submission rather than an
-          admin-created standalone entry — this is honestly "current
-          standalone Where You'll Be entries worth a look," not a
-          guaranteed-provenance count. Always renders (even at zero) so
-          its absence never reads as "not tracked" vs. "genuinely none
-          right now." */}
-      {eventOpportunityCount !== null && (
-        <section className="mt-6">
-          <Link
-            href="/admin/appearances?linkage=standalone&when=upcoming"
-            className={`flex items-center justify-between gap-3 rounded-2xl border p-4 transition hover:shadow-sm ${
-              eventOpportunityCount > 0 ? "border-findmi/30 bg-findmi-50" : "border-black/5 bg-white hover:border-black/10"
-            }`}
-          >
-            <div className="min-w-0">
-              <p
-                className={`text-xs font-bold uppercase tracking-wide ${
-                  eventOpportunityCount > 0 ? "text-findmi-700" : "text-ink/40"
-                }`}
-              >
-                Event Opportunities
-              </p>
-              <p className={`mt-0.5 text-sm font-semibold ${eventOpportunityCount > 0 ? "text-ink" : "text-ink/50"}`}>
-                {eventOpportunityCount > 0
-                  ? `${eventOpportunityCount} standalone Where You'll Be ${eventOpportunityCount === 1 ? "entry" : "entries"}`
-                  : "No current standalone Where You'll Be entries"}
-              </p>
-            </div>
-            <span
-              className={`shrink-0 text-xs font-bold uppercase tracking-wide ${
-                eventOpportunityCount > 0 ? "text-findmi-700" : "text-ink/30"
-              }`}
-            >
-              Review →
-            </span>
-          </Link>
-        </section>
-      )}
-
-      {/* A2. BUSINESS REVIEWS — Onboarding UX Polish pass. Near the top,
-          its own prominent card, ahead of the generic Needs Attention
-          row — new member-created/claimed businesses awaiting founder
-          review. Reuses the existing Admin Businesses list + its
-          Pending Review filter (added in the prior pass) rather than a
-          second moderation screen. */}
-      {needsAttention && (
-        <section className="mt-6 flex flex-col gap-3">
-          <ReviewCard
-            title="Business Reviews"
-            description="Review new businesses submitted by members."
-            cta="Review Businesses"
-            count={needsAttention.pendingBusinessReviews}
-            href="/admin/businesses?published=pending_review"
-          />
-          {/* Product Moderation pass — new products and edits to
-              already-live products submitted by Pro/Pro Seller owners,
-              same "needs a founder decision" prominence as Business
-              Reviews above. */}
-          <ReviewCard
-            title="Product Reviews"
-            description="Review new products and proposed edits submitted by owners."
-            cta="Review Products"
-            count={needsAttention.pendingProductReviews}
-            href="/admin/products?status=needs_review"
-          />
-          {/* Product Marketplace Distribution pass — a SEPARATE decision
-              from Product Reviews above: content approval vs broader
-              Marketplace/discovery placement approval. */}
-          <ReviewCard
-            title="Marketplace Reviews"
-            description="Review products submitted for broader Findmi Marketplace placement."
-            cta="Review Marketplace Requests"
-            count={needsAttention.pendingMarketplaceReviews}
-            href="/admin/products?status=marketplace_review"
-          />
-        </section>
-      )}
-
-      {/* B. NEEDS ATTENTION */}
-      {needsAttention && (
-        <section className="mt-6">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Attention</h2>
-            {attentionTotal === 0 && <span className="text-xs text-ink/40">All caught up</span>}
-          </div>
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {attentionItems.map((item) => (
-              <AttentionCard key={item.label} {...item} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* B2. MARKET REQUESTS — Market -> Area/Submarket Hierarchy V2,
-          Section 3. A compact surface for geography demand that hasn't
-          been resolved yet, so a founder doesn't have to remember to
-          check /admin/market-requests on its own. Always renders (even
-          with zero pending) so its absence never reads as "nothing to
-          check" vs. "genuinely nothing pending." */}
-      <section className="mt-6">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Market Requests</h2>
-          <Link href="/admin/market-requests" className="text-xs font-semibold text-findmi-700 underline underline-offset-2">
-            View all Market Requests
-          </Link>
-        </div>
-        {recentMarketRequestGroups.length === 0 ? (
-          <p className="mt-2 rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">
-            No pending Market Requests.
-          </p>
-        ) : (
-          <div className="mt-2 flex flex-col gap-2">
-            {recentMarketRequestGroups.map((group) => (
-              <Link
-                key={group.effectiveKey}
-                href="/admin/market-requests"
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10 hover:shadow-sm"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">{group.displayText}</p>
-                  <p className="mt-0.5 text-xs text-ink/45">
-                    First requested {new Date(group.oldestCreatedAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-3 text-xs text-ink/60">
-                  <span>
-                    Consumers: <strong className="text-ink">{group.consumerInterestCount}</strong>
-                  </span>
-                  <span>
-                    Businesses: <strong className="text-ink">{group.businessCount}</strong>
-                  </span>
-                  <span>
-                    Events: <strong className="text-ink">{group.eventCount}</strong>
-                  </span>
-                  <span className="font-bold uppercase tracking-wide text-findmi-700">Review</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* C. AT A GLANCE */}
+      {/* B. AT A GLANCE — informational counts only, no new expensive
+          query architecture: businesses/events/locations/products/orders
+          all come from the existing getDashboardCounts() head-count
+          batch, upcomingEvents/inquiries/users from getDashboardGlance(),
+          Event Opportunities from the existing getEventOpportunityCount()
+          (kept as an informational count here rather than its own
+          dashboard section, since it's explicitly not a moderation
+          queue — see that helper's own doc comment). */}
       <section className="mt-6">
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">At a Glance</h2>
-        <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <MetricCard
-            label="Businesses"
-            count={counts?.businesses}
-            href="/admin/businesses"
-            detail={counts ? `${counts.businessesPublic} public` : undefined}
-          />
-          <MetricCard label="Users" count={glance?.users} href="/admin/users" />
-          <MetricCard label="Pro Businesses" count={glance?.proBusinesses} href="/admin/businesses" />
-          <MetricCard label="Free Businesses" count={glance?.freeBusinesses} href="/admin/businesses" />
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <MetricCard label="Live Businesses" count={counts?.businessesPublic} href="/admin/businesses" />
           <MetricCard label="Upcoming Events" count={glance?.upcomingEvents} href="/admin/events?when=upcoming" />
-          <MetricCard label="Where You'll Be" count={counts?.appearances} href="/admin/appearances" />
+          <MetricCard label="Venues" count={counts?.locations} href="/admin/locations" />
+          <MetricCard label="Products" count={counts?.products} href="/admin/products" />
+          <MetricCard label="Accounts" count={glance?.users} href="/admin/users" />
+          <MetricCard label="Inquiries" count={glance?.inquiries} href="/admin/inquiries" />
+          <MetricCard label="Orders" count={counts?.orders} href="/admin/orders" />
+          <MetricCard
+            label="Event Opportunities"
+            count={eventOpportunityCount ?? undefined}
+            href="/admin/appearances?linkage=standalone&when=upcoming"
+          />
         </div>
       </section>
 
-      {/* D. QUICK ACTIONS */}
-      <section id="quick-actions" className="mt-6 scroll-mt-20">
-        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Quick Actions</h2>
+      {/* C. QUICK ADD — existing creation routes only. Where You'll Be,
+          People, and Users creation remain reachable from their own list
+          pages' own "+ New" buttons — trimmed from this dashboard shortcut
+          list per this pass's exact four-item spec, not removed as
+          destinations. */}
+      <section className="mt-6">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Quick Add</h2>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <QuickAction href="/admin/businesses/new" label="Business" />
           <QuickAction href="/admin/events/new" label="Event" />
-          <QuickAction href="/admin/appearances/new" label="Where You'll Be" />
+          <QuickAction href="/admin/locations/new" label="Venue" />
           <QuickAction href="/admin/products/new" label="Product" />
-          <QuickAction href="/admin/people/new" label="Person" />
-          <QuickAction href="/admin/locations/new" label="Location" />
-          <QuickAction href="/admin/users/new" label="User" />
         </div>
       </section>
+
+      {/* D. RECENT ACTIVITY — assembled from existing timestamps only
+          (see getRecentActivity's own doc comment); omitted entirely if
+          the helper can't run (no service-role access) rather than
+          showing a misleading empty state. */}
+      {recentActivity && (
+        <section className="mt-6">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Recent Activity</h2>
+          {recentActivity.length === 0 ? (
+            <p className="mt-2 text-sm text-ink/50">No recent activity.</p>
+          ) : (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {recentActivity.map((item) => (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-black/5 bg-white px-3.5 py-2.5 transition hover:border-black/10"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
+                    <span className="text-xs text-ink/45">{item.label}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-ink/40">{relativeDate(item.createdAt)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* E. MANAGE */}
       <section className="mt-6">
@@ -454,7 +278,7 @@ export default async function AdminDashboardPage() {
           <ManageCard letter="W" label="Where You'll Be" description="Where and when businesses show up." href="/admin/appearances" />
           <ManageCard letter="Pr" label="Products" description="Marketplace product listings." href="/admin/products" />
           <ManageCard letter="Pe" label="People" description="Public person profiles." href="/admin/people" />
-          <ManageCard letter="L" label="Locations" description="Venues and places businesses appear." href="/admin/locations" />
+          <ManageCard letter="V" label="Venues" description="Venues and places businesses appear." href="/admin/locations" />
         </div>
       </section>
 
