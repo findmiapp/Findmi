@@ -37,6 +37,7 @@ import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
 import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
+import EventSearchPicker from "./EventSearchPicker";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
 import { formatAppearanceDateRange, formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -403,7 +404,11 @@ export default async function ManageBusinessPage({
     participationStatus: EventParticipationStatus | null;
   };
   let appearances: OwnAppearance[] = [];
-  let requestOptions: { value: string; label: string }[] = [];
+  // Owner Action UX pass — carries name/date/venue as separate fields
+  // (rather than one pre-joined label string) so the searchable Event
+  // picker (EventSearchPicker.tsx) can filter/display each independently,
+  // per that pass's own "Event Name / Date/time / Venue" requirement.
+  let requestOptions: { value: string; name: string; dateLabel?: string; venueLabel?: string }[] = [];
 
   {
     const nowIso = new Date().toISOString();
@@ -443,7 +448,7 @@ export default async function ManageBusinessPage({
     // offered per-date (never as a bare event-level option) — a
     // recurring event is always added at the occurrence level.
     const [{ data: events }, { data: occurrences }] = await Promise.all([
-      admin.from("events").select("id, name, is_demo, start_at, end_at").eq("is_demo", false),
+      admin.from("events").select("id, name, is_demo, start_at, end_at, venue_name, city, state").eq("is_demo", false),
       admin.from("event_occurrences").select("id, event_id, start_at, timezone").gt("start_at", nowIso).order("start_at"),
     ]);
 
@@ -455,19 +460,27 @@ export default async function ManageBusinessPage({
     }
 
     for (const ev of events ?? []) {
+      const venueLabel = [ev.venue_name, [ev.city, ev.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || undefined;
       const evOccurrences = occurrencesByEvent.get(ev.id) ?? [];
       if (evOccurrences.length > 0) {
         for (const occ of evOccurrences) {
           if (linkedOccurrenceIds.has(occ.id)) continue;
           requestOptions.push({
             value: `occ:${ev.id}:${occ.id}`,
-            label: `${ev.name} — ${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeInZone(occ.start_at, occ.timezone)}`,
+            name: ev.name,
+            dateLabel: `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeInZone(occ.start_at, occ.timezone)}`,
+            venueLabel,
           });
         }
       } else {
         const upcoming = ev.end_at ? new Date(ev.end_at) > new Date() : ev.start_at ? new Date(ev.start_at) > new Date() : false;
         if (!upcoming || linkedEventIds.has(ev.id)) continue;
-        requestOptions.push({ value: `event:${ev.id}`, label: ev.name });
+        requestOptions.push({
+          value: `event:${ev.id}`,
+          name: ev.name,
+          dateLabel: `${formatDateShort(ev.start_at)} · ${formatTime(ev.start_at)}`,
+          venueLabel,
+        });
       }
     }
   }
@@ -1309,45 +1322,49 @@ export default async function ManageBusinessPage({
               <p className="mt-3 text-sm text-ink/50">You haven&rsquo;t added where you&rsquo;ll be yet.</p>
             )}
 
+            {/* Owner Action UX pass — the two ways to add to Findmi Here
+                are now presented as two unmistakable, equally-weighted
+                options (never "appearance" terminology, never implying
+                Option 2 creates/claims an Event — it's the exact same
+                standalone addManualAppearance behavior as before). */}
             <div className="mt-5 border-t border-black/10 pt-4">
-              <p className="text-sm font-medium text-ink">Add Where You&rsquo;ll Be</p>
+              <p className="text-sm font-bold text-ink">Add to Findmi Here</p>
 
-              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Find your event on Findmi
-              </p>
-              {requestOptions.length > 0 ? (
-                <form action={addFromEvent} className="mt-2 flex flex-wrap items-center gap-2">
-                  <select name="target" required className={inputClass} defaultValue="">
-                    <option value="" disabled>
-                      Choose an event…
-                    </option>
-                    {requestOptions.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="submit"
-                    className="rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                  >
-                    Add
-                  </button>
-                </form>
-              ) : (
-                <p className="mt-2 text-sm text-ink/50">No upcoming Findmi events available right now.</p>
-              )}
+              <div className="mt-3 rounded-2xl border border-black/10 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Option 1</p>
+                <p className="mt-1 text-sm font-bold text-ink">Find an Event on Findmi</p>
+                <p className="mt-0.5 text-xs text-ink/50">
+                  Choose an existing Findmi Event and connect this Business to it.
+                </p>
+                {requestOptions.length > 0 ? (
+                  <form action={addFromEvent} className="mt-3">
+                    <EventSearchPicker options={requestOptions} />
+                    <button
+                      type="submit"
+                      className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6"
+                    >
+                      Add to Findmi Here
+                    </button>
+                  </form>
+                ) : (
+                  <p className="mt-3 text-sm text-ink/50">No upcoming Findmi events available right now.</p>
+                )}
+              </div>
 
-              <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/40">
-                Can&rsquo;t find it? Add where you&rsquo;ll be anyway
-              </p>
-              <div className="mt-2">
-                <AppearanceFieldsForm
-                  businessId={id}
-                  action={addManual}
-                  defaultValues={addDefaultValues}
-                  submitLabel="Add to My Schedule"
-                />
+              <div className="mt-3 rounded-2xl border border-black/10 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Option 2</p>
+                <p className="mt-1 text-sm font-bold text-ink">Add It Yourself</p>
+                <p className="mt-0.5 text-xs text-ink/50">
+                  Can&rsquo;t find the Event or place on Findmi? Add where you&rsquo;ll be manually.
+                </p>
+                <div className="mt-3">
+                  <AppearanceFieldsForm
+                    businessId={id}
+                    action={addManual}
+                    defaultValues={addDefaultValues}
+                    submitLabel="Add to Findmi Here"
+                  />
+                </div>
               </div>
             </div>
           </div>

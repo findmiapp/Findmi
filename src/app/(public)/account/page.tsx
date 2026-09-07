@@ -4,11 +4,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import NavIcon from "@/components/NavIcon";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import type { Profile } from "@/lib/types";
 import AccountSync from "./AccountSync";
+import BusinessScopedAction, { ActionStripLink } from "./BusinessScopedAction";
+import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
 
 export const metadata: Metadata = {
   title: "My Findmi",
@@ -19,10 +20,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 /** Account Hub V2 Hierarchy pass — plan_tier isn't in the public anon/
- * authenticated column grant (see lib/entitlements.ts's own comment on
- * canCurrentUserManageEvents), so showing a "Pro" pill on a managed
- * business here needs the service-role client, same as that function.
- * Read-only, display-only — never a write. */
+ * authenticated column grant (see lib/entitlements.ts's own comment),
+ * so showing a "Pro" pill on a managed business here needs the
+ * service-role client. Read-only, display-only — never a write. */
 async function getProBusinessIdSet(
   admin: ReturnType<typeof getAdminSupabase>,
   businessIds: string[]
@@ -34,14 +34,16 @@ async function getProBusinessIdSet(
 
 /** Account Hub V2 Hierarchy + Action UX pass — the same account model,
  * the same tables, the same routes as before. What changed is emphasis:
- * discovery first, then whatever the visitor actively manages (rendered
- * as compact action rows, not giant cards), then personal activity as
- * small utility tiles, then account-utility odds and ends (invite
- * redemption, pending claims) at the bottom. No new backend/queries
- * beyond a few cheap additive reads (head-counts for the utility tiles,
- * plan_tier + Event Management entitlement for display/action gating) —
+ * discovery first, then a fixed Create/Add strip (never routing a
+ * Business-scoped action to whichever business happens to load first —
+ * see BusinessScopedAction), then whatever the visitor actively manages
+ * (one filterable list — see ManageOnFindmiList — not giant cards or
+ * three separate dashboards), then personal activity as small utility
+ * tiles, then account-utility odds and ends (invite redemption, pending
+ * claims). No new backend/queries beyond a few cheap additive reads
+ * (head-counts for the utility tiles, plan_tier for the Pro pill) —
  * every one of those already had an authoritative source elsewhere in
- * the app (business/[id], event/new); this page just also reads it now. */
+ * the app (business/[id]); this page just also reads it now. */
 export default async function AccountHomePage({
   searchParams,
 }: {
@@ -141,27 +143,66 @@ export default async function AccountHomePage({
     })
     .filter((l): l is { id: string; name: string; isDemo: boolean } => Boolean(l));
 
-  // plan_tier and the Event Management entitlement both require the
-  // service-role client (neither is in the public anon/authenticated
-  // column grant/RLS — see lib/entitlements.ts's own comments); same
-  // authorize-then-elevate shape every other admin-client read in this
-  // codebase uses, with the caller's own already-verified user.id as the
-  // only input. Read-only, display/gating only — never a write.
+  // plan_tier isn't in the public anon/authenticated column grant/RLS
+  // (see lib/entitlements.ts's own comment) — same authorize-then-elevate
+  // shape every other admin-client read in this codebase uses, with the
+  // caller's own already-verified user.id as the only input. Read-only,
+  // display-only — never a write.
+  //
+  // Owner Action UX pass — the Create/Add strip's + Event button now
+  // links unconditionally to /account/event/new, which already shows its
+  // own graceful non-qualifying-visitor explainer (Multi-Entity
+  // Self-Service V1) — so canCurrentUserManageEvents is no longer read
+  // here; entitlement gating stays authoritative in that one existing
+  // place instead of being re-decided/duplicated on this page too.
   const admin = getAdminSupabase();
   const businessIds = myBusinesses.map((b) => b.id);
-  const [proBusinessIds, canManageEvents] = await Promise.all([
-    getProBusinessIdSet(admin, businessIds),
-    admin ? canCurrentUserManageEvents(admin, user.id) : Promise.resolve(false),
-  ]);
+  const proBusinessIds = await getProBusinessIdSet(admin, businessIds);
 
   const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
   const savedCount = (savedBusinessesCount ?? 0) + (savedEventsCount ?? 0) + (savedProductsCount ?? 0);
   const followingCount = (followingBusinessesCount ?? 0) + (followingEventsCount ?? 0);
-  // Business Quick Actions — a launchpad, not a second Business Manager:
-  // scoped to the account's first/primary business only (matching every
-  // owner's real-world case, since most manage exactly one) rather than
-  // repeating the same three shortcuts once per business.
-  const primaryBusiness = myBusinesses[0];
+
+  // Owner Action UX pass — one flat, filterable list for ManageOnFindmiList
+  // (client component — filtering needs interactivity /account's own
+  // server-rendered sections can't provide). Same data/pills/CTA rules as
+  // before, just reshaped with an explicit `kind` per row instead of three
+  // separate .map() blocks.
+  const managedEntities: ManagedEntity[] = [
+    ...myBusinesses.map(
+      (b): ManagedEntity => ({
+        kind: "business",
+        id: b.id,
+        name: b.name,
+        pills: [
+          b.pendingReview ? { label: "Pending Review", tone: "warning" as const } : null,
+          proBusinessIds.has(b.id) ? { label: "Pro", tone: "pro" as const } : null,
+        ],
+        href: `/account/business/${b.id}`,
+        cta: b.pendingReview ? "Finish Your Business" : "Manage",
+      })
+    ),
+    ...myEvents.map(
+      (e): ManagedEntity => ({
+        kind: "event",
+        id: e.id,
+        name: e.name,
+        pills: [e.isDemo ? { label: "In Review", tone: "warning" as const } : null],
+        href: `/account/event/${e.id}`,
+        cta: e.isDemo ? "Finish Your Event" : "Manage",
+      })
+    ),
+    ...myLocations.map(
+      (l): ManagedEntity => ({
+        kind: "location",
+        id: l.id,
+        name: l.name,
+        pills: [l.isDemo ? { label: "Pending Review", tone: "warning" as const } : null],
+        href: `/account/location/${l.id}`,
+        cta: "Manage Venue",
+      })
+    ),
+  ];
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
@@ -242,87 +283,52 @@ export default async function AccountHomePage({
         </div>
       </section>
 
-      {/* 2. MANAGE ON FINDMI — Account Hub V2 pass. Only renders (and only
-          the sub-groups that apply) when the visitor actually manages
+      {/* 2. CREATE/ADD — Owner Action UX pass. Always present (not
+          conditional on hasAnyManaged) — the one place every "add
+          something" action lives now, so the zero-state block below no
+          longer needs to duplicate Add Business/Event/Venue itself
+          (Section 7's "avoid duplicate CTAs"). + Findmi Here / + Product
+          are Business-scoped: BusinessScopedAction decides (never fakes)
+          the destination — one business routes straight there, several
+          reveal a "Which business?" chooser, zero routes to Add Business
+          — see that component's own doc comment. + Event always links to
+          the existing /account/event/new, which already shows its own
+          graceful non-qualifying-visitor explainer (Multi-Entity
+          Self-Service V1) — entitlement gating stays authoritative there,
+          never re-decided here. */}
+      <section className="mt-4">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Add to Findmi</h2>
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
+          <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
+          <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
+          <BusinessScopedAction
+            businesses={myBusinesses}
+            tab="findmi-here"
+            icon={<NavIcon name="target" className="h-4 w-4" />}
+            label="Findmi Here"
+          />
+          <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
+        </div>
+      </section>
+
+      {/* 3. MANAGE ON FINDMI — Account Hub V2 pass, extended with
+          All/Businesses/Events/Venues filtering (ManageOnFindmiList,
+          client-side over the same entities already loaded above — no
+          new query). Only renders when the visitor actually manages
           something; otherwise the compact acquisition block below runs
-          instead. Every row is action-oriented (name, status/plan using
-          existing data only, ONE primary CTA) instead of a giant card. */}
+          instead. Still one unified list, never three separate stacked
+          dashboards. */}
       {hasAnyManaged ? (
         <section className="mt-6">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Manage on Findmi</h2>
-          <div className="mt-2 flex flex-col gap-2">
-            {myBusinesses.map((b) => (
-              <EntityRow
-                key={b.id}
-                icon={<NavIcon name="storefront" className="h-4 w-4" />}
-                name={b.name}
-                pills={[
-                  b.pendingReview ? { label: "Pending Review", tone: "warning" as const } : null,
-                  proBusinessIds.has(b.id) ? { label: "Pro", tone: "pro" as const } : null,
-                ]}
-                href={`/account/business/${b.id}`}
-                cta={b.pendingReview ? "Finish Your Business" : "Manage"}
-              />
-            ))}
-            {myEvents.map((e) => (
-              <EntityRow
-                key={e.id}
-                icon={<NavIcon name="calendar" className="h-4 w-4" />}
-                name={e.name}
-                pills={[e.isDemo ? { label: "In Review", tone: "warning" as const } : null]}
-                href={`/account/event/${e.id}`}
-                cta={e.isDemo ? "Finish Your Event" : "Manage"}
-              />
-            ))}
-            {myLocations.map((l) => (
-              <EntityRow
-                key={l.id}
-                icon={<NavIcon name="pin" className="h-4 w-4" />}
-                name={l.name}
-                pills={[l.isDemo ? { label: "Pending Review", tone: "warning" as const } : null]}
-                href={`/account/location/${l.id}`}
-                cta="Manage Venue"
-              />
-            ))}
-          </div>
-
-          {/* Quick Actions — Section 6/7's launchpad. Every link is a real
-              existing route; Pro-only tabs are linked exactly the way
-              Business Manager's own Quick Actions card already links them
-              (the tab itself shows the existing upgrade lock for a Free
-              business — never duplicated or re-decided here) — so gating
-              stays authoritative in exactly one place. Add Event only
-              appears when the visitor actually qualifies (owns a
-              qualifying business already, or already manages an event) or
-              already has the standalone Event Management entitlement —
-              otherwise it's omitted rather than bouncing a non-qualifying
-              visitor to an explainer from what reads as a sure thing. */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {primaryBusiness && (
-              <>
-                <QuickActionLink href={`/account/business/${primaryBusiness.id}?tab=findmi-here`}>
-                  + Add Where You&rsquo;ll Be
-                </QuickActionLink>
-                <QuickActionLink href={`/account/business/${primaryBusiness.id}?tab=products`}>+ Add Product</QuickActionLink>
-                {primaryBusiness.slug && (
-                  <QuickActionLink href={`/business/${primaryBusiness.slug}`}>
-                    {primaryBusiness.pendingReview ? "Preview Profile" : "View Profile"}
-                  </QuickActionLink>
-                )}
-              </>
-            )}
-            {(myEvents.length > 0 || canManageEvents) && <QuickActionLink href="/account/event/new">+ Add Event</QuickActionLink>}
-            <QuickActionLink href="/account/location/new">+ Add Venue</QuickActionLink>
-            <QuickActionLink href="/account/business/new">+ Add Business</QuickActionLink>
-          </div>
+          <ManageOnFindmiList entities={managedEntities} />
         </section>
       ) : (
-        /* Zero-Managed-Entity acquisition block — Section 8. One compact
-           block, never three empty management sections. Add Event only
-           offered when the visitor already qualifies (Business Pro
-           membership or a standalone Event Management grant) — Add
-           Business and Add Venue are free for every signed-in account, so
-           always offered. */
+        /* Zero-Managed-Entity acquisition block — Section 8. Purely the
+           motivational prompt now: Add Business/Event/Venue already live
+           in the Create/Add strip above, so repeating them here would be
+           a duplicate CTA. */
         <section className="mt-6 rounded-3xl border border-black/10 bg-mist/30 p-4 sm:p-5">
           <p className="text-sm font-bold text-ink">Have something people should discover?</p>
           <p className="mt-1 text-xs text-ink/60">List your business, event, or venue on Findmi.</p>
@@ -332,11 +338,6 @@ export default async function AccountHomePage({
           >
             Get discovered
           </Link>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            <QuickActionLink href="/account/business/new">Add Business</QuickActionLink>
-            {canManageEvents && <QuickActionLink href="/account/event/new">Add Event</QuickActionLink>}
-            <QuickActionLink href="/account/location/new">Add Venue</QuickActionLink>
-          </div>
         </section>
       )}
 
@@ -376,7 +377,7 @@ export default async function AccountHomePage({
         </section>
       )}
 
-      {/* 3. YOUR ACTIVITY — Account Hub V2 pass. Saved/Following/Orders
+      {/* 4. YOUR ACTIVITY — Account Hub V2 pass. Saved/Following/Orders
           shrink to one compact grid row with real counts (already
           account-backed data, same tables /account/saved,following,orders
           themselves read); Profile joins them here as the 4th utility
@@ -384,7 +385,7 @@ export default async function AccountHomePage({
           into sign-out (via /account/profile, unchanged). */}
       <section className="mt-8">
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Your Activity</h2>
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-4 sm:overflow-visible">
           <UtilityCard href="/account/saved" label="Saved" count={savedCount} icon={<NavIcon name="bookmark" className="h-4 w-4" />} />
           <UtilityCard href="/account/following" label="Following" count={followingCount} icon={<HeartGlyph />} />
           <UtilityCard href="/account/orders" label="Orders" count={ordersCount ?? 0} icon={<NavIcon name="cart" className="h-4 w-4" />} />
@@ -392,7 +393,7 @@ export default async function AccountHomePage({
         </div>
       </section>
 
-      {/* 4. ACCOUNT UTILITIES — Redeem invite code. Account Hub Mobile
+      {/* 5. ACCOUNT UTILITIES — Redeem invite code. Account Hub Mobile
           Polish pass's small disclosure, unchanged: submits through the
           exact same goToRedeemCode action, no invite logic touched, just
           kept secondary/last on the page. */}
@@ -423,75 +424,6 @@ export default async function AccountHomePage({
   );
 }
 
-/** Account Hub V2 Hierarchy pass — the unified action row for a managed
- * Business/Event/Venue: name, up to two small status/plan pills using
- * existing data only, ONE primary CTA. Replaces the three near-identical
- * per-entity-type row blocks the previous version repeated. */
-function EntityRow({
-  icon,
-  name,
-  pills,
-  href,
-  cta,
-}: {
-  icon: ReactNode;
-  name: string;
-  pills: ({ label: string; tone: "warning" | "pro" } | null)[];
-  href: string;
-  cta: string;
-}) {
-  const activePills = pills.filter((p): p is { label: string; tone: "warning" | "pro" } => Boolean(p));
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-2.5 shadow-sm">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">{icon}</div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold text-ink">{name}</p>
-        {activePills.length > 0 && (
-          <div className="mt-0.5 flex flex-wrap items-center gap-1">
-            {activePills.map((p) => (
-              <StatusPill key={p.label} tone={p.tone}>
-                {p.label}
-              </StatusPill>
-            ))}
-          </div>
-        )}
-      </div>
-      <Link
-        href={href}
-        className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-      >
-        {cta} →
-      </Link>
-    </div>
-  );
-}
-
-function StatusPill({ tone, children }: { tone: "warning" | "pro"; children: ReactNode }) {
-  return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-        tone === "pro" ? "bg-findmi-50 text-findmi-700" : "bg-amber-100 text-amber-800"
-      }`}
-    >
-      {children}
-    </span>
-  );
-}
-
-/** Account Hub V2 Hierarchy pass — a compact secondary shortcut pill
- * (border-only, never filled) so the launchpad row never visually
- * competes with each entity row's own primary CTA above it. */
-function QuickActionLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="rounded-full border border-black/10 bg-white px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-findmi/40 hover:bg-findmi-50 hover:text-findmi-700"
-    >
-      {children}
-    </Link>
-  );
-}
-
 /** Account Hub V2 Hierarchy pass — replaces the old large AccountCard
  * (icon + label + description) with a compact utility tile (icon, label,
  * optional count) so Saved/Following/Orders/Profile read as clearly
@@ -510,7 +442,7 @@ function UtilityCard({
   return (
     <Link
       href={href}
-      className="flex flex-col items-center gap-1.5 rounded-2xl border border-black/5 bg-white px-2 py-3 text-center shadow-sm transition hover:border-black/10"
+      className="flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-black/5 bg-white px-2 py-3 text-center shadow-sm transition hover:border-black/10 sm:w-auto"
     >
       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">{icon}</div>
       <p className="text-xs font-bold text-ink">{label}</p>
