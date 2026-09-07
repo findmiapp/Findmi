@@ -224,15 +224,17 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
         <>
           {happeningSoon.length > 0 && (
             <div className="-mx-4 mt-6 sm:-mx-6">
-              {/* /find doesn't support Market/Area (a genuinely different
-                  WHERE control — free-text city — see this pass's own
-                  report), so those two are the one dimension View All
-                  can't carry over here; `when`/category DO translate
-                  cleanly (same today/weekend/anytime + business-kind
-                  category vocabulary) and are preserved. */}
+              {/* Find V2 — /find now supports the same structured Market/
+                  Area as this page (its old free-text city field is
+                  gone), so View All can finally carry Area straight
+                  through, not just `when`/category. Market/Area inherit
+                  from buildHref's own defaults (not overridden here);
+                  `when` still needs translating to /find's own FindWindow
+                  vocabulary (today/weekend/anytime), which is why it's
+                  the one param passed via `extra` instead. */}
               <Section
                 title="Happening Soon"
-                viewAllHref={buildHref("/find", { market: undefined, area: undefined, when: undefined }, { when: toFindWindow(whenKey) })}
+                viewAllHref={buildHref("/find", { when: undefined }, { when: toFindWindow(whenKey) })}
               >
                 <DiscoveryRow>
                   {happeningSoon.map((item) => (

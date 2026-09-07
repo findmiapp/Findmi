@@ -1622,23 +1622,27 @@ export type FindWindow = "live" | "today" | "weekend" | "anytime";
  * start_at-only). end_at is required on new/edited appearances now, so
  * every tab here treats a null end_at the same way: NOT open-ended — a
  * handful of legacy rows still have one and are excluded across every tab
- * until backfilled (see this pass's report). Optional categorySlug/city
- * back /find's WHAT/WHERE filters — same category-then-filter-ids pattern
- * used by searchBusinesses, applied here via business_id.
+ * until backfilled (see this pass's report). Optional categorySlug backs
+ * /find's WHAT filter — same category-then-filter-ids pattern used by
+ * searchBusinesses, applied here via business_id.
  *
  * Discovery V2 — marketSlug/areaSlug are purely additive (new optional
- * fields on the same `extra` object): every existing caller (today, just
- * /find) that doesn't pass them keeps working byte-for-byte unchanged.
- * Reuses the exact same getBusinessIdsInMarket/getBusinessIdsInArea
- * helpers searchBusinesses/getEventsDiscovery already use — appearances
- * were the one discovery surface without Market/Area support at all
- * before this. Same intersection semantics as those two: an unknown/
- * inactive Market, or a real one with nobody in it yet, returns []
- * rather than silently falling back to unfiltered results. */
+ * fields on the same `extra` object). Reuses the exact same
+ * getBusinessIdsInMarket/getBusinessIdsInArea helpers searchBusinesses/
+ * getEventsDiscovery already use — appearances were the one discovery
+ * surface without Market/Area support at all before this. Same
+ * intersection semantics as those two: an unknown/inactive Market, or a
+ * real one with nobody in it yet, returns [] rather than silently
+ * falling back to unfiltered results.
+ *
+ * Find V2 — the free-text `city` filter this function used to accept is
+ * gone (locked decision — structured Market/Area is now the only WHERE
+ * control on /find, its one caller). Removed rather than left dead:
+ * nothing else in the codebase ever called this with `city`. */
 export async function getFindMiHereFeed(
   when: FindWindow,
   limit = 30,
-  extra: { categorySlug?: string; city?: string; marketSlug?: string; areaSlug?: string } = {}
+  extra: { categorySlug?: string; marketSlug?: string; areaSlug?: string } = {}
 ): Promise<AppearanceFeedItem[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -1691,7 +1695,6 @@ export async function getFindMiHereFeed(
   // above (PostgREST applies every filter conjunctively) — same
   // intersection-via-chained-.in technique searchBusinesses already uses.
   if (marketBusinessIds) query = query.in("business_id", marketBusinessIds);
-  if (extra.city) query = query.ilike("city", `%${extra.city}%`);
 
   // Featured appearances (see event_businesses.featured / appearances'
   // own is_featured — an admin-set editorial flag) sort first within
