@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { getAdminMarkets } from "@/lib/admin/markets";
+import { getMarketAreaCounts } from "@/lib/admin/market-areas";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminMarketsPage() {
-  const markets = await getAdminMarkets();
+  const [markets, areaCounts] = await Promise.all([getAdminMarkets(), getMarketAreaCounts()]);
 
   return (
     <div>
@@ -46,6 +47,8 @@ export default async function AdminMarketsPage() {
                 <p className="mt-0.5 text-xs text-ink/45">
                   /{m.slug}
                   {m.display_name && m.display_name !== m.name ? ` · Consumer: “${m.display_name}”` : ""}
+                  {" · "}
+                  {areaCounts.get(m.id) ?? 0} Area{(areaCounts.get(m.id) ?? 0) === 1 ? "" : "s"}
                 </p>
               </div>
               <span className="shrink-0 text-xs text-ink/40">Order {m.sort_order}</span>
