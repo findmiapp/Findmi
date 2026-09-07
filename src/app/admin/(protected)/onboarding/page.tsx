@@ -31,6 +31,10 @@ export default async function AdminOnboardingPage({
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Onboarding</h1>
         <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- this is a real
+              file-download endpoint (Content-Disposition: attachment CSV response, see
+              src/app/admin/api/onboarding/export/route.ts), not a Next.js page — a plain
+              anchor is required to trigger the browser's download behavior. */}
           <a
             href="/admin/api/onboarding/export"
             className="text-xs font-semibold text-ink/60 hover:text-ink"

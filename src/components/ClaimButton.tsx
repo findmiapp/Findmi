@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { getAccountSession } from "@/lib/accountSession";
 
 type ClaimState =
@@ -222,12 +223,12 @@ export default function ClaimButton({
                 founder approval), so this stays a plain link to /join
                 rather than the owner-only /upgrade/pro handoff — a payment
                 must never imply or expedite claim approval. */}
-            <a
+            <Link
               href="/join"
               className="mt-2 flex h-9 items-center justify-center rounded-full bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Upgrade to Pro
-            </a>
+            </Link>
           </div>
         )}
       </div>
@@ -247,12 +248,12 @@ export default function ClaimButton({
           Get Findmi Pro (or redeem a Pro Invite) on a business you manage to claim and manage this event — no
           separate Event fee.
         </p>
-        <a
+        <Link
           href="/join"
           className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Get Findmi Pro
-        </a>
+        </Link>
       </div>
     );
   }
