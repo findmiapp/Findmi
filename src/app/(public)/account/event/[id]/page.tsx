@@ -40,14 +40,19 @@ const primaryButtonClass =
   "flex h-11 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6";
 
+// Event Creation + Pending Review UX pass — mobile tab labels shortened
+// (horizontally-scrolling strip was fine, the labels were just wider than
+// they needed to be). Full descriptive headings ("Participating
+// Businesses", "Market / Area") are unchanged inside each tab's own
+// content — only this nav strip's labels are shortened.
 const OWNER_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "details", label: "Event Details" },
   { key: "dates", label: "Dates" },
   { key: "location", label: "Location" },
-  { key: "market", label: "Market / Area" },
+  { key: "market", label: "Area" },
   { key: "images", label: "Images" },
-  { key: "participants", label: "Participating Businesses" },
+  { key: "participants", label: "Businesses" },
   { key: "status", label: "Status" },
 ];
 const OWNER_TAB_KEYS = new Set(OWNER_TABS.map((t) => t.key));
@@ -84,10 +89,23 @@ export default async function ManageEventPage({
     participant_updated?: string;
     participant_removed?: string;
     editing_date?: string;
+    add_date?: string;
+    add_start_time?: string;
+    add_end_time?: string;
+    add_location_id?: string;
   }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam, saved, error, editing_date: editingDateId } = await searchParams;
+  const {
+    tab: tabParam,
+    saved,
+    error,
+    editing_date: editingDateId,
+    add_date: addDate,
+    add_start_time: addStartTime,
+    add_end_time: addEndTime,
+    add_location_id: addLocationId,
+  } = await searchParams;
   const tab = tabParam && OWNER_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   // Admin Manage-As — same shape as Business Manager: requireEventMember()
@@ -106,18 +124,44 @@ export default async function ManageEventPage({
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
-  const [result, categories, selectedCategoryIds, markets, pendingMarketRequest] = await Promise.all([
+  const [result, categories, selectedCategoryIds, markets, pendingMarketRequest, addLocationHint] = await Promise.all([
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
     getAllMarketsForAdmin(admin),
     getPendingMarketRequestForEvent(admin, id),
+    // Event Creation + Pending Review UX pass — "Add a Date" preserves its
+    // own submitted location_id on a validation error (see
+    // addMemberEventDate); this looks its name back up so the picker can
+    // show the same selection again instead of resetting to blank.
+    addLocationId
+      ? admin.from("locations").select("id, name, city").eq("id", addLocationId).maybeSingle().then((r) => r.data)
+      : Promise.resolve(null),
   ]);
   if (!result) redirect(errorRedirectUrl("/account", "Event not found."));
   const { event, participants, occurrences } = result;
 
   const publicHref = !event.is_demo ? `/event/${event.slug}` : null;
   const selectedMarket = markets.find((m) => m.id === event.market_id) ?? null;
+
+  // Event Creation + Pending Review UX pass — Finish Your Event checklist
+  // (Overview tab). Derived entirely from real, already-fetched Event
+  // data — never a new mandatory field, never a moderation gate. "Dates"
+  // is always complete because a primary start/end is required at
+  // creation; it's still listed (per this pass's own spec) as an honest
+  // reflection of that, not a fake requirement.
+  const essentialItems = [
+    { key: "details", label: "Event details", complete: Boolean(event.description), tab: "details" },
+    { key: "dates", label: "Dates", complete: true, tab: "dates" },
+    { key: "location", label: "Location", complete: Boolean(event.venue_name), tab: "location" },
+    {
+      key: "photos",
+      label: "Photos",
+      complete: Boolean(event.cover_image_url) || result.galleryImages.length > 0,
+      tab: "images",
+    },
+  ];
+  const essentialsComplete = essentialItems.every((i) => i.complete);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
@@ -151,7 +195,7 @@ export default async function ManageEventPage({
           </Link>
         ) : (
           <span className="rounded-full bg-black/[0.06] px-3.5 py-2 text-xs font-semibold text-ink/40" title="Pending FindMi review">
-            Pending Review
+            In Review
           </span>
         )}
       </div>
@@ -167,27 +211,97 @@ export default async function ManageEventPage({
 
       <div className="mt-5 flex flex-col gap-5">
         {tab === "overview" && (
-          <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Overview</p>
-            <dl className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Status</dt>
-                <dd className="mt-1 text-ink">{event.is_demo ? "Pending Review" : "Live"}</dd>
+          <>
+            {event.is_demo && (
+              <div className={cardClass}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/60">
+                    In Review
+                  </span>
+                  <p className="text-xs text-ink/40">Not public yet</p>
+                </div>
+                <p className="mt-2 text-sm text-ink/70">
+                  Keep building your listing while FindMi reviews it.
+                </p>
               </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Dates</dt>
-                <dd className="mt-1 text-ink">{1 + occurrences.length}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Participating Businesses</dt>
-                <dd className="mt-1 text-ink">{participants.length}</dd>
-              </div>
-            </dl>
-            <p className="mt-4 text-sm text-ink/60">
-              Use the tabs above to edit details, manage dates, choose a location, set your Market, add photos, and
-              manage participating businesses.
-            </p>
-          </div>
+            )}
+
+            {/* Finish Your Event — Event Creation + Pending Review UX pass.
+                Guidance only, never a new validation/moderation gate:
+                every item reflects real, already-editable Event data (see
+                essentialItems above), and Participating Businesses is
+                deliberately never part of the "essentials" set — zero
+                participants is a legitimate, publishable event. Once
+                every essential is done, this collapses to a single
+                compact positive line instead of permanently dominating
+                the tab. */}
+            <div className={cardClass}>
+              {essentialsComplete ? (
+                <div className="flex items-center gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-findmi text-white">
+                    <CheckGlyph className="h-3 w-3" />
+                  </span>
+                  <p className="text-sm font-semibold text-ink">Listing essentials complete</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Finish Your Event</p>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {essentialItems.map((item) => (
+                      <Link
+                        key={item.key}
+                        href={appendQuery(`/account/event/${id}`, { tab: item.tab })}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 px-3.5 py-2.5 transition hover:border-black/20"
+                      >
+                        <span className="text-sm font-medium text-ink">{item.label}</span>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                            item.complete ? "bg-findmi-50 text-findmi-700" : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {item.complete ? "Complete" : "Needs attention"}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Grow your listing — a suggestion, never a requirement:
+                  zero Participating Businesses is legitimate and never
+                  blocks essentials-complete above. */}
+              {participants.length === 0 && (
+                <div className="mt-3 border-t border-black/10 pt-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Grow Your Listing</p>
+                  <Link
+                    href={appendQuery(`/account/event/${id}`, { tab: "participants" })}
+                    className="mt-1.5 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-black/15 px-3.5 py-2.5 text-sm text-ink/70 transition hover:border-black/25"
+                  >
+                    Add participating businesses
+                    <span className="shrink-0 text-xs font-semibold text-findmi-700">Optional →</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Snapshot</p>
+              <dl className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Status</dt>
+                  <dd className="mt-1 text-ink">{event.is_demo ? "In Review" : "Live"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Dates</dt>
+                  <dd className="mt-1 text-ink">{1 + occurrences.length}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Businesses</dt>
+                  <dd className="mt-1 text-ink">{participants.length}</dd>
+                </div>
+              </dl>
+            </div>
+          </>
         )}
 
         {tab === "details" && (
@@ -330,7 +444,14 @@ export default async function ManageEventPage({
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">Add a Date</p>
                 <EventDateFieldsForm
                   action={addMemberEventDate.bind(null, id)}
-                  defaultValues={{ date: "", start_time: "", end_time: "", location: null }}
+                  defaultValues={{
+                    date: addDate ?? "",
+                    start_time: addStartTime ?? "",
+                    end_time: addEndTime ?? "",
+                    location: addLocationHint
+                      ? { value: addLocationHint.id, label: addLocationHint.name, sublabel: addLocationHint.city ?? undefined }
+                      : null,
+                  }}
                   submitLabel="Add Date"
                 />
               </div>
@@ -504,11 +625,11 @@ export default async function ManageEventPage({
                 event.is_demo ? "bg-black/[0.06] text-ink/60" : "bg-findmi text-white"
               }`}
             >
-              {event.is_demo ? "Pending Review" : "Live"}
+              {event.is_demo ? "In Review" : "Live"}
             </span>
             <p className="mt-3 text-sm text-ink/60">
               {event.is_demo
-                ? "FindMi reviews every new event before it appears in public discovery. You can keep editing details, dates, and participants in the meantime."
+                ? "Not public yet. Keep building your listing while FindMi reviews it — you can keep editing details, dates, photos, and participants in the meantime."
                 : "This event is live and visible in FindMi discovery."}
             </p>
           </div>
@@ -520,4 +641,18 @@ export default async function ManageEventPage({
 
 function appendQuery(base: string, params: Record<string, string>): string {
   return `${base}?${new URLSearchParams(params).toString()}`;
+}
+
+function CheckGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className}>
+      <path
+        d="M4 10.5l3.5 3.5L16 6"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }

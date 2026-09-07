@@ -36,13 +36,43 @@ export default async function AddBusinessPage({
     plan?: string;
     invite?: string;
     ref?: string;
+    name?: string;
+    category_id?: string;
+    city?: string;
+    state?: string;
+    website_url?: string;
+    instagram_url?: string;
+    market_id?: string;
+    requested_market_text?: string;
+    authorized?: string;
+    plan_choice?: string;
   }>;
 }) {
-  const { error, duplicate_slug: duplicateSlug, duplicate_name: duplicateName, plan, invite, ref } = await searchParams;
+  const {
+    error,
+    duplicate_slug: duplicateSlug,
+    duplicate_name: duplicateName,
+    plan,
+    invite,
+    ref,
+    name: submittedName,
+    category_id: submittedCategoryId,
+    city: submittedCity,
+    state: submittedState,
+    website_url: submittedWebsiteUrl,
+    instagram_url: submittedInstagramUrl,
+    market_id: submittedMarketId,
+    requested_market_text: submittedRequestedMarketText,
+    authorized: submittedAuthorized,
+    plan_choice: submittedPlanChoice,
+  } = await searchParams;
   // Join + Add Business Plan UX Alignment pass — /join's Pro card links
   // here with ?plan=pro so Pro intent is preselected instead of the
   // default Free radio. Free needs no param (it's already the default).
-  const wantsPro = plan === "pro";
+  // Event Creation + Pending Review UX pass — a rejected resubmission
+  // round-trips its own plan_choice too (see createMemberBusiness), so
+  // either source keeps Pro selected.
+  const wantsPro = plan === "pro" || submittedPlanChoice === "pro";
 
   // Pro Invite / Complimentary Access Codes pass — /redeem/[code] links
   // here with ?invite=CODE when a signed-in-but-business-less visitor
@@ -119,12 +149,19 @@ export default async function AddBusinessPage({
         <form action={createMemberBusiness} className="flex flex-col gap-4">
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
-            <input type="text" name="name" required placeholder="Your business name" className={inputClass} />
+            <input
+              type="text"
+              name="name"
+              required
+              defaultValue={submittedName ?? ""}
+              placeholder="Your business name"
+              className={inputClass}
+            />
           </label>
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Primary category</span>
-            <select name="category_id" required defaultValue="" className={inputClass}>
+            <select name="category_id" required defaultValue={submittedCategoryId ?? ""} className={inputClass}>
               <option value="" disabled>
                 Choose a category…
               </option>
@@ -143,13 +180,13 @@ export default async function AddBusinessPage({
               <span className="mb-1.5 block text-sm font-medium text-ink">
                 City <span className="font-normal text-ink/40">(optional)</span>
               </span>
-              <input type="text" name="city" className={inputClass} />
+              <input type="text" name="city" defaultValue={submittedCity ?? ""} className={inputClass} />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
                 State <span className="font-normal text-ink/40">(optional)</span>
               </span>
-              <input type="text" name="state" className={inputClass} />
+              <input type="text" name="state" defaultValue={submittedState ?? ""} className={inputClass} />
             </label>
           </div>
 
@@ -166,7 +203,7 @@ export default async function AddBusinessPage({
               create_owned_business()'s own validation. */}
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Primary Market</span>
-            <select name="market_id" defaultValue="" className={inputClass}>
+            <select name="market_id" defaultValue={submittedMarketId ?? ""} className={inputClass}>
               <option value="">Choose a market…</option>
               {markets.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -181,7 +218,7 @@ export default async function AddBusinessPage({
             </p>
           </label>
 
-          <details className="group -mt-2">
+          <details className="group -mt-2" open={Boolean(submittedRequestedMarketText)}>
             <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
               Don&rsquo;t see your Market?
             </summary>
@@ -191,6 +228,7 @@ export default async function AddBusinessPage({
                 <input
                   type="text"
                   name="requested_market_text"
+                  defaultValue={submittedRequestedMarketText ?? ""}
                   placeholder="e.g. Austin, TX"
                   className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
                 />
@@ -209,13 +247,25 @@ export default async function AddBusinessPage({
             <span className="mb-1.5 block text-sm font-medium text-ink">
               Website <span className="font-normal text-ink/40">(optional)</span>
             </span>
-            <input type="url" name="website_url" placeholder="https://" className={inputClass} />
+            <input
+              type="url"
+              name="website_url"
+              defaultValue={submittedWebsiteUrl ?? ""}
+              placeholder="https://"
+              className={inputClass}
+            />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
               Instagram <span className="font-normal text-ink/40">(optional)</span>
             </span>
-            <input type="url" name="instagram_url" placeholder="https://instagram.com/…" className={inputClass} />
+            <input
+              type="url"
+              name="instagram_url"
+              defaultValue={submittedInstagramUrl ?? ""}
+              placeholder="https://instagram.com/…"
+              className={inputClass}
+            />
           </label>
 
           {/* Plan choice — Native Business Onboarding Pass 3, restyled by
@@ -375,6 +425,7 @@ export default async function AddBusinessPage({
               type="checkbox"
               name="authorized"
               required
+              defaultChecked={Boolean(submittedAuthorized)}
               className="mt-0.5 h-4 w-4 shrink-0 accent-findmi"
             />
             <span className="text-sm text-ink/70">

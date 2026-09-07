@@ -7,7 +7,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireEventMember } from "@/lib/permissions";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
-import { errorRedirectUrl, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
+import { errorRedirectUrl, errorRedirectUrlWithFields, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
@@ -137,39 +137,58 @@ export async function createMemberEvent(formData: FormData) {
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl(CREATE_EVENT_PATH, "Server isn't configured."));
 
+  // Event Creation + Pending Review UX pass — every submitted field is
+  // read ONCE, up front, and carried through `preservedFields` into every
+  // error redirect below via `fail()`. Previously each validation failure
+  // redirected with only `?error=...`, so this page (which has no
+  // persisted row to fall back on before creation succeeds — unlike an
+  // edit form) re-rendered with every input blank, wiping whatever the
+  // visitor had already typed. Nothing here changes what's validated or
+  // how — only that a rejected submission now round-trips the visitor's
+  // own values back into the form.
+  const name = str(formData, "name");
+  const startLocal = str(formData, "start_at");
+  const endLocal = str(formData, "end_at");
+  const marketId = str(formData, "market_id");
+  const requestedMarketTextRaw = str(formData, "requested_market_text");
+  const locationHintId = str(formData, "location_id");
+  const preservedFields = {
+    name,
+    start_at: startLocal,
+    end_at: endLocal,
+    market_id: marketId,
+    requested_market_text: requestedMarketTextRaw,
+    location_id: locationHintId,
+  };
+  const fail = (message: string): never => {
+    redirect(errorRedirectUrlWithFields(CREATE_EVENT_PATH, message, preservedFields));
+  };
+
   const entitled = await canCurrentUserManageEvents(admin, user.id);
   if (!entitled) {
-    redirect(
-      errorRedirectUrl(
-        CREATE_EVENT_PATH,
-        "Event management is included with qualifying FindMi membership — get FindMi Pro (or redeem a Pro Invite) on a business you manage first."
-      )
+    fail(
+      "Event management is included with qualifying FindMi membership — get FindMi Pro (or redeem a Pro Invite) on a business you manage first."
     );
   }
 
-  const name = str(formData, "name");
-  if (!name) redirect(errorRedirectUrl(CREATE_EVENT_PATH, "Event name is required."));
+  if (!name) fail("Event name is required.");
 
-  const startLocal = str(formData, "start_at");
-  const endLocal = str(formData, "end_at");
-  if (!startLocal) redirect(errorRedirectUrl(CREATE_EVENT_PATH, "Start date/time is required."));
-  if (!endLocal) redirect(errorRedirectUrl(CREATE_EVENT_PATH, "End date/time is required."));
+  if (!startLocal) fail("Start date/time is required.");
+  if (!endLocal) fail("End date/time is required.");
   const startIso = localDateTimeToIso(startLocal);
   const endIso = localDateTimeToIso(endLocal);
   if (!startIso || !endIso || new Date(endIso) <= new Date(startIso)) {
-    redirect(errorRedirectUrl(CREATE_EVENT_PATH, "End date/time must be after the start date/time."));
+    fail("End date/time must be after the start date/time.");
   }
 
   const baseSlug = resolveSlugInput(null, name);
-  if (!baseSlug) redirect(errorRedirectUrl(CREATE_EVENT_PATH, "Event name is required to generate a URL."));
+  if (!baseSlug) fail("Event name is required to generate a URL.");
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("events", candidate));
 
   // Market is OPTIONAL for events (unlike businesses) — matches the
   // existing admin saveEvent() action, which has never required one.
-  const marketId = str(formData, "market_id");
-  const requestedMarketTextRaw = str(formData, "requested_market_text");
   if (marketId && requestedMarketTextRaw) {
-    redirect(errorRedirectUrl(CREATE_EVENT_PATH, "Choose an existing Market OR request one — not both."));
+    fail("Choose an existing Market OR request one — not both.");
   }
 
   // Same "check for an existing Market/Area match before falling back to
@@ -196,7 +215,7 @@ export async function createMemberEvent(formData: FormData) {
 
   if (error || !created) {
     const message = CREATE_EVENT_FRIENDLY_ERROR[error?.message ?? ""] ?? "Couldn't create your event. Please try again.";
-    redirect(errorRedirectUrl(CREATE_EVENT_PATH, message));
+    fail(message);
   }
 
   const eventId = (created as { id: string }).id;
@@ -213,8 +232,9 @@ export async function createMemberEvent(formData: FormData) {
   // for the event creator, and never touches location_members for the
   // Location itself, so Event ownership stays with this event's own
   // creator only and Location ownership is completely unaffected either
-  // way (see this stage's Locked Product Model).
-  const locationHintId = str(formData, "location_id");
+  // way (see this stage's Locked Product Model). Reuses locationHintId
+  // captured up top (same form field, already read once into
+  // preservedFields).
   if (locationHintId) {
     const { data: location } = await admin
       .from("locations")
@@ -328,25 +348,37 @@ export async function addMemberEventDate(eventId: string, formData: FormData) {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
   const admin = await requireEventManager(eventId, redirectPath);
 
+  // Event Creation + Pending Review UX pass — "Add a Date" creates a
+  // brand-new event_occurrences row (no stored row to fall back on until
+  // it exists), so it had the same "validation error wipes the form"
+  // shape as native entity creation — fixed the same way: every submitted
+  // field preserved through the error redirect via errorRedirectUrlWithFields,
+  // read back into defaultValues by the page.
   const dateLocal = str(formData, "date");
   const startTime = str(formData, "start_time");
   const endTime = str(formData, "end_time");
+  const locationId = str(formData, "location_id");
+  const preservedFields = { add_date: dateLocal, add_start_time: startTime, add_end_time: endTime, add_location_id: locationId };
+  const fail = (message: string): never => {
+    redirect(errorRedirectUrlWithFields(redirectPath, message, preservedFields));
+  };
+
   if (!dateLocal || !startTime || !endTime) {
-    redirect(appendQuery(redirectPath, { error: "Date, start time, and end time are required." }));
+    fail("Date, start time, and end time are required.");
   }
   const start_at = localDateTimeToIso(`${dateLocal}T${startTime}`);
   const end_at = localDateTimeToIso(`${dateLocal}T${endTime}`);
   if (!start_at || !end_at || new Date(end_at) <= new Date(start_at)) {
-    redirect(appendQuery(redirectPath, { error: "End time must be after the start time." }));
+    fail("End time must be after the start time.");
   }
 
   const { error } = await admin.from("event_occurrences").insert({
     event_id: eventId,
     start_at,
     end_at,
-    location_id: str(formData, "location_id"),
+    location_id: locationId,
   });
-  if (error) redirect(appendQuery(redirectPath, { error: "Couldn't add that date. Please try again." }));
+  if (error) fail("Couldn't add that date. Please try again.");
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { date_added: "1" }));

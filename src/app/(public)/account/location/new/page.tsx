@@ -25,9 +25,29 @@ const primaryButtonClass =
 export default async function AddLocationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; duplicate_slug?: string; duplicate_name?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    duplicate_slug?: string;
+    duplicate_name?: string;
+    name?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    market_id?: string;
+    requested_market_text?: string;
+  }>;
 }) {
-  const { error, duplicate_slug: duplicateSlug, duplicate_name: duplicateName } = await searchParams;
+  const {
+    error,
+    duplicate_slug: duplicateSlug,
+    duplicate_name: duplicateName,
+    name: submittedName,
+    address: submittedAddress,
+    city: submittedCity,
+    state: submittedState,
+    market_id: submittedMarketId,
+    requested_market_text: submittedRequestedMarketText,
+  } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
@@ -60,22 +80,29 @@ export default async function AddLocationPage({
         <form action={createMemberLocation} className="flex flex-col gap-4">
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Venue name</span>
-            <input type="text" name="name" required placeholder="Your venue name" className={inputClass} />
+            <input
+              type="text"
+              name="name"
+              required
+              defaultValue={submittedName ?? ""}
+              placeholder="Your venue name"
+              className={inputClass}
+            />
           </label>
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Address</span>
-            <input type="text" name="address" className={inputClass} />
+            <input type="text" name="address" defaultValue={submittedAddress ?? ""} className={inputClass} />
           </label>
 
           <div className="grid grid-cols-2 gap-4">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
-              <input type="text" name="city" className={inputClass} />
+              <input type="text" name="city" defaultValue={submittedCity ?? ""} className={inputClass} />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
-              <input type="text" name="state" className={inputClass} />
+              <input type="text" name="state" defaultValue={submittedState ?? ""} className={inputClass} />
             </label>
           </div>
 
@@ -83,7 +110,7 @@ export default async function AddLocationPage({
             <span className="mb-1.5 block text-sm font-medium text-ink">
               Market <span className="font-normal text-ink/40">(optional)</span>
             </span>
-            <select name="market_id" defaultValue="" className={inputClass}>
+            <select name="market_id" defaultValue={submittedMarketId ?? ""} className={inputClass}>
               <option value="">Choose a market…</option>
               {markets.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -94,7 +121,7 @@ export default async function AddLocationPage({
             <p className="mt-1.5 text-xs text-ink/45">You can add or change this later from your Location Manager.</p>
           </label>
 
-          <details className="group -mt-2">
+          <details className="group -mt-2" open={Boolean(submittedRequestedMarketText)}>
             <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
               Don&rsquo;t see your Market?
             </summary>
@@ -104,6 +131,7 @@ export default async function AddLocationPage({
                 <input
                   type="text"
                   name="requested_market_text"
+                  defaultValue={submittedRequestedMarketText ?? ""}
                   placeholder="e.g. Austin, TX"
                   className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
                 />

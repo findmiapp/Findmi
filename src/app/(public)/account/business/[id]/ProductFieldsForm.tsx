@@ -32,6 +32,7 @@ export default function ProductFieldsForm({
   categories,
   submitLabel,
   showDistributionChoice = false,
+  distributionDefault = "catalog_only",
 }: {
   businessId: string;
   action: (formData: FormData) => void | Promise<void>;
@@ -46,6 +47,12 @@ export default function ProductFieldsForm({
    * resubmitting the content-edit form, so a content edit can never
    * silently also change marketplace_status. */
   showDistributionChoice?: boolean;
+  /** Event Creation + Pending Review UX pass — lets a rejected "Add
+   * Product" submission round-trip which radio the owner had picked,
+   * same as every other field on this form; defaults to "catalog_only"
+   * (the pre-existing hardcoded default) on a fresh, never-submitted
+   * form. */
+  distributionDefault?: "catalog_only" | "marketplace";
 }) {
   return (
     <form action={action} className="flex flex-col gap-2">
@@ -111,7 +118,13 @@ export default function ProductFieldsForm({
         <fieldset className="mt-1 rounded-xl border border-black/10 p-3">
           <legend className="px-1 text-xs font-semibold text-ink">Where Should This Product Appear?</legend>
           <label className="mt-1 flex cursor-pointer items-start gap-2">
-            <input type="radio" name="distribution" value="catalog_only" defaultChecked className="mt-1" />
+            <input
+              type="radio"
+              name="distribution"
+              value="catalog_only"
+              defaultChecked={distributionDefault === "catalog_only"}
+              className="mt-1"
+            />
             <span>
               <span className="block text-sm font-medium text-ink">Catalog Only</span>
               <span className="block text-xs text-ink/50">
@@ -120,7 +133,13 @@ export default function ProductFieldsForm({
             </span>
           </label>
           <label className="mt-2 flex cursor-pointer items-start gap-2">
-            <input type="radio" name="distribution" value="marketplace" className="mt-1" />
+            <input
+              type="radio"
+              name="distribution"
+              value="marketplace"
+              defaultChecked={distributionDefault === "marketplace"}
+              className="mt-1"
+            />
             <span>
               <span className="block text-sm font-medium text-ink">Submit To Marketplace</span>
               <span className="block text-xs text-ink/50">

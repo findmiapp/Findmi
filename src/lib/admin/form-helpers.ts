@@ -70,3 +70,35 @@ export function isoToLocalDateTime(iso: string | null, timezone: string = DEFAUL
 export function errorRedirectUrl(base: string, message: string): string {
   return `${base}?error=${encodeURIComponent(message)}`;
 }
+
+/** Event Creation + Pending Review UX pass — same idea as errorRedirectUrl,
+ * but also round-trips the visitor's own already-submitted field values
+ * through the query string, keyed by whatever field names the caller
+ * passes. Fixes the "a validation error wipes the whole form" bug on
+ * native create-from-scratch forms (createMemberBusiness/createMemberEvent/
+ * createMemberLocation, addMemberEventDate), which — unlike an edit of an
+ * already-existing row, which always has the stored row to fall back on
+ * for its defaultValues — have no persisted row to render from at all
+ * until creation actually succeeds; without this, a rejected submission
+ * redirects back to a page with every input blank. Every value here is
+ * exactly what the visitor already typed/chose, never anything computed or
+ * partially validated, so it's always safe to render straight back into an
+ * input's defaultValue.
+ *
+ * `base` may already carry its own query string (e.g. a tab-scoped
+ * `?tab=dates` redirect path) — merged with "&" in that case, same
+ * correctness rule account/business/actions.ts's own appendQuery already
+ * documents, so this is safe to use from either a bare path or one that
+ * already has a query. */
+export function errorRedirectUrlWithFields(
+  base: string,
+  message: string,
+  fields: Record<string, string | null | undefined>
+): string {
+  const params = new URLSearchParams({ error: message });
+  for (const [key, value] of Object.entries(fields)) {
+    if (value) params.set(key, value);
+  }
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}${params.toString()}`;
+}

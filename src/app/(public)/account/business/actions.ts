@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
+import { bool, errorRedirectUrl, errorRedirectUrlWithFields, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile } from "@/lib/imageUploadValidation";
@@ -973,9 +973,37 @@ export async function createMemberBusiness(formData: FormData) {
   // must be present.
   const requestedMarketText = str(formData, "requested_market_text");
   const authorized = bool(formData, "authorized");
+  const planChoiceRaw = str(formData, "plan_choice");
+  const inviteRaw = str(formData, "invite");
+  const referralCodeRaw = str(formData, "ref");
 
-  if (!name) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Business name is required."));
-  if (!categoryId) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose a category."));
+  // Event Creation + Pending Review UX pass — every submitted field is
+  // read once, up front, and carried through `preservedFields` into every
+  // error redirect via `fail()`, so a rejected submission (including a
+  // detected duplicate) never wipes what the visitor already typed — same
+  // fix as createMemberEvent/createMemberLocation. `authorized` round-
+  // trips as "1"/omitted so the confirmation checkbox stays checked if it
+  // already was.
+  const preservedFields = {
+    name,
+    category_id: categoryId,
+    city,
+    state,
+    website_url: websiteUrl,
+    instagram_url: instagramUrl,
+    market_id: marketId,
+    requested_market_text: requestedMarketText,
+    authorized: authorized ? "1" : null,
+    plan_choice: planChoiceRaw,
+    invite: inviteRaw,
+    ref: referralCodeRaw,
+  };
+  const fail = (message: string): never => {
+    redirect(errorRedirectUrlWithFields(CREATE_BUSINESS_PATH, message, preservedFields));
+  };
+
+  if (!name) fail("Business name is required.");
+  if (!categoryId) fail("Choose a category.");
   // Primary Market During Business Creation V1, extended by Consumer Area
   // Picker + Market Requests V1 — checked here for a fast, friendly error
   // before any duplicate-check/slug work runs, but create_owned_business()
@@ -983,15 +1011,13 @@ export async function createMemberBusiness(formData: FormData) {
   // (market_required/invalid_market/market_choice_ambiguous) as the real,
   // untrusted-client-input enforcement — this is only a UX shortcut.
   if (!marketId && !requestedMarketText) {
-    redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose a Primary Market, or request one below."));
+    fail("Choose a Primary Market, or request one below.");
   }
   if (marketId && requestedMarketText) {
-    redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Choose an existing Market OR request one — not both."));
+    fail("Choose an existing Market OR request one — not both.");
   }
   if (!authorized) {
-    redirect(
-      errorRedirectUrl(CREATE_BUSINESS_PATH, "Please confirm you're authorized to create and manage this business.")
-    );
+    fail("Please confirm you're authorized to create and manage this business.");
   }
 
   const admin = getAdminSupabase();
@@ -1009,16 +1035,17 @@ export async function createMemberBusiness(formData: FormData) {
     instagramUrl,
   });
   if (duplicate) {
-    const params = new URLSearchParams({
-      error: "We found a business that looks like a match. Claim it instead of creating a duplicate.",
-      duplicate_slug: duplicate.slug,
-      duplicate_name: duplicate.name,
-    });
-    redirect(`${CREATE_BUSINESS_PATH}?${params.toString()}`);
+    redirect(
+      errorRedirectUrlWithFields(
+        CREATE_BUSINESS_PATH,
+        "We found a business that looks like a match. Claim it instead of creating a duplicate.",
+        { ...preservedFields, duplicate_slug: duplicate.slug, duplicate_name: duplicate.name }
+      )
+    );
   }
 
   const baseSlug = resolveSlugInput(null, name);
-  if (!baseSlug) redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, "Business name is required to generate a URL."));
+  if (!baseSlug) fail("Business name is required to generate a URL.");
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("businesses", candidate));
 
   // Market -> Area/Submarket Hierarchy V2 — before falling back to a
@@ -1057,7 +1084,7 @@ export async function createMemberBusiness(formData: FormData) {
 
   if (error || !created) {
     const message = CREATE_FRIENDLY_ERROR[error?.message ?? ""] ?? "Couldn't create your business. Please try again.";
-    redirect(errorRedirectUrl(CREATE_BUSINESS_PATH, message));
+    fail(message);
   }
 
   const businessId = (created as { id: string }).id;
@@ -1083,10 +1110,9 @@ export async function createMemberBusiness(formData: FormData) {
   // Invite — if it does, the invite branch below still wins and this
   // business is never routed through Stripe, so no paid-Pro commission
   // can ever be generated from that $0 complimentary activation.
-  const referralCode = str(formData, "ref");
-  if (referralCode) {
-    const planChoiceForReferral = str(formData, "plan_choice") === "pro" ? "pro" : "free";
-    await attributeReferral(admin, businessId, referralCode, planChoiceForReferral, user.id);
+  if (referralCodeRaw) {
+    const planChoiceForReferral = planChoiceRaw === "pro" ? "pro" : "free";
+    await attributeReferral(admin, businessId, referralCodeRaw, planChoiceForReferral, user.id);
   }
 
   // Pro Invite / Complimentary Access Codes pass — an invite in play
@@ -1096,9 +1122,8 @@ export async function createMemberBusiness(formData: FormData) {
   // pre-hinted) to apply the invite there — never to Stripe. The actual
   // grant is decided entirely by that flow's own server-side checks
   // (redeem_pro_invite), never by this action.
-  const invite = str(formData, "invite");
-  if (invite) {
-    redirect(`/redeem/${encodeURIComponent(invite)}?business=${businessId}`);
+  if (inviteRaw) {
+    redirect(`/redeem/${encodeURIComponent(inviteRaw)}?business=${businessId}`);
   }
 
   // Plan choice — Native Business Onboarding Pass 3. The business is
@@ -1110,8 +1135,7 @@ export async function createMemberBusiness(formData: FormData) {
   // checkout creation itself fails for any reason, this still lands the
   // owner on their new (Free, fully usable) business rather than losing
   // it — never a dead end.
-  const planChoice = str(formData, "plan_choice");
-  if (planChoice === "pro") {
+  if (planChoiceRaw === "pro") {
     const checkout = await createBusinessProCheckoutSession(admin, businessId);
     if ("url" in checkout) redirect(checkout.url);
     redirect(`/account/business/${businessId}?created=1&error=${encodeURIComponent(checkout.error)}`);
@@ -1264,8 +1288,24 @@ export async function createMemberProduct(businessId: string, formData: FormData
   const redirectPath = `/account/business/${businessId}?tab=products`;
   const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
 
+  // Event Creation + Pending Review UX pass — "Add Product" creates a
+  // brand-new row (no stored product to fall back on until it exists), so
+  // it had the same "validation error wipes the form" shape as native
+  // entity creation — fixed the same way: every submitted field preserved
+  // through the error redirect, read back into defaultValues by the page.
+  const preservedFields = {
+    add_name: str(formData, "name"),
+    add_description: str(formData, "description"),
+    add_image_url: str(formData, "image_url"),
+    add_price: str(formData, "price"),
+    add_price_label: str(formData, "price_label"),
+    add_product_type: str(formData, "product_type"),
+    add_external_purchase_url: str(formData, "external_purchase_url"),
+    add_category_id: str(formData, "category_id"),
+    add_distribution: str(formData, "distribution"),
+  };
   const onError = (message: string): never => {
-    redirect(appendQuery(redirectPath, { error: message }));
+    redirect(errorRedirectUrlWithFields(redirectPath, message, preservedFields));
   };
   const fields = parseProductFields(formData, onError);
 

@@ -179,6 +179,15 @@ export default async function ManageBusinessPage({
     open?: string;
     order?: string;
     order_status?: string;
+    add_name?: string;
+    add_description?: string;
+    add_image_url?: string;
+    add_price?: string;
+    add_price_label?: string;
+    add_product_type?: string;
+    add_external_purchase_url?: string;
+    add_category_id?: string;
+    add_distribution?: string;
   }>;
 }) {
   const { id } = await params;
@@ -212,6 +221,15 @@ export default async function ManageBusinessPage({
     edit_state,
     edit_external_url,
     edit_flyer_image_url,
+    add_name: addProductName,
+    add_description: addProductDescription,
+    add_image_url: addProductImageUrl,
+    add_price: addProductPrice,
+    add_price_label: addProductPriceLabel,
+    add_product_type: addProductType,
+    add_external_purchase_url: addProductExternalUrl,
+    add_category_id: addProductCategoryId,
+    add_distribution: addProductDistribution,
   } = await searchParams;
   const tab = tabParam && OWNER_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
@@ -1175,17 +1193,18 @@ export default async function ManageBusinessPage({
                     action={addProduct}
                     categories={productCategories}
                     defaultValues={{
-                      name: "",
-                      description: "",
-                      image_url: null,
-                      price: "",
-                      price_label: "",
-                      product_type: "product",
-                      external_purchase_url: "",
-                      category_id: "",
+                      name: addProductName ?? "",
+                      description: addProductDescription ?? "",
+                      image_url: addProductImageUrl ?? null,
+                      price: addProductPrice ?? "",
+                      price_label: addProductPriceLabel ?? "",
+                      product_type: addProductType === "service" ? "service" : "product",
+                      external_purchase_url: addProductExternalUrl ?? "",
+                      category_id: addProductCategoryId ?? "",
                     }}
                     submitLabel="Add Product"
                     showDistributionChoice
+                    distributionDefault={addProductDistribution === "marketplace" ? "marketplace" : "catalog_only"}
                   />
                 </div>
               </div>

@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireLocationMember } from "@/lib/permissions";
-import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
+import { errorRedirectUrl, errorRedirectUrlWithFields, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
@@ -161,31 +161,48 @@ export async function createMemberLocation(formData: FormData) {
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl(CREATE_LOCATION_PATH, "Server isn't configured."));
 
+  // Event Creation + Pending Review UX pass — same fix as
+  // createMemberEvent: every submitted field is read once, up front, and
+  // carried through `preservedFields` into every error redirect via
+  // `fail()`, so a rejected submission (including a detected duplicate)
+  // never wipes what the visitor already typed.
   const name = str(formData, "name");
-  if (!name) redirect(errorRedirectUrl(CREATE_LOCATION_PATH, "Venue name is required."));
-
   const address = str(formData, "address");
   const city = str(formData, "city");
   const state = str(formData, "state");
-
   const marketId = str(formData, "market_id");
   const requestedMarketTextRaw = str(formData, "requested_market_text");
+  const preservedFields = {
+    name,
+    address,
+    city,
+    state,
+    market_id: marketId,
+    requested_market_text: requestedMarketTextRaw,
+  };
+  const fail = (message: string): never => {
+    redirect(errorRedirectUrlWithFields(CREATE_LOCATION_PATH, message, preservedFields));
+  };
+
+  if (!name) fail("Venue name is required.");
+
   if (marketId && requestedMarketTextRaw) {
-    redirect(errorRedirectUrl(CREATE_LOCATION_PATH, "Choose an existing Market OR request one — not both."));
+    fail("Choose an existing Market OR request one — not both.");
   }
 
   const duplicate = await findLikelyDuplicateLocation(admin, { name: name!, address, city, state });
   if (duplicate) {
-    const params = new URLSearchParams({
-      error: "We found a venue that looks like a match. Claim it instead of creating a duplicate.",
-      duplicate_slug: duplicate.slug,
-      duplicate_name: duplicate.name,
-    });
-    redirect(`${CREATE_LOCATION_PATH}?${params.toString()}`);
+    redirect(
+      errorRedirectUrlWithFields(
+        CREATE_LOCATION_PATH,
+        "We found a venue that looks like a match. Claim it instead of creating a duplicate.",
+        { ...preservedFields, duplicate_slug: duplicate.slug, duplicate_name: duplicate.name }
+      )
+    );
   }
 
   const baseSlug = resolveSlugInput(null, name);
-  if (!baseSlug) redirect(errorRedirectUrl(CREATE_LOCATION_PATH, "Venue name is required to generate a URL."));
+  if (!baseSlug) fail("Venue name is required to generate a URL.");
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("locations", candidate));
 
   // Same "check for an existing Market/Area match before falling back to
@@ -213,7 +230,7 @@ export async function createMemberLocation(formData: FormData) {
 
   if (error || !created) {
     const message = CREATE_LOCATION_FRIENDLY_ERROR[error?.message ?? ""] ?? "Couldn't create your venue. Please try again.";
-    redirect(errorRedirectUrl(CREATE_LOCATION_PATH, message));
+    fail(message);
   }
 
   const locationId = (created as { id: string }).id;

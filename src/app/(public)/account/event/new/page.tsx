@@ -49,9 +49,25 @@ const primaryButtonClass =
 export default async function AddEventPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; location_id?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    location_id?: string;
+    name?: string;
+    start_at?: string;
+    end_at?: string;
+    market_id?: string;
+    requested_market_text?: string;
+  }>;
 }) {
-  const { error, location_id: locationIdHint } = await searchParams;
+  const {
+    error,
+    location_id: locationIdHint,
+    name: submittedName,
+    start_at: submittedStartAt,
+    end_at: submittedEndAt,
+    market_id: submittedMarketId,
+    requested_market_text: submittedRequestedMarketText,
+  } = await searchParams;
   const locationHint = await getLocationHint(locationIdHint);
 
   const supabase = await getServerSupabase();
@@ -97,8 +113,8 @@ export default async function AddEventPage({
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your FindMi</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add an Event</h1>
       <p className="mt-2 text-sm text-ink/60">
-        You&rsquo;ll own and manage it right away in your Event Manager, and FindMi will review it before it appears
-        in discovery.
+        Create your event, then finish the details in Event Manager. FindMi will review it before it appears
+        publicly.
       </p>
 
       {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
@@ -113,17 +129,36 @@ export default async function AddEventPage({
           )}
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Event name</span>
-            <input type="text" name="name" required placeholder="Your event name" className={inputClass} />
+            <input
+              type="text"
+              name="name"
+              required
+              defaultValue={submittedName ?? ""}
+              placeholder="Your event name"
+              className={inputClass}
+            />
           </label>
 
           <div className="grid grid-cols-2 gap-4">
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Starts</span>
-              <input type="datetime-local" name="start_at" required className={inputClass} />
+              <span className="mb-1.5 block text-sm font-medium text-ink">Start date &amp; time</span>
+              <input
+                type="datetime-local"
+                name="start_at"
+                required
+                defaultValue={submittedStartAt ?? ""}
+                className={inputClass}
+              />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Ends</span>
-              <input type="datetime-local" name="end_at" required className={inputClass} />
+              <span className="mb-1.5 block text-sm font-medium text-ink">End date &amp; time</span>
+              <input
+                type="datetime-local"
+                name="end_at"
+                required
+                defaultValue={submittedEndAt ?? ""}
+                className={inputClass}
+              />
             </label>
           </div>
 
@@ -131,7 +166,7 @@ export default async function AddEventPage({
             <span className="mb-1.5 block text-sm font-medium text-ink">
               Market <span className="font-normal text-ink/40">(optional)</span>
             </span>
-            <select name="market_id" defaultValue="" className={inputClass}>
+            <select name="market_id" defaultValue={submittedMarketId ?? ""} className={inputClass}>
               <option value="">Choose a market…</option>
               {markets.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -142,7 +177,7 @@ export default async function AddEventPage({
             <p className="mt-1.5 text-xs text-ink/45">You can add or change this later from your Event Manager.</p>
           </label>
 
-          <details className="group -mt-2">
+          <details className="group -mt-2" open={Boolean(submittedRequestedMarketText)}>
             <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
               Don&rsquo;t see your Market?
             </summary>
@@ -152,6 +187,7 @@ export default async function AddEventPage({
                 <input
                   type="text"
                   name="requested_market_text"
+                  defaultValue={submittedRequestedMarketText ?? ""}
                   placeholder="e.g. Austin, TX"
                   className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
                 />
