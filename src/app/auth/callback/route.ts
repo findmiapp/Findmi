@@ -18,10 +18,26 @@ export const dynamic = "force-dynamic";
  *
  * A failed exchange here is EXPECTED, not just an error case: PKCE's
  * code-verifier cookie is set on the browser that initiated signup/reset,
- * so a link opened on a different browser/device, an already-used code,
- * or an expired code will all legitimately fail exchangeCodeForSession —
- * this is the same-browser/device constraint documented in the account
- * foundation pass's report, not a bug to work around.
+ * so an already-used code, an expired code, OR (for the `code` branch
+ * specifically) a link opened on a different browser/device than the one
+ * that started signup/reset will all legitimately fail
+ * exchangeCodeForSession.
+ *
+ * Signup + Email Confirmation UX Correction pass — that same-device
+ * failure mode for the `code` branch is a consequence of the Supabase
+ * project's "Confirm signup"/"Reset password" email templates still
+ * using the default `{{ .ConfirmationURL }}` (Supabase's own hosted
+ * verify endpoint, which redirects back here with a PKCE `?code=`), NOT
+ * a fundamental Supabase limitation — the `token_hash` branch directly
+ * below already proves this: verifyOtp() is a pure server-side token
+ * check with no browser-bound state, cross-device-safe today for every
+ * admin-triggered link. Making self-service signup confirmation
+ * cross-device-safe the same way requires changing the "Confirm signup"
+ * email template in the Supabase dashboard to link straight at
+ * `{{ .RedirectTo }}&token_hash={{ .TokenHash }}` instead of
+ * `{{ .ConfirmationURL }}` — see this pass's own report for the exact
+ * template text; that's an external dashboard change, not a code change,
+ * and this route needs no modification to support it once made.
  *
  * ADMIN USERS PASS 2 addition: admin-triggered links (Create User's "Send
  * Setup Email" → inviteUserByEmail(), and the user-detail page's "Send

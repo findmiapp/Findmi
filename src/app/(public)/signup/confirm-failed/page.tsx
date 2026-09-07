@@ -15,11 +15,13 @@ const primaryButtonClass =
 
 // Reached only from /auth/callback when a signup confirmation code
 // couldn't be exchanged for a session — missing/expired/already-used
-// verifier, or the link was opened on a different browser/device than
-// the one that started signup (see the account foundation pass's PKCE
-// design note — this is expected behavior, not a bug). Deliberately its
-// own page rather than falling through to /login, so the actual cause
-// (a confirmation problem, not a wrong password) is clear.
+// code, or (until the Supabase "Confirm signup" email template is
+// switched to a token_hash link — see the Signup + Email Confirmation UX
+// Correction pass's own report) a link opened on a different browser/
+// device than the one that started signup, since exchangeCodeForSession
+// is PKCE-bound to that browser's own code-verifier cookie. Deliberately
+// its own page rather than falling through to /login, so the actual
+// cause (a confirmation problem, not a wrong password) is clear.
 export default async function ConfirmFailedPage({
   searchParams,
 }: {
@@ -35,8 +37,8 @@ export default async function ConfirmFailedPage({
         That confirmation link expired
       </h1>
       <p className="mt-3 text-sm text-ink/60">
-        This can happen if the link was already used, has expired, or was opened on a different browser or device
-        than the one you signed up on. Enter your email below and we&rsquo;ll send a fresh one.
+        This can happen if the link was already used or has expired. Enter your email below and we&rsquo;ll send a
+        fresh one.
       </p>
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">

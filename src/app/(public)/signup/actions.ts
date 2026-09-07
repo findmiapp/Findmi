@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 import { getPublicOrigin } from "@/lib/site-url";
+import { errorRedirectUrlWithFields } from "@/lib/admin/form-helpers";
 
 function confirmationRedirectUrl(next: string): string {
   // `type=signup` lets /auth/callback distinguish a failed signup
@@ -13,28 +14,49 @@ function confirmationRedirectUrl(next: string): string {
   return `${getPublicOrigin()}/auth/callback?next=${encodeURIComponent(next)}&type=signup`;
 }
 
+/**
+ * Signup + Email Confirmation UX Correction pass — every error redirect
+ * below now preserves display_name/email (never password/confirm_password
+ * — see this pass's own report on why those must never ride in a URL),
+ * via the same errorRedirectUrlWithFields() helper already used by the
+ * native Business/Event/Location creation forms for exactly this
+ * "don't wipe the form on error" fix. signup/page.tsx reads these back as
+ * defaultValue on Name/Email only.
+ */
 export async function signUp(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
+  const confirmEmail = String(formData.get("confirm_email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirm_password") ?? "");
   const displayName = String(formData.get("display_name") ?? "").trim();
   const next = getSafeRedirect(String(formData.get("next") ?? ""));
+  const preserved = { next, display_name: displayName, email };
 
   if (!email || !password) {
-    redirect(
-      `/signup?error=${encodeURIComponent("Email and password are required.")}&next=${encodeURIComponent(next)}`
-    );
+    redirect(errorRedirectUrlWithFields("/signup", "Email and password are required.", preserved));
+  }
+  // Confirm Email — Section 2. Same trim-only normalization already used
+  // everywhere else in the app (login/actions.ts), no new normalization
+  // invented. Checked before ever touching Supabase — SignupForm.tsx
+  // already blocks this client-side (Case A); this is the authoritative
+  // server-side re-check for a JS-disabled or scripted submission.
+  if (email !== confirmEmail) {
+    redirect(errorRedirectUrlWithFields("/signup", "Email addresses don't match.", preserved));
   }
   // Matches reset-password's existing minimum — enforced here rather
   // than left to Supabase's own project-level setting, so the two flows
   // can never disagree about what a valid password is.
   if (password.length < 8) {
-    redirect(
-      `/signup?error=${encodeURIComponent("Password must be at least 8 characters.")}&next=${encodeURIComponent(next)}`
-    );
+    redirect(errorRedirectUrlWithFields("/signup", "Password must be at least 8 characters.", preserved));
+  }
+  // Confirm Password — Section 3. Same authoritative-server-check
+  // relationship to SignupForm.tsx's client check (Case B) as email above.
+  if (password !== confirmPassword) {
+    redirect(errorRedirectUrlWithFields("/signup", "Passwords don't match.", preserved));
   }
 
   const supabase = await getServerSupabase();
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -65,7 +87,25 @@ export async function signUp(formData: FormData) {
       error.status === 429
         ? "Too many attempts. Please wait a moment and try again."
         : "Could not create your account. Please try again.";
-    redirect(`/signup?error=${encodeURIComponent(message)}&next=${encodeURIComponent(next)}`);
+    redirect(errorRedirectUrlWithFields("/signup", message, preserved));
+  }
+
+  // Session-aware post-signup routing — Signup + Email Confirmation UX
+  // Correction pass, Section 5. supabase.auth.signUp() issues a real
+  // session immediately IFF this Supabase project's "Confirm email"
+  // requirement is OFF; getServerSupabase()'s cookie adapter (lib/
+  // supabase/server.ts) already persisted it via setAll() as a side
+  // effect of the call above — there is nothing else to set up, just
+  // route to where a signed-in visitor actually belongs (their intended
+  // `next`, e.g. /account or /redeem/[code] — never hardcoded, never
+  // faked when data.session is null). Confirmed against THIS project's
+  // live data before writing this (see this pass's own report):
+  // "Confirm email" is currently ON, so data.session is null today and
+  // this branch is inert — the very next line (unchanged Check Email
+  // redirect) is what actually runs. This activates automatically, with
+  // no further code change, the moment that project setting changes.
+  if (data.session) {
+    redirect(next);
   }
 
   redirect(`/signup/check-email?next=${encodeURIComponent(next)}`);

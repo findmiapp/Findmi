@@ -187,6 +187,25 @@ export default async function AccountHomePage({
         </p>
       )}
 
+      {/* Signup + Email Confirmation UX Correction pass, Section 6 —
+          ACCOUNT CREATED vs. EMAIL VERIFIED, kept deliberately separate.
+          Reads only the already-fetched session user (no extra query) —
+          Supabase's own `email_confirmed_at` is the one source of truth
+          for whether this specific address was actually confirmed, never
+          re-derived from anything else. Under this project's current
+          Supabase configuration, an unconfirmed user has no session at
+          all yet (see this pass's report), so this can't render today —
+          it's here so the moment that changes, a signed-in-but-unverified
+          visitor gets this instead of nothing, with zero further code
+          change. Deliberately non-blocking: no gate, no redirect, just a
+          reminder — verification stays required for whatever
+          security-sensitive actions already require it elsewhere. */}
+      {!user.email_confirmed_at && (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Verify your email to keep your account secure.
+        </p>
+      )}
+
       {/* 1. DISCOVERY — Account Hub V2 pass. The first thing any account
           holder sees, regardless of whether they manage anything: Findmi
           is for discovering what's around them. /find is the existing

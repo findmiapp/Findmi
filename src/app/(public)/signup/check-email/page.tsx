@@ -27,9 +27,7 @@ export default async function CheckEmailPage({
       <p className="mt-4 text-xs font-bold uppercase tracking-wide text-findmi-700">Almost there</p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Check your email</h1>
       <p className="mt-3 text-sm text-ink/60">
-        We sent a confirmation link to the address you signed up with. Click it on{" "}
-        <span className="font-semibold text-ink">this same browser/device</span> to finish creating your account —
-        a link opened somewhere else won&rsquo;t work.
+        Check your email and open the confirmation link to finish setting up your account.
       </p>
 
       {resent && !error && (
