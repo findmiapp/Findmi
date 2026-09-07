@@ -83,8 +83,20 @@ export default function HomepageRowCard({
       </div>
 
       <form action={saveAction} className="mt-3 flex flex-col gap-3">
-        <TextField label="Row Title" name="title" defaultValue={row.title} required />
-        <TextareaField label="Subtitle (optional)" name="subtitle" defaultValue={row.subtitle} rows={2} />
+        <TextField
+          label="Section heading"
+          name="title"
+          defaultValue={row.title}
+          required
+          hint="The bold title shown above this row on the public homepage."
+        />
+        <TextareaField
+          label="Section description (optional)"
+          name="subtitle"
+          defaultValue={row.subtitle}
+          rows={2}
+          hint="The smaller line shown just under the heading. Leave blank for no subtitle."
+        />
 
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Content Type</span>
@@ -154,7 +166,9 @@ export default function HomepageRowCard({
                   label="Featured Only"
                   name="featured_only"
                   defaultChecked={row.featured_only}
-                  hint="Only show items the founder has separately marked Featured."
+                  hint={`Only show ${contentType} with their own "Featured" checkbox turned on (edit that on each ${
+                    contentType === "businesses" ? "Business" : contentType === "events" ? "Event" : "Product"
+                  }'s own page) — this is the manual-selection option for a Dynamic row. Switch Feed to Curated above to hand-pick an exact, ordered list instead.`}
                 />
 
                 <NumberField label="Items" name="item_limit" defaultValue={row.item_limit} step="1" hint="How many to show in this row." />

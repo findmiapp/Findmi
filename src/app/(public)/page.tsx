@@ -37,6 +37,16 @@ import { getWeatherContext } from "@/lib/weather";
 
 export const revalidate = 60;
 
+// Brands We Love admin-control pass — a "businesses" Homepage Row's
+// title/subtitle come straight from homepage_rows (admin-editable at
+// /admin/site/homepage/rows), which already guarantees a non-blank
+// title at save time (see that route's saveHomepageRow action). These
+// are a presentation-only safety net for the edge case anyway — never
+// written back to the row — so this generic "businesses" row archetype
+// never renders with a visibly blank heading/subtitle.
+const BRANDS_ROW_HEADING_FALLBACK = "Brands We Love";
+const BRANDS_ROW_SUBTITLE_FALLBACK = "Real businesses, worth discovering";
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -230,7 +240,7 @@ export default async function HomePage({
           rendering after every row if no businesses row exists. */}
       {homepageRows.map((row, i) => (
         <Fragment key={row.id}>
-          <HomepageRowSection row={row} resolved={resolvedRows[i]} marketSlug={marketSlug} />
+          <HomepageRowSection row={row} resolved={resolvedRows[i]} marketSlug={marketSlug} isBrandsRow={i === brandsRowIndex} />
           {i === brandsRowIndex && <DiscoveryTopics topics={discoveryTopics} />}
         </Fragment>
       ))}
@@ -289,6 +299,7 @@ async function HomepageRowSection({
   row,
   resolved,
   marketSlug,
+  isBrandsRow,
 }: {
   row: HomepageRow;
   resolved: Awaited<ReturnType<typeof resolveHomepageRowItems>>;
@@ -297,6 +308,14 @@ async function HomepageRowSection({
    * client-side re-filter route). Curated rows and every other content
    * type ignore it entirely, per LOCKED V1 policy. */
   marketSlug?: string;
+  /** Brands We Love admin-control pass — true only for the same row
+   * HomePage's own brandsRowIndex identifies (the first "businesses"
+   * row). Gates the literal "Brands We Love"/"Real businesses, worth
+   * discovering" blank-copy fallback below to that one row specifically
+   * — a second "businesses" row the founder adds later keeps today's
+   * plain behavior (blank subtitle just hides the subtitle line) rather
+   * than silently inheriting Brands We Love's own fallback copy. */
+  isBrandsRow?: boolean;
 }) {
   if (resolved.contentType === "business_showcase") {
     // Real demo business (The Native Rose) — fetched only when a
@@ -362,7 +381,11 @@ async function HomepageRowSection({
       // Launch-polish pass item 2 — /businesses (Discovery/Archive V2) is
       // a real canonical destination regardless of this row's own
       // curated/dynamic filters, so every "businesses" row gets View All.
-      <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref={viewAllHref}>
+      <Section
+        title={isBrandsRow ? row.title || BRANDS_ROW_HEADING_FALLBACK : row.title}
+        subtitle={(isBrandsRow ? row.subtitle || BRANDS_ROW_SUBTITLE_FALLBACK : row.subtitle) ?? undefined}
+        viewAllHref={viewAllHref}
+      >
         <HomepageBusinessRow
           // Remounts (resetting its internal category cache/selection)
           // whenever the homepage's own Market changes — without this, a

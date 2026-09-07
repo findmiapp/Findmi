@@ -19,6 +19,21 @@ export default function HomepageRowCuratedPicker({
 
   const add = (r: SearchResult) => setItems((prev) => [...prev, r]);
   const remove = (value: string) => setItems((prev) => prev.filter((i) => i.value !== value));
+  // Account/Business Create-Strip precedent's move-up/down language,
+  // applied here to the founder's own display order — the hidden
+  // curated_id inputs already submit in array order (see the doc
+  // comment above), so reordering this client-side state is the whole
+  // fix: no separate action, no round trip, Save persists whatever
+  // order is on screen.
+  function move(index: number, direction: "up" | "down") {
+    setItems((prev) => {
+      const target = direction === "up" ? index - 1 : index + 1;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
 
   return (
     <div>
@@ -33,7 +48,7 @@ export default function HomepageRowCuratedPicker({
         <p className="mt-2 text-xs text-ink/45">Nothing picked yet — search above to add items, in the order you want them shown.</p>
       ) : (
         <div className="mt-2 flex flex-col gap-1.5">
-          {items.map((item) => (
+          {items.map((item, index) => (
             <div key={item.value} className="flex items-center justify-between gap-2 rounded-xl border border-black/10 bg-white px-3 py-2">
               <input type="hidden" name="curated_id" value={item.value} />
               <div className="flex min-w-0 items-center gap-2.5">
@@ -43,13 +58,33 @@ export default function HomepageRowCuratedPicker({
                   {item.sublabel && <p className="truncate text-xs text-ink/45">{item.sublabel}</p>}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => remove(item.value)}
-                className="shrink-0 text-xs font-semibold text-red-600 hover:underline"
-              >
-                Remove
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => move(index, "up")}
+                  disabled={index === 0}
+                  aria-label={`Move ${item.label} up`}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:bg-black/[0.03] disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(index, "down")}
+                  disabled={index === items.length - 1}
+                  aria-label={`Move ${item.label} down`}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:bg-black/[0.03] disabled:opacity-30"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove(item.value)}
+                  className="ml-1 text-xs font-semibold text-red-600 hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
         </div>
