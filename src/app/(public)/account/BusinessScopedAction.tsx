@@ -8,13 +8,10 @@ interface BusinessOption {
   name: string;
 }
 
-const PILL_BASE = "flex w-[76px] shrink-0 flex-col items-center gap-1.5 rounded-2xl px-2 py-3 text-center transition";
-const PILL_NORMAL = `${PILL_BASE} border border-black/10 bg-white hover:border-findmi/40 hover:bg-findmi-50`;
-const PILL_EMPHASIZED = `${PILL_BASE} bg-findmi text-white hover:bg-findmi-600`;
-const PILL_ICON_NORMAL = "flex h-9 w-9 items-center justify-center rounded-full bg-findmi-50 text-findmi-700";
-const PILL_ICON_EMPHASIZED = "flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white";
-const PILL_LABEL_NORMAL = "text-[11px] font-bold leading-tight text-ink/70";
-const PILL_LABEL_EMPHASIZED = "text-[11px] font-bold leading-tight text-white";
+const PILL_CLASS =
+  "flex w-[76px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-black/10 bg-white px-2 py-3 text-center transition hover:border-findmi/40 hover:bg-findmi-50";
+const PILL_ICON_CLASS = "flex h-9 w-9 items-center justify-center rounded-full bg-findmi-50 text-findmi-700";
+const PILL_LABEL_CLASS = "text-[11px] font-bold leading-tight text-ink/70";
 
 /**
  * Owner Action UX pass — a Business-scoped create action (Schedule,
@@ -31,11 +28,24 @@ const PILL_LABEL_EMPHASIZED = "text-[11px] font-bold leading-tight text-white";
  * Findmi Here Clarity / Action Hierarchy passes — this routing decision
  * (zero/one/many) is the one thing that must never change across
  * callers or variants. `variant` only changes presentation: "pill" is
- * the compact action-strip tile (optionally `emphasize`d — a filled
- * aqua tile for the single most important action in the row), "card" is
- * the larger, visually distinct Findmi Here CTA, "link" is a compact
- * secondary action (e.g. Add a product elsewhere). Same three branches,
- * same hrefs, same chooser — never re-decided per variant.
+ * the compact action-strip tile, "card" is the larger, visually distinct
+ * Findmi Here CTA, "link" is a compact secondary action (e.g. Add a
+ * product elsewhere), "full" is a full-width standalone button. Same
+ * three branches, same hrefs, same chooser — never re-decided per
+ * variant.
+ *
+ * Account Hub Live QA pass — the "Which business?" chooser renders via
+ * `position: absolute`, which only works when no ancestor clips
+ * overflow. The old emphasized "+ Schedule" pill lived first inside the
+ * horizontally-scrolling "Create on Findmi" row (`overflow-x-auto`) —
+ * per the CSS spec, setting overflow-x to anything but `visible` forces
+ * overflow-y to compute as `auto` too, so that row silently clipped the
+ * chooser panel below it (and, being the lead item in a swipeable
+ * strip, was also prone to mobile Safari treating a tap as an aborted
+ * scroll gesture). "+ Where I'll Be" now renders via this "full" variant
+ * *outside* any scrolling container (see account/page.tsx) — same
+ * component, same routing, just no clipping ancestor and a much larger
+ * tap target.
  */
 export default function BusinessScopedAction({
   label,
@@ -43,7 +53,6 @@ export default function BusinessScopedAction({
   businesses,
   tab,
   variant = "pill",
-  emphasize = false,
   eyebrow,
   headline,
   description,
@@ -53,8 +62,7 @@ export default function BusinessScopedAction({
   icon: ReactNode;
   businesses: BusinessOption[];
   tab: string;
-  variant?: "pill" | "card" | "link";
-  emphasize?: boolean;
+  variant?: "pill" | "card" | "link" | "full";
   eyebrow?: string;
   headline?: string;
   description?: string;
@@ -101,6 +109,36 @@ export default function BusinessScopedAction({
     );
   }
 
+  if (variant === "full") {
+    const fullClass =
+      "flex h-12 w-full items-center justify-center gap-2 rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 active:scale-[0.99]";
+    if (businesses.length === 0) {
+      return (
+        <Link href={zeroHref} className={fullClass}>
+          {icon}
+          {label}
+        </Link>
+      );
+    }
+    if (businesses.length === 1) {
+      return (
+        <Link href={oneHref!} className={fullClass}>
+          {icon}
+          {label}
+        </Link>
+      );
+    }
+    return (
+      <div ref={containerRef} className="relative">
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={fullClass}>
+          {icon}
+          {label}
+        </button>
+        {open && <WhichBusinessPanel businesses={businesses} tab={tab} className="left-0 right-0" />}
+      </div>
+    );
+  }
+
   if (variant === "link") {
     const linkClass = "inline-flex items-center gap-1.5 text-xs font-semibold text-ink/50 transition hover:text-findmi-700";
     if (businesses.length === 0) {
@@ -132,22 +170,17 @@ export default function BusinessScopedAction({
 
   // Default "pill" variant.
   if (businesses.length === 0) {
-    return <ActionStripLink href={zeroHref} icon={icon} label={label} emphasize={emphasize} />;
+    return <ActionStripLink href={zeroHref} icon={icon} label={label} />;
   }
   if (businesses.length === 1) {
-    return <ActionStripLink href={oneHref!} icon={icon} label={label} emphasize={emphasize} />;
+    return <ActionStripLink href={oneHref!} icon={icon} label={label} />;
   }
 
   return (
     <div ref={containerRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className={emphasize ? PILL_EMPHASIZED : PILL_NORMAL}
-      >
-        <span className={emphasize ? PILL_ICON_EMPHASIZED : PILL_ICON_NORMAL}>{icon}</span>
-        <span className={emphasize ? PILL_LABEL_EMPHASIZED : PILL_LABEL_NORMAL}>{label}</span>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={PILL_CLASS}>
+        <span className={PILL_ICON_CLASS}>{icon}</span>
+        <span className={PILL_LABEL_CLASS}>{label}</span>
       </button>
       {open && <WhichBusinessPanel businesses={businesses} tab={tab} className="left-1/2 w-52 -translate-x-1/2" />}
     </div>
@@ -156,26 +189,12 @@ export default function BusinessScopedAction({
 
 /** Same compact vertical icon+label shape as the chooser button above, so
  * every action-strip item (plain-link or business-scoped) is visually
- * identical regardless of which behavior it has underneath. `emphasize`
- * gives one tile in the row (e.g. + Schedule) the filled-aqua treatment
- * that marks it as the primary action, per the brand rule that
- * aqua-filled elements use white icon/text — never a flood background
- * across the whole row. */
-export function ActionStripLink({
-  href,
-  icon,
-  label,
-  emphasize = false,
-}: {
-  href: string;
-  icon: ReactNode;
-  label: string;
-  emphasize?: boolean;
-}) {
+ * identical regardless of which behavior it has underneath. */
+export function ActionStripLink({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
   return (
-    <Link href={href} className={emphasize ? PILL_EMPHASIZED : PILL_NORMAL}>
-      <span className={emphasize ? PILL_ICON_EMPHASIZED : PILL_ICON_NORMAL}>{icon}</span>
-      <span className={emphasize ? PILL_LABEL_EMPHASIZED : PILL_LABEL_NORMAL}>{label}</span>
+    <Link href={href} className={PILL_CLASS}>
+      <span className={PILL_ICON_CLASS}>{icon}</span>
+      <span className={PILL_LABEL_CLASS}>{label}</span>
     </Link>
   );
 }
@@ -233,8 +252,8 @@ function CardContent({
 /** One-off "+" glyph, same 24x24/currentColor/rounded-stroke language as
  * NavIcon's curated set (see src/components/NavIcon.tsx) — not added to
  * that admin-configurable set since this is a fixed, code-only usage
- * (Schedule pill + Findmi Here card), same pattern as the custom
- * show/hide glyphs in PasswordField.tsx. No new dependency. */
+ * (+ Where I'll Be button + Findmi Here card), same pattern as the
+ * custom show/hide glyphs in PasswordField.tsx. No new dependency. */
 export function PlusGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>

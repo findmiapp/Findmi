@@ -261,37 +261,51 @@ export default async function AccountHomePage({
         >
           Explore near you
         </Link>
-        <div className="mt-2.5 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Link
             href="/events"
-            className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
+            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
           >
             Events
           </Link>
           <Link
             href="/businesses"
-            className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
+            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
           >
             Businesses
           </Link>
           <Link
             href="/locations"
-            className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
+            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
           >
             Venues
+          </Link>
+          {/* Account Hub Live QA pass — consumer discovery, not owner
+              Product creation; routes to the existing public Marketplace
+              destination (same route the main nav's "Marketplace" item
+              already uses), never to the Business-scoped Product manager
+              below. */}
+          <Link
+            href="/marketplace"
+            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
+          >
+            Products
           </Link>
         </div>
       </section>
 
-      {/* 2. CREATE ON FINDMI — Account Hub Action Hierarchy pass. + Schedule
-          leads and is visually emphasized (filled aqua tile): it's the
-          single highest-value action, business-scoped to the SAME
-          Findmi Here destination the standalone card below also uses —
-          see BusinessScopedAction's own doc comment for why the
-          zero/one/many routing never changes across the two entry
-          points. Business/Venue/Product are also business-scoped (never
-          silently defaulting to the first managed business). Event is
-          last on purpose — creating/managing an Event is a distinct,
+      {/* 2. CREATE ON FINDMI — Account Hub Live QA pass. + Where I'll Be
+          leads, and now renders full-width via BusinessScopedAction's
+          "full" variant OUTSIDE the horizontally-scrolling row below —
+          see that component's own doc comment for why: the old
+          emphasized pill lived first inside that scrolling row, whose
+          overflow-x-auto silently clipped the "Which business?" chooser
+          and made the lead tile prone to swipe/tap ambiguity on mobile.
+          Business-scoped to the SAME Findmi Here destination the
+          standalone card below also uses. Business/Venue/Product (also
+          business-scoped, never silently defaulting to the first
+          managed business) keep their existing order in the scrolling
+          row, Event last — creating/managing an Event is a distinct,
           less frequent action from scheduling an existing Business's
           appearances (see the "What's the difference?" note below) —
           and still links to the existing /account/event/new, which
@@ -300,14 +314,16 @@ export default async function AccountHomePage({
           stays authoritative there, never re-decided here. */}
       <section className="mt-4">
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Create on Findmi</h2>
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-2">
           <BusinessScopedAction
-            emphasize
+            variant="full"
             businesses={myBusinesses}
             tab="findmi-here"
             icon={<PlusGlyph className="h-4 w-4" />}
-            label="Schedule"
+            label="Where I'll Be"
           />
+        </div>
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
           <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
           <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
@@ -319,14 +335,15 @@ export default async function AccountHomePage({
           pill: important, and reworked to clearly read and behave like a
           tappable action (filled-aqua icon badge instead of the earlier
           location-style pin/target look, bold "Add to your schedule →"
-          line). Invokes the SAME BusinessScopedAction routing as +
-          Schedule above — one business routes straight there, several
-          reveal a "Which business?" chooser, zero routes to Add Business
-          — never a second, parallel authorization decision. Selecting
-          an existing Event through this flow never grants Event
-          ownership; it only adds a Findmi Here appearance for the
-          Business. Product no longer lives in/under this card — it's
-          back in the Create on Findmi row above. */}
+          line). Headline lightly aligned with "+ Where I'll Be" above so
+          the two reinforce each other. Invokes the SAME BusinessScopedAction
+          routing as + Where I'll Be above — one business routes straight
+          there, several reveal a "Which business?" chooser, zero routes
+          to Add Business — never a second, parallel authorization
+          decision. Selecting an existing Event through this flow never
+          grants Event ownership; it only adds a Findmi Here appearance
+          for the Business. Product no longer lives in/under this card —
+          it's back in the Create on Findmi row above. */}
       <section className="mt-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
         <BusinessScopedAction
           variant="card"
@@ -335,7 +352,7 @@ export default async function AccountHomePage({
           icon={<PlusGlyph className="h-4 w-4" />}
           label="Findmi Here"
           eyebrow="Findmi Here"
-          headline="Add where your business will be next"
+          headline="Add where your business will be next."
           description="Markets, pop-ups, events, festivals, and other places you're appearing."
           cta="Add to your schedule →"
         />
