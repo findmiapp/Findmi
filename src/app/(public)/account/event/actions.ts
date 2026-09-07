@@ -14,6 +14,7 @@ import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
+import { claimEntityHandle } from "@/lib/handles";
 import { cancelEventAppearance, ensureEventAppearance } from "@/app/admin/(protected)/events/actions";
 import type { EventParticipationStatus } from "@/lib/types";
 
@@ -324,6 +325,30 @@ export async function updateMemberEventDetails(eventId: string, formData: FormDa
   revalidatePath(redirectPath);
   if (event && !event.is_demo) revalidatePath(`/event/${event.slug}`);
   redirect(appendQuery(redirectPath, { saved: "1" }));
+}
+
+// ── FindMi Global Handle Registry — Event username ───────────────────────
+// Same posture as Business/Location: never mandatory (an Event keeps its
+// existing /event/[slug] route either way), never auto-assigned from the
+// Event's own title, same requireEventManager authorization every other
+// Event Manager mutation already uses.
+export async function updateMemberEventHandle(eventId: string, formData: FormData) {
+  const redirectPath = `/account/event/${eventId}`;
+  const admin = await requireEventManager(eventId, redirectPath);
+
+  const usernameRaw = str(formData, "username");
+  if (!usernameRaw) redirect(appendQuery(redirectPath, { error: "Enter a username first." }));
+
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+
+  const result = await claimEntityHandle(admin, "event", eventId, usernameRaw, user?.id ?? null);
+  if (!result.ok) redirect(appendQuery(redirectPath, { error: result.error ?? "Couldn't save that username." }));
+
+  revalidatePath(redirectPath);
+  redirect(appendQuery(redirectPath, { handle_saved: "1" }));
 }
 
 // ── DATES ──────────────────────────────────────────────────────────────

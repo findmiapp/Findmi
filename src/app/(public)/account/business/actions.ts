@@ -15,6 +15,7 @@ import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
 import { attributeReferral } from "@/lib/commerce/referrals";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 
 const UPLOAD_BUCKET = "findmi-media";
@@ -429,6 +430,32 @@ async function requireAuthorizedBusinessMember(businessId: string, redirectPath:
   if (!admin) redirect(appendQuery(redirectPath, { error: "Server isn't configured." }));
 
   return admin;
+}
+
+// ── FindMi Global Handle Registry — Business username ───────────────────
+// Never mandatory (a business with no username keeps working at its
+// existing /business/[slug] URL — see resolveBusinessInquiryForm's own
+// posture on optional fields), never auto-generated from the business's
+// name/slug. requireAuthorizedBusinessMember is the SAME authorization
+// this file's every other business mutation uses — no separate/looser
+// check for handles.
+export async function updateBusinessHandle(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}`;
+  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
+
+  const usernameRaw = str(formData, "username");
+  if (!usernameRaw) redirect(appendQuery(redirectPath, { error: "Enter a username first." }));
+
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+
+  const result = await claimEntityHandle(admin, "business", businessId, usernameRaw, user?.id ?? null);
+  if (!result.ok) redirect(appendQuery(redirectPath, { error: result.error ?? "Couldn't save that username." }));
+
+  revalidatePath(redirectPath);
+  redirect(appendQuery(redirectPath, { handle_saved: "1" }));
 }
 
 // ── Referral Partner + Discount Foundation — partner-facing payout ──────

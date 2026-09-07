@@ -9,6 +9,8 @@ import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import { getPendingMarketRequestForEvent } from "@/lib/market-requests";
 import MarketAreaFields from "@/components/MarketAreaFields";
+import { getEntityHandle } from "@/lib/handles";
+import UsernameField from "@/components/UsernameField";
 import AccountNav from "../../AccountNav";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import { AccountRelationField } from "@/components/account/AccountRelationPicker";
@@ -22,6 +24,7 @@ import {
   removeParticipatingBusiness,
   updateMemberEventDate,
   updateMemberEventDetails,
+  updateMemberEventHandle,
   updateMemberEventImages,
   updateMemberEventLocation,
   updateMemberEventMarket,
@@ -126,13 +129,14 @@ export default async function ManageEventPage({
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
-  const [result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, addLocationHint] = await Promise.all([
+  const [result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, eventHandle, addLocationHint] = await Promise.all([
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
     getAllMarketsForAdmin(admin),
     getActiveMarketsWithAreaOptions(),
     getPendingMarketRequestForEvent(admin, id),
+    getEntityHandle(admin, "event", id),
     // Event Creation + Pending Review UX pass — "Add a Date" preserves its
     // own submitted location_id on a validation error (see
     // addMemberEventDate); this looks its name back up so the picker can
@@ -215,6 +219,31 @@ export default async function ManageEventPage({
       <div className="mt-5 flex flex-col gap-5">
         {tab === "overview" && (
           <>
+            {/* FindMi Global Handle Registry — same "not buried, never
+                mandatory, never auto-assigned from the title" posture as
+                Business/Location. An Event keeps working at its existing
+                /event/[slug] route regardless of whether one is set. */}
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
+              {eventHandle ? (
+                <p className="mt-2 text-sm text-ink/60">
+                  This event is live at <span className="font-semibold text-findmi-700">findmi.app/{eventHandle}</span>
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-ink/60">
+                  Claim a short, memorable Findmi URL for {event.name} — optional, and easy to promote.
+                </p>
+              )}
+              <form action={updateMemberEventHandle.bind(null, id)} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <UsernameField name="username" defaultValue={eventHandle} current={{ entityType: "event", entityId: id }} />
+                </div>
+                <button type="submit" className={`${primaryButtonClass} sm:w-fit sm:px-6`}>
+                  {eventHandle ? "Update" : "Claim"}
+                </button>
+              </form>
+            </div>
+
             {event.is_demo && (
               <div className={cardClass}>
                 <div className="flex flex-wrap items-center gap-2">

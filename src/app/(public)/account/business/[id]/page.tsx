@@ -31,8 +31,11 @@ import {
   updateBusinessLinks,
   updateBusinessProfile,
   updateMemberProduct,
+  updateBusinessHandle,
   updateOwnerAppearance,
 } from "../actions";
+import { getEntityHandle } from "@/lib/handles";
+import UsernameField from "@/components/UsernameField";
 import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
 import MemberProductActiveButton from "./MemberProductActiveButton";
@@ -271,7 +274,7 @@ export default async function ManageBusinessPage({
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
-  const [{ data: business }, categories, { data: businessCategoryRows }, { data: galleryRows }] = await Promise.all([
+  const [{ data: business }, categories, { data: businessCategoryRows }, { data: galleryRows }, businessHandle] = await Promise.all([
     admin
       .from("businesses")
       .select(
@@ -294,6 +297,7 @@ export default async function ManageBusinessPage({
       .select("url")
       .eq("business_id", id)
       .order("display_order", { ascending: true, nullsFirst: false }),
+    getEntityHandle(admin, "business", id),
   ]);
   if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
 
@@ -798,6 +802,34 @@ export default async function ManageBusinessPage({
                 )}
               </div>
             )}
+
+            {/* FindMi Global Handle Registry — deliberately early on
+                Overview (this pass's own "not buried deep in settings"
+                requirement), never mandatory: a business with no username
+                keeps working at its existing /business/[slug] URL. Never
+                auto-suggested from the business name — the field starts
+                blank until the owner explicitly types one. */}
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
+              {businessHandle ? (
+                <p className="mt-2 text-sm text-ink/60">
+                  Your business is live at{" "}
+                  <span className="font-semibold text-findmi-700">findmi.app/{businessHandle}</span>
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-ink/60">
+                  Claim a short, memorable Findmi URL for {business.name} — optional, and easy to promote.
+                </p>
+              )}
+              <form action={updateBusinessHandle.bind(null, id)} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <UsernameField name="username" defaultValue={businessHandle} current={{ entityType: "business", entityId: id }} />
+                </div>
+                <button type="submit" className={`${primaryButtonClass} sm:w-fit sm:px-6`}>
+                  {businessHandle ? "Update" : "Claim"}
+                </button>
+              </form>
+            </div>
 
             {/* Command Center V1 — Today is the most prominent operational
                 section: appearances (standalone or Event-linked, both

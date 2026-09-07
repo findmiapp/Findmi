@@ -54,19 +54,28 @@ export async function updateProfile(formData: FormData) {
   // avatar_url is intentionally not part of this form — the field is
   // hidden from the UI for now (no upload flow yet), so this update must
   // not touch it, or every save would silently null out any existing
-  // value. Same reasoning is why `username` is only added to the patch
-  // when the visitor actually typed one above.
-  if (username !== undefined) patch.username = username;
+  // value.
 
   const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
+  if (error) redirect(`/account/profile?error=${encodeURIComponent(error.message)}`);
 
-  if (error) {
-    // 23505 = unique_violation — profiles_username_unique_idx caught a
-    // case-insensitive collision with someone else's username. Never
-    // leak the raw Postgres error text (could hint at internals); a
-    // plain "not available" reads exactly like the reserved-name case.
-    const message = error.code === "23505" ? "That username is already taken." : error.message;
-    redirect(`/account/profile?error=${encodeURIComponent(message)}`);
+  // FindMi Global Handle Registry pass — username is no longer a plain
+  // column update: claim_person_handle() atomically upserts the central
+  // handles registry (the real cross-entity uniqueness guarantee — a
+  // Person can no longer claim what a Business/Location/Event already
+  // holds, or vice versa) AND keeps profiles.username in sync so the
+  // existing public_profiles/getPublicProfileByUsername read path needs
+  // no changes at all. Still only attempted when the visitor actually
+  // typed one above — leaving the field blank never touches an existing
+  // username.
+  if (username !== undefined) {
+    const { error: handleError } = await supabase.rpc("claim_person_handle", { p_user_id: user.id, p_handle: username });
+    if (handleError) {
+      // 23505 = unique_violation on the registry's global handle index —
+      // never leak the raw Postgres error text.
+      const message = handleError.code === "23505" ? "That username was just taken. Try another one." : "Couldn't save that username. Please try again.";
+      redirect(`/account/profile?error=${encodeURIComponent(message)}`);
+    }
   }
 
   revalidatePath("/account/profile");

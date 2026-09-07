@@ -12,6 +12,7 @@ import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { claimEntityHandle } from "@/lib/handles";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -245,6 +246,29 @@ export async function createMemberLocation(formData: FormData) {
  * unlike Business/Event which allow owner renames); an owner who needs
  * their venue's name corrected can reach the founder the same way any
  * other admin-only change is requested. */
+// ── FindMi Global Handle Registry — Venue username ───────────────────────
+// Same posture as updateBusinessHandle in account/business/actions.ts:
+// never mandatory, never auto-generated, same requireLocationManager
+// authorization every other Location Manager mutation already uses.
+export async function updateMemberLocationHandle(locationId: string, formData: FormData) {
+  const redirectPath = `/account/location/${locationId}`;
+  const admin = await requireLocationManager(locationId, redirectPath);
+
+  const usernameRaw = str(formData, "username");
+  if (!usernameRaw) redirect(appendQuery(redirectPath, { error: "Enter a username first." }));
+
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+
+  const result = await claimEntityHandle(admin, "location", locationId, usernameRaw, user?.id ?? null);
+  if (!result.ok) redirect(appendQuery(redirectPath, { error: result.error ?? "Couldn't save that username." }));
+
+  revalidatePath(redirectPath);
+  redirect(appendQuery(redirectPath, { handle_saved: "1" }));
+}
+
 export async function updateMemberLocationDetails(locationId: string, formData: FormData) {
   const redirectPath = `/account/location/${locationId}?tab=details`;
   const admin = await requireLocationManager(locationId, redirectPath);

@@ -17,9 +17,12 @@ import MemberLocationGalleryField from "./MemberLocationGalleryField";
 import {
   updateMemberLocationContact,
   updateMemberLocationDetails,
+  updateMemberLocationHandle,
   updateMemberLocationMarket,
   updateMemberLocationPhotos,
 } from "../actions";
+import { getEntityHandle } from "@/lib/handles";
+import UsernameField from "@/components/UsernameField";
 
 export const metadata: Metadata = {
   title: "Manage Venue",
@@ -85,11 +88,12 @@ export default async function ManageLocationPage({
   const location = await getAdminLocationById(id);
   if (!location) redirect(errorRedirectUrl("/account", "Venue not found."));
 
-  const [markets, pendingMarketRequest, galleryImages, happenings] = await Promise.all([
+  const [markets, pendingMarketRequest, galleryImages, happenings, locationHandle] = await Promise.all([
     getAllMarketsForAdmin(admin),
     getPendingMarketRequestForLocation(admin, id),
     getLocationGalleryImages(id),
     getUpcomingAtLocation({ id, name: location.name }),
+    getEntityHandle(admin, "location", id),
   ]);
 
   // Venue owner -> Add Event access UX (Stage 4) — Location ownership
@@ -192,6 +196,29 @@ export default async function ManageLocationPage({
                 Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
               </p>
             )}
+          </div>
+        )}
+
+        {tab === "overview" && (
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
+            {locationHandle ? (
+              <p className="mt-2 text-sm text-ink/60">
+                This venue is live at <span className="font-semibold text-findmi-700">findmi.app/{locationHandle}</span>
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-ink/60">
+                Claim a short, memorable Findmi URL for {location.name} — optional, and easy to promote.
+              </p>
+            )}
+            <form action={updateMemberLocationHandle.bind(null, id)} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <UsernameField name="username" defaultValue={locationHandle} current={{ entityType: "location", entityId: id }} />
+              </div>
+              <button type="submit" className={`${primaryButtonClass} sm:w-fit sm:px-6`}>
+                {locationHandle ? "Update" : "Claim"}
+              </button>
+            </form>
           </div>
         )}
 

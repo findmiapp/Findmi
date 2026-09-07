@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
+import UsernameField from "@/components/UsernameField";
 import AccountNav from "../AccountNav";
 import { updateProfile, signOut } from "./actions";
 
@@ -88,21 +89,8 @@ export default async function ProfilePage({
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Username</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-ink/40">@</span>
-                <input
-                  type="text"
-                  name="username"
-                  defaultValue={profile?.username ?? ""}
-                  placeholder={profile?.username ? undefined : "choose_a_username"}
-                  pattern="[a-z0-9_]{3,20}"
-                  maxLength={20}
-                  className={inputClass}
-                />
-              </div>
-              <span className="mt-1 block text-xs text-ink/45">
-                3-20 characters: lowercase letters, numbers, underscores. Leave blank to keep things as they are.
-              </span>
+              <UsernameField name="username" defaultValue={profile?.username} current={{ entityType: "person", entityId: user.id }} />
+              <span className="mt-1 block text-xs text-ink/45">Leave blank to keep things as they are.</span>
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Short bio (optional)</span>
