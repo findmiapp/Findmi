@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { formatDateShort } from "@/lib/format";
+import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 import { redeemProInvite } from "../actions";
 
 export const metadata: Metadata = {
@@ -17,6 +19,8 @@ export const dynamic = "force-dynamic";
 interface OwnedBusiness {
   id: string;
   name: string;
+  city: string | null;
+  state: string | null;
 }
 
 /**
@@ -73,11 +77,24 @@ export default async function RedeemInvitePage({
     : { data: null };
 
   const now = new Date();
-  const inviteValid =
-    !!invite &&
-    invite.is_active &&
-    (!invite.expires_at || new Date(invite.expires_at) > now) &&
-    (invite.max_redemptions === null || invite.redemption_count < invite.max_redemptions);
+
+  // Invite Self-Service Polish pass — distinguish WHY an invite doesn't
+  // work using only fields already fetched above (is_active/expires_at/
+  // max_redemptions/redemption_count), rather than one generic message
+  // for every cause. "not_found" (no row at all, e.g. a mistyped code) is
+  // the only case treated as a mistake the visitor might be able to fix
+  // themselves — the other three are correctly-typed, real invites in a
+  // terminal state, so the fix is a new invite from Findmi, not a retry.
+  const invalidReason: "not_found" | "inactive" | "expired" | "exhausted" | null = !invite
+    ? "not_found"
+    : !invite.is_active
+      ? "inactive"
+      : invite.expires_at && new Date(invite.expires_at) <= now
+        ? "expired"
+        : invite.max_redemptions !== null && invite.redemption_count >= invite.max_redemptions
+          ? "exhausted"
+          : null;
+  const inviteValid = invalidReason === null;
 
   // ── Success screen — post-redemption, own dedicated state ─────────────
   if (success && business_id && business_name && granted_until) {
@@ -92,19 +109,32 @@ export default async function RedeemInvitePage({
     return (
       <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
         <div className="rounded-3xl border border-findmi/30 bg-findmi-50 p-6 text-center sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro Activated</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro is active</p>
           <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
             {business_name} now has Pro access
           </h1>
           <p className="mt-2 text-sm text-ink/70">Pro access runs through {formatDateShort(granted_until)}.</p>
 
+          {/* Invite Self-Service Polish pass — a compact, honest recap of
+              what Pro actually unlocks (matching the real gated tabs in
+              account/business/[id]/page.tsx: Gallery, Products, Links &
+              Contact, plus the full Findmi Here schedule) rather than a
+              generic "you're all set." No tour/modal — just this list. */}
+          <ul className="mt-4 flex flex-col gap-1.5 text-left text-sm text-ink/70">
+            <ProUnlockItem>Complete your full business profile</ProUnlockItem>
+            <ProUnlockItem>Add photos to your Gallery</ProUnlockItem>
+            <ProUnlockItem>Add Products</ProUnlockItem>
+            <ProUnlockItem>Add website, socials &amp; contact links</ProUnlockItem>
+            <ProUnlockItem>Build out your full Findmi Here schedule</ProUnlockItem>
+          </ul>
+
           {/* Never implies the public listing itself has been approved —
               publication/moderation state is shown separately, honestly,
-              and only when it's actually still pending. */}
+              and only when it's actually still pending. Framed as a normal
+              next step, not a blocker: they can keep working either way. */}
           {pendingReview && (
-            <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              This business is still pending review before it appears publicly on Findmi — Pro access doesn&rsquo;t
-              change that, and Findmi will review it separately.
+            <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-800">
+              Your business is still in review. You can keep building your profile while we review it.
             </p>
           )}
 
@@ -112,7 +142,7 @@ export default async function RedeemInvitePage({
             href={`/account/business/${business_id}`}
             className="mt-6 flex h-12 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
-            Manage Business
+            Finish Your Business
           </Link>
         </div>
       </div>
@@ -120,20 +150,43 @@ export default async function RedeemInvitePage({
   }
 
   if (!inviteValid) {
+    const { heading, body } =
+      invalidReason === "expired"
+        ? { heading: "This invite has expired", body: "Contact Findmi if you believe this is a mistake." }
+        : invalidReason === "exhausted"
+          ? {
+              heading: "This invite has already been fully redeemed",
+              body: "Contact Findmi if you believe this is a mistake.",
+            }
+          : invalidReason === "inactive"
+            ? { heading: "This invite is no longer active", body: "Contact Findmi if you believe this is a mistake." }
+            : {
+                heading: "We couldn't find this invite",
+                body: "Check the link or code and try again below.",
+              };
     return (
       <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
         <div className="rounded-3xl border border-black/10 bg-white p-6 text-center sm:p-8">
-          <h1 className="font-display text-xl font-bold tracking-tight text-ink">This invite isn&rsquo;t valid</h1>
-          <p className="mt-2 text-sm text-ink/60">
-            This code may have expired, been deactivated, or already been fully redeemed. Contact Findmi if you
-            believe this is a mistake.
-          </p>
-          <Link
-            href="/join"
-            className="mt-6 inline-flex h-11 items-center justify-center rounded-full border border-black/10 px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
-          >
-            Back to Join Findmi
-          </Link>
+          <h1 className="font-display text-xl font-bold tracking-tight text-ink">{heading}</h1>
+          <p className="mt-2 text-sm text-ink/60">{body}</p>
+
+          {/* "not_found" is the one case that might be a typo rather than
+              a genuinely spent/inactive invite — offer a real retry
+              instead of just a link back. The other three are confirmed,
+              real invites in a terminal state, so retrying the same code
+              here would never help. */}
+          {invalidReason === "not_found" ? (
+            <div className="mt-6 text-left">
+              <ProInviteCodeEntry returnTo="/join" heading="Enter your invite code" />
+            </div>
+          ) : (
+            <Link
+              href="/join"
+              className="mt-6 inline-flex h-11 items-center justify-center rounded-full border border-black/10 px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
+            >
+              Back to Join Findmi
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -226,13 +279,14 @@ export default async function RedeemInvitePage({
   // pattern account/page.tsx already uses, no service-role needed.
   const { data: membershipRows } = await sessionSupabase
     .from("business_members")
-    .select("business_id, businesses(id, name)")
+    .select("business_id, businesses(id, name, city, state)")
     .eq("user_id", user.id);
-  type MembershipRow = { business_id: string; businesses: { id: string; name: string } | { id: string; name: string }[] | null };
+  type MembershipBusiness = { id: string; name: string; city: string | null; state: string | null };
+  type MembershipRow = { business_id: string; businesses: MembershipBusiness | MembershipBusiness[] | null };
   const ownedBusinesses: OwnedBusiness[] = ((membershipRows ?? []) as MembershipRow[])
     .map((m) => {
       const b = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
-      return b ? { id: b.id, name: b.name } : null;
+      return b ? { id: b.id, name: b.name, city: b.city, state: b.state } : null;
     })
     .filter((b): b is OwnedBusiness => Boolean(b));
 
@@ -302,15 +356,26 @@ export default async function RedeemInvitePage({
             <>
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink/50">Apply to which business?</p>
               <div className="flex flex-col gap-2">
-                {ownedBusinesses.map((b, i) => (
-                  <label
-                    key={b.id}
-                    className="flex cursor-pointer items-center gap-2.5 rounded-2xl border border-black/10 bg-white px-4 py-3 transition has-[:checked]:border-findmi has-[:checked]:ring-1 has-[:checked]:ring-findmi/40"
-                  >
-                    <input type="radio" name="business_id" value={b.id} defaultChecked={i === 0} className="h-4 w-4 accent-findmi" />
-                    <span className="text-sm font-semibold text-ink">{b.name}</span>
-                  </label>
-                ))}
+                {ownedBusinesses.map((b, i) => {
+                  // Invite Self-Service Polish pass — lightweight
+                  // disambiguation for accounts with multiple businesses.
+                  // Uses only fields already fetched above (city/state) —
+                  // no new query/schema. Omitted entirely when neither is
+                  // set, rather than rendering an empty line.
+                  const location = [b.city, b.state].filter(Boolean).join(", ");
+                  return (
+                    <label
+                      key={b.id}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-2xl border border-black/10 bg-white px-4 py-3 transition has-[:checked]:border-findmi has-[:checked]:ring-1 has-[:checked]:ring-findmi/40"
+                    >
+                      <input type="radio" name="business_id" value={b.id} defaultChecked={i === 0} className="h-4 w-4 accent-findmi" />
+                      <span className="flex flex-col">
+                        <span className="text-sm font-semibold text-ink">{b.name}</span>
+                        {location && <span className="text-xs text-ink/45">{location}</span>}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
               <button
                 type="submit"
@@ -323,5 +388,16 @@ export default async function RedeemInvitePage({
         </form>
       </div>
     </div>
+  );
+}
+
+function ProUnlockItem({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-1.5">
+      <svg viewBox="0 0 20 20" fill="none" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-findmi-700">
+        <path d="M4 10.5l3.5 3.5L16 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span>{children}</span>
+    </li>
   );
 }

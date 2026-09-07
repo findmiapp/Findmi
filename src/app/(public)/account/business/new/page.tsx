@@ -111,10 +111,16 @@ export default async function AddBusinessPage({
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">My Findmi</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add a Business</h1>
-      <p className="mt-2 text-sm text-ink/60">
-        You&rsquo;ll own and manage it right away, and Findmi will review it before it appears in discovery. Choose
-        Free or Pro below — Free never requires payment.
-      </p>
+      {hasInvite ? (
+        <p className="mt-2 text-sm text-ink/60">
+          You&rsquo;ll own and manage it right away, and Findmi will review it before it appears in discovery.
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-ink/60">
+          You&rsquo;ll own and manage it right away, and Findmi will review it before it appears in discovery. Choose
+          Free or Pro below — Free never requires payment.
+        </p>
+      )}
 
       {duplicateSlug ? (
         <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
@@ -293,9 +299,12 @@ export default async function AddBusinessPage({
             // /redeem/[code] to apply the invite — never to Stripe.
             <>
               <input type="hidden" name="invite" value={invite} />
-              <div className="rounded-2xl border border-findmi/30 bg-findmi-50 p-4 text-sm text-findmi-700">
-                You have a complimentary Findmi Pro invite — you&rsquo;ll apply it to this business right after it&rsquo;s
-                created. No payment required.
+              <div className="rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
+                <p className="text-sm font-bold text-findmi-700">Your Findmi Pro invite is ready.</p>
+                <p className="mt-1.5 text-sm text-findmi-700">
+                  First, add the business you want to use with Findmi below. We&rsquo;ll apply your complimentary Pro
+                  access to it automatically once it&rsquo;s created — no payment required.
+                </p>
               </div>
             </>
           ) : (
