@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { login } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +26,21 @@ export default async function AdminLoginPage({
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-6">
       <div className="w-full max-w-sm">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi</p>
+        {/* Admin Navigation Polish pass — /admin/login sits outside the
+            protected admin shell (admin/(protected)/layout.tsx), which is
+            the only place AdminHeaderControls' own Back/Home controls
+            render — so unlike every page past the password gate, this
+            one had no way back to the public site at all. Plain text
+            Link, same muted-then-darkens-on-hover treatment as
+            AdminHeaderControls' own controls, placed above the identity
+            block so it reads as "leave this screen," not a form field. */}
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1 text-sm font-semibold text-ink/50 transition hover:text-ink"
+        >
+          ← Back to FindMi
+        </Link>
+        <p className="mt-4 text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi</p>
         <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">
           Admin
         </h1>
