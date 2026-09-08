@@ -1,6 +1,5 @@
 import { getAdminSupabase } from "./supabase-admin";
 import { getAdminUserCount } from "./user-queries";
-import { getEventIdsWithOwners } from "./queries";
 
 // Admin Dashboard Redesign — the /admin homepage's own data, kept
 // separate from lib/admin/queries.ts's getDashboardCounts() (still used
@@ -45,13 +44,11 @@ export interface DashboardNeedsAttention {
    * content approval and Marketplace approval are independent decisions.
    * Same queue admin/products' ?status=marketplace_review filter uses. */
   pendingMarketplaceReviews: number;
-  /** Admin Needs Review pass — events with is_demo=true that also have a
-   * real event_members row (i.e. created via native self-service, not
-   * founder/admin/seed-created) — same needsReview=true filter
-   * admin/events now offers (getAdminEvents). Events has no
-   * publication_status column; this is the only existing-schema way to
-   * separate a real organizer's just-submitted event from permanent
-   * is_demo=true seed/demo content. */
+  /** Event Rejection State pass — events.publication_status='pending_review'
+   * — same needsReview=true filter admin/events offers (getAdminEvents).
+   * Independent of is_demo, which stays the actual public-visibility gate;
+   * a permanent seed/demo event stays publication_status='live' (the
+   * column default) so it's never counted here. */
   pendingEventReviews: number;
   /** Admin Where I'll Be Review Inbox pass — appearances.admin_reviewed_at
    * IS NULL, for real (non-demo) businesses. Deliberately named
@@ -113,17 +110,6 @@ export async function getEventOpportunityCount(): Promise<number | null> {
   return count ?? 0;
 }
 
-async function countPendingEventReviews(supabase: NonNullable<ReturnType<typeof getAdminSupabase>>): Promise<number> {
-  const ownedEventIds = await getEventIdsWithOwners(supabase);
-  if (ownedEventIds.length === 0) return 0;
-  const { count } = await supabase
-    .from("events")
-    .select("id", { count: "exact", head: true })
-    .eq("is_demo", true)
-    .in("id", ownedEventIds);
-  return count ?? 0;
-}
-
 export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttention | null> {
   const supabase = getAdminSupabase();
   if (!supabase) return null;
@@ -161,7 +147,10 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
       .select("id", { count: "exact", head: true })
       .or("moderation_status.eq.pending_review,pending_changes.not.is.null"),
     supabase.from("products").select("id", { count: "exact", head: true }).eq("marketplace_status", "submitted"),
-    countPendingEventReviews(supabase),
+    // Event Rejection State pass — was a two-query is_demo+event_members
+    // inference (countPendingEventReviews); now a plain publication_status
+    // count, same shape as pendingBusinessReviews right above.
+    supabase.from("events").select("id", { count: "exact", head: true }).eq("publication_status", "pending_review"),
     supabase
       .from("appearances")
       .select("id, businesses!inner(is_demo)", { count: "exact", head: true })
@@ -176,7 +165,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     pendingBusinessReviews: pendingBusinessReviews.count ?? 0,
     pendingProductReviews: pendingProductReviews.count ?? 0,
     pendingMarketplaceReviews: pendingMarketplaceReviews.count ?? 0,
-    pendingEventReviews,
+    pendingEventReviews: pendingEventReviews.count ?? 0,
     unreviewedAppearances: unreviewedAppearances.count ?? 0,
   };
 }

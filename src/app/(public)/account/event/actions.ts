@@ -351,6 +351,32 @@ export async function updateMemberEventHandle(eventId: string, formData: FormDat
   redirect(appendQuery(redirectPath, { handle_saved: "1" }));
 }
 
+// ── REVIEW STATUS ─────────────────────────────────────────────────────────
+/** Event Rejection State pass — the smallest safe resubmission action: a
+ * rejected event's owner can send it back to pending_review after making
+ * changes. Deliberately does NOT touch is_demo (public visibility is
+ * unaffected either way) and deliberately does NOT fire automatically on
+ * every edit — only this explicit action moves rejected → pending_review.
+ * Guarded by the same compound WHERE clause idiom the admin actions use
+ * (.eq("publication_status", "rejected")) so a duplicate click or a stale
+ * page is a harmless no-op rather than an error. */
+export async function submitEventForReview(eventId: string) {
+  const redirectPath = `/account/event/${eventId}`;
+  const admin = await requireEventManager(eventId, redirectPath);
+
+  const { error } = await admin
+    .from("events")
+    .update({ publication_status: "pending_review" })
+    .eq("id", eventId)
+    .eq("publication_status", "rejected");
+  if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  revalidatePath(redirectPath);
+  revalidatePath("/admin/events");
+  revalidatePath("/admin");
+  redirect(appendQuery(redirectPath, { saved: "1" }));
+}
+
 // ── DATES ──────────────────────────────────────────────────────────────
 // Owner-facing "Dates" — the event's own primary start/end plus any
 // additional event_occurrences rows. Deliberately hides the word

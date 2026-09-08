@@ -798,40 +798,30 @@ export async function copyOccurrenceVendors(eventId: string, targetOccurrenceId:
 }
 
 /**
- * Pending Review Decision Panel — Business + Event Pending Review UX pass.
- * Events have no publication_status/moderation column at all (see
- * EventForm.tsx's own "Published" checkbox comment and
- * getAdminEvents/getDashboardNeedsAttention's needsReview definition):
- * is_demo is the ONLY column that gates public visibility (getEventBySlug
- * filters solely on is_demo=false), so it genuinely IS the authoritative
- * approval mechanism here — not a substitute standing in for a separate
- * moderation state that doesn't exist. Approving therefore performs
- * exactly the one transition the existing "Published" checkbox already
- * performs (is_demo -> false), reusing the identical column saveEvent
- * writes — nothing new.
+ * Pending Review Decision Panel — Business + Event Pending Review UX pass,
+ * extended by the Event Rejection State pass. Events now carry an explicit
+ * publication_status ('pending_review' | 'live' | 'rejected' — see the
+ * add_event_publication_status migration), independent of is_demo, which
+ * remains the actual public-visibility gate (getEventBySlug and every
+ * other public query still filter solely on is_demo=false, completely
+ * unchanged). Approving performs BOTH the publication_status transition
+ * AND the same is_demo->false transition the "Published" checkbox already
+ * performs — a live event genuinely needs both: is_demo=false for public
+ * queries to find it, publication_status='live' as the authoritative
+ * review-decision record.
  *
- * There is deliberately NO rejectEventListing here. A real "rejected,
- * decided-against" state distinct from "still pending" cannot be
- * represented with is_demo alone (leaving is_demo=true is indistinguishable
- * from not-yet-reviewed, so it could never disappear from the pending
- * list/count the way a real reject must), and every schema-free
- * alternative is blocked by this pass's own constraints (deleting the
- * event violates "rejection doesn't delete the entity"; removing its
- * event_members row would alter ownership). Representing a real Reject
- * would need a new column — out of scope for this pass per its explicit
- * "STOP and report before changing anything" instruction. See the final
- * report.
- *
- * Guarded by .eq("is_demo", true) so a duplicate click/stale tab is a
- * harmless no-op — the second UPDATE matches zero rows.
+ * Guarded by .eq("publication_status", "pending_review") — more precise
+ * than the old is_demo=true guard, and the same reason a duplicate click/
+ * stale tab is still a harmless no-op (the second UPDATE matches zero
+ * rows).
  */
 export async function approveEventListing(id: string) {
   const supabase = await requireAdminSupabase();
   const { data: event, error } = await supabase
     .from("events")
-    .update({ is_demo: false })
+    .update({ is_demo: false, publication_status: "live" })
     .eq("id", id)
-    .eq("is_demo", true)
+    .eq("publication_status", "pending_review")
     .select("slug")
     .maybeSingle();
   if (error) redirect(errorRedirectUrl(`/admin/events/${id}`, error.message));
@@ -847,4 +837,36 @@ export async function approveEventListing(id: string) {
   // above, not /find, which is a separate temporal-discovery feature.
   revalidatePath("/events");
   redirect("/admin/events?needsReview=1&decided=approved");
+}
+
+/**
+ * Event Rejection State pass — the new Reject action, made possible by the
+ * explicit publication_status column above. Sets publication_status=
+ * 'rejected' ONLY — never touches is_demo (stays true/non-public exactly
+ * as it already was while pending review — a rejected event was never
+ * published, so there's nothing to un-publish), never deletes the event
+ * or any of its dates/location/participating businesses/appearances,
+ * never touches event_members (ownership), never touches any Event-
+ * management entitlement (that's account_entitlements/business plan_tier,
+ * a completely separate system this action doesn't read or write). The
+ * owner keeps full edit access to a rejected event (requireEventMember()
+ * in account/event/actions.ts is untouched) and can resubmit it via the
+ * new submitEventForReview action there.
+ *
+ * Guarded by .eq("publication_status", "pending_review") — same
+ * duplicate-click safety as approveEventListing.
+ */
+export async function rejectEventListing(id: string) {
+  const supabase = await requireAdminSupabase();
+  const { error } = await supabase
+    .from("events")
+    .update({ publication_status: "rejected" })
+    .eq("id", id)
+    .eq("publication_status", "pending_review");
+  if (error) redirect(errorRedirectUrl(`/admin/events/${id}`, error.message));
+
+  revalidatePath("/admin/events");
+  revalidatePath("/admin");
+  revalidatePath(`/admin/events/${id}`);
+  redirect("/admin/events?needsReview=1&decided=rejected");
 }

@@ -8,6 +8,7 @@ import type {
   CategoryKind,
   EventOccurrence,
   EventParticipationStatus,
+  EventPublicationStatus,
   FindmiEvent,
   FindmiLocation,
   Product,
@@ -20,7 +21,10 @@ import type {
 // by it). Extending here rather than editing types.ts keeps that file
 // untouched for the rest of the app.
 export type AdminBusiness = Business & { is_demo: boolean };
-export type AdminEvent = FindmiEvent & { is_demo: boolean };
+// Event Rejection State pass — publication_status added alongside is_demo,
+// same "admin/owner-facing only" reasoning; see EventPublicationStatus's
+// own comment in lib/types.ts.
+export type AdminEvent = FindmiEvent & { is_demo: boolean; publication_status: EventPublicationStatus };
 export type AdminLocation = FindmiLocation & { is_demo: boolean };
 export type AdminAppearance = Appearance;
 export type AdminProduct = Product;
@@ -183,54 +187,15 @@ export interface EventListFilters {
   when?: "upcoming" | "past";
   vendorAppsOpen?: boolean;
   pendingApplications?: boolean;
-  /** Admin Needs Review pass — events has no publication_status column
-   * (unlike businesses); is_demo is its only publish toggle. But is_demo
-   * alone can't distinguish a real organizer's just-submitted event from
-   * permanent seed/demo content (both are is_demo=true) — admin's own
-   * saveEvent() never creates an event_members row, so ONLY events
-   * created via the native create_owned_event() self-service RPC ever
-   * have one. "Needs review" is therefore is_demo=true AND the event has
-   * at least one event_members row (a real organizer-owned event still
-   * awaiting founder publish) — existing columns/tables only, no new
-   * schema. See getEventIdsWithOwners below. */
+  /** Event Rejection State pass — "needs review" is now simply
+   * publication_status='pending_review', the same explicit column every
+   * other check in this file reads. Replaces the old is_demo + event_
+   * members-existence inference (see events.publication_status's own
+   * comment on the migration) — a permanent demo/seed event stays
+   * publication_status='live' (the column default) even though is_demo
+   * keeps it non-public, so it was never miscounted before and still
+   * isn't now. */
   needsReview?: boolean;
-}
-
-/** Distinct event ids that have at least one event_members row — i.e.
- * events created through native self-service (create_owned_event()) or
- * later claimed, as opposed to founder/admin/seed-created events, which
- * never get an event_members row (admin's saveEvent() never writes to
- * that table). Shared by getAdminEvents({needsReview}) and the dashboard's
- * own pendingEventReviews count so they can never drift out of sync. */
-export async function getEventIdsWithOwners(supabase: SupabaseClient): Promise<string[]> {
-  const { data } = await supabase.from("event_members").select("event_id");
-  return Array.from(new Set((data ?? []).map((r) => r.event_id as string)));
-}
-
-/** Page-level convenience wrapper (acquires its own admin client) — used
- * by admin/events/page.tsx to badge each row "In Review" (is_demo=true +
- * owned) vs "Demo" (is_demo=true, no owner — permanent seed/admin-draft
- * content) without threading a client through the page. */
-export async function getEventIdsWithOwnersSet(): Promise<Set<string>> {
-  const supabase = getAdminSupabase();
-  if (!supabase) return new Set();
-  return new Set(await getEventIdsWithOwners(supabase));
-}
-
-/** Admin Pending Review Decision UX pass — the same "does this event have
- * a real event_members owner" check getEventIdsWithOwners answers for the
- * whole table, scoped to just ONE event for the single-entity edit page
- * (a head-only existence count, not a fetch-everything-then-filter-in-JS
- * pass over the full table). Used together with the event's own is_demo
- * to compute the exact same "needsReview" definition getAdminEvents/
- * getDashboardNeedsAttention already use, so the edit page's decision
- * panel can never disagree with the Command Center count or the pending
- * list about whether this event is actually pending. */
-export async function eventHasOwner(id: string): Promise<boolean> {
-  const supabase = getAdminSupabase();
-  if (!supabase) return false;
-  const { count } = await supabase.from("event_members").select("id", { count: "exact", head: true }).eq("event_id", id);
-  return (count ?? 0) > 0;
 }
 
 export async function getAdminEvents(filters: EventListFilters = {}): Promise<AdminEvent[]> {
@@ -257,9 +222,7 @@ export async function getAdminEvents(filters: EventListFilters = {}): Promise<Ad
   }
 
   if (filters.needsReview) {
-    const ownedEventIds = await getEventIdsWithOwners(supabase);
-    if (ownedEventIds.length === 0) return [];
-    let query = supabase.from("events").select("*").eq("is_demo", true).in("id", ownedEventIds);
+    let query = supabase.from("events").select("*").eq("publication_status", "pending_review");
     if (filters.q) {
       const term = `%${filters.q}%`;
       query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);

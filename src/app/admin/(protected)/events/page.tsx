@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getAdminEvents, getEventIdsWithOwnersSet } from "@/lib/admin/queries";
+import { getAdminEvents } from "@/lib/admin/queries";
 import { formatDateRange } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -23,21 +23,13 @@ export default async function AdminEventsPage({
   const whenFilter = when === "upcoming" || when === "past" ? when : undefined;
   const needsReviewOnly = needsReview === "1";
 
-  // Admin Needs Review pass — ownedEventIds badges every row "In Review"
-  // (is_demo=true + has a real event_members owner) vs "Demo" (is_demo=
-  // true, no owner — permanent seed/admin-draft content), matching the
-  // exact same needsReview filter's own definition (getAdminEvents),
-  // so the badge and the filter can never disagree about what counts.
-  const [events, ownedEventIds] = await Promise.all([
-    getAdminEvents({
-      q,
-      when: whenFilter,
-      vendorAppsOpen: vendorApps === "1",
-      pendingApplications: pending === "1",
-      needsReview: needsReviewOnly,
-    }),
-    getEventIdsWithOwnersSet(),
-  ]);
+  const events = await getAdminEvents({
+    q,
+    when: whenFilter,
+    vendorAppsOpen: vendorApps === "1",
+    pendingApplications: pending === "1",
+    needsReview: needsReviewOnly,
+  });
 
   return (
     <div>
@@ -51,14 +43,20 @@ export default async function AdminEventsPage({
         </Link>
       </div>
 
-      {/* Admin Pending Review Decision UX pass — the "return naturally to
-          the review queue" success state after Approve on the edit page.
-          The approved event itself is already gone from this list by the
-          time this renders (needsReview=1 filter, same authoritative
-          is_demo+owner definition the decision panel wrote to). */}
+      {/* Admin Pending Review Decision UX pass, extended by Event Rejection
+          State — the "return naturally to the review queue" success state
+          after Approve/Reject on the edit page. The decided event itself
+          is already gone from this list by the time this renders
+          (needsReview=1 filter, same authoritative publication_status the
+          decision panel wrote to). */}
       {decided === "approved" && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           Event approved and now live.
+        </p>
+      )}
+      {decided === "rejected" && (
+        <p className="mt-4 rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 text-sm text-ink/70">
+          Event rejected.
         </p>
       )}
 
@@ -108,19 +106,26 @@ export default async function AdminEventsPage({
           <p className="text-sm text-ink/50">No events found.</p>
         ) : (
           events.map((e) => {
-            // Admin Needs Review pass — events has no publication_status
-            // column, so "In Review" (a real organizer's submission, still
-            // awaiting founder publish) is distinguished from plain "Demo"
-            // (permanent seed/admin-draft content) by whether the event
-            // has a real event_members owner — same definition the
-            // needsReview filter/count above use.
-            const status = !e.is_demo ? "Live" : ownedEventIds.has(e.id) ? "In Review" : "Demo";
+            // Event Rejection State pass — badge now reads the explicit
+            // publication_status column directly, same authoritative
+            // source the needsReview filter/count above use — no more
+            // event_members-ownership inference.
+            const status =
+              !e.is_demo
+                ? "Live"
+                : e.publication_status === "pending_review"
+                  ? "In Review"
+                  : e.publication_status === "rejected"
+                    ? "Rejected"
+                    : "Demo";
             const statusClass =
               status === "Live"
                 ? "bg-findmi-50 text-findmi-700"
                 : status === "In Review"
                   ? "bg-amber-100 text-amber-800"
-                  : "bg-black/[0.06] text-ink/50";
+                  : status === "Rejected"
+                    ? "bg-red-50 text-red-700"
+                    : "bg-black/[0.06] text-ink/50";
             return (
               <Link
                 key={e.id}

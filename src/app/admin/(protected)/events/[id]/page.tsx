@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
-  eventHasOwner,
   getAdminEventById,
   getAdminLocations,
   getAdminOccurrenceVendorRosters,
@@ -14,7 +13,7 @@ import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import PendingReviewPanel from "@/components/admin/PendingReviewPanel";
 import EventForm from "../EventForm";
-import { approveEventListing } from "../actions";
+import { approveEventListing, rejectEventListing } from "../actions";
 
 // User Identity + Follow Foundation pass — no organizer/member management
 // SURFACE exists for events yet (event_members is schema-only, populated
@@ -60,13 +59,15 @@ export default async function EditEventPage({
   const vendorRostersByOccurrence = await getAdminOccurrenceVendorRosters(result.occurrences.map((o) => o.id));
   const publicHref = !result.event.is_demo ? `/event/${result.event.slug}` : null;
   const followerCount = await getEventFollowerCount(id);
-  // Admin Pending Review Decision UX pass — the EXACT SAME "needsReview"
-  // definition getAdminEvents({needsReview}) and getDashboardNeedsAttention
-  // already use (is_demo=true AND a real event_members owner exists), so
-  // this page's decision panel can never disagree with the Command Center
-  // count or the pending list about whether this event is actually pending.
-  const needsReview = result.event.is_demo && (await eventHasOwner(id));
+  // Event Rejection State pass — the EXACT SAME "needsReview" definition
+  // getAdminEvents({needsReview}) and getDashboardNeedsAttention already use
+  // (publication_status === "pending_review"), so this page's decision panel
+  // can never disagree with the Command Center count or the pending list
+  // about whether this event is actually pending.
+  const needsReview = result.event.publication_status === "pending_review";
+  const isRejected = result.event.publication_status === "rejected";
   const approveAction = approveEventListing.bind(null, id);
+  const rejectAction = rejectEventListing.bind(null, id);
 
   return (
     <div>
@@ -92,23 +93,25 @@ export default async function EditEventPage({
       {!needsReview && (
         <span
           className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-            !result.event.is_demo ? "bg-findmi-50 text-findmi-700" : "bg-black/[0.06] text-ink/50"
+            !result.event.is_demo
+              ? "bg-findmi-50 text-findmi-700"
+              : isRejected
+                ? "bg-red-50 text-red-700"
+                : "bg-black/[0.06] text-ink/50"
           }`}
         >
-          {!result.event.is_demo ? "Approved" : "Demo"}
+          {!result.event.is_demo ? "Approved" : isRejected ? "Rejected" : "Demo"}
         </span>
       )}
       {/* Prominent, unmissable decision panel, placed above EventForm's own
           long scrolling content so it's visible on first load — "near the
-          top, before the long editing form" per the pass's own instruction.
-          No rejectAction: see approveEventListing's own comment for why a
-          real Reject can't be represented without a schema change. */}
+          top, before the long editing form" per the pass's own instruction. */}
       {needsReview && (
         <PendingReviewPanel
           entityLabel="Event"
           approveAction={approveAction}
           approveLabel="Approve Event"
-          rejectNote="Reject isn't available yet — events have no distinct rejected state in the data model. Leave unpublished, or ask the founder to review a schema addition for this."
+          rejectAction={rejectAction}
         />
       )}
       {saved && !error && (

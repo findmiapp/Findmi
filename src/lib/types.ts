@@ -102,6 +102,16 @@ export type BillingStatus = "comped" | "pending_payment" | "paid" | "past_due" |
 export type OnboardingStatus = "not_started" | "incomplete" | "submitted" | "approved";
 export type PublicationStatus = "draft" | "pending_review" | "live" | "paused" | "rejected";
 
+// Event Rejection State pass — Events' own review/publication lifecycle,
+// deliberately narrower than PublicationStatus above (no draft/paused —
+// not needed for this pass's scope). Independent of events.is_demo, which
+// remains the sole actual public-visibility gate, completely unchanged —
+// see that column's own comment on the events table. Kept off the shared
+// FindmiEvent interface below (same reasoning as is_demo's own exclusion,
+// AdminEvent in lib/admin/queries.ts adds both for admin/owner-facing
+// reads only).
+export type EventPublicationStatus = "pending_review" | "live" | "rejected";
+
 // Founder Form Manager — see lib/forms.ts. Tally remains the form engine;
 // this just lets the founder repoint which Tally URL each FindMi action
 // uses, without a code change. FormPurpose enumerates every action that

@@ -11,11 +11,9 @@
  * Reject asks for confirmation (same confirm-in-onSubmit idiom
  * DeleteButton.tsx already uses) since it's the one choice here that
  * feels irreversible; Approve does not, matching every other admin "Save"
- * action's own lack of a confirm step. rejectAction is optional — Events
- * have no distinct rejected state in the existing schema (see
- * events/actions.ts's approveEventListing comment), so the Event page
- * passes rejectNote instead of rejectAction and this renders an
- * explanatory line rather than a second, non-functional button.
+ * action's own lack of a confirm step. rejectAction is optional — a caller
+ * without a real reject action (or that wants an explanatory line instead)
+ * can pass rejectNote, which renders in place of a second button.
  */
 export default function PendingReviewPanel({
   entityLabel,
