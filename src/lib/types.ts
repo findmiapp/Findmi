@@ -243,6 +243,15 @@ export interface Business {
   plan_started_at?: string | null;
   plan_expires_at?: string | null;
   plan_payment_reference?: string | null;
+  // Pro Member Badge pass — the public-safe counterpart of plan_tier
+  // above: a STORED GENERATED column (true for plan_tier 'pro' or
+  // 'pro_seller', same isBusinessPro()/isPlanTierPro() rule) that IS on
+  // the anon/authenticated grant, so public business cards can show a
+  // "PRO MEMBER" badge without plan_tier itself ever becoming public —
+  // see 20260908190000_business_is_pro_member_public_grant.sql. Optional
+  // for the same reason plan_tier is: not every existing SELECT requests
+  // it.
+  is_pro_member?: boolean;
   // Market -> Area/Submarket Hierarchy V2 — an OPTIONAL, more precise
   // structured Area alongside (never replacing) this business's Primary
   // Market entitlement (business_markets). Never consulted by Market

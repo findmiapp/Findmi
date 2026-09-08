@@ -52,11 +52,16 @@ export const PUBLIC_BUSINESS_COLUMNS =
   "cta_1_label, cta_1_url, cta_1_enabled, cta_2_label, cta_2_url, " +
   "cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled, " +
   "bulletin_heading, bulletin_body, bulletin_label, bulletin_url, " +
-  "native_inquiries_enabled, market_area_id";
+  "native_inquiries_enabled, market_area_id, is_pro_member";
 // Intentionally excluded (matches the migration exactly — never add these
 // back here without also widening the grant): lead_status,
 // marketplace_fee_percent, processing_fee_payer, payout_method,
-// stripe_account_id, stripe_connect_status.
+// stripe_account_id, stripe_connect_status, plan_tier, plan_source,
+// plan_started_at, plan_expires_at, plan_payment_reference. is_pro_member
+// above is the one deliberate exception — a stored generated boolean
+// derived from plan_tier with its OWN narrow anon/authenticated grant, so
+// public cards can show a Pro Member badge without plan_tier itself ever
+// becoming public (see 20260908190000_business_is_pro_member_public_grant.sql).
 
 export const PUBLIC_PRODUCT_COLUMNS =
   "id, business_id, name, slug, description, image_url, price, price_label, " +
