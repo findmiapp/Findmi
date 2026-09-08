@@ -169,6 +169,20 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Progressive Email Verification pass — a claim is an identity assertion
+  // over an EXISTING entity someone else may legitimately own, so it's the
+  // one owner action this pass gates on profiles.email_verified_at. Checked
+  // here (GET) so ClaimButton never even opens a submittable form for an
+  // unverified visitor — same "re-check fresh, never trust prior state"
+  // discipline the entitlement check right below already uses. Ahead of
+  // the event-entitlement check: proving identity is the more fundamental
+  // gate. Signed-out visitors are unaffected (ClaimButton's own "guest"
+  // override only applies when resolved === "none", which this never
+  // returns for an unauthenticated caller anyway).
+  if (user && !(await isEmailVerified(user.id))) {
+    return NextResponse.json({ state: "verification_required" });
+  }
+
   // Multi-Entity Self-Service V1 — an authenticated visitor with no
   // pending claim on this event still can't open the claim form unless
   // they already qualify; a signed-out visitor is unaffected (ClaimButton
@@ -181,6 +195,19 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ state: "none", accountEmail: user?.email ?? null });
+}
+
+/** Progressive Email Verification pass — the ONE server-side check every
+ * new-claim path (GET's preview and POST's real submission) re-runs fresh,
+ * never cached/trusted from an earlier response. Reads profiles.
+ * email_verified_at for the caller's OWN id only (never accepted from the
+ * client). Does not touch or duplicate any existing claim/entitlement
+ * logic below it. */
+async function isEmailVerified(userId: string): Promise<boolean> {
+  const admin = getAdminSupabase();
+  if (!admin) return false;
+  const { data } = await admin.from("profiles").select("email_verified_at").eq("id", userId).maybeSingle();
+  return Boolean(data?.email_verified_at);
 }
 
 /** Multi-Entity Self-Service V1 — thin wrapper so both GET and POST share
@@ -267,6 +294,15 @@ export async function POST(request: NextRequest) {
       email: pendingClaim.email,
       phone: pendingClaim.phone,
     });
+  }
+
+  // Progressive Email Verification pass — the real, authoritative gate
+  // (GET's own check above is only a preview; this is what actually
+  // prevents the row from being created). Checked BEFORE inserting
+  // anything, same "never accumulate a row behind a gate" discipline the
+  // entitlement check right below already uses.
+  if (!(await isEmailVerified(user.id))) {
+    return NextResponse.json({ state: "verification_required" });
   }
 
   // Entitlement gate — checked BEFORE inserting anything, so a

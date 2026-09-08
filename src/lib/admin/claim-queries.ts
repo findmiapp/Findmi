@@ -163,6 +163,13 @@ export interface AdminCurrentAccessMember {
    * submitted contact email — those are two different things (see
    * AdminClaimRow.claimantEmail's own note). */
   email: string | null;
+  /** Progressive Email Verification pass — profiles.email_verified_at for
+   * this member's account, read off the SAME profiles query this function
+   * already runs for displayName (no extra query). Used by the Business
+   * pending-review panel to show the owner's verification status; never
+   * confused with auth.users.email_confirmed_at (see that column's own
+   * comment on the profiles table). */
+  emailVerifiedAt: string | null;
 }
 
 const MEMBER_TABLE: Record<ClaimEntityType, "business_members" | "event_members" | "location_members"> = {
@@ -216,11 +223,14 @@ export async function getCurrentAccessByEntity(
 
   const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
   const [{ data: profileRows }, emailByUser] = await Promise.all([
-    supabase.from("profiles").select("id, display_name").in("id", userIds),
+    supabase.from("profiles").select("id, display_name, email_verified_at").in("id", userIds),
     fetchEmailsByUserId(supabase, userIds),
   ]);
   const displayNameByUser = new Map(
     ((profileRows ?? []) as { id: string; display_name: string | null }[]).map((p) => [p.id, p.display_name])
+  );
+  const emailVerifiedAtByUser = new Map(
+    ((profileRows ?? []) as { id: string; email_verified_at: string | null }[]).map((p) => [p.id, p.email_verified_at])
   );
 
   for (const row of rows) {
@@ -231,6 +241,7 @@ export async function getCurrentAccessByEntity(
       role: row.role,
       displayName: displayNameByUser.get(row.user_id) ?? null,
       email: emailByUser.get(row.user_id) ?? null,
+      emailVerifiedAt: emailVerifiedAtByUser.get(row.user_id) ?? null,
     };
     map.set(entityId, [...(map.get(entityId) ?? []), member]);
   }

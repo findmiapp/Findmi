@@ -11,6 +11,7 @@ type ClaimState =
   | "none"
   | "pending_review" // both types — free, no payment step
   | "membership_required" // event claims only — no qualifying FindMi access yet
+  | "verification_required" // Progressive Email Verification pass — profiles.email_verified_at is null
   | "member";
 
 /** Secondary "Claim this business/event" control — deliberately understated
@@ -231,6 +232,30 @@ export default function ClaimButton({
             </Link>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (state === "verification_required") {
+    // Progressive Email Verification pass — mirrors the "guest" branch's
+    // own next=/?claim=1 pattern: after verifying, confirmEmailVerification
+    // (account/verify-email/actions.ts) redirects back to `next`, and the
+    // ?claim=1 there is what the mount effect above already uses to
+    // reopen the claim flow automatically — so the visitor lands right
+    // back where they were, ready to submit, with zero extra steps.
+    const next = `${window.location.pathname}?claim=1`;
+    return (
+      <div className="max-w-xs rounded-2xl border border-black/10 bg-white p-4">
+        <p className="text-sm font-semibold text-ink">Verify your email before submitting a claim.</p>
+        <p className="mt-1 text-xs text-ink/60">
+          Claiming an existing listing requires proving you control your account&rsquo;s email address first.
+        </p>
+        <Link
+          href={`/account/verify-email?next=${encodeURIComponent(next)}`}
+          className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        >
+          Verify Email
+        </Link>
       </div>
     );
   }

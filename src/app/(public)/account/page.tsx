@@ -6,7 +6,6 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import NavIcon from "@/components/NavIcon";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
-import type { Profile } from "@/lib/types";
 import AccountSync from "./AccountSync";
 import BusinessScopedAction, { ActionStripLink, PlusGlyph } from "./BusinessScopedAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
@@ -72,7 +71,16 @@ export default async function AccountHomePage({
     { count: followingEventsCount },
     { count: ordersCount },
   ] = await Promise.all([
-    supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle<Pick<Profile, "display_name">>(),
+    // Progressive Email Verification pass — email_verified_at read in the
+    // same query as display_name (no extra round trip). Deliberately not
+    // added to the shared Profile type (lib/types.ts) — that interface's
+    // own comment says never add auth-adjacent metadata to it, since it
+    // also backs the public profile view.
+    supabase
+      .from("profiles")
+      .select("display_name, email_verified_at")
+      .eq("id", user.id)
+      .maybeSingle<{ display_name: string | null; email_verified_at: string | null }>(),
     supabase.from("business_members").select("business_id, businesses(name, slug, publication_status)").eq("user_id", user.id),
     supabase
       .from("business_claim_requests")
@@ -228,23 +236,30 @@ export default async function AccountHomePage({
         </p>
       )}
 
-      {/* Signup + Email Confirmation UX Correction pass, Section 6 —
-          ACCOUNT CREATED vs. EMAIL VERIFIED, kept deliberately separate.
-          Reads only the already-fetched session user (no extra query) —
-          Supabase's own `email_confirmed_at` is the one source of truth
-          for whether this specific address was actually confirmed, never
-          re-derived from anything else. Under this project's current
-          Supabase configuration, an unconfirmed user has no session at
-          all yet (see this pass's report), so this can't render today —
-          it's here so the moment that changes, a signed-in-but-unverified
-          visitor gets this instead of nothing, with zero further code
-          change. Deliberately non-blocking: no gate, no redirect, just a
-          reminder — verification stays required for whatever
-          security-sensitive actions already require it elsewhere. */}
-      {!user.email_confirmed_at && (
-        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Verify your email to keep your account secure.
-        </p>
+      {/* Progressive Email Verification pass — ACCOUNT CREATED vs. EMAIL
+          VERIFIED, kept deliberately separate. profiles.email_verified_at
+          (read above, same query as display_name) is now the authoritative
+          FindMi-owned signal — NOT auth.users.email_confirmed_at, which
+          becomes meaningless the moment Supabase's "Confirm email" setting
+          is disabled (every new account gets auto-confirmed at signup; see
+          this pass's own report). Deliberately non-blocking: no gate, no
+          redirect, no implication the account or Pro is unusable — just a
+          reminder plus a link to the dedicated verify-email flow.
+          Verification is enforced only where it actually matters (claiming
+          an existing Business/Event/Location — see /api/account/claim). */}
+      {!profile?.email_verified_at && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p>
+            <span className="font-semibold">Verify your email.</span> You can keep building your Findmi profile now —
+            verification is required for certain ownership actions, like claiming a listing.
+          </p>
+          <Link
+            href="/account/verify-email"
+            className="shrink-0 rounded-full border border-amber-300 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-amber-800 transition hover:bg-amber-100"
+          >
+            Verify Email
+          </Link>
+        </div>
       )}
 
       {/* 1. DISCOVERY — Account Hub V2 pass. The first thing any account

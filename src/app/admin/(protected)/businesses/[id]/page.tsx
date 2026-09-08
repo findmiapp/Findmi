@@ -161,10 +161,21 @@ export default async function EditBusinessPage({
   // available from data this page already loaded (members, above) — no
   // extra query for it.
   const isPendingReview = business.publication_status === "pending_review";
-  const ownerEmail = members.find((m) => m.role === "owner")?.email ?? null;
+  const ownerMember = members.find((m) => m.role === "owner") ?? null;
+  const ownerEmail = ownerMember?.email ?? null;
+  // Progressive Email Verification pass — the OWNER's own
+  // profiles.email_verified_at (already loaded on `members` above via
+  // getCurrentAccessByEntity — no extra query). Deliberately the owner
+  // specifically, not any manager/staff member, since the owner is the
+  // one whose identity claim is actually relevant to this trust review.
+  // Purely informational — Approve/Reject stay fully available either way
+  // (see PendingReviewPanel below and approveBusinessListing's own
+  // comment: this signal never gates the action).
+  const ownerEmailVerified = ownerMember ? Boolean(ownerMember.emailVerifiedAt) : null;
   const submittedContext = [
     `Submitted ${new Date(business.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`,
     ownerEmail ? `by ${ownerEmail}` : null,
+    ownerEmailVerified === null ? null : ownerEmailVerified ? "· Email Verified" : "· Email Not Verified",
   ]
     .filter(Boolean)
     .join(" ");
