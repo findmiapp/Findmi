@@ -95,6 +95,17 @@ export default function EventBusinessRoster({
         </div>
       )}
 
+      {/* Event Roster Micro UX Polish pass — marks where the Featured
+          Vendors carousel ends and the complete roster/category-filter
+          section begins, so the pills directly below don't read as
+          filtering the carousel above them. Belongs to the full-roster
+          section, not Featured Vendors — renders unconditionally
+          (independent of the category pills' own >1-category gate), same
+          as the complete roster grid below it. */}
+      <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink/40">
+        View All Vendors by Category
+      </p>
+
       {categoryNames.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {["All", ...categoryNames].map((cat) => (
