@@ -853,10 +853,34 @@ export async function getCuratedItemPreviews(
 // through the redeem_pro_invite() SECURITY DEFINER RPC (see
 // (public)/redeem/actions.ts), never through a plain update from this file.
 
-export async function getAdminProInvites(): Promise<ProInvite[]> {
+export interface ProInviteListFilters {
+  q?: string;
+  /** "az" (default) — Code A-Z, tie-broken by id for determinism.
+   * "newest" — created_at descending. */
+  sort?: "az" | "newest";
+}
+
+/** Admin Code Search/Sort Micro-Pass — server-side filtering/sorting via
+ * the same `.or(ilike...)` + `.order()` pattern getAdminBusinesses already
+ * uses, never a fetch-everything-then-filter-in-JS. Searches code and name
+ * only — the two fields the pro_invites table and this list actually have
+ * (no recipient/email column exists on this table). Code is the
+ * deterministic primary label here (always present, unique per invite,
+ * the row's own link target) — Name is optional and can be null, so it's
+ * never the primary sort key. */
+export async function getAdminProInvites(filters: ProInviteListFilters = {}): Promise<ProInvite[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  const { data } = await supabase.from("pro_invites").select("*").order("created_at", { ascending: false });
+  let query = supabase.from("pro_invites").select("*");
+  if (filters.q) {
+    const term = `%${filters.q}%`;
+    query = query.or(`code.ilike.${term},name.ilike.${term}`);
+  }
+  query =
+    filters.sort === "newest"
+      ? query.order("created_at", { ascending: false })
+      : query.order("code", { ascending: true }).order("id", { ascending: true });
+  const { data } = await query;
   return (data ?? []) as ProInvite[];
 }
 

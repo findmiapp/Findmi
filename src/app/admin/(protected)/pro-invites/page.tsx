@@ -9,6 +9,8 @@ import { createProInvite } from "./actions";
 // list's own Copy Link/Copy Code stay unobtrusive next to the existing
 // Code -> View/Manage link, per this pass's own "do not clutter" note.
 const listCopyButtonClass = "py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/50 transition hover:text-ink";
+const selectClass =
+  "rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +22,11 @@ export const dynamic = "force-dynamic";
 export default async function AdminProInvitesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; q?: string; sort?: string }>;
 }) {
-  const { saved, error } = await searchParams;
-  const invites = await getAdminProInvites();
+  const { saved, error, q, sort } = await searchParams;
+  const sortValue = sort === "newest" ? "newest" : "az";
+  const invites = await getAdminProInvites({ q, sort: sortValue });
   const origin = getPublicOrigin();
 
   return (
@@ -135,7 +138,37 @@ export default async function AdminProInvitesPage({
         </form>
       </div>
 
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-black/10">
+      {/* Admin Code Search/Sort Micro-Pass — plain GET form, same URL-
+          param-driven pattern as /admin/businesses's own search/filter
+          bar, so refresh/back navigation stays predictable. Search and
+          Sort are one form, so they always compose (submitting one
+          preserves the other's current value via defaultValue). */}
+      <form method="get" className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <input
+          type="text"
+          name="q"
+          defaultValue={q}
+          placeholder="Search codes or names…"
+          className="w-full min-w-0 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none sm:max-w-sm sm:flex-1"
+        />
+        <div className="flex items-center gap-2">
+          <label htmlFor="pro-invite-sort" className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+            Sort:
+          </label>
+          <select id="pro-invite-sort" name="sort" defaultValue={sortValue} className={selectClass}>
+            <option value="az">A–Z</option>
+            <option value="newest">Newest</option>
+          </select>
+          <button
+            type="submit"
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink hover:bg-black/[0.03]"
+          >
+            Search
+          </button>
+        </div>
+      </form>
+
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-black/10">
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="bg-black/[0.02] text-xs font-semibold uppercase tracking-wide text-ink/50">
             <tr>
@@ -204,7 +237,7 @@ export default async function AdminProInvitesPage({
             {invites.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-sm text-ink/50">
-                  No invites yet.
+                  {q ? "No invites match your search." : "No invites yet."}
                 </td>
               </tr>
             )}
