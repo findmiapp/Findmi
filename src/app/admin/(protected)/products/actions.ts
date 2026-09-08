@@ -350,3 +350,91 @@ export async function resumeMarketplaceListing(id: string) {
   revalidatePath("/marketplace");
   redirect(`/admin/products/${id}?marketplace_approved=1`);
 }
+
+// ── Admin Product Distribution Control V1 ───────────────────────────────
+//
+// Two NEW admin-initiated actions, distinct from the owner-submission-
+// driven pair above (approveMarketplaceSubmission/rejectMarketplaceSubmission)
+// and from the owner's own submitProductToMarketplace/returnProductToCatalog
+// (account/business/actions.ts, untouched). Founder Admin now has a direct
+// lever independent of whether the owner ever submitted anything — but
+// content moderation stays the one gate neither path can bypass: both
+// actions below still require moderation_status='live' before granting
+// Marketplace distribution, exactly like every existing Marketplace action
+// already does.
+//
+// Neither action here ever touches moderation_status, pending_changes,
+// is_featured, home_sort_order, purchasable, fee columns
+// (marketplace_fee_override_percent/processing_fee_payer_override),
+// business_id, or plan_tier — only marketplace_status (plus
+// marketplace_approved_at, the same timestamp approveMarketplaceSubmission
+// already sets). is_featured is deliberately left untouched on Return to
+// Catalog too — existing Marketplace/homepage-featured queries already
+// require marketplace_status='approved', so a catalog_only product simply
+// stops surfacing there on its own; preserving the flag lets editorial
+// priority resume automatically if the product is later pushed back.
+
+/** Push to Marketplace — the NEW admin-initiated path into
+ * marketplace_status='approved', usable from ANY current status
+ * (catalog_only, rejected, submitted, or even paused) without requiring
+ * the owner to have submitted first. Still requires moderation_status=
+ * 'live' — Marketplace distribution can never bypass content approval,
+ * regardless of which path got the product here. Idempotent: already
+ * "approved" is treated as a safe no-op success, not an error. */
+export async function pushProductToMarketplace(id: string) {
+  const supabase = await requireAdminSupabase();
+  const product = await getProductForMarketplaceReview(supabase, id);
+  if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
+
+  if (product.marketplace_status === "approved") {
+    redirect(`/admin/products/${id}?marketplace_approved=1`);
+  }
+
+  if (product.moderation_status !== "live") {
+    redirect(
+      errorRedirectUrl(
+        `/admin/products/${id}`,
+        "Approve this product's content first — Marketplace distribution requires it to be live."
+      )
+    );
+  }
+
+  await supabase
+    .from("products")
+    .update({ marketplace_status: "approved", marketplace_approved_at: new Date().toISOString() })
+    .eq("id", id);
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${id}`);
+  revalidatePath("/marketplace");
+  if (product.slug) revalidatePath(`/product/${product.slug}`);
+  redirect(`/admin/products/${id}?marketplace_approved=1`);
+}
+
+/** Return to Catalog — the NEW admin-initiated withdrawal from Marketplace
+ * distribution, usable from ANY current status. The Product stays fully
+ * intact on its own business's catalog/profile (moderation_status,
+ * content, fee columns, plan_tier, ownership, and is_featured are all
+ * untouched — see this file's own section note above). Distinct from the
+ * owner's own returnProductToCatalog (account/business/actions.ts), which
+ * stays untouched and still only self-reverts from "submitted"/"rejected"
+ * — this admin action works from any state, including an admin-"approved"
+ * or admin-"paused" one the owner could never self-revert. Idempotent:
+ * already "catalog_only" is a safe no-op success. */
+export async function returnProductToCatalog(id: string) {
+  const supabase = await requireAdminSupabase();
+  const product = await getProductForMarketplaceReview(supabase, id);
+  if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
+
+  if (product.marketplace_status === "catalog_only") {
+    redirect(`/admin/products/${id}?marketplace_returned=1`);
+  }
+
+  await supabase.from("products").update({ marketplace_status: "catalog_only" }).eq("id", id);
+
+  revalidatePath("/admin/products");
+  revalidatePath(`/admin/products/${id}`);
+  revalidatePath("/marketplace");
+  if (product.slug) revalidatePath(`/product/${product.slug}`);
+  redirect(`/admin/products/${id}?marketplace_returned=1`);
+}

@@ -1,18 +1,30 @@
 import type { AdminProduct } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
 import { resolveMarketplaceFeePercent } from "@/lib/commerce/fees";
-import { approveMarketplaceSubmission, pauseMarketplaceListing, rejectMarketplaceSubmission, resumeMarketplaceListing } from "../actions";
+import {
+  approveMarketplaceSubmission,
+  pauseMarketplaceListing,
+  pushProductToMarketplace,
+  rejectMarketplaceSubmission,
+  resumeMarketplaceListing,
+  returnProductToCatalog,
+} from "../actions";
 
-/** Product Marketplace Distribution pass — the admin-side review surface
- * for an owner's Marketplace/discovery placement request. Entirely
- * separate from ProductModerationPanel (content approval): that panel
- * decides whether the Product's content is approved at all; this one
- * decides whether an approved Product may ALSO appear in broader FindMi
- * Marketplace/discovery surfaces, never merged into the same Approve/
- * Reject actions. Renders only for states that need a decision or offer a
- * follow-up action — "catalog_only" (nothing requested) and "rejected"
- * (nothing pending) render nothing, same "don't clutter an ordinary
- * product's page" rule ProductModerationPanel already follows. */
+/** Product Marketplace Distribution pass, extended by Admin Product
+ * Distribution Control V1 — the admin-side surface for BOTH an owner's
+ * Marketplace/discovery placement request AND Founder Admin's own
+ * independent distribution decision. Entirely separate from
+ * ProductModerationPanel (content approval): that panel decides whether
+ * the Product's content is approved at all; this one decides whether an
+ * approved Product may ALSO appear in broader FindMi Marketplace/
+ * discovery surfaces, never merged into the same Approve/Reject actions.
+ *
+ * Distribution Control V1 — now renders for every marketplace_status,
+ * including "catalog_only" and "rejected" (previously rendered nothing
+ * for those, back when the only way into Marketplace was an owner
+ * submission). Each state still shows only the actions that are actually
+ * valid from it — never an action that would bypass a guard the server
+ * action itself enforces. */
 export default function MarketplaceReviewPanel({
   product,
   businessName,
@@ -34,9 +46,6 @@ export default function MarketplaceReviewPanel({
   businessNativeInquiriesEnabled: boolean;
 }) {
   const marketplaceStatus = product.marketplace_status ?? "catalog_only";
-  if (marketplaceStatus !== "submitted" && marketplaceStatus !== "approved" && marketplaceStatus !== "paused") {
-    return null;
-  }
 
   // Marketplace Approval Safety V1 — mirrors the exact CTA fallback chain
   // the public product page already uses (Add to Cart -> Shop Now ->
@@ -64,18 +73,26 @@ export default function MarketplaceReviewPanel({
   return (
     <div className="rounded-2xl border border-sky-300 bg-sky-50 p-4 sm:p-5">
       <p className="text-sm font-bold text-sky-800">
-        {marketplaceStatus === "submitted"
-          ? "Marketplace Submission — Awaiting Review"
-          : marketplaceStatus === "approved"
-            ? "Marketplace: Approved"
-            : "Marketplace: Paused"}
+        {marketplaceStatus === "catalog_only"
+          ? "Marketplace: Not Distributed"
+          : marketplaceStatus === "submitted"
+            ? "Marketplace Submission — Awaiting Review"
+            : marketplaceStatus === "approved"
+              ? "Marketplace: Approved"
+              : marketplaceStatus === "rejected"
+                ? "Marketplace: Declined"
+                : "Marketplace: Paused"}
       </p>
       <p className="mt-0.5 text-xs text-sky-900/70">
-        {marketplaceStatus === "submitted"
-          ? "The owner requested broader Findmi Marketplace/discovery placement for this product."
-          : marketplaceStatus === "approved"
-            ? "This product may appear in broader Findmi Marketplace/discovery surfaces, in addition to its own business profile."
-            : "Marketplace/discovery visibility is temporarily paused. The product remains visible on its own business profile."}
+        {marketplaceStatus === "catalog_only"
+          ? "This product is only visible on its own business profile. Admin can push it to broader Findmi Marketplace/discovery distribution below."
+          : marketplaceStatus === "submitted"
+            ? "The owner requested broader Findmi Marketplace/discovery placement for this product."
+            : marketplaceStatus === "approved"
+              ? "This product may appear in broader Findmi Marketplace/discovery surfaces, in addition to its own business profile."
+              : marketplaceStatus === "rejected"
+                ? "Findmi declined broader Marketplace/discovery placement for this product. It remains visible on its own business profile."
+                : "Marketplace/discovery visibility is temporarily paused. The product remains visible on its own business profile."}
       </p>
 
       {product.image_url && (
@@ -122,9 +139,16 @@ export default function MarketplaceReviewPanel({
         </table>
       </div>
 
-      {marketplaceStatus === "submitted" && !contentLive && (
+      {/* Admin Product Distribution Control V1 — the same content-live
+          requirement every Marketplace-granting action (Approve/Resume/
+          Push) enforces server-side, surfaced compactly whenever it would
+          currently block the state's own primary action. Never shown for
+          "approved" (content was already live to get there) or "rejected"
+          when content isn't live and there's nothing to push into yet vs.
+          catalog_only, which still benefits from the same explanation. */}
+      {!contentLive && marketplaceStatus !== "approved" && (
         <p className="mt-3 text-xs font-semibold text-amber-700">
-          Approve this product&rsquo;s content first — Marketplace approval is blocked until it&rsquo;s live.
+          Approve this product&rsquo;s content first — Marketplace distribution is blocked until it&rsquo;s live.
         </p>
       )}
 
@@ -142,6 +166,22 @@ export default function MarketplaceReviewPanel({
         ))}
 
       <div className="mt-4 flex flex-wrap gap-2">
+        {/* Admin Product Distribution Control V1 — Founder Admin's own
+            direct lever, independent of any owner submission. Same
+            content-live server-side guard as every other Marketplace-
+            granting action; disabled here purely to match that guard,
+            never the other way around. */}
+        {(marketplaceStatus === "catalog_only" || marketplaceStatus === "rejected") && (
+          <form action={pushProductToMarketplace.bind(null, product.id)}>
+            <button
+              type="submit"
+              disabled={!contentLive}
+              className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Push to Marketplace
+            </button>
+          </form>
+        )}
         {marketplaceStatus === "submitted" && (
           <>
             <form action={approveMarketplaceSubmission.bind(null, product.id)}>
@@ -164,14 +204,24 @@ export default function MarketplaceReviewPanel({
           </>
         )}
         {marketplaceStatus === "approved" && (
-          <form action={pauseMarketplaceListing.bind(null, product.id)}>
-            <button
-              type="submit"
-              className="rounded-full border border-sky-300 px-4 py-2 text-xs font-bold uppercase tracking-wide text-sky-700 hover:bg-sky-100"
-            >
-              Pause Marketplace Visibility
-            </button>
-          </form>
+          <>
+            <form action={pauseMarketplaceListing.bind(null, product.id)}>
+              <button
+                type="submit"
+                className="rounded-full border border-sky-300 px-4 py-2 text-xs font-bold uppercase tracking-wide text-sky-700 hover:bg-sky-100"
+              >
+                Pause Marketplace Visibility
+              </button>
+            </form>
+            <form action={returnProductToCatalog.bind(null, product.id)}>
+              <button
+                type="submit"
+                className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 hover:bg-black/[0.03]"
+              >
+                Return to Catalog
+              </button>
+            </form>
+          </>
         )}
         {marketplaceStatus === "paused" && (
           <>
@@ -192,7 +242,25 @@ export default function MarketplaceReviewPanel({
                 Reject Marketplace Submission
               </button>
             </form>
+            <form action={returnProductToCatalog.bind(null, product.id)}>
+              <button
+                type="submit"
+                className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 hover:bg-black/[0.03]"
+              >
+                Return to Catalog
+              </button>
+            </form>
           </>
+        )}
+        {marketplaceStatus === "rejected" && (
+          <form action={returnProductToCatalog.bind(null, product.id)}>
+            <button
+              type="submit"
+              className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 hover:bg-black/[0.03]"
+            >
+              Return to Catalog
+            </button>
+          </form>
         )}
       </div>
     </div>

@@ -28,11 +28,20 @@ export default async function EditProductPage({
     marketplace_approved?: string;
     marketplace_rejected?: string;
     marketplace_paused?: string;
+    marketplace_returned?: string;
   }>;
 }) {
   const { id } = await params;
-  const { error, saved, approved, rejected, marketplace_approved, marketplace_rejected, marketplace_paused } =
-    await searchParams;
+  const {
+    error,
+    saved,
+    approved,
+    rejected,
+    marketplace_approved,
+    marketplace_rejected,
+    marketplace_paused,
+    marketplace_returned,
+  } = await searchParams;
   const product = await getAdminProductById(id);
   if (!product) notFound();
   const [initialBusiness, fulfillmentOptions, appearanceOptions, categories, selectedCategoryIds] = await Promise.all([
@@ -105,6 +114,11 @@ export default async function EditProductPage({
       {marketplace_paused && (
         <p className="mt-3 rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 text-sm text-ink/70">
           Marketplace visibility paused.
+        </p>
+      )}
+      {marketplace_returned && (
+        <p className="mt-3 rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 text-sm text-ink/70">
+          Returned to Catalog Only.
         </p>
       )}
 
