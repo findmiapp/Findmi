@@ -48,9 +48,25 @@ export default function GalleryField({
       for (const file of files) {
         const fd = new FormData();
         fd.set("file", file);
-        const result = await uploadImage(fd);
-        if (result.error) lastError = result.error;
-        else if (result.url) setUrls((prev) => [...prev, result.url!]);
+        // Gallery upload crash fix — same gap as ImageField.tsx's own fix:
+        // uploadImage() itself always resolves to {url} or {error}, but
+        // the Server Action CALL can still reject outright (a network
+        // drop, a transport-level rejection before uploadImage's own code
+        // ever runs). Previously unhandled here, so that rejection
+        // propagated out of this transition as an uncaught exception and
+        // crashed the whole page — losing every image already appended to
+        // `urls` this batch, not just failing the one file. Caught the
+        // same way an ordinary {error} response already is: record it as
+        // this file's failure and keep looping, so one bad file (network
+        // or application-level) never stops the rest of the batch from
+        // uploading.
+        try {
+          const result = await uploadImage(fd);
+          if (result.error) lastError = result.error;
+          else if (result.url) setUrls((prev) => [...prev, result.url!]);
+        } catch {
+          lastError = "Upload failed. Please check your connection and try again.";
+        }
       }
       if (lastError) setError(lastError);
     });
