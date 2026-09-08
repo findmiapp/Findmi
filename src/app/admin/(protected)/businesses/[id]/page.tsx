@@ -25,14 +25,17 @@ import NameSlugFields from "@/components/admin/NameSlugFields";
 import BusinessPeopleRoster from "@/components/admin/BusinessPeopleRoster";
 import { getCurrentAccessByEntity } from "@/lib/admin/claim-queries";
 import PendingReviewPanel from "@/components/admin/PendingReviewPanel";
+import BusinessLifecyclePanel from "@/components/admin/BusinessLifecyclePanel";
 import {
   addAdditionalMarket,
   approveBusinessListing,
   assignBusinessMember,
   assignPrimaryMarket,
+  pauseBusinessListing,
   rejectBusinessListing,
   removeBusinessMember,
   removeMarketAssignment,
+  restoreBusinessListing,
   saveBusinessCategories,
   saveBusinessGallery,
   saveBusinessInternal,
@@ -181,6 +184,11 @@ export default async function EditBusinessPage({
     .join(" ");
   const approveAction = approveBusinessListing.bind(null, id);
   const rejectAction = rejectBusinessListing.bind(null, id);
+  // Admin Business Pause/Restore UX pass — only ever live<->paused; every
+  // other publication_status (draft/pending_review/rejected) keeps its
+  // existing Approve/Reject/Moderation workflow untouched below.
+  const pauseAction = pauseBusinessListing.bind(null, id);
+  const restoreAction = restoreBusinessListing.bind(null, id);
 
   const selectableCategories = categories.filter(
     (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || result.categoryIds.includes(c.id)
@@ -254,6 +262,21 @@ export default async function EditBusinessPage({
           </span>
         )}
       </div>
+
+      {/* Admin Business Pause/Restore UX pass — prominent, near the top
+          status area, same placement rationale as the Pending Review panel
+          just below. Only ever shown for live/paused — draft/pending_review/
+          rejected keep their existing Approve/Reject/Moderation workflow
+          untouched (see isPendingReview below and the Moderation tab's own
+          Listing Status dropdown, which remains the advanced/manual
+          control for every status including these two). */}
+      {(business.publication_status === "live" || business.publication_status === "paused") && (
+        <BusinessLifecyclePanel
+          status={business.publication_status}
+          pauseAction={pauseAction}
+          restoreAction={restoreAction}
+        />
+      )}
 
       {/* Admin Pending Review Decision UX pass — a prominent, unmissable
           decision panel placed ABOVE the tab nav so it's visible on first

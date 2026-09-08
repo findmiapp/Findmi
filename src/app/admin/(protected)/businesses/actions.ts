@@ -480,6 +480,64 @@ export async function rejectBusinessListing(id: string) {
   redirect(appendQuery(PENDING_LIST_PATH, { decided: "rejected" }));
 }
 
+/**
+ * Pause / Restore — Admin Business Pause/Restore UX pass. The read-only
+ * audit that preceded this pass confirmed publication_status already
+ * safely gates every public surface (getBusinessBySlug, searchBusinesses,
+ * every embedded business join, etc.) — "paused" was already a real,
+ * fully-honored value; this just gives it a fast, obvious, one-click path
+ * instead of requiring the 5-option Moderation dropdown. Deliberately
+ * writes ONLY publication_status — never is_demo, plan_tier, verified/
+ * founding_member/is_featured, or any other column saveBusinessModeration
+ * also touches. Same compound-WHERE idempotency guard as approve/reject
+ * above: only a genuine live->paused (or paused->live) transition can ever
+ * happen through these, so a duplicate click or a stale reopened tab is a
+ * harmless no-op rather than an error or an unexpected transition from
+ * some other state (draft/pending_review/rejected are never touched by
+ * either of these — those keep their existing Approve/Reject/Moderation
+ * workflow exactly as before). */
+export async function pauseBusinessListing(id: string) {
+  const supabase = await requireAdminSupabase();
+  const editPath = `/admin/businesses/${id}`;
+  const { data: business, error } = await supabase
+    .from("businesses")
+    .update({ publication_status: "paused" })
+    .eq("id", id)
+    .eq("publication_status", "live")
+    .select("slug")
+    .maybeSingle();
+  if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  revalidatePath("/admin/businesses");
+  revalidatePath("/admin");
+  revalidatePath(editPath);
+  if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  revalidatePath("/");
+  revalidatePath("/businesses");
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+export async function restoreBusinessListing(id: string) {
+  const supabase = await requireAdminSupabase();
+  const editPath = `/admin/businesses/${id}`;
+  const { data: business, error } = await supabase
+    .from("businesses")
+    .update({ publication_status: "live" })
+    .eq("id", id)
+    .eq("publication_status", "paused")
+    .select("slug")
+    .maybeSingle();
+  if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  revalidatePath("/admin/businesses");
+  revalidatePath("/admin");
+  revalidatePath(editPath);
+  if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  revalidatePath("/");
+  revalidatePath("/businesses");
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
 /** Internal tab — CRM status fields (Membership Status/Lead Status,
  * legacy lead-tracking unrelated to Founding Membership billing below)
  * plus commerce/payout settings. Founder-only, never rendered or
