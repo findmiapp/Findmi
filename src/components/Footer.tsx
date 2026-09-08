@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "./Logo";
+import { siteConfig } from "@/lib/site-config";
 
 export default function Footer() {
   return (
@@ -13,9 +14,7 @@ export default function Footer() {
         <div className="hidden md:flex md:flex-row md:items-start md:justify-between md:gap-8">
           <div>
             <Logo heightClassName="h-7" />
-            <p className="mt-3 max-w-xs text-sm text-ink/55">
-              Find what you&rsquo;re looking for. And where it&rsquo;ll be next.
-            </p>
+            <p className="mt-3 max-w-xs text-sm text-ink/55">{siteConfig.tagline}</p>
           </div>
           <div className="grid grid-cols-3 gap-8">
             <div>
@@ -35,7 +34,7 @@ export default function Footer() {
                 Business
               </p>
               <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                <li><Link href="/join" className="hover:text-ink">Join Findmi</Link></li>
+                <li><Link href="/join" className="hover:text-ink">Join {siteConfig.siteName}</Link></li>
                 <li><Link href="/about" className="hover:text-ink">About</Link></li>
               </ul>
             </div>
@@ -60,7 +59,7 @@ export default function Footer() {
         </div>
 
         <p className="mt-6 text-xs text-ink/40 md:mt-10">
-          © {new Date().getFullYear()} Findmi. All rights reserved.
+          © {new Date().getFullYear()} {siteConfig.siteName}. All rights reserved.
         </p>
       </div>
     </footer>

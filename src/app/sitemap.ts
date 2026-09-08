@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
 import { getSupabase } from "@/lib/supabase";
+import { siteConfig } from "@/lib/site-config";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://findmi.app";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || siteConfig.publicUrlFallback;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [

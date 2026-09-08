@@ -42,6 +42,9 @@ export async function saveLocation(id: string | null, formData: FormData) {
     website_url: str(formData, "website_url"),
     email: str(formData, "email"),
     phone: str(formData, "phone"),
+    // Highperlocal Prep, Pass 1 — str() already resolves the blank
+    // "Unclassified" option to null, never a guessed value.
+    classification: str(formData, "classification"),
   };
 
   let locationId = id;

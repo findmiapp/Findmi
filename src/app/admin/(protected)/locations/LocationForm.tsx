@@ -88,14 +88,36 @@ export default function LocationForm({
           hint="This is the physical Findmi Market this venue belongs to. Event occurrences linked to this location can inherit it."
         />
 
+        {/* Highperlocal Prep, Pass 1 — classifies this individual retail
+            LOCATION, never a parent Business/brand. Nullable/unselected by
+            default — never guessed. Becomes the authoritative
+            classification for any Appearance that links here via its own
+            Canonical Location field (see admin/appearances). */}
+        <SelectField
+          label="Retail Classification"
+          name="classification"
+          defaultValue={location?.classification ?? ""}
+          options={[
+            { value: "", label: "Unclassified" },
+            { value: "adult_use", label: "Adult Use" },
+            { value: "medical", label: "Medical" },
+            { value: "adult_use_medical", label: "Adult Use + Medical" },
+            { value: "hemp_store", label: "Hemp Store" },
+            { value: "other", label: "Other" },
+          ]}
+          hint="What kind of retail location this physically is — used by any Appearance that links here as its Canonical Location."
+        />
+
         <SubmitBar cancelHref="/admin/locations" />
       </form>
 
       {location && (
         <div className="border-t border-black/5 pt-5">
           <p className="mb-2 text-xs text-ink/45">
-            Deleting removes this location permanently. It doesn&rsquo;t affect any
-            business, event, or appearance — locations aren&rsquo;t linked to them yet.
+            Deleting removes this location permanently. Any event occurrence or
+            appearance linked here as its Canonical Location simply loses that
+            link (its own venue/address fields are unaffected) — nothing else
+            is deleted.
           </p>
           <DeleteButton
             action={deleteLocation.bind(null, location.id)}

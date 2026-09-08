@@ -12,6 +12,7 @@ import {
 } from "@/lib/cart";
 import { formatCurrency } from "@/lib/format";
 import { quoteCart, startCheckout } from "./actions";
+import { siteConfig } from "@/lib/site-config";
 import type { CartLine, CartLineQuote, CartQuote } from "@/lib/commerce/types";
 
 export default function CartPage() {
@@ -134,41 +135,51 @@ export default function CartPage() {
             </div>
           </div>
 
-          <div className="mt-6 flex flex-col gap-3">
-            <input
-              type="email"
-              required
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
-            />
-            <div className="grid gap-3 sm:grid-cols-2">
+          {/* Highperlocal Prep, Pass 1 — when commerce is disabled, the
+              checkout form itself never renders (not just a disabled
+              button); startCheckout also independently refuses if this
+              were somehow bypassed. */}
+          {siteConfig.commerceEnabled ? (
+            <div className="mt-6 flex flex-col gap-3">
               <input
-                type="text"
-                placeholder="Name (optional)"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                type="email"
+                required
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
               />
-              <input
-                type="tel"
-                placeholder="Phone (optional)"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
-              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  type="text"
+                  placeholder="Name (optional)"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+                />
+                <input
+                  type="tel"
+                  placeholder="Phone (optional)"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+                />
+              </div>
+              {checkoutError && <p className="text-sm text-red-600">{checkoutError}</p>}
+              <button
+                type="button"
+                onClick={handleCheckout}
+                disabled={checkingOut || refreshing || quote.total <= 0}
+                className="rounded-full bg-findmi px-5 py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50"
+              >
+                {checkingOut ? "Redirecting…" : "Proceed to Checkout"}
+              </button>
             </div>
-            {checkoutError && <p className="text-sm text-red-600">{checkoutError}</p>}
-            <button
-              type="button"
-              onClick={handleCheckout}
-              disabled={checkingOut || refreshing || quote.total <= 0}
-              className="rounded-full bg-findmi px-5 py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50"
-            >
-              {checkingOut ? "Redirecting…" : "Proceed to Checkout"}
-            </button>
-          </div>
+          ) : (
+            <p className="mt-6 rounded-xl border border-black/10 bg-mist/40 px-4 py-3 text-sm text-ink/60">
+              Checkout isn&rsquo;t available on this deployment.
+            </p>
+          )}
         </div>
       )}
     </div>

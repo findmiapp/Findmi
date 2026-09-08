@@ -8,6 +8,7 @@ import { requireBusinessMember } from "@/lib/permissions";
 import { isAdminSession } from "@/lib/admin/auth";
 import { isBusinessPro } from "@/lib/entitlements";
 import { startBusinessProCheckout } from "@/app/(public)/account/business/actions";
+import { isCommerceEnabled } from "@/lib/site-config";
 
 export const metadata: Metadata = {
   title: "Upgrade to Pro",
@@ -118,6 +119,25 @@ export default async function UpgradeToProPage({
         </p>
         <Link href={manageHref} className={`mt-6 ${primaryButtonClass}`}>
           Manage Business
+        </Link>
+      </div>
+    );
+  }
+
+  // Highperlocal Prep, Pass 1 — a hidden/disabled button alone isn't
+  // enough (see this pass's own instruction): when commerce is disabled,
+  // this page never renders the $99 checkout form at all, and never
+  // reaches startBusinessProCheckout, which independently refuses too.
+  if (!isCommerceEnabled()) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Pro Upgrade</p>
+        <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink">Not available yet</h1>
+        <p className="mt-2 text-sm text-ink/60">
+          Paid upgrades aren&rsquo;t available on this deployment. Contact us if you&rsquo;d like to activate this manually.
+        </p>
+        <Link href={manageHref} className={`mt-6 ${primaryButtonClass}`}>
+          Back to Manage Business
         </Link>
       </div>
     );

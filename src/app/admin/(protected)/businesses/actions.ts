@@ -91,6 +91,17 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     plan_started_at: str(formData, "plan_started_at"),
     plan_expires_at: str(formData, "plan_expires_at"),
     plan_payment_reference: str(formData, "plan_payment_reference"),
+    // Manual Review Foundation (Highperlocal Prep, Pass 1) — two
+    // independent, additive statuses; see BusinessForm.tsx's own comment.
+    // Neither one here writes to publication_status or plan_tier — those
+    // stay separate fields elsewhere in this same payload, set by their
+    // own form controls, never implied by these.
+    ownership_verification_status: str(formData, "ownership_verification_status") ?? "unverified",
+    ownership_verified_at: str(formData, "ownership_verified_at"),
+    ownership_verification_note: str(formData, "ownership_verification_note"),
+    payment_confirmation_status: str(formData, "payment_confirmation_status") ?? "none",
+    payment_confirmed_at: str(formData, "payment_confirmed_at"),
+    payment_confirmation_note: str(formData, "payment_confirmation_note"),
     lead_status: str(formData, "lead_status") ?? "new",
     // Native Moderation Consolidation pass — THE moderation/discovery
     // gate every public query filters on (together with is_demo below).

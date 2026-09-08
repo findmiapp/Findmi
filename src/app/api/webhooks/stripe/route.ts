@@ -6,11 +6,22 @@ import { activateMembership } from "@/lib/commerce/membershipActivation";
 import { activateBusinessPro } from "@/lib/commerce/businessProActivation";
 import { BUSINESS_PRO_INTRO_PRICE_CENTS } from "@/lib/commerce/businessProCheckout";
 import { qualifyReferralEarning } from "@/lib/commerce/referrals";
+import { isCommerceEnabled } from "@/lib/site-config";
 
 // Stripe calls this directly — not gated by /admin's cookie auth, so the
 // Stripe signature itself is the only authentication. Never trust the
 // payload without verifying it against STRIPE_WEBHOOK_SECRET.
 export async function POST(request: NextRequest) {
+  // Highperlocal Prep, Pass 1 — defense in depth: this deployment must
+  // never activate an entitlement (membership/Business Pro/order) from a
+  // Stripe event, even if STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET were
+  // somehow set for it (they never should be — see this pass's own
+  // instruction not to copy or reference FindMi's Stripe credentials).
+  // Checked before signature verification, same as the config check below.
+  if (!isCommerceEnabled()) {
+    return NextResponse.json({ error: "Commerce is disabled on this deployment." }, { status: 503 });
+  }
+
   const stripe = getStripe();
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!stripe || !webhookSecret) {

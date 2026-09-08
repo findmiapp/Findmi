@@ -1,6 +1,7 @@
 import { getStripe } from "./stripe";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getPublicOrigin } from "@/lib/site-url";
+import { isCommerceEnabled } from "@/lib/site-config";
 
 /**
  * Path B (public/paid) checkout — the smallest server-side Stripe Checkout
@@ -22,6 +23,11 @@ export async function createMembershipCheckoutSession(input: {
   contactEmail: string;
   businessName: string;
 }): Promise<{ url: string } | { error: string }> {
+  // Highperlocal Prep, Pass 1 — checked BEFORE getStripe()/any Stripe env
+  // read, so a deployment with commerce disabled never depends on Stripe
+  // being configured at all (see lib/site-config.ts's own doc comment).
+  if (!isCommerceEnabled()) return { error: "Checkout isn't available on this deployment." };
+
   const supabase = getAdminSupabase();
   const stripe = getStripe();
   if (!supabase || !stripe) return { error: "Checkout isn't configured yet." };

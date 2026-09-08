@@ -13,12 +13,14 @@ export default function AppearanceForm({
   appearance,
   initialBusiness,
   initialEvent,
+  initialLocation,
   marketsWithAreas,
   error,
 }: {
   appearance: AdminAppearance | null;
   initialBusiness: SelectOption | null;
   initialEvent: SelectOption | null;
+  initialLocation: SelectOption | null;
   marketsWithAreas: MarketWithAreaOptions[];
   error?: string;
 }) {
@@ -75,6 +77,30 @@ export default function AppearanceForm({
             <ImageField label="Flyer / Image (optional)" name="flyer_image_url" defaultValue={appearance?.flyer_image_url} />
           </div>
         </div>
+
+        {/* Highperlocal Prep, Pass 1 — an optional link to a real, saved
+            Location (a known dispensary/retailer/venue/other saved
+            place). Only meaningful for a STANDALONE appearance (no
+            Related Event above) — same rule as the Findmi Discovery
+            Geography section below, and for the same reason: an
+            event-linked appearance's venue always comes from its Event/
+            Occurrence instead, never from this field, so a selection made
+            here is ignored (never silently stored where it could drift)
+            once an Event is set. When set, this Location becomes the
+            authoritative source for retail classification (set on the
+            Location itself, via /admin/locations) and supplies the
+            Venue/Address/City/State snapshot below automatically — those
+            fields stay fully usable on their own when this is left blank. */}
+        <RelationField
+          label="Canonical Location (optional)"
+          name="location_id"
+          entity="locations"
+          initial={initialLocation}
+          clearLabel="No canonical location — use Venue/Address below"
+          hint="A known dispensary/retailer/venue this activation happens at. Only used when no Related Event is set above."
+          createHref="/admin/locations/new"
+          createLabel="New Location"
+        />
 
         <TextareaField label="Notes" name="description" defaultValue={appearance?.description} rows={3} />
 

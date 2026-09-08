@@ -554,6 +554,32 @@ export async function getAdminLocationById(id: string): Promise<AdminLocation | 
   return (data as AdminLocation) ?? null;
 }
 
+/** Highperlocal Prep, Pass 1 — looks up just the one Location an
+ * Appearance already has selected, for seeding AppearanceForm's canonical
+ * Location RelationField initial value on an edit page. Same
+ * single-row-lookup shape as getBusinessOptionById/getEventOptionById
+ * above — never the whole table (see /admin/api/search for the actual
+ * picker). */
+export async function getLocationOptionById(id: string | null): Promise<SelectOption | null> {
+  if (!id) return null;
+  const supabase = getAdminSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("locations")
+    .select("id, name, city, state, is_demo, classification")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    value: data.id,
+    label: data.name,
+    sublabel:
+      [data.is_demo ? "Demo" : null, data.classification, [data.city, data.state].filter(Boolean).join(", ") || null]
+        .filter(Boolean)
+        .join(" · ") || undefined,
+  };
+}
+
 // ---------------------------------------------------------------------
 // Appearances
 // ---------------------------------------------------------------------

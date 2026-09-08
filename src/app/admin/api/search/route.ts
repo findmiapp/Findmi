@@ -100,5 +100,28 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Highperlocal Prep, Pass 1 — backs AppearanceForm's canonical Location
+  // picker (a Location's own classification is set on the Location itself,
+  // via /admin/locations — this sublabel just helps a founder confirm
+  // they're picking the right one).
+  if (entity === "locations") {
+    const { data } = await supabase
+      .from("locations")
+      .select("id, name, city, state, is_demo, classification")
+      .or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`)
+      .order("name")
+      .limit(20);
+    return NextResponse.json({
+      results: (data ?? []).map((l) => ({
+        value: l.id,
+        label: l.name,
+        sublabel:
+          [l.is_demo ? "Demo" : null, l.classification, [l.city, l.state].filter(Boolean).join(", ") || null]
+            .filter(Boolean)
+            .join(" · ") || undefined,
+      })),
+    });
+  }
+
   return NextResponse.json({ results: [] }, { status: 400 });
 }

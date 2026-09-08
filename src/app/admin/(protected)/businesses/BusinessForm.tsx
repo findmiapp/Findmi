@@ -161,6 +161,73 @@ export default function BusinessForm({
         />
       </div>
 
+      {/* Manual Review Foundation (Highperlocal Prep, Pass 1) — two
+          independent, additive provenance concepts for a non-Stripe
+          manual verification/payment workflow, deliberately kept separate
+          from each other and from Listing Status/Plan Tier above: setting
+          either NEVER auto-publishes, auto-verifies, or auto-activates a
+          plan by itself — those stay their own explicit actions above.
+          Same compact-block styling as the existing Plan Entitlement
+          Provenance block above, for the same "all optional, never
+          required to save" reason. */}
+      <div className="grid gap-4 rounded-2xl border border-black/10 bg-mist/40 p-4 sm:grid-cols-2">
+        <SelectField
+          label="Ownership Verification"
+          name="ownership_verification_status"
+          defaultValue={business?.ownership_verification_status ?? "unverified"}
+          options={[
+            { value: "unverified", label: "Unverified" },
+            { value: "pending", label: "Pending Review" },
+            { value: "verified", label: "Verified" },
+            { value: "rejected", label: "Rejected" },
+          ]}
+          hint="Internal review of who actually owns/operates this business — independent of the public 'Verified' badge checkbox below."
+        />
+        <TextField
+          label="Verified On"
+          name="ownership_verified_at"
+          type="date"
+          defaultValue={business?.ownership_verified_at ? business.ownership_verified_at.slice(0, 10) : null}
+          hint="Optional."
+        />
+        <TextField
+          label="Ownership Note"
+          name="ownership_verification_note"
+          defaultValue={business?.ownership_verification_note}
+          placeholder="How ownership was confirmed, or why it wasn't"
+          hint="Optional admin note."
+        />
+      </div>
+
+      <div className="grid gap-4 rounded-2xl border border-black/10 bg-mist/40 p-4 sm:grid-cols-2">
+        <SelectField
+          label="Payment Confirmation"
+          name="payment_confirmation_status"
+          defaultValue={business?.payment_confirmation_status ?? "none"}
+          options={[
+            { value: "none", label: "— None recorded —" },
+            { value: "pending", label: "Pending" },
+            { value: "confirmed", label: "Confirmed" },
+            { value: "expired", label: "Expired" },
+          ]}
+          hint="Records an external/manual payment (check, bank transfer, in person, etc). Does NOT by itself grant Plan Tier/Pro access or change Listing Status — activate those separately above."
+        />
+        <TextField
+          label="Confirmed On"
+          name="payment_confirmed_at"
+          type="date"
+          defaultValue={business?.payment_confirmed_at ? business.payment_confirmed_at.slice(0, 10) : null}
+          hint="Optional."
+        />
+        <TextField
+          label="Payment Note"
+          name="payment_confirmation_note"
+          defaultValue={business?.payment_confirmation_note}
+          placeholder="Amount, method, date, who confirmed it"
+          hint="Optional admin note."
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <CheckboxField
           label="Verified"

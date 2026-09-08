@@ -3,6 +3,7 @@ import { getStripe } from "./stripe";
 import { getPublicOrigin } from "@/lib/site-url";
 import { isBusinessPro } from "@/lib/entitlements";
 import { applyReferralDiscount, getActiveReferralDiscount } from "./referrals";
+import { isCommerceEnabled } from "@/lib/site-config";
 
 // Native Business Onboarding Pass 3 — the native FindMi Pro offer,
 // deliberately separate from the marketplace order checkout
@@ -53,6 +54,9 @@ export async function createBusinessProCheckoutSession(
   admin: SupabaseClient,
   businessId: string
 ): Promise<{ url: string } | { error: string }> {
+  // Highperlocal Prep, Pass 1 — see membershipCheckout.ts's identical guard.
+  if (!isCommerceEnabled()) return { error: "Checkout isn't available on this deployment." };
+
   const stripe = getStripe();
   if (!stripe) return { error: "Checkout isn't configured yet." };
 

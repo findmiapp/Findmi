@@ -59,6 +59,13 @@ export async function saveAppearance(id: string | null, formData: FormData) {
   let areaId = eventId ? null : str(formData, "market_area_id");
   if (areaId && (!marketId || !(await isAreaInMarket(areaId, marketId)))) areaId = null;
 
+  // Highperlocal Prep, Pass 1 — same "only meaningful for standalone" rule
+  // as market_id/market_area_id above: an event-linked appearance's venue
+  // always comes from its Event/Occurrence (see derivedFields below),
+  // never from a Location picked here, so it's forced null once an Event
+  // is set — never stored where it could silently drift from the Event.
+  const locationId = eventId ? null : str(formData, "location_id");
+
   // Event ↔ Where You'll Be Sync Fix pass — when a Related Findmi Event is
   // linked, that Event (or its selected occurrence) is authoritative for
   // title/date/venue, never a second, independently-typed copy that can
@@ -85,6 +92,40 @@ export async function saveAppearance(id: string | null, formData: FormData) {
   } | null = null;
   let resolvedOccurrenceId: string | null = null;
   let eventSlug: string | null = null;
+
+  // Highperlocal Prep, Pass 1 — same shape/intent as derivedFields above,
+  // for a STANDALONE appearance's own Canonical Location instead of an
+  // Event: the linked Location becomes the authoritative source for the
+  // Venue/Address/City/State/lat/lon snapshot, exactly like an
+  // event/occurrence's linked Location already does above. Only computed
+  // when locationId survived the eventId-forces-null rule above, so this
+  // never runs (and never overrides manually-typed venue fields) for an
+  // event-linked appearance.
+  let locationDerivedVenue: {
+    venue_name: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  } | null = null;
+  if (locationId) {
+    const { data: location } = await supabase
+      .from("locations")
+      .select("name, address, city, state, latitude, longitude")
+      .eq("id", locationId)
+      .maybeSingle();
+    if (location) {
+      locationDerivedVenue = {
+        venue_name: location.name,
+        address: location.address,
+        city: location.city,
+        state: location.state,
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
+    }
+  }
 
   if (eventId) {
     const { data: event } = await supabase
@@ -147,18 +188,27 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     }
   }
 
+  // Highperlocal Prep, Pass 1 — venue snapshot precedence: an Event/
+  // Occurrence link wins (derivedFields, existing/unchanged), then a
+  // Canonical Location link (locationDerivedVenue, new), then whatever the
+  // admin typed by hand (existing/unchanged). Exactly one of the first two
+  // can ever be set (locationId is forced null whenever eventId is set —
+  // see above), so this never has to choose between them.
+  const venueSource = derivedFields ?? locationDerivedVenue;
+
   const payload = {
     business_id: businessId,
     event_id: eventId,
     event_occurrence_id: resolvedOccurrenceId,
+    location_id: locationId,
     title: derivedFields?.title ?? title,
     description: str(formData, "description"),
     start_at: derivedFields?.start_at ?? startIso,
     end_at: derivedFields?.end_at ?? endIso,
-    venue_name: derivedFields ? derivedFields.venue_name : str(formData, "venue_name"),
-    address: derivedFields ? derivedFields.address : str(formData, "address"),
-    city: derivedFields ? derivedFields.city : str(formData, "city"),
-    state: derivedFields ? derivedFields.state : str(formData, "state"),
+    venue_name: venueSource ? venueSource.venue_name : str(formData, "venue_name"),
+    address: venueSource ? venueSource.address : str(formData, "address"),
+    city: venueSource ? venueSource.city : str(formData, "city"),
+    state: venueSource ? venueSource.state : str(formData, "state"),
     status: str(formData, "status") ?? "confirmed",
     is_featured: bool(formData, "is_featured"),
     bulletin_text: str(formData, "bulletin_text"),
@@ -168,7 +218,7 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     flyer_image_url: str(formData, "flyer_image_url"),
     market_id: marketId,
     market_area_id: areaId,
-    ...(derivedFields ? { latitude: derivedFields.latitude, longitude: derivedFields.longitude } : {}),
+    ...(venueSource ? { latitude: venueSource.latitude, longitude: venueSource.longitude } : {}),
   };
 
   let appearanceId = id;

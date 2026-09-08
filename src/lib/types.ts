@@ -102,6 +102,18 @@ export type BillingStatus = "comped" | "pending_payment" | "paid" | "past_due" |
 export type OnboardingStatus = "not_started" | "incomplete" | "submitted" | "approved";
 export type PublicationStatus = "draft" | "pending_review" | "live" | "paused" | "rejected";
 
+// Manual Review Foundation (Highperlocal Prep, Pass 1) — an admin-only,
+// non-Stripe review/payment workflow, deliberately modeled as two
+// INDEPENDENT statuses rather than one collapsed "approved" boolean:
+// ownership can be verified without payment being confirmed, and a
+// confirmed payment never implies verification, publication, or an
+// activated entitlement (plan_tier) — those all stay separate, explicit
+// admin actions. See businesses.ownership_verification_status/
+// payment_confirmation_status above and BusinessForm.tsx for the admin
+// controls.
+export type OwnershipVerificationStatus = "unverified" | "pending" | "verified" | "rejected";
+export type PaymentConfirmationStatus = "none" | "pending" | "confirmed" | "expired";
+
 // Event Rejection State pass — Events' own review/publication lifecycle,
 // deliberately narrower than PublicationStatus above (no draft/paused —
 // not needed for this pass's scope). Independent of events.is_demo, which
@@ -193,6 +205,20 @@ export interface Business {
   // content). A real business created via membership onboarding stays
   // non-public until a founder approves it, regardless of payment status.
   publication_status: PublicationStatus;
+  // Manual Review Foundation (Highperlocal Prep, Pass 1) — two
+  // independent, additive provenance concepts for a non-Stripe manual
+  // verification/payment workflow. Optional here for the same reason
+  // plan_tier is (see below): not public-readable, so a narrow SELECT
+  // that doesn't request these columns won't suddenly need them. Setting
+  // either never implies or auto-sets publication_status or plan_tier —
+  // see lib/types.ts's own OwnershipVerificationStatus/
+  // PaymentConfirmationStatus doc comments.
+  ownership_verification_status?: OwnershipVerificationStatus;
+  ownership_verified_at?: string | null;
+  ownership_verification_note?: string | null;
+  payment_confirmation_status?: PaymentConfirmationStatus;
+  payment_confirmed_at?: string | null;
+  payment_confirmation_note?: string | null;
   // Business Profile + Event Detail V2 polish pass, item 4 — an optional
   // direct external URL for the primary Inquire action, with its own
   // label. Checked ahead of the existing Form Manager/Tally resolution
@@ -606,6 +632,14 @@ export type EventParticipationStatus =
 // admin roster approval doesn't overwrite an owner's own edits).
 export type AppearanceSource = "manual" | "event_self_added" | "official_participation";
 
+// Highperlocal Prep, Pass 1 — retail classification of a physical
+// Location (see FindmiLocation.classification below). Classifies the
+// individual retail location itself, never a parent Business/brand — the
+// same brand can appear at locations with different classifications.
+// Nullable/no-default at the column level: an existing Location starts
+// unclassified rather than ever being guessed.
+export type LocationClassification = "adult_use" | "medical" | "adult_use_medical" | "hemp_store" | "other";
+
 export interface Appearance {
   id: string;
   business_id: string;
@@ -662,6 +696,16 @@ export interface Appearance {
   // from the Business's own home market_area_id.
   market_id: string | null;
   market_area_id: string | null;
+  // Highperlocal Prep, Pass 1 — optional link to a real, canonical
+  // `locations` row (a known dispensary/retailer/venue/other saved
+  // location). NEVER removes or repurposes venue_name/address/city/state/
+  // latitude/longitude above — those stay the display snapshot/fallback,
+  // auto-filled from the linked Location when this is set (see
+  // saveAppearance), and still fully usable on their own when it's null.
+  // The linked Location is the authoritative source for retail
+  // classification/directory relationships (FindmiLocation.classification)
+  // — this column never carries its own copy of that.
+  location_id: string | null;
 }
 
 export interface BusinessWithCategories extends Business {
@@ -712,6 +756,12 @@ export interface FindmiLocation {
   email: string | null;
   phone: string | null;
   cover_image_url: string | null;
+  // Highperlocal Prep, Pass 1 — this Location's retail classification.
+  // Null = unclassified (never guessed/backfilled). This is the
+  // authoritative source for classification once an Appearance links to
+  // this Location via appearances.location_id — an Appearance never
+  // carries its own separate copy.
+  classification: LocationClassification | null;
 }
 
 /** Multi-Entity Self-Service V1, Stage 3 — Location gallery, same shape

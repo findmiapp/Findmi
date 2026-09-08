@@ -6,6 +6,7 @@ import { getStripe } from "@/lib/commerce/stripe";
 import { computeOrderDraft } from "@/lib/commerce/quote";
 import { createPendingOrder } from "@/lib/commerce/createOrder";
 import { getPublicOrigin } from "@/lib/site-url";
+import { isCommerceEnabled } from "@/lib/site-config";
 import type { CartLine, CartQuote } from "@/lib/commerce/types";
 
 /** Re-prices the cart server-side for display — the /cart page never
@@ -32,6 +33,11 @@ export interface StartCheckoutInput {
 export async function startCheckout(
   input: StartCheckoutInput
 ): Promise<{ url: string } | { error: string }> {
+  // Highperlocal Prep, Pass 1 — marketplace purchasing/cart checkout is
+  // disabled on this deployment; checked before getStripe()/any Stripe env
+  // read (see lib/site-config.ts's own doc comment).
+  if (!isCommerceEnabled()) return { error: "Checkout isn't available on this deployment." };
+
   const stripe = getStripe();
   if (!stripe) return { error: "Payments aren't configured yet — missing STRIPE_SECRET_KEY." };
 

@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { siteConfig } from "./site-config";
 
 export interface SiteContactInfo {
   email: string | null;
@@ -30,7 +31,14 @@ export async function getSiteContactInfo(): Promise<SiteContactInfo> {
     .maybeSingle();
 
   const config = (data?.config_json ?? {}) as { email?: unknown; phone?: unknown };
-  const email = typeof config.email === "string" && config.email.trim() ? config.email.trim() : null;
+  // Highperlocal Prep, Pass 1 — falls back to siteConfig.supportEmail only
+  // when the founder hasn't configured one here. `null` for findmi (see
+  // site-config.ts) preserves this function's exact prior behavior for
+  // every existing FindMi deployment; a highperlocal deployment gets a
+  // real placeholder address instead of a hidden contact action by
+  // default, before its own founder has configured one.
+  const email =
+    (typeof config.email === "string" && config.email.trim() ? config.email.trim() : null) ?? siteConfig.supportEmail;
   const phone = typeof config.phone === "string" && config.phone.trim() ? config.phone.trim() : null;
   return { email, phone };
 }
