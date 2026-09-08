@@ -26,18 +26,26 @@ export default function EventBusinessRoster({
   // touched by the A-Z sort below, so featured prioritization/order is
   // unaffected by this change either way.
   const featured = businesses.filter((b) => b.featured);
-  // A–Z Public Display pass — the main roster grid (below, and everything
-  // the category filter narrows down to) sorts alphabetically by business
-  // name, case-insensitive/natural, regardless of how `businesses` arrived
-  // (admin display_order for event-level, or the occurrence-level query's
-  // own ordering) — that source order is never mutated, only this
-  // rendering copy.
+  // Event Roster Duplicate Fix pass — root cause of "Donna/Fox appear
+  // twice": a featured business rendered once in "Featured Here" above
+  // AND again in the main grid below, since the main grid used to sort
+  // the FULL incoming list rather than excluding whatever the Featured
+  // Here section already showed. The main grid (and everything the
+  // category filter narrows down to) is scoped to non-featured businesses
+  // only, so each business renders in exactly one section — never a
+  // React-key dedupe over what should have been two disjoint lists.
+  const nonFeatured = useMemo(() => businesses.filter((b) => !b.featured), [businesses]);
+  // A–Z Public Display pass — the main roster grid sorts alphabetically by
+  // business name, case-insensitive/natural, regardless of how
+  // `businesses` arrived (admin display_order for event-level, or the
+  // occurrence-level query's own ordering) — that source order is never
+  // mutated, only this rendering copy.
   const sortedByName = useMemo(
     () =>
-      [...businesses].sort((a, b) =>
+      [...nonFeatured].sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true })
       ),
-    [businesses]
+    [nonFeatured]
   );
   const filtered = active === "All" ? sortedByName : sortedByName.filter((b) => b.categories[0]?.name === active);
 

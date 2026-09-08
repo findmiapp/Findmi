@@ -1,4 +1,4 @@
-import { CheckboxField, DateTimeField, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
+import { CheckboxField, NumberField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import { RelationField } from "@/components/admin/RelationPicker";
 import SubmitBar from "@/components/admin/SubmitBar";
@@ -7,6 +7,7 @@ import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/Marke
 import type { AdminAppearance, SelectOption } from "@/lib/admin/queries";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { saveAppearance, deleteAppearance } from "./actions";
+import AppearanceEventFields from "./AppearanceEventFields";
 
 export default function AppearanceForm({
   appearance,
@@ -43,15 +44,18 @@ export default function AppearanceForm({
           createLabel="New Business"
         />
 
-        <RelationField
-          label="Related Findmi Event"
-          name="event_id"
-          entity="events"
-          initial={initialEvent}
-          clearLabel="No event — link to Google Maps directions instead"
-          hint="If set, the public appearance card links to this Findmi event page instead of Maps."
-          createHref="/admin/events/new"
-          createLabel="New Event"
+        <AppearanceEventFields
+          initialEvent={initialEvent}
+          initialOccurrenceId={appearance?.event_occurrence_id ?? null}
+          initialValues={{
+            title: appearance?.title ?? "",
+            start_local: isoToLocalDateTime(appearance?.start_at ?? null),
+            end_local: isoToLocalDateTime(appearance?.end_at ?? null),
+            venue_name: appearance?.venue_name ?? "",
+            address: appearance?.address ?? "",
+            city: appearance?.city ?? "",
+            state: appearance?.state ?? "",
+          }}
         />
 
         <div className="rounded-2xl border border-black/10 p-4">
@@ -72,38 +76,7 @@ export default function AppearanceForm({
           </div>
         </div>
 
-        <TextField
-          label="Appearance Title"
-          name="title"
-          defaultValue={appearance?.title}
-          required
-          hint="What shows on the card — e.g. 'Minthorne Market'."
-        />
         <TextareaField label="Notes" name="description" defaultValue={appearance?.description} rows={3} />
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <DateTimeField
-            label="Start Date & Time"
-            name="start_at"
-            defaultValue={isoToLocalDateTime(appearance?.start_at ?? null)}
-            required
-            hint="Eastern time (America/New_York)."
-          />
-          <DateTimeField
-            label="End Date & Time"
-            name="end_at"
-            defaultValue={isoToLocalDateTime(appearance?.end_at ?? null)}
-            required
-            hint="Required — must be after the start time. Also Eastern time. Used to keep the appearance visible on the site for its whole real duration, not just until it starts."
-          />
-        </div>
-
-        <TextField label="Venue Name" name="venue_name" defaultValue={appearance?.venue_name} />
-        <div className="grid gap-4 sm:grid-cols-3">
-          <TextField label="Address" name="address" defaultValue={appearance?.address} />
-          <TextField label="City" name="city" defaultValue={appearance?.city} />
-          <TextField label="State" name="state" defaultValue={appearance?.state} />
-        </div>
 
         {/* Event + Appearance Geography Completion pass — Market/Area is
             FindMi DISCOVERY geography, its own section, never merged with
