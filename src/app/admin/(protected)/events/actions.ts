@@ -796,3 +796,55 @@ export async function copyOccurrenceVendors(eventId: string, targetOccurrenceId:
 
   revalidatePath(`/admin/events/${eventId}`);
 }
+
+/**
+ * Pending Review Decision Panel — Business + Event Pending Review UX pass.
+ * Events have no publication_status/moderation column at all (see
+ * EventForm.tsx's own "Published" checkbox comment and
+ * getAdminEvents/getDashboardNeedsAttention's needsReview definition):
+ * is_demo is the ONLY column that gates public visibility (getEventBySlug
+ * filters solely on is_demo=false), so it genuinely IS the authoritative
+ * approval mechanism here — not a substitute standing in for a separate
+ * moderation state that doesn't exist. Approving therefore performs
+ * exactly the one transition the existing "Published" checkbox already
+ * performs (is_demo -> false), reusing the identical column saveEvent
+ * writes — nothing new.
+ *
+ * There is deliberately NO rejectEventListing here. A real "rejected,
+ * decided-against" state distinct from "still pending" cannot be
+ * represented with is_demo alone (leaving is_demo=true is indistinguishable
+ * from not-yet-reviewed, so it could never disappear from the pending
+ * list/count the way a real reject must), and every schema-free
+ * alternative is blocked by this pass's own constraints (deleting the
+ * event violates "rejection doesn't delete the entity"; removing its
+ * event_members row would alter ownership). Representing a real Reject
+ * would need a new column — out of scope for this pass per its explicit
+ * "STOP and report before changing anything" instruction. See the final
+ * report.
+ *
+ * Guarded by .eq("is_demo", true) so a duplicate click/stale tab is a
+ * harmless no-op — the second UPDATE matches zero rows.
+ */
+export async function approveEventListing(id: string) {
+  const supabase = await requireAdminSupabase();
+  const { data: event, error } = await supabase
+    .from("events")
+    .update({ is_demo: false })
+    .eq("id", id)
+    .eq("is_demo", true)
+    .select("slug")
+    .maybeSingle();
+  if (error) redirect(errorRedirectUrl(`/admin/events/${id}`, error.message));
+
+  revalidatePath("/admin/events");
+  revalidatePath("/admin");
+  revalidatePath(`/admin/events/${id}`);
+  if (event?.slug) revalidatePath(`/event/${event.slug}`);
+  revalidatePath("/");
+  // Section 9 of this pass's own scope keeps /find/carousel untouched —
+  // /events (the public events index) is the direct listing-page
+  // equivalent of saveBusinessModeration's own revalidatePath("/businesses")
+  // above, not /find, which is a separate temporal-discovery feature.
+  revalidatePath("/events");
+  redirect("/admin/events?needsReview=1&decided=approved");
+}

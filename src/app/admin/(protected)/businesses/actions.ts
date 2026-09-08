@@ -427,6 +427,59 @@ export async function saveBusinessModeration(id: string, formData: FormData) {
   redirect(appendQuery(editPath, { saved: "1" }));
 }
 
+const PENDING_LIST_PATH = "/admin/businesses?published=pending_review";
+
+/**
+ * Pending Review Decision Panel — Business + Event Pending Review UX pass.
+ * One-click Approve/Reject for a business currently publication_status=
+ * 'pending_review', writing the EXACT SAME column saveBusinessModeration
+ * above already treats as authoritative ("THE control that approves a
+ * listing"). Deliberately narrower than that full form: never touches
+ * is_demo/verified/founding_member/is_featured/plan_tier, so a decision
+ * made from this panel can never silently grant Pro, change a display
+ * badge, or alter is_demo — only the one column the task's own "do not
+ * automatically alter Plan/grant Pro/alter ownership" constraints allow.
+ *
+ * Both guard with .eq("publication_status", "pending_review") so a
+ * duplicate click (double-tap, or a stale tab reopened after another
+ * admin already decided) is a harmless no-op — the second UPDATE matches
+ * zero rows instead of re-applying or erroring.
+ */
+export async function approveBusinessListing(id: string) {
+  const supabase = await requireAdminSupabase();
+  const { data: business, error } = await supabase
+    .from("businesses")
+    .update({ publication_status: "live" })
+    .eq("id", id)
+    .eq("publication_status", "pending_review")
+    .select("slug")
+    .maybeSingle();
+  if (error) redirect(appendQuery(`/admin/businesses/${id}`, { error: error.message }));
+
+  revalidatePath("/admin/businesses");
+  revalidatePath("/admin");
+  revalidatePath(`/admin/businesses/${id}`);
+  if (business?.slug) revalidatePath(`/business/${business.slug}`);
+  revalidatePath("/");
+  revalidatePath("/businesses");
+  redirect(appendQuery(PENDING_LIST_PATH, { decided: "approved" }));
+}
+
+export async function rejectBusinessListing(id: string) {
+  const supabase = await requireAdminSupabase();
+  const { error } = await supabase
+    .from("businesses")
+    .update({ publication_status: "rejected" })
+    .eq("id", id)
+    .eq("publication_status", "pending_review");
+  if (error) redirect(appendQuery(`/admin/businesses/${id}`, { error: error.message }));
+
+  revalidatePath("/admin/businesses");
+  revalidatePath("/admin");
+  revalidatePath(`/admin/businesses/${id}`);
+  redirect(appendQuery(PENDING_LIST_PATH, { decided: "rejected" }));
+}
+
 /** Internal tab — CRM status fields (Membership Status/Lead Status,
  * legacy lead-tracking unrelated to Founding Membership billing below)
  * plus commerce/payout settings. Founder-only, never rendered or

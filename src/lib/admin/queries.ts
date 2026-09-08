@@ -217,6 +217,22 @@ export async function getEventIdsWithOwnersSet(): Promise<Set<string>> {
   return new Set(await getEventIdsWithOwners(supabase));
 }
 
+/** Admin Pending Review Decision UX pass — the same "does this event have
+ * a real event_members owner" check getEventIdsWithOwners answers for the
+ * whole table, scoped to just ONE event for the single-entity edit page
+ * (a head-only existence count, not a fetch-everything-then-filter-in-JS
+ * pass over the full table). Used together with the event's own is_demo
+ * to compute the exact same "needsReview" definition getAdminEvents/
+ * getDashboardNeedsAttention already use, so the edit page's decision
+ * panel can never disagree with the Command Center count or the pending
+ * list about whether this event is actually pending. */
+export async function eventHasOwner(id: string): Promise<boolean> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return false;
+  const { count } = await supabase.from("event_members").select("id", { count: "exact", head: true }).eq("event_id", id);
+  return (count ?? 0) > 0;
+}
+
 export async function getAdminEvents(filters: EventListFilters = {}): Promise<AdminEvent[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];

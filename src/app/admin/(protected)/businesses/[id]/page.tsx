@@ -24,10 +24,13 @@ import GalleryField from "@/components/admin/GalleryField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import BusinessPeopleRoster from "@/components/admin/BusinessPeopleRoster";
 import { getCurrentAccessByEntity } from "@/lib/admin/claim-queries";
+import PendingReviewPanel from "@/components/admin/PendingReviewPanel";
 import {
   addAdditionalMarket,
+  approveBusinessListing,
   assignBusinessMember,
   assignPrimaryMarket,
+  rejectBusinessListing,
   removeBusinessMember,
   removeMarketAssignment,
   saveBusinessCategories,
@@ -152,6 +155,21 @@ export default async function EditBusinessPage({
   // schema: same source of truth requireBusinessMember()/the claims page
   // already treat as the real ownership signal.
   const claimed = members.some((m) => m.role === "owner");
+  // Admin Pending Review Decision UX pass — the SAME publication_status
+  // saveBusinessModeration already treats as authoritative (see that
+  // action's own comment). Owner email is only ever shown when cheaply
+  // available from data this page already loaded (members, above) — no
+  // extra query for it.
+  const isPendingReview = business.publication_status === "pending_review";
+  const ownerEmail = members.find((m) => m.role === "owner")?.email ?? null;
+  const submittedContext = [
+    `Submitted ${new Date(business.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`,
+    ownerEmail ? `by ${ownerEmail}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const approveAction = approveBusinessListing.bind(null, id);
+  const rejectAction = rejectBusinessListing.bind(null, id);
 
   const selectableCategories = categories.filter(
     (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || result.categoryIds.includes(c.id)
@@ -201,7 +219,46 @@ export default async function EditBusinessPage({
         >
           {claimed ? "Claimed" : "Unclaimed"}
         </span>
+        {/* Admin Pending Review Decision UX pass — compact status context
+            for an already-decided listing (task's own "do not clutter every
+            normal Edit screen with a giant moderation panel"); the big
+            decision panel below is reserved for pending_review only. */}
+        {!isPendingReview && (
+          <span
+            className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+              business.publication_status === "live"
+                ? "bg-findmi-50 text-findmi-700"
+                : business.publication_status === "rejected"
+                  ? "bg-red-50 text-red-700"
+                  : "bg-black/[0.06] text-ink/50"
+            }`}
+          >
+            {business.publication_status === "live"
+              ? "Approved"
+              : business.publication_status === "rejected"
+                ? "Rejected"
+                : business.publication_status === "paused"
+                  ? "Paused"
+                  : "Draft"}
+          </span>
+        )}
       </div>
+
+      {/* Admin Pending Review Decision UX pass — a prominent, unmissable
+          decision panel placed ABOVE the tab nav so it's visible on first
+          load regardless of which tab was last open ("without hunting
+          through tabs" per the pass's own instruction) — not tucked inside
+          the existing Moderation tab, which stays exactly as-is for the
+          full form (verified/founding member/featured, etc.) below it. */}
+      {isPendingReview && (
+        <PendingReviewPanel
+          entityLabel="Business"
+          context={submittedContext}
+          approveAction={approveAction}
+          approveLabel="Approve Business"
+          rejectAction={rejectAction}
+        />
+      )}
 
       <div className="mt-4">
         <AdminTabNav items={ADMIN_TABS} activeKey={tab} basePath={basePath} />

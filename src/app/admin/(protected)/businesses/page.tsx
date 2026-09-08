@@ -9,9 +9,9 @@ const selectClass =
 export default async function AdminBusinessesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; published?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; published?: string; decided?: string }>;
 }) {
-  const { q, category, published } = await searchParams;
+  const { q, category, published, decided } = await searchParams;
   const publishedFilter =
     published === "public" || published === "demo" || published === "pending_review" ? published : undefined;
 
@@ -31,6 +31,17 @@ export default async function AdminBusinessesPage({
           Add Business
         </Link>
       </div>
+
+      {/* Admin Pending Review Decision UX pass — the "return naturally to
+          the review queue" success state after Approve/Reject on the edit
+          page. The decided business itself is already gone from this list
+          by the time this renders (published=pending_review filter, same
+          authoritative query the decision panel wrote to). */}
+      {(decided === "approved" || decided === "rejected") && (
+        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          {decided === "approved" ? "Business approved and now live." : "Business rejected."}
+        </p>
+      )}
 
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <input

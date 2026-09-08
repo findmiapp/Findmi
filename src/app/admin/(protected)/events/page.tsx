@@ -10,9 +10,16 @@ const selectClass =
 export default async function AdminEventsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; when?: string; vendorApps?: string; pending?: string; needsReview?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    when?: string;
+    vendorApps?: string;
+    pending?: string;
+    needsReview?: string;
+    decided?: string;
+  }>;
 }) {
-  const { q, when, vendorApps, pending, needsReview } = await searchParams;
+  const { q, when, vendorApps, pending, needsReview, decided } = await searchParams;
   const whenFilter = when === "upcoming" || when === "past" ? when : undefined;
   const needsReviewOnly = needsReview === "1";
 
@@ -43,6 +50,17 @@ export default async function AdminEventsPage({
           Add Event
         </Link>
       </div>
+
+      {/* Admin Pending Review Decision UX pass — the "return naturally to
+          the review queue" success state after Approve on the edit page.
+          The approved event itself is already gone from this list by the
+          time this renders (needsReview=1 filter, same authoritative
+          is_demo+owner definition the decision panel wrote to). */}
+      {decided === "approved" && (
+        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          Event approved and now live.
+        </p>
+      )}
 
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <input
