@@ -100,8 +100,18 @@ export type ResolvedHomepageRow =
  * by each occurrence's EFFECTIVE physical Market — see
  * lib/event-markets.ts — never business Market entitlement). A CURATED
  * events row stays exactly like curated businesses: the founder's
- * editorial selection ignores Market entirely. */
-export async function resolveHomepageRowItems(row: HomepageRow, marketSlug?: string): Promise<ResolvedHomepageRow> {
+ * editorial selection ignores Market entirely.
+ *
+ * Browse Mode + Area-Aware Discovery pass — `areaSlug` follows the exact
+ * same rule as `marketSlug` above: only ever applied to a DYNAMIC
+ * "businesses" row (getHomepageRowBusinesses), never to curated rows,
+ * business_showcase, events, or products in this pass. Omitted preserves
+ * exact prior (Market-only, or unfiltered) behavior. */
+export async function resolveHomepageRowItems(
+  row: HomepageRow,
+  marketSlug?: string,
+  areaSlug?: string
+): Promise<ResolvedHomepageRow> {
   if (row.content_type === "business_showcase") {
     return { contentType: "business_showcase", items: [] };
   }
@@ -115,6 +125,7 @@ export async function resolveHomepageRowItems(row: HomepageRow, marketSlug?: str
             featuredOnly: row.featured_only,
             limit: row.item_limit,
             marketSlug,
+            areaSlug,
           });
     return { contentType: "businesses", items };
   }

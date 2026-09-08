@@ -353,6 +353,12 @@ export interface HomepageRowBusinessParams {
    * getBusinessIdsInMarket exactly like searchBusinesses does; omitted
    * preserves current behavior exactly. */
   marketSlug?: string;
+  /** Browse Mode + Area-Aware Discovery pass — same Market -> Area
+   * precision searchBusinesses already has (getBusinessIdsInArea
+   * supersedes the plain Market id list when both are present). Only
+   * meaningful alongside marketSlug; omitted preserves exact prior
+   * (Market-only, or unfiltered) behavior. */
+  areaSlug?: string;
 }
 
 /** Dynamic-mode businesses feed for a founder-configured homepage row
@@ -365,10 +371,15 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
   if (!supabase) return [];
 
   // Resolved and short-circuited exactly like searchBusinesses's own
-  // marketSlug handling — an unknown/inactive slug or a market with
-  // nobody in it yet returns [] immediately, never an unfiltered row.
+  // marketSlug/areaSlug handling — an unknown/inactive slug, or a
+  // market/area with nobody in it yet, returns [] immediately, never an
+  // unfiltered row. A precise Area supersedes the plain Market id list
+  // (same reasoning as searchBusinesses).
   let marketBusinessIds: string[] | null = null;
-  if (params.marketSlug) {
+  if (params.areaSlug && params.marketSlug) {
+    marketBusinessIds = await getBusinessIdsInArea(params.marketSlug, params.areaSlug);
+    if (marketBusinessIds.length === 0) return [];
+  } else if (params.marketSlug) {
     marketBusinessIds = await getBusinessIdsInMarket(params.marketSlug);
     if (marketBusinessIds.length === 0) return [];
   }
@@ -447,13 +458,25 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
  * for THAT Market, or selecting it would be the same "chip exists,
  * always empty" bug this function was written to prevent for is_demo/
  * publication_status. Never applied to curated rows, which ignore
- * Market entirely (see resolveHomepageRowItems's own note). */
-export async function getCategoriesForDynamicBusinessRow(featuredOnly: boolean, marketSlug?: string): Promise<Category[]> {
+ * Market entirely (see resolveHomepageRowItems's own note).
+ *
+ * Browse Mode + Area-Aware Discovery pass — optional areaSlug applies the
+ * exact same precision searchBusinesses/getHomepageRowBusinesses already
+ * have: a precise Area supersedes the plain Market id list. Omitted
+ * preserves exact prior (Market-only, or unfiltered) behavior. */
+export async function getCategoriesForDynamicBusinessRow(
+  featuredOnly: boolean,
+  marketSlug?: string,
+  areaSlug?: string
+): Promise<Category[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
   let marketBusinessIds: string[] | null = null;
-  if (marketSlug) {
+  if (areaSlug && marketSlug) {
+    marketBusinessIds = await getBusinessIdsInArea(marketSlug, areaSlug);
+    if (marketBusinessIds.length === 0) return [];
+  } else if (marketSlug) {
     marketBusinessIds = await getBusinessIdsInMarket(marketSlug);
     if (marketBusinessIds.length === 0) return [];
   }

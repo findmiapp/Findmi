@@ -99,7 +99,7 @@ export default async function HomePage({
   // resolveHomepageRowItems itself only ever applies it to a DYNAMIC
   // "businesses" row (curated rows/business_showcase/events/products all
   // ignore it, per that function's own note).
-  const resolvedRows = await Promise.all(homepageRows.map((row) => resolveHomepageRowItems(row, marketSlug)));
+  const resolvedRows = await Promise.all(homepageRows.map((row) => resolveHomepageRowItems(row, marketSlug, areaSlug)));
 
   // Founder Site Editor overrides for the structural sections that stay
   // fixed-position (hero, event discovery heading/copy, explore by
@@ -240,7 +240,13 @@ export default async function HomePage({
           rendering after every row if no businesses row exists. */}
       {homepageRows.map((row, i) => (
         <Fragment key={row.id}>
-          <HomepageRowSection row={row} resolved={resolvedRows[i]} marketSlug={marketSlug} isBrandsRow={i === brandsRowIndex} />
+          <HomepageRowSection
+            row={row}
+            resolved={resolvedRows[i]}
+            marketSlug={marketSlug}
+            areaSlug={areaSlug}
+            isBrandsRow={i === brandsRowIndex}
+          />
           {i === brandsRowIndex && <DiscoveryTopics topics={discoveryTopics} />}
         </Fragment>
       ))}
@@ -299,6 +305,7 @@ async function HomepageRowSection({
   row,
   resolved,
   marketSlug,
+  areaSlug,
   isBrandsRow,
 }: {
   row: HomepageRow;
@@ -308,6 +315,11 @@ async function HomepageRowSection({
    * client-side re-filter route). Curated rows and every other content
    * type ignore it entirely, per LOCKED V1 policy. */
   marketSlug?: string;
+  /** Browse Mode + Area-Aware Discovery pass — follows the exact same
+   * DYNAMIC-"businesses"-row-only rule as marketSlug above (chip
+   * eligibility, View All link). Curated rows and every other content
+   * type ignore it entirely, same as Market. */
+  areaSlug?: string;
   /** Brands We Love admin-control pass — true only for the same row
    * HomePage's own brandsRowIndex identifies (the first "businesses"
    * row). Gates the literal "Brands We Love"/"Real businesses, worth
@@ -361,7 +373,7 @@ async function HomepageRowSection({
     // row's own featured_only/is_demo/publication_status rules.
     const isDynamic = row.mode !== "curated";
     const rowCategories = isDynamic
-      ? await getCategoriesForDynamicBusinessRow(row.featured_only, marketSlug)
+      ? await getCategoriesForDynamicBusinessRow(row.featured_only, marketSlug, areaSlug)
       : dedupeCategories(resolved.items.flatMap((b) => b.categories));
     // Bulk-fetched once per row (not once per card) via the same
     // appearances architecture /businesses already uses for its own card
@@ -376,7 +388,24 @@ async function HomepageRowSection({
     // ignores Market for its own content (LOCKED V1 policy), so its View
     // All link stays exactly as it always was too — never implying the
     // curated set itself was Market-scoped.
-    const viewAllHref = isDynamic && marketSlug ? `/businesses?market=${encodeURIComponent(marketSlug)}` : "/businesses";
+    //
+    // Homepage category View All fix (Browse Mode pass) — a category-
+    // scoped DYNAMIC row previously dropped its own category_slug here
+    // entirely (View All landed on the whole unfiltered directory, or
+    // just Market-scoped, never the row's own category) even though
+    // getHomepageRowBusinesses/the chip list above already apply it
+    // correctly. Now builds the same market/area/category query
+    // /businesses' own filters and chips already use, so View All always
+    // preserves the row's actual scope. Area only ever accompanies
+    // Market, same convention as everywhere else this pattern appears.
+    const viewAllHref = (() => {
+      if (!isDynamic) return "/businesses";
+      const p = new URLSearchParams();
+      if (row.category_slug) p.set("category", row.category_slug);
+      if (marketSlug) p.set("market", marketSlug);
+      if (marketSlug && areaSlug) p.set("area", areaSlug);
+      return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
+    })();
     return (
       // Launch-polish pass item 2 — /businesses (Discovery/Archive V2) is
       // a real canonical destination regardless of this row's own
