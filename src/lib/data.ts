@@ -387,12 +387,35 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
     if (categoryBusinessIds.length === 0) return [];
   }
 
+  // Active Featured Business Promotional Eligibility pass — every caller
+  // of this function that sets featuredOnly IS a promotional Homepage Row
+  // (see lib/homepage-rows.ts's resolveHomepageRowItems, this function's
+  // only caller) — unlike searchBusinesses, there's no separate "plain
+  // filter" use of featuredOnly here to preserve, so eligibility applies
+  // unconditionally rather than needing a second opt-in flag. Same
+  // candidate-scoped resolver, same reasoning, as searchBusinesses'
+  // promotionallyEligibleOnly handling.
+  let eligibleFeaturedIds: string[] | null = null;
+  if (params.featuredOnly) {
+    const { data: featuredRows } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("is_featured", true)
+      .eq("is_demo", false)
+      .eq("publication_status", "live");
+    const featuredIds = (featuredRows ?? []).map((r) => r.id as string);
+    if (featuredIds.length === 0) return [];
+    const upcomingIds = await getBusinessIdsWithUpcomingAppearance(featuredIds);
+    eligibleFeaturedIds = featuredIds.filter((id) => upcomingIds.has(id));
+    if (eligibleFeaturedIds.length === 0) return [];
+  }
+
   let query = supabase.from("businesses").select(PUBLIC_BUSINESS_COLUMNS).eq("is_demo", false).eq("publication_status", "live");
   if (categoryBusinessIds) query = query.in("id", categoryBusinessIds);
   // Second .in("id", ...) call ANDs with the category one above — same
-  // idiom searchBusinesses already uses to intersect the two id sets.
+  // idiom searchBusinesses already uses to intersect the id sets.
   if (marketBusinessIds) query = query.in("id", marketBusinessIds);
-  if (params.featuredOnly) query = query.eq("is_featured", true);
+  if (eligibleFeaturedIds) query = query.in("id", eligibleFeaturedIds);
 
   const { data, error } = await query
     .order("is_featured", { ascending: false })
@@ -612,6 +635,46 @@ export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string)
   return (rows ?? []).map((r) => r.id as string);
 }
 
+/** Active Featured Business Promotional Eligibility pass — the one
+ * centralized resolver for "does this Business have at least one
+ * qualifying upcoming Where You'll Be," reused by both searchBusinesses
+ * (Discover's Featured Brands rail) and getHomepageRowBusinesses (a
+ * featured_only Homepage Row) rather than duplicating this check in each.
+ *
+ * Deliberately reuses the EXACT SAME public definition
+ * getUpcomingAppearancesForBusiness/getFindMiHereFeed already use —
+ * appearances.status <> 'canceled' AND end_at > now() — never a second,
+ * stricter one: 'tentative' counts exactly like 'confirmed', only
+ * 'canceled' is excluded, and end_at (not start_at) decides "upcoming",
+ * the same active-duration principle used everywhere else. Never
+ * inspects event_businesses/event_occurrence_businesses — appearances.source
+ * (manual/event_self_added/official_participation) is documented as never
+ * gating display, and this eligibility check follows that same rule.
+ *
+ * `candidateIds` scopes the query to a known, already-filtered id set
+ * (e.g. the currently is_featured=true businesses) — same "resolve a
+ * bounded candidate list first" discipline as getBusinessIdsInMarket/
+ * getBusinessIdsInArea, so this never scans every appearance in the
+ * system just to answer a question about a handful of Featured
+ * businesses. Returns a Set (not string[], unlike its sibling id
+ * resolvers above) because every current caller only ever needs O(1)
+ * membership tests against it, not to enumerate it. */
+export async function getBusinessIdsWithUpcomingAppearance(candidateIds?: string[]): Promise<Set<string>> {
+  if (candidateIds && candidateIds.length === 0) return new Set();
+  const supabase = getSupabase();
+  if (!supabase) return new Set();
+
+  let query = supabase
+    .from("appearances")
+    .select("business_id")
+    .neq("status", "canceled")
+    .gt("end_at", new Date().toISOString());
+  if (candidateIds) query = query.in("business_id", candidateIds);
+
+  const { data } = await query;
+  return new Set((data ?? []).map((r) => r.business_id as string));
+}
+
 export type BusinessSort = "recommended" | "newest" | "az";
 
 export interface SearchBusinessesParams {
@@ -641,6 +704,18 @@ export interface SearchBusinessesParams {
    * with each other. */
   areaSlug?: string;
   featuredOnly?: boolean;
+  /** Active Featured Business Promotional Eligibility pass — an ADDITIVE
+   * refinement of featuredOnly, never a redefinition of it. featuredOnly
+   * alone still means exactly what it always has ("businesses whose
+   * editorial is_featured flag is true" — e.g. /businesses' own Featured
+   * Brands filter checkbox, which must keep showing every editorially
+   * Featured business regardless of schedule). Only when this is ALSO
+   * true does a Featured business additionally need >=1 qualifying
+   * upcoming appearance (see getBusinessIdsWithUpcomingAppearance) to be
+   * included — for a genuine PROMOTIONAL placement (e.g. Discover's
+   * Featured Brands rail), not a plain data filter. Ignored entirely when
+   * featuredOnly is not also set. */
+  promotionallyEligibleOnly?: boolean;
   foundingMemberOnly?: boolean;
   /** "recommended" (default) = is_featured desc, founding_member desc,
    * newest first — a transparent, deterministic ordering built entirely
@@ -698,6 +773,28 @@ export async function searchBusinesses(params: SearchBusinessesParams = {}): Pro
     }
   }
 
+  // Active Featured Business Promotional Eligibility pass — only ever
+  // resolved when BOTH featuredOnly and promotionallyEligibleOnly are
+  // set (see SearchBusinessesParams' own comment on why these are two
+  // separate flags, not one). Candidate-scoped to just the currently
+  // is_featured=true businesses — never an unbounded appearances scan —
+  // same "resolve a bounded id set, then .in() it" discipline as
+  // categoryBusinessIds/marketBusinessIds above.
+  let eligibleFeaturedIds: string[] | null = null;
+  if (params.featuredOnly && params.promotionallyEligibleOnly) {
+    const { data: featuredRows } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("is_featured", true)
+      .eq("is_demo", false)
+      .eq("publication_status", "live");
+    const featuredIds = (featuredRows ?? []).map((r) => r.id as string);
+    if (featuredIds.length === 0) return [];
+    const upcomingIds = await getBusinessIdsWithUpcomingAppearance(featuredIds);
+    eligibleFeaturedIds = featuredIds.filter((id) => upcomingIds.has(id));
+    if (eligibleFeaturedIds.length === 0) return [];
+  }
+
   let query = supabase
     .from("businesses")
     .select(PUBLIC_BUSINESS_COLUMNS)
@@ -725,6 +822,9 @@ export async function searchBusinesses(params: SearchBusinessesParams = {}): Pro
   // intersecting the two id sets, without doing that intersection in JS.
   if (marketBusinessIds) {
     query = query.in("id", marketBusinessIds);
+  }
+  if (eligibleFeaturedIds) {
+    query = query.in("id", eligibleFeaturedIds);
   }
 
   if (params.sort === "newest") {

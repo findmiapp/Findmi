@@ -82,7 +82,19 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
     getConsumerVisibleMarketsWithAreas(),
     getFindMiHereFeed(toFindWindow(whenKey), 8, { marketSlug, areaSlug, categorySlug }),
     getEventsDiscovery({ when: toDiscoveryWindow(whenKey), marketSlug, areaSlug, limit: 8 }),
-    searchBusinesses({ featuredOnly: true, marketSlug, areaSlug, categorySlug, sort: "recommended", limit: 8 }),
+    // Active Featured Business Promotional Eligibility pass — this rail
+    // is a genuine promotional placement (unlike /businesses' own
+    // ?featured=1 filter checkbox, which stays plain editorial-only), so
+    // it also requires >=1 qualifying upcoming appearance.
+    searchBusinesses({
+      featuredOnly: true,
+      promotionallyEligibleOnly: true,
+      marketSlug,
+      areaSlug,
+      categorySlug,
+      sort: "recommended",
+      limit: 8,
+    }),
     getFeaturedProducts(8),
   ]);
 
