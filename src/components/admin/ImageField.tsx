@@ -28,9 +28,23 @@ export default function ImageField({
     const fd = new FormData();
     fd.set("file", file);
     startTransition(async () => {
-      const result = await uploadImage(fd);
-      if (result.error) setError(result.error);
-      else if (result.url) setUrl(result.url);
+      // Product image upload crash fix — uploadImage() itself always
+      // resolves to {url} or {error}, but the Server Action CALL can
+      // still reject outright (a network drop, a platform-level request
+      // rejection for an oversized/slow upload, any other transport
+      // failure before uploadImage's own code ever runs) — previously
+      // unhandled here, so that rejection propagated out of this
+      // transition as an uncaught exception and crashed the whole page
+      // to Next's generic "Application error" screen instead of leaving
+      // the form usable. Caught the same way a validation error already
+      // is: set the existing error state, change nothing else.
+      try {
+        const result = await uploadImage(fd);
+        if (result.error) setError(result.error);
+        else if (result.url) setUrl(result.url);
+      } catch {
+        setError("Upload failed. Please check your connection and try again.");
+      }
     });
   }
 
