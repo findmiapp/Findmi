@@ -381,7 +381,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           event keeps the exact original event_businesses roster below,
           untouched. */}
       {hasOccurrences ? (
-        <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} />
+        <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} eventName={event.name} />
       ) : (
         <section className="mt-5">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">
@@ -390,7 +390,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           <p className="mt-1 text-sm text-ink/55">
             {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
           </p>
-          <EventBusinessRoster businesses={businesses} />
+          <EventBusinessRoster businesses={businesses} eventName={event.name} />
         </section>
       )}
 

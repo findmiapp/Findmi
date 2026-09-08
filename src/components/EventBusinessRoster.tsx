@@ -2,12 +2,20 @@
 
 import { useMemo, useState } from "react";
 import BusinessLogoCard from "./BusinessLogoCard";
+import { HorizontalScroller } from "./Section";
 import type { EventBusinessListing } from "@/lib/data";
 
 export default function EventBusinessRoster({
   businesses,
+  eventName,
 }: {
   businesses: EventBusinessListing[];
+  /** Featured Vendors + Full Roster Correction pass — used only for the
+   * "Featured Vendors at {eventName}" heading below; this component never
+   * fetches the Event itself, so both callers (EventPublicView.tsx for a
+   * legacy event, EventOccurrenceBusinessRoster.tsx for a recurring one)
+   * just pass through the event.name they already have in hand. */
+  eventName: string;
 }) {
   // Filters derive from the categories actually represented here — never a
   // fixed list, so an event never shows a filter with nothing behind it.
@@ -20,21 +28,27 @@ export default function EventBusinessRoster({
   }, [businesses]);
 
   const [active, setActive] = useState<string>("All");
-  // "Featured Here" deliberately keeps deriving from the raw incoming
+  // "Featured Vendors" deliberately keeps deriving from the raw incoming
   // order (display_order for a legacy event, or featured-first-then-name
   // from getOccurrenceBusinessRosters for a recurring one) — never
   // touched by the A-Z sort below, so featured prioritization/order is
   // unaffected by this change either way.
   const featured = businesses.filter((b) => b.featured);
-  // Event Roster Duplicate Fix pass — root cause of "Donna/Fox appear
-  // twice": a featured business rendered once in "Featured Here" above
-  // AND again in the main grid below, since the main grid used to sort
-  // the FULL incoming list rather than excluding whatever the Featured
-  // Here section already showed. The main grid (and everything the
-  // category filter narrows down to) is scoped to non-featured businesses
-  // only, so each business renders in exactly one section — never a
-  // React-key dedupe over what should have been two disjoint lists.
-  const nonFeatured = useMemo(() => businesses.filter((b) => !b.featured), [businesses]);
+  // Featured Vendors + Full Roster Correction pass — the previous pass's
+  // fix for the Donna/Fox double-render bug went a step too far: it
+  // excluded featured businesses from "Who You'll Find Here" entirely,
+  // but Featured is additive editorial prominence, not a separate
+  // participation tier — a featured business is still a confirmed
+  // participant and belongs in the complete roster too. The real bug was
+  // never "featured businesses show up in two places" (that's correct,
+  // intentional) — it was the main grid rendering the SAME "Featured
+  // Vendors" section's businesses a second time with no visual
+  // distinction, back when Featured had no rail of its own. Now that
+  // Featured Vendors is its own clearly-labeled horizontal rail (below),
+  // the complete roster is free to include every confirmed business
+  // again, featured or not — see this pass's own report for the intended
+  // Perk Up Fest presentation (Donna/Fox in both sections, Viktor in the
+  // full roster only).
   // A–Z Public Display pass — the main roster grid sorts alphabetically by
   // business name, case-insensitive/natural, regardless of how
   // `businesses` arrived (admin display_order for event-level, or the
@@ -42,10 +56,10 @@ export default function EventBusinessRoster({
   // mutated, only this rendering copy.
   const sortedByName = useMemo(
     () =>
-      [...nonFeatured].sort((a, b) =>
+      [...businesses].sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true })
       ),
-    [nonFeatured]
+    [businesses]
   );
   const filtered = active === "All" ? sortedByName : sortedByName.filter((b) => b.categories[0]?.name === active);
 
@@ -59,14 +73,25 @@ export default function EventBusinessRoster({
 
   return (
     <div className="mt-4">
+      {/* Featured Vendors — a horizontal swipeable rail, not a stacked
+          grid (mobile: one card mostly visible with the next peeking in,
+          matching the "Upcoming Dates" carousel just above this section
+          on the same page — same -mx-4/px-4 edge-bleed idiom, same
+          BusinessLogoCard rail width HomepageBusinessRow's own "Brands We
+          Love" row already uses). Renders nothing at all when no
+          confirmed business is featured — never an empty section. */}
       {featured.length > 0 && (
-        <div className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Featured Here</p>
-          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mb-6 -mx-4 sm:mx-0">
+          <p className="px-4 font-display text-lg font-bold tracking-tight text-findmi-700 sm:px-0">
+            Featured Vendors at {eventName}
+          </p>
+          <HorizontalScroller className="mt-3">
             {featured.map((b) => (
-              <RosterCard key={b.id} business={b} />
+              <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
+                <RosterCard business={b} />
+              </div>
             ))}
-          </div>
+          </HorizontalScroller>
         </div>
       )}
 

@@ -17,8 +17,10 @@ import { useEventOccurrence } from "./EventOccurrenceContext";
  * unchanged — only the data feeding it differs from the legacy path. */
 export default function EventOccurrenceBusinessRoster({
   rostersByOccurrence,
+  eventName,
 }: {
   rostersByOccurrence: Record<string, EventBusinessListing[]>;
+  eventName: string;
 }) {
   const { selected } = useEventOccurrence();
   if (!selected) return null;
@@ -43,7 +45,7 @@ export default function EventOccurrenceBusinessRoster({
               one. Without this, switching occurrences while a specific
               category was active could silently filter the new
               occurrence's roster down to zero visible cards. */}
-          <EventBusinessRoster key={selected.id} businesses={businesses} />
+          <EventBusinessRoster key={selected.id} businesses={businesses} eventName={eventName} />
         </>
       )}
     </section>
