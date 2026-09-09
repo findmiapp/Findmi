@@ -534,7 +534,7 @@ export default async function ManageEventPage({
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Address</span>
                 <input type="text" name="address" defaultValue={event.address ?? ""} className={inputClass} />
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink/70">City</span>
                   <input type="text" name="city" defaultValue={event.city ?? ""} className={inputClass} />
@@ -542,6 +542,10 @@ export default async function ManageEventPage({
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-medium text-ink/70">State</span>
                   <input type="text" name="state" defaultValue={event.state ?? ""} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink/70">ZIP Code</span>
+                  <input type="text" name="postal_code" defaultValue={event.postal_code ?? ""} className={inputClass} />
                 </label>
               </div>
               <p className="text-xs text-ink/40">

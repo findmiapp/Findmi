@@ -31,7 +31,7 @@ import {
   getOccurrenceBusinessRosters,
   getUpcomingOccurrencesForEvent,
 } from "@/lib/data";
-import { cityState, formatDateRange } from "@/lib/format";
+import { cityStateZip, formatDateRange } from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -91,7 +91,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
     ? await getOccurrenceBusinessRosters(upcomingOccurrences.map((o) => o.id))
     : {};
   const category = eventWithCategories.categories[0] ?? null;
-  const location = cityState(event.city, event.state);
+  const location = cityStateZip(event.city, event.state, event.postal_code);
   const venueLine = [event.venue_name, event.address, location].filter(Boolean).join(" · ");
   const mapQuery = [event.venue_name, event.address, location].filter(Boolean).join(", ");
   const directionsHref = mapQuery

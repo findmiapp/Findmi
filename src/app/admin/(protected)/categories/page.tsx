@@ -64,6 +64,16 @@ export default async function AdminCategoriesPage({
           </span>
           <span className="shrink-0 text-findmi-700">→</span>
         </Link>
+        <Link
+          href="/admin/categories/locations"
+          className="flex flex-1 items-center justify-between rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-3.5 transition hover:border-findmi/50"
+        >
+          <span>
+            <span className="block text-sm font-semibold text-findmi-700">Location Categories</span>
+            <span className="block text-xs text-ink/50">Tagged onto venues.</span>
+          </span>
+          <span className="shrink-0 text-findmi-700">→</span>
+        </Link>
       </div>
 
       {error && (

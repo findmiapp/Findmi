@@ -89,12 +89,18 @@ export async function deleteCategoryRow(
   kind: CategoryKind,
   id: string
 ): Promise<CategoryActionResult> {
-  const [{ count: eventCount }, { count: businessCount }, { count: productCount }] = await Promise.all([
-    supabase.from("event_categories").select("category_id", { count: "exact", head: true }).eq("category_id", id),
-    supabase.from("business_categories").select("category_id", { count: "exact", head: true }).eq("category_id", id),
-    supabase.from("product_categories").select("category_id", { count: "exact", head: true }).eq("category_id", id),
-  ]);
-  const totalUses = (eventCount ?? 0) + (businessCount ?? 0) + (productCount ?? 0);
+  const [{ count: eventCount }, { count: businessCount }, { count: productCount }, { count: locationCount }] =
+    await Promise.all([
+      supabase.from("event_categories").select("category_id", { count: "exact", head: true }).eq("category_id", id),
+      supabase.from("business_categories").select("category_id", { count: "exact", head: true }).eq("category_id", id),
+      supabase.from("product_categories").select("category_id", { count: "exact", head: true }).eq("category_id", id),
+      // Location V2 — locations.category_id is a plain FK (ON DELETE SET
+      // NULL), not a join-table row a cascade would clean up on its own,
+      // so an in-use Location category needs the same explicit guard the
+      // three join-table kinds already get below.
+      supabase.from("locations").select("id", { count: "exact", head: true }).eq("category_id", id),
+    ]);
+  const totalUses = (eventCount ?? 0) + (businessCount ?? 0) + (productCount ?? 0) + (locationCount ?? 0);
   if (totalUses > 0) {
     return { error: "This category is currently in use and can't be deleted." };
   }

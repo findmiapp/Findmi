@@ -262,9 +262,10 @@ export default function BusinessForm({
 
       {/* LOCATION */}
       <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <TextField label="City" name="city" defaultValue={business?.city} />
         <TextField label="State" name="state" defaultValue={business?.state} />
+        <TextField label="ZIP Code" name="postal_code" defaultValue={business?.postal_code} />
         <TextField label="Country" name="country" defaultValue={business?.country ?? "US"} />
       </div>
       <TextField

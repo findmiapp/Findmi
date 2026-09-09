@@ -123,10 +123,11 @@ export default function EventForm({
       </div>
 
       <TextField label="Venue Name" name="venue_name" defaultValue={event?.venue_name} />
+      <TextField label="Address" name="address" defaultValue={event?.address} />
       <div className="grid gap-4 sm:grid-cols-3">
-        <TextField label="Address" name="address" defaultValue={event?.address} />
         <TextField label="City" name="city" defaultValue={event?.city} />
         <TextField label="State" name="state" defaultValue={event?.state} />
+        <TextField label="ZIP Code" name="postal_code" defaultValue={event?.postal_code} />
       </div>
 
       {/* Event + Appearance Geography Completion pass — Market/Area is

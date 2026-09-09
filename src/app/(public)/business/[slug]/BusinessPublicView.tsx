@@ -27,7 +27,7 @@ import {
   getUpcomingAppearancesForBusiness,
   PUBLIC_BUSINESS_COLUMNS,
 } from "@/lib/data";
-import { cityState } from "@/lib/format";
+import { cityStateZip } from "@/lib/format";
 import { resolveBusinessInquiryForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { validateCustomDestination } from "@/lib/navigation";
@@ -134,7 +134,7 @@ export async function generateBusinessMetadata(slug: string): Promise<Metadata> 
   if (!business) return { title: "Business not found" };
 
   const pro = await resolveIsPro(business.id);
-  const location = cityState(business.city, business.state);
+  const location = cityStateZip(business.city, business.state, business.postal_code);
   // Free's description/short_description are hidden on the page itself
   // (see BusinessPublicView below) — the meta description falls back to
   // the exact same category+location/generic text a Free page would
@@ -240,7 +240,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   const inquiryAction = customInquiryUrl ? { url: customInquiryUrl, displayMode: "external" as const } : (inquiryForm ?? mailtoFallback);
   const inquiryLabel = business.inquiry_cta_label?.trim() || "Inquire";
 
-  const location = cityState(business.city, business.state);
+  const location = cityStateZip(business.city, business.state, business.postal_code);
   // categories[0] is the same "good enough for a compact label" primary-
   // category convention already used elsewhere (BusinessCard, CompactCard)
   // — not a new taxonomy concept. Anything beyond the first is folded into
@@ -295,12 +295,13 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     ...(sameAs.length > 0 ? { sameAs } : {}),
     // Free identity has no location — withheld from structured data too,
     // same reasoning as description/phone/sameAs above.
-    ...(pro && (business.city || business.state)
+    ...(pro && (business.city || business.state || business.postal_code)
       ? {
           address: {
             "@type": "PostalAddress",
             ...(business.city ? { addressLocality: business.city } : {}),
             ...(business.state ? { addressRegion: business.state } : {}),
+            ...(business.postal_code ? { postalCode: business.postal_code } : {}),
           },
         }
       : {}),

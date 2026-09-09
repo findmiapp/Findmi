@@ -556,6 +556,7 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
     address: string | null;
     city: string | null;
     state: string | null;
+    postal_code?: string | null;
     latitude?: number | null;
     longitude?: number | null;
   } = {
@@ -563,12 +564,13 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
     address: str(formData, "address"),
     city: str(formData, "city"),
     state: str(formData, "state"),
+    postal_code: str(formData, "postal_code"),
   };
 
   if (locationId) {
     const { data: location } = await admin
       .from("locations")
-      .select("name, address, city, state, latitude, longitude")
+      .select("name, address, city, state, postal_code, latitude, longitude")
       .eq("id", locationId)
       .maybeSingle();
     if (location) {
@@ -577,6 +579,7 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
         address: location.address,
         city: location.city,
         state: location.state,
+        postal_code: location.postal_code,
         latitude: location.latitude,
         longitude: location.longitude,
       };

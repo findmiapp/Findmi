@@ -13,7 +13,12 @@ const ASPECT_BY_KIND: Record<PostKind, string> = {
   event: "aspect-[3/4]",
   business: "aspect-[4/5]",
   product: "aspect-square",
-  location: "aspect-[16/10]",
+  // Location V2 — was aspect-[16/10] (a short, wide letterbox): fine for a
+  // photo alone, but too little height once a real title + category badge
+  // + meta line + CTA button are all stacked in the bottom overlay, which
+  // is exactly what made /locations cards overlap. Matches Business's own
+  // aspect so a Location card has the same room to breathe.
+  location: "aspect-[4/5]",
   person: "aspect-[4/5]",
 };
 

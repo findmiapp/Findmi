@@ -154,6 +154,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
     address: str(formData, "address"),
     city: str(formData, "city"),
     state: str(formData, "state"),
+    postal_code: str(formData, "postal_code"),
     market_id: effectiveMarketId,
     market_area_id: effectiveAreaId,
     organizer_name: str(formData, "organizer_name"),

@@ -226,6 +226,12 @@ export default async function ManageLocationPage({
                 name="cover_image_url"
                 defaultValue={location.cover_image_url}
               />
+              <MemberLocationImageField
+                locationId={id}
+                label="Logo / Profile Image (square works best)"
+                name="logo_url"
+                defaultValue={location.logo_url}
+              />
               <p className="text-xs text-ink/40">
                 Venue name and address are managed by Findmi. Need a correction? Contact Findmi support.
               </p>

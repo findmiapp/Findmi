@@ -40,22 +40,33 @@ export async function saveLocation(id: string | null, formData: FormData) {
     areaId = null;
   }
 
+  // Location V2 — the hours editor submits the whole week as one JSON
+  // blob (empty string = no hours entered = hide the section), same
+  // "hidden input carries client state" shape CategorySubcategoryField's
+  // own category_id already uses.
+  const hoursRaw = str(formData, "hours");
+  const hours = hoursRaw ? JSON.parse(hoursRaw) : null;
+
   const payload = {
     name,
     slug,
     address: str(formData, "address"),
     city: str(formData, "city"),
     state: str(formData, "state"),
+    postal_code: str(formData, "postal_code"),
     latitude: num(formData, "latitude"),
     longitude: num(formData, "longitude"),
     is_demo: !bool(formData, "published"),
     market_id: marketId,
     market_area_id: areaId,
+    category_id: str(formData, "category_id"),
     description: str(formData, "description"),
     cover_image_url: str(formData, "cover_image_url"),
+    logo_url: str(formData, "logo_url"),
     website_url: str(formData, "website_url"),
     email: str(formData, "email"),
     phone: str(formData, "phone"),
+    hours,
   };
 
   let locationId = id;

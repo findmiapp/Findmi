@@ -191,6 +191,15 @@ export function cityState(city?: string | null, state?: string | null): string {
   return [city, state].filter(Boolean).join(", ");
 }
 
+/** Location V2 — the one shared "city, state ZIP" fragment for a full
+ * formatted address (street / city, state ZIP), used alongside cityState
+ * wherever a page shows a complete address rather than a compact card
+ * meta line. Deliberately separate from cityState itself, which stays
+ * ZIP-free everywhere it's already used for short card summaries. */
+export function cityStateZip(city?: string | null, state?: string | null, postalCode?: string | null): string {
+  return [cityState(city, state), postalCode].filter(Boolean).join(" ");
+}
+
 /** Product Pickup Occurrences — Expire Past Options fix. Whether an
  * appearance's pickup window hasn't passed yet, for keeping an expired
  * event-pickup fulfillment option (product page, cart, checkout) from

@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import SubmitBar from "./SubmitBar";
 import type { Category, CategoryKind } from "@/lib/types";
 
-type UsageCounts = { events: number; businesses: number; products: number };
+type UsageCounts = { events: number; businesses: number; products: number; locations: number };
 
 const KIND_LABEL: Record<CategoryKind, string> = {
   business: "business",
   event: "event",
   product: "product",
+  location: "location",
 };
 
 const inputClass =
@@ -101,8 +102,11 @@ export default function CategoryList({
   }, [reorderable]);
 
   const usageFor = (id: string): number => {
-    const c = usage.get(id) ?? { events: 0, businesses: 0, products: 0 };
-    return kind === "business" ? c.businesses : kind === "event" ? c.events : c.products;
+    const c = usage.get(id) ?? { events: 0, businesses: 0, products: 0, locations: 0 };
+    if (kind === "business") return c.businesses;
+    if (kind === "event") return c.events;
+    if (kind === "location") return c.locations;
+    return c.products;
   };
 
   const matchCount = q ? categories.filter((c) => c.name.toLowerCase().includes(q)).length : categories.length;
@@ -250,7 +254,7 @@ export default function CategoryList({
                     <button
                       type="button"
                       disabled
-                      title="In use — remove this category from every business/event/product first, or leave it in place."
+                      title="In use — remove this category from every business/event/product/location first, or leave it in place."
                       className="cursor-not-allowed rounded-lg border border-black/10 px-2 py-1 text-[11px] font-semibold text-ink/30"
                     >
                       In use

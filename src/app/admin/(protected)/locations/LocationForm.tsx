@@ -4,16 +4,21 @@ import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
 import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
+import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import LocationHoursField from "@/components/admin/LocationHoursField";
 import type { AdminLocation } from "@/lib/admin/queries";
+import type { Category } from "@/lib/types";
 import { saveLocation, deleteLocation } from "./actions";
 
 export default function LocationForm({
   location,
   marketsWithAreas,
+  categories,
   error,
 }: {
   location: AdminLocation | null;
   marketsWithAreas: MarketWithAreaOptions[];
+  categories: Category[];
   error?: string;
 }) {
   const action = saveLocation.bind(null, location?.id ?? null);
@@ -43,10 +48,13 @@ export default function LocationForm({
         />
 
         <TextField label="Address" name="address" defaultValue={location?.address} />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <TextField label="City" name="city" defaultValue={location?.city} />
           <TextField label="State" name="state" defaultValue={location?.state} />
+          <TextField label="ZIP Code" name="postal_code" defaultValue={location?.postal_code} />
         </div>
+
+        <CategorySubcategoryField categories={categories} defaultCategoryId={location?.category_id} />
 
         <TextareaField
           label="Description"
@@ -55,11 +63,14 @@ export default function LocationForm({
           hint="Shown on the public venue page. Owner-editable from the Location Manager too."
         />
         <ImageField label="Cover Image" name="cover_image_url" defaultValue={location?.cover_image_url} />
+        <ImageField label="Logo / Profile Image (square works best)" name="logo_url" defaultValue={location?.logo_url} />
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField label="Website" name="website_url" type="url" defaultValue={location?.website_url} />
           <TextField label="Email" name="email" type="email" defaultValue={location?.email} />
         </div>
         <TextField label="Phone" name="phone" type="tel" defaultValue={location?.phone} />
+
+        <LocationHoursField name="hours" defaultValue={location?.hours ?? null} />
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             label="Latitude"

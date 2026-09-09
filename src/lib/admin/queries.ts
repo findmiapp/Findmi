@@ -468,30 +468,45 @@ export async function getProductCategoryIds(productId: string): Promise<string[]
  * founder can see which categories are real taxonomy today versus unused.
  * The `categories` table is shared by all three join tables; this is
  * read-only visibility, not a schema split. */
-export async function getCategoryUsageCounts(): Promise<Map<string, { events: number; businesses: number; products: number }>> {
+export async function getCategoryUsageCounts(): Promise<
+  Map<string, { events: number; businesses: number; products: number; locations: number }>
+> {
   const supabase = getAdminSupabase();
-  const counts = new Map<string, { events: number; businesses: number; products: number }>();
+  const counts = new Map<string, { events: number; businesses: number; products: number; locations: number }>();
   if (!supabase) return counts;
 
-  const [{ data: eventLinks }, { data: businessLinks }, { data: productLinks }] = await Promise.all([
-    supabase.from("event_categories").select("category_id"),
-    supabase.from("business_categories").select("category_id"),
-    supabase.from("product_categories").select("category_id"),
-  ]);
+  const empty = () => ({ events: 0, businesses: 0, products: 0, locations: 0 });
+
+  const [{ data: eventLinks }, { data: businessLinks }, { data: productLinks }, { data: locationLinks }] =
+    await Promise.all([
+      supabase.from("event_categories").select("category_id"),
+      supabase.from("business_categories").select("category_id"),
+      supabase.from("product_categories").select("category_id"),
+      // Location V2 — locations has no join table (a single category_id
+      // column, same shape as products.category_id), so its usage is
+      // counted straight off that column rather than a *_categories table.
+      supabase.from("locations").select("category_id").not("category_id", "is", null),
+    ]);
 
   for (const row of eventLinks ?? []) {
-    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0, products: 0 };
+    const entry = counts.get(row.category_id) ?? empty();
     entry.events += 1;
     counts.set(row.category_id, entry);
   }
   for (const row of businessLinks ?? []) {
-    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0, products: 0 };
+    const entry = counts.get(row.category_id) ?? empty();
     entry.businesses += 1;
     counts.set(row.category_id, entry);
   }
   for (const row of productLinks ?? []) {
-    const entry = counts.get(row.category_id) ?? { events: 0, businesses: 0, products: 0 };
+    const entry = counts.get(row.category_id) ?? empty();
     entry.products += 1;
+    counts.set(row.category_id, entry);
+  }
+  for (const row of locationLinks ?? []) {
+    if (!row.category_id) continue;
+    const entry = counts.get(row.category_id) ?? empty();
+    entry.locations += 1;
     counts.set(row.category_id, entry);
   }
   return counts;

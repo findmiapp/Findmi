@@ -300,6 +300,7 @@ export async function updateMemberLocationDetails(locationId: string, formData: 
   const payload = {
     description: str(formData, "description"),
     cover_image_url: str(formData, "cover_image_url"),
+    logo_url: str(formData, "logo_url"),
   };
 
   const { data: location, error } = await admin

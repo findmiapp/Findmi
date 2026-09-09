@@ -149,7 +149,15 @@ export async function uploadMemberBusinessImage(
  * description, country). Category itself isn't in this list — it's
  * handled separately below via the atomic set_business_category() RPC,
  * same as the original action. */
-const PROFILE_FREE_COLUMNS = ["name", "logo_url", "cover_image_url", "short_description", "city", "state"] as const;
+const PROFILE_FREE_COLUMNS = [
+  "name",
+  "logo_url",
+  "cover_image_url",
+  "short_description",
+  "city",
+  "state",
+  "postal_code",
+] as const;
 const PROFILE_PRO_COLUMNS = ["description", "country"] as const;
 const PROFILE_ALLOWED_COLUMNS = [...PROFILE_FREE_COLUMNS, ...PROFILE_PRO_COLUMNS] as const;
 
@@ -233,6 +241,7 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
     short_description: str(formData, "short_description"),
     city: str(formData, "city"),
     state: str(formData, "state"),
+    postal_code: str(formData, "postal_code"),
     description: str(formData, "description"),
     country: str(formData, "country"),
   };

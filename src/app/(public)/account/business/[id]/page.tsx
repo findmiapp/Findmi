@@ -281,7 +281,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, slug, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, market_area_id"
+        "id, name, slug, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, market_area_id"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -1013,7 +1013,7 @@ export default async function ManageBusinessPage({
                   for both tiers — this is just presentation following
                   that. */}
               <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
                   <input type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
@@ -1021,6 +1021,10 @@ export default async function ManageBusinessPage({
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
                   <input type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">ZIP Code</span>
+                  <input type="text" name="postal_code" defaultValue={business.postal_code ?? ""} className={inputClass} />
                 </label>
               </div>
 

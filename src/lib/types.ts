@@ -168,6 +168,9 @@ export interface Business {
   phone: string | null;
   city: string | null;
   state: string | null;
+  // Location V2 — shared ZIP support (see locations.postal_code /
+  // events.postal_code). TEXT, not required on legacy rows.
+  postal_code: string | null;
   country: string | null;
   service_radius_miles: number | null;
   verified: boolean;
@@ -384,7 +387,7 @@ export interface Membership {
  * splitting into three tables). Every read path scopes by kind — see
  * lib/data.ts and lib/admin/queries.ts — so a business category can never
  * leak into an event picker or vice versa. */
-export type CategoryKind = "business" | "event" | "product";
+export type CategoryKind = "business" | "event" | "product" | "location";
 
 export interface Category {
   id: string;
@@ -496,6 +499,9 @@ export interface FindmiEvent {
   address: string | null;
   city: string | null;
   state: string | null;
+  // Location V2 — shared ZIP support (see locations.postal_code /
+  // businesses.postal_code). TEXT, not required on legacy rows.
+  postal_code: string | null;
   latitude: number | null;
   longitude: number | null;
   organizer_name: string | null;
@@ -718,7 +724,39 @@ export interface FindmiLocation {
   email: string | null;
   phone: string | null;
   cover_image_url: string | null;
+  // Location V2 — shared ZIP support (see businesses.postal_code /
+  // events.postal_code, same TEXT-not-integer rule: preserves leading
+  // zeroes, allows ZIP+4/international, never required on legacy rows).
+  postal_code: string | null;
+  // Location V2 — square profile/logo image, alongside the wide
+  // cover_image_url hero. Same Findmi Storage upload architecture as
+  // every other image field (see imageUploadValidation.ts).
+  logo_url: string | null;
+  // Location V2 — single most-specific category (parent OR a one-level
+  // subcategory), same categories table + CategorySubcategoryField
+  // pattern products.category_id already uses. kind='location' rows only
+  // — never mixed with Business/Event/Product categories.
+  category_id: string | null;
+  // Location V2 — optional weekly hours of operation. Null = never
+  // entered = Hours section hidden entirely on the public page.
+  hours: LocationHours | null;
 }
+
+export type LocationWeekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+
+export interface LocationDayHours {
+  closed: boolean;
+  /** "HH:MM", 24-hour — only meaningful when closed is false. */
+  open?: string | null;
+  close?: string | null;
+}
+
+/** Location V2 — one entry per weekday, standard 7-day week, each day
+ * either closed or a single open/close window. Deliberately no holiday
+ * exceptions, split shifts, or timezone engine (see the task's own "keep
+ * V1 simple" instruction) — a day simply missing from the object is
+ * treated the same as closed. */
+export type LocationHours = Partial<Record<LocationWeekday, LocationDayHours>>;
 
 /** Multi-Entity Self-Service V1, Stage 3 — Location gallery, same shape
  * as business_images (id, location_id, url, display_order) — Locations

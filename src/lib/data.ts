@@ -2619,28 +2619,78 @@ export async function getAlternativeBusinesses(
 // exists, "what's happening here" is a best-effort match on venue name.
 // ----------------------------------------------------------------------------
 
-export async function getLocations(limit = 20): Promise<FindmiLocation[]> {
+// Location V2 — a location's single primary category/subcategory, embedded
+// via the real categories.id FK (locations.category_id), same shape as the
+// simple product.category_id relationship. Null when never categorized.
+export interface LocationCategoryRef {
+  id: string;
+  name: string;
+  slug: string;
+}
+export type LocationWithCategory = FindmiLocation & {
+  category: LocationCategoryRef | null;
+  /** Upcoming Event occurrences linked to this Location via the real
+   * event_occurrences.location_id FK — undefined where not computed
+   * (getLocationBySlug has its own full happenings list instead). A
+   * lightweight directory-card signal only: one batched query for the
+   * whole page (never one per card), and deliberately doesn't replicate
+   * getUpcomingAtLocation's full venue_name-matching fallback — a card's
+   * "X upcoming" hint doesn't need that precision. */
+  upcomingCount?: number;
+};
+
+/** Some PostgREST/supabase-js versions return a to-one embed as a
+ * single-element array rather than a bare object (see getUpcomingAtLocation's
+ * own identical Array.isArray(row.event) normalization) — never trusted as
+ * a plain object without this check. */
+function normalizeCategoryEmbed(raw: unknown): LocationCategoryRef | null {
+  const value = Array.isArray(raw) ? (raw[0] ?? null) : raw;
+  return (value as LocationCategoryRef | null) ?? null;
+}
+
+export async function getLocations(limit = 20): Promise<LocationWithCategory[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("locations")
-    .select("*")
+    .select("*, category:categories(id, name, slug)")
     .eq("is_demo", false)
     .order("name")
     .limit(limit);
-  return data ?? [];
+  const locations = ((data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
+    ...l,
+    category: normalizeCategoryEmbed(l.category),
+  }));
+  if (locations.length === 0) return locations;
+
+  const { data: occurrenceRows } = await supabase
+    .from("event_occurrences")
+    .select("location_id")
+    .in("location_id", locations.map((l) => l.id))
+    .eq("status", "scheduled")
+    .gt("end_at", new Date().toISOString());
+
+  const countByLocation = new Map<string, number>();
+  for (const row of occurrenceRows ?? []) {
+    if (!row.location_id) continue;
+    countByLocation.set(row.location_id, (countByLocation.get(row.location_id) ?? 0) + 1);
+  }
+
+  return locations.map((l) => ({ ...l, upcomingCount: countByLocation.get(l.id) ?? 0 }));
 }
 
-export async function getLocationBySlug(slug: string): Promise<FindmiLocation | null> {
+export async function getLocationBySlug(slug: string): Promise<LocationWithCategory | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
   const { data } = await supabase
     .from("locations")
-    .select("*")
+    .select("*, category:categories(id, name, slug)")
     .eq("slug", slug)
     .eq("is_demo", false)
     .maybeSingle();
-  return data ?? null;
+  if (!data) return null;
+  const row = data as LocationWithCategory & { category: unknown };
+  return { ...row, category: normalizeCategoryEmbed(row.category) };
 }
 
 /** Location Manager / venue profile — the location-level gallery
