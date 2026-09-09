@@ -240,11 +240,12 @@ export default function ClaimButton({
 
   if (state === "verification_required") {
     // Progressive Email Verification pass — mirrors the "guest" branch's
-    // own next=/?claim=1 pattern: after verifying, confirmEmailVerification
-    // (account/verify-email/actions.ts) redirects back to `next`, and the
-    // ?claim=1 there is what the mount effect above already uses to
-    // reopen the claim flow automatically — so the visitor lands right
-    // back where they were, ready to submit, with zero extra steps.
+    // own next=/?claim=1 pattern: after clicking the verification link
+    // sent by requestEmailVerification (account/verify-email/actions.ts),
+    // /auth/callback redirects back to `next`, and the ?claim=1 there is
+    // what the mount effect above already uses to reopen the claim flow
+    // automatically — so the visitor lands right back where they were,
+    // ready to submit, with zero extra steps.
     const next = `${window.location.pathname}?claim=1`;
     return (
       <div className="max-w-xs rounded-2xl border border-black/10 bg-white p-4">

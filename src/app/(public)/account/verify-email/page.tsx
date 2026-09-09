@@ -3,7 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
-import { requestEmailVerification, confirmEmailVerification } from "./actions";
+import { syncEmailVerifiedAt } from "@/lib/auth/sync-email-verified";
+import { requestEmailVerification } from "./actions";
 
 export const metadata: Metadata = {
   title: "Verify Your Email",
@@ -13,8 +14,6 @@ export const metadata: Metadata = {
 // ISR-cached.
 export const dynamic = "force-dynamic";
 
-const inputClass =
-  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
@@ -26,6 +25,17 @@ const primaryButtonClass =
  * redirect them automatically" instruction) — it's only reached by an
  * explicit "Verify Email" click, or by the claim-submission gate handing
  * `next` back to wherever the visitor was trying to claim.
+ *
+ * Callback/Link Fix — this is now a pure link-based flow end to end,
+ * matching what Supabase actually sends for signInWithOtp() (confirmed
+ * live: auth_logs shows mail_type "magic_link", never a bare code — see
+ * actions.ts's own doc comment for the full root-cause trace). Sending
+ * the link and completing it are two different requests, so there is no
+ * "just clicked it" state to render here — after a real click,
+ * /auth/callback establishes the session, syncs
+ * profiles.email_verified_at, and redirects straight to `next`, bypassing
+ * this page entirely on success. A failed/expired click comes back HERE
+ * with `error` set (see /auth/callback's own emailVerificationFailUrl).
  */
 export default async function VerifyEmailPage({
   searchParams,
@@ -40,6 +50,14 @@ export default async function VerifyEmailPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(next)}`);
+
+  // Self-heal for a stale/null profiles.email_verified_at on an account
+  // Supabase Auth itself already considers verified (e.g. an old signup-
+  // confirmation link, or a manual admin action) — see Phase 5 of the
+  // Callback/Link Fix: never make an already-verified visitor verify
+  // again just because this one row never got backfilled. Idempotent,
+  // guarded, no-ops for the overwhelming common case (already synced).
+  await syncEmailVerifiedAt(user);
 
   // Deliberately not part of the shared Profile type (lib/types.ts) —
   // that interface also backs the PUBLIC profile view once a username is
@@ -72,7 +90,7 @@ export default async function VerifyEmailPage({
       ) : (
         <>
           <p className="mt-3 text-sm text-ink/60">
-            We&rsquo;ll send a verification code to <span className="font-semibold text-ink">{user.email}</span>.
+            We&rsquo;ll send a verification link to <span className="font-semibold text-ink">{user.email}</span>.
             Verification is required for certain ownership actions, like claiming an existing listing — it&rsquo;s
             never required to keep building your Findmi profile.
           </p>
@@ -85,33 +103,19 @@ export default async function VerifyEmailPage({
             <form action={requestEmailVerification} className="mt-6">
               <input type="hidden" name="next" value={next} />
               <button type="submit" className={primaryButtonClass}>
-                Send Verification Code
+                Send Verification Email
               </button>
             </form>
           ) : (
             <>
               <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-                Verification code sent. Check your inbox and enter the code below.
+                Verification link sent. Open that email on this device and tap the link to verify your account —
+                you&rsquo;ll be brought right back here, signed in.
               </p>
-              <form action={confirmEmailVerification} className="mt-4 flex flex-col gap-3">
-                <input type="hidden" name="next" value={next} />
-                <input
-                  type="text"
-                  name="code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  required
-                  placeholder="6-digit code"
-                  className={inputClass}
-                />
-                <button type="submit" className={primaryButtonClass}>
-                  Verify Email
-                </button>
-              </form>
               <form action={requestEmailVerification} className="mt-3">
                 <input type="hidden" name="next" value={next} />
                 <button type="submit" className="text-sm font-semibold text-ink/50 transition hover:text-ink">
-                  Resend code
+                  Resend email
                 </button>
               </form>
             </>
