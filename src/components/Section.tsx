@@ -5,14 +5,23 @@ export default function Section({
   subtitle,
   viewAllHref,
   children,
+  className = "py-6",
 }: {
   title: string;
   subtitle?: string;
   viewAllHref?: string;
   children: React.ReactNode;
+  /** Replaces (never appends to) the default "py-6" outer vertical
+   * rhythm — a plain string swap avoids the usual Tailwind class-order
+   * footgun of trying to override py-6 by appending a second py-*
+   * utility. Every existing caller omits this and keeps today's exact
+   * spacing; Business Directory Visual Rhythm pass is the first caller
+   * to pass a tighter value, scoped to /businesses' own Browse Mode
+   * rails only. */
+  className?: string;
 }) {
   return (
-    <section className="py-6">
+    <section className={className}>
       {/* Launch-polish follow-up: View All used to sit inside the same
           items-end row as the title+subtitle stack, so with a subtitle
           present it bottom-aligned to the SUBTITLE line, not the title —

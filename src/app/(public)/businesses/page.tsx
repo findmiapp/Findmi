@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
@@ -235,7 +234,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
       </div>
 
       {isBrowseMode ? (
-        <div className="mx-auto mt-2 max-w-6xl">
+        <div className="mx-auto mt-3 max-w-6xl">
           {featuredBusinesses.length === 0 && categoryRails.length === 0 ? (
             <div className="mx-4 mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center sm:mx-6">
               <p className="text-sm text-ink/60">
@@ -244,6 +243,34 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
             </div>
           ) : (
             <>
+              {/* Business Directory Visual Rhythm pass — compact category
+                  chip strip, same bounded category set the rails below
+                  already resolved (never the full taxonomy, never a
+                  second query). Preserves market/area via the same
+                  buildBusinessesHref helper the rail View All links use;
+                  picking one always lands in the existing Results Mode —
+                  no new filtering logic. "All" just re-lands on this same
+                  Browse Mode view (market/area only, no category). */}
+              {categoryRails.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto px-4 pb-1 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <Link
+                    href={buildBusinessesHref({ market: marketSlug, area: areaSlug })}
+                    className="shrink-0 whitespace-nowrap rounded-full border border-findmi/30 bg-findmi-50 px-3.5 py-1.5 text-xs font-semibold text-findmi-700"
+                  >
+                    All
+                  </Link>
+                  {categoryRails.map(({ category }) => (
+                    <Link
+                      key={category.id}
+                      href={buildBusinessesHref({ category: category.slug, market: marketSlug, area: areaSlug })}
+                      className="shrink-0 whitespace-nowrap rounded-full border border-black/10 bg-white px-3.5 py-1.5 text-xs font-semibold text-ink transition hover:border-findmi/40 hover:bg-findmi-50 hover:text-findmi-700"
+                    >
+                      {category.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+
               {featuredBusinesses.length > 0 && (
                 // Featured on Findmi — the active promotional subset (see
                 // FEATURED_RAIL_LIMIT's own note above), not the plain
@@ -254,14 +281,14 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                 // pass's own spec. Rather than imply they're the same
                 // list, or change /businesses?featured=1's own meaning,
                 // this rail simply has no View All link.
-                <Section title="Featured on Findmi" subtitle="Businesses Findmi is spotlighting right now">
-                  <BrowseRow>
+                <Section title="Featured on Findmi" subtitle="Businesses Findmi is spotlighting right now" className="py-4">
+                  <HorizontalScroller>
                     {featuredBusinesses.map((b) => (
                       <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
                         <BusinessLogoCard business={b} nextAppearance={browseAppearanceHints.get(b.id)} />
                       </div>
                     ))}
-                  </BrowseRow>
+                  </HorizontalScroller>
                 </Section>
               )}
 
@@ -270,14 +297,15 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                   key={category.id}
                   title={category.name}
                   viewAllHref={buildBusinessesHref({ category: category.slug, market: marketSlug, area: areaSlug })}
+                  className="py-4"
                 >
-                  <BrowseRow>
+                  <HorizontalScroller>
                     {categoryBusinesses.map((b) => (
                       <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
                         <BusinessLogoCard business={b} nextAppearance={browseAppearanceHints.get(b.id)} />
                       </div>
                     ))}
-                  </BrowseRow>
+                  </HorizontalScroller>
                 </Section>
               ))}
             </>
@@ -326,20 +354,6 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
       )}
     </div>
   );
-}
-
-/** Browse Mode rail wrapper — same sparse-result restraint already
- * established by /discover's own page-local DiscoveryRow helper (not
- * shared/exported there either): a lone card (or two/three) at the left
- * edge of a page this wide reads as an accidentally-truncated row rather
- * than a deliberate short list, so <=3 items render as a plain
- * non-scrolling flex-wrap row instead of implying "swipe for more" when
- * there isn't more. 4+ items keep the existing, already-proven
- * HorizontalScroller exactly as everywhere else on the site. */
-function BrowseRow({ children }: { children: ReactNode }) {
-  const items = Array.isArray(children) ? children : [children];
-  if (items.length > 3) return <HorizontalScroller>{children}</HorizontalScroller>;
-  return <div className="flex flex-wrap gap-4 px-4 pb-2 sm:px-6">{children}</div>;
 }
 
 /** Category rail View All destination — preserves Market+Area+category
