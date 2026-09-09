@@ -9,6 +9,62 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
+import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
+
+/** Business review-decision notification — every CURRENT
+ * business_members recipient (see getEntityManagerEmails), never the
+ * public listing's own contact email. Best-effort: a Resend failure
+ * never affects the moderation decision itself, which has already
+ * committed by the time this is called. */
+async function notifyBusinessOwners(
+  supabase: SupabaseClient,
+  businessId: string,
+  businessName: string,
+  outcome: "live" | "rejected" | "paused" | "restored"
+): Promise<void> {
+  const to = await getEntityManagerEmails(supabase, "business", businessId);
+  const copyByOutcome: Record<typeof outcome, { type: string; subject: string; heading: string; body: string[] }> = {
+    live: {
+      type: "business_approved",
+      subject: `Your Business is now live — ${businessName}`,
+      heading: "Your Business is now live",
+      body: [`${businessName} has been approved and is now visible on Findmi.`],
+    },
+    rejected: {
+      type: "business_rejected",
+      subject: `Update on your Business — ${businessName}`,
+      heading: "Your Business wasn't approved",
+      body: [
+        `${businessName} wasn't approved for publication this time.`,
+        "You can review and update your Business details, then resubmit for review.",
+      ],
+    },
+    paused: {
+      type: "business_paused",
+      subject: `Your Business was paused — ${businessName}`,
+      heading: "Your Business was paused",
+      body: [`${businessName} has been temporarily paused and is no longer visible on Findmi.`],
+    },
+    restored: {
+      type: "business_restored",
+      subject: `Your Business is live again — ${businessName}`,
+      heading: "Your Business is live again",
+      body: [`${businessName} is visible on Findmi again.`],
+    },
+  };
+  const copy = copyByOutcome[outcome];
+
+  await sendProductNotification({
+    to,
+    type: copy.type,
+    subject: copy.subject,
+    heading: copy.heading,
+    body: copy.body,
+    actionLabel: `Manage ${businessName}`,
+    actionUrl: `/account/business/${businessId}`,
+  });
+}
 
 /**
  * Tabbed Business Edit pass — every save action below that's scoped to
@@ -452,9 +508,11 @@ export async function approveBusinessListing(id: string) {
     .update({ publication_status: "live" })
     .eq("id", id)
     .eq("publication_status", "pending_review")
-    .select("slug")
+    .select("name, slug")
     .maybeSingle();
   if (error) redirect(appendQuery(`/admin/businesses/${id}`, { error: error.message }));
+
+  if (business) await notifyBusinessOwners(supabase, id, business.name, "live");
 
   revalidatePath("/admin/businesses");
   revalidatePath("/admin");
@@ -467,12 +525,16 @@ export async function approveBusinessListing(id: string) {
 
 export async function rejectBusinessListing(id: string) {
   const supabase = await requireAdminSupabase();
-  const { error } = await supabase
+  const { data: business, error } = await supabase
     .from("businesses")
     .update({ publication_status: "rejected" })
     .eq("id", id)
-    .eq("publication_status", "pending_review");
+    .eq("publication_status", "pending_review")
+    .select("name")
+    .maybeSingle();
   if (error) redirect(appendQuery(`/admin/businesses/${id}`, { error: error.message }));
+
+  if (business) await notifyBusinessOwners(supabase, id, business.name, "rejected");
 
   revalidatePath("/admin/businesses");
   revalidatePath("/admin");
@@ -504,9 +566,11 @@ export async function pauseBusinessListing(id: string) {
     .update({ publication_status: "paused" })
     .eq("id", id)
     .eq("publication_status", "live")
-    .select("slug")
+    .select("name, slug")
     .maybeSingle();
   if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  if (business) await notifyBusinessOwners(supabase, id, business.name, "paused");
 
   revalidatePath("/admin/businesses");
   revalidatePath("/admin");
@@ -525,9 +589,11 @@ export async function restoreBusinessListing(id: string) {
     .update({ publication_status: "live" })
     .eq("id", id)
     .eq("publication_status", "paused")
-    .select("slug")
+    .select("name, slug")
     .maybeSingle();
   if (error) redirect(appendQuery(editPath, { error: error.message }));
+
+  if (business) await notifyBusinessOwners(supabase, id, business.name, "restored");
 
   revalidatePath("/admin/businesses");
   revalidatePath("/admin");

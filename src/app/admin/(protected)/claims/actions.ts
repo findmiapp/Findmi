@@ -5,7 +5,31 @@ import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import type { ClaimEntityType } from "@/lib/admin/claim-queries";
+import { getAccountEmail } from "@/lib/notifications/recipients";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
 
+const ENTITY_TABLE: Record<ClaimEntityType, "businesses" | "events" | "locations"> = {
+  business: "businesses",
+  event: "events",
+  location: "locations",
+};
+const MANAGER_PATH: Record<ClaimEntityType, string> = {
+  business: "/account/business",
+  event: "/account/event",
+  location: "/account/location",
+};
+const ENTITY_LABEL: Record<ClaimEntityType, string> = {
+  business: "Business",
+  event: "Event",
+  location: "Venue",
+};
+
+/** Claim decision notification — the claimant, resolved through their
+ * real authenticated account email (never the claim's own editable
+ * contact-email field), never the entity's public listing email. Called
+ * AFTER the claim row/RPC has already committed — a Resend failure here
+ * never affects the claim decision itself (see sendProductNotification's
+ * own best-effort contract). */
 const APPROVE_RPC: Record<ClaimEntityType, "approve_business_claim" | "approve_event_claim" | "approve_location_claim"> = {
   business: "approve_business_claim",
   event: "approve_event_claim",
@@ -17,6 +41,65 @@ const CLAIM_TABLE: Record<ClaimEntityType, "business_claim_requests" | "event_cl
   event: "event_claim_requests",
   location: "location_claim_requests",
 };
+
+/** Claim decision notification — the claimant, resolved through their
+ * real authenticated account email (never the claim's own editable
+ * contact-email field, never the entity's public listing email). Called
+ * AFTER the claim row/RPC has already committed — a Resend failure here
+ * never affects the claim decision itself (see sendProductNotification's
+ * own best-effort contract). Re-reads the claim row itself rather than
+ * threading extra data through approveClaim/rejectClaim's own signatures
+ * — one small extra read, same shape as every other notification call
+ * site in this pass. */
+async function notifyClaimant(
+  supabase: Awaited<ReturnType<typeof requireAdminSupabase>>,
+  entityType: ClaimEntityType,
+  claimId: string,
+  decision: "approved" | "rejected"
+): Promise<void> {
+  const { data: claim } = await supabase
+    .from(CLAIM_TABLE[entityType])
+    .select(`user_id, entity:${ENTITY_TABLE[entityType]}(id, name)`)
+    .eq("id", claimId)
+    .maybeSingle();
+  if (!claim) return;
+
+  const userId = (claim as { user_id: string }).user_id;
+  const entityRaw = (claim as { entity: { id: string; name: string } | { id: string; name: string }[] | null }).entity;
+  const entity = Array.isArray(entityRaw) ? entityRaw[0] : entityRaw;
+  const entityName = entity?.name ?? "your listing";
+  const email = await getAccountEmail(supabase, userId);
+  if (!email) return;
+
+  const label = ENTITY_LABEL[entityType];
+  if (decision === "approved") {
+    await sendProductNotification({
+      type: "claim_approved",
+      to: [email],
+      subject: `Your ${label} claim was approved — ${entityName}`,
+      heading: `Your ${label.toLowerCase()} claim was approved`,
+      body: [
+        `Great news — your claim on ${entityName} has been approved.`,
+        `You now have management access to this ${label.toLowerCase()} on Findmi.`,
+      ],
+      actionLabel: `Manage ${entityName}`,
+      actionUrl: entity ? `${MANAGER_PATH[entityType]}/${entity.id}` : "/account",
+    });
+  } else {
+    await sendProductNotification({
+      type: "claim_rejected",
+      to: [email],
+      subject: `Update on your ${label} claim — ${entityName}`,
+      heading: `Your ${label.toLowerCase()} claim wasn't approved`,
+      body: [
+        `Your claim on ${entityName} wasn't approved this time.`,
+        `If you believe this ${label.toLowerCase()} is genuinely yours, you can submit a new claim with more detail about your connection to it.`,
+      ],
+      actionLabel: "View Findmi",
+      actionUrl: "/account",
+    });
+  }
+}
 
 // Matches the short exception messages raised by approve_business_claim()/
 // approve_event_claim() in the claim foundation migration.
@@ -58,6 +141,8 @@ export async function approveClaim(entityType: ClaimEntityType, claimId: string)
     redirect(errorRedirectUrl("/admin/claims", message));
   }
 
+  await notifyClaimant(supabase, entityType, claimId, "approved");
+
   revalidatePath("/admin/claims");
   redirect("/admin/claims?approved=1");
 }
@@ -79,6 +164,8 @@ export async function rejectClaim(entityType: ClaimEntityType, claimId: string) 
   if (error || !data) {
     redirect(errorRedirectUrl("/admin/claims", "Couldn't reject — the claim may have already been reviewed."));
   }
+
+  await notifyClaimant(supabase, entityType, claimId, "rejected");
 
   revalidatePath("/admin/claims");
   redirect("/admin/claims?rejected=1");

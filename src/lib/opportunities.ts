@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getAccountEmail, getEntityManagerEmails, dedupeEmails } from "@/lib/notifications/recipients";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
 
 // Opportunities + Conversation Foundation V1 — the one shared module both
 // the owner-facing Business Manager (account/business/actions.ts) and
@@ -235,6 +237,69 @@ export async function getOrCreateConversation(
   return { id: conversationId, created: true };
 }
 
+const ENTITY_TABLE: Record<"business" | "event" | "location", "businesses" | "events" | "locations"> = {
+  business: "businesses",
+  event: "events",
+  location: "locations",
+};
+const ENTITY_LABEL: Record<"business" | "event" | "location", string> = {
+  business: "Business",
+  event: "Event",
+  location: "Venue",
+};
+
+async function getEntityDisplayName(
+  admin: SupabaseClient,
+  entityType: ConversationEntityType,
+  entityId: string | null
+): Promise<string> {
+  if (entityType === "personal" || !entityId) return "A Findmi member";
+  const { data } = await admin.from(ENTITY_TABLE[entityType]).select("name").eq("id", entityId).maybeSingle();
+  return (data as { name: string } | null)?.name ?? ENTITY_LABEL[entityType];
+}
+
+/** New-message notification — Resend Transactional Notification System
+ * pass. Every OTHER current participant on this conversation (never the
+ * sender), resolved straight from conversation_participants itself — the
+ * exact same live recipient set isAuthorizedForConversation already uses
+ * to decide who can even read the thread, so "who gets notified" can
+ * never drift from "who can actually see this message." This is the
+ * ONE place a text message is ever inserted (sendTextMessage below is
+ * this file's only caller of addMessage for kind "text"), so a brand-new
+ * conversation's first message and a later reply both funnel through
+ * here exactly once — never a second, separate "conversation created"
+ * email that would double up on the very first message. */
+async function notifyNewMessage(
+  admin: SupabaseClient,
+  conversationId: string,
+  senderUserId: string,
+  senderEntityType: ConversationEntityType,
+  senderEntityId: string | null,
+  body: string
+): Promise<void> {
+  const { data } = await admin.from("conversation_participants").select("user_id").eq("conversation_id", conversationId);
+  const recipientUserIds = [...new Set(((data ?? []) as { user_id: string }[]).map((row) => row.user_id))].filter(
+    (id) => id !== senderUserId
+  );
+  if (recipientUserIds.length === 0) return;
+  const emails = await Promise.all(recipientUserIds.map((id) => getAccountEmail(admin, id)));
+  const to = dedupeEmails(emails);
+  if (to.length === 0) return;
+
+  const senderName = await getEntityDisplayName(admin, senderEntityType, senderEntityId);
+  const preview = body.length > 160 ? `${body.slice(0, 157)}...` : body;
+
+  await sendProductNotification({
+    to,
+    type: "message_new",
+    subject: `New message from ${senderName} on Findmi`,
+    heading: `New message from ${senderName}`,
+    body: [`"${preview}"`],
+    actionLabel: "Reply on Findmi",
+    actionUrl: `/account/messages/${conversationId}`,
+  });
+}
+
 /** Sends one freeform text reply — the reply composer's only entry point.
  * The caller is responsible for authorization (current membership of
  * senderEntityType/senderEntityId, or "personal" + a real session) BEFORE
@@ -251,6 +316,7 @@ export async function sendTextMessage(
 ): Promise<void> {
   const participantId = await addParticipant(admin, conversationId, senderUserId, senderEntityType, senderEntityId);
   await addMessage(admin, conversationId, participantId, "text", body);
+  await notifyNewMessage(admin, conversationId, senderUserId, senderEntityType, senderEntityId, body);
 }
 
 /** Entity-aware identity, re-derived live (Section 14) — never trusts a
@@ -319,6 +385,106 @@ export async function getUserManagedEntities(
     .map((r) => ({ id: r.location_id, name: one(r.locations as { name: string } | { name: string }[] | null)?.name }))
     .filter((r): r is { id: string; name: string } => Boolean(r.name));
   return { businesses, events, locations };
+}
+
+/** Freshly-created invitation/application notification — Resend
+ * Transactional Notification System pass. Notifies the COUNTERPART side
+ * (never the initiator, who already knows they just acted): an
+ * organizer's invitation goes to the invited Business's managers, a
+ * business's application goes to the Event's managers. */
+async function notifyOpportunityCreated(admin: SupabaseClient, opportunity: OpportunityRow): Promise<void> {
+  const [{ data: event }, { data: business }] = await Promise.all([
+    admin.from("events").select("name").eq("id", opportunity.event_id).maybeSingle(),
+    admin.from("businesses").select("name").eq("id", opportunity.business_id).maybeSingle(),
+  ]);
+  const eventName = (event as { name: string } | null)?.name ?? "an Event";
+  const businessName = (business as { name: string } | null)?.name ?? "a Business";
+  const conversationUrl = opportunity.conversation_id ? `/account/messages/${opportunity.conversation_id}` : null;
+
+  if (opportunity.type === "event_invitation") {
+    // Actor Awareness — never notify the initiator (the organizer who
+    // just sent this invitation) even if they also happen to manage the
+    // invited Business.
+    const to = await getEntityManagerEmails(admin, "business", opportunity.business_id, opportunity.initiator_user_id);
+    await sendProductNotification({
+      to,
+      type: "opportunity_invitation",
+      subject: `${eventName} invited you to participate`,
+      heading: `${eventName} invited your business to participate`,
+      body: [`${eventName} invited ${businessName} to participate. Review the invitation and respond on Findmi.`],
+      actionLabel: "Review Invitation",
+      actionUrl: conversationUrl ?? `/account/business/${opportunity.business_id}?tab=opportunities`,
+    });
+  } else {
+    const to = await getEntityManagerEmails(admin, "event", opportunity.event_id, opportunity.initiator_user_id);
+    await sendProductNotification({
+      to,
+      type: "opportunity_application",
+      subject: `${businessName} applied to ${eventName}`,
+      heading: `${businessName} applied to your Event`,
+      body: [`${businessName} applied to participate in ${eventName}. Review the application and respond on Findmi.`],
+      actionLabel: "Review Application",
+      actionUrl: conversationUrl ?? `/account/event/${opportunity.event_id}?tab=participants`,
+    });
+  }
+}
+
+/** Terminal-decision notification — the side that DIDN'T just act. An
+ * invitation resolved (accepted/declined) means the Business just
+ * responded, so the Event's managers are notified; an application
+ * resolved means the organizer just decided, so the Business's managers
+ * are notified. Also the single notification point for a "crossed"
+ * Opportunity resolution (createOpportunity's own crossing branch calls
+ * this directly on the now-accepted EXISTING opportunity) — reusing this
+ * exact function there means the crossing case gets the identical
+ * correct-recipient, correct-copy, no-duplicate final-state email as a
+ * normal accept/decline, with no separate bespoke code path (Section:
+ * "one useful notification, not duplicate contradictory sends"). No-ops
+ * for any status other than accepted/declined (withdrawn/superseded
+ * aren't user-facing decisions worth emailing about). */
+async function notifyOpportunityResolved(admin: SupabaseClient, opportunity: OpportunityRow): Promise<void> {
+  if (opportunity.status !== "accepted" && opportunity.status !== "declined") return;
+  const [{ data: event }, { data: business }] = await Promise.all([
+    admin.from("events").select("name").eq("id", opportunity.event_id).maybeSingle(),
+    admin.from("businesses").select("name").eq("id", opportunity.business_id).maybeSingle(),
+  ]);
+  const eventName = (event as { name: string } | null)?.name ?? "the Event";
+  const businessName = (business as { name: string } | null)?.name ?? "the Business";
+  const accepted = opportunity.status === "accepted";
+
+  if (opportunity.type === "event_invitation") {
+    // The Business responded to the organizer's invite -> Event managers.
+    const to = await getEntityManagerEmails(admin, "event", opportunity.event_id);
+    await sendProductNotification({
+      to,
+      type: `opportunity_invitation_${opportunity.status}`,
+      subject: accepted ? `${businessName} confirmed for ${eventName}` : `${businessName} declined your invitation`,
+      heading: accepted ? `${businessName} is confirmed for ${eventName}` : `${businessName} declined your invitation`,
+      body: [
+        accepted
+          ? `${businessName} accepted your invitation and is now confirmed for ${eventName}.`
+          : `${businessName} declined your invitation to ${eventName}.`,
+      ],
+      actionLabel: "View Event",
+      actionUrl: `/account/event/${opportunity.event_id}?tab=participants`,
+    });
+  } else {
+    // The organizer responded to the Business's application -> Business managers.
+    const to = await getEntityManagerEmails(admin, "business", opportunity.business_id);
+    await sendProductNotification({
+      to,
+      type: `opportunity_application_${opportunity.status}`,
+      subject: accepted ? `You're confirmed for ${eventName}` : `Update on your application to ${eventName}`,
+      heading: accepted ? `You're confirmed for ${eventName}` : `Your application to ${eventName} was declined`,
+      body: [
+        accepted
+          ? `Your application to participate in ${eventName} was approved — you're now confirmed.`
+          : `Your application to participate in ${eventName} wasn't approved this time.`,
+      ],
+      actionLabel: "View Business",
+      actionUrl: `/account/business/${opportunity.business_id}?tab=opportunities`,
+    });
+  }
 }
 
 export interface CreateOpportunityInput {
@@ -411,6 +577,7 @@ export async function createOpportunity(
       const crossedLabel = existingRow.type === "event_invitation" ? "invitation" : "application";
       await addMessage(admin, resolved.conversation_id, null, "system", `Matched an existing ${crossedLabel} — participation confirmed.`);
     }
+    await notifyOpportunityResolved(admin, resolved);
     return { kind: "crossed", opportunity: resolved };
   }
 
@@ -479,6 +646,7 @@ export async function createOpportunity(
     }
   }
 
+  await notifyOpportunityCreated(admin, opportunity);
   return { kind: "created", opportunity };
 }
 
@@ -507,6 +675,7 @@ export async function resolveOpportunity(
   if (row.conversation_id && systemMessage) {
     await addMessage(admin, row.conversation_id, null, "system", systemMessage);
   }
+  await notifyOpportunityResolved(admin, row);
   return row;
 }
 

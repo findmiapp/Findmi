@@ -30,6 +30,15 @@ export interface OperationalNotification {
    * same helper Stripe Checkout already relies on for absolute URLs.
    * Never expected to be a full URL already. */
   actionUrl?: string;
+  /** Footer line 1 — defaults to the original admin-facing label so
+   * every existing notifyAdmin() call site keeps rendering exactly as
+   * before. Product Notification Layer pass — sendProductNotification()
+   * (./productNotify) passes its own user-facing label instead, so a
+   * real member never receives an email whose footer implies it's
+   * admin-only internal mail. */
+  footerLabel?: string;
+  /** Footer line 2 — same default-preserving pairing as footerLabel. */
+  footerNote?: string;
 }
 
 /** Centralized parsing for the one V1 recipient source — comma-separated
@@ -65,10 +74,14 @@ function renderHtml(n: OperationalNotification, resolvedUrl?: string): string {
       : "";
   // Admin Notification Email Copy Polish pass — one restrained footer,
   // generous space above it so it never crowds the CTA, small muted text
-  // so it reads as metadata rather than more content. Internal
-  // transactional/admin mail only — deliberately no unsubscribe link and
-  // no physical mailing address (not marketing email).
-  const footer = `<p style="margin:40px 0 0;color:#999999;font-size:11px;line-height:1.5;">Findmi Admin Notification<br>Sent automatically because this activity may need your attention.</p>`;
+  // so it reads as metadata rather than more content. Transactional
+  // product/admin mail only — deliberately no unsubscribe link and no
+  // physical mailing address (not marketing email; see Section 25 of the
+  // Product Notification Layer pass — these must never become
+  // unsubscribable marketing sends).
+  const footerLabel = n.footerLabel ?? "Findmi Admin Notification";
+  const footerNote = n.footerNote ?? "Sent automatically because this activity may need your attention.";
+  const footer = `<p style="margin:40px 0 0;color:#999999;font-size:11px;line-height:1.5;">${escapeHtml(footerLabel)}<br>${escapeHtml(footerNote)}</p>`;
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:28px 24px;">
   <p style="margin:0 0 18px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#14B0BC;">Findmi</p>
   <h1 style="margin:0 0 16px;font-size:19px;font-weight:700;color:#111111;">${escapeHtml(n.heading)}</h1>
@@ -81,7 +94,7 @@ function renderHtml(n: OperationalNotification, resolvedUrl?: string): string {
 function renderText(n: OperationalNotification, resolvedUrl?: string): string {
   const lines = [n.heading, "", ...n.body];
   if (resolvedUrl && n.actionLabel) lines.push("", `${n.actionLabel}: ${resolvedUrl}`);
-  lines.push("", "—", "Findmi Admin Notification");
+  lines.push("", "—", n.footerLabel ?? "Findmi Admin Notification");
   return lines.join("\n");
 }
 

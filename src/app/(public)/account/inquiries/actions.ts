@@ -3,7 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
+import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
 
 function appendQuery(base: string, params: Record<string, string>): string {
   const sep = base.includes("?") ? "&" : "?";
@@ -104,6 +107,30 @@ export async function createNativeInquiry(formData: FormData) {
     actionLabel: "Review Inquiry",
     actionUrl: `/admin/inquiries/${(inquiry as { id: string }).id}`,
   });
+
+  // Resend Transactional Notification System pass — the actionable
+  // recipient for a Product/Business inquiry is the Business itself, not
+  // just the founder's admin queue above (kept unchanged). Every CURRENT
+  // business_members manager, excluding the inquiring customer in the
+  // (rare) case they happen to also manage this exact business — never
+  // notify someone about their own inquiry.
+  const admin = getAdminSupabase();
+  if (admin) {
+    const to = await getEntityManagerEmails(admin, "business", businessId, user.id);
+    const preview = message.length > 160 ? `${message.slice(0, 157)}...` : message;
+    await sendProductNotification({
+      to,
+      type: "inquiry_new",
+      subject: `New inquiry — ${(business as { name: string }).name}`,
+      heading: "New inquiry received",
+      body: [
+        `${customerName ?? "A Findmi member"} sent an inquiry about ${(business as { name: string }).name}${productId ? " (regarding a specific product)" : ""}.`,
+        `"${preview}"`,
+      ],
+      actionLabel: "Reply to Inquiry",
+      actionUrl: `/account/business/${businessId}?tab=inquiries`,
+    });
+  }
 
   revalidatePath("/account/inquiries");
   redirect(`/account/inquiries/${(inquiry as { id: string }).id}`);

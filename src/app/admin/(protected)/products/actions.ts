@@ -2,10 +2,69 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { isProductSlugTaken } from "@/lib/admin/queries";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
+import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
+
+/** Marketplace decision notification — every CURRENT business_members
+ * recipient of the Product's owning Business. Best-effort: a Resend
+ * failure never affects the Marketplace decision itself, which has
+ * already committed by the time this runs. */
+async function notifyMarketplaceDecision(
+  supabase: SupabaseClient,
+  businessId: string,
+  productName: string,
+  outcome: "approved" | "rejected" | "paused" | "resumed"
+): Promise<void> {
+  const to = await getEntityManagerEmails(supabase, "business", businessId);
+  const copyByOutcome: Record<typeof outcome, { type: string; subject: string; heading: string; body: string[] }> = {
+    approved: {
+      type: "marketplace_approved",
+      subject: `Your Marketplace submission was approved — ${productName}`,
+      heading: "Your Marketplace submission was approved",
+      body: [`${productName} is now visible on Findmi Marketplace.`],
+    },
+    rejected: {
+      type: "marketplace_rejected",
+      subject: `Update on your Marketplace submission — ${productName}`,
+      heading: "Your Marketplace submission wasn't approved",
+      body: [
+        `${productName} wasn't approved for Findmi Marketplace this time.`,
+        "It's still visible on your own Business page — only broader Marketplace placement was declined.",
+      ],
+    },
+    paused: {
+      type: "marketplace_paused",
+      subject: `Your Marketplace listing was paused — ${productName}`,
+      heading: "Your Marketplace listing was paused",
+      body: [
+        `${productName} has been temporarily paused on Findmi Marketplace.`,
+        "It's still visible on your own Business page — only broader Marketplace placement is paused.",
+      ],
+    },
+    resumed: {
+      type: "marketplace_resumed",
+      subject: `Your Marketplace listing is active again — ${productName}`,
+      heading: "Your Marketplace listing is active again",
+      body: [`${productName} is visible on Findmi Marketplace again.`],
+    },
+  };
+  const copy = copyByOutcome[outcome];
+
+  await sendProductNotification({
+    to,
+    type: copy.type,
+    subject: copy.subject,
+    heading: copy.heading,
+    body: copy.body,
+    actionLabel: `Manage ${productName}`,
+    actionUrl: `/account/business/${businessId}?tab=products`,
+  });
+}
 
 export async function saveProduct(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/products/${id}` : "/admin/products/new";
@@ -236,7 +295,7 @@ export async function rejectProduct(id: string) {
 async function getProductForMarketplaceReview(supabase: Awaited<ReturnType<typeof requireAdminSupabase>>, id: string) {
   const { data } = await supabase
     .from("products")
-    .select("id, slug, business_id, moderation_status, marketplace_status")
+    .select("id, name, slug, business_id, moderation_status, marketplace_status")
     .eq("id", id)
     .maybeSingle();
   return data;
@@ -273,6 +332,7 @@ export async function approveMarketplaceSubmission(id: string) {
     .from("products")
     .update({ marketplace_status: "approved", marketplace_approved_at: new Date().toISOString() })
     .eq("id", id);
+  await notifyMarketplaceDecision(supabase, product.business_id, product.name, "approved");
 
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${id}`);
@@ -291,6 +351,7 @@ export async function rejectMarketplaceSubmission(id: string) {
   if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
 
   await supabase.from("products").update({ marketplace_status: "rejected" }).eq("id", id);
+  await notifyMarketplaceDecision(supabase, product.business_id, product.name, "rejected");
 
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${id}`);
@@ -309,6 +370,7 @@ export async function pauseMarketplaceListing(id: string) {
   if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
 
   await supabase.from("products").update({ marketplace_status: "paused" }).eq("id", id);
+  await notifyMarketplaceDecision(supabase, product.business_id, product.name, "paused");
 
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${id}`);
@@ -344,6 +406,7 @@ export async function resumeMarketplaceListing(id: string) {
   }
 
   await supabase.from("products").update({ marketplace_status: "approved" }).eq("id", id);
+  await notifyMarketplaceDecision(supabase, product.business_id, product.name, "resumed");
 
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${id}`);

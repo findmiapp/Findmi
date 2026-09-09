@@ -11,6 +11,47 @@ import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/mar
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { resolveOpportunityByContext } from "@/lib/opportunities";
 import type { EventParticipationStatus } from "@/lib/types";
+import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
+
+/** Event review-decision notification — every CURRENT event_members
+ * recipient. Best-effort: a Resend failure never affects the moderation
+ * decision itself, which has already committed by the time this runs. */
+async function notifyEventOrganizers(
+  supabase: SupabaseClient,
+  eventId: string,
+  eventName: string,
+  outcome: "live" | "rejected"
+): Promise<void> {
+  const to = await getEntityManagerEmails(supabase, "event", eventId);
+  const copy =
+    outcome === "live"
+      ? {
+          type: "event_approved",
+          subject: `Your Event is now live — ${eventName}`,
+          heading: "Your Event is now live",
+          body: [`${eventName} has been approved and is now visible on Findmi.`],
+        }
+      : {
+          type: "event_rejected",
+          subject: `Update on your Event — ${eventName}`,
+          heading: "Your Event wasn't approved",
+          body: [
+            `${eventName} wasn't approved for publication this time.`,
+            "You can review and update your Event details, then resubmit for review.",
+          ],
+        };
+
+  await sendProductNotification({
+    to,
+    type: copy.type,
+    subject: copy.subject,
+    heading: copy.heading,
+    body: copy.body,
+    actionLabel: `Manage ${eventName}`,
+    actionUrl: `/account/event/${eventId}`,
+  });
+}
 
 // ── Approval <-> FindMi Here sync (Admin Approval → FindMi Here Sync pass,
 // extended by the Event Participation → Official Appearance Reverse-Sync
@@ -841,9 +882,11 @@ export async function approveEventListing(id: string) {
     .update({ is_demo: false, publication_status: "live" })
     .eq("id", id)
     .eq("publication_status", "pending_review")
-    .select("slug")
+    .select("name, slug")
     .maybeSingle();
   if (error) redirect(errorRedirectUrl(`/admin/events/${id}`, error.message));
+
+  if (event) await notifyEventOrganizers(supabase, id, event.name, "live");
 
   revalidatePath("/admin/events");
   revalidatePath("/admin");
@@ -877,12 +920,16 @@ export async function approveEventListing(id: string) {
  */
 export async function rejectEventListing(id: string) {
   const supabase = await requireAdminSupabase();
-  const { error } = await supabase
+  const { data: event, error } = await supabase
     .from("events")
     .update({ publication_status: "rejected" })
     .eq("id", id)
-    .eq("publication_status", "pending_review");
+    .eq("publication_status", "pending_review")
+    .select("name")
+    .maybeSingle();
   if (error) redirect(errorRedirectUrl(`/admin/events/${id}`, error.message));
+
+  if (event) await notifyEventOrganizers(supabase, id, event.name, "rejected");
 
   revalidatePath("/admin/events");
   revalidatePath("/admin");
