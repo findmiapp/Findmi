@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 import { getPublicOrigin } from "@/lib/site-url";
 import { errorRedirectUrlWithFields } from "@/lib/admin/form-helpers";
+import { normalizeUsPhone } from "@/lib/phone";
 
 function confirmationRedirectUrl(next: string): string {
   // `type=signup` lets /auth/callback distinguish a failed signup
@@ -29,11 +30,12 @@ export async function signUp(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirm_password") ?? "");
   const displayName = String(formData.get("display_name") ?? "").trim();
+  const phoneRaw = String(formData.get("phone") ?? "").trim();
   const next = getSafeRedirect(String(formData.get("next") ?? ""));
-  const preserved = { next, display_name: displayName, email };
+  const preserved = { next, display_name: displayName, email, phone: phoneRaw };
 
-  if (!email || !password) {
-    redirect(errorRedirectUrlWithFields("/signup", "Email and password are required.", preserved));
+  if (!displayName || !email || !phoneRaw || !password) {
+    redirect(errorRedirectUrlWithFields("/signup", "Full name, email, cell number, and password are required.", preserved));
   }
   // Confirm Email — Section 2. Same trim-only normalization already used
   // everywhere else in the app (login/actions.ts), no new normalization
@@ -42,6 +44,15 @@ export async function signUp(formData: FormData) {
   // server-side re-check for a JS-disabled or scripted submission.
   if (email !== confirmEmail) {
     redirect(errorRedirectUrlWithFields("/signup", "Email addresses don't match.", preserved));
+  }
+  // Require Cell Number at Signup pass — normalized to E.164 (NANP only,
+  // see lib/phone.ts's own doc comment on why this app doesn't attempt
+  // general international support). Rejects unmistakably-invalid input
+  // (too few/many digits, an area/exchange code that can't be real)
+  // without being picky about how the visitor formatted it.
+  const phone = normalizeUsPhone(phoneRaw);
+  if (!phone) {
+    redirect(errorRedirectUrlWithFields("/signup", "Enter a valid U.S. or Canada cell number.", preserved));
   }
   // Matches reset-password's existing minimum — enforced here rather
   // than left to Supabase's own project-level setting, so the two flows
@@ -61,9 +72,11 @@ export async function signUp(formData: FormData) {
     password,
     options: {
       // Read server-side by the account_foundation migration's
-      // handle_new_auth_user() trigger to seed profiles.display_name —
-      // never trusted directly for anything else.
-      data: displayName ? { display_name: displayName } : undefined,
+      // handle_new_auth_user() trigger to seed profiles.display_name/
+      // profiles.phone — a convenience mirror only; profiles remains the
+      // canonical copy the rest of the app reads (see Profile's own
+      // doc comment in lib/types.ts).
+      data: { display_name: displayName, phone },
       emailRedirectTo: confirmationRedirectUrl(next),
     },
   });

@@ -777,12 +777,19 @@ export interface Profile {
   // User Identity + Follow Foundation pass — opt-in PUBLIC identity
   // fields. A profile only becomes publicly readable (see profiles_
   // select_public RLS) once username is set; until then these three stay
-  // exactly as private as display_name/avatar_url already were. Never
-  // add an email/phone/auth-metadata field to this interface — see the
-  // migration's own privacy note.
+  // exactly as private as display_name/avatar_url already were.
   username: string | null;
   bio: string | null;
   location_label: string | null;
+  // Require Cell Number at Signup pass — private account data only.
+  // Deliberately NOT part of either public read surface's own explicit
+  // column allowlist (profiles_select_public / public.public_profiles —
+  // see 20260909000000_profiles_phone.sql's own note), so adding it here
+  // never exposes it publicly the way username/bio/location_label are.
+  // E.164-normalized (NANP only — see lib/phone.ts); null for any
+  // account created before this pass, or an admin-created account with
+  // none on file yet.
+  phone: string | null;
   created_at: string;
   updated_at: string;
 }

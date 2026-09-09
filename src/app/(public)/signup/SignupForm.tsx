@@ -24,11 +24,13 @@ export default function SignupForm({
   next,
   defaultDisplayName,
   defaultEmail,
+  defaultPhone,
 }: {
   action: (formData: FormData) => void;
   next: string;
   defaultDisplayName?: string;
   defaultEmail?: string;
+  defaultPhone?: string;
 }) {
   const [clientError, setClientError] = useState<string | null>(null);
 
@@ -56,8 +58,15 @@ export default function SignupForm({
     <form action={action} onSubmit={handleSubmit} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
       <label className="block">
-        <span className="mb-1.5 block text-sm font-medium text-ink">Name</span>
-        <input type="text" name="display_name" defaultValue={defaultDisplayName} autoComplete="name" className={inputClass} />
+        <span className="mb-1.5 block text-sm font-medium text-ink">Full Name</span>
+        <input
+          type="text"
+          name="display_name"
+          required
+          defaultValue={defaultDisplayName}
+          autoComplete="name"
+          className={inputClass}
+        />
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
@@ -66,6 +75,20 @@ export default function SignupForm({
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">Confirm email</span>
         <input type="email" name="confirm_email" required autoComplete="email" className={inputClass} />
+      </label>
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium text-ink">Cell Number</span>
+        <input
+          type="tel"
+          name="phone"
+          required
+          inputMode="tel"
+          defaultValue={defaultPhone}
+          autoComplete="tel"
+          placeholder="(917) 555-1234"
+          className={inputClass}
+        />
+        <span className="mt-1 block text-xs text-ink/45">Used for important account updates — never shared publicly.</span>
       </label>
       <PasswordField name="password" label="Password" autoComplete="new-password" minLength={8} />
       <PasswordField name="confirm_password" label="Confirm password" autoComplete="new-password" minLength={8} />

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
+import { formatUsPhone } from "@/lib/phone";
 import AccountNav from "../AccountNav";
 import SignOutConfirm from "@/components/SignOutConfirm";
 import { updateProfile, signOut } from "./actions";
@@ -64,6 +65,23 @@ export default async function ProfilePage({
                 defaultValue={profile?.display_name ?? ""}
                 className={inputClass}
               />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Cell Number</span>
+              <input
+                type="tel"
+                name="phone"
+                inputMode="tel"
+                defaultValue={formatUsPhone(profile?.phone)}
+                placeholder="(917) 555-1234"
+                autoComplete="tel"
+                className={inputClass}
+              />
+              <span className="mt-1 block text-xs text-ink/45">
+                {profile?.phone
+                  ? "Used for important account updates — never shared publicly."
+                  : "Add a cell number for important account updates — never shared publicly."}
+              </span>
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">Short bio (optional)</span>

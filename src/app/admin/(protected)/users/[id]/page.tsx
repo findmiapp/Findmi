@@ -7,6 +7,7 @@ import {
   getUserInheritedProducts,
 } from "@/lib/admin/user-queries";
 import { formatDateShort } from "@/lib/format";
+import { formatUsPhone } from "@/lib/phone";
 import { RelationField } from "@/components/admin/RelationPicker";
 import SetPasswordForm from "./SetPasswordForm";
 import {
@@ -88,6 +89,9 @@ export default async function AdminUserDetailPage({
           </p>
           <p>
             Email: <span className="font-medium text-ink">{account.email ?? "—"}</span>
+          </p>
+          <p>
+            Cell Number: <span className="font-medium text-ink">{formatUsPhone(account.phone) || "—"}</span>
           </p>
           <p>
             Status:{" "}

@@ -17,6 +17,11 @@ export interface AdminUserRow {
   id: string;
   email: string | null;
   displayName: string | null;
+  // Require Cell Number at Signup pass — E.164-normalized (see
+  // lib/phone.ts), read from profiles.phone same as displayName. Null
+  // for any account created before that pass, or an admin-created
+  // account with none on file.
+  phone: string | null;
   createdAt: string;
   emailConfirmedAt: string | null;
   lastSignInAt: string | null;
@@ -42,16 +47,17 @@ export async function listAdminUsers(query?: string): Promise<AdminUserRow[]> {
 
   const userIds = data.users.map((u) => u.id);
   const { data: profileRows } = userIds.length
-    ? await supabase.from("profiles").select("id, display_name").in("id", userIds)
-    : { data: [] as { id: string; display_name: string | null }[] };
-  const nameByUser = new Map(
-    ((profileRows ?? []) as { id: string; display_name: string | null }[]).map((p) => [p.id, p.display_name])
+    ? await supabase.from("profiles").select("id, display_name, phone").in("id", userIds)
+    : { data: [] as { id: string; display_name: string | null; phone: string | null }[] };
+  const profileByUser = new Map(
+    ((profileRows ?? []) as { id: string; display_name: string | null; phone: string | null }[]).map((p) => [p.id, p])
   );
 
   let rows: AdminUserRow[] = data.users.map((u) => ({
     id: u.id,
     email: u.email ?? null,
-    displayName: nameByUser.get(u.id) ?? null,
+    displayName: profileByUser.get(u.id)?.display_name ?? null,
+    phone: profileByUser.get(u.id)?.phone ?? null,
     createdAt: u.created_at,
     emailConfirmedAt: u.email_confirmed_at ?? null,
     lastSignInAt: u.last_sign_in_at ?? null,
@@ -92,12 +98,13 @@ export async function getAdminUserAccount(userId: string): Promise<AdminUserRow 
   const { data, error } = await supabase.auth.admin.getUserById(userId);
   if (error || !data.user) return null;
 
-  const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("display_name, phone").eq("id", userId).maybeSingle();
 
   return {
     id: data.user.id,
     email: data.user.email ?? null,
     displayName: profile?.display_name ?? null,
+    phone: profile?.phone ?? null,
     createdAt: data.user.created_at,
     emailConfirmedAt: data.user.email_confirmed_at ?? null,
     lastSignInAt: data.user.last_sign_in_at ?? null,

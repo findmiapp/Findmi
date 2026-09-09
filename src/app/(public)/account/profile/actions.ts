@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { normalizeUsPhone } from "@/lib/phone";
 
 export async function updateProfile(formData: FormData) {
   const supabase = await getServerSupabase();
@@ -16,6 +17,20 @@ export async function updateProfile(formData: FormData) {
 
   const displayNameRaw = String(formData.get("display_name") ?? "").trim();
 
+  // Require Cell Number at Signup pass — optional here (existing accounts
+  // may have none yet, and this pass must never lock them out of editing
+  // the rest of their profile — see that pass's own Section 6). Blank
+  // clears it back to null; anything non-blank must normalize to a real
+  // NANP number, same rule signup itself enforces.
+  const phoneRaw = String(formData.get("phone") ?? "").trim();
+  let phone: string | null = null;
+  if (phoneRaw) {
+    phone = normalizeUsPhone(phoneRaw);
+    if (!phone) {
+      redirect(`/account/profile?error=${encodeURIComponent("Enter a valid U.S. or Canada cell number.")}`);
+    }
+  }
+
   const bioRaw = String(formData.get("bio") ?? "").trim();
   if (bioRaw.length > 280) {
     redirect(`/account/profile?error=${encodeURIComponent("Bio must be 280 characters or fewer.")}`);
@@ -28,6 +43,7 @@ export async function updateProfile(formData: FormData) {
 
   const patch: Record<string, unknown> = {
     display_name: displayNameRaw || null,
+    phone,
     bio: bioRaw || null,
     location_label: locationRaw || null,
   };
