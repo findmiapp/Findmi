@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 export const dynamic = "force-dynamic";
@@ -11,10 +10,11 @@ const ENTITY = {
   business: { entityTable: "businesses", claimTable: "business_claim_requests", memberTable: "business_members", column: "business_id" },
   event: { entityTable: "events", claimTable: "event_claim_requests", memberTable: "event_members", column: "event_id" },
   // Multi-Entity Self-Service V1, Stage 3 — Location claiming is free for
-  // every signed-in user, exactly like a business claim (never gated on
-  // entitlement, unlike event) — see this stage's own Location Access
-  // rule. location_claim_requests/location_members mirror business's own
-  // tables structurally.
+  // every signed-in user, exactly like a business claim (Universal Free
+  // Claim UX pass: event claim submission is free too now — see this
+  // route's own history) — see this stage's own Location Access rule.
+  // location_claim_requests/location_members mirror business's own tables
+  // structurally.
   location: { entityTable: "locations", claimTable: "location_claim_requests", memberTable: "location_members", column: "location_id" },
 } as const;
 type EntityType = keyof typeof ENTITY;
@@ -33,30 +33,28 @@ async function resolveEntityId(supabase: SupabaseClient, entityTable: string, sl
   return (data as { id: string } | null)?.id ?? null;
 }
 
-/** This visitor's claim state for one business/event — drives ClaimButton.
- * States, in the order they can occur:
+/** This visitor's claim state for one business/event/location — drives
+ * ClaimButton. States, in the order they can occur:
  *   "none"                 — free to submit a new claim. Also returns the
  *                            account's email (accountEmail) purely as a
  *                            prefill hint for the claim form's editable
  *                            Email field — never stored anywhere until the
  *                            claimant actually submits it.
  *   "pending_review"       — a pending claim row exists and goes straight
- *                            to founder review. Claiming a business is
- *                            free (see CLAIMS: REMOVE PAYMENT REQUIREMENT
- *                            ONLY). Multi-Entity Self-Service V1 removes
- *                            the old $20 event claim fee too — an EVENT
- *                            claim reaches this state once the claimant
- *                            has qualifying FindMi access (see
- *                            canCurrentUserManageEvents()); it is no
- *                            longer gated on payment at all, regardless of
- *                            this exact claim row's own (now-vestigial)
- *                            payment_status.
- *   "membership_required"  — EVENT claims only: the claimant is signed in
- *                            but doesn't yet have qualifying FindMi access
- *                            (an active-Pro or Pro-Invite-granted
- *                            business). Never routed to a $20 payment —
- *                            just a plain "membership required" message
- *                            pointing at the existing Pro/Invite path.
+ *                            to founder review. Universal Free Claim UX
+ *                            pass — claiming ANY entity type (business,
+ *                            event, location) is free and goes straight to
+ *                            review; no entitlement/Pro/qualifying-
+ *                            membership check gates claim SUBMISSION for
+ *                            any type (that requirement was removed from
+ *                            event claims specifically by this pass — see
+ *                            this file's own history for the now-removed
+ *                            "membership_required" state). Claiming is an
+ *                            ownership/management REQUEST, not a paid
+ *                            feature; canCurrentUserManageEvents() still
+ *                            exists and still gates unrelated things (new
+ *                            Event creation, etc.) — it's just no longer a
+ *                            prerequisite to submitting a claim.
  *   "member"               — the entity already has an approved owner
  *                            (this viewer or anyone else), OR a different
  *                            user's claim is already pending on it; claim
@@ -64,16 +62,7 @@ async function resolveEntityId(supabase: SupabaseClient, entityTable: string, sl
  *                            way, never just the owner/claimant.
  * A rejected (or approved, i.e. now covered by "member") claim falls back
  * to "none", intentionally allowing a fresh claim to be submitted — see
- * the claim foundation migration's partial-unique-index note.
- *
- * `entitled` is only ever consulted for type === "event" (business and
- * location claims have never depended on any entitlement check) —
- * callers pass `true` for business/location claims as a harmless
- * default. */
-function resolvePendingState(type: EntityType, entitled: boolean): "pending_review" | "membership_required" {
-  if (type !== "event") return "pending_review";
-  return entitled ? "pending_review" : "membership_required";
-}
+ * the claim foundation migration's partial-unique-index note. */
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get("type");
   const slug = request.nextUrl.searchParams.get("slug");
@@ -130,17 +119,11 @@ export async function GET(request: NextRequest) {
       .eq("status", "pending")
       .maybeSingle();
     if (pendingClaim) {
-      // Multi-Entity Self-Service V1 — an event claim's resolved state no
-      // longer depends on payment_status (that column is now vestigial
-      // for events — see resolvePendingState's own comment); it depends
-      // entirely on the claimant's CURRENT entitlement, re-checked fresh
-      // on every load so gaining/losing qualifying access is reflected
-      // immediately, not frozen at whatever it was when the claim was
-      // first submitted.
-      const entitled = type === "event" ? await isEventEntitled(user.id) : true;
-      const state = resolvePendingState(type, entitled);
+      // Universal Free Claim UX pass — a pending claim of ANY type goes
+      // straight to review; payment_status is vestigial (both business and
+      // event claims are free), and no entitlement check gates this state.
       return NextResponse.json({
-        state,
+        state: "pending_review",
         claimId: pendingClaim.id,
         fullName: pendingClaim.full_name,
         email: pendingClaim.email,
@@ -174,27 +157,19 @@ export async function GET(request: NextRequest) {
   // over an EXISTING entity someone else may legitimately own, so it's the
   // one owner action this pass gates on profiles.email_verified_at. Checked
   // here (GET) so ClaimButton never even opens a submittable form for an
-  // unverified visitor — same "re-check fresh, never trust prior state"
-  // discipline the entitlement check right below already uses. Ahead of
-  // the event-entitlement check: proving identity is the more fundamental
-  // gate. Signed-out visitors are unaffected (ClaimButton's own "guest"
-  // override only applies when resolved === "none", which this never
-  // returns for an unauthenticated caller anyway).
+  // unverified visitor. Signed-out visitors are unaffected (ClaimButton's
+  // own "guest" override only applies when resolved === "none", which this
+  // never returns for an unauthenticated caller anyway).
   if (user && !(await isEmailVerified(user.id))) {
     return NextResponse.json({ state: "verification_required" });
   }
 
-  // Multi-Entity Self-Service V1 — an authenticated visitor with no
-  // pending claim on this event still can't open the claim form unless
-  // they already qualify; a signed-out visitor is unaffected (ClaimButton
-  // overrides "none" to its own "guest" state client-side when !authed,
-  // same as before this pass — entitlement can't be checked without a
-  // real session anyway).
-  if (type === "event" && user) {
-    const entitled = await isEventEntitled(user.id);
-    if (!entitled) return NextResponse.json({ state: "membership_required" });
-  }
-
+  // Universal Free Claim UX pass — claiming is an ownership/management
+  // REQUEST, not a paid feature, for every entity type. An event claim no
+  // longer requires the claimant to already have qualifying FindMi access
+  // (Pro/Invite) before the claim form even opens — that requirement is
+  // removed here. canCurrentUserManageEvents() is untouched and still
+  // gates unrelated things (new Event creation, etc.).
   return NextResponse.json({ state: "none", accountEmail: user?.email ?? null });
 }
 
@@ -211,15 +186,6 @@ async function isEmailVerified(userId: string): Promise<boolean> {
   return Boolean(data?.email_verified_at);
 }
 
-/** Multi-Entity Self-Service V1 — thin wrapper so both GET and POST share
- * the exact same "no admin client -> fail closed (not entitled)" fallback
- * rather than each re-deriving it slightly differently. */
-async function isEventEntitled(userId: string): Promise<boolean> {
-  const admin = getAdminSupabase();
-  if (!admin) return false;
-  return canCurrentUserManageEvents(admin, userId);
-}
-
 /** Submits a new claim request. Body: { type, slug, fullName, email,
  * phone, message? }. Identity is always the authenticated session's
  * user.id — never a value the client sends, and never derived from the
@@ -228,20 +194,21 @@ async function isEventEntitled(userId: string): Promise<boolean> {
  * required to match it), stored as-is in claim.email. fullName, email,
  * and phone are all required. Uses the RLS-scoped session client (not
  * service-role), so the insert-own-pending-unpaid-row policy on
- * business_claim_requests/event_claim_requests is the real enforcement
- * here, not just this route's own logic — payment_status is never
- * accepted from the client and always inserts as 'unpaid' (a vestigial
- * default for events now — see resolvePendingState's own comment; the
+ * business_claim_requests/event_claim_requests/location_claim_requests is
+ * the real enforcement here, not just this route's own logic —
+ * payment_status is never accepted from the client and always inserts as
+ * 'unpaid' (vestigial for every entity type now — claiming is free; the
  * /api/webhooks/tally $20 payment webhook still exists for historical
- * reference but nothing in this flow routes a new event claim through it
+ * reference but nothing in this flow routes a new claim through it
  * anymore). Never grants membership itself — only founder approval (see
  * the migration's approve_*_claim() functions) grants membership.
- * Multi-Entity Self-Service V1 — an EVENT claim additionally requires the
- * claimant to already have qualifying FindMi access (active Pro or a
- * redeemed Pro Invite on some business they belong to) before a claim row
- * is even inserted; a non-qualifying signed-in user gets
- * "membership_required" back instead, with no row created — see this
- * pass's own Entitlement Rule (no separate Event fee, ever). */
+ * Universal Free Claim UX pass — claim eligibility is now the same rule
+ * for every entity type: authenticated + required identity/email
+ * verification + entity is claimable + no conflicting/pending claim.
+ * canCurrentUserManageEvents() (Pro/Invite/event_management) is no longer
+ * consulted anywhere in this route — that check still exists and still
+ * gates unrelated Event capabilities (see lib/entitlements.ts), it's just
+ * no longer a prerequisite to submitting an ownership claim. */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const type = typeof body?.type === "string" ? body.type : null;
@@ -286,10 +253,8 @@ export async function POST(request: NextRequest) {
     .eq("status", "pending")
     .maybeSingle();
   if (pendingClaim) {
-    const entitled = type === "event" ? await isEventEntitled(user.id) : true;
-    const state = resolvePendingState(type, entitled);
     return NextResponse.json({
-      state,
+      state: "pending_review",
       claimId: pendingClaim.id,
       fullName: pendingClaim.full_name,
       email: pendingClaim.email,
@@ -300,18 +265,9 @@ export async function POST(request: NextRequest) {
   // Progressive Email Verification pass — the real, authoritative gate
   // (GET's own check above is only a preview; this is what actually
   // prevents the row from being created). Checked BEFORE inserting
-  // anything, same "never accumulate a row behind a gate" discipline the
-  // entitlement check right below already uses.
+  // anything.
   if (!(await isEmailVerified(user.id))) {
     return NextResponse.json({ state: "verification_required" });
-  }
-
-  // Entitlement gate — checked BEFORE inserting anything, so a
-  // non-qualifying user never accumulates a claim row that would just sit
-  // unreachable behind a membership prompt. No separate $20 payment path
-  // exists to fall back to.
-  if (type === "event" && !(await isEventEntitled(user.id))) {
-    return NextResponse.json({ state: "membership_required" });
   }
 
   const { data: inserted, error } = await supabase

@@ -9,31 +9,31 @@ type ClaimState =
   | "loading"
   | "guest"
   | "none"
-  | "pending_review" // both types — free, no payment step
-  | "membership_required" // event claims only — no qualifying FindMi access yet
+  | "pending_review" // every entity type — free, no payment step, no entitlement required
   | "verification_required" // Progressive Email Verification pass — profiles.email_verified_at is null
   | "member";
 
-/** Secondary "Claim this business/event" control — deliberately understated
- * (muted text link, not a button competing with Follow/Save/Inquire).
- * Guests are routed through the existing /login flow with a safe next=
- * redirect (?claim=1 appended, so this component reopens the claim form
- * automatically on return); signed-in visitors get the real flow:
+/** Secondary "Claim this business/event/venue" control — deliberately
+ * understated (muted text link, not a button competing with Follow/Save/
+ * Inquire). Guests are routed through the existing /login flow with a safe
+ * next= redirect (?claim=1 appended, so this component reopens the claim
+ * form automatically on return); signed-in visitors get the real flow:
  *
  *   submit claim (full name/email/phone required — email prefilled from
  *   the account but editable; message optional) -> "under review" ->
  *   founder approves/rejects.
  *
- * BUSINESS claims are free (see CLAIMS: REMOVE PAYMENT REQUIREMENT ONLY)
- * — submitting goes straight to "under review", no payment step.
- * Multi-Entity Self-Service V1 makes EVENT claims free too, with no
- * separate Event fee ever: submit -> straight to "under review" IF the
- * claimant already has qualifying FindMi access (active Pro, or a
- * redeemed Pro Invite, on some business they belong to); otherwise the
- * API returns "membership_required" and no claim row is even created —
- * see /api/account/claim's own resolvePendingState. Stage 3 adds LOCATION
- * claims, free for every signed-in user exactly like business (never
- * entitlement-gated).
+ * Universal Free Claim UX pass — claiming ANY entity type (business,
+ * event, location) is free: submitting always goes straight to "under
+ * review" for an authenticated, email-verified visitor to a claimable
+ * entity. No entitlement/Pro/qualifying-membership check gates
+ * submission for any type — event claims previously required the
+ * claimant to already have qualifying FindMi access (active Pro or a
+ * redeemed Pro Invite) before the claim form even opened; that
+ * requirement is removed. Claiming is an ownership/management REQUEST,
+ * not a paid feature — Pro/event_management still exist and still gate
+ * unrelated things (new Event creation, enhanced Business features,
+ * etc.), just never claim submission itself.
  *
  * Submitting the claim form never grants access on its own — only founder
  * approval (business_members/event_members/location_members) does, and
@@ -53,8 +53,9 @@ export default function ClaimButton({
    * used as-is wherever this component was already placed (e.g. the event
    * page). "card" — same flow/modal/state logic, wrapped in a small
    * "Is this your business?" card for the entry-point states (guest/none).
-   * The other states (pending_review/membership_required) already render
-   * their own self-contained card and are unaffected by this prop. */
+   * The other states (pending_review/verification_required) already
+   * render their own self-contained card and are unaffected by this
+   * prop. */
   variant?: "inline" | "card";
 }) {
   const [state, setState] = useState<ClaimState>("loading");
@@ -206,12 +207,13 @@ export default function ClaimButton({
         <p className="mt-1 text-xs text-ink/50">Standard claims are typically reviewed within 48–72 hours.</p>
 
         {/* Post-claim Pro offer — priority review only, never a guarantee
-            of approval (see below). Not a payment integration: a plain
-            link out to the existing Tally Pro-upgrade form. Business and
-            location claims only: an event claimant already has qualifying
-            FindMi Pro/Invite access by the time they can reach this state
-            (see /api/account/claim's entitlement gate), so offering them
-            "Upgrade to Pro" here would be redundant/confusing. */}
+            of approval (see below), and never a prerequisite to the claim
+            itself (Universal Free Claim UX pass — claiming is free for
+            every entity type). Not a payment integration: a plain link
+            out to the existing Tally Pro-upgrade form. Business and
+            location claims only — kept scoped to the entity types this
+            upsell already existed for; extending it to event claims too
+            is unrelated cleanup outside this pass's own scope. */}
         {type !== "event" && (
           <div className="mt-3 rounded-xl border border-findmi/20 bg-findmi-50 p-3">
             <p className="text-xs font-bold text-ink">Need access sooner?</p>
@@ -260,29 +262,6 @@ export default function ClaimButton({
     );
   }
 
-  if (state === "membership_required") {
-    // Multi-Entity Self-Service V1 — replaces the old $20 Tally payment
-    // step. Event management is included with qualifying FindMi
-    // membership (active Pro, or a redeemed Pro Invite, on some business
-    // the visitor belongs to) — never a separate Event fee, so this links
-    // to the existing Pro/Invite path (/join) rather than any checkout.
-    return (
-      <div className="max-w-xs rounded-2xl border border-black/10 bg-white p-4">
-        <p className="text-sm font-semibold text-ink">Event management is included with qualifying Findmi membership.</p>
-        <p className="mt-1 text-xs text-ink/60">
-          Get Findmi Pro (or redeem a Pro Invite) on a business you manage to claim and manage this event — no
-          separate Event fee.
-        </p>
-        <Link
-          href="/join"
-          className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-        >
-          Get Findmi Pro
-        </Link>
-      </div>
-    );
-  }
-
   const trigger = (
     <button
       type="button"
@@ -310,18 +289,8 @@ export default function ClaimButton({
             >
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Claim {entityName}</h2>
               <p className="mt-1.5 text-sm text-ink/60">
-                {type === "event" ? (
-                  <>
-                    Claiming requests management access to this {noun}. Event management is included with your
-                    qualifying Findmi membership — no separate Event fee. Findmi reviews every request manually;
-                    submitting a claim doesn&rsquo;t guarantee access.
-                  </>
-                ) : (
-                  <>
-                    Claiming requests management access to this {noun}. Findmi reviews every request manually —
-                    submitting a claim doesn&rsquo;t guarantee access.
-                  </>
-                )}
+                Claiming requests management access to this {noun}. Findmi reviews every request manually —
+                submitting a claim doesn&rsquo;t guarantee access.
               </p>
 
               <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
