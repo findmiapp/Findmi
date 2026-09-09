@@ -818,10 +818,15 @@ async function resolveStandaloneAppearanceGeography(
     sourceBusinessId: businessId,
   });
   if (linked.created) {
+    // Admin Notification Email Copy Polish pass — a small existing-data
+    // lookup so the email reads with the business's real name instead of
+    // a raw id the admin would otherwise have to go look up themselves.
+    const { data: businessRow } = await admin.from("businesses").select("name").eq("id", businessId).maybeSingle();
+    const businessName = businessRow?.name ?? "Unknown business";
     await notifyAdmin({
-      subject: `New Market/Area request — ${text}`,
+      subject: `Market/Area request — ${businessName}`,
       heading: "New Market/Area request",
-      body: [`Requested: ${text}`, `Linked to: Business (Where You'll Be geography, id ${businessId})`],
+      body: [`Requested: ${text}`, `Business: ${businessName}`, "Source: Where You'll Be"],
       actionLabel: "Review Market Requests",
       actionUrl: "/admin/market-requests",
     });

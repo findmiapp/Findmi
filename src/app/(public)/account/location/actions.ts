@@ -345,7 +345,7 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
     if (match) {
       effectiveMarketId = match.marketId;
     } else {
-      const { data: location } = await admin.from("locations").select("city, state").eq("id", locationId).maybeSingle();
+      const { data: location } = await admin.from("locations").select("name, city, state").eq("id", locationId).maybeSingle();
       const linked = await createLinkedMarketRequest(admin, {
         text: requestedMarketTextRaw,
         city: location?.city ?? null,
@@ -354,10 +354,14 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
         sourceLocationId: locationId,
       });
       if (linked.created) {
+        // Admin Notification Email Copy Polish pass — venue name already
+        // fetched above (just added to the select), so the email reads
+        // with the real venue name instead of a raw id.
+        const venueName = location?.name ?? "Unknown venue";
         await notifyAdmin({
-          subject: `New Market/Area request — ${requestedMarketTextRaw}`,
+          subject: `Market/Area request — ${venueName}`,
           heading: "New Market/Area request",
-          body: [`Requested: ${requestedMarketTextRaw}`, `Linked to: Venue (id ${locationId})`],
+          body: [`Requested: ${requestedMarketTextRaw}`, `Venue: ${venueName}`],
           actionLabel: "Review Market Requests",
           actionUrl: "/admin/market-requests",
         });

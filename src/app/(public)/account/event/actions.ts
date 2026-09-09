@@ -619,7 +619,7 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
       effectiveMarketId = match.marketId;
       effectiveAreaId = match.areaId ?? null;
     } else {
-      const { data: event } = await admin.from("events").select("city, state").eq("id", eventId).maybeSingle();
+      const { data: event } = await admin.from("events").select("name, city, state").eq("id", eventId).maybeSingle();
       const linked = await createLinkedMarketRequest(admin, {
         text: requestedMarketTextRaw,
         city: event?.city ?? null,
@@ -628,10 +628,14 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
         sourceEventId: eventId,
       });
       if (linked.created) {
+        // Admin Notification Email Copy Polish pass — event name already
+        // fetched above (just added to the select), so the email reads
+        // with the real event name instead of a raw id.
+        const eventName = event?.name ?? "Unknown event";
         await notifyAdmin({
-          subject: `New Market/Area request — ${requestedMarketTextRaw}`,
+          subject: `Market/Area request — ${eventName}`,
           heading: "New Market/Area request",
-          body: [`Requested: ${requestedMarketTextRaw}`, `Linked to: Event (id ${eventId})`],
+          body: [`Requested: ${requestedMarketTextRaw}`, `Event: ${eventName}`],
           actionLabel: "Review Market Requests",
           actionUrl: "/admin/market-requests",
         });

@@ -63,17 +63,25 @@ function renderHtml(n: OperationalNotification, resolvedUrl?: string): string {
     resolvedUrl && n.actionLabel
       ? `<p style="margin:24px 0 0;"><a href="${resolvedUrl}" style="display:inline-block;background:#14B0BC;color:#ffffff;text-decoration:none;font-weight:700;font-size:13px;letter-spacing:.03em;text-transform:uppercase;padding:12px 22px;border-radius:999px;">${escapeHtml(n.actionLabel)} →</a></p>`
       : "";
+  // Admin Notification Email Copy Polish pass — one restrained footer,
+  // generous space above it so it never crowds the CTA, small muted text
+  // so it reads as metadata rather than more content. Internal
+  // transactional/admin mail only — deliberately no unsubscribe link and
+  // no physical mailing address (not marketing email).
+  const footer = `<p style="margin:40px 0 0;color:#999999;font-size:11px;line-height:1.5;">Findmi Admin Notification<br>Sent automatically because this activity may need your attention.</p>`;
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:28px 24px;">
   <p style="margin:0 0 18px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#14B0BC;">Findmi</p>
   <h1 style="margin:0 0 16px;font-size:19px;font-weight:700;color:#111111;">${escapeHtml(n.heading)}</h1>
   ${paragraphs}
   ${cta}
+  ${footer}
 </div>`;
 }
 
 function renderText(n: OperationalNotification, resolvedUrl?: string): string {
   const lines = [n.heading, "", ...n.body];
   if (resolvedUrl && n.actionLabel) lines.push("", `${n.actionLabel}: ${resolvedUrl}`);
+  lines.push("", "—", "Findmi Admin Notification");
   return lines.join("\n");
 }
 

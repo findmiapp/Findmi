@@ -7,6 +7,7 @@ import { activateBusinessPro } from "@/lib/commerce/businessProActivation";
 import { BUSINESS_PRO_INTRO_PRICE_CENTS } from "@/lib/commerce/businessProCheckout";
 import { qualifyReferralEarning } from "@/lib/commerce/referrals";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 
 // Stripe calls this directly — not gated by /admin's cookie auth, so the
 // Stripe signature itself is the only authentication. Never trust the
@@ -113,10 +114,41 @@ export async function POST(request: NextRequest) {
       // is already on the verified session payload — no extra query.
       if (settled) {
         const amount = session.amount_total != null ? `$${(session.amount_total / 100).toFixed(2)}` : "unknown amount";
+        const body = [`Order total: ${amount}`];
+
+        // Admin Notification Email Copy Polish pass — small additional
+        // reads (order's own stored customer fields + a bounded lookup of
+        // the order's own vendor business names) so the email leads with
+        // who the order is actually from/for instead of only an amount
+        // and a raw id. Read-only, no settlement/payment/idempotency
+        // impact — this only runs after `settled` is already true.
+        const admin = getAdminSupabase();
+        if (admin) {
+          const { data: orderRow } = await admin
+            .from("orders")
+            .select("customer_name, customer_email")
+            .eq("id", orderId)
+            .maybeSingle();
+          const customer = orderRow?.customer_name || orderRow?.customer_email || null;
+          if (customer) body.push(`Customer: ${customer}`);
+
+          const { data: items } = await admin.from("order_items").select("business_id").eq("order_id", orderId);
+          const businessIds = Array.from(new Set((items ?? []).map((i) => i.business_id).filter(Boolean)));
+          if (businessIds.length > 0) {
+            const { data: businessRows } = await admin.from("businesses").select("name").in("id", businessIds);
+            const names = (businessRows ?? []).map((b) => b.name).filter(Boolean);
+            if (names.length > 0) body.push(`Businesses: ${names.join(", ")}`);
+          }
+        }
+
+        // Order id kept as secondary/reference info, last — never the
+        // primary identifying line.
+        body.push(`Order: ${orderId}`);
+
         await notifyAdmin({
           subject: `New paid order — ${amount}`,
           heading: "New paid order",
-          body: [`Order total: ${amount}`, `Order: ${orderId}`],
+          body,
           actionLabel: "Review Order",
           actionUrl: `/admin/orders/${orderId}`,
         });
