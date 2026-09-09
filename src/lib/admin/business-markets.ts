@@ -69,3 +69,20 @@ export async function getBusinessMarketAssignments(
     };
   });
 }
+
+/** Business Market -> Multi-Area Assignment pass — every business_market_areas
+ * row for this business, grouped by market_id (one business can have
+ * independent Area sets under multiple Markets — see business_markets'
+ * own multi-Market support). Returns a plain Map so the admin editor can
+ * look up `businessAreasByMarket.get(marketId) ?? []` per Market section
+ * without a second query per row. Same admin/service-role-only posture as
+ * getBusinessMarketAssignments above — business_market_areas has RLS
+ * enabled with zero policies. */
+export async function getBusinessAreasByMarket(admin: SupabaseClient, businessId: string): Promise<Map<string, string[]>> {
+  const { data } = await admin.from("business_market_areas").select("market_id, market_area_id").eq("business_id", businessId);
+  const byMarket = new Map<string, string[]>();
+  for (const row of (data ?? []) as { market_id: string; market_area_id: string }[]) {
+    byMarket.set(row.market_id, [...(byMarket.get(row.market_id) ?? []), row.market_area_id]);
+  }
+  return byMarket;
+}

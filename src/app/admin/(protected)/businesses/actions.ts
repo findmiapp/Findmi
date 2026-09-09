@@ -642,6 +642,12 @@ export async function assignPrimaryMarket(businessId: string, formData: FormData
 
   if (currentPrimary && currentPrimary.market_id !== marketId) {
     await supabase.from("business_markets").update({ active: false }).eq("id", currentPrimary.id);
+    // Business Market -> Multi-Area Assignment pass — Area assignments
+    // from the OLD Primary Market must never silently carry over to the
+    // new one (task's own requirement). Scoped to this exact business +
+    // old market_id only, so any unrelated Additional Market's own Area
+    // assignments are untouched.
+    await supabase.from("business_market_areas").delete().eq("business_id", businessId).eq("market_id", currentPrimary.market_id);
   }
 
   if (existing) {
@@ -748,6 +754,78 @@ export async function removeMarketAssignment(businessId: string, assignmentId: s
 
   if (error || !data) {
     redirect(appendQuery(editPath, { error: "Couldn't remove that market assignment." }));
+  }
+
+  // Business Market -> Multi-Area Assignment pass — a deactivated Market
+  // relationship can't leave stale Area assignments active underneath it
+  // (task's own requirement). Scoped to this exact business + the removed
+  // assignment's own market_id, so any other active Market relationship's
+  // Area assignments are untouched.
+  await supabase.from("business_market_areas").delete().eq("business_id", businessId).eq("market_id", data.market_id);
+
+  revalidatePath(editPath);
+  redirect(appendQuery(editPath, { saved: "1" }));
+}
+
+/** Business Market -> Multi-Area Assignment pass — replaces this business's
+ * whole Area selection for ONE specific Market relationship (never a
+ * single global Area selector for the business, per the task's own
+ * requirement — each active Market gets its own independent Area set via
+ * its own <form>, bound to this action with that Market's id).
+ *
+ * Server-side validation, never trusting client-submitted Area ids:
+ *   A. the business must have an ACTIVE business_markets row for marketId
+ *      (never lets an Area be attached under a Market the business
+ *      doesn't actually belong to);
+ *   B. every submitted area_id is re-checked against market_areas scoped
+ *      to marketId — an id that doesn't belong to this Market (stale,
+ *      tampered, or from a different Market's checkbox list) is silently
+ *      dropped rather than trusted;
+ *   C. wholesale replace (delete this business+market's existing rows,
+ *      then insert exactly the validated selection) — structurally
+ *      impossible to create a duplicate row, and naturally handles
+ *      unchecking every box (zero Areas is a valid, explicitly supported
+ *      state — "a Business may belong to a Market with zero explicit
+ *      Areas").
+ */
+export async function updateBusinessMarketAreas(businessId: string, marketId: string, formData: FormData) {
+  const editPath = `/admin/businesses/${businessId}?tab=markets`;
+  const supabase = await requireAdminSupabase();
+
+  const { data: activeRelationship } = await supabase
+    .from("business_markets")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("market_id", marketId)
+    .eq("active", true)
+    .maybeSingle();
+  if (!activeRelationship) {
+    redirect(appendQuery(editPath, { error: "This business doesn't have an active relationship to that Market." }));
+  }
+
+  const submittedAreaIds = formData.getAll("area_id").map(String);
+  let validAreaIds: string[] = [];
+  if (submittedAreaIds.length > 0) {
+    const { data: validAreas } = await supabase
+      .from("market_areas")
+      .select("id")
+      .eq("market_id", marketId)
+      .in("id", submittedAreaIds);
+    validAreaIds = (validAreas ?? []).map((a) => a.id as string);
+  }
+
+  const { error: deleteError } = await supabase
+    .from("business_market_areas")
+    .delete()
+    .eq("business_id", businessId)
+    .eq("market_id", marketId);
+  if (deleteError) redirect(appendQuery(editPath, { error: deleteError.message }));
+
+  if (validAreaIds.length > 0) {
+    const { error: insertError } = await supabase
+      .from("business_market_areas")
+      .insert(validAreaIds.map((market_area_id) => ({ business_id: businessId, market_id: marketId, market_area_id })));
+    if (insertError) redirect(appendQuery(editPath, { error: insertError.message }));
   }
 
   revalidatePath(editPath);

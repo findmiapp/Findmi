@@ -629,15 +629,31 @@ export async function getBusinessIdsInMarket(marketSlug: string): Promise<string
   return (rows ?? []).map((r) => r.business_id as string);
 }
 
-/** Market -> Area/Submarket Hierarchy V2 — resolves an Area SCOPED TO its
- * declared parent Market slug (area slugs are only unique per-Market, so
+/** Market -> Area/Submarket Hierarchy V2, cut over by the Business Market
+ * -> Multi-Area Assignment pass — resolves an Area SCOPED TO its declared
+ * parent Market slug (area slugs are only unique per-Market, so
  * `?market=new-york-city&area=williamsburg` always means the Williamsburg
  * under New York City specifically, never a same-named Area under a
  * different Market). Unknown/inactive Market or Area returns [] — same
  * "never fall back to unfiltered" discipline as getBusinessIdsInMarket.
- * Reads market_areas + businesses via the plain anon client — both have
- * public SELECT (market_areas' own RLS policy, and businesses.market_area_id's
- * explicit column grant), no admin client needed. */
+ *
+ * Area-scoped Business discovery now reads the normalized
+ * business_market_areas relationship — never the legacy
+ * businesses.market_area_id scalar, which can only ever represent ONE
+ * Area total for a business and isn't scoped to any specific Market
+ * relationship (a business can hold multiple Markets via business_markets;
+ * that single column couldn't say which Market an Area belonged under).
+ * Same admin/service-role client getBusinessIdsInMarket already uses for
+ * business_markets (business_market_areas has the identical RLS-enabled/
+ * zero-policies posture — no anon/authenticated policy exists for either
+ * table). Two small sequential queries, same shape as this function's own
+ * two-step Market/Area lookup above: first every business_id assigned this
+ * Area under this Market, then intersected against which of those still
+ * have an ACTIVE business_markets relationship to that same Market — an
+ * Area assignment should never outlive its Market relationship (see
+ * removeMarketAssignment/assignPrimaryMarket's own cleanup in admin
+ * actions), but this keeps discovery correct even if that invariant were
+ * ever violated rather than silently trusting business_market_areas alone. */
 export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string): Promise<string[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -654,8 +670,24 @@ export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string)
     .maybeSingle();
   if (!area) return [];
 
-  const { data: rows } = await supabase.from("businesses").select("id").eq("market_area_id", area.id).eq("is_demo", false);
-  return (rows ?? []).map((r) => r.id as string);
+  const admin = getAdminSupabase();
+  if (!admin) return [];
+
+  const { data: areaRows } = await admin
+    .from("business_market_areas")
+    .select("business_id")
+    .eq("market_id", market.id)
+    .eq("market_area_id", area.id);
+  const candidateIds = (areaRows ?? []).map((r) => r.business_id as string);
+  if (candidateIds.length === 0) return [];
+
+  const { data: activeMarketRows } = await admin
+    .from("business_markets")
+    .select("business_id")
+    .eq("market_id", market.id)
+    .eq("active", true)
+    .in("business_id", candidateIds);
+  return (activeMarketRows ?? []).map((r) => r.business_id as string);
 }
 
 /** Active Featured Business Promotional Eligibility pass — the one

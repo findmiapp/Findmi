@@ -1209,9 +1209,24 @@ export async function createMemberBusiness(formData: FormData) {
   // Best-effort only — the atomic RPC above already succeeded, so a
   // failure here just means the business keeps its Market without the
   // more precise Area attached (never a Market Request, since one was
-  // never created for a matched Area).
+  // never created for a matched Area). Still writes the legacy
+  // businesses.market_area_id scalar for backward compatibility (Business
+  // Market -> Multi-Area Assignment pass — that column is no longer
+  // canonical but isn't dropped yet), and ALSO writes the normalized
+  // business_market_areas relationship, which is what Area-scoped
+  // discovery (getBusinessIdsInArea) and the admin editor actually read
+  // going forward. effectiveMarketId is guaranteed set whenever
+  // matchedAreaId is (see its own assignment above), and create_owned_
+  // business() just inserted an active business_markets primary row for
+  // that exact market_id, so this insert is always valid — no separate
+  // isAreaInMarket/active-relationship check needed here.
   if (matchedAreaId) {
     await admin.from("businesses").update({ market_area_id: matchedAreaId }).eq("id", businessId);
+    await admin.from("business_market_areas").insert({
+      business_id: businessId,
+      market_id: effectiveMarketId,
+      market_area_id: matchedAreaId,
+    });
   }
 
   // Admin Action Email Notifications V1 — every successful call here

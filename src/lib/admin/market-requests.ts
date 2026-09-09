@@ -330,6 +330,21 @@ export async function applyMarketRequestResolution(
             .maybeSingle();
           if (biz && !biz.market_area_id) {
             await supabase.from("businesses").update({ market_area_id: areaId }).eq("id", r.source_business_id);
+            // Business Market -> Multi-Area Assignment pass — this branch
+            // just confirmed (existingPrimary already active for
+            // marketId) or created (the insert a few lines up) an active
+            // business_markets primary row for this exact marketId, so
+            // the normalized relationship is always valid to write here
+            // too. Kept alongside the legacy scalar write above for
+            // backward compatibility — see that column's own deprecation
+            // note. ignoreDuplicates guards re-running resolution on the
+            // same request twice.
+            await supabase
+              .from("business_market_areas")
+              .upsert(
+                { business_id: r.source_business_id, market_id: marketId, market_area_id: areaId },
+                { onConflict: "business_id,market_id,market_area_id", ignoreDuplicates: true }
+              );
           }
         } else {
           const { data: biz } = await supabase.from("businesses").select("name").eq("id", r.source_business_id).maybeSingle();

@@ -42,8 +42,10 @@ import {
   saveBusinessModeration,
   saveBusinessPlan,
   saveBusinessProfile,
+  updateBusinessMarketAreas,
 } from "../actions";
-import { getAllMarketsForAdmin, getBusinessMarketAssignments } from "@/lib/admin/business-markets";
+import { getAllMarketsForAdmin, getBusinessAreasByMarket, getBusinessMarketAssignments } from "@/lib/admin/business-markets";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getBusinessMarketLimit, isBusinessPro, isBusinessProSeller } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
@@ -126,9 +128,20 @@ export default async function EditBusinessPage({
   // their own internally); business_markets has RLS enabled with zero
   // policies, so only this client can read it at all.
   const marketsAdmin = getAdminSupabase();
-  const [allMarkets, marketAssignments] = marketsAdmin
-    ? await Promise.all([getAllMarketsForAdmin(marketsAdmin), getBusinessMarketAssignments(marketsAdmin, id)])
-    : [[], []];
+  // Business Market -> Multi-Area Assignment pass — marketsWithAreas
+  // (all active Markets + their active Areas, same shared helper Events'
+  // own admin/owner MarketAreaFields picker already uses) and
+  // businessAreasByMarket (this business's own business_market_areas
+  // rows, grouped by market_id) together drive the per-Market Area
+  // checkbox lists below — never a single global Area selector.
+  const [allMarkets, marketAssignments, marketsWithAreas, businessAreasByMarket] = marketsAdmin
+    ? await Promise.all([
+        getAllMarketsForAdmin(marketsAdmin),
+        getBusinessMarketAssignments(marketsAdmin, id),
+        getActiveMarketsWithAreaOptions(),
+        getBusinessAreasByMarket(marketsAdmin, id),
+      ])
+    : [[], [], [], new Map<string, string[]>()];
   const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
   const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
@@ -753,7 +766,36 @@ export default async function EditBusinessPage({
                     </button>
                   </form>
                 </div>
-              ) : (
+              ) : null}
+              {/* Business Market -> Multi-Area Assignment pass — Areas
+                  scoped to THIS Market only (never a single global Area
+                  selector for the business — see North Jersey's own
+                  Additional Market card below for the same pattern
+                  applied there). Options come from marketsWithAreas'
+                  entry for this exact market id; a Market with zero
+                  active Areas renders CheckboxList's own built-in empty
+                  state rather than an empty box. Areas are optional — a
+                  Business may belong to a Market with zero selected. */}
+              {activePrimaryMarket && (
+                <form
+                  action={updateBusinessMarketAreas.bind(null, id, activePrimaryMarket.marketId)}
+                  className="mt-3 flex flex-col gap-3"
+                >
+                  <CheckboxList
+                    label="Areas"
+                    name="area_id"
+                    defaultSelected={businessAreasByMarket.get(activePrimaryMarket.marketId) ?? []}
+                    options={
+                      marketsWithAreas
+                        .find((m) => m.id === activePrimaryMarket.marketId)
+                        ?.areas.map((a) => ({ value: a.id, label: a.name })) ?? []
+                    }
+                    emptyText="This Market has no Areas defined yet."
+                  />
+                  <SubmitBar cancelHref="/admin/businesses" saveLabel="Save Areas" />
+                </form>
+              )}
+              {!activePrimaryMarket && (
                 <>
                   <p className="mt-1 text-sm text-ink/50">None assigned.</p>
                   {pendingMarketRequest && (
@@ -798,20 +840,42 @@ export default async function EditBusinessPage({
             <div className="rounded-2xl border border-black/10 bg-white p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Markets</p>
               {activeAdditionalMarkets.length > 0 ? (
-                <ul className="mt-2 flex flex-col gap-2">
+                <ul className="mt-2 flex flex-col gap-3">
                   {activeAdditionalMarkets.map((m) => (
-                    <li
-                      key={m.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-2.5"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-ink">{m.marketName}</p>
-                        {m.provenance && <p className="text-xs text-ink/45">Provenance: {m.provenance}</p>}
+                    <li key={m.id} className="rounded-xl border border-black/10 px-3.5 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-ink">{m.marketName}</p>
+                          {m.provenance && <p className="text-xs text-ink/45">Provenance: {m.provenance}</p>}
+                        </div>
+                        <form action={removeMarketAssignment.bind(null, id, m.id)}>
+                          <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                            Remove
+                          </button>
+                        </form>
                       </div>
-                      <form action={removeMarketAssignment.bind(null, id, m.id)}>
-                        <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
-                          Remove
-                        </button>
+                      {/* Business Market -> Multi-Area Assignment pass —
+                          same per-Market CheckboxList as the Primary
+                          Market card above, scoped to this ADDITIONAL
+                          Market's own id — e.g. North Jersey's Jersey
+                          City/Hoboken stay entirely independent of
+                          whatever Areas are selected under the Primary
+                          Market. */}
+                      <form
+                        action={updateBusinessMarketAreas.bind(null, id, m.marketId)}
+                        className="mt-3 flex flex-col gap-3"
+                      >
+                        <CheckboxList
+                          label="Areas"
+                          name="area_id"
+                          defaultSelected={businessAreasByMarket.get(m.marketId) ?? []}
+                          options={
+                            marketsWithAreas.find((mk) => mk.id === m.marketId)?.areas.map((a) => ({ value: a.id, label: a.name })) ??
+                            []
+                          }
+                          emptyText="This Market has no Areas defined yet."
+                        />
+                        <SubmitBar cancelHref="/admin/businesses" saveLabel="Save Areas" />
                       </form>
                     </li>
                   ))}
