@@ -1,19 +1,19 @@
-import { CheckboxField, SelectField, TextareaField, TextField } from "@/components/admin/Fields";
+import { CheckboxField, TextareaField, TextField } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
+import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
 import type { AdminLocation } from "@/lib/admin/queries";
-import type { AdminMarketOption } from "@/lib/admin/business-markets";
 import { saveLocation, deleteLocation } from "./actions";
 
 export default function LocationForm({
   location,
-  markets,
+  marketsWithAreas,
   error,
 }: {
   location: AdminLocation | null;
-  markets: AdminMarketOption[];
+  marketsWithAreas: MarketWithAreaOptions[];
   error?: string;
 }) {
   const action = saveLocation.bind(null, location?.id ?? null);
@@ -75,18 +75,25 @@ export default function LocationForm({
           />
         </div>
 
-        <SelectField
-          label="Findmi Market"
-          name="market_id"
-          defaultValue={location?.market_id ?? ""}
-          options={[
-            { value: "", label: "Unassigned" },
-            ...markets
-              .filter((m) => m.active || m.id === location?.market_id)
-              .map((m) => ({ value: m.id, label: m.name })),
-          ]}
-          hint="This is the physical Findmi Market this venue belongs to. Event occurrences linked to this location can inherit it."
-        />
+        {/* Location Market -> Area Parity pass — same cascading Market ->
+            Area picker Events already use (MarketAreaFields), replacing the
+            old plain Market-only select. Changing Market clears an
+            incompatible Area client-side; saveLocation re-validates
+            server-side via isAreaInMarket regardless. */}
+        <div className="rounded-2xl border border-black/10 p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Market / Area</p>
+          <p className="mt-1 text-xs text-ink/50">
+            The physical Findmi Market (and, optionally, Area) this venue belongs to. Event occurrences linked to
+            this location can inherit its Market.
+          </p>
+          <div className="mt-3">
+            <MarketAreaFields
+              markets={marketsWithAreas}
+              defaultMarketId={location?.market_id ?? null}
+              defaultAreaId={location?.market_area_id ?? null}
+            />
+          </div>
+        </div>
 
         <SubmitBar cancelHref="/admin/locations" />
       </form>

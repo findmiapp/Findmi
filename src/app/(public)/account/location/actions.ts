@@ -12,6 +12,7 @@ import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
@@ -173,6 +174,10 @@ export async function createMemberLocation(formData: FormData) {
   const city = str(formData, "city");
   const state = str(formData, "state");
   const marketId = str(formData, "market_id");
+  // Location Market -> Area Parity pass — optional, explicit Area within
+  // the chosen Market. Never inferred from address/city/state — only from
+  // this Market-scoped MarketAreaFields picker.
+  const areaId = str(formData, "market_area_id");
   const requestedMarketTextRaw = str(formData, "requested_market_text");
   const preservedFields = {
     name,
@@ -180,6 +185,7 @@ export async function createMemberLocation(formData: FormData) {
     city,
     state,
     market_id: marketId,
+    market_area_id: areaId,
     requested_market_text: requestedMarketTextRaw,
   };
   const fail = (message: string): never => {
@@ -210,13 +216,22 @@ export async function createMemberLocation(formData: FormData) {
   // Same "check for an existing Market/Area match before falling back to
   // a Market Request" shape createMemberBusiness/createMemberEvent use.
   let effectiveMarketId = marketId;
+  let effectiveAreaId = areaId;
   let effectiveRequestedMarketText = requestedMarketTextRaw;
   if (requestedMarketTextRaw) {
     const match = await findExistingGeographyMatch(admin, requestedMarketTextRaw);
     if (match) {
       effectiveMarketId = match.marketId;
+      effectiveAreaId = match.type === "area" ? (match.areaId ?? null) : null;
       effectiveRequestedMarketText = null;
     }
+  }
+  // Server-side backstop — never trusts the client-side MarketAreaFields
+  // reset alone; a stale/tampered Area not actually belonging to the
+  // effective Market is silently dropped, same posture as saveEvent /
+  // updateMemberLocationMarket above.
+  if (effectiveAreaId && (!effectiveMarketId || !(await isAreaInMarket(effectiveAreaId, effectiveMarketId)))) {
+    effectiveAreaId = null;
   }
 
   const { data: created, error } = await admin.rpc("create_owned_location", {
@@ -236,6 +251,14 @@ export async function createMemberLocation(formData: FormData) {
   }
 
   const locationId = (created as { id: string }).id;
+  // Best-effort only — the atomic RPC above already succeeded and never
+  // accepts an Area itself (only p_market_id), so this just attaches the
+  // already-validated Area as a normal follow-up update, same "best-effort,
+  // never rolls back the create" posture createMemberBusiness's own
+  // matchedAreaId follow-up uses.
+  if (effectiveAreaId) {
+    await admin.from("locations").update({ market_area_id: effectiveAreaId }).eq("id", locationId);
+  }
   revalidatePath("/account");
   redirect(`/account/location/${locationId}?created=1`);
 }
@@ -340,10 +363,17 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
   }
 
   let effectiveMarketId = marketId;
+  // Location Market -> Area Parity pass — explicit Area picked via
+  // MarketAreaFields is just as authoritative as a matched one below, same
+  // "manual pick vs. free-text match, mutually exclusive" shape saveEvent
+  // already uses. Re-validated against whichever Market ends up effective
+  // either way — never trusts the client-side reset alone.
+  let effectiveAreaId = str(formData, "market_area_id");
   if (requestedMarketTextRaw) {
     const match = await findExistingGeographyMatch(admin, requestedMarketTextRaw);
     if (match) {
       effectiveMarketId = match.marketId;
+      effectiveAreaId = match.type === "area" ? (match.areaId ?? null) : null;
     } else {
       const { data: location } = await admin.from("locations").select("name, city, state").eq("id", locationId).maybeSingle();
       const linked = await createLinkedMarketRequest(admin, {
@@ -369,7 +399,14 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
     }
   }
 
-  const { error } = await admin.from("locations").update({ market_id: effectiveMarketId }).eq("id", locationId);
+  if (effectiveAreaId && (!effectiveMarketId || !(await isAreaInMarket(effectiveAreaId, effectiveMarketId)))) {
+    effectiveAreaId = null;
+  }
+
+  const { error } = await admin
+    .from("locations")
+    .update({ market_id: effectiveMarketId, market_area_id: effectiveAreaId })
+    .eq("id", locationId);
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
 
   revalidatePath(redirectPath);

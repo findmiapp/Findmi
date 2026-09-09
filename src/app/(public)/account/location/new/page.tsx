@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { getActiveMarkets } from "@/lib/data";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
+import MarketAreaFields from "@/components/MarketAreaFields";
 import { createMemberLocation } from "../actions";
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ export default async function AddLocationPage({
     city?: string;
     state?: string;
     market_id?: string;
+    market_area_id?: string;
     requested_market_text?: string;
   }>;
 }) {
@@ -46,6 +48,7 @@ export default async function AddLocationPage({
     city: submittedCity,
     state: submittedState,
     market_id: submittedMarketId,
+    market_area_id: submittedAreaId,
     requested_market_text: submittedRequestedMarketText,
   } = await searchParams;
 
@@ -55,7 +58,7 @@ export default async function AddLocationPage({
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent("/account/location/new")}`);
 
-  const markets = await getActiveMarkets();
+  const marketsWithAreas = await getActiveMarketsWithAreaOptions();
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
@@ -106,20 +109,17 @@ export default async function AddLocationPage({
             </label>
           </div>
 
-          <label className="block">
+          <div>
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              Market <span className="font-normal text-ink/40">(optional)</span>
+              Market &amp; Area <span className="font-normal text-ink/40">(optional)</span>
             </span>
-            <select name="market_id" defaultValue={submittedMarketId ?? ""} className={inputClass}>
-              <option value="">Choose a market…</option>
-              {markets.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+            <MarketAreaFields
+              markets={marketsWithAreas}
+              defaultMarketId={submittedMarketId ?? null}
+              defaultAreaId={submittedAreaId ?? null}
+            />
             <p className="mt-1.5 text-xs text-ink/45">You can add or change this later from your Location Manager.</p>
-          </label>
+          </div>
 
           <details className="group -mt-2" open={Boolean(submittedRequestedMarketText)}>
             <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">

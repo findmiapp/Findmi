@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAdminLocationById } from "@/lib/admin/queries";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import LocationForm from "../LocationForm";
 
@@ -17,10 +16,9 @@ export default async function EditLocationPage({
 }) {
   const { id } = await params;
   const { error, saved } = await searchParams;
-  const marketsAdmin = getAdminSupabase();
-  const [location, markets] = await Promise.all([
+  const [location, marketsWithAreas] = await Promise.all([
     getAdminLocationById(id),
-    marketsAdmin ? getAllMarketsForAdmin(marketsAdmin) : Promise.resolve([]),
+    getActiveMarketsWithAreaOptions(),
   ]);
   if (!location) notFound();
   const publicHref = !location.is_demo ? `/location/${location.slug}` : null;
@@ -49,7 +47,7 @@ export default async function EditLocationPage({
         </p>
       )}
       <div className="mt-5">
-        <LocationForm location={location} markets={markets} error={error} />
+        <LocationForm location={location} marketsWithAreas={marketsWithAreas} error={error} />
       </div>
     </div>
   );

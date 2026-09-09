@@ -705,6 +705,12 @@ export interface FindmiLocation {
   // the occurrence has its own explicit override — see
   // lib/event-markets.ts.
   market_id: string | null;
+  // Location Market -> Area Parity pass — optional Area/Submarket within
+  // market_id, same cascading-select convention as events.market_area_id.
+  // Null = no specific Area assigned. Never inherited by event occurrences
+  // (only events.market_area_id feeds Event Area resolution — see
+  // lib/event-markets.ts's own note that Area always comes from the Event).
+  market_area_id: string | null;
   // Multi-Entity Self-Service V1, Stage 3 — minimal additive venue-profile
   // fields for real self-service (native creation/claim/Location Manager).
   description: string | null;

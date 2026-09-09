@@ -7,11 +7,12 @@ import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireLocationMember } from "@/lib/permissions";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getAdminLocationById } from "@/lib/admin/queries";
-import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
+import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import { getPendingMarketRequestForLocation } from "@/lib/market-requests";
 import { getLocationGalleryImages, getUpcomingAtLocation } from "@/lib/data";
 import AccountNav from "../../AccountNav";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
+import MarketAreaFields from "@/components/MarketAreaFields";
 import MemberLocationImageField from "./MemberLocationImageField";
 import MemberLocationGalleryField from "./MemberLocationGalleryField";
 import {
@@ -88,8 +89,8 @@ export default async function ManageLocationPage({
   const location = await getAdminLocationById(id);
   if (!location) redirect(errorRedirectUrl("/account", "Venue not found."));
 
-  const [markets, pendingMarketRequest, galleryImages, happenings, locationHandle] = await Promise.all([
-    getAllMarketsForAdmin(admin),
+  const [marketsWithAreas, pendingMarketRequest, galleryImages, happenings, locationHandle] = await Promise.all([
+    getActiveMarketsWithAreaOptions(),
     getPendingMarketRequestForLocation(admin, id),
     getLocationGalleryImages(id),
     getUpcomingAtLocation({ id, name: location.name }),
@@ -113,7 +114,8 @@ export default async function ManageLocationPage({
   const eventEligible = sessionUser ? await canCurrentUserManageEvents(admin, sessionUser.id) : false;
 
   const publicHref = !location.is_demo ? `/location/${location.slug}` : null;
-  const selectedMarket = markets.find((m) => m.id === location.market_id) ?? null;
+  const selectedMarket = marketsWithAreas.find((m) => m.id === location.market_id) ?? null;
+  const selectedArea = selectedMarket?.areas.find((a) => a.id === location.market_area_id) ?? null;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
@@ -280,25 +282,17 @@ export default async function ManageLocationPage({
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Market / Area</p>
             <p className="mt-1 text-sm text-ink/60">
               {selectedMarket
-                ? `Current Market: ${selectedMarket.name}`
+                ? `Current Market: ${selectedMarket.name}${selectedArea ? ` — ${selectedArea.name}` : ""}`
                 : pendingMarketRequest
                   ? `Pending review — ${pendingMarketRequest.requestedText}`
                   : "Not assigned yet."}
             </p>
             <form action={updateMemberLocationMarket.bind(null, id)} className="mt-3 flex flex-col gap-3">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-ink/70">Market</span>
-                <select name="market_id" defaultValue={location.market_id ?? ""} className={inputClass}>
-                  <option value="">Unassigned</option>
-                  {markets
-                    .filter((m) => m.active || m.id === location.market_id)
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <MarketAreaFields
+                markets={marketsWithAreas}
+                defaultMarketId={location.market_id}
+                defaultAreaId={location.market_area_id}
+              />
               <details className="group -mt-1">
                 <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
                   Don&rsquo;t see your Market?
