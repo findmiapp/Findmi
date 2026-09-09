@@ -71,6 +71,7 @@ export default function MobileHeader({
         <HamburgerMenu
           items={navItems}
           authenticated={authenticated}
+          businesses={businesses}
           contactEmail={contactEmail}
           contactPhone={contactPhone}
         />

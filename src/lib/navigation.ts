@@ -196,6 +196,32 @@ export const FALLBACK_NAV_ITEMS: ResolvedNavItem[] = [
   { id: "fallback-you", label: "You", href: "/you", external: false, icon: "person", highlight: false, children: [] },
 ];
 
+// Authenticated Menu Cleanup pass — a signed-in visitor is never shown a
+// generic acquisition/plan CTA in the global nav. Business plan belongs to
+// the Business (upgraded contextually inside its own Business Manager),
+// never assumed at the account level — see this pass's own locked rule.
+const AUTH_HIDDEN_ROUTES = new Set(["/join", "/upgrade/pro"]);
+
+/** Recursively strips any founder-configured nav item (top-level or one
+ * level of child) whose resolved href is a known acquisition route —
+ * currently just "Join For Free" -> /join, whichever nav_items row that
+ * happens to be founder-configured as today. A parent left with no href
+ * of its own and no remaining children after filtering is dropped too,
+ * same "nothing to link to or expand" rule buildNavTree already applies.
+ * Only ever called with an authenticated visitor's nav tree — a signed-
+ * out visitor's tree is returned completely untouched by every caller
+ * (see HamburgerMenu/NavDesktop), so visitor acquisition is unaffected. */
+export function stripAcquisitionNavItems(items: ResolvedNavItem[]): ResolvedNavItem[] {
+  return items
+    .map((item) => {
+      if (item.href && AUTH_HIDDEN_ROUTES.has(item.href)) return null;
+      const children = item.children.filter((c) => !(c.href && AUTH_HIDDEN_ROUTES.has(c.href)));
+      if (!item.href && children.length === 0) return null;
+      return { ...item, children };
+    })
+    .filter((i): i is ResolvedNavItem => i !== null);
+}
+
 /** Validates a founder-entered Custom Link destination (Part A4.2). Only
  * two shapes are accepted: an internal path starting with "/", or an
  * absolute https:// URL — anything else (javascript:, data:, vbscript:,

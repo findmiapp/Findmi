@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import NavIcon from "@/components/NavIcon";
 import type { NavIconKey } from "@/lib/navigation";
 
@@ -44,8 +45,23 @@ const TYPE_LABEL_BY_KIND: Record<ManagedEntityKind, string> = {
  * Business/Event/Venue apart at a glance); the type-specific tabs omit it
  * since it's already implied by the filter itself.
  */
+/** Authenticated Menu Cleanup pass — the hamburger drawer's own Manage
+ * section (Businesses/Events/Locations) needs a real destination for
+ * each concept without inventing a new page; this list is already
+ * "currently the only safe canonical route" for all three (Section 6's
+ * own escape hatch), so it just needed to be deep-linkable. `?manage=`
+ * only ever SEEDS the initial filter (same three ManagedEntityKind
+ * values, or anything else/absent falls back to "all" exactly as
+ * before) — the tab buttons below remain the same plain client-side
+ * useState toggle, no URL sync on every click, no new fetch, no new
+ * entity-management architecture. */
+function initialFilterFromSearchParams(raw: string | null): "all" | ManagedEntityKind {
+  return raw === "business" || raw === "event" || raw === "location" ? raw : "all";
+}
+
 export default function ManageOnFindmiList({ entities }: { entities: ManagedEntity[] }) {
-  const [filter, setFilter] = useState<"all" | ManagedEntityKind>("all");
+  const searchParams = useSearchParams();
+  const [filter, setFilter] = useState<"all" | ManagedEntityKind>(() => initialFilterFromSearchParams(searchParams.get("manage")));
   const visible = filter === "all" ? entities : entities.filter((e) => e.kind === filter);
 
   return (

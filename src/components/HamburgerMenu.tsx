@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import Logo from "./Logo";
 import NavIcon from "./NavIcon";
+import SignOutConfirm from "./SignOutConfirm";
 import DrawerUtilityStrip from "./DrawerUtilityStrip";
 import DrawerSearch from "./DrawerSearch";
-import type { ResolvedNavItem } from "@/lib/navigation";
+import { stripAcquisitionNavItems, type NavIconKey, type ResolvedNavItem } from "@/lib/navigation";
+import { resolveBusinessScopedHref, type BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
+import { signOut } from "@/app/(public)/account/profile/actions";
 
 // Header hamburger trigger + mobile nav drawer (2026 navigation pass,
 // extended in the live-QA follow-up pass with one level of expandable
@@ -31,13 +34,23 @@ import type { ResolvedNavItem } from "@/lib/navigation";
 export default function HamburgerMenu({
   items,
   authenticated,
+  businesses,
   contactEmail,
   contactPhone,
 }: {
   items: ResolvedNavItem[];
   /** Server-resolved (see (public)/layout.tsx) — drives the utility
-   * strip's Login/Logout action. Never determined client-side. */
+   * strip's Login/Logout action, and (Authenticated Menu Cleanup pass)
+   * which nav sections render below: signed out, this drawer is
+   * completely unchanged from before; signed in, it gains the Your
+   * Findmi/Manage/Create sections and drops any acquisition CTA from the
+   * founder-configured tree. Never determined client-side. */
   authenticated: boolean;
+  /** Same already-loaded list MobileHeader already hands QuickCreateMenu
+   * — reused here (not re-fetched) so the Create section below can reuse
+   * resolveBusinessScopedHref's exact zero/one/many routing instead of
+   * re-deciding it. Always [] when signed out. */
+  businesses: BusinessOption[];
   /** Founder-editable (Admin → Site → Contact Info); null hides that
    * utility-strip action entirely rather than showing a dead link. */
   contactEmail: string | null;
@@ -49,6 +62,25 @@ export default function HamburgerMenu({
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => setMounted(true), []);
+
+  // Authenticated Menu Cleanup pass — the founder-configured browse tree
+  // (Discover/Brands/Marketplace/etc.) stays for a signed-in visitor too
+  // (they still want to browse), just with any acquisition/plan CTA
+  // stripped (Locked Rule — Section 3) and the plain "Account" row
+  // dropped since Your Findmi below already covers it more prominently.
+  // A signed-out visitor's tree is untouched, in the exact original
+  // order (Section 8 — never damage visitor acquisition).
+  const browseItems = authenticated ? stripAcquisitionNavItems(items).filter((i) => i.href !== "/account") : items;
+
+  // Create section — reuses the exact same resolveBusinessScopedHref
+  // QuickCreateMenu already calls for these two Business-scoped actions,
+  // never a second routing decision. Its only three outcomes: zero
+  // businesses -> the existing creation page, one -> straight into that
+  // Business's own Manager tab, more than one -> null, which falls back
+  // to /account (the existing "Manage on Findmi" chooser) rather than
+  // rebuilding WhichBusinessPanel's picker a second time in this drawer.
+  const whereIllBeHref = resolveBusinessScopedHref(businesses, "findmi-here") ?? "/account";
+  const productHref = resolveBusinessScopedHref(businesses, "products") ?? "/account";
 
   useEffect(() => {
     if (!open) return;
@@ -168,7 +200,57 @@ export default function HamburgerMenu({
                   this scroll internally instead of ever being able to
                   push the drawer's own box taller than the viewport. */}
               <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
-                {items.length > 0 ? (
+                {authenticated ? (
+                  <>
+                    {/* Authenticated Menu Cleanup pass — Section 2's
+                        priority/order: Your Findmi (Account/Messages,
+                        both immediately discoverable near the top) ->
+                        Manage -> Create -> the founder's own browse tree
+                        (acquisition CTAs stripped) -> Profile/Settings +
+                        Sign Out, clearly separated at the very bottom. */}
+                    <SectionHeading>Your Findmi</SectionHeading>
+                    <DrawerLink href="/account" icon="person" label="Account" onNavigate={close} />
+                    <DrawerLink href="/account/messages" iconNode={<MessageGlyph className="h-5 w-5 shrink-0" />} label="Messages" onNavigate={close} />
+
+                    <SectionHeading>Manage</SectionHeading>
+                    <DrawerLink href="/account?manage=business" icon="storefront" label="Businesses" onNavigate={close} />
+                    <DrawerLink href="/account?manage=event" icon="calendar" label="Events" onNavigate={close} />
+                    <DrawerLink href="/account?manage=location" icon="pin" label="Locations" onNavigate={close} />
+
+                    <SectionHeading>Create</SectionHeading>
+                    <DrawerLink href={whereIllBeHref} icon="target" label="Where I'll Be" onNavigate={close} />
+                    <DrawerLink href="/account/business/new" icon="storefront" label="Business" onNavigate={close} />
+                    <DrawerLink href="/account/event/new" icon="calendar" label="Event" onNavigate={close} />
+                    <DrawerLink href="/account/location/new" icon="pin" label="Location" onNavigate={close} />
+                    <DrawerLink href={productHref} icon="tag" label="Product" onNavigate={close} />
+
+                    {browseItems.length > 0 && (
+                      <>
+                        <SectionHeading>Discover</SectionHeading>
+                        {browseItems.map((item) => (
+                          <NavEntry
+                            key={item.id}
+                            item={item}
+                            expanded={expanded.has(item.id)}
+                            onToggle={() => toggleExpanded(item.id)}
+                            onNavigate={close}
+                          />
+                        ))}
+                      </>
+                    )}
+
+                    <div className="mt-3 flex flex-col gap-0.5 border-t border-black/5 pt-2">
+                      <DrawerLink href="/account/profile" icon="person" label="Profile / Settings" onNavigate={close} />
+                      <SignOutConfirm
+                        action={signOut}
+                        ariaLabel="Sign out"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-ink/50 transition hover:bg-black/[0.03]"
+                      >
+                        Sign Out
+                      </SignOutConfirm>
+                    </div>
+                  </>
+                ) : items.length > 0 ? (
                   items.map((item) => (
                     <NavEntry
                       key={item.id}
@@ -211,6 +293,61 @@ const linkRowClass = (highlight: boolean) =>
       ? "bg-findmi font-bold uppercase tracking-wide text-white hover:bg-findmi-600"
       : "font-medium text-ink hover:bg-black/[0.03]"
   }`;
+
+/** Small uppercase micro-heading for the authenticated drawer's own
+ * sections (Your Findmi/Manage/Create/Discover) — same treatment
+ * /account already uses for "Manage on Findmi"/"Your Activity", not a
+ * new heading style invented for this drawer. First one gets no top
+ * margin (sits flush under the drawer's own padding); every other one
+ * gets a small gap from the section above it. */
+function SectionHeading({ children }: { children: ReactNode }) {
+  return <p className="mb-1 mt-4 px-3 text-[10px] font-bold uppercase tracking-wide text-ink/40 first:mt-0">{children}</p>;
+}
+
+/** One plain authenticated-drawer row — same visual language as a
+ * founder-configured NavLink (NavIcon + label, linkRowClass(false)), but
+ * for the hardcoded Your Findmi/Manage/Create/Account destinations this
+ * pass adds, which aren't ResolvedNavItem rows. `iconNode` overrides
+ * `icon` for the one row (Messages) with no matching NAV_ICON_KEYS
+ * entry. */
+function DrawerLink({
+  href,
+  icon,
+  iconNode,
+  label,
+  onNavigate,
+}: {
+  href: string;
+  icon?: NavIconKey;
+  iconNode?: ReactNode;
+  label: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <Link href={href} onClick={onNavigate} className={linkRowClass(false)}>
+      {iconNode ?? (icon && <NavIcon name={icon} className="h-5 w-5 shrink-0" />)}
+      <span className="truncate">{label}</span>
+    </Link>
+  );
+}
+
+// Messages has no matching entry in NAV_ICON_KEYS (a small, curated,
+// founder-admin-facing set this hardcoded row deliberately doesn't
+// extend) — same chat-bubble glyph already used for the Messages tile on
+// /account, reused here for visual consistency rather than inventing a
+// second icon for the same concept.
+function MessageGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M4 5.5h16a1 1 0 011 1V15a1 1 0 01-1 1H9l-4 3.5V16H4a1 1 0 01-1-1V6.5a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 /** One top-level row — either a plain link (no children) or an
  * expand/collapse toggle for its submenu (has children; its own href, if
