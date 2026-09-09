@@ -90,28 +90,73 @@ function renderText(n: OperationalNotification, resolvedUrl?: string): string {
  * warning when unconfigured (no RESEND_API_KEY, or no recipients to send
  * to) rather than throwing — callers that need guaranteed non-throwing
  * behavior regardless of Resend API errors should go through
- * notifyAdmin() (./adminNotify) instead of calling this directly. */
+ * notifyAdmin() (./adminNotify) instead of calling this directly.
+ *
+ * Production Admin Email pipeline diagnosis pass — CONCRETE DEFECT FIX:
+ * the Resend Node SDK's emails.send() does NOT throw on an API-level
+ * rejection (bad `from`/`to` formatting, unverified domain, etc.) — it
+ * resolves normally with `{ data: null, error: {...} }` (see
+ * node_modules/resend's own Response<T> type). This call previously
+ * discarded that return value entirely, so a rejected send looked
+ * identical to a successful one to every caller: no exception, nothing
+ * logged, notifyAdmin's own try/catch never had anything to catch. That
+ * silent-success-on-failure gap is exactly what let a real, accepted
+ * market_requests row (Boston, then Boise) produce zero email with zero
+ * visible error. Now the `error` field is actually inspected and thrown
+ * (caught by notifyAdmin(), same as any other failure) so a rejected
+ * send is finally visible instead of indistinguishable from success. */
 export async function sendOperationalNotification(n: OperationalNotification): Promise<void> {
   const to = n.to && n.to.length > 0 ? n.to : getAdminRecipients();
-  if (to.length === 0) {
+  const recipientsConfigured = to.length > 0;
+  if (!recipientsConfigured) {
     console.warn(`[notifications] no recipients configured — skipping "${n.subject}"`);
     return;
   }
 
   const resend = getResendClient();
+  const resendConfigured = Boolean(resend);
   if (!resend) {
     console.warn(`[notifications] RESEND_API_KEY not set — skipping "${n.subject}"`);
     return;
   }
 
+  const senderConfigured = Boolean(process.env.ADMIN_NOTIFICATION_FROM?.trim());
   const from = process.env.ADMIN_NOTIFICATION_FROM?.trim() || "Findmi <notifications@findmi.app>";
   const resolvedUrl = resolveActionUrl(n.actionUrl);
 
-  await resend.emails.send({
+  // TEMPORARY diagnostic logging (Production Admin Email pipeline
+  // diagnosis pass) — remove once a live send is confirmed end-to-end.
+  // Never logs API keys, full recipient addresses, or other secrets —
+  // only booleans/counts/error metadata.
+  console.log("[notifications:diagnostic] preparing send", {
+    subject: n.subject,
+    recipientsConfigured,
+    recipientCount: to.length,
+    resendConfigured,
+    senderConfigured,
+    sendAttempted: true,
+  });
+
+  const { data, error } = await resend.emails.send({
     from,
     to,
     subject: n.subject,
     html: renderHtml(n, resolvedUrl),
     text: renderText(n, resolvedUrl),
+  });
+
+  if (error) {
+    console.error("[notifications:diagnostic] Resend rejected the send", {
+      subject: n.subject,
+      errorName: error.name,
+      errorStatusCode: error.statusCode,
+      errorMessage: error.message,
+    });
+    throw new Error(`Resend error (${error.name}): ${error.message}`);
+  }
+
+  console.log("[notifications:diagnostic] Resend accepted the send", {
+    subject: n.subject,
+    resendId: data?.id,
   });
 }
