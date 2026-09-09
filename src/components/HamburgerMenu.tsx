@@ -43,18 +43,11 @@ import { signOut } from "@/app/(public)/account/profile/actions";
 export default function HamburgerMenu({
   items,
   authenticated,
-  contactEmail,
-  contactPhone,
 }: {
   items: ResolvedNavItem[];
-  /** Server-resolved (see (public)/layout.tsx) — drives the utility
-   * strip's Login/Logout action and whether the bottom Sign Out row
-   * renders. Never determined client-side. */
+  /** Server-resolved (see (public)/layout.tsx) — drives whether the
+   * bottom Sign Out row renders. Never determined client-side. */
   authenticated: boolean;
-  /** Founder-editable (Admin → Site → Contact Info); null hides that
-   * utility-strip action entirely rather than showing a dead link. */
-  contactEmail: string | null;
-  contactPhone: string | null;
 }) {
   const [open, setOpen] = useState(false);
   // Every parent group starts expanded (still collapsible via its own
@@ -175,7 +168,7 @@ export default function HamburgerMenu({
                   itself (max-h-[45vh]) rather than growing the drawer, so
                   the existing nav underneath is never pushed out of
                   reach. */}
-              <DrawerUtilityStrip email={contactEmail} phone={contactPhone} onNavigate={close} />
+              <DrawerUtilityStrip onNavigate={close} />
               <DrawerSearch onNavigate={close} />
 
               {/* Nav body — flex-1 + min-h-0 (belt-and-suspenders with
@@ -302,9 +295,24 @@ function NavLink({
 }) {
   if (!item.href) return null; // defensive — buildNavTree already drops hrefless leaves
 
+  // Messages has no NAV_ICON_KEYS entry (that set has no chat/message
+  // glyph — see lib/navigation.ts) and its nav_items row is seeded with
+  // icon_key null, so it renders no icon by default. Matched by href
+  // (its one stable identifier) rather than label, so a founder renaming
+  // the row's label doesn't lose the icon. Reuses the exact same
+  // speech-bubble glyph already used for /account's own Messages tile
+  // (see MessageGlyph in account/page.tsx) rather than a mail/envelope
+  // icon, at the same h-5 w-5/stroke-1.8 size every other drawer icon
+  // uses.
+  const isMessages = item.href === "/account/messages";
+
   const content = (
     <>
-      {item.icon && <NavIcon name={item.icon} className="h-5 w-5 shrink-0" />}
+      {isMessages ? (
+        <MessageGlyph className="h-5 w-5 shrink-0" />
+      ) : (
+        item.icon && <NavIcon name={item.icon} className="h-5 w-5 shrink-0" />
+      )}
       <span className="truncate">{item.label}</span>
     </>
   );
@@ -320,5 +328,22 @@ function NavLink({
     <Link href={item.href} onClick={onNavigate} className={className}>
       {content}
     </Link>
+  );
+}
+
+// Same speech-bubble glyph as account/page.tsx's own MessageGlyph
+// (deliberately not an envelope/mail icon), redrawn here at the drawer's
+// icon size rather than shared as an import — every other glyph in the
+// app (HeartGlyph, this one) already follows the same per-file pattern.
+function MessageGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M4 5.5h16a1 1 0 011 1V15a1 1 0 01-1 1H9l-4 3.5V16H4a1 1 0 01-1-1V6.5a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

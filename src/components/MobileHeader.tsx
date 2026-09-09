@@ -14,8 +14,6 @@ export default function MobileHeader({
   adminToolbar = false,
   authenticated,
   businesses,
-  contactEmail,
-  contactPhone,
 }: {
   navItems: ResolvedNavItem[];
   /** True only when the server-verified admin session gates AdminToolbar
@@ -24,15 +22,13 @@ export default function MobileHeader({
    * instead of overlapping. Never itself a source of truth for admin
    * status; just a layout offset the layout hands down. */
   adminToolbar?: boolean;
-  /** Passed straight through to HamburgerMenu's drawer utility strip —
-   * see that component and DrawerUtilityStrip for what each drives. */
+  /** Passed straight through to HamburgerMenu — drives whether its
+   * bottom Sign Out row renders. */
   authenticated: boolean;
   /** Global Quick-Create pass — the signed-in visitor's managed
    * Businesses, for QuickCreateMenu's Business-scoped rows. Always []
    * when signed out (see (public)/layout.tsx). */
   businesses: BusinessOption[];
-  contactEmail: string | null;
-  contactPhone: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -68,12 +64,7 @@ export default function MobileHeader({
         <HeaderSearch variant="icon" />
         <CartBadge />
         <QuickCreateMenu authenticated={authenticated} businesses={businesses} />
-        <HamburgerMenu
-          items={navItems}
-          authenticated={authenticated}
-          contactEmail={contactEmail}
-          contactPhone={contactPhone}
-        />
+        <HamburgerMenu items={navItems} authenticated={authenticated} />
       </div>
     </header>
   );

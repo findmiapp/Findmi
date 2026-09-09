@@ -5,7 +5,6 @@ import Footer from "@/components/Footer";
 import { filterNavItemsForAudience, getVisibleNavItems } from "@/lib/navigation";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { getSiteContactInfo } from "@/lib/contact-info";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 
 // Nav rarely changes — cache it site-wide for a minute rather than
@@ -34,22 +33,15 @@ export default async function PublicLayout({ children }: { children: React.React
   // there — no equivalent adjustment needed for it.
   const isAdmin = await isAdminSession();
 
-  // Drawer utility strip data — resolved once, here, server-side (same
-  // pattern as isAdmin/navItems above) rather than a client-side fetch in
-  // HamburgerMenu, so there's no loading flash and no second, weaker auth
-  // check: `authenticated` is the exact same /account Supabase session
-  // check used everywhere else (see /api/account/me — this reads the same
-  // session directly instead of round-tripping through that route from
-  // inside a Server Component). contactInfo is the founder-editable
-  // Admin → Site → Contact Info value (see lib/contact-info.ts) — a
-  // missing/blank field resolves to null there, which the utility strip
-  // reads as "hide this action."
+  // `authenticated` is the exact same /account Supabase session check used
+  // everywhere else (see /api/account/me — this reads the same session
+  // directly instead of round-tripping through that route from inside a
+  // Server Component).
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   const authenticated = Boolean(user);
-  const contactInfo = await getSiteContactInfo();
 
   // Navigation Information Architecture + Founder-Editable Audience pass
   // — the one place a viewer's audience narrows the shared nav_items tree
@@ -84,8 +76,6 @@ export default async function PublicLayout({ children }: { children: React.React
         adminToolbar={isAdmin}
         authenticated={authenticated}
         businesses={businesses}
-        contactEmail={contactInfo.email}
-        contactPhone={contactInfo.phone}
       />
       <NavDesktop navItems={navItems} authenticated={authenticated} businesses={businesses} />
       <div className={`flex-1 ${isAdmin ? "pt-[calc(3.5rem+1.75rem)]" : "pt-14"} md:pt-0`}>{children}</div>
