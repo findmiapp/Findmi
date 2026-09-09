@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { listConversationsForUser } from "@/lib/opportunities";
 import NavIcon from "@/components/NavIcon";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
@@ -166,6 +167,12 @@ export default async function AccountHomePage({
   const admin = getAdminSupabase();
   const businessIds = myBusinesses.map((b) => b.id);
   const proBusinessIds = await getProBusinessIdSet(admin, businessIds);
+
+  // Public Messaging V1, Section 11 — Messages joins the Your Activity
+  // tile row below, same "compact entry point, real count" treatment as
+  // Saved/Following/Orders. No unread tracking (explicitly deferred this
+  // pass) — just a total conversation count.
+  const messagesCount = admin ? (await listConversationsForUser(admin, user.id)).length : 0;
 
   const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
   const savedCount = (savedBusinessesCount ?? 0) + (savedEventsCount ?? 0) + (savedProductsCount ?? 0);
@@ -471,9 +478,10 @@ export default async function AccountHomePage({
           into sign-out (via /account/profile, unchanged). */}
       <section className="mt-8">
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Your Activity</h2>
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-4 sm:overflow-visible">
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-5 sm:overflow-visible">
           <UtilityCard href="/account/saved" label="Saved" count={savedCount} icon={<NavIcon name="bookmark" className="h-4 w-4" />} />
           <UtilityCard href="/account/following" label="Following" count={followingCount} icon={<HeartGlyph />} />
+          <UtilityCard href="/account/messages" label="Messages" count={messagesCount} icon={<MessageGlyph />} />
           <UtilityCard href="/account/orders" label="Orders" count={ordersCount ?? 0} icon={<NavIcon name="cart" className="h-4 w-4" />} />
           <UtilityCard href="/account/profile" label="Profile" icon={<NavIcon name="person" className="h-4 w-4" />} />
         </div>
@@ -542,6 +550,21 @@ function UtilityCard({
 // nav_items icon picker (lib/navigation.ts's NavIconKey), which "Following"
 // isn't part of. Same 24x24/stroke-1.8 style as NavIcon rather than a new
 // icon language.
+// Public Messaging V1 — a small speech-bubble glyph, same 24x24/
+// stroke-1.8 style as HeartGlyph above, for the Messages utility tile.
+function MessageGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+      <path
+        d="M4 5.5h16a1 1 0 011 1V15a1 1 0 01-1 1H9l-4 3.5V16H4a1 1 0 01-1-1V6.5a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function HeartGlyph() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">

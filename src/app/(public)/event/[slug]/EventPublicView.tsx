@@ -4,6 +4,7 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import { CategoryPill } from "@/components/Badge";
 import ClaimButton from "@/components/ClaimButton";
+import ConnectButton from "@/components/ConnectButton";
 import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
@@ -304,6 +305,21 @@ export async function EventPublicView({ slug }: { slug: string }) {
           )}
           <div className="shrink-0">
             <EventShareButton title={event.name} url={canonicalUrl} />
+          </div>
+          {/* Public Messaging V1 — Business managers get "Message
+              Organizer" and "Apply to Participate" straight from this
+              utility row, no trip through the Business Manager required
+              (Section 1/12). Rendered for every visitor (guest/unverified
+              included) at this same low-key prominence as Directions/
+              Share; ConnectButton itself gates the actual flow behind
+              sign-in + verification. */}
+          <div className="shrink-0">
+            <ConnectButton
+              targetType="event"
+              targetId={event.id}
+              targetName={event.name}
+              eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
+            />
           </div>
           {showContact && contactForm && (
             contactForm.url.startsWith("mailto:") ? (

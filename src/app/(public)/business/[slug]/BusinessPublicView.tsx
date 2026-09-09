@@ -12,6 +12,7 @@ import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ClaimButton from "@/components/ClaimButton";
+import ConnectButton from "@/components/ConnectButton";
 import FormAction from "@/components/FormAction";
 import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
@@ -409,6 +410,17 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               </div>
               <SaveButton slug={business.slug} />
             </div>
+          </div>
+
+          {/* Public Messaging V1 — the Business<->Business/Event
+              "Connect" entry point (Section 2/8/9), separate from the
+              consumer-facing Inquire button in the right rail below
+              (which stays untouched — Section 2's own explicit carve-out
+              for a viewer acting personally). Not Pro-gated: messaging
+              between businesses/organizers is core platform behavior,
+              not a paid profile feature. */}
+          <div className="mt-2">
+            <ConnectButton targetType="business" targetId={business.id} targetName={business.name} />
           </div>
 
           <div className="mt-4 flex flex-col gap-2">

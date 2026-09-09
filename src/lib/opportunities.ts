@@ -95,7 +95,7 @@ async function addParticipant(
 async function addEntityParticipants(
   admin: SupabaseClient,
   conversationId: string,
-  entityType: "business" | "event",
+  entityType: "business" | "event" | "location",
   entityId: string
 ): Promise<void> {
   const spec = membersTableFor(entityType);
@@ -106,11 +106,13 @@ async function addEntityParticipants(
   }
 }
 
+export type MessageKind = "note" | "system" | "text";
+
 async function addMessage(
   admin: SupabaseClient,
   conversationId: string,
   senderParticipantId: string | null,
-  kind: "note" | "system",
+  kind: MessageKind,
   body: string
 ): Promise<void> {
   await admin.from("conversation_messages").insert({
@@ -119,6 +121,204 @@ async function addMessage(
     kind,
     body,
   });
+}
+
+// ── Public Messaging V1 — plain (non-Opportunity) Conversations ─────────
+//
+// A Conversation between two entity identities (Business<->Event,
+// Business<->Business, Business<->Location) with no structured workflow
+// attached — Section 8/9/10's "first true peer-to-peer messaging." Reuses
+// every primitive above (addParticipant/addEntityParticipants/addMessage)
+// rather than a second parallel data path — a plain Conversation and an
+// Opportunity's Conversation are the exact same `conversations` row shape,
+// just optionally with an opportunities row pointing at it too (see
+// createOpportunity's own conversation-reuse branch below, added by this
+// same pass).
+
+export interface ConversationParty {
+  entityType: ConversationEntityType;
+  /** null only for "personal" (a single explicit user, no membership
+   * table) — every other entityType requires a real id. */
+  entityId: string | null;
+}
+
+async function addPartyParticipants(
+  admin: SupabaseClient,
+  conversationId: string,
+  party: ConversationParty,
+  actingUserId: string | null
+): Promise<void> {
+  if (party.entityType === "personal") {
+    if (actingUserId) await addParticipant(admin, conversationId, actingUserId, "personal", null);
+    return;
+  }
+  if (!party.entityId) return;
+  await addEntityParticipants(admin, conversationId, party.entityType, party.entityId);
+}
+
+/** Conversation reuse rule (Section 7) — a Conversation belongs to
+ * whichever two entity identities are its participants, so "does a
+ * Conversation already exist for this Business<->Event (or
+ * Business<->Business, Business<->Location) pair" is answered purely from
+ * conversation_participants, never from subject_type/subject_id (which
+ * only describes ONE conversation, created by ONE particular action — see
+ * getOrCreateConversation). This deliberately finds ANY existing
+ * Conversation between the pair regardless of whether it originated from
+ * a plain message or an Opportunity, so structured actions and freeform
+ * messages always land in the same thread (Section 9's own requirement).
+ * Most-recently-created match wins when more than one exists (e.g. two
+ * separate per-occurrence Opportunities with the same Event). */
+async function findConversationByEntityPair(
+  admin: SupabaseClient,
+  partyA: ConversationParty,
+  partyB: ConversationParty
+): Promise<string | null> {
+  let aQuery = admin.from("conversation_participants").select("conversation_id").eq("entity_type", partyA.entityType);
+  aQuery = partyA.entityId === null ? aQuery.is("entity_id", null) : aQuery.eq("entity_id", partyA.entityId);
+  const { data: aRows } = await aQuery;
+  const aIds = [...new Set((aRows ?? []).map((r) => (r as { conversation_id: string }).conversation_id))];
+  if (aIds.length === 0) return null;
+
+  let bQuery = admin
+    .from("conversation_participants")
+    .select("conversation_id")
+    .in("conversation_id", aIds)
+    .eq("entity_type", partyB.entityType);
+  bQuery = partyB.entityId === null ? bQuery.is("entity_id", null) : bQuery.eq("entity_id", partyB.entityId);
+  const { data: bRows } = await bQuery;
+  const matches = (bRows ?? []) as { conversation_id: string }[];
+  if (matches.length === 0) return null;
+
+  const { data: mostRecent } = await admin
+    .from("conversations")
+    .select("id")
+    .in("id", [...new Set(matches.map((r) => r.conversation_id))])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (mostRecent as { id: string } | null)?.id ?? null;
+}
+
+/** Finds-or-creates the one Conversation between two entity identities.
+ * `subjectType`/`subjectId` only matter for a brand-new row (conversations.
+ * subject_id is NOT NULL) — reuse never touches them. Defensively re-adds
+ * both parties' CURRENT members on every call (not just at creation), so a
+ * newly-added manager on either side is a participant in an already-
+ * existing thread the next time anyone sends into it. */
+export async function getOrCreateConversation(
+  admin: SupabaseClient,
+  params: {
+    subjectType: string;
+    subjectId: string;
+    partyA: ConversationParty;
+    partyB: ConversationParty;
+    actingUserId: string;
+  }
+): Promise<{ id: string; created: boolean }> {
+  const existing = await findConversationByEntityPair(admin, params.partyA, params.partyB);
+  if (existing) {
+    await addPartyParticipants(admin, existing, params.partyA, params.actingUserId);
+    await addPartyParticipants(admin, existing, params.partyB, params.actingUserId);
+    return { id: existing, created: false };
+  }
+
+  const { data: conversation, error } = await admin
+    .from("conversations")
+    .insert({ subject_type: params.subjectType, subject_id: params.subjectId })
+    .select("id")
+    .single();
+  if (error || !conversation) throw new Error(error?.message ?? "Could not create conversation.");
+  const conversationId = (conversation as { id: string }).id;
+
+  await addPartyParticipants(admin, conversationId, params.partyA, params.actingUserId);
+  await addPartyParticipants(admin, conversationId, params.partyB, params.actingUserId);
+  return { id: conversationId, created: true };
+}
+
+/** Sends one freeform text reply — the reply composer's only entry point.
+ * The caller is responsible for authorization (current membership of
+ * senderEntityType/senderEntityId, or "personal" + a real session) BEFORE
+ * calling this, same discipline as every other export in this file; this
+ * never re-derives it. Content lives ONLY as a conversation_messages row —
+ * never duplicated onto any Opportunity. */
+export async function sendTextMessage(
+  admin: SupabaseClient,
+  conversationId: string,
+  senderUserId: string,
+  senderEntityType: ConversationEntityType,
+  senderEntityId: string | null,
+  body: string
+): Promise<void> {
+  const participantId = await addParticipant(admin, conversationId, senderUserId, senderEntityType, senderEntityId);
+  await addMessage(admin, conversationId, participantId, "text", body);
+}
+
+/** Entity-aware identity, re-derived live (Section 14) — never trusts a
+ * stored conversation_participants row as authorization on its own. A
+ * user is authorized to read a Conversation if EITHER (a) they're the
+ * user_id on a "personal" participant row, OR (b) they currently hold a
+ * *_members row for any entity_type/entity_id that appears as a
+ * participant — regardless of which user originally added that
+ * participant row (entity-level access, not row-level: a newly-added
+ * manager gets full history, a removed one loses access even though their
+ * old participant row still exists). */
+export async function isAuthorizedForConversation(admin: SupabaseClient, conversationId: string, userId: string): Promise<boolean> {
+  const { data } = await admin
+    .from("conversation_participants")
+    .select("entity_type, entity_id, user_id")
+    .eq("conversation_id", conversationId);
+  const rows = (data ?? []) as { entity_type: ConversationEntityType; entity_id: string | null; user_id: string }[];
+
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (row.entity_type === "personal") {
+      if (row.user_id === userId) return true;
+      continue;
+    }
+    if (!row.entity_id) continue;
+    const key = `${row.entity_type}:${row.entity_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const spec = membersTableFor(row.entity_type);
+    if (!spec) continue;
+    const { data: membership } = await admin.from(spec.table).select("id").eq("user_id", userId).eq(spec.column, row.entity_id).maybeSingle();
+    if (membership) return true;
+  }
+  return false;
+}
+
+/** Every entity (Business/Event/Location) the given user currently
+ * manages — the acting-identity selector's data source everywhere a
+ * public page's "Message"/"Apply"/"Invite" flow needs to know who this
+ * visitor can act as. Deliberately takes userId explicitly (unlike every
+ * OTHER export in this file, which take an already-authorized admin
+ * client and infer nothing about "whose" data it is) since there's no
+ * single entityId to authorize against here — the caller already knows
+ * userId from its own session check. */
+export async function getUserManagedEntities(
+  admin: SupabaseClient,
+  userId: string
+): Promise<{
+  businesses: { id: string; name: string }[];
+  events: { id: string; name: string }[];
+  locations: { id: string; name: string }[];
+}> {
+  const [{ data: b }, { data: e }, { data: l }] = await Promise.all([
+    admin.from("business_members").select("business_id, businesses(name)").eq("user_id", userId),
+    admin.from("event_members").select("event_id, events(name)").eq("user_id", userId),
+    admin.from("location_members").select("location_id, locations(name)").eq("user_id", userId),
+  ]);
+  type Row<K extends string> = Record<K, string> & Record<string, { name: string } | { name: string }[] | null>;
+  const businesses = ((b ?? []) as Row<"business_id">[])
+    .map((r) => ({ id: r.business_id, name: one(r.businesses as { name: string } | { name: string }[] | null)?.name }))
+    .filter((r): r is { id: string; name: string } => Boolean(r.name));
+  const events = ((e ?? []) as Row<"event_id">[])
+    .map((r) => ({ id: r.event_id, name: one(r.events as { name: string } | { name: string }[] | null)?.name }))
+    .filter((r): r is { id: string; name: string } => Boolean(r.name));
+  const locations = ((l ?? []) as Row<"location_id">[])
+    .map((r) => ({ id: r.location_id, name: one(r.locations as { name: string } | { name: string }[] | null)?.name }))
+    .filter((r): r is { id: string; name: string } => Boolean(r.name));
+  return { businesses, events, locations };
 }
 
 export interface CreateOpportunityInput {
@@ -214,11 +414,7 @@ export async function createOpportunity(
     return { kind: "crossed", opportunity: resolved };
   }
 
-  // Fresh Opportunity — conversation first (Opportunity.conversation_id is
-  // nullable specifically so this ordering never needs a placeholder
-  // subject_id: create the Opportunity, then the Conversation pointing AT
-  // it via subject_id, then attach conversation_id back onto the
-  // Opportunity).
+  // Fresh Opportunity.
   const { data: created, error: createError } = await admin
     .from("opportunities")
     .insert({
@@ -238,12 +434,29 @@ export async function createOpportunity(
   }
   let opportunity = created as OpportunityRow;
 
-  const { data: conversation } = await admin
-    .from("conversations")
-    .insert({ subject_type: "opportunity", subject_id: opportunity.id })
-    .select("id")
-    .single();
-  const conversationId = (conversation as { id: string } | null)?.id ?? null;
+  const counterpartEntityType: "event" | "business" = initiatorEntityType === "event" ? "business" : "event";
+  const counterpartEntityId = counterpartEntityType === "business" ? businessId : eventId;
+
+  // Conversation: reuse (Section 7 — "Opportunity may attach to an
+  // existing Conversation") if a plain or prior-Opportunity Conversation
+  // already exists between these exact two entity identities; otherwise
+  // create a fresh one, subject_type='opportunity' pointing at THIS
+  // Opportunity (Opportunity.conversation_id is nullable specifically so
+  // this ordering never needs a placeholder subject_id: create the
+  // Opportunity, then the Conversation, then attach conversation_id back
+  // onto the Opportunity).
+  const initiatorParty: ConversationParty = { entityType: initiatorEntityType, entityId: initiatorEntityId };
+  const counterpartParty: ConversationParty = { entityType: counterpartEntityType, entityId: counterpartEntityId };
+  const reused = await findConversationByEntityPair(admin, initiatorParty, counterpartParty);
+  let conversationId = reused;
+  if (!conversationId) {
+    const { data: conversation } = await admin
+      .from("conversations")
+      .insert({ subject_type: "opportunity", subject_id: opportunity.id })
+      .select("id")
+      .single();
+    conversationId = (conversation as { id: string } | null)?.id ?? null;
+  }
 
   if (conversationId) {
     const { data: withConversation } = await admin
@@ -254,11 +467,13 @@ export async function createOpportunity(
       .single();
     if (withConversation) opportunity = withConversation as OpportunityRow;
 
-    const counterpartEntityType: "event" | "business" = initiatorEntityType === "event" ? "business" : "event";
-    const counterpartEntityId = counterpartEntityType === "business" ? businessId : eventId;
     const initiatorParticipantId = await addParticipant(admin, conversationId, initiatorUserId, initiatorEntityType, initiatorEntityId);
     await addEntityParticipants(admin, conversationId, counterpartEntityType, counterpartEntityId);
 
+    const kindLabel = type === "event_invitation" ? "an invitation" : "an application";
+    if (reused) {
+      await addMessage(admin, conversationId, null, "system", `Sent ${kindLabel}.`);
+    }
     if (note) {
       await addMessage(admin, conversationId, initiatorParticipantId, "note", note);
     }
@@ -427,6 +642,234 @@ export async function getApplicationsForBusiness(admin: SupabaseClient, business
   const rows = (data ?? []) as unknown as OpportunityJoinRow[];
   const notes = await notesByOpportunity(admin, rows.map((r) => r.conversation_id).filter((v): v is string => Boolean(v)));
   return rows.map((r) => toListItem(r, notes));
+}
+
+// ── Public Messaging V1 — Conversation thread + Messages list ───────────
+
+async function labelsForParticipants(
+  admin: SupabaseClient,
+  participants: { entity_type: ConversationEntityType; entity_id: string | null; user_id: string }[]
+): Promise<Map<string, string>> {
+  const businessIds = [...new Set(participants.filter((p) => p.entity_type === "business" && p.entity_id).map((p) => p.entity_id as string))];
+  const eventIds = [...new Set(participants.filter((p) => p.entity_type === "event" && p.entity_id).map((p) => p.entity_id as string))];
+  const locationIds = [...new Set(participants.filter((p) => p.entity_type === "location" && p.entity_id).map((p) => p.entity_id as string))];
+  const personalUserIds = [...new Set(participants.filter((p) => p.entity_type === "personal").map((p) => p.user_id))];
+
+  const [businesses, events, locations, profiles] = await Promise.all([
+    businessIds.length ? admin.from("businesses").select("id, name").in("id", businessIds) : Promise.resolve({ data: [] }),
+    eventIds.length ? admin.from("events").select("id, name").in("id", eventIds) : Promise.resolve({ data: [] }),
+    locationIds.length ? admin.from("locations").select("id, name").in("id", locationIds) : Promise.resolve({ data: [] }),
+    personalUserIds.length ? admin.from("profiles").select("id, display_name").in("id", personalUserIds) : Promise.resolve({ data: [] }),
+  ]);
+  const map = new Map<string, string>();
+  for (const b of (businesses.data ?? []) as { id: string; name: string }[]) map.set(`business:${b.id}`, b.name);
+  for (const e of (events.data ?? []) as { id: string; name: string }[]) map.set(`event:${e.id}`, e.name);
+  for (const l of (locations.data ?? []) as { id: string; name: string }[]) map.set(`location:${l.id}`, l.name);
+  for (const p of (profiles.data ?? []) as { id: string; display_name: string | null }[]) map.set(`personal:${p.id}`, p.display_name || "Findmi Member");
+  return map;
+}
+
+function labelKey(entityType: ConversationEntityType, entityId: string | null, userId: string): string {
+  return entityType === "personal" ? `personal:${userId}` : `${entityType}:${entityId}`;
+}
+
+export interface ConversationThreadParty {
+  entityType: ConversationEntityType;
+  entityId: string | null;
+  label: string;
+}
+
+export interface ConversationMessageItem {
+  id: string;
+  kind: MessageKind;
+  body: string;
+  createdAt: string;
+  senderLabel: string | null;
+  senderEntityType: ConversationEntityType | null;
+  senderUserId: string | null;
+}
+
+export interface ConversationOpportunityCard {
+  id: string;
+  type: OpportunityType;
+  status: OpportunityStatus;
+  eventId: string;
+  eventName: string;
+  eventSlug: string;
+  eventOccurrenceId: string | null;
+  occurrenceStartAt: string | null;
+  businessId: string;
+  businessName: string;
+  createdAt: string;
+}
+
+export interface ConversationThread {
+  id: string;
+  parties: ConversationThreadParty[];
+  messages: ConversationMessageItem[];
+  opportunityCards: ConversationOpportunityCard[];
+}
+
+/** The conversation thread view's one data source — chronological
+ * messages (note/system/text all render, distinguished by `kind`) plus
+ * every structured Opportunity attached to this Conversation, in creation
+ * order. Returns null for a signed-in visitor with no CURRENT authorized
+ * identity in this Conversation (see isAuthorizedForConversation) — the
+ * caller treats that exactly like "not found," never a partial render. */
+export async function getConversationThread(
+  admin: SupabaseClient,
+  conversationId: string,
+  viewerUserId: string
+): Promise<ConversationThread | null> {
+  const authorized = await isAuthorizedForConversation(admin, conversationId, viewerUserId);
+  if (!authorized) return null;
+
+  const { data: participantRows } = await admin
+    .from("conversation_participants")
+    .select("id, entity_type, entity_id, user_id")
+    .eq("conversation_id", conversationId);
+  const participants = (participantRows ?? []) as { id: string; entity_type: ConversationEntityType; entity_id: string | null; user_id: string }[];
+  const labels = await labelsForParticipants(admin, participants);
+
+  const partiesMap = new Map<string, ConversationThreadParty>();
+  for (const p of participants) {
+    const key = labelKey(p.entity_type, p.entity_id, p.user_id);
+    if (!partiesMap.has(key)) {
+      partiesMap.set(key, {
+        entityType: p.entity_type,
+        entityId: p.entity_type === "personal" ? null : p.entity_id,
+        label: labels.get(key) ?? "Findmi Member",
+      });
+    }
+  }
+
+  const participantById = new Map(participants.map((p) => [p.id, p]));
+  const { data: messageRows } = await admin
+    .from("conversation_messages")
+    .select("id, kind, body, created_at, sender_participant_id")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+  const messages: ConversationMessageItem[] = (
+    (messageRows ?? []) as { id: string; kind: MessageKind; body: string; created_at: string; sender_participant_id: string | null }[]
+  ).map((m) => {
+    const sender = m.sender_participant_id ? participantById.get(m.sender_participant_id) : null;
+    return {
+      id: m.id,
+      kind: m.kind,
+      body: m.body,
+      createdAt: m.created_at,
+      senderLabel: sender ? (labels.get(labelKey(sender.entity_type, sender.entity_id, sender.user_id)) ?? null) : null,
+      senderEntityType: sender?.entity_type ?? null,
+      senderUserId: sender?.user_id ?? null,
+    };
+  });
+
+  const { data: opportunityRows } = await admin
+    .from("opportunities")
+    .select("*, events(name, slug), event_occurrences(start_at), businesses(name)")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+  const opportunityCards: ConversationOpportunityCard[] = ((opportunityRows ?? []) as unknown as OpportunityJoinRow[]).map((row) => {
+    const event = one(row.events);
+    const occurrence = one(row.event_occurrences);
+    const business = one(row.businesses);
+    return {
+      id: row.id,
+      type: row.type,
+      status: row.status,
+      eventId: row.event_id,
+      eventName: event?.name ?? "Unknown event",
+      eventSlug: event?.slug ?? "",
+      eventOccurrenceId: row.event_occurrence_id,
+      occurrenceStartAt: occurrence?.start_at ?? null,
+      businessId: row.business_id,
+      businessName: business?.name ?? "Unknown business",
+      createdAt: row.created_at,
+    };
+  });
+
+  return { id: conversationId, parties: [...partiesMap.values()], messages, opportunityCards };
+}
+
+export interface ConversationListItem {
+  id: string;
+  otherPartyLabel: string;
+  otherPartyEntityType: ConversationEntityType;
+  lastMessageBody: string | null;
+  lastActivityAt: string;
+}
+
+/** The Messages entry point's one data source — every Conversation the
+ * user is currently authorized for (via any managed entity, or a
+ * "personal" participant row of their own), newest activity first. Per
+ * Section 11: no folders/search/unread count — just participant name,
+ * last message preview, last activity timestamp. */
+export async function listConversationsForUser(admin: SupabaseClient, userId: string): Promise<ConversationListItem[]> {
+  const managed = await getUserManagedEntities(admin, userId);
+  const businessIds = managed.businesses.map((b) => b.id);
+  const eventIds = managed.events.map((e) => e.id);
+  const locationIds = managed.locations.map((l) => l.id);
+
+  const results: { data: { conversation_id: string }[] | null }[] = [
+    await admin.from("conversation_participants").select("conversation_id").eq("entity_type", "personal").eq("user_id", userId),
+  ];
+  if (businessIds.length) results.push(await admin.from("conversation_participants").select("conversation_id").eq("entity_type", "business").in("entity_id", businessIds));
+  if (eventIds.length) results.push(await admin.from("conversation_participants").select("conversation_id").eq("entity_type", "event").in("entity_id", eventIds));
+  if (locationIds.length) results.push(await admin.from("conversation_participants").select("conversation_id").eq("entity_type", "location").in("entity_id", locationIds));
+
+  const conversationIds = [...new Set(results.flatMap((r) => (r.data ?? []).map((row) => row.conversation_id)))];
+  if (conversationIds.length === 0) return [];
+
+  const [{ data: conversationRows }, { data: participantRows }, { data: messageRows }] = await Promise.all([
+    admin.from("conversations").select("id, created_at").in("id", conversationIds),
+    admin.from("conversation_participants").select("conversation_id, entity_type, entity_id, user_id").in("conversation_id", conversationIds),
+    admin
+      .from("conversation_messages")
+      .select("conversation_id, body, created_at")
+      .in("conversation_id", conversationIds)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const participants = (participantRows ?? []) as { conversation_id: string; entity_type: ConversationEntityType; entity_id: string | null; user_id: string }[];
+  const labels = await labelsForParticipants(admin, participants);
+
+  const myEntityKeys = new Set<string>([
+    `personal:${userId}`,
+    ...businessIds.map((id) => `business:${id}`),
+    ...eventIds.map((id) => `event:${id}`),
+    ...locationIds.map((id) => `location:${id}`),
+  ]);
+
+  const partiesByConversation = new Map<string, typeof participants>();
+  for (const p of participants) {
+    const list = partiesByConversation.get(p.conversation_id) ?? [];
+    list.push(p);
+    partiesByConversation.set(p.conversation_id, list);
+  }
+
+  const lastMessageByConversation = new Map<string, { body: string; created_at: string }>();
+  for (const m of (messageRows ?? []) as { conversation_id: string; body: string; created_at: string }[]) {
+    if (!lastMessageByConversation.has(m.conversation_id)) lastMessageByConversation.set(m.conversation_id, m);
+  }
+  const createdAtByConversation = new Map(((conversationRows ?? []) as { id: string; created_at: string }[]).map((c) => [c.id, c.created_at]));
+
+  const items: ConversationListItem[] = [];
+  for (const conversationId of conversationIds) {
+    const parties = partiesByConversation.get(conversationId) ?? [];
+    const other = parties.find((p) => !myEntityKeys.has(labelKey(p.entity_type, p.entity_id, p.user_id)));
+    if (!other) continue;
+    const last = lastMessageByConversation.get(conversationId) ?? null;
+    items.push({
+      id: conversationId,
+      otherPartyLabel: labels.get(labelKey(other.entity_type, other.entity_id, other.user_id)) ?? "Findmi Member",
+      otherPartyEntityType: other.entity_type,
+      lastMessageBody: last?.body ?? null,
+      lastActivityAt: last?.created_at ?? createdAtByConversation.get(conversationId) ?? new Date(0).toISOString(),
+    });
+  }
+
+  items.sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime());
+  return items;
 }
 
 /** Organizer-side note lookup for the existing Participants tab — keyed by

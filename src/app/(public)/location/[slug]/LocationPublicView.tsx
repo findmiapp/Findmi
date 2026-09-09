@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
+import ConnectButton from "@/components/ConnectButton";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import { HappeningCard, HappeningRow } from "@/components/HappeningCard";
 import { HorizontalScroller } from "@/components/Section";
@@ -95,6 +96,10 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             {location.email}
           </a>
         )}
+        {/* Public Messaging V1 — Business<->Location plain messaging
+            only (Section 10's minimal scope: no Location-specific
+            structured Opportunity type this pass). */}
+        <ConnectButton targetType="location" targetId={location.id} targetName={location.name} />
       </div>
 
       {galleryImages.length > 1 && (
