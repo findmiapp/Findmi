@@ -400,20 +400,19 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             <div
               className={`ml-auto flex shrink-0 items-center gap-1.5 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
             >
-              {/* Messaging UX Unification pass — MESSAGE sits directly
-                  left of Follow, same row, never a standalone row of its
-                  own (Section 1's locked layout). Not Pro-gated:
-                  messaging between businesses/organizers is core platform
-                  behavior, not a paid profile feature. */}
+              {/* Public Message Action pass — MESSAGE sits directly left
+                  of Follow, same row, never a standalone row of its own
+                  (locked layout). Both now share the exact same h-9/
+                  rounded-lg/text-xs/font-bold/uppercase/tracking-wide
+                  geometry — MESSAGE outlined, Follow filled — so they
+                  read as a matched pair instead of two unrelated
+                  components. No wrapper div around Follow any more (it
+                  no longer relies on a fixed w-20 slot — see
+                  FollowButton's own shrink-0 sizing). Not Pro-gated:
+                  messaging between businesses/organizers is core
+                  platform behavior, not a paid profile feature. */}
               <MessageButton targetType="business" targetId={business.id} targetName={business.name} />
-              <div className="w-20">
-                <FollowButton
-                  businessId={business.id}
-                  businessSlug={business.slug}
-                  businessName={business.name}
-                  size="compact"
-                />
-              </div>
+              <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
               <SaveButton slug={business.slug} />
             </div>
           </div>

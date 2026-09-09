@@ -12,20 +12,23 @@ import {
   messageLocation,
 } from "@/app/(public)/connect/actions";
 
-// FINDMI — Messaging UX Unification pass. The ONE public communication
-// entry point on every entity page (Event/Business/Location) — Section 1's
-// locked product rule: a single MESSAGE affordance, never "Connect." The
-// modal opens directly to the composer (Section 8 — plain messaging is the
-// default state, not one choice in a menu); Apply to Vend / Invite to
+// FINDMI — Public Message Action + Event CTA Cohesion pass. The ONE public
+// communication entry point on every entity page (Event/Business/Location)
+// — Section 1's locked product rule: a single MESSAGE affordance, never
+// "Connect." The modal opens directly to the composer (plain messaging is
+// the default state, not one choice in a menu); Apply to Vend / Invite to
 // Event are one-tap MODE SWITCHES inside the SAME modal, never a separate
-// screen or a second dialog. Renamed from the prior ConnectButton — same
-// underlying Server Actions (connect/actions.ts, unchanged), only the
-// entry-point UI/copy changed.
+// screen or a second dialog.
 //
-// State is fetched from /api/account/connect on mount (unchanged) — one
-// small GET, no conversation history, no Messages inbox data, no
-// Event/Business dataset beyond the viewer's own managed-entity list
-// (Section 7's own performance requirement).
+// Render-delay fix (this pass) — the trigger button below renders
+// UNCONDITIONALLY on mount; it never waits on auth/managed-entity data.
+// /api/account/connect is fetched lazily, starting only on the user's
+// first tap (see openModal), not in a mount effect — so a signed-out or
+// unauthenticated pageview never issues this request at all, and the
+// button itself never has a "loading" state that could delay or suppress
+// it. Only the MODAL's contents (which can't render before the tap
+// anyway) show a brief loading state while that one small GET is in
+// flight — never the trigger.
 
 type ViewerState = {
   authenticated: boolean;
@@ -36,9 +39,9 @@ type ViewerState = {
 
 type ActorOption = { kind: "business" | "event"; id: string; name: string };
 
-/** "message" is always the default/entry mode (Section 8) — "apply"/
- * "invite" are reached by tapping the secondary contextual link inside
- * the same modal, never a leading action menu. */
+/** "message" is always the default/entry mode — "apply"/"invite" are
+ * reached by tapping the secondary contextual link inside the same
+ * modal, never a leading action menu. */
 type Mode = "message" | "apply" | "invite";
 
 export default function MessageButton({
@@ -46,6 +49,7 @@ export default function MessageButton({
   targetId,
   targetName,
   eventOccurrences,
+  size = "compact",
 }: {
   targetType: "event" | "business" | "location";
   targetId: string;
@@ -54,6 +58,13 @@ export default function MessageButton({
    * recurring event. Omitted (or empty) for a non-recurring event, which
    * applies to the whole event exactly as before. */
   eventOccurrences?: { id: string; startAt: string }[];
+  /** "compact" (default) — the h-9 trigger sized to match FollowButton on
+   * Business/Location pages. "default" — a larger h-11 trigger sized to
+   * match the Event page's own Tier A CTA geometry, used only in the
+   * Event page's fixed primary-action row (never in a scroller). Purely a
+   * trigger-button sizing variant — the modal itself is identical either
+   * way. */
+  size?: "compact" | "default";
 }) {
   const router = useRouter();
   const [state, setState] = useState<ViewerState | "loading">("loading");
@@ -67,26 +78,9 @@ export default function MessageButton({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const fetchedRef = useRef(false);
 
   useEffect(() => setMounted(true), []);
-
-  // One small GET on mount — auth state + this viewer's OWN managed
-  // Businesses/Events, nothing else. No conversation/Opportunity data is
-  // fetched until a send/apply/invite actually happens.
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/account/connect")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: ViewerState | null) => {
-        if (!cancelled) setState(data ?? { authenticated: false, emailVerified: false, businesses: [], events: [] });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ authenticated: false, emailVerified: false, businesses: [], events: [] });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -103,15 +97,16 @@ export default function MessageButton({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  if (state === "loading") return null;
+  const resolved = state === "loading" ? null : state;
 
-  const actorOptions: ActorOption[] =
-    targetType === "business"
+  const actorOptions: ActorOption[] = resolved
+    ? targetType === "business"
       ? [
-          ...state.businesses.filter((b) => b.id !== targetId).map((b) => ({ kind: "business" as const, id: b.id, name: b.name })),
-          ...state.events.map((e) => ({ kind: "event" as const, id: e.id, name: e.name })),
+          ...resolved.businesses.filter((b) => b.id !== targetId).map((b) => ({ kind: "business" as const, id: b.id, name: b.name })),
+          ...resolved.events.map((e) => ({ kind: "event" as const, id: e.id, name: e.name })),
         ]
-      : state.businesses.map((b) => ({ kind: "business" as const, id: b.id, name: b.name }));
+      : resolved.businesses.map((b) => ({ kind: "business" as const, id: b.id, name: b.name }))
+    : [];
 
   function reset() {
     setMode("message");
@@ -125,6 +120,21 @@ export default function MessageButton({
   function openModal() {
     reset();
     setOpen(true);
+    // Lazy load — the ONE small GET this component ever makes, started
+    // only now (first tap), never on page render. Cached in `state` for
+    // the rest of this component's lifetime, so reopening the modal is
+    // instant on subsequent taps.
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetch("/api/account/connect")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: ViewerState | null) => {
+          setState(data ?? { authenticated: false, emailVerified: false, businesses: [], events: [] });
+        })
+        .catch(() => {
+          setState({ authenticated: false, emailVerified: false, businesses: [], events: [] });
+        });
+    }
   }
 
   function close() {
@@ -198,21 +208,27 @@ export default function MessageButton({
 
   const nextParam = typeof window !== "undefined" ? `?next=${encodeURIComponent(window.location.pathname)}` : "";
 
+  // Text-only rounded RECTANGLE (never a pill, never an icon) — renders
+  // unconditionally, the instant this component mounts, regardless of
+  // auth/managed-entity state (see the render-delay fix note above).
+  // "compact" matches FollowButton's own h-9/text-xs geometry on Business/
+  // Location pages; "default" matches the Event page's Tier A CTA
+  // geometry (h-11/text-sm) for the fixed primary-action row.
+  const triggerClass =
+    size === "compact"
+      ? "flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg border border-findmi/40 bg-white px-2.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+      : "flex h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-findmi/40 bg-white px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50";
+
   return (
     <>
-      {/* Section 1/12 — compact rounded RECTANGLE (not a pill), chat-bubble
-          icon, "MESSAGE" label. Deliberately not full-width and not
-          rounded-full — this is the one visual departure from the site's
-          usual pill buttons, so it never reads as another Follow/Save. */}
       <button
         ref={buttonRef}
         type="button"
         onClick={openModal}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-findmi/40 bg-white px-2 text-[10px] font-bold uppercase tracking-tight text-findmi-700 transition hover:bg-findmi-50"
+        className={triggerClass}
       >
-        <ChatGlyph className="h-3.5 w-3.5 shrink-0" />
         Message
       </button>
 
@@ -239,7 +255,13 @@ export default function MessageButton({
                 </button>
               </div>
 
-              {!state.authenticated ? (
+              {!resolved ? (
+                // The one small /api/account/connect GET is still in
+                // flight — started on this same tap, never earlier. A
+                // brief, honest loading state here is fine; the trigger
+                // above never waited on this.
+                <p className="mt-4 text-sm text-ink/40">Loading…</p>
+              ) : !resolved.authenticated ? (
                 <div className="mt-4">
                   <p className="text-sm text-ink/60">Sign in with your free Findmi account to message on Findmi.</p>
                   <a
@@ -249,7 +271,7 @@ export default function MessageButton({
                     Sign In
                   </a>
                 </div>
-              ) : !state.emailVerified ? (
+              ) : !resolved.emailVerified ? (
                 <div className="mt-4">
                   <p className="text-sm text-ink/60">Verify your email before you can message on Findmi.</p>
                   <a
@@ -418,19 +440,6 @@ export default function MessageButton({
           document.body
         )}
     </>
-  );
-}
-
-function ChatGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M4 5.5h16a1 1 0 011 1V15a1 1 0 01-1 1H9l-4 3.5V16H4a1 1 0 01-1-1V6.5a1 1 0 011-1z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

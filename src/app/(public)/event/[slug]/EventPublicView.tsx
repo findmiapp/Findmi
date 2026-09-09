@@ -143,6 +143,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
   if (vendorAppForm) {
     customCtas.push({ label: "Apply to Vend", href: vendorAppForm.url, displayMode: vendorAppForm.displayMode, weight: "outline" });
   }
+  // Public Message Action + Event CTA Cohesion pass — for a legacy
+  // (non-recurring) event, the organizer's own external "Apply to Vend"
+  // CTA is deterministically known here, server-side, so it's pulled out
+  // of the Tier A array and paired with MESSAGE in the new fixed primary
+  // row below instead (same href/displayMode, same underlying
+  // vendorAppForm resolution — only its POSITION and RADIUS change, never
+  // its behavior). Tickets/RSVP stay in Tier A exactly as before. A
+  // recurring event's own occurrence-dependent Apply to Vend (rendered by
+  // EventScheduleCtas, client-side, per the SELECTED occurrence — not
+  // knowable here at server-render time) is intentionally left
+  // untouched; see the primary-row comment below for why.
+  const legacyVendorApplyCta = !hasOccurrences ? customCtas.find((c) => c.label === "Apply to Vend") ?? null : null;
+  const legacyTierACtas = legacyVendorApplyCta ? customCtas.filter((c) => c.label !== "Apply to Vend") : customCtas;
 
   const showContact = Boolean(contactForm);
   const showFollow = event.follow_enabled;
@@ -224,11 +237,47 @@ export async function EventPublicView({ slug }: { slug: string }) {
         )}
       </div>
 
+      {/* Public Message Action + Event CTA Cohesion pass — MESSAGE lives
+          HERE now: a fixed primary row directly below the details card,
+          never inside the horizontally-scrollable Tier B utility rail
+          below (a visitor previously had to swipe to even discover it).
+          When the organizer has a legacy (non-recurring) event's own
+          external "Apply to Vend" CTA configured, it's paired right here
+          — [ MESSAGE ] [ APPLY TO VEND ] — both the same h-11/rounded-lg/
+          text-sm/font-bold/uppercase geometry, so they read as a matched
+          pair; Apply to Vend keeps its exact existing href/displayMode
+          (see legacyVendorApplyCta above), only its position/radius
+          changed. A recurring event's own Apply to Vend is occurrence-
+          dependent (resolved client-side inside EventScheduleCtas below,
+          per whichever date is selected) and isn't knowable at this
+          server-render point, so it stays exactly where it already was;
+          MESSAGE still renders alone in this same fixed row for that
+          case, so it's never buried in the scroller either way. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2.5">
+        <MessageButton
+          size="default"
+          targetType="event"
+          targetId={event.id}
+          targetName={event.name}
+          eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
+        />
+        {legacyVendorApplyCta && (
+          <FormAction
+            href={legacyVendorApplyCta.href}
+            displayMode={legacyVendorApplyCta.displayMode}
+            label="Apply to Vend"
+            className="flex h-11 items-center justify-center rounded-lg border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+          />
+        )}
+      </div>
+
       {/* Tier A — the strongest, organizer-configured actions. For a
           recurring event, the selected occurrence's own RSVP/ticket/
           vendor-apply override (if any) wins over the parent's resolved
           action — see EventScheduleCtas; a legacy event keeps the exact
-          original server-resolved customCtas rendering below. */}
+          original server-resolved customCtas rendering below (minus
+          Apply to Vend, now in the primary row above — see
+          legacyTierACtas). */}
       {hasOccurrences ? (
         <EventScheduleCtas
           ticketsEnabled={event.tickets_enabled}
@@ -239,9 +288,9 @@ export async function EventPublicView({ slug }: { slug: string }) {
           vendorApplication={vendorAppForm}
         />
       ) : (
-        customCtas.length > 0 && (
+        legacyTierACtas.length > 0 && (
           <div className="mt-4 flex flex-wrap items-center gap-2.5">
-            {customCtas.map((action) => (
+            {legacyTierACtas.map((action) => (
               <FormAction
                 key={action.label}
                 href={action.href}
@@ -306,27 +355,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
           <div className="shrink-0">
             <EventShareButton title={event.name} url={canonicalUrl} />
           </div>
-          {/* Messaging UX Unification pass — the ONE public communication
-              entry point for this Event: MESSAGE opens directly to a
-              composer for "Message Organizer," with "Apply to Vend" as a
-              one-tap secondary action inside the same modal for a
-              Business manager (native event_application Opportunity flow
-              — no Appearance until organizer approval, unchanged). This
-              is additive to, not a replacement for, the event's own
-              organizer-configured "Apply to Vend" Tier A CTA above
-              (event.vendor_applications_enabled / vendor_application_url
-              — an external form the organizer explicitly set up); that
-              CTA is untouched by this pass since it's a distinct,
-              pre-existing, organizer-owned system this pass doesn't have
-              enough context to safely fold in (see the final report). */}
-          <div className="shrink-0">
-            <MessageButton
-              targetType="event"
-              targetId={event.id}
-              targetName={event.name}
-              eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
-            />
-          </div>
+          {/* Public Message Action pass — MESSAGE moved OUT of this
+              horizontally-scrollable rail into a fixed primary row right
+              below the details card (see above) so it's never hidden
+              behind a swipe. This rail is secondary utilities only now:
+              Save/Directions/Add to Calendar/Share/Contact/Event
+              Details. */}
           {showContact && contactForm && (
             contactForm.url.startsWith("mailto:") ? (
               <a

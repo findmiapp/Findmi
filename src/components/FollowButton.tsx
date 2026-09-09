@@ -150,16 +150,20 @@ export default function FollowButton({
   const text = compact ? "text-xs" : "text-sm";
 
   if (following) {
-    // "✓ Following" no longer fits the compact 96px-wide button without
-    // crowding it — collapsed to a checkmark-only state (still aqua,
-    // same button footprint) with the meaning carried by aria-label/
-    // title instead of visible text, rather than widening the button.
+    // "✓ Following" no longer fits the compact button without crowding it
+    // — collapsed to a checkmark-only state (still aqua, same button
+    // footprint) with the meaning carried by aria-label/title instead of
+    // visible text, rather than widening the button. Public Message
+    // Action pass — rounded-lg (not rounded-full) to match MessageButton's
+    // own rounded-rectangle geometry on the Business page; shrink-0
+    // instead of w-full since this no longer relies on a fixed-width
+    // wrapper div (see BusinessPublicView.tsx).
     return (
       <span
         role="status"
         aria-label="Following"
         title="Following"
-        className={`flex ${h} w-full items-center justify-center rounded-full bg-findmi text-white`}
+        className={`flex ${h} w-9 shrink-0 items-center justify-center rounded-lg bg-findmi text-white`}
       >
         <CheckGlyph className="h-4 w-4" />
       </span>
@@ -174,7 +178,7 @@ export default function FollowButton({
         onClick={authed ? handleAuthedFollow : openModal}
         aria-haspopup={authed ? undefined : "dialog"}
         aria-expanded={authed ? undefined : open}
-        className={`flex ${h} w-full items-center justify-center rounded-full bg-findmi ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
+        className={`flex ${h} shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-findmi px-2.5 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
       >
         Follow
       </button>
