@@ -9,6 +9,7 @@ import { bool, DEFAULT_ADMIN_TIMEZONE, errorRedirectUrl, localDateTimeToIso, num
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
+import { resolveOpportunityByContext } from "@/lib/opportunities";
 import type { EventParticipationStatus } from "@/lib/types";
 
 // ── Approval <-> FindMi Here sync (Admin Approval → FindMi Here Sync pass,
@@ -674,6 +675,24 @@ export async function updateOccurrenceVendorStatus(
     await ensureOccurrenceAppearance(supabase, occurrenceId, data.business_id);
   } else {
     await cancelOccurrenceAppearance(supabase, occurrenceId, data.business_id);
+  }
+  // Opportunities + Conversation Foundation V1 — occurrence-specific
+  // applications (event_occurrence_businesses has no owner self-service
+  // review surface, so this admin action is their only review path) still
+  // get their Opportunity resolved here, so "My Applications" reflects
+  // the real decision instead of sitting "pending" forever. Best-effort:
+  // never blocks or rolls back the canonical status change above.
+  if (status === "approved" || status === "declined") {
+    try {
+      await resolveOpportunityByContext(
+        supabase,
+        { eventId, eventOccurrenceId: occurrenceId, businessId: data.business_id },
+        status === "approved" ? "accepted" : "declined",
+        status === "approved" ? "Approved by the organizer." : "Declined by the organizer."
+      );
+    } catch (err) {
+      console.error("[opportunities] failed to resolve Opportunity for occurrence vendor status change", err);
+    }
   }
   revalidatePath(`/admin/events/${eventId}`);
 }

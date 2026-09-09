@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { isAdminSession } from "@/lib/admin/auth";
 
@@ -85,4 +86,18 @@ export async function requireEventMember(eventId: string): Promise<Membership> {
  * Business ownership). */
 export async function requireLocationMember(locationId: string): Promise<Membership> {
   return requireMembership("location_members", "location_id", locationId);
+}
+
+/** Opportunities + Conversation Foundation V1 — the same
+ * profiles.email_verified_at re-check the claim flow already established
+ * (see /api/account/claim/route.ts's own isEmailVerified), extracted here
+ * as a shared helper rather than duplicated a third time. Claiming an
+ * existing listing and initiating/responding to an Opportunity are both
+ * identity assertions about a real-world relationship — the same
+ * verification bar applies. Never re-derives its own admin client; the
+ * caller passes one already-authorized for other reads in the same
+ * request. */
+export async function isEmailVerified(admin: SupabaseClient, userId: string): Promise<boolean> {
+  const { data } = await admin.from("profiles").select("email_verified_at").eq("id", userId).maybeSingle();
+  return Boolean(data?.email_verified_at);
 }

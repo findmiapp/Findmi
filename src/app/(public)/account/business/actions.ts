@@ -6,7 +6,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { bool, errorRedirectUrl, errorRedirectUrlWithFields, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
-import { requireBusinessMember } from "@/lib/permissions";
+import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
+import { createOpportunity, resolveOpportunity, resolveOpportunityByContext } from "@/lib/opportunities";
+import { ensureEventAppearance, cancelEventAppearance } from "@/app/admin/(protected)/events/actions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
@@ -500,158 +502,149 @@ export async function requestReferralPartnerPayout(businessId: string, partnerId
   redirect(appendQuery(redirectPath, { saved: "1" }));
 }
 
-/** Option 1 — "Choose an existing FindMi event." `target` is one of:
+/** Option 1 — "Apply to an existing FindMi event." `target` is one of:
  *   "event:<eventId>"               -> non-recurring event
  *   "occ:<eventId>:<occurrenceId>"  -> one occurrence of a recurring event
  *
- * Creates/links the business's OWN appearance (using the real event_id/
- * event_occurrence_id — never title/date fuzzy matching), inheriting
- * title/date-time/location straight from the event or occurrence row.
- * Deduplicated by an existence check first: a non-recurring appearance is
- * unique per (business_id, event_id, event_occurrence_id IS NULL); an
- * occurrence appearance is additionally backed by the real DB-level
- * partial unique index (appearances_one_per_business_occurrence) as a
- * race-safe backstop — a 23505 there just means it already exists.
+ * Opportunities + Conversation Foundation V1 — CORRECTED BEHAVIOR: this no
+ * longer creates a confirmed, publicly-discoverable `appearances` row at
+ * application time. The Communication Foundation Audit found this
+ * function immediately inserting an event_self_added, status='confirmed'
+ * Appearance the moment a business applied — before any organizer
+ * approval — which let an application publicly claim "we'll be there"
+ * before participation was mutually agreed. The invariant going forward:
+ * AN EVENT-LINKED APPEARANCE MUST NOT BECOME CONFIRMED/PUBLIC UNTIL
+ * PARTICIPATION IS MUTUALLY AGREED. Applying now only ever writes the
+ * roster row (event_businesses/event_occurrence_businesses, status
+ * 'applied') plus an Opportunity/Conversation record — the Appearance is
+ * created later, only once participation resolves to 'approved', via the
+ * exact same ensureEventAppearance() every other approval path already
+ * uses (see updateParticipatingBusinessStatus in account/event/actions.ts
+ * and admin's own saveEvent()). Standalone Where You'll Be
+ * (addManualAppearance below) is completely unaffected — a business can
+ * still freely create its own standalone Appearance without linking to
+ * any official Findmi Event.
  *
- * Only when this business isn't already on that event's/occurrence's
- * OFFICIAL roster does this also create an event_businesses/
- * event_occurrence_businesses row — always status: 'applied', never
- * accepted from the form, and via ignoreDuplicates so an existing
- * approved/declined row is never touched or downgraded. Official roster
- * visibility still requires founder approval there, unchanged — creating
- * an appearance here never grants it. */
+ * If the roster is already at 'invited' (the organizer already extended
+ * an invitation before this application), mutual intent already exists
+ * structurally — participation is approved immediately and the
+ * Appearance sync runs right here, the one case where this function DOES
+ * cause an Appearance to appear immediately (because approval, not mere
+ * application, already occurred). Already-'approved' participation is
+ * left untouched with a friendly message — never re-applied over. */
 export async function addAppearanceFromEvent(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}?tab=findmi-here`;
   const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (user && !(await isEmailVerified(admin, user.id))) {
+    redirect(appendQuery(redirectPath, { error: "Verify your email before applying to an event." }));
+  }
+
   const target = str(formData, "target");
   if (!target) redirect(appendQuery(redirectPath, { error: "Choose an event to add." }));
+  const note = str(formData, "note");
 
   const [kind, a, b] = target.split(":");
 
   if (kind === "event") {
     const eventId = a;
-    const { data: event } = await admin
-      .from("events")
-      .select("id, name, start_at, end_at, venue_name, address, city, state, latitude, longitude")
-      .eq("id", eventId)
-      .eq("is_demo", false)
-      .maybeSingle();
+    const { data: event } = await admin.from("events").select("id").eq("id", eventId).eq("is_demo", false).maybeSingle();
     if (!event) redirect(appendQuery(redirectPath, { error: "That event is no longer available." }));
 
-    const { data: existingAppearance } = await admin
-      .from("appearances")
-      .select("id")
-      .eq("business_id", businessId)
+    const { data: existingRow } = await admin
+      .from("event_businesses")
+      .select("status")
       .eq("event_id", eventId)
-      .is("event_occurrence_id", null)
-      .neq("status", "canceled")
+      .eq("business_id", businessId)
       .maybeSingle();
-    if (!existingAppearance) {
-      const { error } = await admin.from("appearances").insert({
-        business_id: businessId,
-        event_id: eventId,
-        title: event.name,
-        start_at: event.start_at,
-        end_at: event.end_at,
-        venue_name: event.venue_name,
-        address: event.address,
-        city: event.city,
-        state: event.state,
-        latitude: event.latitude,
-        longitude: event.longitude,
-        status: "confirmed",
-        // Appearance Provenance pass — the OWNER chose this event
-        // themselves; never becomes 'official_participation' just because
-        // admin later approves the roster row this also upserts below
-        // (ensureEventAppearance's own existence check finds this row and
-        // returns without touching it — see that helper's comment).
-        source: "event_self_added",
-      });
-      if (error) redirect(appendQuery(redirectPath, { error: "Couldn't create that appearance. Please try again." }));
+    const currentStatus = (existingRow as { status: string } | null)?.status ?? null;
+
+    if (currentStatus === "approved") {
+      redirect(appendQuery(redirectPath, { error: "You're already a confirmed participant in that event." }));
     }
 
-    await admin
-      .from("event_businesses")
-      .upsert(
-        { event_id: eventId, business_id: businessId, status: "applied" },
-        { onConflict: "event_id,business_id", ignoreDuplicates: true }
-      );
+    if (currentStatus === "invited") {
+      await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", businessId);
+      await ensureEventAppearance(admin, eventId, businessId);
+    } else if (currentStatus !== "applied" && currentStatus !== "pending") {
+      // No row yet, or a terminal 'declined' row being re-applied to —
+      // a full upsert (never ignoreDuplicates) so re-applying after a
+      // decline correctly resets status back to 'applied'.
+      await admin.from("event_businesses").upsert({ event_id: eventId, business_id: businessId, status: "applied" }, { onConflict: "event_id,business_id" });
+    }
+
+    if (user) {
+      try {
+        await createOpportunity(admin, {
+          type: "event_application",
+          eventId,
+          eventOccurrenceId: null,
+          businessId,
+          initiatorUserId: user.id,
+          initiatorEntityType: "business",
+          initiatorEntityId: businessId,
+          note: note?.trim() || null,
+        });
+      } catch (err) {
+        console.error("[opportunities] failed to record application Opportunity", err);
+      }
+    }
   } else if (kind === "occ") {
     const eventId = a;
     const occurrenceId = b;
     const { data: occurrence } = await admin
       .from("event_occurrences")
-      .select("id, event_id, start_at, end_at, location_id, events(name, venue_name, address, city, state, latitude, longitude)")
+      .select("id, event_id")
       .eq("id", occurrenceId)
       .eq("event_id", eventId)
       .maybeSingle();
     if (!occurrence) redirect(appendQuery(redirectPath, { error: "That date is no longer available." }));
-    const event = Array.isArray(occurrence.events) ? occurrence.events[0] : occurrence.events;
-    if (!event) redirect(appendQuery(redirectPath, { error: "That event is no longer available." }));
 
-    let venue = {
-      venue_name: event.venue_name as string | null,
-      address: event.address as string | null,
-      city: event.city as string | null,
-      state: event.state as string | null,
-      latitude: event.latitude as number | null,
-      longitude: event.longitude as number | null,
-    };
-    if (occurrence.location_id) {
-      const { data: location } = await admin
-        .from("locations")
-        .select("name, address, city, state, latitude, longitude")
-        .eq("id", occurrence.location_id)
-        .maybeSingle();
-      if (location) {
-        venue = {
-          venue_name: location.name,
-          address: location.address,
-          city: location.city,
-          state: location.state,
-          latitude: location.latitude,
-          longitude: location.longitude,
-        };
-      }
-    }
-
-    const { data: existingAppearance } = await admin
-      .from("appearances")
-      .select("id")
-      .eq("business_id", businessId)
-      .eq("event_occurrence_id", occurrenceId)
-      .neq("status", "canceled")
-      .maybeSingle();
-    if (!existingAppearance) {
-      const { error } = await admin.from("appearances").insert({
-        business_id: businessId,
-        event_id: occurrence.event_id,
-        event_occurrence_id: occurrenceId,
-        title: event.name,
-        start_at: occurrence.start_at,
-        end_at: occurrence.end_at,
-        status: "confirmed",
-        ...venue,
-        // Appearance Provenance pass — same reasoning as the non-recurring
-        // branch above: owner-chosen, never reassigned to
-        // 'official_participation' by a later admin approval.
-        source: "event_self_added",
-      });
-      // 23505 = unique_violation — a concurrent add already won the race
-      // against appearances_one_per_business_occurrence; treat that as
-      // "already exists," not a failure.
-      if (error && error.code !== "23505") {
-        redirect(appendQuery(redirectPath, { error: "Couldn't create that appearance. Please try again." }));
-      }
-    }
-
-    await admin
+    const { data: existingRow } = await admin
       .from("event_occurrence_businesses")
-      .upsert(
-        { occurrence_id: occurrenceId, business_id: businessId, status: "applied" },
-        { onConflict: "occurrence_id,business_id", ignoreDuplicates: true }
-      );
+      .select("status")
+      .eq("occurrence_id", occurrenceId)
+      .eq("business_id", businessId)
+      .maybeSingle();
+    const currentStatus = (existingRow as { status: string } | null)?.status ?? null;
+
+    if (currentStatus === "approved") {
+      redirect(appendQuery(redirectPath, { error: "You're already a confirmed participant for that date." }));
+    }
+    if (currentStatus !== "applied" && currentStatus !== "pending") {
+      await admin
+        .from("event_occurrence_businesses")
+        .upsert({ occurrence_id: occurrenceId, business_id: businessId, status: "applied" }, { onConflict: "occurrence_id,business_id" });
+    }
+
+    // Occurrence-specific applications are reviewed admin-side only (no
+    // owner self-service equivalent exists yet — same pre-existing
+    // limitation the Communication Foundation Audit found for
+    // event_occurrence_businesses generally), but the Opportunity record
+    // itself is created here regardless, so "My Applications" always
+    // reflects this business's real application history and the eventual
+    // admin decision can resolve it (see updateOccurrenceVendorStatus in
+    // admin/(protected)/events/actions.ts).
+    if (user) {
+      try {
+        await createOpportunity(admin, {
+          type: "event_application",
+          eventId: occurrence.event_id,
+          eventOccurrenceId: occurrenceId,
+          businessId,
+          initiatorUserId: user.id,
+          initiatorEntityType: "business",
+          initiatorEntityId: businessId,
+          note: note?.trim() || null,
+        });
+      } catch (err) {
+        console.error("[opportunities] failed to record application Opportunity", err);
+      }
+    }
   } else {
     redirect(appendQuery(redirectPath, { error: "Choose a valid event or date." }));
   }
@@ -682,17 +675,97 @@ export async function withdrawEventParticipation(businessId: string, kind: "even
       .eq("business_id", businessId)
       .eq("event_id", key)
       .in("status", ["applied", "pending"]);
+
+    try {
+      await resolveOpportunityByContext(admin, { eventId: key, eventOccurrenceId: null, businessId, type: "event_application" }, "withdrawn", "Withdrawn by the business.");
+    } catch (err) {
+      console.error("[opportunities] failed to resolve Opportunity for withdrawal", err);
+    }
   } else {
+    const { data: occurrenceRow } = await admin
+      .from("event_occurrence_businesses")
+      .select("occurrence_id, event_occurrences(event_id)")
+      .eq("id", key)
+      .eq("business_id", businessId)
+      .maybeSingle();
+
     await admin
       .from("event_occurrence_businesses")
       .delete()
       .eq("business_id", businessId)
       .eq("id", key)
       .in("status", ["applied", "pending"]);
+
+    const eventOccurrence = occurrenceRow as { occurrence_id: string; event_occurrences: { event_id: string } | { event_id: string }[] | null } | null;
+    const linkedEvent = Array.isArray(eventOccurrence?.event_occurrences) ? eventOccurrence?.event_occurrences[0] : eventOccurrence?.event_occurrences;
+    if (eventOccurrence && linkedEvent) {
+      try {
+        await resolveOpportunityByContext(
+          admin,
+          { eventId: linkedEvent.event_id, eventOccurrenceId: eventOccurrence.occurrence_id, businessId, type: "event_application" },
+          "withdrawn",
+          "Withdrawn by the business."
+        );
+      } catch (err) {
+        console.error("[opportunities] failed to resolve Opportunity for withdrawal", err);
+      }
+    }
   }
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { participation_updated: "1" }));
+}
+
+/** Opportunities + Conversation Foundation V1 — the Business-side "Event
+ * Invitations" surface the Communication Foundation Audit found
+ * completely missing before this pass: an organizer-invited business
+ * previously had no way to even discover the invitation, let alone
+ * respond. Scoped to a specific pending event_invitation Opportunity id
+ * (not just eventId/businessId) so a stale/duplicate submission is a safe
+ * no-op — resolveOpportunity only ever succeeds once, on the first still-
+ * pending call. Accepting moves canonical participation to 'approved' and
+ * runs the exact same ensureEventAppearance() every other approval path
+ * uses; declining reverse-syncs via cancelEventAppearance (a no-op here
+ * since an invitation never has an Appearance to begin with — see this
+ * pass's own Participation/Appearance Rule). Invitations are always
+ * whole-event in this codebase (inviteParticipatingBusiness has no
+ * occurrence parameter), so this only ever touches event_businesses. */
+export async function respondToEventInvitation(businessId: string, opportunityId: string, response: "accepted" | "declined") {
+  const redirectPath = `/account/business/${businessId}?tab=opportunities`;
+  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
+
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (user && !(await isEmailVerified(admin, user.id))) {
+    redirect(appendQuery(redirectPath, { error: "Verify your email before responding to an invitation." }));
+  }
+
+  const { data: opportunity } = await admin
+    .from("opportunities")
+    .select("id, event_id, business_id")
+    .eq("id", opportunityId)
+    .eq("business_id", businessId)
+    .eq("type", "event_invitation")
+    .eq("status", "pending")
+    .maybeSingle();
+  if (!opportunity) redirect(appendQuery(redirectPath, { error: "That invitation is no longer available." }));
+
+  const eventId = (opportunity as { event_id: string }).event_id;
+
+  if (response === "accepted") {
+    await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", businessId);
+    await ensureEventAppearance(admin, eventId, businessId);
+  } else {
+    await admin.from("event_businesses").update({ status: "declined" }).eq("event_id", eventId).eq("business_id", businessId);
+    await cancelEventAppearance(admin, eventId, businessId);
+  }
+
+  await resolveOpportunity(admin, opportunityId, response, response === "accepted" ? "Invitation accepted." : "Invitation declined.");
+
+  revalidatePath(redirectPath);
+  redirect(appendQuery(redirectPath, { invitation_updated: "1" }));
 }
 
 // ── Standalone appearances (Option 2) + edit/remove ─────────────────────

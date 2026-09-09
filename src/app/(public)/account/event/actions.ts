@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { requireEventMember } from "@/lib/permissions";
+import { isEmailVerified, requireEventMember } from "@/lib/permissions";
+import { createOpportunity, resolveOpportunityByContext } from "@/lib/opportunities";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { errorRedirectUrl, errorRedirectUrlWithFields, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
@@ -693,15 +694,58 @@ export async function updateMemberEventImages(eventId: string, formData: FormDat
  * NEVER 'approved' (the event_businesses column default) — because an
  * organizer inviting a vendor is not the same as that vendor confirming;
  * see this pass's own explicit rule. ignoreDuplicates means re-inviting
- * an already-present business never downgrades its current status. */
-export async function inviteParticipatingBusiness(eventId: string, businessId: string) {
+ * an already-present business never downgrades its current status.
+ *
+ * Opportunities + Conversation Foundation V1 — this canonical
+ * event_businesses write is the real, authoritative action and always
+ * happens exactly as before; the Opportunity/Conversation records built
+ * on top of it are additive. Skipped entirely (best-effort, logged, never
+ * blocks the invite) when there's no real authenticated user — an
+ * admin-elevated session with no personal Supabase Auth session of its
+ * own (opportunities.initiator_user_id is NOT NULL, and there is no
+ * founder identity to attribute it to) — so Admin Manage-As keeps working
+ * exactly as it did before this pass. A CROSSED outcome (the business
+ * already applied before this invite) means mutual intent already
+ * exists: canonical participation moves straight to 'approved' and the
+ * Appearance sync runs once, immediately, rather than waiting on a
+ * response to an invitation that's already redundant. */
+export async function inviteParticipatingBusiness(eventId: string, businessId: string, note?: string) {
   const redirectPath = `/account/event/${eventId}?tab=participants`;
   const admin = await requireEventManager(eventId, redirectPath);
+
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (user && !(await isEmailVerified(admin, user.id))) {
+    redirect(appendQuery(redirectPath, { error: "Verify your email before inviting a business." }));
+  }
 
   const { error } = await admin
     .from("event_businesses")
     .upsert({ event_id: eventId, business_id: businessId, status: "invited" }, { onConflict: "event_id,business_id", ignoreDuplicates: true });
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  if (user) {
+    try {
+      const outcome = await createOpportunity(admin, {
+        type: "event_invitation",
+        eventId,
+        eventOccurrenceId: null,
+        businessId,
+        initiatorUserId: user.id,
+        initiatorEntityType: "event",
+        initiatorEntityId: eventId,
+        note: note?.trim() || null,
+      });
+      if (outcome.kind === "crossed") {
+        await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", businessId);
+        await ensureEventAppearance(admin, eventId, businessId);
+      }
+    } catch (err) {
+      console.error("[opportunities] failed to record invitation Opportunity", err);
+    }
+  }
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { participant_added: "1" }));
@@ -715,7 +759,15 @@ const VALID_PARTICIPATION_STATUSES: EventParticipationStatus[] = ["invited", "ap
  * syncs) the linked FindMi Here appearance exactly like admin's own
  * saveEvent()/updateOccurrenceVendorStatus already do — approving here
  * has the same real, public "official participation" effect an admin
- * approval would. */
+ * approval would.
+ *
+ * Opportunities + Conversation Foundation V1 — also resolves whichever
+ * Opportunity (application OR the organizer's own outstanding invitation
+ * — this action's Approve/Decline buttons already cover both, see the
+ * Participants tab) is pending for this exact context, recording
+ * responded_at and a short system message. Best-effort: a resolution
+ * failure never blocks or rolls back the canonical status change above,
+ * which remains the real, authoritative effect. */
 export async function updateParticipatingBusinessStatus(eventId: string, businessId: string, status: string) {
   const redirectPath = `/account/event/${eventId}?tab=participants`;
   const admin = await requireEventManager(eventId, redirectPath);
@@ -737,6 +789,19 @@ export async function updateParticipatingBusinessStatus(eventId: string, busines
     await cancelEventAppearance(admin, eventId, businessId);
   }
 
+  if (status === "approved" || status === "declined") {
+    try {
+      await resolveOpportunityByContext(
+        admin,
+        { eventId, eventOccurrenceId: null, businessId },
+        status === "approved" ? "accepted" : "declined",
+        status === "approved" ? "Approved by the organizer." : "Declined by the organizer."
+      );
+    } catch (err) {
+      console.error("[opportunities] failed to resolve Opportunity for participation status change", err);
+    }
+  }
+
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { participant_updated: "1" }));
 }
@@ -750,6 +815,12 @@ export async function removeParticipatingBusiness(eventId: string, businessId: s
 
   await cancelEventAppearance(admin, eventId, businessId);
   await admin.from("event_businesses").delete().eq("event_id", eventId).eq("business_id", businessId);
+
+  try {
+    await resolveOpportunityByContext(admin, { eventId, eventOccurrenceId: null, businessId }, "withdrawn", "Removed by the organizer.");
+  } catch (err) {
+    console.error("[opportunities] failed to resolve Opportunity for participant removal", err);
+  }
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { participant_removed: "1" }));

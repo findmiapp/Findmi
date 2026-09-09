@@ -33,6 +33,7 @@ import {
   updateMemberProduct,
   updateBusinessHandle,
   updateOwnerAppearance,
+  respondToEventInvitation,
 } from "../actions";
 import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
@@ -49,6 +50,7 @@ import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import { getBusinessFollowerSummary } from "@/lib/business-followers";
 import { getBusinessInquiryDetail, getBusinessInquiryList } from "@/lib/inquiries";
 import { sendBusinessReply, setNativeInquiriesEnabled, updateInquiryStatus } from "../inquiries-actions";
+import { getApplicationsForBusiness, getPendingInvitationsForBusiness } from "@/lib/opportunities";
 import {
   getBusinessOrderDetail,
   getBusinessOrderList,
@@ -111,6 +113,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "gallery", label: "Gallery" },
   { key: "products", label: "Products" },
   { key: "findmi-here", label: "Findmi Here" },
+  { key: "opportunities", label: "Opportunities" },
   { key: "links", label: "Links & Contact" },
   { key: "plan", label: "Plan & Status" },
   { key: "market", label: "Market" },
@@ -352,6 +355,14 @@ export default async function ManageBusinessPage({
   if (openInquiry) {
     await supabase.rpc("mark_inquiry_read", { p_inquiry_id: openInquiryId, p_as: "business" });
   }
+  // Opportunities + Conversation Foundation V1 — the previously-missing
+  // Business-side "Event Invitations"/"My Applications" surfaces. Same
+  // authorize-then-elevate admin client, always fetched (cheap, same
+  // reasoning as inquiryList above).
+  const [pendingInvitations, applications] = await Promise.all([
+    getPendingInvitationsForBusiness(admin, id),
+    getApplicationsForBusiness(admin, id),
+  ]);
   // Business Order Management Overhaul V1 — same authorize-then-elevate
   // admin client; every query inside these helpers is itself filtered by
   // business_id, so this business can never see another business's order
@@ -1355,16 +1366,28 @@ export default async function ManageBusinessPage({
                 <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Option 1</p>
                 <p className="mt-1 text-sm font-bold text-ink">Find an Event on Findmi</p>
                 <p className="mt-0.5 text-xs text-ink/50">
-                  Choose an existing Findmi Event and connect this Business to it.
+                  Apply to an existing Findmi Event. The organizer reviews every application — your Findmi Here entry
+                  becomes public once they approve it.
                 </p>
                 {requestOptions.length > 0 ? (
                   <form action={addFromEvent} className="mt-3">
                     <EventSearchPicker options={requestOptions} />
+                    <label className="mt-3 block">
+                      <span className="mb-1 block text-xs font-medium text-ink/60">
+                        Note to the organizer <span className="font-normal text-ink/40">(optional)</span>
+                      </span>
+                      <textarea
+                        name="note"
+                        rows={2}
+                        placeholder="e.g. We'd love to bring our food truck…"
+                        className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+                      />
+                    </label>
                     <button
                       type="submit"
                       className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6"
                     >
-                      Add to Findmi Here
+                      Apply
                     </button>
                   </form>
                 ) : (
@@ -1702,6 +1725,83 @@ export default async function ManageBusinessPage({
                 </p>
               )
             )}
+          </div>
+        )}
+
+        {/* ── Opportunities (Opportunities + Conversation Foundation V1) ──
+            The previously-missing Business-side surface: an organizer-
+            invited business had no way to even discover the invitation
+            before this pass (see the Communication Foundation Audit).
+            Deliberately compact — no chat, no messages list, just the
+            structured invite/apply workflow and its optional note. */}
+        {activeTab === "opportunities" && (
+          <div className="flex flex-col gap-5">
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Event Invitations</p>
+              <p className="mt-1 text-sm text-ink/60">Organizers who&rsquo;ve invited this business to an event.</p>
+              {pendingInvitations.length === 0 ? (
+                <p className="mt-4 text-sm text-ink/50">No pending invitations.</p>
+              ) : (
+                <div className="mt-4 flex flex-col gap-2">
+                  {pendingInvitations.map((inv) => (
+                    <div key={inv.id} className="rounded-2xl border border-black/10 p-3.5">
+                      <p className="text-sm font-semibold text-ink">{inv.eventName}</p>
+                      {inv.occurrenceStartAt && (
+                        <p className="text-xs text-ink/50">{formatDateShort(inv.occurrenceStartAt)} · {formatTime(inv.occurrenceStartAt)}</p>
+                      )}
+                      {inv.occurrenceLocationName && <p className="text-xs text-ink/50">{inv.occurrenceLocationName}</p>}
+                      {inv.note && (
+                        <p className="mt-1.5 rounded-xl bg-mist/40 px-3 py-2 text-xs text-ink/70">&ldquo;{inv.note}&rdquo;</p>
+                      )}
+                      <div className="mt-2.5 flex items-center gap-2">
+                        <form action={respondToEventInvitation.bind(null, id, inv.id, "accepted")}>
+                          <button type="submit" className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
+                            Accept
+                          </button>
+                        </form>
+                        <form action={respondToEventInvitation.bind(null, id, inv.id, "declined")}>
+                          <button type="submit" className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/60">
+                            Decline
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">My Applications</p>
+              <p className="mt-1 text-sm text-ink/60">Events this business has applied to participate in.</p>
+              {applications.length === 0 ? (
+                <p className="mt-4 text-sm text-ink/50">No applications yet — apply to an event from Findmi Here.</p>
+              ) : (
+                <div className="mt-4 flex flex-col gap-2">
+                  {applications.map((app) => (
+                    <div key={app.id} className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 p-3.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">{app.eventName}</p>
+                        {app.occurrenceStartAt && (
+                          <p className="text-xs text-ink/50">{formatDateShort(app.occurrenceStartAt)} · {formatTime(app.occurrenceStartAt)}</p>
+                        )}
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                          app.status === "accepted"
+                            ? "bg-findmi-50 text-findmi-700"
+                            : app.status === "declined"
+                              ? "bg-red-50 text-red-700"
+                              : "bg-black/[0.06] text-ink/50"
+                        }`}
+                      >
+                        {app.status === "pending" ? "Pending" : app.status === "accepted" ? "Approved" : app.status === "declined" ? "Declined" : "Withdrawn"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

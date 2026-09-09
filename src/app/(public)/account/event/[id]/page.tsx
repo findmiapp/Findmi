@@ -8,6 +8,7 @@ import { getAdminEventById, getAllCategories, getEventCategoryIds } from "@/lib/
 import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import { getPendingMarketRequestForEvent } from "@/lib/market-requests";
+import { getPendingApplicationNotesForEvent } from "@/lib/opportunities";
 import MarketAreaFields from "@/components/MarketAreaFields";
 import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
@@ -130,7 +131,7 @@ export default async function ManageEventPage({
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
-  const [result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, eventHandle, addLocationHint] = await Promise.all([
+  const [result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, eventHandle, addLocationHint, pendingApplicationNotes] = await Promise.all([
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
@@ -145,6 +146,7 @@ export default async function ManageEventPage({
     addLocationId
       ? admin.from("locations").select("id, name, city").eq("id", addLocationId).maybeSingle().then((r) => r.data)
       : Promise.resolve(null),
+    getPendingApplicationNotesForEvent(admin, id),
   ]);
   if (!result) redirect(errorRedirectUrl("/account", "Event not found."));
   const { event, participants, occurrences } = result;
@@ -637,7 +639,8 @@ export default async function ManageEventPage({
             ) : (
               <div className="mt-4 flex flex-col gap-2">
                 {participants.map((p) => (
-                  <div key={p.business_id} className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 p-3.5">
+                  <div key={p.business_id} className="rounded-2xl border border-black/10 p-3.5">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-ink">{p.business_name}</p>
                       <p className="text-xs text-ink/50">{PARTICIPATION_LABEL[p.status]}</p>
@@ -663,6 +666,17 @@ export default async function ManageEventPage({
                         </button>
                       </form>
                     </div>
+                  </div>
+                  {/* Opportunities + Conversation Foundation V1 — the
+                      applicant's own optional initial note, read from its
+                      Conversation via getPendingApplicationNotesForEvent.
+                      Only ever present while the application is still
+                      pending (that lookup is scoped to status='pending'). */}
+                  {pendingApplicationNotes.get(p.business_id) && (
+                    <p className="mt-2 rounded-xl bg-mist/40 px-3 py-2 text-xs text-ink/70">
+                      &ldquo;{pendingApplicationNotes.get(p.business_id)}&rdquo;
+                    </p>
+                  )}
                   </div>
                 ))}
               </div>
