@@ -7,6 +7,7 @@ import { bool, errorRedirectUrl, localDateTimeToIso, num, str } from "@/lib/admi
 import { validateCustomDestination } from "@/lib/navigation";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
+import { reverseSyncEventParticipation } from "@/lib/appearance-event-sync";
 
 export async function saveAppearance(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/appearances/${id}` : "/admin/appearances/new";
@@ -171,10 +172,45 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     ...(derivedFields ? { latitude: derivedFields.latitude, longitude: derivedFields.longitude } : {}),
   };
 
+  // Event-Linked Appearance Removal Sync pass — read the row's OWN prior
+  // state (status + linkage) before overwriting it, so a reverse-sync
+  // decision below can compare old vs new rather than firing on every
+  // save. Only meaningful for an edit (a brand-new appearance has no
+  // prior roster state to withdraw from).
+  let priorState: { status: string; event_id: string | null; event_occurrence_id: string | null; source: string | null } | null =
+    null;
+  if (id) {
+    const { data: priorRow } = await supabase
+      .from("appearances")
+      .select("status, event_id, event_occurrence_id, source")
+      .eq("id", id)
+      .maybeSingle();
+    priorState = priorRow;
+  }
+
   let appearanceId = id;
   if (appearanceId) {
     const { error } = await supabase.from("appearances").update(payload).eq("id", appearanceId);
     if (error) redirect(errorRedirectUrl(editPath, error.message));
+
+    // Reverse-sync — fires ONLY on a genuine confirmed -> not-confirmed
+    // transition (the exact mirror of the forward-sync block below, which
+    // only ever fires FOR "-> confirmed"), using the row's PRIOR linkage
+    // (the roster row that prior 'confirmed' state actually put into
+    // 'approved') — never on an ordinary edit that leaves status alone
+    // (title/address/time changes never touch the roster), and never for
+    // a brand-new appearance (priorState is null). reverseSyncEventParticipation
+    // itself already no-ops for anything that isn't official Event
+    // participation (standalone/manual/event_self_added) — see its own
+    // doc comment — so this is safe to call unconditionally once the
+    // transition itself is confirmed.
+    if (priorState && priorState.status === "confirmed" && payload.status !== "confirmed") {
+      await reverseSyncEventParticipation(supabase, businessId, {
+        event_id: priorState.event_id,
+        event_occurrence_id: priorState.event_occurrence_id,
+        source: priorState.source,
+      });
+    }
   } else {
     const { data, error } = await supabase
       .from("appearances")
@@ -321,10 +357,28 @@ export async function getEventLinkDataForAppearance(eventId: string): Promise<Ev
 
 export async function deleteAppearance(id: string) {
   const supabase = await requireAdminSupabase();
+
+  // Event-Linked Appearance Removal Sync pass — linkage must be captured
+  // BEFORE the delete below, since the row (and its event_id/
+  // event_occurrence_id/source) won't exist to read afterward. Applying
+  // the roster reverse-sync first (before the actual delete) is the same
+  // "sync before the roster row itself is gone" ordering saveEvent's own
+  // removedIds branch already uses for the opposite direction.
+  const { data: existing } = await supabase
+    .from("appearances")
+    .select("business_id, event_id, event_occurrence_id, source")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existing) {
+    await reverseSyncEventParticipation(supabase, existing.business_id, existing);
+  }
+
   await supabase.from("appearances").delete().eq("id", id);
   revalidatePath("/admin/appearances");
   revalidatePath("/");
   revalidatePath("/find");
+  if (existing?.event_id) revalidatePath(`/admin/events/${existing.event_id}`);
   redirect("/admin/appearances");
 }
 

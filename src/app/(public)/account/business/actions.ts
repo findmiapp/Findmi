@@ -18,6 +18,7 @@ import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/mar
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
+import { reverseSyncEventParticipation } from "@/lib/appearance-event-sync";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -916,19 +917,40 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
  * Scoped by both id and business_id, so a business can only ever cancel
  * its OWN appearance. Every public appearance query already excludes
  * status = 'canceled' (see lib/data.ts), so this alone is enough to stop
- * FindMi Here from showing it — with no risk to the underlying event/
- * occurrence (never touched) or to event_businesses/
- * event_occurrence_businesses (never touched either — an approved
- * official roster entry survives). For an occurrence-linked appearance,
- * the DB-level partial unique index (appearances_one_per_business_
- * occurrence) is itself scoped to `status <> 'canceled'`, so canceling
- * frees the business up to be re-added to that same occurrence later
- * without a conflict. */
+ * FindMi Here from showing it. For an occurrence-linked appearance, the
+ * DB-level partial unique index (appearances_one_per_business_occurrence)
+ * is itself scoped to `status <> 'canceled'`, so canceling frees the
+ * business up to be re-added to that same occurrence later without a
+ * conflict.
+ *
+ * Event-Linked Appearance Removal Sync pass — this used to leave the
+ * underlying event_businesses/event_occurrence_businesses row untouched
+ * unconditionally ("an approved official roster entry survives" — the
+ * exact stale-roster bug the Findmi Here Sync Audit traced). The linkage
+ * fields are read BEFORE the cancel (same row either way — canceling
+ * doesn't remove them) and handed to reverseSyncEventParticipation, which
+ * itself no-ops for a standalone/manual/event_self_added appearance (see
+ * that function's own doc comment) — so this remains exactly as before
+ * for every appearance that ISN'T official Event participation. The sync
+ * call is best-effort by design (it never throws — see its own doc
+ * comment) and only ever runs after the cancel above, so a sync issue can
+ * never make this action's own primary removal appear to fail. */
 export async function removeOwnerAppearance(businessId: string, appearanceId: string) {
   const redirectPath = `/account/business/${businessId}?tab=findmi-here`;
   const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
 
+  const { data: existing } = await admin
+    .from("appearances")
+    .select("event_id, event_occurrence_id, source")
+    .eq("id", appearanceId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+
   await admin.from("appearances").update({ status: "canceled" }).eq("id", appearanceId).eq("business_id", businessId);
+
+  if (existing) {
+    await reverseSyncEventParticipation(admin, businessId, existing);
+  }
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { appearance_removed: "1" }));
