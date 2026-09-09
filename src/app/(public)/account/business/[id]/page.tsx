@@ -1823,10 +1823,20 @@ export default async function ManageBusinessPage({
                   className="mt-0.5 h-5 w-5 shrink-0 accent-findmi"
                 />
                 <span>
-                  <span className="block text-sm font-medium text-ink">Accept native Findmi inquiries</span>
+                  {/* Messaging UX Unification pass — this setting only
+                      ever gated the legacy inquiries/inquiry_messages
+                      compose link (still reachable from your Product
+                      pages), never the new Messages/Conversation system —
+                      confirmed by trace, unchanged behavior here, copy
+                      only. Messages (Business<->Business, Business<->
+                      Event, Business<->Location) is always on for every
+                      Business, no setting required, so this copy no
+                      longer says "message you directly on Findmi," which
+                      now reads as the same thing as Messages. */}
+                  <span className="block text-sm font-medium text-ink">Accept Product-page inquiries</span>
                   <span className="block text-xs text-ink/45">
-                    Lets signed-in customers message you directly on Findmi from your Business/Product pages —
-                    separate from, and in addition to, your existing Inquire button.
+                    Lets signed-in customers send a legacy Findmi inquiry from your Product pages — separate from
+                    Messages (Business/Event/Venue conversations, always on) and from your existing Inquire button.
                   </span>
                 </span>
               </label>
@@ -1840,8 +1850,8 @@ export default async function ManageBusinessPage({
 
             {!business.native_inquiries_enabled && (
               <p className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">
-                Native Findmi inquiries aren&rsquo;t enabled for this business yet — turn them on above to let
-                signed-in customers message you directly on Findmi.
+                Product-page inquiries aren&rsquo;t enabled for this business yet — turn them on above to let
+                signed-in customers send one from your Product pages.
               </p>
             )}
 

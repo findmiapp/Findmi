@@ -44,7 +44,7 @@ export default async function MessagesPage() {
           </div>
           <p className="mt-4 text-sm font-semibold text-ink">Your Findmi conversations will appear here</p>
           <p className="mx-auto mt-1.5 max-w-xs text-sm text-ink/50">
-            Connect with an organizer, business, or venue from their Findmi page to start one.
+            Message an organizer, business, or venue from their Findmi page to start one.
           </p>
         </div>
       ) : (

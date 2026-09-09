@@ -7,7 +7,7 @@ import { getUserManagedEntities } from "@/lib/opportunities";
 export const dynamic = "force-dynamic";
 
 /** The public Connect flow's one viewer-state lookup — same shared shape
- * every ConnectButton (Event/Business/Location page) reads regardless of
+ * every MessageButton (Event/Business/Location page) reads regardless of
  * which entity it's attached to, mirroring /api/account/claim's own
  * "one small GET the client component polls on mount" convention. Signed
  * out or unverified visitors get `businesses`/`events`/`locations` back

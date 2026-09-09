@@ -12,7 +12,7 @@ import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ClaimButton from "@/components/ClaimButton";
-import ConnectButton from "@/components/ConnectButton";
+import MessageButton from "@/components/MessageButton";
 import FormAction from "@/components/FormAction";
 import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
@@ -398,9 +398,15 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               </div>
             )}
             <div
-              className={`ml-auto flex shrink-0 items-center gap-2 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
+              className={`ml-auto flex shrink-0 items-center gap-1.5 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
             >
-              <div className="w-24">
+              {/* Messaging UX Unification pass — MESSAGE sits directly
+                  left of Follow, same row, never a standalone row of its
+                  own (Section 1's locked layout). Not Pro-gated:
+                  messaging between businesses/organizers is core platform
+                  behavior, not a paid profile feature. */}
+              <MessageButton targetType="business" targetId={business.id} targetName={business.name} />
+              <div className="w-20">
                 <FollowButton
                   businessId={business.id}
                   businessSlug={business.slug}
@@ -410,17 +416,6 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               </div>
               <SaveButton slug={business.slug} />
             </div>
-          </div>
-
-          {/* Public Messaging V1 — the Business<->Business/Event
-              "Connect" entry point (Section 2/8/9), separate from the
-              consumer-facing Inquire button in the right rail below
-              (which stays untouched — Section 2's own explicit carve-out
-              for a viewer acting personally). Not Pro-gated: messaging
-              between businesses/organizers is core platform behavior,
-              not a paid profile feature. */}
-          <div className="mt-2">
-            <ConnectButton targetType="business" targetId={business.id} targetName={business.name} />
           </div>
 
           <div className="mt-4 flex flex-col gap-2">
@@ -495,20 +490,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             </div>
           )}
 
-          {/* Native Inquiries V1 — a SEPARATE, additive entry point next
-              to the existing Tally/mailto Inquire button above, never a
-              replacement for it: opt-in per business
-              (native_inquiries_enabled, off by default), same Pro gate
-              as Inquire itself (contact functionality). Routes into the
-              native compose flow, which itself requires sign-in. */}
-          {pro && business.native_inquiries_enabled && (
-            <Link
-              href={`/account/inquiries/new?business=${business.id}`}
-              className="mt-2 flex h-11 w-full items-center justify-center rounded-full border border-black/10 text-sm font-semibold text-ink transition hover:border-black/20"
-            >
-              Message on Findmi
-            </Link>
-          )}
+          {/* Messaging UX Unification pass — the old "Message on Findmi"
+              native-inquiry link (native_inquiries_enabled-gated) used to
+              render here as a second, competing "message this business"
+              action right below Inquire. It's removed from this public
+              page: MESSAGE (in the identity row above) is now the one
+              native-Conversation entry point, so this legacy link would
+              only confuse visitors about which button actually reaches a
+              real Conversation. The native_inquiries_enabled column, its
+              admin toggle, and the /account/inquiries/* compose flow it
+              gated are all untouched — this is a public-surface removal
+              only, not a backend change (see Business Manager's
+              Inquiries tab, which still reads/writes this setting). */}
 
           {/* DetailsBlock covers phone/email/social/website — all
               contact/promotional fields, so Pro-only. */}

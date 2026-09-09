@@ -4,7 +4,7 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import { CategoryPill } from "@/components/Badge";
 import ClaimButton from "@/components/ClaimButton";
-import ConnectButton from "@/components/ConnectButton";
+import MessageButton from "@/components/MessageButton";
 import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
@@ -306,15 +306,21 @@ export async function EventPublicView({ slug }: { slug: string }) {
           <div className="shrink-0">
             <EventShareButton title={event.name} url={canonicalUrl} />
           </div>
-          {/* Public Messaging V1 — Business managers get "Message
-              Organizer" and "Apply to Participate" straight from this
-              utility row, no trip through the Business Manager required
-              (Section 1/12). Rendered for every visitor (guest/unverified
-              included) at this same low-key prominence as Directions/
-              Share; ConnectButton itself gates the actual flow behind
-              sign-in + verification. */}
+          {/* Messaging UX Unification pass — the ONE public communication
+              entry point for this Event: MESSAGE opens directly to a
+              composer for "Message Organizer," with "Apply to Vend" as a
+              one-tap secondary action inside the same modal for a
+              Business manager (native event_application Opportunity flow
+              — no Appearance until organizer approval, unchanged). This
+              is additive to, not a replacement for, the event's own
+              organizer-configured "Apply to Vend" Tier A CTA above
+              (event.vendor_applications_enabled / vendor_application_url
+              — an external form the organizer explicitly set up); that
+              CTA is untouched by this pass since it's a distinct,
+              pre-existing, organizer-owned system this pass doesn't have
+              enough context to safely fold in (see the final report). */}
           <div className="shrink-0">
-            <ConnectButton
+            <MessageButton
               targetType="event"
               targetId={event.id}
               targetName={event.name}
