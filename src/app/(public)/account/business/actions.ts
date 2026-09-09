@@ -8,7 +8,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { bool, errorRedirectUrl, errorRedirectUrlWithFields, localDateTimeToIso, num, str } from "@/lib/admin/form-helpers";
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { createOpportunity, resolveOpportunity, resolveOpportunityByContext } from "@/lib/opportunities";
-import { ensureEventAppearance, cancelEventAppearance } from "@/app/admin/(protected)/events/actions";
+import { ensureEventAppearance, cancelEventAppearance } from "@/lib/appearance-event-sync";
 import { isBusinessPro } from "@/lib/entitlements";
 import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";

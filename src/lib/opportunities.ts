@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAccountEmail, getEntityManagerEmails, dedupeEmails } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
+import {
+  ensureEventAppearance,
+  cancelEventAppearance,
+  ensureOccurrenceAppearance,
+  cancelOccurrenceAppearance,
+} from "@/lib/appearance-event-sync";
 
 // Opportunities + Conversation Foundation V1 — the one shared module both
 // the owner-facing Business Manager (account/business/actions.ts) and
@@ -661,7 +667,16 @@ export async function resolveOpportunity(
   admin: SupabaseClient,
   opportunityId: string,
   status: Exclude<OpportunityStatus, "pending">,
-  systemMessage?: string
+  systemMessage?: string,
+  // Occurrence-Aware Event Participation pass — defaults to true so every
+  // existing call site's behavior is unchanged. Only
+  // resolveEventApplicationDecision (below) passes false, when it's
+  // resolving several occurrence-specific Opportunities for one organizer
+  // decision and needs to send exactly ONE combined notification itself
+  // afterward instead of one per Opportunity (see that function's own
+  // comment on why — Section 10/Phase 10's "no duplicate per-occurrence
+  // spam" requirement).
+  notify: boolean = true
 ): Promise<OpportunityRow | null> {
   const { data: updated } = await admin
     .from("opportunities")
@@ -675,7 +690,7 @@ export async function resolveOpportunity(
   if (row.conversation_id && systemMessage) {
     await addMessage(admin, row.conversation_id, null, "system", systemMessage);
   }
-  await notifyOpportunityResolved(admin, row);
+  if (notify) await notifyOpportunityResolved(admin, row);
   return row;
 }
 
@@ -713,6 +728,192 @@ export async function resolveOpportunityByContext(
   const { data: existing } = await query.maybeSingle();
   if (!existing) return null;
   return resolveOpportunity(admin, existing.id as string, status, systemMessage);
+}
+
+// ── Occurrence-Aware Event Participation pass ───────────────────────────
+//
+// Root cause this fixes: for an Event WITH occurrence rows, the public
+// roster is (correctly, and unchanged by this pass — see
+// EventOccurrenceBusinessRoster/getOccurrenceBusinessRosters) read
+// EXCLUSIVELY from event_occurrence_businesses, never event_businesses.
+// But every existing application-approval surface
+// (respondToApplicationInThread in connect/actions.ts,
+// updateParticipatingBusinessStatus in account/event/actions.ts) only
+// ever wrote event_businesses + a whole-event Appearance
+// (ensureEventAppearance), regardless of whether the Event was recurring
+// — so an approved application could be fully "approved" and still be
+// invisible on every occurrence's public roster. Confirmed live: Palermo
+// Ceramics' application to Cottage Row Curiosities 2026 (see this pass's
+// own diagnostic).
+//
+// resolveEventApplicationDecision is the ONE shared resolver both of
+// those surfaces now call for an EVENT_APPLICATION specifically
+// (invitations are unchanged/out of scope — they stay whole-event only,
+// exactly as before). It finds every PENDING 'event_application'
+// Opportunity for this (event, business) pair and classifies them:
+//
+//   - one or more with a REAL event_occurrence_id -> the applicant
+//     selected specific date(s) (see applyToEventPublic's own
+//     occurrence-selection UI). Resolves each, and on approval writes
+//     event_occurrence_businesses + an occurrence Appearance
+//     (ensureOccurrenceAppearance) for EACH selected occurrence — never
+//     every occurrence of the Event, only the ones actually applied to.
+//     Sends exactly ONE combined notification naming every resolved
+//     date (never one email per occurrence).
+//   - a single one with event_occurrence_id NULL, on an Event that has NO
+//     occurrence rows at all -> genuinely non-recurring; unchanged legacy
+//     whole-event behavior (event_businesses + ensureEventAppearance).
+//   - a null-occurrence application on an Event that DOES have occurrence
+//     rows -> an AMBIGUOUS legacy application (the exact same real shape
+//     lib/appearance-event-sync.ts's own reverse-sync already refuses to
+//     guess about — see reverseSyncEventParticipation's "ambiguous
+//     recurring-event participation" branch). APPROVAL is refused
+//     outright (kind: "ambiguous") rather than guessing which date(s) the
+//     applicant meant — the caller surfaces a clear error instead.
+//     DECLINE is still allowed through this same path: declining creates
+//     no participation, so there's nothing ambiguous to resolve.
+//   - none found at all -> "not_found". Most commonly the pending
+//     Opportunity for this context is actually an INVITATION, not an
+//     application — the caller's own existing, unscoped
+//     resolveOpportunityByContext call already handles that and is
+//     untouched; this is the signal to fall through to it.
+
+export type EventApplicationDecisionResult =
+  | { kind: "resolved_occurrences"; occurrenceIds: string[] }
+  | { kind: "resolved_whole_event" }
+  | { kind: "ambiguous" }
+  | { kind: "not_found" };
+
+async function sendApplicationDecisionNotification(
+  admin: SupabaseClient,
+  eventId: string,
+  businessId: string,
+  decision: "approved" | "declined",
+  occurrenceIds: string[]
+): Promise<void> {
+  const { data: event } = await admin.from("events").select("name").eq("id", eventId).maybeSingle();
+  const eventName = (event as { name: string } | null)?.name ?? "the Event";
+  const accepted = decision === "approved";
+
+  let dateSuffix = "";
+  if (occurrenceIds.length > 0) {
+    const { data: occRows } = await admin
+      .from("event_occurrences")
+      .select("id, start_at")
+      .in("id", occurrenceIds)
+      .order("start_at", { ascending: true });
+    const dates = ((occRows ?? []) as { id: string; start_at: string }[]).map((r) =>
+      new Date(r.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    );
+    if (dates.length === 1) dateSuffix = ` on ${dates[0]}`;
+    else if (dates.length > 1) dateSuffix = ` on ${dates.slice(0, -1).join(", ")} and ${dates[dates.length - 1]}`;
+  }
+
+  const to = await getEntityManagerEmails(admin, "business", businessId);
+  await sendProductNotification({
+    to,
+    type: `opportunity_application_${decision}`,
+    subject: accepted ? `You're confirmed for ${eventName}` : `Update on your application to ${eventName}`,
+    heading: accepted ? `You're confirmed for ${eventName}${dateSuffix}` : `Your application to ${eventName} was declined`,
+    body: [
+      accepted
+        ? `Your application to participate in ${eventName}${dateSuffix} was approved — you're now confirmed.`
+        : `Your application to participate in ${eventName} wasn't approved this time.`,
+    ],
+    actionLabel: "View Business",
+    actionUrl: `/account/business/${businessId}?tab=opportunities`,
+  });
+}
+
+/** The one occurrence-aware resolver for an EVENT_APPLICATION decision —
+ * see this section's own top comment for the full design and root cause.
+ * `event_businesses` is still upserted alongside occurrence-specific
+ * resolution (Phase 5's own "may remain, but never implies every-
+ * occurrence attendance" rule) purely as a best-effort whole-event
+ * summary flag for any other surface that still reads it (e.g. a
+ * Business's own "My Applications" list) — it is NEVER read by the
+ * public roster for a recurring Event (that stays
+ * event_occurrence_businesses-only, unchanged — see
+ * EventOccurrenceBusinessRoster). */
+export async function resolveEventApplicationDecision(
+  admin: SupabaseClient,
+  eventId: string,
+  businessId: string,
+  decision: "approved" | "declined"
+): Promise<EventApplicationDecisionResult> {
+  const { count: occurrenceCount } = await admin
+    .from("event_occurrences")
+    .select("id", { count: "exact", head: true })
+    .eq("event_id", eventId);
+  const isRecurring = (occurrenceCount ?? 0) > 0;
+
+  const { data: pendingRows } = await admin
+    .from("opportunities")
+    .select("id, event_occurrence_id")
+    .eq("event_id", eventId)
+    .eq("business_id", businessId)
+    .eq("type", "event_application")
+    .eq("status", "pending");
+  const pending = (pendingRows ?? []) as { id: string; event_occurrence_id: string | null }[];
+  if (pending.length === 0) return { kind: "not_found" };
+
+  const occurrenceSpecific = pending.filter((p) => p.event_occurrence_id !== null);
+  const wholeEvent = pending.filter((p) => p.event_occurrence_id === null);
+  const systemMessage = decision === "approved" ? "Approved by the organizer." : "Declined by the organizer.";
+  // opportunities.status uses "accepted"/"declined" — event_businesses/
+  // event_occurrence_businesses use "approved"/"declined". Map once here
+  // rather than at every resolveOpportunity call site below.
+  const opportunityStatus: Exclude<OpportunityStatus, "pending"> = decision === "approved" ? "accepted" : "declined";
+
+  if (occurrenceSpecific.length > 0) {
+    const resolvedOccurrenceIds: string[] = [];
+    for (const row of occurrenceSpecific) {
+      const resolved = await resolveOpportunity(admin, row.id, opportunityStatus, systemMessage, false);
+      if (!resolved || !resolved.event_occurrence_id) continue; // already resolved by a concurrent action — skip, not an error
+      const occurrenceId = resolved.event_occurrence_id;
+      resolvedOccurrenceIds.push(occurrenceId);
+      if (decision === "approved") {
+        await admin
+          .from("event_occurrence_businesses")
+          .upsert({ occurrence_id: occurrenceId, business_id: businessId, status: "approved" }, { onConflict: "occurrence_id,business_id" });
+        await ensureOccurrenceAppearance(admin, occurrenceId, businessId);
+      } else {
+        await admin
+          .from("event_occurrence_businesses")
+          .upsert({ occurrence_id: occurrenceId, business_id: businessId, status: "declined" }, { onConflict: "occurrence_id,business_id" });
+        await cancelOccurrenceAppearance(admin, occurrenceId, businessId);
+      }
+    }
+    if (resolvedOccurrenceIds.length === 0) return { kind: "not_found" };
+
+    // Whole-event summary flag only — see this function's own doc comment.
+    await admin.from("event_businesses").upsert({ event_id: eventId, business_id: businessId, status: decision }, { onConflict: "event_id,business_id" });
+    await sendApplicationDecisionNotification(admin, eventId, businessId, decision, resolvedOccurrenceIds);
+    return { kind: "resolved_occurrences", occurrenceIds: resolvedOccurrenceIds };
+  }
+
+  if (wholeEvent.length === 0) return { kind: "not_found" };
+
+  if (isRecurring && decision === "approved") {
+    // Ambiguous legacy application — never guess which date(s) the
+    // applicant meant. Nothing is written; the caller must surface a
+    // clear error instead of silently approving into nowhere.
+    return { kind: "ambiguous" };
+  }
+
+  // Either genuinely non-recurring, or a safe decline of an ambiguous
+  // legacy application (declining creates no participation either way).
+  for (const row of wholeEvent) {
+    await resolveOpportunity(admin, row.id, opportunityStatus, systemMessage, false);
+  }
+  await admin.from("event_businesses").upsert({ event_id: eventId, business_id: businessId, status: decision }, { onConflict: "event_id,business_id" });
+  if (decision === "approved") {
+    await ensureEventAppearance(admin, eventId, businessId);
+  } else {
+    await cancelEventAppearance(admin, eventId, businessId);
+  }
+  await sendApplicationDecisionNotification(admin, eventId, businessId, decision, []);
+  return { kind: "resolved_whole_event" };
 }
 
 // ── Read helpers ─────────────────────────────────────────────────────────

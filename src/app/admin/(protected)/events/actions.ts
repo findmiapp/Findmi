@@ -12,6 +12,12 @@ import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { resolveOpportunityByContext } from "@/lib/opportunities";
 import type { EventParticipationStatus } from "@/lib/types";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import {
+  ensureEventAppearance,
+  cancelEventAppearance,
+  ensureOccurrenceAppearance,
+  cancelOccurrenceAppearance,
+} from "@/lib/appearance-event-sync";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
 
 /** Event review-decision notification — every CURRENT event_members
@@ -53,245 +59,13 @@ async function notifyEventOrganizers(
   });
 }
 
-// ── Approval <-> FindMi Here sync (Admin Approval → FindMi Here Sync pass,
-// extended by the Event Participation → Official Appearance Reverse-Sync
-// pass) ──
-//
-// Founder/admin approval path ONLY — these four helpers are called only
-// from saveEvent's participation-roster write and from
-// updateOccurrenceVendorStatus/removeOccurrenceVendor/copyOccurrenceVendors
-// below, all requireAdminSupabase()-gated. Member-facing participation
-// actions (src/app/(public)/account/business/actions.ts's
-// requestEventParticipation/withdrawEventParticipation) only ever touch
-// event_businesses/event_occurrence_businesses — they have no path to this
-// file and can never write appearances themselves.
-//
-// Idempotent by construction: ensure* checks for an existing, non-canceled
-// appearance first and returns early if one already exists (regardless of
-// its source), so re-approving never creates a duplicate. The occurrence
-// path additionally relies on the real DB-level partial unique index
-// (appearances_one_per_business_occurrence, business_id +
-// event_occurrence_id, scoped to status <> 'canceled') as a race-safe
-// backstop — a unique_violation there is treated as "already exists," not
-// an error. No unique index constrains the non-recurring (event_id +
-// business_id, event_occurrence_id null) case, so that path's existence
-// check is the only safeguard — acceptable for this founder-only,
-// low-concurrency action.
-//
-// Reverse-sync (cancel*) and reactivation (inside ensure*) both target
-// ONLY appearances.source = 'official_participation', on top of the exact
-// same business_id/event_id(/event_occurrence_id) identifiers ensure*
-// already uses to check existence — never a broader event+business match
-// that could reach an owner's own 'manual' or 'event_self_added'
-// appearance. All historical (pre-provenance) appearances are
-// source='manual' by migration default and are therefore never touched by
-// any of this — a deliberate, conservative exclusion, not an oversight.
-
-/** Non-recurring event -> one appearances row (event_occurrence_id left
- * null). Inherits title/start/end/venue straight from the event row —
- * no title/date fuzzy matching. If a CANCELED appearance already exists
- * for this exact business+event that this sync itself created
- * (source='official_participation'), re-approving reactivates that same
- * row (status back to 'confirmed', fields refreshed) instead of inserting
- * a new one — never reuses/reactivates an owner's canceled 'manual' or
- * 'event_self_added' row, since the reactivation lookup itself is scoped
- * to source='official_participation'.
- *
- * Exported (Multi-Entity Self-Service V1, Stage 2) so the owner-facing
- * Event Manager's own Participating Businesses approve/decline action
- * (account/event/actions.ts) can reuse this exact sync — never a second
- * reimplementation of the same idempotent appearance logic. */
-export async function ensureEventAppearance(supabase: SupabaseClient, eventId: string, businessId: string) {
-  const { data: existing } = await supabase
-    .from("appearances")
-    .select("id")
-    .eq("business_id", businessId)
-    .eq("event_id", eventId)
-    .is("event_occurrence_id", null)
-    .neq("status", "canceled")
-    .maybeSingle();
-  if (existing) return;
-
-  const { data: event } = await supabase
-    .from("events")
-    .select("name, start_at, end_at, venue_name, address, city, state, latitude, longitude")
-    .eq("id", eventId)
-    .maybeSingle();
-  if (!event) return;
-
-  const fields = {
-    title: event.name,
-    start_at: event.start_at,
-    end_at: event.end_at,
-    venue_name: event.venue_name,
-    address: event.address,
-    city: event.city,
-    state: event.state,
-    latitude: event.latitude,
-    longitude: event.longitude,
-  };
-
-  const { data: canceled } = await supabase
-    .from("appearances")
-    .select("id")
-    .eq("business_id", businessId)
-    .eq("event_id", eventId)
-    .is("event_occurrence_id", null)
-    .eq("status", "canceled")
-    .eq("source", "official_participation")
-    .maybeSingle();
-  if (canceled) {
-    await supabase.from("appearances").update({ ...fields, status: "confirmed" }).eq("id", canceled.id);
-    return;
-  }
-
-  await supabase.from("appearances").insert({
-    business_id: businessId,
-    event_id: eventId,
-    ...fields,
-    status: "confirmed",
-    // Appearance Provenance pass — only this admin-approval sync path
-    // (and its occurrence-level sibling below) ever writes this value.
-    // The existence check above already returns early if a matching
-    // appearance exists at all — owner-created or otherwise — so this
-    // insert only ever runs when nothing existed yet, never overwriting
-    // an owner-added appearance's provenance.
-    source: "official_participation",
-  });
-}
-
-/** Cancels (never deletes) the linked official-participation appearance
- * for this exact business+event — the reverse of ensureEventAppearance.
- * Scoped to source='official_participation' on top of the identical
- * business_id/event_id/event_occurrence_id-is-null identifiers
- * ensureEventAppearance itself checks, so an owner's own 'manual' or
- * 'event_self_added' appearance for the same event can never match. A
- * no-op (0 rows) when no such appearance exists, or it's already
- * canceled — both expected, not errors.
- *
- * Exported for the same reason as ensureEventAppearance above. */
-export async function cancelEventAppearance(supabase: SupabaseClient, eventId: string, businessId: string) {
-  await supabase
-    .from("appearances")
-    .update({ status: "canceled" })
-    .eq("business_id", businessId)
-    .eq("event_id", eventId)
-    .is("event_occurrence_id", null)
-    .eq("source", "official_participation")
-    .neq("status", "canceled");
-}
-
-/** Recurring occurrence -> one appearances row identified by business_id +
- * event_occurrence_id. Venue/address prefers the occurrence's own linked
- * location (same location_id convention getUpcomingOccurrences already
- * uses); falls back to the parent event's own venue fields when the
- * occurrence has no location_id set. Reactivates a matching CANCELED
- * source='official_participation' row instead of inserting a duplicate —
- * same reasoning as ensureEventAppearance above. */
-async function ensureOccurrenceAppearance(supabase: SupabaseClient, occurrenceId: string, businessId: string) {
-  const { data: existing } = await supabase
-    .from("appearances")
-    .select("id")
-    .eq("business_id", businessId)
-    .eq("event_occurrence_id", occurrenceId)
-    .neq("status", "canceled")
-    .maybeSingle();
-  if (existing) return;
-
-  const { data: occurrence } = await supabase
-    .from("event_occurrences")
-    .select("event_id, start_at, end_at, location_id, events(name, venue_name, address, city, state, latitude, longitude)")
-    .eq("id", occurrenceId)
-    .maybeSingle();
-  if (!occurrence) return;
-  const event = Array.isArray(occurrence.events) ? occurrence.events[0] : occurrence.events;
-  if (!event) return;
-
-  let venue = {
-    venue_name: event.venue_name as string | null,
-    address: event.address as string | null,
-    city: event.city as string | null,
-    state: event.state as string | null,
-    latitude: event.latitude as number | null,
-    longitude: event.longitude as number | null,
-  };
-  if (occurrence.location_id) {
-    const { data: location } = await supabase
-      .from("locations")
-      .select("name, address, city, state, latitude, longitude")
-      .eq("id", occurrence.location_id)
-      .maybeSingle();
-    if (location) {
-      venue = {
-        venue_name: location.name,
-        address: location.address,
-        city: location.city,
-        state: location.state,
-        latitude: location.latitude,
-        longitude: location.longitude,
-      };
-    }
-  }
-
-  const fields = {
-    event_id: occurrence.event_id,
-    title: event.name,
-    start_at: occurrence.start_at,
-    end_at: occurrence.end_at,
-    ...venue,
-  };
-
-  const { data: canceled } = await supabase
-    .from("appearances")
-    .select("id")
-    .eq("business_id", businessId)
-    .eq("event_occurrence_id", occurrenceId)
-    .eq("status", "canceled")
-    .eq("source", "official_participation")
-    .maybeSingle();
-  if (canceled) {
-    await supabase.from("appearances").update({ ...fields, status: "confirmed" }).eq("id", canceled.id);
-    return;
-  }
-
-  const { error } = await supabase.from("appearances").insert({
-    business_id: businessId,
-    ...fields,
-    status: "confirmed",
-    // Appearance Provenance pass — same reasoning as ensureEventAppearance
-    // above: the existence check already returned early if a matching
-    // appearance (owner-added or otherwise) already existed.
-    source: "official_participation",
-  });
-  // 23505 = unique_violation — a concurrent approval already won the race
-  // against appearances_one_per_business_occurrence; that's the intended
-  // idempotency backstop, not a real failure.
-  if (error && error.code !== "23505") {
-    // Non-fatal by design: the participation approval itself already
-    // succeeded above: a sync hiccup here shouldn't roll that back or
-    // interrupt the founder's save.
-  }
-}
-
-/** Cancels (never deletes) the linked official-participation appearance
- * for this exact business+occurrence — the reverse of
- * ensureOccurrenceAppearance. Scoped to source='official_participation' on
- * top of the identical business_id/event_occurrence_id identifiers
- * ensureOccurrenceAppearance itself checks — event_occurrence_id alone
- * already pins one specific occurrence of one specific event (an
- * occurrence's event_id never changes), so no separate event_id filter is
- * needed for correctness. An owner's own 'manual' or 'event_self_added'
- * appearance, or one for a different occurrence/business, can never
- * match. No-op when nothing matches. */
-async function cancelOccurrenceAppearance(supabase: SupabaseClient, occurrenceId: string, businessId: string) {
-  await supabase
-    .from("appearances")
-    .update({ status: "canceled" })
-    .eq("business_id", businessId)
-    .eq("event_occurrence_id", occurrenceId)
-    .eq("source", "official_participation")
-    .neq("status", "canceled");
-}
+// ── Approval <-> FindMi Here sync ────────────────────────────────────────
+// ensureEventAppearance/cancelEventAppearance/ensureOccurrenceAppearance/
+// cancelOccurrenceAppearance moved to lib/appearance-event-sync.ts
+// (Occurrence-Aware Event Participation pass) so lib/opportunities.ts's
+// occurrence-aware application resolver can call them without a circular
+// import between a plain lib module and this "use server" file. Imported
+// above; every call site in this file below is unchanged.
 
 const VALID_STATUSES: EventParticipationStatus[] = [
   "invited",

@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireEventMember } from "@/lib/permissions";
-import { createOpportunity, resolveOpportunityByContext } from "@/lib/opportunities";
+import { createOpportunity, resolveEventApplicationDecision, resolveOpportunityByContext } from "@/lib/opportunities";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { errorRedirectUrl, errorRedirectUrlWithFields, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
@@ -16,7 +16,7 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
-import { cancelEventAppearance, ensureEventAppearance } from "@/app/admin/(protected)/events/actions";
+import { cancelEventAppearance, ensureEventAppearance } from "@/lib/appearance-event-sync";
 import type { EventParticipationStatus } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
@@ -767,13 +767,51 @@ const VALID_PARTICIPATION_STATUSES: EventParticipationStatus[] = ["invited", "ap
  * Participants tab) is pending for this exact context, recording
  * responded_at and a short system message. Best-effort: a resolution
  * failure never blocks or rolls back the canonical status change above,
- * which remains the real, authoritative effect. */
+ * which remains the real, authoritative effect.
+ *
+ * Occurrence-Aware Event Participation pass — for approve/decline
+ * specifically, this now tries resolveEventApplicationDecision
+ * (lib/opportunities.ts) FIRST: if a real EVENT_APPLICATION Opportunity
+ * is pending for this context, its occurrence-aware resolution handles
+ * everything (event_occurrence_businesses + occurrence Appearance(s) for
+ * whichever date(s) were actually applied to — never a whole-event
+ * Appearance that's invisible on the public per-occurrence roster). Only
+ * when no application Opportunity is found ("not_found" — this action's
+ * Approve/Decline buttons also cover the organizer's own outstanding
+ * INVITATION, which stays whole-event only, unchanged) does this fall
+ * through to the original unscoped whole-event write below. An
+ * "ambiguous" legacy application (no occurrence recorded, on an Event
+ * that DOES have occurrence rows) refuses approval outright rather than
+ * guessing which date(s) were meant. Every status value OTHER than
+ * approved/declined (invited/applied/pending) is untouched by any of
+ * this — same plain event_businesses write as always. */
 export async function updateParticipatingBusinessStatus(eventId: string, businessId: string, status: string) {
   const redirectPath = `/account/event/${eventId}?tab=participants`;
   const admin = await requireEventManager(eventId, redirectPath);
 
   if (!VALID_PARTICIPATION_STATUSES.includes(status as EventParticipationStatus)) {
     redirect(appendQuery(redirectPath, { error: "Not a valid status." }));
+  }
+
+  if (status === "approved" || status === "declined") {
+    const decision = await resolveEventApplicationDecision(admin, eventId, businessId, status);
+
+    if (decision.kind === "ambiguous") {
+      redirect(
+        appendQuery(redirectPath, {
+          error:
+            "This application doesn't say which date(s) the business applied for. Ask them to submit a new application with specific date(s) selected before you can approve it.",
+        })
+      );
+    }
+
+    if (decision.kind !== "not_found") {
+      revalidatePath(redirectPath);
+      redirect(appendQuery(redirectPath, { participant_updated: "1" }));
+    }
+    // "not_found" falls through to the original unscoped whole-event path
+    // below — most likely this is resolving the organizer's own
+    // outstanding invitation, not an application.
   }
 
   const { error } = await admin

@@ -72,7 +72,7 @@ export default function MessageButton({
   const [mounted, setMounted] = useState(false);
   const [mode, setMode] = useState<Mode>("message");
   const [actorId, setActorId] = useState<string>("");
-  const [occurrenceId, setOccurrenceId] = useState<string>("");
+  const [selectedOccurrenceIds, setSelectedOccurrenceIds] = useState<string[]>([]);
   const [body, setBody] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -111,10 +111,18 @@ export default function MessageButton({
   function reset() {
     setMode("message");
     setActorId(actorOptions[0]?.id ?? "");
-    setOccurrenceId("");
+    // Occurrence-Aware Event Participation pass — Phase 2's product rule:
+    // a single-occurrence Event auto-selects that one date (no extra UI
+    // needed); zero or multiple occurrences start with nothing selected —
+    // multiple REQUIRES an explicit choice, never a silent default.
+    setSelectedOccurrenceIds(eventOccurrences && eventOccurrences.length === 1 ? [eventOccurrences[0].id] : []);
     setBody("");
     setNote("");
     setError(null);
+  }
+
+  function toggleOccurrence(id: string) {
+    setSelectedOccurrenceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function openModal() {
@@ -170,12 +178,15 @@ export default function MessageButton({
     }
   }
 
+  const needsOccurrenceChoice = Boolean(eventOccurrences && eventOccurrences.length > 1);
+  const canSubmitApply = Boolean(selectedActor) && (!needsOccurrenceChoice || selectedOccurrenceIds.length > 0);
+
   async function submitApply() {
-    if (!selectedActor) return;
+    if (!canSubmitApply || !selectedActor) return;
     setSubmitting(true);
     setError(null);
     try {
-      const result = await applyToEventPublic(targetId, occurrenceId || null, selectedActor.id, note);
+      const result = await applyToEventPublic(targetId, selectedOccurrenceIds, selectedActor.id, note);
       if ("error" in result) {
         setError(result.error);
         setSubmitting(false);
@@ -371,22 +382,52 @@ export default function MessageButton({
 
                   {mode === "apply" && (
                     <div className="flex flex-col gap-3">
-                      {eventOccurrences && eventOccurrences.length > 0 && (
-                        <label className="block">
-                          <span className="mb-1.5 block text-xs font-medium text-ink">Date</span>
-                          <select
-                            value={occurrenceId}
-                            onChange={(e) => setOccurrenceId(e.target.value)}
-                            className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none"
-                          >
-                            <option value="">Whole event</option>
+                      {/* Occurrence-Aware Event Participation pass —
+                          Phase 2. Multiple dates: a REQUIRED multi-select
+                          checkbox list, never a "whole event" default (an
+                          approved whole-event application on a recurring
+                          Event is invisible on the public per-occurrence
+                          roster — see this pass's own root-cause fix).
+                          Exactly one date: shown as a plain confirmation
+                          line, already selected — no extra tap needed. No
+                          occurrence rows at all: no date UI, legacy
+                          whole-event application. */}
+                      {eventOccurrences && eventOccurrences.length > 1 && (
+                        <div>
+                          <span className="mb-1.5 block text-xs font-medium text-ink">
+                            Choose the date(s) you&rsquo;d like to participate
+                          </span>
+                          <div className="flex flex-col gap-1.5 rounded-xl border border-black/10 bg-white p-2">
                             {eventOccurrences.map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {new Date(o.startAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                              </option>
+                              <label key={o.id} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-black/[0.02]">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedOccurrenceIds.includes(o.id)}
+                                  onChange={() => toggleOccurrence(o.id)}
+                                  className="h-4 w-4 shrink-0 accent-findmi"
+                                />
+                                <span className="text-sm text-ink">
+                                  {new Date(o.startAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                                </span>
+                              </label>
                             ))}
-                          </select>
-                        </label>
+                          </div>
+                          {selectedOccurrenceIds.length === 0 && (
+                            <p className="mt-1 text-xs text-ink/45">Select at least one date to continue.</p>
+                          )}
+                        </div>
+                      )}
+                      {eventOccurrences && eventOccurrences.length === 1 && (
+                        <p className="text-xs text-ink/50">
+                          Applying for{" "}
+                          <span className="font-medium text-ink">
+                            {new Date(eventOccurrences[0].startAt).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </span>
+                        </p>
                       )}
                       <textarea
                         value={note}
@@ -399,7 +440,7 @@ export default function MessageButton({
                       <button
                         type="button"
                         onClick={submitApply}
-                        disabled={submitting}
+                        disabled={submitting || !canSubmitApply}
                         className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                       >
                         {submitting ? "…" : "Apply to Vend"}

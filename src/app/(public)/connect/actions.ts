@@ -33,12 +33,13 @@ import {
   createOpportunity,
   getOrCreateConversation,
   isAuthorizedForConversation,
+  resolveEventApplicationDecision,
   resolveOpportunity,
   resolveOpportunityByContext,
   sendTextMessage,
   type ConversationEntityType,
 } from "@/lib/opportunities";
-import { ensureEventAppearance, cancelEventAppearance } from "@/app/admin/(protected)/events/actions";
+import { ensureEventAppearance, cancelEventAppearance } from "@/lib/appearance-event-sync";
 
 type ActionResult = { conversationId: string } | { error: string };
 
@@ -102,9 +103,25 @@ export async function messageEventOrganizer(eventId: string, actingBusinessId: s
  * only once participation resolves to 'approved' (already-invited case
  * here, or a later organizer approval), via the same ensureEventAppearance
  * every other approval path uses. */
+/** Occurrence-Aware Event Participation pass — Phase 2's product rule,
+ * enforced server-side (never trusted from the client alone): for an
+ * Event with NO occurrence rows, legacy whole-event application behavior
+ * is unchanged. For an Event with exactly ONE occurrence, an empty
+ * selection auto-applies to that one date. For an Event with MULTIPLE
+ * occurrences, at least one date MUST be selected — never a silent
+ * "whole event" default (that default is exactly what produced the
+ * Palermo Ceramics bug this pass fixes: an approved application with no
+ * recorded occurrence, invisible on the public per-occurrence roster).
+ * Each selected occurrence gets its OWN Opportunity (event_occurrence_id
+ * set) — createOpportunity's existing per-occurrence pending/duplicate/
+ * crossed-resolution rules apply independently to each, and its existing
+ * Conversation-reuse logic (findConversationByEntityPair, keyed on the
+ * business+event identity pair, not occurrence) means every selected
+ * date's Opportunity lands in the SAME conversation — one thread, not
+ * one per date. */
 export async function applyToEventPublic(
   eventId: string,
-  occurrenceId: string | null,
+  occurrenceIds: string[],
   actingBusinessId: string,
   note: string
 ): Promise<ActionResult> {
@@ -117,12 +134,31 @@ export async function applyToEventPublic(
   if ("error" in sender) return sender;
   const { userId, admin } = sender;
 
+  const { data: event } = await admin.from("events").select("id").eq("id", eventId).eq("is_demo", false).maybeSingle();
+  if (!event) return { error: "That event is no longer available." };
+
+  const { data: occurrenceRows } = await admin.from("event_occurrences").select("id").eq("event_id", eventId);
+  const allOccurrenceIds = ((occurrenceRows ?? []) as { id: string }[]).map((o) => o.id);
+  const isRecurring = allOccurrenceIds.length > 0;
+
+  let selectedOccurrenceIds = [...new Set(occurrenceIds.filter(Boolean))];
+  if (isRecurring) {
+    if (allOccurrenceIds.length === 1 && selectedOccurrenceIds.length === 0) {
+      selectedOccurrenceIds = allOccurrenceIds;
+    } else {
+      // Defense in depth — only accept ids that actually belong to this
+      // event, regardless of what the client claims.
+      const validIds = new Set(allOccurrenceIds);
+      selectedOccurrenceIds = selectedOccurrenceIds.filter((id) => validIds.has(id));
+    }
+    if (selectedOccurrenceIds.length === 0) {
+      return { error: "Choose at least one date to apply for." };
+    }
+  }
+
   let conversationId: string | null = null;
 
-  if (!occurrenceId) {
-    const { data: event } = await admin.from("events").select("id").eq("id", eventId).eq("is_demo", false).maybeSingle();
-    if (!event) return { error: "That event is no longer available." };
-
+  if (!isRecurring) {
     const { data: existingRow } = await admin
       .from("event_businesses")
       .select("status")
@@ -155,42 +191,36 @@ export async function applyToEventPublic(
       console.error("[opportunities] failed to record application Opportunity", err);
     }
   } else {
-    const { data: occurrence } = await admin
-      .from("event_occurrences")
-      .select("id, event_id")
-      .eq("id", occurrenceId)
-      .eq("event_id", eventId)
-      .maybeSingle();
-    if (!occurrence) return { error: "That date is no longer available." };
-
-    const { data: existingRow } = await admin
-      .from("event_occurrence_businesses")
-      .select("status")
-      .eq("occurrence_id", occurrenceId)
-      .eq("business_id", actingBusinessId)
-      .maybeSingle();
-    const currentStatus = (existingRow as { status: string } | null)?.status ?? null;
-    if (currentStatus === "approved") return { error: "You're already a confirmed participant for that date." };
-    if (currentStatus !== "applied" && currentStatus !== "pending") {
-      await admin
+    for (const occurrenceId of selectedOccurrenceIds) {
+      const { data: existingRow } = await admin
         .from("event_occurrence_businesses")
-        .upsert({ occurrence_id: occurrenceId, business_id: actingBusinessId, status: "applied" }, { onConflict: "occurrence_id,business_id" });
-    }
+        .select("status")
+        .eq("occurrence_id", occurrenceId)
+        .eq("business_id", actingBusinessId)
+        .maybeSingle();
+      const currentStatus = (existingRow as { status: string } | null)?.status ?? null;
+      if (currentStatus === "approved") continue; // already confirmed for this date — nothing to (re)apply for
+      if (currentStatus !== "applied" && currentStatus !== "pending") {
+        await admin
+          .from("event_occurrence_businesses")
+          .upsert({ occurrence_id: occurrenceId, business_id: actingBusinessId, status: "applied" }, { onConflict: "occurrence_id,business_id" });
+      }
 
-    try {
-      const outcome = await createOpportunity(admin, {
-        type: "event_application",
-        eventId: occurrence.event_id,
-        eventOccurrenceId: occurrenceId,
-        businessId: actingBusinessId,
-        initiatorUserId: userId,
-        initiatorEntityType: "business",
-        initiatorEntityId: actingBusinessId,
-        note: note.trim() || null,
-      });
-      if ("opportunity" in outcome) conversationId = outcome.opportunity.conversation_id;
-    } catch (err) {
-      console.error("[opportunities] failed to record application Opportunity", err);
+      try {
+        const outcome = await createOpportunity(admin, {
+          type: "event_application",
+          eventId,
+          eventOccurrenceId: occurrenceId,
+          businessId: actingBusinessId,
+          initiatorUserId: userId,
+          initiatorEntityType: "business",
+          initiatorEntityId: actingBusinessId,
+          note: note.trim() || null,
+        });
+        if (!conversationId && "opportunity" in outcome) conversationId = outcome.opportunity.conversation_id;
+      } catch (err) {
+        console.error("[opportunities] failed to record application Opportunity", err);
+      }
     }
   }
 
@@ -441,6 +471,20 @@ export async function respondToInvitationInThread(conversationId: string, opport
  * reasoning as respondToInvitationInThread above. Whole-event applications
  * only — occurrence-specific applications still resolve admin-side only,
  * same existing limitation the Participants tab already has. */
+/** Occurrence-Aware Event Participation pass — this now goes through
+ * resolveEventApplicationDecision FIRST (lib/opportunities.ts), which is
+ * occurrence-aware: an application to specific date(s) writes
+ * event_occurrence_businesses + an occurrence Appearance for exactly
+ * those date(s), never a whole-event Appearance that made the Business
+ * invisible on the public per-occurrence roster (see that function's own
+ * root-cause comment). Only when NO application Opportunity is found for
+ * this context at all ("not_found" — most commonly because this approval
+ * is actually against the organizer's own outstanding invitation, not an
+ * application) does this fall back to the original unscoped whole-event
+ * write, preserving that existing behavior exactly. An "ambiguous" legacy
+ * application (event_occurrence_id null, on an Event that DOES have
+ * occurrence rows) refuses approval outright rather than guessing which
+ * date(s) were meant — see Phase 9 of this pass's own spec. */
 export async function respondToApplicationInThread(conversationId: string, eventId: string, businessId: string, response: "approved" | "declined") {
   const redirectPath = threadPath(conversationId);
   try {
@@ -451,24 +495,37 @@ export async function respondToApplicationInThread(conversationId: string, event
   const admin = getAdminSupabase();
   if (!admin) redirect(`${redirectPath}?error=${encodeURIComponent("Server isn't configured.")}`);
 
-  const { error } = await admin.from("event_businesses").update({ status: response }).eq("event_id", eventId).eq("business_id", businessId);
-  if (error) redirect(`${redirectPath}?error=${encodeURIComponent(error.message)}`);
+  const decision = await resolveEventApplicationDecision(admin, eventId, businessId, response);
 
-  if (response === "approved") {
-    await ensureEventAppearance(admin, eventId, businessId);
-  } else {
-    await cancelEventAppearance(admin, eventId, businessId);
+  if (decision.kind === "ambiguous") {
+    redirect(
+      `${redirectPath}?error=${encodeURIComponent("This application doesn't say which date(s) the business applied for. Ask them to submit a new application with specific date(s) selected before you can approve it.")}`
+    );
   }
 
-  try {
-    await resolveOpportunityByContext(
-      admin,
-      { eventId, eventOccurrenceId: null, businessId },
-      response === "approved" ? "accepted" : "declined",
-      response === "approved" ? "Approved by the organizer." : "Declined by the organizer."
-    );
-  } catch (err) {
-    console.error("[opportunities] failed to resolve Opportunity for application response", err);
+  if (decision.kind === "not_found") {
+    // Not an application in the Opportunity system for this context —
+    // most likely the organizer's own outstanding invitation. Preserve
+    // the original unscoped, whole-event behavior exactly as it was.
+    const { error } = await admin.from("event_businesses").update({ status: response }).eq("event_id", eventId).eq("business_id", businessId);
+    if (error) redirect(`${redirectPath}?error=${encodeURIComponent(error.message)}`);
+
+    if (response === "approved") {
+      await ensureEventAppearance(admin, eventId, businessId);
+    } else {
+      await cancelEventAppearance(admin, eventId, businessId);
+    }
+
+    try {
+      await resolveOpportunityByContext(
+        admin,
+        { eventId, eventOccurrenceId: null, businessId },
+        response === "approved" ? "accepted" : "declined",
+        response === "approved" ? "Approved by the organizer." : "Declined by the organizer."
+      );
+    } catch (err) {
+      console.error("[opportunities] failed to resolve Opportunity for application response", err);
+    }
   }
 
   redirect(`${redirectPath}?updated=1`);
