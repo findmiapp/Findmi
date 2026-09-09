@@ -11,6 +11,7 @@
 import { getSupabase } from "@/lib/supabase";
 import { validateUsername } from "@/lib/username";
 import type { HandleEntityType } from "@/lib/handles";
+import { siteConfig } from "@/lib/site-config";
 
 export type HandleAvailability =
   | { status: "invalid"; message: string }
@@ -41,9 +42,9 @@ export async function checkHandleAvailability(
 
   const { data } = await supabase.from("public_handles").select("entity_type, entity_id").eq("handle", validation.value).maybeSingle();
 
-  if (!data) return { status: "available", message: `findmi.app/${validation.value} is available` };
+  if (!data) return { status: "available", message: `${siteConfig.domain}/${validation.value} is available` };
   if (current && data.entity_type === current.entityType && data.entity_id === current.entityId) {
-    return { status: "available", message: `findmi.app/${validation.value} is available` };
+    return { status: "available", message: `${siteConfig.domain}/${validation.value} is available` };
   }
   return { status: "taken", message: "That username is already taken." };
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { siteConfig } from "@/lib/site-config";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -62,8 +63,8 @@ export default function TermsPage() {
           <h2 className="text-base font-semibold text-ink">Contact</h2>
           <p className="mt-2">
             Questions about these terms? Reach us at{" "}
-            <a href="mailto:hello@findmi.app" className="font-medium text-ink underline underline-offset-2">
-              hello@findmi.app
+            <a href={`mailto:${siteConfig.legalContactEmail}`} className="font-medium text-ink underline underline-offset-2">
+              {siteConfig.legalContactEmail}
             </a>
             .
           </p>

@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { checkHandleAvailability, type HandleAvailability } from "@/app/(public)/actions/handle-availability";
 import type { HandleEntityType } from "@/lib/handles";
+import { siteConfig } from "@/lib/site-config";
 
 const ALLOWED_CHARS = /[^a-z0-9_]/g;
 const DEBOUNCE_MS = 400;
@@ -73,7 +74,7 @@ export default function UsernameField({
   return (
     <div>
       <div className="flex items-center gap-1.5 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 focus-within:border-ink/30">
-        <span className="shrink-0 text-sm text-ink/40">findmi.app/</span>
+        <span className="shrink-0 text-sm text-ink/40">{siteConfig.domain}/</span>
         <input
           type="text"
           name={name}

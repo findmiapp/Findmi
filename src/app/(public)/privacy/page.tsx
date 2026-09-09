@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { siteConfig } from "@/lib/site-config";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -54,8 +55,8 @@ export default function PrivacyPage() {
           <h2 className="text-base font-semibold text-ink">Contact</h2>
           <p className="mt-2">
             Questions about this policy? Reach us at{" "}
-            <a href="mailto:privacy@findmi.app" className="font-medium text-ink underline underline-offset-2">
-              privacy@findmi.app
+            <a href={`mailto:${siteConfig.legalPrivacyEmail}`} className="font-medium text-ink underline underline-offset-2">
+              {siteConfig.legalPrivacyEmail}
             </a>
             .
           </p>

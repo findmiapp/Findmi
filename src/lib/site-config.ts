@@ -54,11 +54,32 @@ export interface SiteConfig {
    * sitemap.ts, which previously hardcoded "https://findmi.app" inline for
    * this exact same fallback case. */
   publicUrlFallback: string;
+  /** Deployment Readiness Fixes, Pass 8 — the bare public-facing brand
+   * domain (no protocol, no trailing slash): "findmi.app" /
+   * "highperlocal.com". This is a DISPLAY LABEL only — the profile-URL
+   * prefix (UsernameField.tsx, handle-availability.ts, FindmiUrlCard.tsx),
+   * the admin join-page invite-link hint, and the .ics calendar UID
+   * suffix (AddToCalendarButton.tsx). It is NOT the runtime redirect/auth
+   * origin — that stays exactly getPublicOrigin()'s own
+   * NEXT_PUBLIC_SITE_URL -> VERCEL_URL -> localhost precedence
+   * (lib/site-url.ts), unchanged by this field, so preview auth links
+   * keep resolving to the actual preview deployment even before
+   * highperlocal.com is connected. */
+  domain: string;
   /** Fallback shown/used only when the founder-configured contact email
    * (Admin → Site → Contact Info, lib/contact-info.ts) is unset. `null`
    * for findmi preserves that page's exact existing behavior (unset ->
-   * hidden action, never a fabricated address). */
+   * hidden action, never a fabricated address). Distinct from
+   * legalPrivacyEmail/legalContactEmail below — this one fallback for a
+   * founder-editable business-contact field, those two are the fixed
+   * addresses printed on the static Privacy/Terms pages. */
   supportEmail: string | null;
+  /** Deployment Readiness Fixes, Pass 8 — the two static legal-page
+   * contact addresses (Privacy's "Contact" section / Terms' "Contact"
+   * section). These establish the INTENDED address only; for highperlocal
+   * neither inbox is provisioned yet (see BRAND_CONFIG entry below). */
+  legalPrivacyEmail: string;
+  legalContactEmail: string;
   metadataTitleDefault: string;
   metadataTitleTemplate: string;
   metadataDescription: string;
@@ -93,7 +114,10 @@ const BRAND_CONFIG: Record<SiteBrand, SiteConfig> = {
     siteName: "Findmi",
     tagline: "Find what you're looking for. And where it'll be next.",
     publicUrlFallback: "https://findmi.app",
+    domain: "findmi.app",
     supportEmail: null,
+    legalPrivacyEmail: "privacy@findmi.app",
+    legalContactEmail: "hello@findmi.app",
     metadataTitleDefault: "Findmi — Find what you're looking for. And where it'll be next.",
     metadataTitleTemplate: "%s · Findmi",
     metadataDescription:
@@ -114,11 +138,21 @@ const BRAND_CONFIG: Record<SiteBrand, SiteConfig> = {
     // findmi.app above: a last-resort fallback if NEXT_PUBLIC_SITE_URL is
     // ever left unset in a real deployment, never contacted by this code.
     publicUrlFallback: "https://highperlocal.com",
+    // The canonical brand domain — used as a display label (profile URLs,
+    // the join-page invite hint, calendar UIDs) even before DNS/highperlocal.com
+    // is actually connected to a deployment (see this field's own doc
+    // comment on SiteConfig above: this is never the runtime redirect
+    // origin, which stays getPublicOrigin()'s own precedence).
+    domain: "highperlocal.com",
     // Placeholder address — no inbox is provisioned for this domain yet.
     // Real contact info should be set per-deployment via Admin → Site →
     // Contact Info (lib/contact-info.ts) once Highperlocal's own Supabase
     // project exists; this is only the fallback for when that's unset.
     supportEmail: "hello@highperlocal.com",
+    // Placeholder addresses — same "not provisioned yet" caveat as
+    // supportEmail above; this establishes the intended address only.
+    legalPrivacyEmail: "privacy@highperlocal.com",
+    legalContactEmail: "hello@highperlocal.com",
     metadataTitleDefault: "Highperlocal — Brand activations, pop-ups, and events near you.",
     metadataTitleTemplate: "%s · Highperlocal",
     metadataDescription:

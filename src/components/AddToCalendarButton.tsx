@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { siteConfig } from "@/lib/site-config";
 
 // Event Detail V2 polish pass, item 9 — real event data only (title,
 // start, end, venue/address, description), no paid third-party calendar
@@ -34,7 +35,7 @@ function buildIcs({
     "VERSION:2.0",
     "PRODID:-//Findmi//Event//EN",
     "BEGIN:VEVENT",
-    `UID:${crypto.randomUUID()}@findmi.app`,
+    `UID:${crypto.randomUUID()}@${siteConfig.domain}`,
     `DTSTAMP:${toIcsDate(new Date().toISOString())}`,
     `DTSTART:${toIcsDate(startAt)}`,
     `DTEND:${toIcsDate(endAt)}`,

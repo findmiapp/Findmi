@@ -14,6 +14,7 @@ import { useState } from "react";
 import CopyButton from "./CopyButton";
 import UsernameField from "./UsernameField";
 import type { HandleEntityType } from "@/lib/handles";
+import { siteConfig } from "@/lib/site-config";
 
 const primaryButtonClass =
   "flex h-10 shrink-0 items-center justify-center rounded-full bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
@@ -36,7 +37,7 @@ export default function FindmiUrlCard({
   action: (formData: FormData) => void | Promise<void>;
 }) {
   const [editing, setEditing] = useState(!currentHandle);
-  const url = currentHandle ? `findmi.app/${currentHandle}` : null;
+  const url = currentHandle ? `${siteConfig.domain}/${currentHandle}` : null;
 
   return (
     <div>

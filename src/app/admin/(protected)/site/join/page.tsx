@@ -1,6 +1,7 @@
 import AdminTabNav, { type TabNavItem } from "@/components/admin/TabNav";
 import { CheckboxField, TextareaField, TextField } from "@/components/admin/Fields";
 import { getAdminSiteSections } from "@/lib/admin/site-queries";
+import { siteConfig } from "@/lib/site-config";
 import {
   JOIN_CARD_DEFAULTS,
   JOIN_CARD_KEYS,
@@ -438,7 +439,7 @@ function InviteSectionEditor({ invite }: { invite: ReturnType<typeof resolveJoin
         label="Show the invite-code box on the public page"
         name="is_visible"
         defaultChecked={invite.visible}
-        hint="Uncheck to hide this box. The findmi.app/join?invite=CODE link still works either way — this only controls the manual entry box."
+        hint={`Uncheck to hide this box. The ${siteConfig.domain}/join?invite=CODE link still works either way — this only controls the manual entry box.`}
       />
       <TextField label="Heading" name="heading" defaultValue={invite.heading} />
       <TextareaField
