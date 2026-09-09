@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { bool, errorRedirectUrl, str } from "@/lib/admin/form-helpers";
-import { NAV_ICON_KEYS, validateCustomDestination, type NavDestinationType } from "@/lib/navigation";
+import { NAV_AUDIENCES, NAV_ICON_KEYS, validateCustomDestination, type NavAudience, type NavDestinationType } from "@/lib/navigation";
 import { findPublicRoute } from "@/lib/public-routes";
 
 const EDIT_PATH = "/admin/site/navigation";
@@ -47,6 +47,17 @@ function readAndValidate(formData: FormData): { fields: Record<string, unknown> 
   const icon_key = iconRaw && (NAV_ICON_KEYS as readonly string[]).includes(iconRaw) ? iconRaw : null;
   const parent_id = str(formData, "parent_id");
 
+  // Navigation Information Architecture + Founder-Editable Audience pass
+  // — Everyone/Logged Out/Logged In, per item (parent or child alike:
+  // this same readAndValidate/saveNavItem pair is the ONE save path for
+  // both, via NavItemCard). An unrecognized/missing value falls back to
+  // "everyone" — the same safe default the additive migration gave every
+  // pre-existing row, never a silently-hidden item from a bad submit.
+  const audienceRaw = str(formData, "audience");
+  const audience: NavAudience = (NAV_AUDIENCES as readonly string[]).includes(audienceRaw ?? "")
+    ? (audienceRaw as NavAudience)
+    : "everyone";
+
   return {
     fields: {
       label,
@@ -55,6 +66,7 @@ function readAndValidate(formData: FormData): { fields: Record<string, unknown> 
       custom_href,
       icon_key,
       parent_id,
+      audience,
       is_visible: bool(formData, "is_visible"),
       is_highlight: bool(formData, "is_highlight"),
     },
@@ -100,6 +112,7 @@ export async function createNavItem(formData: FormData) {
     parent_id: null,
     is_visible: true,
     is_highlight: false,
+    audience: "everyone",
     sort_order: nextOrder,
   });
   if (error) redirect(errorRedirectUrl(EDIT_PATH, error.message));

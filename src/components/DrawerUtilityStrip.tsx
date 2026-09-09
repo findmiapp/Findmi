@@ -1,40 +1,36 @@
 "use client";
 
-import Link from "next/link";
 import CartBadge from "./CartBadge";
-import SignOutConfirm from "./SignOutConfirm";
-import { signOut } from "@/app/(public)/account/profile/actions";
 
 const iconButtonClass =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink transition active:scale-90";
 
 /**
  * Thin utility icon row at the very top of the mobile drawer — Email,
- * Phone, Cart, Login/Logout, Account. Reuses existing routes/actions/
- * data rather than inventing any of its own:
- *   - Cart is the exact same CartBadge already used in MobileHeader (icon
- *     variant, same live localStorage count) — not a second cart icon.
- *   - Login/Logout is state-aware off `authenticated`, which the layout
- *     resolves server-side via the same /account auth Supabase already
- *     uses everywhere else (see (public)/layout.tsx) — logged out links
- *     to the existing /login route; logged in submits the exact same
- *     signOut() Server Action account/profile's own "Sign Out" button
- *     already calls. No new auth check, no new sign-out mechanism.
- *   - Email/Phone come from the founder-editable site_sections "contact"
- *     row (Admin → Site → Contact Info — see lib/contact-info.ts) and are
- *     simply absent (not a dead icon) when that field is blank.
- * `onNavigate` closes the drawer — every action here either leaves the
- * page (Cart/Account/Login/Logout) or opens an external app (mailto:/
- * tel:), so every icon closes the drawer the same way every other drawer
- * link already does.
+ * Phone, Cart only (Navigation IA + Founder-Editable Audience pass).
+ * Login/Logout/Account used to live here too as unlabeled icons, but
+ * every one of those destinations is now a clearly labeled row in the
+ * nav body below: "Log In" (a real, founder-editable, audience=
+ * logged_out nav_items row), "Your Findmi > Account" (audience=
+ * logged_in), and the dedicated Sign Out row at the very bottom
+ * (authenticated only — see HamburgerMenu). Keeping a second, unlabeled
+ * shortcut to the exact same destinations here would just be redundant
+ * presentation, not redundant functionality — every one of those
+ * destinations is still reachable, just once, clearly labeled, in the
+ * body. Cart is the exact same CartBadge already used in MobileHeader
+ * (icon variant, same live localStorage count) — not a second cart icon.
+ * Email/Phone come from the founder-editable site_sections "contact" row
+ * (Admin → Site → Contact Info — see lib/contact-info.ts) and are simply
+ * absent (not a dead icon) when that field is blank. `onNavigate` closes
+ * the drawer — every action here either opens an external app (mailto:/
+ * tel:) or leaves the page (Cart), so every icon closes the drawer the
+ * same way every other drawer link already does.
  */
 export default function DrawerUtilityStrip({
-  authenticated,
   email,
   phone,
   onNavigate,
 }: {
-  authenticated: boolean;
   email: string | null;
   phone: string | null;
   onNavigate: () => void;
@@ -54,22 +50,6 @@ export default function DrawerUtilityStrip({
       <span onClick={onNavigate}>
         <CartBadge />
       </span>
-      {authenticated ? (
-        // Sign-Out Confirmation pass — the drawer itself stays open behind
-        // the confirm dialog (no onNavigate here) rather than closing on
-        // tap: Cancel returns exactly to where the visitor was, and a
-        // confirmed sign-out navigates the whole page away regardless.
-        <SignOutConfirm action={signOut} ariaLabel="Log out" className={iconButtonClass}>
-          <LogoutGlyph className="h-5 w-5" />
-        </SignOutConfirm>
-      ) : (
-        <Link href="/login" onClick={onNavigate} aria-label="Log in" className={iconButtonClass}>
-          <LoginGlyph className="h-5 w-5" />
-        </Link>
-      )}
-      <Link href="/account" onClick={onNavigate} aria-label="Account" className={iconButtonClass}>
-        <AccountGlyph className="h-5 w-5" />
-      </Link>
     </div>
   );
 }

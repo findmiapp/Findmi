@@ -2,7 +2,7 @@ import NavDesktop from "@/components/NavDesktop";
 import MobileHeader from "@/components/MobileHeader";
 import AdminToolbar from "@/components/AdminToolbar";
 import Footer from "@/components/Footer";
-import { getVisibleNavItems } from "@/lib/navigation";
+import { filterNavItemsForAudience, getVisibleNavItems } from "@/lib/navigation";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSiteContactInfo } from "@/lib/contact-info";
@@ -16,8 +16,11 @@ export const revalidate = 60;
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   // One fetch, shared by both the mobile hamburger drawer and desktop nav
   // (Part A11/A5) — founder-managed nav_items when populated, otherwise
-  // the real-routes-only fallback (see lib/navigation.ts).
-  const navItems = await getVisibleNavItems();
+  // the real-routes-only fallback (see lib/navigation.ts). Still exactly
+  // one nav_items query regardless of auth state — audience filtering
+  // (below, once `authenticated` is known) narrows the SAME already-
+  // fetched tree, it never triggers a second fetch.
+  const allNavItems = await getVisibleNavItems();
 
   // Admin quick toolbar — AdminToolbar itself independently re-verifies
   // this (see its own note on why that's not a weaker check), but the
@@ -47,6 +50,12 @@ export default async function PublicLayout({ children }: { children: React.React
   } = await supabase.auth.getUser();
   const authenticated = Boolean(user);
   const contactInfo = await getSiteContactInfo();
+
+  // Navigation Information Architecture + Founder-Editable Audience pass
+  // — the one place a viewer's audience narrows the shared nav_items tree
+  // (Section F): everyone/logged_out/logged_in, founder-configured per
+  // item in /admin/site/navigation, never a second query.
+  const navItems = filterNavItemsForAudience(allNavItems, authenticated);
 
   // Global Quick-Create pass — the same managed-Business list
   // BusinessScopedAction needs for its zero/one/many routing decision

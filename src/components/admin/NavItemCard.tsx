@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CheckboxField, TextField } from "@/components/admin/Fields";
-import { NAV_ICON_KEYS, type NavDestinationType, type NavItem } from "@/lib/navigation";
+import { NAV_AUDIENCES, NAV_ICON_KEYS, type NavAudience, type NavDestinationType, type NavItem } from "@/lib/navigation";
 import type { PublicRouteOption } from "@/lib/public-routes";
 
 const selectClass =
@@ -10,6 +10,12 @@ const selectClass =
 
 const iconButtonClass =
   "flex h-7 w-7 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:bg-black/[0.03] disabled:opacity-30";
+
+const AUDIENCE_LABELS: Record<NavAudience, string> = {
+  everyone: "Everyone",
+  logged_out: "Signed out only",
+  logged_in: "Signed in only",
+};
 
 const ICON_LABELS: Record<string, string> = {
   compass: "Compass",
@@ -126,6 +132,21 @@ export default function NavItemCard({
           </select>
           <span className="mt-1 block text-xs text-ink/45">
             Nests this item under another as an expandable submenu — one level only.
+          </span>
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-ink">Audience</span>
+          <select name="audience" defaultValue={item.audience ?? "everyone"} className={selectClass}>
+            {NAV_AUDIENCES.map((value) => (
+              <option key={value} value={value}>
+                {AUDIENCE_LABELS[value]}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-ink/45">
+            Who sees this item — a parent hidden for a viewer hides its children too, even if a child&rsquo;s own
+            audience would otherwise show it to them.
           </span>
         </label>
 

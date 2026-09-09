@@ -7,7 +7,7 @@ import HeaderSearch from "./HeaderSearch";
 import Logo from "./Logo";
 import NavIcon from "./NavIcon";
 import QuickCreateMenu from "./QuickCreateMenu";
-import { stripAcquisitionNavItems, type ResolvedNavItem } from "@/lib/navigation";
+import type { ResolvedNavItem } from "@/lib/navigation";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
 
 // Desktop/tablet horizontal nav (Tailwind's md: breakpoint and up, so this
@@ -60,16 +60,13 @@ export default function NavDesktop({
     };
   }, [openId]);
 
-  // Authenticated Menu Cleanup pass — Locked Rule: no generic Pick a
-  // Plan/Join/pricing CTA in the global menu once signed in. This same
-  // navItems tree also drives the highlighted CTA button rendered below
-  // (e.g. "Join For Free"), so it's stripped here too, not just in the
-  // mobile drawer — the rest of the founder-configured tree (Discover/
-  // Brands/Marketplace/etc.) is unaffected, and a signed-out visitor's
-  // bar is completely untouched.
-  const visibleNavItems = authenticated ? stripAcquisitionNavItems(navItems) : navItems;
-
-  const allItems = visibleNavItems.flatMap((item) => [item, ...item.children]);
+  // Navigation Information Architecture + Founder-Editable Audience pass
+  // — `navItems` arrives here ALREADY narrowed to this viewer's audience
+  // (filterNavItemsForAudience, applied once in the public layout), so a
+  // signed-in visitor never sees "Join For Free" (or any other
+  // logged_out-only item) render as a CTA button below without any
+  // filtering needed here.
+  const allItems = navItems.flatMap((item) => [item, ...item.children]);
   const highlighted = allItems.filter(
     (item): item is ResolvedNavItem & { href: string } => Boolean(item.href) && item.highlight
   );
@@ -80,7 +77,7 @@ export default function NavDesktop({
       <div className="mx-auto flex max-w-6xl items-center gap-8 px-6 py-4">
         <Logo heightClassName="h-10" />
         <nav ref={navRef} className="flex flex-1 items-center gap-6">
-          {visibleNavItems.map((item) => {
+          {navItems.map((item) => {
             if (highlightedIds.has(item.id)) return null; // rendered as a CTA button below instead
 
             if (item.href) {

@@ -44,7 +44,9 @@ export default async function NavigationAdminPage({
       <p className="mt-1 max-w-xl text-sm text-ink/50">
         Control the menu behind Findmi&rsquo;s header menu button — add, rename, hide, reorder, or delete
         items without a code change. Nest an item under another (one level) to make an expandable
-        submenu. Mark one item Highlight to make it stand out as a call-to-action.
+        submenu. Mark one item Highlight to make it stand out as a call-to-action. Set Audience to
+        Everyone, Signed Out Only, or Signed In Only to control who sees an item — a signed-out
+        visitor and a signed-in account can have a genuinely different menu.
       </p>
 
       {error && (

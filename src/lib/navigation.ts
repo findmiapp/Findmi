@@ -13,6 +13,16 @@ import { findPublicRoute } from "./public-routes";
 
 export type NavDestinationType = "route" | "custom";
 
+/** Founder-editable audience gate (Navigation Information Architecture +
+ * Founder-Editable Audience pass). "everyone" (the default every existing
+ * row got via the additive migration, so production navigation never
+ * silently disappears) always renders; "logged_out"/"logged_in" render
+ * only for that specific viewer state. This is the ONE source of truth
+ * for which items a viewer sees — see filterNavItemsForAudience below,
+ * the only function that ever reads it. */
+export const NAV_AUDIENCES = ["everyone", "logged_out", "logged_in"] as const;
+export type NavAudience = (typeof NAV_AUDIENCES)[number];
+
 /** Small, curated icon set (Part A6: "do not overengineer icons") — the
  * single list both the admin picker and NavIcon.tsx render from, so a key
  * saved in admin always resolves to a real icon on the frontend. */
@@ -45,6 +55,7 @@ export interface NavItem {
    * parent — enforced at write time in the admin actions, not just by
    * convention — so the tree is always exactly one level deep. */
   parent_id: string | null;
+  audience: NavAudience;
 }
 
 export interface ResolvedNavItem {
@@ -59,6 +70,7 @@ export interface ResolvedNavItem {
   external: boolean;
   icon: NavIconKey | null;
   highlight: boolean;
+  audience: NavAudience;
   children: ResolvedNavItem[];
 }
 
@@ -79,6 +91,7 @@ function toResolvedLeaf(item: NavItem): Omit<ResolvedNavItem, "children"> | null
     external: href ? /^https?:\/\//i.test(href) : false,
     icon,
     highlight: item.is_highlight,
+    audience: NAV_AUDIENCES.includes(item.audience) ? item.audience : "everyone",
   };
 }
 
@@ -162,9 +175,10 @@ export const FALLBACK_NAV_ITEMS: ResolvedNavItem[] = [
     external: false,
     icon: "calendar",
     highlight: false,
+    audience: "everyone",
     children: [
-      { id: "fallback-events-all", label: "All Events", href: "/events", external: false, icon: null, highlight: false, children: [] },
-      { id: "fallback-events-discover", label: "Discover", href: "/discover", external: false, icon: null, highlight: false, children: [] },
+      { id: "fallback-events-all", label: "All Events", href: "/events", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
+      { id: "fallback-events-discover", label: "Discover", href: "/discover", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
     ],
   },
   {
@@ -174,13 +188,14 @@ export const FALLBACK_NAV_ITEMS: ResolvedNavItem[] = [
     external: false,
     icon: "storefront",
     highlight: false,
+    audience: "everyone",
     children: [
-      { id: "fallback-brands-all", label: "Discover Brands", href: "/businesses", external: false, icon: null, highlight: false, children: [] },
-      { id: "fallback-brands-people", label: "People", href: "/people", external: false, icon: null, highlight: false, children: [] },
-      { id: "fallback-brands-locations", label: "Locations", href: "/locations", external: false, icon: null, highlight: false, children: [] },
+      { id: "fallback-brands-all", label: "Discover Brands", href: "/businesses", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
+      { id: "fallback-brands-people", label: "People", href: "/people", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
+      { id: "fallback-brands-locations", label: "Locations", href: "/locations", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
     ],
   },
-  { id: "fallback-marketplace", label: "Marketplace", href: "/marketplace", external: false, icon: "tag", highlight: false, children: [] },
+  { id: "fallback-marketplace", label: "Marketplace", href: "/marketplace", external: false, icon: "tag", highlight: false, audience: "everyone", children: [] },
   {
     id: "fallback-for-business",
     label: "Findmi for Business",
@@ -188,38 +203,41 @@ export const FALLBACK_NAV_ITEMS: ResolvedNavItem[] = [
     external: false,
     icon: null,
     highlight: false,
+    audience: "everyone",
     children: [
-      { id: "fallback-fb-join", label: "Join Findmi", href: "/join", external: false, icon: null, highlight: true, children: [] },
+      { id: "fallback-fb-join", label: "Join Findmi", href: "/join", external: false, icon: null, highlight: true, audience: "everyone", children: [] },
     ],
   },
-  { id: "fallback-about", label: "About", href: "/about", external: false, icon: null, highlight: false, children: [] },
-  { id: "fallback-you", label: "You", href: "/you", external: false, icon: "person", highlight: false, children: [] },
+  { id: "fallback-about", label: "About", href: "/about", external: false, icon: null, highlight: false, audience: "everyone", children: [] },
+  { id: "fallback-you", label: "You", href: "/you", external: false, icon: "person", highlight: false, audience: "everyone", children: [] },
 ];
 
-// Authenticated Menu Cleanup pass — a signed-in visitor is never shown a
-// generic acquisition/plan CTA in the global nav. Business plan belongs to
-// the Business (upgraded contextually inside its own Business Manager),
-// never assumed at the account level — see this pass's own locked rule.
-const AUTH_HIDDEN_ROUTES = new Set(["/join", "/upgrade/pro"]);
+function audienceMatches(audience: NavAudience, authenticated: boolean): boolean {
+  if (audience === "everyone") return true;
+  return authenticated ? audience === "logged_in" : audience === "logged_out";
+}
 
-/** Recursively strips any founder-configured nav item (top-level or one
- * level of child) whose resolved href is a known acquisition route —
- * currently just "Join For Free" -> /join, whichever nav_items row that
- * happens to be founder-configured as today. A parent left with no href
- * of its own and no remaining children after filtering is dropped too,
- * same "nothing to link to or expand" rule buildNavTree already applies.
- * Only ever called with an authenticated visitor's nav tree — a signed-
- * out visitor's tree is returned completely untouched by every caller
- * (see HamburgerMenu/NavDesktop), so visitor acquisition is unaffected. */
-export function stripAcquisitionNavItems(items: ResolvedNavItem[]): ResolvedNavItem[] {
+/** Navigation Information Architecture + Founder-Editable Audience pass —
+ * the ONE place a viewer's nav tree is narrowed by audience, replacing
+ * the earlier pass's hardcoded href-based acquisition-CTA filter with a
+ * real, founder-editable `audience` column (see NavItemCard in the admin
+ * Navigation editor). A top-level item whose own audience excludes this
+ * viewer is dropped ENTIRELY, children included, regardless of any
+ * child's own audience — "a child must never render if its parent is
+ * hidden for that viewer." A top-level item that DOES match is kept, but
+ * its children are still independently filtered by their own audience —
+ * a "logged_in"-only child inside an "everyone" parent (e.g. Discover)
+ * only shows to a signed-in visitor, and vice versa. Called once, in the
+ * public layout, against the same single getVisibleNavItems() fetch
+ * both MobileHeader/HamburgerMenu and NavDesktop already share — never a
+ * second nav_items query. */
+export function filterNavItemsForAudience(items: ResolvedNavItem[], authenticated: boolean): ResolvedNavItem[] {
   return items
-    .map((item) => {
-      if (item.href && AUTH_HIDDEN_ROUTES.has(item.href)) return null;
-      const children = item.children.filter((c) => !(c.href && AUTH_HIDDEN_ROUTES.has(c.href)));
-      if (!item.href && children.length === 0) return null;
-      return { ...item, children };
-    })
-    .filter((i): i is ResolvedNavItem => i !== null);
+    .filter((item) => audienceMatches(item.audience, authenticated))
+    .map((item) => ({
+      ...item,
+      children: item.children.filter((child) => audienceMatches(child.audience, authenticated)),
+    }));
 }
 
 /** Validates a founder-entered Custom Link destination (Part A4.2). Only
