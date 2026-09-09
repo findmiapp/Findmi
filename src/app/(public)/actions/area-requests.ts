@@ -3,6 +3,7 @@
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { findOrCreateConsumerMarketRequest, recordMarketRequestInterest } from "@/lib/market-requests";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 // Consumer Area Picker + Market Requests V1 — the one public entry point
 // for "Don't see your area? / Notify me when this Area launches",
@@ -48,8 +49,23 @@ export async function requestMissingArea(input: { text: string; email?: string }
   if (!admin) return { ok: false, error: "Server isn't configured." };
 
   try {
-    const { requestId, match } = await findOrCreateConsumerMarketRequest(admin, { text });
+    const { requestId, match, created } = await findOrCreateConsumerMarketRequest(admin, { text });
     await recordMarketRequestInterest(admin, { requestId, userId: user?.id ?? null, email });
+    // Admin Action Email Notifications V1 — only a genuinely new,
+    // still-`pending` request needs founder attention; `created: false`
+    // means this reused an already-recorded request (interest was just
+    // added to it, no new review needed), and a non-null `match` means
+    // it auto-resolved onto existing geography (status='mapped') rather
+    // than landing in the review queue at all.
+    if (created && !match) {
+      await notifyAdmin({
+        subject: `New Market/Area request — ${text}`,
+        heading: "New Market/Area request",
+        body: [`Requested: ${text}`, "Source: Consumer (Area Picker)"],
+        actionLabel: "Review Market Requests",
+        actionUrl: "/admin/market-requests",
+      });
+    }
     return { ok: true, matchedLabel: match?.label };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Couldn't submit your request." };

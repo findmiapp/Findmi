@@ -17,6 +17,7 @@ import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import { cancelEventAppearance, ensureEventAppearance } from "@/app/admin/(protected)/events/actions";
 import type { EventParticipationStatus } from "@/lib/types";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -273,6 +274,20 @@ export async function createMemberEvent(formData: FormData) {
     }
   }
 
+  // Admin Action Email Notifications V1 — create_owned_event() always
+  // creates a brand-new event (is_demo=true hardcoded, publication_status
+  // defaults to pending_review — see that RPC's own comment), never a
+  // draft an owner can silently keep unsubmitted, so this always fires
+  // exactly once per creation. Uses only fields already read above (name,
+  // startIso) — no extra query.
+  await notifyAdmin({
+    subject: `Event awaiting review — ${name}`,
+    heading: "New Event awaiting review",
+    body: [`Event: ${name}`, `Starts: ${new Date((created as { start_at: string }).start_at).toLocaleString()}`],
+    actionLabel: "Review Event",
+    actionUrl: `/admin/events/${eventId}`,
+  });
+
   revalidatePath("/account");
   redirect(`/account/event/${eventId}`);
 }
@@ -364,12 +379,32 @@ export async function submitEventForReview(eventId: string) {
   const redirectPath = `/account/event/${eventId}`;
   const admin = await requireEventManager(eventId, redirectPath);
 
-  const { error } = await admin
+  // Admin Action Email Notifications V1 — .select().maybeSingle() on the
+  // update turns the existing compound WHERE clause into the same
+  // "did this call actually perform the transition" signal the audit's
+  // reference pattern (the Tally claim-payment webhook) already uses: a
+  // stale page or a duplicate click matches zero rows here (still
+  // 'pending_review' or already resolved some other way) and `updated`
+  // comes back null, so no second email is ever sent for the same
+  // resubmission.
+  const { data: updated, error } = await admin
     .from("events")
     .update({ publication_status: "pending_review" })
     .eq("id", eventId)
-    .eq("publication_status", "rejected");
+    .eq("publication_status", "rejected")
+    .select("id, name")
+    .maybeSingle();
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  if (updated) {
+    await notifyAdmin({
+      subject: `Event resubmitted for review — ${updated.name}`,
+      heading: "Event resubmitted for review",
+      body: [`Event: ${updated.name}`],
+      actionLabel: "Review Event",
+      actionUrl: `/admin/events/${eventId}`,
+    });
+  }
 
   revalidatePath(redirectPath);
   revalidatePath("/admin/events");
@@ -585,13 +620,22 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
       effectiveAreaId = match.areaId ?? null;
     } else {
       const { data: event } = await admin.from("events").select("city, state").eq("id", eventId).maybeSingle();
-      await createLinkedMarketRequest(admin, {
+      const linked = await createLinkedMarketRequest(admin, {
         text: requestedMarketTextRaw,
         city: event?.city ?? null,
         state: event?.state ?? null,
         source: "event_creation",
         sourceEventId: eventId,
       });
+      if (linked.created) {
+        await notifyAdmin({
+          subject: `New Market/Area request — ${requestedMarketTextRaw}`,
+          heading: "New Market/Area request",
+          body: [`Requested: ${requestedMarketTextRaw}`, `Linked to: Event (id ${eventId})`],
+          actionLabel: "Review Market Requests",
+          actionUrl: "/admin/market-requests",
+        });
+      }
     }
   }
   if (effectiveAreaId && (!effectiveMarketId || !(await isAreaInMarket(effectiveAreaId, effectiveMarketId)))) {

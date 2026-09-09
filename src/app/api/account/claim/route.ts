@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 export const dynamic = "force-dynamic";
 
@@ -322,6 +323,23 @@ export async function POST(request: NextRequest) {
   if (error || !inserted) {
     return NextResponse.json({ error: "Couldn't submit your claim. Please try again." }, { status: 500 });
   }
+
+  // Admin Action Email Notifications V1 — only reached on a genuine new
+  // insert (both the "already a member" and "already has a pending
+  // claim for this user+entity" branches above return earlier, before
+  // ever inserting a row), so a duplicate submission never produces a
+  // duplicate email. One extra cheap single-row lookup for a human-
+  // readable name — the claim row itself only stores the entity id.
+  const { data: entity } = await supabase.from(entityTable).select("name").eq("id", entityId).maybeSingle();
+  const entityName = (entity as { name: string } | null)?.name ?? "Unknown";
+  const typeLabel = type === "location" ? "Venue" : type === "event" ? "Event" : "Business";
+  await notifyAdmin({
+    subject: `New ${typeLabel} ownership claim — ${entityName}`,
+    heading: `New ${typeLabel} ownership claim`,
+    body: [`${typeLabel}: ${entityName}`, `Claimant: ${fullName}`, `Email: ${email}`, `Phone: ${phone}`],
+    actionLabel: "Review Claims",
+    actionUrl: `/admin/claims?status=pending&type=${type}`,
+  });
 
   // Both claim types are now free — straight to founder review, no
   // payment step for either.

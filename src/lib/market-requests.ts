@@ -144,6 +144,14 @@ export interface ConsumerMarketRequestResult {
    * (see below) — the caller uses this to show an honest "this Area
    * already exists" message rather than a generic "you're on the list". */
   match: GeographyMatch | null;
+  /** Admin Action Email Notifications V1 — true only when this call
+   * actually inserted a brand-new market_requests row (never true for
+   * the `existing` dedup branch below, which reuses an already-recorded
+   * request). Combined with `match === null` (status='pending', not the
+   * auto-resolved 'mapped' case), this is exactly "a new request now
+   * needs founder review" — what the caller uses to decide whether to
+   * fire a notification, without re-deriving this dedup logic itself. */
+  created: boolean;
 }
 
 /** Consumer requests are deduped onto ONE row per EFFECTIVE normalized
@@ -174,7 +182,7 @@ export async function findOrCreateConsumerMarketRequest(
     .eq("effective_normalized_key", effectiveKey)
     .neq("status", "rejected")
     .maybeSingle();
-  if (existing) return { requestId: existing.id, match };
+  if (existing) return { requestId: existing.id, match, created: false };
 
   const resolutionType: MarketRequestResolutionType | null = match ? (match.type === "area" ? "existing_area" : "existing_market") : null;
   const { data, error } = await admin
@@ -195,7 +203,7 @@ export async function findOrCreateConsumerMarketRequest(
     .select("id")
     .single();
   if (error || !data) throw new Error(error?.message ?? "Could not create Area request.");
-  return { requestId: data.id, match };
+  return { requestId: data.id, match, created: true };
 }
 
 /** One row per distinct person (signed-in user OR email) expressing
@@ -238,21 +246,39 @@ export interface LinkedMarketRequestInput {
  * findExistingGeographyMatch themselves and used the match directly when
  * found — this function is only reached for genuinely unmatched
  * geography, so it always creates a plain 'pending' row. */
-export async function createLinkedMarketRequest(admin: SupabaseClient, input: LinkedMarketRequestInput): Promise<void> {
+export interface LinkedMarketRequestResult {
+  /** Admin Action Email Notifications V1 — smallest possible signal so a
+   * caller can decide whether to fire a "new Market/Area request" alert:
+   * true on a successful insert (this function has no dedup of its own —
+   * see its own doc comment above — so every successful call creates a
+   * genuinely new pending row), false only if the insert failed. */
+  created: boolean;
+  requestId: string | null;
+}
+
+export async function createLinkedMarketRequest(
+  admin: SupabaseClient,
+  input: LinkedMarketRequestInput
+): Promise<LinkedMarketRequestResult> {
   const normalizedKey = normalizeMarketRequestKey(input.text);
-  const { error } = await admin.from("market_requests").insert({
-    requested_text: input.text.trim(),
-    city: input.city?.trim() || null,
-    state: input.state?.trim() || null,
-    normalized_key: normalizedKey,
-    effective_normalized_key: normalizedKey,
-    source: input.source,
-    source_business_id: input.sourceBusinessId ?? null,
-    source_event_id: input.sourceEventId ?? null,
-    source_location_id: input.sourceLocationId ?? null,
-    status: "pending",
-  });
+  const { data, error } = await admin
+    .from("market_requests")
+    .insert({
+      requested_text: input.text.trim(),
+      city: input.city?.trim() || null,
+      state: input.state?.trim() || null,
+      normalized_key: normalizedKey,
+      effective_normalized_key: normalizedKey,
+      source: input.source,
+      source_business_id: input.sourceBusinessId ?? null,
+      source_event_id: input.sourceEventId ?? null,
+      source_location_id: input.sourceLocationId ?? null,
+      status: "pending",
+    })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
+  return { created: true, requestId: data?.id ?? null };
 }
 
 /** Whether this business currently has an unresolved (pending) Market

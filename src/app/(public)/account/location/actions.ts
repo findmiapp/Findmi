@@ -13,6 +13,7 @@ import { validateImageFile } from "@/lib/imageUploadValidation";
 import { validateCustomDestination } from "@/lib/navigation";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
 import { claimEntityHandle } from "@/lib/handles";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -345,13 +346,22 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
       effectiveMarketId = match.marketId;
     } else {
       const { data: location } = await admin.from("locations").select("city, state").eq("id", locationId).maybeSingle();
-      await createLinkedMarketRequest(admin, {
+      const linked = await createLinkedMarketRequest(admin, {
         text: requestedMarketTextRaw,
         city: location?.city ?? null,
         state: location?.state ?? null,
         source: "location_creation",
         sourceLocationId: locationId,
       });
+      if (linked.created) {
+        await notifyAdmin({
+          subject: `New Market/Area request — ${requestedMarketTextRaw}`,
+          heading: "New Market/Area request",
+          body: [`Requested: ${requestedMarketTextRaw}`, `Linked to: Venue (id ${locationId})`],
+          actionLabel: "Review Market Requests",
+          actionUrl: "/admin/market-requests",
+        });
+      }
     }
   }
 

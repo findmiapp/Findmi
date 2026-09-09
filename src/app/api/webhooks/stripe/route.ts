@@ -6,6 +6,7 @@ import { activateMembership } from "@/lib/commerce/membershipActivation";
 import { activateBusinessPro } from "@/lib/commerce/businessProActivation";
 import { BUSINESS_PRO_INTRO_PRICE_CENTS } from "@/lib/commerce/businessProCheckout";
 import { qualifyReferralEarning } from "@/lib/commerce/referrals";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 // Stripe calls this directly — not gated by /admin's cookie auth, so the
 // Stripe signature itself is the only authentication. Never trust the
@@ -102,7 +103,24 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      await settleOrder(orderId, paymentIntentId, actualFee);
+      const settled = await settleOrder(orderId, paymentIntentId, actualFee);
+
+      // Admin Action Email Notifications V1 — only on the real
+      // unpaid->paid transition (settleOrder's own idempotency guard
+      // returns false on a Stripe webhook redelivery for an order
+      // that's already settled), so a retried delivery never produces a
+      // second "New paid order" email for the same order. amount_total
+      // is already on the verified session payload — no extra query.
+      if (settled) {
+        const amount = session.amount_total != null ? `$${(session.amount_total / 100).toFixed(2)}` : "unknown amount";
+        await notifyAdmin({
+          subject: `New paid order — ${amount}`,
+          heading: "New paid order",
+          body: [`Order total: ${amount}`, `Order: ${orderId}`],
+          actionLabel: "Review Order",
+          actionUrl: `/admin/orders/${orderId}`,
+        });
+      }
     }
   }
 

@@ -17,6 +17,7 @@ import { attributeReferral } from "@/lib/commerce/referrals";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -391,7 +392,7 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
 
   const { data: business } = await admin
     .from("businesses")
-    .select("id, slug, plan_tier")
+    .select("id, name, slug, plan_tier")
     .eq("id", businessId)
     .maybeSingle();
   if (!business) redirect(appendQuery(redirectPath, { error: "Business not found." }));
@@ -808,13 +809,22 @@ async function resolveStandaloneAppearanceGeography(
   const match = await findExistingGeographyMatch(admin, text);
   if (match) return { market_id: match.marketId, market_area_id: match.areaId ?? null };
 
-  await createLinkedMarketRequest(admin, {
+  const linked = await createLinkedMarketRequest(admin, {
     text,
     city,
     state,
     source: "business_creation",
     sourceBusinessId: businessId,
   });
+  if (linked.created) {
+    await notifyAdmin({
+      subject: `New Market/Area request — ${text}`,
+      heading: "New Market/Area request",
+      body: [`Requested: ${text}`, `Linked to: Business (Where You'll Be geography, id ${businessId})`],
+      actionLabel: "Review Market Requests",
+      actionUrl: "/admin/market-requests",
+    });
+  }
   return { market_id: null, market_area_id: null };
 }
 
@@ -1177,6 +1187,22 @@ export async function createMemberBusiness(formData: FormData) {
     await admin.from("businesses").update({ market_area_id: matchedAreaId }).eq("id", businessId);
   }
 
+  // Admin Action Email Notifications V1 — every successful call here
+  // creates a brand-new Business in publication_status='pending_review'
+  // (see create_owned_business()'s own hardcoded default), never a
+  // draft/edit, so this is always a genuine "needs founder review"
+  // moment. Uses only fields already read above (name/city/state) — no
+  // extra query. Fired before the invite/Pro-checkout/plain-redirect
+  // branches below so it happens exactly once regardless of which path
+  // the new owner takes next.
+  await notifyAdmin({
+    subject: `Business awaiting review — ${name}`,
+    heading: "New Business awaiting review",
+    body: [`Business: ${name}`, [city, state].filter(Boolean).join(", ") || "Location not provided"],
+    actionLabel: "Review Business",
+    actionUrl: `/admin/businesses/${businessId}`,
+  });
+
   // Referral Partner + Discount Foundation — attribution happens exactly
   // ONCE, right here, at business-creation time only (see
   // attribute_referral()'s own migration comment for why an already-
@@ -1431,6 +1457,27 @@ export async function createMemberProduct(businessId: string, formData: FormData
   // no moderation gate of its own.
   await setMemberProductCategory(admin, data.id, formData);
 
+  // Admin Action Email Notifications V1 — every new Product always
+  // starts moderation_status='pending_review' (see the insert above), so
+  // this always fires exactly once per creation. When the owner ALSO
+  // chose "Submit To Marketplace" in the same step, that's folded into
+  // this SAME email (one useful message covering both facts) rather than
+  // sent as a second, redundant "Marketplace submission" email for a
+  // review that hasn't happened yet — see submitProductToMarketplace
+  // below for the real, separate "existing product later submitted"
+  // case, which does get its own email.
+  await notifyAdmin({
+    subject: `Product awaiting review — ${fields.name}`,
+    heading: "New Product awaiting review",
+    body: [
+      `Product: ${fields.name}`,
+      `Business: ${business.name}`,
+      distribution === "marketplace" ? "Marketplace submission requested" : "Catalog only (not submitted to Marketplace)",
+    ],
+    actionLabel: "Review Product",
+    actionUrl: `/admin/products/${data.id}`,
+  });
+
   revalidatePath(redirectPath);
   revalidatePath(`/product/${slug}`);
   if (business.slug) revalidatePath(`/business/${business.slug}`);
@@ -1559,11 +1606,11 @@ export async function setMemberProductActive(businessId: string, productId: stri
  * decisions the owner can't self-override by resubmitting). */
 export async function submitProductToMarketplace(businessId: string, productId: string) {
   const redirectPath = `/account/business/${businessId}?tab=products`;
-  const { admin } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
 
   const { data: existing } = await admin
     .from("products")
-    .select("id, marketplace_status")
+    .select("id, name, marketplace_status")
     .eq("id", productId)
     .eq("business_id", businessId)
     .maybeSingle();
@@ -1575,6 +1622,20 @@ export async function submitProductToMarketplace(businessId: string, productId: 
       .update({ marketplace_status: "submitted", marketplace_submitted_at: new Date().toISOString() })
       .eq("id", productId)
       .eq("business_id", businessId);
+
+    // Admin Action Email Notifications V1 — only fires on a real
+    // catalog_only/rejected -> submitted transition (the `if` above),
+    // never for an ordinary edit or a no-op call from an already-
+    // "submitted"/"approved"/"paused" product (ineligible states just
+    // fall through with no update and no email, same guard the function
+    // already had before this pass).
+    await notifyAdmin({
+      subject: `Marketplace Product awaiting review — ${existing.name}`,
+      heading: "Marketplace Product awaiting review",
+      body: [`Product: ${existing.name}`, `Business: ${business.name}`],
+      actionLabel: "Review Product",
+      actionUrl: `/admin/products/${productId}`,
+    });
   }
 
   revalidatePath(redirectPath);

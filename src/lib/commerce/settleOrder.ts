@@ -14,18 +14,26 @@ import { round2 } from "./fees";
  *     — the estimate already on each item stands if not available yet).
  *  3. Builds the per-vendor settlement ledger (vendor_order_allocations),
  *     status "held" — no money moves, this just records what's owed.
- */
+ *
+ * Admin Action Email Notifications V1 — returns whether THIS call
+ * actually performed the unpaid->paid transition (true) versus every
+ * early-return case (no service-role client, no such order, or already
+ * "paid" — false). Stripe redelivers checkout.session.completed on any
+ * non-2xx/timeout, so the webhook route needs this signal to fire its
+ * "New paid order" notification exactly once per order, never once per
+ * delivery — same reasoning as the idempotent guard itself. Settlement
+ * economics/state semantics below are otherwise unchanged. */
 export async function settleOrder(
   orderId: string,
   stripePaymentIntentId: string | null,
   actualProcessingFee: number | null
-): Promise<void> {
+): Promise<boolean> {
   const supabase = getAdminSupabase();
-  if (!supabase) return;
+  if (!supabase) return false;
 
   const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
-  if (!order) return;
-  if (order.payment_status === "paid") return; // already settled — idempotent guard
+  if (!order) return false;
+  if (order.payment_status === "paid") return false; // already settled — idempotent guard
 
   const { data: items } = await supabase.from("order_items").select("*").eq("order_id", orderId).order("id");
   const orderItems = items ?? [];
@@ -102,4 +110,6 @@ export async function settleOrder(
       { onConflict: "order_id,business_id" }
     );
   }
+
+  return true;
 }

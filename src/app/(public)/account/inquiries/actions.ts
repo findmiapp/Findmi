@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 function appendQuery(base: string, params: Record<string, string>): string {
   const sep = base.includes("?") ? "&" : "?";
@@ -36,7 +37,7 @@ export async function createNativeInquiry(formData: FormData) {
 
   const { data: business } = await supabase
     .from("businesses")
-    .select("id, native_inquiries_enabled")
+    .select("id, name, native_inquiries_enabled")
     .eq("id", businessId)
     .maybeSingle();
   if (!business || !(business as { native_inquiries_enabled: boolean }).native_inquiries_enabled) {
@@ -90,6 +91,18 @@ export async function createNativeInquiry(formData: FormData) {
     sender_type: "customer",
     sender_user_id: user.id,
     body: message,
+  });
+
+  // Admin Action Email Notifications V1 — only for the brand-new inquiry
+  // above, never for later replies in the same thread (sendCustomerMessage
+  // below is a completely separate function this pass doesn't touch).
+  // Uses `business.name` already fetched above — no extra query.
+  await notifyAdmin({
+    subject: `New inquiry — ${(business as { name: string }).name}`,
+    heading: "New inquiry received",
+    body: [`Business: ${(business as { name: string }).name}`, `From: ${customerName ?? user.email ?? "Findmi member"}`],
+    actionLabel: "Review Inquiry",
+    actionUrl: `/admin/inquiries/${(inquiry as { id: string }).id}`,
   });
 
   revalidatePath("/account/inquiries");
