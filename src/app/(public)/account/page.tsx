@@ -230,6 +230,34 @@ export default async function AccountHomePage({
         </h1>
       </header>
 
+      {/* Messages Dashboard Shortcut pass — a compact, high-priority
+          entry point to /account/messages, placed immediately below the
+          welcome header and before Discover. Reuses the exact
+          conversation count already computed above (messagesCount, via
+          listConversationsForUser) — no new query, no unread-message
+          architecture, no notification badge. This is an ADDITIONAL
+          shortcut; the existing Messages tile inside Your Activity below
+          is untouched. Entire strip is one tappable Link, ~60px tall,
+          visually lighter than the Discover card below (white/bordered,
+          not aqua-filled). */}
+      <Link
+        href="/account/messages"
+        className="mt-4 flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-4 py-3 shadow-sm transition hover:border-black/10"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
+          <MessageGlyph />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-ink">Messages</p>
+          <p className="truncate text-xs text-ink/50">
+            {messagesCount === 0
+              ? "Start a conversation"
+              : `${messagesCount} conversation${messagesCount === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700">View →</span>
+      </Link>
+
       {error && (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
