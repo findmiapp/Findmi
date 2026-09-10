@@ -3,7 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-const ENDPOINT = { business: "/api/account/follow", event: "/api/account/follow-event" } as const;
+const ENDPOINT = {
+  business: "/api/account/follow",
+  event: "/api/account/follow-event",
+  // Surface Followed Locations pass — same toggle shape as
+  // business/event above (POST {slug} flips the current account's
+  // follow row), already used by LocationFollowButton on the public
+  // Location page.
+  location: "/api/account/follow-location",
+} as const;
 
 /** Small overlay "×" on each card in /account/following — this account
  * is already confirmed following every item shown on this page (that's
@@ -12,7 +20,13 @@ const ENDPOINT = { business: "/api/account/follow", event: "/api/account/follow-
  * router.refresh() re-runs the page's own server query afterward, so the
  * removed card simply stops appearing rather than needing local list
  * state here. */
-export default function FollowingUnfollowButton({ kind, slug }: { kind: "business" | "event"; slug: string }) {
+export default function FollowingUnfollowButton({
+  kind,
+  slug,
+}: {
+  kind: "business" | "event" | "location";
+  slug: string;
+}) {
   const [pending, startTransition] = useTransition();
   const [hidden, setHidden] = useState(false);
   const router = useRouter();

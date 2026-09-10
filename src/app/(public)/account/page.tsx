@@ -70,6 +70,7 @@ export default async function AccountHomePage({
     { count: savedProductsCount },
     { count: followingBusinessesCount },
     { count: followingEventsCount },
+    { count: followingLocationsCount },
     { count: ordersCount },
   ] = await Promise.all([
     // Progressive Email Verification pass — email_verified_at read in the
@@ -99,6 +100,11 @@ export default async function AccountHomePage({
     supabase.from("account_saved_products").select("product_id", { count: "exact", head: true }).eq("user_id", user.id),
     supabase.from("account_followed_businesses").select("business_id", { count: "exact", head: true }).eq("user_id", user.id),
     supabase.from("account_followed_events").select("event_id", { count: "exact", head: true }).eq("user_id", user.id),
+    // Surface Followed Locations pass — the "Following" tile below is an
+    // all-entity aggregate by design (generic label, links to
+    // /account/following, which now lists all three), so Locations join
+    // the same sum Businesses/Events already contribute to.
+    supabase.from("account_followed_locations").select("location_id", { count: "exact", head: true }).eq("user_id", user.id),
     supabase.from("orders").select("id", { count: "exact", head: true }).eq("user_id", user.id),
   ]);
 
@@ -176,7 +182,7 @@ export default async function AccountHomePage({
 
   const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
   const savedCount = (savedBusinessesCount ?? 0) + (savedEventsCount ?? 0) + (savedProductsCount ?? 0);
-  const followingCount = (followingBusinessesCount ?? 0) + (followingEventsCount ?? 0);
+  const followingCount = (followingBusinessesCount ?? 0) + (followingEventsCount ?? 0) + (followingLocationsCount ?? 0);
 
   // Owner Action UX pass — one flat, filterable list for ManageOnFindmiList
   // (client component — filtering needs interactivity /account's own
