@@ -46,7 +46,28 @@ export async function POST(request: NextRequest) {
     // never reads anything from the request body outside the
     // signature-verified event.
     if (businessProPurpose === "business_pro_intro" && businessProBusinessId) {
-      await activateBusinessPro(businessProBusinessId, session.id);
+      const activation = await activateBusinessPro(businessProBusinessId, session.id);
+
+      // Paid Pro Activation Reliability pass — a genuine activation
+      // failure (a real database error, or a businessId that doesn't
+      // resolve to any row) must NEVER be acknowledged with 200: Stripe
+      // would consider the event delivered and never retry, even though
+      // this business never actually became Pro despite a real charge
+      // having succeeded. "already_pro" (idempotent redelivery) is not a
+      // failure and still returns success below, same as before this
+      // pass. Returned immediately, before the unrelated
+      // membershipId/orderId branches below — a business_pro_intro
+      // session never carries either of those, so nothing legitimate is
+      // skipped, and a failed activation should make Stripe retry the
+      // WHOLE event, not just the part that failed.
+      if (activation.status === "failed") {
+        console.error("[stripe-webhook] Business Pro activation failed — returning non-2xx so Stripe retries", {
+          businessId: businessProBusinessId,
+          sessionId: session.id,
+          reason: activation.reason,
+        });
+        return NextResponse.json({ error: "Business Pro activation failed." }, { status: 500 });
+      }
 
       // Referral Partner + Discount Foundation — a SEPARATE, independent
       // step from activation above: qualifies a commission ONLY when this
@@ -57,7 +78,9 @@ export async function POST(request: NextRequest) {
       // Invite's complimentary activation never fires this event at all
       // (no Stripe checkout involved), so it can never reach this line —
       // that's the whole mechanism behind "no paid commission from a $0
-      // complimentary activation."
+      // complimentary activation." Only reached on "activated" or
+      // "already_pro" above — never on a failed activation, so a retry
+      // gets a clean shot at both together.
       await qualifyReferralEarning(
         businessProBusinessId,
         session.id,
