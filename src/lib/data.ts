@@ -2682,6 +2682,49 @@ export async function getLocations(limit = 20): Promise<LocationWithCategory[]> 
   return locations.map((l) => ({ ...l, upcomingCount: countByLocation.get(l.id) ?? 0 }));
 }
 
+/** Global Search pass — Locations as a first-class searchable entity,
+ * matching name/city/state directly plus (bounded, same "resolve a small
+ * id set, then .in() it" discipline searchBusinesses' own categorySlug
+ * branch already uses) a location-kind category name. Same is_demo=false
+ * public-visibility rule every other public Location query already uses
+ * (getLocations/getLocationBySlug) — never a second filtering standard. */
+export async function searchLocations(q: string, limit = 8): Promise<LocationWithCategory[]> {
+  const supabase = getSupabase();
+  const term = q.trim();
+  if (!supabase || !term) return [];
+
+  const { data: categoryMatches } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("kind", "location")
+    .ilike("name", `%${term}%`);
+  let categoryLocationIds: string[] = [];
+  if (categoryMatches && categoryMatches.length > 0) {
+    const { data: links } = await supabase
+      .from("locations")
+      .select("id")
+      .in("category_id", categoryMatches.map((c) => c.id))
+      .eq("is_demo", false);
+    categoryLocationIds = (links ?? []).map((l) => l.id);
+  }
+
+  const pattern = `%${term}%`;
+  let query = supabase
+    .from("locations")
+    .select("*, category:categories(id, name, slug)")
+    .eq("is_demo", false);
+  query =
+    categoryLocationIds.length > 0
+      ? query.or(`name.ilike.${pattern},city.ilike.${pattern},state.ilike.${pattern},id.in.(${categoryLocationIds.join(",")})`)
+      : query.or(`name.ilike.${pattern},city.ilike.${pattern},state.ilike.${pattern}`);
+
+  const { data } = await query.order("name").limit(limit);
+  return ((data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
+    ...l,
+    category: normalizeCategoryEmbed(l.category),
+  }));
+}
+
 export async function getLocationBySlug(slug: string): Promise<LocationWithCategory | null> {
   const supabase = getSupabase();
   if (!supabase) return null;

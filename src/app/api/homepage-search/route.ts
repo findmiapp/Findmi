@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getEventsDiscovery, getMarketplaceProducts, searchBusinesses } from "@/lib/data";
-import { formatPrice } from "@/lib/format";
+import { getEventsDiscovery, getMarketplaceProducts, searchBusinesses, searchLocations } from "@/lib/data";
+import { cityState, formatPrice } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -25,14 +25,20 @@ export const dynamic = "force-dynamic";
  * business_markets that never cross-pollinates with it. Products remain
  * Market-independent — getMarketplaceProducts has no Market concept at
  * all and never receives this param.
+ *
+ * Global Search — Locations pass — Locations are Market-independent here
+ * too (same posture as Products above; a Location's own market_id is an
+ * unrelated home-market concept, not a discovery filter — out of scope
+ * for this pass), so searchLocations never receives `marketSlug` either.
  */
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const marketSlug = request.nextUrl.searchParams.get("market")?.trim() || undefined;
-  if (q.length < 2) return NextResponse.json({ businesses: [], events: [], products: [] });
+  if (q.length < 2) return NextResponse.json({ businesses: [], locations: [], events: [], products: [] });
 
-  const [businesses, events, products] = await Promise.all([
+  const [businesses, locations, events, products] = await Promise.all([
     searchBusinesses({ q, marketSlug }),
+    searchLocations(q, 4),
     getEventsDiscovery({ q, limit: 4, marketSlug }),
     getMarketplaceProducts({ q, limit: 4 }),
   ]);
@@ -44,6 +50,19 @@ export async function GET(request: NextRequest) {
       href: `/business/${b.slug}`,
       image: b.logo_url ?? b.cover_image_url,
       subtitle: [b.categories[0]?.name, [b.city, b.state].filter(Boolean).join(", ")].filter(Boolean).join(" · "),
+    })),
+    // Placed right after Businesses (and before Events) in the response
+    // itself, not just left to render order in each search UI, so an
+    // exact/strong Location-name match (e.g. "Perk Up Coffeehouse") is
+    // never visually buried beneath a loosely-related Event match (e.g.
+    // "Perk Up Fest") — the smallest change for that prominence, no
+    // relevance-scoring rewrite.
+    locations: locations.slice(0, 4).map((l) => ({
+      id: l.id,
+      name: l.name,
+      href: `/location/${l.slug}`,
+      image: l.logo_url ?? l.cover_image_url,
+      subtitle: [l.category?.name, cityState(l.city, l.state)].filter(Boolean).join(" · "),
     })),
     events: events.slice(0, 4).map((e) => ({
       id: e.id,

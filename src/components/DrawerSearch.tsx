@@ -13,10 +13,11 @@ interface SearchResultItem {
 }
 interface SearchResults {
   businesses: SearchResultItem[];
+  locations: SearchResultItem[];
   events: SearchResultItem[];
   products: SearchResultItem[];
 }
-const EMPTY: SearchResults = { businesses: [], events: [], products: [] };
+const EMPTY: SearchResults = { businesses: [], locations: [], events: [], products: [] };
 
 const DEBOUNCE_MS = 250;
 const MIN_CHARS = 2;
@@ -64,7 +65,8 @@ export default function DrawerSearch({ onNavigate }: { onNavigate: () => void })
 
   const term = q.trim();
   const hasQuery = term.length >= MIN_CHARS;
-  const hasResults = results.businesses.length + results.events.length + results.products.length > 0;
+  const hasResults =
+    results.businesses.length + results.locations.length + results.events.length + results.products.length > 0;
 
   return (
     <div className="shrink-0 border-b border-black/5 px-3 py-2.5">
@@ -92,6 +94,11 @@ export default function DrawerSearch({ onNavigate }: { onNavigate: () => void })
           ) : (
             <>
               <ResultGroup label="Businesses" items={results.businesses} onSelect={onNavigate} />
+              {/* Locations render right after Businesses, before Events —
+                  so an exact/strong Location-name match (e.g. "Perk Up
+                  Coffeehouse") is never buried beneath a loosely-related
+                  Event match (e.g. "Perk Up Fest"). */}
+              <ResultGroup label="Locations" items={results.locations} onSelect={onNavigate} />
               <ResultGroup label="Events" items={results.events} onSelect={onNavigate} />
               <ResultGroup label="Products" items={results.products} onSelect={onNavigate} />
               <Link

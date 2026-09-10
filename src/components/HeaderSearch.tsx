@@ -14,10 +14,11 @@ interface SearchResultItem {
 }
 interface SearchResults {
   businesses: SearchResultItem[];
+  locations: SearchResultItem[];
   events: SearchResultItem[];
   products: SearchResultItem[];
 }
-const EMPTY: SearchResults = { businesses: [], events: [], products: [] };
+const EMPTY: SearchResults = { businesses: [], locations: [], events: [], products: [] };
 
 const DEBOUNCE_MS = 250;
 const MIN_CHARS = 2;
@@ -99,7 +100,8 @@ export default function HeaderSearch({ variant }: { variant: "icon" | "text" }) 
 
   const term = q.trim();
   const hasQuery = term.length >= MIN_CHARS;
-  const hasResults = results.businesses.length + results.events.length + results.products.length > 0;
+  const hasResults =
+    results.businesses.length + results.locations.length + results.events.length + results.products.length > 0;
 
   return (
     <div ref={containerRef} className="relative">
@@ -176,6 +178,11 @@ export default function HeaderSearch({ variant }: { variant: "icon" | "text" }) 
             ) : (
               <>
                 <ResultGroup label="Businesses" items={results.businesses} onSelect={closePanel} />
+                {/* Locations render right after Businesses, before Events —
+                    so an exact/strong Location-name match (e.g. "Perk Up
+                    Coffeehouse") is never buried beneath a loosely-related
+                    Event match (e.g. "Perk Up Fest"). */}
+                <ResultGroup label="Locations" items={results.locations} onSelect={closePanel} />
                 <ResultGroup label="Events" items={results.events} onSelect={closePanel} />
                 <ResultGroup label="Products" items={results.products} onSelect={closePanel} />
                 <Link
