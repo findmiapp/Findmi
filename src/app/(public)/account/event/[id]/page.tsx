@@ -14,7 +14,7 @@ import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
 import AccountNav from "../../AccountNav";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
-import { AccountRelationField } from "@/components/account/AccountRelationPicker";
+import EventLocationField from "@/components/account/EventLocationField";
 import MemberEventImageField from "./MemberEventImageField";
 import MemberEventGalleryField from "./MemberEventGalleryField";
 import EventDateFieldsForm from "./EventDateFieldsForm";
@@ -144,12 +144,50 @@ export default async function ManageEventPage({
     // addMemberEventDate); this looks its name back up so the picker can
     // show the same selection again instead of resetting to blank.
     addLocationId
-      ? admin.from("locations").select("id, name, city").eq("id", addLocationId).maybeSingle().then((r) => r.data)
+      ? admin
+          .from("locations")
+          .select("id, name, slug, city, state, address, postal_code, category:categories(name)")
+          .eq("id", addLocationId)
+          .maybeSingle()
+          .then((r) => r.data)
       : Promise.resolve(null),
     getPendingApplicationNotesForEvent(admin, id),
   ]);
   if (!result) redirect(errorRedirectUrl("/account", "Event not found."));
   const { event, participants, occurrences } = result;
+
+  // Event Manager Location UX pass — events has no location_id column of
+  // its own (see updateMemberEventLocation's own note — only
+  // event_occurrences does), so the whole-event Location tab can't read a
+  // real persisted relationship back out. Best-effort reconstruction only,
+  // same exact-match philosophy getUpcomingAtLocation's own venue_name
+  // fallback already relies on: if the event's current venue fields
+  // exactly match a real, public Location, show it as "selected" (with
+  // its View Location link) instead of raw manual text. Any mismatch — a
+  // manually-typed venue, or one that doesn't match a live Location — just
+  // falls through to the manual fields, exactly as before.
+  const matchedLocationRow = event.venue_name
+    ? await admin
+        .from("locations")
+        .select("id, name, slug, city, state, address, postal_code, category:categories(name)")
+        .eq("is_demo", false)
+        .eq("name", event.venue_name)
+        .eq("address", event.address ?? "")
+        .maybeSingle()
+        .then((r) => r.data)
+    : null;
+  const matchedEventLocation = matchedLocationRow
+    ? {
+        id: matchedLocationRow.id,
+        name: matchedLocationRow.name,
+        slug: matchedLocationRow.slug,
+        category: (Array.isArray(matchedLocationRow.category) ? matchedLocationRow.category[0] : matchedLocationRow.category)?.name ?? null,
+        address: matchedLocationRow.address,
+        city: matchedLocationRow.city,
+        state: matchedLocationRow.state,
+        postal_code: matchedLocationRow.postal_code,
+      }
+    : null;
 
   const publicHref = !event.is_demo ? `/event/${event.slug}` : null;
   const selectedMarket = markets.find((m) => m.id === event.market_id) ?? null;
@@ -459,7 +497,28 @@ export default async function ManageEventPage({
                               date: isoToLocalDateTime(occ.start_at).slice(0, 10),
                               start_time: isoToLocalDateTime(occ.start_at).slice(11),
                               end_time: isoToLocalDateTime(occ.end_at).slice(11),
-                              location: occ.location_name ? { value: occ.location_id ?? "", label: occ.location_name, sublabel: occ.location_city ?? undefined } : null,
+                              location:
+                                occ.location_id && occ.location_name
+                                  ? {
+                                      id: occ.location_id,
+                                      name: occ.location_name,
+                                      slug: occ.location_slug ?? "",
+                                      category: occ.location_category,
+                                      address: occ.location_address,
+                                      city: occ.location_city,
+                                      state: occ.location_state,
+                                      postal_code: occ.location_postal_code,
+                                    }
+                                  : null,
+                              manualVenue: occ.location_id
+                                ? null
+                                : {
+                                    venue_name: occ.venue_name ?? "",
+                                    address: occ.address ?? "",
+                                    city: occ.city ?? "",
+                                    state: occ.state ?? "",
+                                    postal_code: occ.postal_code ?? "",
+                                  },
                             }}
                             submitLabel="Save Date"
                           />
@@ -502,8 +561,19 @@ export default async function ManageEventPage({
                     start_time: addStartTime ?? "",
                     end_time: addEndTime ?? "",
                     location: addLocationHint
-                      ? { value: addLocationHint.id, label: addLocationHint.name, sublabel: addLocationHint.city ?? undefined }
+                      ? {
+                          id: addLocationHint.id,
+                          name: addLocationHint.name,
+                          slug: addLocationHint.slug ?? "",
+                          category:
+                            (Array.isArray(addLocationHint.category) ? addLocationHint.category[0] : addLocationHint.category)?.name ?? null,
+                          address: addLocationHint.address ?? null,
+                          city: addLocationHint.city ?? null,
+                          state: addLocationHint.state ?? null,
+                          postal_code: addLocationHint.postal_code ?? null,
+                        }
                       : null,
+                    manualVenue: null,
                   }}
                   submitLabel="Add Date"
                 />
@@ -516,42 +586,23 @@ export default async function ManageEventPage({
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
             <p className="mt-1 text-sm text-ink/60">
-              Search for an existing Findmi Location to autofill the fields below, or enter your venue manually.
+              Search for an existing Findmi Location, or enter your venue manually if it isn&rsquo;t on Findmi yet.
             </p>
             <form action={updateMemberEventLocation.bind(null, id)} className="mt-3 flex flex-col gap-3">
-              <AccountRelationField
-                label="Search Findmi Locations"
-                name="location_id"
-                entity="locations"
-                initial={null}
-                clearLabel="Enter manually below"
+              <EventLocationField
+                initialLocation={matchedEventLocation}
+                initialManual={
+                  matchedEventLocation
+                    ? null
+                    : {
+                        venue_name: event.venue_name ?? "",
+                        address: event.address ?? "",
+                        city: event.city ?? "",
+                        state: event.state ?? "",
+                        postal_code: event.postal_code ?? "",
+                      }
+                }
               />
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-ink/70">Venue name</span>
-                <input type="text" name="venue_name" defaultValue={event.venue_name ?? ""} className={inputClass} />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-ink/70">Address</span>
-                <input type="text" name="address" defaultValue={event.address ?? ""} className={inputClass} />
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink/70">City</span>
-                  <input type="text" name="city" defaultValue={event.city ?? ""} className={inputClass} />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink/70">State</span>
-                  <input type="text" name="state" defaultValue={event.state ?? ""} className={inputClass} />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-ink/70">ZIP Code</span>
-                  <input type="text" name="postal_code" defaultValue={event.postal_code ?? ""} className={inputClass} />
-                </label>
-              </div>
-              <p className="text-xs text-ink/40">
-                Selecting a Location above overwrites the fields below with that Location&rsquo;s own address — save
-                after picking one, or edit the fields manually and leave the search blank.
-              </p>
               <button type="submit" className={`w-fit ${primaryButtonClass}`}>
                 Save Location
               </button>

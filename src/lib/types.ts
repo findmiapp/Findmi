@@ -591,6 +591,17 @@ export interface EventOccurrence {
   timezone: string;
   created_at: string;
   updated_at: string;
+  // Event Manager Location UX pass — manual venue fallback for an
+  // occurrence with no location_id (see updateMemberEventDate/
+  // addMemberEventDate). Mirrors events'/locations' own venue_name/
+  // address/city/state/postal_code columns. Never authoritative when
+  // location_id is set — that case always re-derives from locations
+  // server-side, same as the whole-event legacy Location tab already did.
+  venue_name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
 }
 
 export interface EventWithCategories extends FindmiEvent {

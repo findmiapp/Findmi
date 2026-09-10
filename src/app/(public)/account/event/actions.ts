@@ -156,6 +156,13 @@ export async function createMemberEvent(formData: FormData) {
   const marketId = str(formData, "market_id");
   const requestedMarketTextRaw = str(formData, "requested_market_text");
   const locationHintId = str(formData, "location_id");
+  const manualVenue = {
+    venue_name: str(formData, "venue_name"),
+    address: str(formData, "address"),
+    city: str(formData, "city"),
+    state: str(formData, "state"),
+    postal_code: str(formData, "postal_code"),
+  };
   const preservedFields = {
     name,
     start_at: startLocal,
@@ -254,10 +261,16 @@ export async function createMemberEvent(formData: FormData) {
   // way (see this stage's Locked Product Model). Reuses locationHintId
   // captured up top (same form field, already read once into
   // preservedFields).
+  // Event Manager Location UX pass — Create Event now also supports the
+  // no-Location manual venue fallback at creation time (previously only
+  // the location_id-hint path existed here). A submitted locationHintId
+  // still always wins and is re-fetched fresh from locations, same
+  // server-side-authoritative pattern as updateMemberEventLocation; manual
+  // venue fields only get written when there's no locationHintId at all.
   if (locationHintId) {
     const { data: location } = await admin
       .from("locations")
-      .select("name, address, city, state, latitude, longitude")
+      .select("name, address, city, state, postal_code, latitude, longitude")
       .eq("id", locationHintId)
       .maybeSingle();
     if (location) {
@@ -268,11 +281,14 @@ export async function createMemberEvent(formData: FormData) {
           address: location.address,
           city: location.city,
           state: location.state,
+          postal_code: location.postal_code,
           latitude: location.latitude,
           longitude: location.longitude,
         })
         .eq("id", eventId);
     }
+  } else if (manualVenue.venue_name || manualVenue.address || manualVenue.city || manualVenue.state || manualVenue.postal_code) {
+    await admin.from("events").update(manualVenue).eq("id", eventId);
   }
 
   // Admin Action Email Notifications V1 — create_owned_event() always
@@ -421,6 +437,52 @@ export async function submitEventForReview(eventId: string) {
 // route param, never surfaced as something the organizer needs to
 // understand or type.
 
+type OccurrenceVenueFields = {
+  venue_name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+};
+
+/** Event Manager Location UX pass — same server-side-authoritative
+ * pattern updateMemberEventLocation already used for the whole-event
+ * legacy venue fields, now shared by both per-occurrence date actions
+ * below: a submitted locationId always wins and is re-fetched fresh from
+ * locations (never trusting whatever address text the client posted for
+ * a selected Location), and manual venue text is only ever persisted when
+ * there's no locationId at all — the no-Location fallback path. */
+async function resolveOccurrenceVenue(
+  admin: SupabaseClient,
+  locationId: string | null,
+  formData: FormData
+): Promise<OccurrenceVenueFields> {
+  if (locationId) {
+    const { data: location } = await admin
+      .from("locations")
+      .select("name, address, city, state, postal_code")
+      .eq("id", locationId)
+      .maybeSingle();
+    if (location) {
+      return {
+        venue_name: location.name,
+        address: location.address,
+        city: location.city,
+        state: location.state,
+        postal_code: location.postal_code,
+      };
+    }
+    return { venue_name: null, address: null, city: null, state: null, postal_code: null };
+  }
+  return {
+    venue_name: str(formData, "venue_name"),
+    address: str(formData, "address"),
+    city: str(formData, "city"),
+    state: str(formData, "state"),
+    postal_code: str(formData, "postal_code"),
+  };
+}
+
 export async function updateMemberEventPrimaryDate(eventId: string, formData: FormData) {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
   const admin = await requireEventManager(eventId, redirectPath);
@@ -480,6 +542,7 @@ export async function addMemberEventDate(eventId: string, formData: FormData) {
     start_at,
     end_at,
     location_id: locationId,
+    ...(await resolveOccurrenceVenue(admin, locationId, formData)),
   });
   if (error) fail("Couldn't add that date. Please try again.");
 
@@ -513,9 +576,15 @@ export async function updateMemberEventDate(eventId: string, occurrenceId: strin
     redirect(appendQuery(redirectPath, { error: "End time must be after the start time." }));
   }
 
+  const locationId = str(formData, "location_id");
   const { error } = await admin
     .from("event_occurrences")
-    .update({ start_at, end_at, location_id: str(formData, "location_id") })
+    .update({
+      start_at,
+      end_at,
+      location_id: locationId,
+      ...(await resolveOccurrenceVenue(admin, locationId, formData)),
+    })
     .eq("id", occurrenceId)
     .eq("event_id", eventId);
   if (error) redirect(appendQuery(redirectPath, { error: "Couldn't update that date. Please try again." }));

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
@@ -24,6 +25,7 @@ import { HorizontalScroller } from "@/components/Section";
 import {
   attachEventCategories,
   eventHasAnyOccurrences,
+  findLocationByExactVenue,
   getBusinessesForEvent,
   getEventBySlug,
   getEventImages,
@@ -74,7 +76,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, upcomingOccurrences, hasOccurrences] =
+  const [businesses, [eventWithCategories], featuredProducts, images, upcomingOccurrences, hasOccurrences, matchedLocation] =
     await Promise.all([
       getBusinessesForEvent(event.id),
       attachEventCategories([event]),
@@ -82,6 +84,17 @@ export async function EventPublicView({ slug }: { slug: string }) {
       getEventImages(event.id),
       getUpcomingOccurrencesForEvent(event.id),
       eventHasAnyOccurrences(event.id),
+      // Event Manager Location UX pass — events has no location_id column
+      // of its own (only event_occurrences does), so a legacy (no-
+      // occurrence) event can't carry a real FK to a Location. Best-effort
+      // reconstruction only, same exact-match philosophy
+      // getUpcomingAtLocation's own venue_name fallback already uses: if
+      // this event's stored venue fields exactly match a real, public
+      // Location, render it as a clickable Location relationship instead
+      // of plain text (see this pass's own spec) — any mismatch (a
+      // manually-typed venue) just renders as plain text, exactly as
+      // before.
+      event.venue_name ? findLocationByExactVenue(event.venue_name, event.address) : Promise.resolve(null),
     ]);
   // Depends on upcomingOccurrences' own ids, so this can't join the
   // Promise.all above — one extra query, only for a recurring event, for
@@ -227,11 +240,25 @@ export async function EventPublicView({ slug }: { slug: string }) {
               <CalendarGlyph className="h-4 w-4 shrink-0 text-ink/40" />
               <span className="font-medium text-ink/80">{formatDateRange(event.start_at, event.end_at)}</span>
             </div>
-            {venueLine && (
-              <div className="flex items-center gap-2">
-                <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-                <span>{venueLine}</span>
-              </div>
+            {matchedLocation ? (
+              <Link
+                href={`/location/${matchedLocation.slug}`}
+                className="flex items-start gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 transition hover:border-findmi/40 hover:bg-findmi-50"
+              >
+                <PinGlyph className="mt-0.5 h-4 w-4 shrink-0 text-findmi-700" />
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40">Location</span>
+                  <span className="block break-words font-semibold text-findmi-700">{matchedLocation.name}</span>
+                  {venueLine && <span className="block break-words text-xs text-ink/55">{venueLine}</span>}
+                </span>
+              </Link>
+            ) : (
+              venueLine && (
+                <div className="flex items-center gap-2">
+                  <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+                  <span>{venueLine}</span>
+                </div>
+              )
             )}
           </div>
         )}
@@ -530,6 +557,14 @@ export async function EventPublicView({ slug }: { slug: string }) {
             <div className="mt-3 flex flex-col gap-1 text-sm text-ink/70">
               {event.venue_name && <p className="font-semibold text-ink">{event.venue_name}</p>}
               {(event.address || location) && <p>{[event.address, location].filter(Boolean).join(", ")}</p>}
+              {matchedLocation && (
+                <Link
+                  href={`/location/${matchedLocation.slug}`}
+                  className="mt-1 inline-block w-fit text-xs font-semibold text-findmi-700 underline underline-offset-2"
+                >
+                  View Location ↗
+                </Link>
+              )}
             </div>
             {images.venue.length > 0 && (
               <div className="mt-3">

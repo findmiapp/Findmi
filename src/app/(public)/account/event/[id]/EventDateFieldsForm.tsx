@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { AccountRelationField, type AccountSearchResult } from "@/components/account/AccountRelationPicker";
+import EventLocationField, {
+  type ManualVenueValues,
+  type SelectedLocationDetail,
+} from "@/components/account/EventLocationField";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -10,7 +13,8 @@ export interface EventDateFieldValues {
   date: string;
   start_time: string;
   end_time: string;
-  location: AccountSearchResult | null;
+  location: SelectedLocationDetail | null;
+  manualVenue: ManualVenueValues | null;
 }
 
 /** Shared fields for both "Add a date" and "Edit date" on Event Manager's
@@ -52,14 +56,7 @@ export default function EventDateFieldsForm({
         <input type="time" name="end_time" required defaultValue={defaultValues.end_time} className={inputClass} />
       </div>
       {timeError && <p className="text-xs text-red-600">{timeError}</p>}
-      <AccountRelationField
-        label="Location (optional)"
-        name="location_id"
-        entity="locations"
-        initial={defaultValues.location}
-        placeholder="Search Findmi Locations…"
-        clearLabel="No specific Location"
-      />
+      <EventLocationField initialLocation={defaultValues.location} initialManual={defaultValues.manualVenue} />
       <button
         type="submit"
         className="mt-1 rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"

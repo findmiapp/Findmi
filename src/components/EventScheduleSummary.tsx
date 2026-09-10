@@ -1,6 +1,7 @@
 "use client";
 
-import { cityState, formatDateRangeInZone } from "@/lib/format";
+import Link from "next/link";
+import { cityState, cityStateZip, formatDateRangeInZone } from "@/lib/format";
 import { useEventOccurrence, type OccurrenceScheduleState } from "./EventOccurrenceContext";
 import LiveDot from "./LiveDot";
 
@@ -24,10 +25,18 @@ export default function EventScheduleSummary() {
     return <p className="mt-3 text-sm font-medium text-ink/50">No upcoming dates announced</p>;
   }
 
+  // Event Manager Location UX pass — a real linked Location (occurrence.
+  // location_id) always renders as a clickable /location/[slug] card, per
+  // this pass's own spec ("must render as a clickable Location
+  // relationship... never show only plain venue text when a canonical
+  // Location exists"). No location_id falls back to this occurrence's own
+  // manual venue fields (added alongside location_id — see
+  // resolveOccurrenceVenue in account/event/actions.ts) as plain text,
+  // same as a legacy event's own venue_name/address always has.
   const location = selected.location;
-  const locationLine = location
-    ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(" · ")
-    : null;
+  const manualVenueLine = [selected.venue_name, selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="mt-3 flex flex-col gap-2 text-sm text-ink/65">
@@ -56,11 +65,29 @@ export default function EventScheduleSummary() {
           {formatDateRangeInZone(selected.start_at, selected.end_at, selected.timezone)}
         </span>
       </div>
-      {locationLine && (
-        <div className="flex items-center gap-2">
-          <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-          <span>{locationLine}</span>
-        </div>
+      {location ? (
+        <Link
+          href={`/location/${location.slug}`}
+          className="flex items-start gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 transition hover:border-findmi/40 hover:bg-findmi-50"
+        >
+          <PinGlyph className="mt-0.5 h-4 w-4 shrink-0 text-findmi-700" />
+          <span className="min-w-0">
+            <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40">Location</span>
+            <span className="block break-words font-semibold text-findmi-700">{location.name}</span>
+            {(location.address || cityState(location.city, location.state)) && (
+              <span className="block break-words text-xs text-ink/55">
+                {[location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")}
+              </span>
+            )}
+          </span>
+        </Link>
+      ) : (
+        manualVenueLine && (
+          <div className="flex items-center gap-2">
+            <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            <span>{manualVenueLine}</span>
+          </div>
+        )
       )}
     </div>
   );

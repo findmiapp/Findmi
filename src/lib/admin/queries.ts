@@ -272,6 +272,16 @@ export interface EventFeaturedProduct {
 export type AdminEventOccurrence = EventOccurrence & {
   location_name: string | null;
   location_city: string | null;
+  // Event Manager Location UX pass — enough of the linked Location's own
+  // record to re-render its compact "selected Location" card when editing
+  // an occurrence that already has a real location_id, without a second
+  // fetch. Null whenever there's no linked Location (occurrence relies on
+  // its own venue_name/address/city/state/postal_code instead).
+  location_slug: string | null;
+  location_category: string | null;
+  location_address: string | null;
+  location_state: string | null;
+  location_postal_code: string | null;
 };
 
 export async function getAdminEventById(id: string): Promise<{
@@ -304,19 +314,38 @@ export async function getAdminEventById(id: string): Promise<{
         .order("display_order", { ascending: true, nullsFirst: false }),
       supabase
         .from("event_occurrences")
-        .select("*, locations(name, city)")
+        .select("*, locations(name, city, slug, address, state, postal_code, category:categories(name))")
         .eq("event_id", id)
         .order("start_at", { ascending: true }),
     ]);
   if (!event) return null;
 
+  type OccurrenceLocationRow = {
+    name: string;
+    city: string | null;
+    slug: string;
+    address: string | null;
+    state: string | null;
+    postal_code: string | null;
+    category: { name: string } | { name: string }[] | null;
+  };
   type OccurrenceRow = EventOccurrence & {
-    locations: { name: string; city: string | null } | { name: string; city: string | null }[] | null;
+    locations: OccurrenceLocationRow | OccurrenceLocationRow[] | null;
   };
   const occurrences = ((occurrenceRows ?? []) as OccurrenceRow[]).map((o) => {
     const { locations, ...rest } = o;
     const location = Array.isArray(locations) ? (locations[0] ?? null) : locations;
-    return { ...rest, location_name: location?.name ?? null, location_city: location?.city ?? null };
+    const category = location ? (Array.isArray(location.category) ? (location.category[0] ?? null) : location.category) : null;
+    return {
+      ...rest,
+      location_name: location?.name ?? null,
+      location_city: location?.city ?? null,
+      location_slug: location?.slug ?? null,
+      location_category: category?.name ?? null,
+      location_address: location?.address ?? null,
+      location_state: location?.state ?? null,
+      location_postal_code: location?.postal_code ?? null,
+    };
   });
 
   const galleryImages: string[] = [];

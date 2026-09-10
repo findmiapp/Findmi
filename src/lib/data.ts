@@ -2898,6 +2898,29 @@ export async function getUpcomingAtLocation(
     .slice(0, limit);
 }
 
+/** Event Manager Location UX pass — a legacy (no-occurrence) event has no
+ * location_id column of its own to check (only event_occurrences does),
+ * so its public page can't know for certain whether its stored venue
+ * fields came from a real FindMi Location. Best-effort only, same
+ * exact-match philosophy getUpcomingAtLocation's own venue_name fallback
+ * already relies on: an exact name+address match against a real, public
+ * Location lets the page render a clickable Location relationship instead
+ * of plain venue text. Any mismatch (a manually-typed venue, or one that
+ * doesn't match a live Location) returns null and the page falls back to
+ * its existing plain-text rendering, unchanged. */
+export async function findLocationByExactVenue(venueName: string, address: string | null): Promise<FindmiLocation | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("locations")
+    .select("*")
+    .eq("is_demo", false)
+    .eq("name", venueName)
+    .eq("address", address ?? "")
+    .maybeSingle();
+  return data ?? null;
+}
+
 // ----------------------------------------------------------------------------
 // Membership plans & markets — public read (see /join). Editable by the
 // founder in /admin/plans; not hardcoded into the page itself.

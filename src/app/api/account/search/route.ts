@@ -27,7 +27,14 @@ export async function GET(request: NextRequest) {
   const q = (searchParams.get("q") ?? "").trim();
 
   const admin = getAdminSupabase();
-  if (!admin || !q) return NextResponse.json({ results: [] });
+  if (!admin) return NextResponse.json({ results: [] });
+
+  // Event Manager Location UX pass — "locations" now also supports an
+  // EMPTY q as an A-Z browse (first 20 by name), so the picker can offer
+  // a browseable list the moment it's focused, not only once someone
+  // types a real query. "businesses" is unchanged: still requires q, same
+  // as always (no caller asked for a browse mode there).
+  if (!q && entity !== "locations") return NextResponse.json({ results: [] });
 
   const term = `%${q}%`;
 
@@ -50,19 +57,33 @@ export async function GET(request: NextRequest) {
   }
 
   if (entity === "locations") {
-    const { data } = await admin
+    // Selected Location Card — carries address/postal_code/category
+    // alongside the plain name/city/state the dropdown itself renders, so
+    // the picker can show a compact card (name, category, full address,
+    // View Location) the instant a Location is picked, with no second
+    // request. Reuses this same existing route rather than a parallel
+    // Location-search API.
+    let query = admin
       .from("locations")
-      .select("id, name, city, state, is_demo")
-      .eq("is_demo", false)
-      .or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`)
-      .order("name")
-      .limit(20);
+      .select("id, name, slug, city, state, address, postal_code, is_demo, category:categories(name)")
+      .eq("is_demo", false);
+    if (q) query = query.or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`);
+    const { data } = await query.order("name").limit(20);
     return NextResponse.json({
-      results: (data ?? []).map((l) => ({
-        value: l.id,
-        label: l.name,
-        sublabel: [l.city, l.state].filter(Boolean).join(", ") || undefined,
-      })),
+      results: (data ?? []).map((l) => {
+        const category = Array.isArray(l.category) ? (l.category[0] ?? null) : l.category;
+        return {
+          value: l.id,
+          label: l.name,
+          sublabel: [l.city, l.state].filter(Boolean).join(", ") || undefined,
+          slug: l.slug,
+          city: l.city,
+          state: l.state,
+          address: l.address,
+          postal_code: l.postal_code,
+          category: category?.name ?? null,
+        };
+      }),
     });
   }
 

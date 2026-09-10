@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getActiveMarkets } from "@/lib/data";
+import EventLocationField from "@/components/account/EventLocationField";
 import { createMemberEvent } from "../actions";
 
 /** Multi-Entity Self-Service V1, Stage 3 — Create Event From Venue. A
@@ -19,12 +20,38 @@ import { createMemberEvent } from "../actions";
  * of that Location — anyone entitled to create an event may create one at
  * any existing FindMi venue, same as picking one from the existing
  * Location search on the Event Manager's own Location tab. */
-async function getLocationHint(locationId: string | undefined): Promise<{ id: string; name: string } | null> {
+interface LocationHint {
+  id: string;
+  name: string;
+  slug: string;
+  category: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+}
+
+async function getLocationHint(locationId: string | undefined): Promise<LocationHint | null> {
   if (!locationId) return null;
   const admin = getAdminSupabase();
   if (!admin) return null;
-  const { data } = await admin.from("locations").select("id, name").eq("id", locationId).maybeSingle();
-  return data ?? null;
+  const { data } = await admin
+    .from("locations")
+    .select("id, name, slug, city, state, address, postal_code, category:categories(name)")
+    .eq("id", locationId)
+    .maybeSingle();
+  if (!data) return null;
+  const category = Array.isArray(data.category) ? (data.category[0] ?? null) : data.category;
+  return {
+    id: data.id,
+    name: data.name,
+    slug: data.slug,
+    category: category?.name ?? null,
+    address: data.address,
+    city: data.city,
+    state: data.state,
+    postal_code: data.postal_code,
+  };
 }
 
 export const metadata: Metadata = {
@@ -121,12 +148,7 @@ export default async function AddEventPage({
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberEvent} className="flex flex-col gap-4">
-          {locationHint && (
-            <div className="rounded-xl border border-findmi/20 bg-findmi-50 px-3.5 py-2.5">
-              <input type="hidden" name="location_id" value={locationHint.id} />
-              <p className="text-xs font-semibold text-findmi-700">Venue: {locationHint.name}</p>
-            </div>
-          )}
+          <EventLocationField initialLocation={locationHint} initialManual={null} />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Event name</span>
             <input
