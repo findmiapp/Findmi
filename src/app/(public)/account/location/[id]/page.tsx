@@ -555,14 +555,14 @@ export default async function ManageLocationPage({
               <div className={cardClass}>
                 <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Add an Appearance Here</p>
                 <p className="mt-1 text-sm text-ink/60">
-                  Adding a standalone Findmi Here entry (no Event required) for a Business you manage. Search for
-                  &ldquo;{location.name}&rdquo; when picking a Location on that Business&rsquo;s Findmi Here tab.
+                  Adds a standalone Findmi Here entry (no Event required) for a Business you manage, with{" "}
+                  {location.name} already selected as the Location.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {manageableBusinesses.map((b) => (
                     <Link
                       key={b.id}
-                      href={`/account/business/${b.id}?tab=findmi-here`}
+                      href={`/account/business/${b.id}?tab=findmi-here&location_id=${id}`}
                       className="rounded-full border border-black/10 px-3.5 py-2 text-xs font-semibold text-ink/70 transition hover:border-black/20"
                     >
                       + Add for {b.name}

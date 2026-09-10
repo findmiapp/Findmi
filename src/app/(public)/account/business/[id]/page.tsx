@@ -195,6 +195,7 @@ export default async function ManageBusinessPage({
     add_external_purchase_url?: string;
     add_category_id?: string;
     add_distribution?: string;
+    location_id?: string;
   }>;
 }) {
   const { id } = await params;
@@ -208,6 +209,7 @@ export default async function ManageBusinessPage({
     order_status: orderStatusFilter,
     pro_payment: proPayment,
     editing,
+    location_id: preselectedLocationId,
     add_title,
     add_date,
     add_start_time,
@@ -669,6 +671,23 @@ export default async function ManageBusinessPage({
   const addFromEvent = addAppearanceFromEvent.bind(null, id);
   const addManual = addManualAppearance.bind(null, id);
 
+  // Location Manager's "+ Add Appearance Here" links here with
+  // ?location_id=<location>, so the picker below arrives pre-selected
+  // instead of asking the owner to re-search a name they just came from.
+  // Looked up server-side (never trusts a client-posted name/city) — the
+  // same admin client this page already reads Location context with
+  // elsewhere. A missing/foreign id just yields no match, same as never
+  // having the param at all.
+  let preselectedLocation: { value: string; label: string; sublabel?: string } | null = null;
+  if (preselectedLocationId && admin) {
+    const { data: loc } = await admin
+      .from("locations")
+      .select("id, name, city")
+      .eq("id", preselectedLocationId)
+      .maybeSingle();
+    if (loc) preselectedLocation = { value: loc.id, label: loc.name, sublabel: loc.city ?? undefined };
+  }
+
   // "Add an Appearance" defaults — blank unless a server-side validation
   // error on THIS form just sent the visitor back here, in which case
   // every add_* value they'd typed is restored exactly as submitted (see
@@ -685,11 +704,11 @@ export default async function ManageBusinessPage({
     state: add_state ?? "",
     external_url: add_external_url ?? "",
     flyer_image_url: add_flyer_image_url ?? null,
-    // Not round-tripped through a validation-error redirect (unlike the
-    // fields above) — a rejected submission just asks the visitor to
-    // re-pick the Location, same as every other field's raw string would
-    // need resolving back to a label anyway. Always blank on a fresh load.
-    location: null,
+    // Blank on an ordinary fresh load or after a validation error (same
+    // as before — a rejected submission just asks the visitor to re-pick
+    // the Location); preselected only via ?location_id= from Location
+    // Manager, above.
+    location: preselectedLocation,
   };
 
   const basePath = `/account/business/${id}`;
