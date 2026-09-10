@@ -118,3 +118,41 @@ export function toggleProductSaved(slug: string): boolean {
   writeProducts(next);
   return !now;
 }
+
+// Saved locations — Location Public Profile UX pass, same per-device
+// pattern as businesses/events/products above, own key/list.
+const LOCATION_KEY = "findmi_saved_location_slugs";
+
+function readLocations(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LOCATION_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocations(slugs: string[]) {
+  try {
+    window.localStorage.setItem(LOCATION_KEY, JSON.stringify(slugs));
+  } catch {
+    // Storage unavailable — fail silently, same as saved businesses/events/products.
+  }
+}
+
+export function getSavedLocationSlugs(): string[] {
+  return readLocations();
+}
+
+export function isLocationSaved(slug: string): boolean {
+  return readLocations().includes(slug);
+}
+
+export function toggleLocationSaved(slug: string): boolean {
+  const current = readLocations();
+  const now = current.includes(slug);
+  const next = now ? current.filter((s) => s !== slug) : [...current, slug];
+  writeLocations(next);
+  return !now;
+}

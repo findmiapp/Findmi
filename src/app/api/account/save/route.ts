@@ -8,11 +8,13 @@ const ENTITY = {
   business: { table: "account_saved_businesses", entityTable: "businesses", column: "business_id" },
   event: { table: "account_saved_events", entityTable: "events", column: "event_id" },
   product: { table: "account_saved_products", entityTable: "products", column: "product_id" },
+  // Location Public Profile UX pass — 4th entity type, same shape.
+  location: { table: "account_saved_locations", entityTable: "locations", column: "location_id" },
 } as const;
 type EntityType = keyof typeof ENTITY;
 
 function isEntityType(value: string | null): value is EntityType {
-  return value === "business" || value === "event" || value === "product";
+  return value === "business" || value === "event" || value === "product" || value === "location";
 }
 
 async function resolveEntityId(supabase: SupabaseClient, entityTable: string, slug: string): Promise<string | null> {

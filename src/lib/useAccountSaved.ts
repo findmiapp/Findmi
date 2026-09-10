@@ -1,15 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isSaved, toggleSaved, isEventSaved, toggleEventSaved, isProductSaved, toggleProductSaved } from "@/lib/saved";
+import {
+  isSaved,
+  toggleSaved,
+  isEventSaved,
+  toggleEventSaved,
+  isProductSaved,
+  toggleProductSaved,
+  isLocationSaved,
+  toggleLocationSaved,
+} from "@/lib/saved";
 import { getAccountSession } from "@/lib/accountSession";
 
-export type SavedEntityType = "business" | "event" | "product";
+export type SavedEntityType = "business" | "event" | "product" | "location";
 
 const LOCAL = {
   business: { isSaved, toggle: toggleSaved },
   event: { isSaved: isEventSaved, toggle: toggleEventSaved },
   product: { isSaved: isProductSaved, toggle: toggleProductSaved },
+  location: { isSaved: isLocationSaved, toggle: toggleLocationSaved },
 } as const;
 
 /** One save/bookmark control's state + toggle, for any of the three
