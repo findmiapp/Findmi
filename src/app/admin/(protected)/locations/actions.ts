@@ -2,11 +2,60 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
+import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
+
+/** Location review-decision notification — every CURRENT location_members
+ * recipient, same shape as notifyBusinessOwners/notifyEventOrganizers
+ * (admin/businesses|events/actions.ts). Location's own review state is
+ * just the one is_demo boolean (no separate rejected/paused states exist
+ * for Location, unlike Business/Event's richer publication_status) — so
+ * "approved" is the true->false transition and "rejected" is the
+ * false->true transition; copy is worded to stay honest either way
+ * (a first review decision, or a later un-publish) since the schema
+ * can't distinguish those two cases from each other. Best-effort: a
+ * Resend failure never affects the save that already committed. */
+async function notifyLocationManagers(
+  supabase: SupabaseClient,
+  locationId: string,
+  locationName: string,
+  outcome: "approved" | "rejected"
+): Promise<void> {
+  const to = await getEntityManagerEmails(supabase, "location", locationId);
+  const copy =
+    outcome === "approved"
+      ? {
+          type: "location_approved",
+          subject: `Your venue is now live — ${locationName}`,
+          heading: "Your venue is now live",
+          body: [`${locationName} has been approved and is now visible on Findmi.`],
+        }
+      : {
+          type: "location_rejected",
+          subject: `Update on your venue — ${locationName}`,
+          heading: "Your venue isn't visible on Findmi",
+          body: [
+            `${locationName} isn't visible on Findmi right now.`,
+            "You can review your venue details — it can be made visible again once it's ready.",
+          ],
+        };
+
+  await sendProductNotification({
+    to,
+    type: copy.type,
+    subject: copy.subject,
+    heading: copy.heading,
+    body: copy.body,
+    actionLabel: `Manage ${locationName}`,
+    actionUrl: `/account/location/${locationId}`,
+  });
+}
 
 export async function saveLocation(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/locations/${id}` : "/admin/locations/new";
@@ -71,8 +120,19 @@ export async function saveLocation(id: string | null, formData: FormData) {
 
   let locationId = id;
   if (locationId) {
+    // Read the prior is_demo BEFORE overwriting it, so a review-decision
+    // email only fires on a genuine transition — never on an ordinary
+    // content edit that leaves published/unpublished state unchanged.
+    const { data: before } = await supabase.from("locations").select("is_demo").eq("id", locationId).maybeSingle();
+    const wasPublished = before ? !before.is_demo : null;
+
     const { error } = await supabase.from("locations").update(payload).eq("id", locationId);
     if (error) redirect(errorRedirectUrl(editPath, error.message));
+
+    const nowPublished = !payload.is_demo;
+    if (wasPublished !== null && wasPublished !== nowPublished) {
+      await notifyLocationManagers(supabase, locationId, name as string, nowPublished ? "approved" : "rejected");
+    }
   } else {
     const { data, error } = await supabase.from("locations").insert(payload).select("id").single();
     if (error || !data) redirect(errorRedirectUrl(editPath, error?.message ?? "Could not create location."));

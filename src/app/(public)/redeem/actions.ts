@@ -7,6 +7,8 @@ import { requireBusinessMember } from "@/lib/permissions";
 import { isAdminSession } from "@/lib/admin/auth";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
 
 /**
  * Pro Invite / Complimentary Access Codes — the one real redemption path.
@@ -92,6 +94,30 @@ export async function redeemProInvite(code: string, formData: FormData) {
       const message = REDEEM_ERROR_MESSAGES[error?.message ?? ""] ?? "Couldn't redeem this invite. Please try again.";
       redirect(errorRedirectUrl(redirectPath, message));
     }
+
+    // Pro Invite Redemption Notifications pass — only reached after the
+    // RPC above has already committed the grant; a Resend failure here
+    // (both wrappers are best-effort) never affects that. Invite CREATION
+    // stays fully manual/unchanged — this is the redemption side only.
+    if (user.email) {
+      await sendProductNotification({
+        to: [user.email],
+        type: "pro_invite_redeemed_event_management",
+        subject: "Event Management access activated",
+        heading: "Event Management access activated",
+        body: ["Your Findmi Pro Invite was redeemed — you can now create and manage Events on Findmi."],
+        actionLabel: "Add an Event",
+        actionUrl: "/account",
+      });
+    }
+    await notifyAdmin({
+      subject: "Pro Invite redeemed — Event Management",
+      heading: "Pro Invite redeemed",
+      body: [`Code: ${code}`, "Purpose: Event Management", `Redeemed by: ${user.email ?? user.id}`],
+      actionLabel: "View Pro Invites",
+      actionUrl: "/admin/pro-invites",
+    });
+
     // Straight to the Account Hub — "+ Add an Event" works immediately,
     // no business-scoped success screen needed since no Business was
     // ever touched.
@@ -125,6 +151,42 @@ export async function redeemProInvite(code: string, formData: FormData) {
     plan_tier_changed: boolean;
     granted_until: string;
   };
+
+  // Pro Invite Redemption Notifications pass — only reached after
+  // redeem_pro_invite() has already committed the grant; a Resend
+  // failure here (both wrappers are best-effort) never affects that.
+  // Invite CREATION stays fully manual/unchanged — this is the
+  // redemption side only.
+  const grantedUntilLabel = new Date(result.granted_until).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  if (user.email) {
+    await sendProductNotification({
+      to: [user.email],
+      type: "pro_invite_redeemed_business_pro",
+      subject: `You're Pro — ${result.business_name}`,
+      heading: "Your Pro Invite was redeemed",
+      body: [`${result.business_name} now has Findmi Pro, granted until ${grantedUntilLabel}.`],
+      actionLabel: `Manage ${result.business_name}`,
+      actionUrl: `/account/business/${result.business_id}`,
+    });
+  }
+  await notifyAdmin({
+    subject: `Pro Invite redeemed — ${result.business_name}`,
+    heading: "Pro Invite redeemed",
+    body: [
+      `Code: ${code}`,
+      "Purpose: Business Pro",
+      `Business: ${result.business_name}`,
+      `Redeemed by: ${user.email ?? user.id}`,
+      `Granted until: ${grantedUntilLabel}`,
+    ],
+    actionLabel: "View Pro Invites",
+    actionUrl: "/admin/pro-invites",
+  });
+
   const params = new URLSearchParams({
     success: "1",
     business_id: result.business_id,

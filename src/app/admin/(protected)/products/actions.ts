@@ -215,10 +215,60 @@ export async function deleteProduct(id: string) {
 async function getProductForReview(supabase: Awaited<ReturnType<typeof requireAdminSupabase>>, id: string) {
   const { data } = await supabase
     .from("products")
-    .select("id, slug, business_id, moderation_status, pending_changes")
+    .select("id, name, slug, business_id, moderation_status, pending_changes, business:businesses(name)")
     .eq("id", id)
     .maybeSingle();
-  return data;
+  if (!data) return data;
+  const business = Array.isArray(data.business) ? data.business[0] : data.business;
+  return { ...data, business: business ?? null };
+}
+
+/** Content-moderation decision notification — every CURRENT
+ * business_members recipient of the Product's owning Business. Entirely
+ * distinct from notifyMarketplaceDecision below (different type strings,
+ * different copy, never called from the same code path) — content
+ * approval/rejection and Marketplace distribution are two independent
+ * decisions, and a single admin action here must never also fire a
+ * Marketplace email. Best-effort: a Resend failure never affects the
+ * moderation decision itself, which has already committed by the time
+ * this runs. No rejection-reason field exists on this workflow today, so
+ * none is included (never invented). */
+async function notifyProductModerationDecision(
+  supabase: SupabaseClient,
+  businessId: string,
+  productName: string,
+  businessName: string | null,
+  outcome: "approved" | "rejected"
+): Promise<void> {
+  const to = await getEntityManagerEmails(supabase, "business", businessId);
+  const businessSuffix = businessName ? ` for ${businessName}` : "";
+  const copy =
+    outcome === "approved"
+      ? {
+          type: "product_content_approved",
+          subject: `Your product is now live — ${productName}`,
+          heading: "Your product is now live",
+          body: [`${productName}${businessSuffix} has been approved and is now visible on Findmi.`],
+        }
+      : {
+          type: "product_content_rejected",
+          subject: `Update on your product — ${productName}`,
+          heading: "Your product wasn't approved",
+          body: [
+            `${productName}${businessSuffix} wasn't approved this time.`,
+            "You can review and update it, then resubmit for review.",
+          ],
+        };
+
+  await sendProductNotification({
+    to,
+    type: copy.type,
+    subject: copy.subject,
+    heading: copy.heading,
+    body: copy.body,
+    actionLabel: `Manage ${productName}`,
+    actionUrl: `/account/business/${businessId}?tab=products`,
+  });
 }
 
 /**
@@ -235,8 +285,10 @@ export async function approveProduct(id: string) {
   const product = await getProductForReview(supabase, id);
   if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
 
+  let decided = false;
   if (product.moderation_status === "pending_review") {
     await supabase.from("products").update({ moderation_status: "live" }).eq("id", id);
+    decided = true;
   } else if (product.pending_changes) {
     const { category_id, ...fieldChanges } = product.pending_changes as Record<string, unknown> & {
       category_id?: string | null;
@@ -249,6 +301,14 @@ export async function approveProduct(id: string) {
     if (category_id) {
       await supabase.from("product_categories").insert({ product_id: id, category_id });
     }
+    decided = true;
+  }
+
+  // Only fires when a real state transition just happened above — never
+  // for a no-op call (already-live with no pending edit) that changed
+  // nothing.
+  if (decided) {
+    await notifyProductModerationDecision(supabase, product.business_id, product.name, product.business?.name ?? null, "approved");
   }
 
   revalidatePath("/admin/products");
@@ -271,10 +331,17 @@ export async function rejectProduct(id: string) {
   const product = await getProductForReview(supabase, id);
   if (!product) redirect(errorRedirectUrl("/admin/products", "Product not found."));
 
+  let decided = false;
   if (product.moderation_status === "pending_review") {
     await supabase.from("products").update({ moderation_status: "rejected" }).eq("id", id);
+    decided = true;
   } else if (product.pending_changes) {
     await supabase.from("products").update({ pending_changes: null }).eq("id", id);
+    decided = true;
+  }
+
+  if (decided) {
+    await notifyProductModerationDecision(supabase, product.business_id, product.name, product.business?.name ?? null, "rejected");
   }
 
   revalidatePath("/admin/products");
