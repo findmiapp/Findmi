@@ -3,7 +3,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
-import { syncEmailVerifiedAt } from "@/lib/auth/sync-email-verified";
 import { requestEmailVerification } from "./actions";
 
 export const metadata: Metadata = {
@@ -51,14 +50,19 @@ export default async function VerifyEmailPage({
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(next)}`);
 
-  // Self-heal for a stale/null profiles.email_verified_at on an account
-  // Supabase Auth itself already considers verified (e.g. an old signup-
-  // confirmation link, or a manual admin action) — see Phase 5 of the
-  // Callback/Link Fix: never make an already-verified visitor verify
-  // again just because this one row never got backfilled. Idempotent,
-  // guarded, no-ops for the overwhelming common case (already synced).
-  await syncEmailVerifiedAt(user);
-
+  // Progressive Email Verification Correctness pass — the unconditional
+  // page-load self-heal that used to live here (calling
+  // syncEmailVerifiedAt(user) on every visit) has been REMOVED. With
+  // Supabase's Confirm Email setting intentionally OFF, auth.users.
+  // email_confirmed_at gets populated automatically at signup — it is
+  // NOT proof the visitor ever clicked a Findmi verification link. That
+  // self-heal could therefore mark someone verified merely because they
+  // loaded this page while signed in. profiles.email_verified_at is now
+  // set ONLY from the callback side (/auth/callback), after a real
+  // magic-link exchange succeeds — see this pass's own report for the
+  // full call-site list. This page only ever READS the current value
+  // below; it never writes it.
+  //
   // Deliberately not part of the shared Profile type (lib/types.ts) —
   // that interface also backs the PUBLIC profile view once a username is
   // set, and its own comment is explicit: never add auth-adjacent
