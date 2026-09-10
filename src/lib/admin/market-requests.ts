@@ -14,6 +14,11 @@ import type { MarketRequest, MarketRequestResolutionType, MarketRequestSource, M
 export interface AdminMarketRequestRow extends MarketRequest {
   businessName: string | null;
   eventName: string | null;
+  /** Geography Foundation Pass 1 — the Location-creation counterpart of
+   * businessName/eventName above, so the admin queue can finally show
+   * which Location a location_creation-sourced request came from (it
+   * previously showed nothing at all for this source). */
+  locationName: string | null;
   /** Only meaningful for source='consumer' — the number of distinct
    * people (signed-in or by email) who expressed interest in this exact
    * pending row. */
@@ -48,6 +53,9 @@ export interface MarketRequestGroup {
   consumerInterestCount: number;
   businessCount: number;
   eventCount: number;
+  /** Geography Foundation Pass 1 — Location-creation counterpart of
+   * businessCount/eventCount above. */
+  locationCount: number;
   oldestCreatedAt: string;
   /** V2 — a lightweight local suggestion (exact/substring/close-edit-
    * distance only, never geocoding) against existing active Markets/Areas,
@@ -60,6 +68,7 @@ type NameRow = { name: string; display_name: string | null };
 type RequestJoinRow = MarketRequest & {
   businesses: { name: string } | { name: string }[] | null;
   events: { name: string } | { name: string }[] | null;
+  locations: { name: string } | { name: string }[] | null;
   markets: NameRow | NameRow[] | null;
   market_areas: (NameRow & { markets: NameRow | NameRow[] | null }) | (NameRow & { markets: NameRow | NameRow[] | null })[] | null;
 };
@@ -76,7 +85,7 @@ export async function getPendingMarketRequestGroups(): Promise<MarketRequestGrou
   const { data: requestRows } = await admin
     .from("market_requests")
     .select(
-      "*, businesses(name), events(name), markets(name, display_name), market_areas(name, display_name, markets(name, display_name))"
+      "*, businesses(name), events(name), locations(name), markets(name, display_name), market_areas(name, display_name, markets(name, display_name))"
     )
     .eq("status", "pending")
     .order("created_at", { ascending: true });
@@ -95,9 +104,10 @@ export async function getPendingMarketRequestGroups(): Promise<MarketRequestGrou
 
   const groups = new Map<string, MarketRequestGroup>();
   for (const r of rows) {
-    const { businesses, events, markets, market_areas, ...requestFields } = r;
+    const { businesses, events, locations, markets, market_areas, ...requestFields } = r;
     const business = Array.isArray(businesses) ? businesses[0] : businesses;
     const event = Array.isArray(events) ? events[0] : events;
+    const location = Array.isArray(locations) ? locations[0] : locations;
     const market = Array.isArray(markets) ? markets[0] : markets;
     const areaJoin = Array.isArray(market_areas) ? market_areas[0] : market_areas;
     const areaParentMarket = areaJoin ? (Array.isArray(areaJoin.markets) ? areaJoin.markets[0] : areaJoin.markets) : null;
@@ -105,6 +115,7 @@ export async function getPendingMarketRequestGroups(): Promise<MarketRequestGrou
       ...requestFields,
       businessName: business?.name ?? null,
       eventName: event?.name ?? null,
+      locationName: location?.name ?? null,
       interestCount: interestCounts.get(r.id) ?? 0,
       // Reopen Request pass — non-null here means this pending row was
       // previously resolved and then reopened (a fresh request never has
@@ -128,6 +139,7 @@ export async function getPendingMarketRequestGroups(): Promise<MarketRequestGrou
         consumerInterestCount: 0,
         businessCount: 0,
         eventCount: 0,
+        locationCount: 0,
         oldestCreatedAt: r.created_at,
         suggestedMatch: null,
       };
@@ -142,6 +154,7 @@ export async function getPendingMarketRequestGroups(): Promise<MarketRequestGrou
     if (row.source === "consumer") group.consumerInterestCount += row.interestCount;
     if (row.source === "business_creation") group.businessCount += 1;
     if (row.source === "event_creation") group.eventCount += 1;
+    if (row.source === "location_creation") group.locationCount += 1;
     if (r.created_at < group.oldestCreatedAt) group.oldestCreatedAt = r.created_at;
   }
 
@@ -278,26 +291,33 @@ export async function getRecentlyResolvedMarketRequests(limit = 12): Promise<Res
 export type MarketRequestSourceFilter = MarketRequestSource;
 
 export interface ResolutionConflict {
-  kind: "business" | "event";
+  kind: "business" | "event" | "location";
   name: string;
 }
 
 /** Applies a resolution (an existing OR newly-created Market id, and
  * optionally a market_areas id nested inside it) to every linked
- * business/event across a group of requests being resolved together.
+ * business/event/location across a group of requests being resolved
+ * together.
  *
- * NEVER overwrites an existing active Primary Market or a non-null
- * event.market_id (V1 behavior, unchanged) — a business/event that
- * already has one is simply left alone. V2 extends this same
- * conservatism to market_area_id: it is only ever set when the
- * business/event's EFFECTIVE Market (its pre-existing one, or the one
- * just assigned here) actually matches the Market this Area belongs to,
- * and only when it doesn't already carry a different Area. Any mismatch
- * is returned as a conflict for the caller to surface to the admin
- * (never silently dropped, never silently overwritten). */
+ * NEVER overwrites an existing active Primary Market, a non-null
+ * event.market_id, or a non-null location.market_id (V1 behavior for
+ * Business/Event, unchanged; Location added in the Geography Foundation
+ * Pass 1 using the identical shape as Event — Location's own market_id/
+ * market_area_id are single scalar columns, same as Event's, so it
+ * reuses Event's exact branch shape rather than Business's join-table
+ * one) — an entity that already has a Market is simply left alone,
+ * whether that Market was set by the owner or an admin between this
+ * request being submitted and being resolved now. V2 extends this same
+ * conservatism to market_area_id: it is only ever set when the entity's
+ * EFFECTIVE Market (its pre-existing one, or the one just assigned here)
+ * actually matches the Market this Area belongs to, and only when it
+ * doesn't already carry a different Area. Any mismatch is returned as a
+ * conflict for the caller to surface to the admin (never silently
+ * dropped, never silently overwritten). */
 export async function applyMarketRequestResolution(
   supabase: SupabaseClient,
-  requests: { source_business_id: string | null; source_event_id: string | null }[],
+  requests: { source_business_id: string | null; source_event_id: string | null; source_location_id: string | null }[],
   marketId: string,
   areaId?: string | null
 ): Promise<{ conflicts: ResolutionConflict[] }> {
@@ -349,6 +369,37 @@ export async function applyMarketRequestResolution(
         } else {
           const { data: biz } = await supabase.from("businesses").select("name").eq("id", r.source_business_id).maybeSingle();
           conflicts.push({ kind: "business", name: biz?.name ?? r.source_business_id });
+        }
+      }
+    }
+    // Geography Foundation Pass 1 — Location branch, added to close the
+    // confirmed audit gap: source_location_id already existed on this
+    // table (Location creation/edit already populate it — see
+    // create_owned_location / updateMemberLocationMarket) and this
+    // function already resolved Business/Event, but never Location, so a
+    // Location's own pending request could be fully "resolved" here while
+    // the Location itself silently stayed geography-less. Shaped exactly
+    // like the Event branch below (Location, like Event, has single
+    // scalar market_id/market_area_id columns — no join table), not the
+    // Business branch (which also has a normalized many-to-many table).
+    if (r.source_location_id) {
+      const { data: loc } = await supabase
+        .from("locations")
+        .select("market_id, market_area_id, name")
+        .eq("id", r.source_location_id)
+        .maybeSingle();
+      const wasNull = loc ? loc.market_id === null : false;
+      if (wasNull) {
+        await supabase.from("locations").update({ market_id: marketId }).eq("id", r.source_location_id);
+      }
+      if (areaId && loc) {
+        const effectiveMarketId = wasNull ? marketId : loc.market_id;
+        if (effectiveMarketId === marketId) {
+          if (!loc.market_area_id) {
+            await supabase.from("locations").update({ market_area_id: areaId }).eq("id", r.source_location_id);
+          }
+        } else {
+          conflicts.push({ kind: "location", name: loc.name });
         }
       }
     }

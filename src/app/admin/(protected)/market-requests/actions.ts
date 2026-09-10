@@ -13,9 +13,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const QUEUE_PATH = "/admin/market-requests";
 const MAX_TEXT_LENGTH = 120;
 
+const CONFLICT_KIND_LABEL: Record<ResolutionConflict["kind"], string> = {
+  business: "Business",
+  event: "Event",
+  location: "Location",
+};
+
 function conflictNote(conflicts: ResolutionConflict[]): string | null {
   if (conflicts.length === 0) return null;
-  const names = conflicts.map((c) => `${c.kind === "business" ? "Business" : "Event"} "${c.name}"`);
+  const names = conflicts.map((c) => `${CONFLICT_KIND_LABEL[c.kind]} "${c.name}"`);
   return `Area not applied — already has a different Market: ${names.join("; ")}.`;
 }
 
@@ -37,7 +43,7 @@ export async function mapMarketRequestGroup(formData: FormData) {
 
   const { data: requests } = await supabase
     .from("market_requests")
-    .select("id, source_business_id, source_event_id")
+    .select("id, source_business_id, source_event_id, source_location_id")
     .in("id", requestIds)
     .eq("status", "pending");
   if (!requests || requests.length === 0) redirect(`${QUEUE_PATH}?saved=1`);
@@ -63,6 +69,7 @@ export async function mapMarketRequestGroup(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/admin/businesses");
   revalidatePath("/admin/events");
+  revalidatePath("/admin/locations");
   redirect(`${QUEUE_PATH}?saved=1`);
 }
 
@@ -86,7 +93,7 @@ export async function mapMarketRequestGroupToArea(formData: FormData) {
 
   const { data: requests } = await supabase
     .from("market_requests")
-    .select("id, source_business_id, source_event_id")
+    .select("id, source_business_id, source_event_id, source_location_id")
     .in("id", requestIds)
     .eq("status", "pending");
   if (!requests || requests.length === 0) redirect(`${QUEUE_PATH}?saved=1`);
@@ -112,6 +119,7 @@ export async function mapMarketRequestGroupToArea(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/admin/businesses");
   revalidatePath("/admin/events");
+  revalidatePath("/admin/locations");
   redirect(`${QUEUE_PATH}?saved=1`);
 }
 
@@ -172,7 +180,7 @@ export async function createMarketAreaAndResolveGroup(formData: FormData) {
 
   const { data: requests } = await supabase
     .from("market_requests")
-    .select("id, source_business_id, source_event_id")
+    .select("id, source_business_id, source_event_id, source_location_id")
     .in("id", requestIds)
     .eq("status", "pending");
 
@@ -199,6 +207,7 @@ export async function createMarketAreaAndResolveGroup(formData: FormData) {
   revalidatePath("/admin/markets");
   revalidatePath("/admin/businesses");
   revalidatePath("/admin/events");
+  revalidatePath("/admin/locations");
   redirect(`${QUEUE_PATH}?saved=1`);
 }
 
@@ -251,7 +260,7 @@ export async function approveMarketRequestGroupAsNewMarket(formData: FormData) {
 
   const { data: requests } = await supabase
     .from("market_requests")
-    .select("id, source_business_id, source_event_id")
+    .select("id, source_business_id, source_event_id, source_location_id")
     .in("id", requestIds)
     .eq("status", "pending");
 
@@ -277,6 +286,7 @@ export async function approveMarketRequestGroupAsNewMarket(formData: FormData) {
   revalidatePath("/admin/markets");
   revalidatePath("/admin/businesses");
   revalidatePath("/admin/events");
+  revalidatePath("/admin/locations");
   redirect(`${QUEUE_PATH}?saved=1`);
 }
 

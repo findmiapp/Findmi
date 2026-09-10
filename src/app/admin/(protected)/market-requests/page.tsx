@@ -22,6 +22,7 @@ const SOURCE_LABEL: Record<string, string> = {
   consumer: "Consumer",
   business_creation: "Business creation",
   event_creation: "Event creation",
+  location_creation: "Location creation",
 };
 
 /** Market Requests queue — every PENDING request (consumer, business
@@ -51,7 +52,8 @@ export default async function AdminMarketRequestsPage({
     <div>
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Market Requests</h1>
       <p className="mt-1 text-sm text-ink/60">
-        Geography consumers, businesses, or events have asked for that isn&rsquo;t a Findmi Market or Area yet. Map
+        Geography consumers, businesses, events, or locations have asked for that isn&rsquo;t a Findmi Market or Area
+        yet. Map
         each to an existing Market or Area, create a new Area under an existing Market, approve a genuinely new
         Market, or reject it — nothing here grants discovery until you do.
       </p>
@@ -96,6 +98,9 @@ export default async function AdminMarketRequestsPage({
                     <span>
                       Events: <strong className="text-ink">{group.eventCount}</strong>
                     </span>
+                    <span>
+                      Locations: <strong className="text-ink">{group.locationCount}</strong>
+                    </span>
                   </div>
                 </div>
 
@@ -137,6 +142,7 @@ export default async function AdminMarketRequestsPage({
                         <span className="font-semibold text-ink/70">{SOURCE_LABEL[r.source] ?? r.source}</span>
                         {r.businessName ? <span>— {r.businessName}</span> : null}
                         {r.eventName ? <span>— {r.eventName}</span> : null}
+                        {r.locationName ? <span>— {r.locationName}</span> : null}
                         {r.requester_email ? <span>— {r.requester_email}</span> : null}
                       </div>
                       <div className="mt-1 text-ink/45">

@@ -311,7 +311,7 @@ export interface MarketArea {
 
 // Consumer Area Picker + Market Requests V1, extended by V2 (canonical
 // correction + Market/Area resolution)
-export type MarketRequestSource = "consumer" | "business_creation" | "event_creation";
+export type MarketRequestSource = "consumer" | "business_creation" | "event_creation" | "location_creation";
 export type MarketRequestStatus = "pending" | "approved" | "mapped" | "rejected";
 export type MarketRequestResolutionType = "existing_market" | "existing_area" | "new_market" | "new_area";
 
@@ -327,6 +327,11 @@ export interface MarketRequest {
   source: MarketRequestSource;
   source_business_id: string | null;
   source_event_id: string | null;
+  // Geography Foundation Pass 1 — the column has existed since Location
+  // Ownership Foundation (create_owned_location/updateMemberLocationMarket
+  // already write it); only the TS type was missing it, which is why
+  // applyMarketRequestResolution had no way to see or act on it.
+  source_location_id: string | null;
   status: MarketRequestStatus;
   mapped_market_id: string | null;
   admin_note: string | null;
