@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabase";
 import { getAdminSupabase } from "./admin/supabase-admin";
+import { isBusinessPro } from "./entitlements";
 import {
   formatAppearanceDateRange,
   getDiscoveryWindowBounds,
@@ -102,7 +103,7 @@ function withCategories(
 export async function attachCategories(businesses: Business[]): Promise<BusinessWithCategories[]> {
   const supabase = getSupabase();
   if (!supabase || businesses.length === 0) {
-    return businesses.map((b) => ({ ...b, categories: [] }));
+    return withActiveProBadge(businesses.map((b) => ({ ...b, categories: [] })));
   }
   const ids = businesses.map((b) => b.id);
   // .eq("categories.kind", "business") — defense in depth: business_categories
@@ -116,7 +117,63 @@ export async function attachCategories(businesses: Business[]): Promise<Business
     .eq("categories.kind", "business")
     .in("business_id", ids);
 
-  return withCategories(businesses, (data as never) ?? []);
+  return withActiveProBadge(withCategories(businesses, (data as never) ?? []));
+}
+
+/** Pro Badge Expiration Alignment pass — businesses.is_pro_member is a
+ * STORED GENERATED column keyed only on plan_tier (see
+ * 20260908190000_business_is_pro_member_public_grant.sql): "plan_tier in
+ * ('pro','pro_seller')", with no way to also depend on plan_expires_at.
+ * Confirmed before writing this: Postgres generated columns must be
+ * IMMUTABLE, and "is this timestamp still in the future" depends on
+ * now() (STABLE, not immutable), so a database-level fix isn't possible
+ * — this must be a read-side correction instead, and this file's own
+ * PUBLIC_BUSINESS_COLUMNS constant deliberately keeps plan_expires_at off
+ * the anon/authenticated column grant (see that constant's own comment),
+ * so a public business fetch can't just select it directly either.
+ *
+ * attachCategories() is the one place every public Business fetch in this
+ * file already funnels through (all nine PUBLIC_BUSINESS_COLUMNS call
+ * sites, plus BusinessPublicView's owner-preview path), which makes it
+ * the single correct choke point for this correction — no change needed
+ * to any of those call sites, and none to BusinessLogoCard (still trusts
+ * is_pro_member exactly as before; its badge design/copy is untouched).
+ *
+ * Scoped to ONLY the businesses the DB already flagged is_pro_member =
+ * true — a Free business never needed a lookup to begin with, so this
+ * adds zero extra queries for an all-Free result (the common case on
+ * most pages). Reuses the exact canonical isBusinessPro() rule from
+ * lib/entitlements.ts (Business Pro Expiration Enforcement pass, commit
+ * 9576579) rather than re-deriving its own expiration comparison —
+ * plan_tier itself is passed as the literal "pro" here only because
+ * is_pro_member = true already guarantees it's 'pro' or 'pro_seller'
+ * (isPlanTierPro treats both identically), so only the expiration half of
+ * that rule is actually in question for this correction.
+ *
+ * Fails soft like every other helper in this file: if the service-role
+ * client isn't configured, or the lookup errors, is_pro_member is left
+ * exactly as the DB returned it. This is safe because the badge is
+ * presentation-only — no discovery/filtering/ranking query in this file
+ * reads is_pro_member (confirmed), and every real Pro-gated feature and
+ * the $99 checkout already resolve entitlement through isBusinessPro()
+ * with direct service-role access, independent of this column.
+ */
+async function withActiveProBadge<T extends Pick<Business, "id" | "is_pro_member">>(businesses: T[]): Promise<T[]> {
+  const proIds = businesses.filter((b) => b.is_pro_member).map((b) => b.id);
+  if (proIds.length === 0) return businesses;
+
+  const admin = getAdminSupabase();
+  if (!admin) return businesses;
+
+  const { data, error } = await admin.from("businesses").select("id, plan_expires_at").in("id", proIds);
+  if (error || !data) return businesses;
+
+  const expiresById = new Map((data as { id: string; plan_expires_at: string | null }[]).map((row) => [row.id, row.plan_expires_at]));
+  return businesses.map((b) => {
+    if (!b.is_pro_member) return b;
+    const stillActive = isBusinessPro({ plan_tier: "pro", plan_expires_at: expiresById.get(b.id) ?? null });
+    return stillActive ? b : { ...b, is_pro_member: false };
+  });
 }
 
 /** One category name per business_id — the first linked category, same
