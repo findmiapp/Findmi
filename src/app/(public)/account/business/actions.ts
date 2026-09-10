@@ -798,6 +798,7 @@ const APPEARANCE_FIELD_NAMES = [
   "state",
   "external_url",
   "flyer_image_url",
+  "location_id",
 ] as const;
 
 /** Same shape errorRedirectUrl already uses (?error=...) plus the
@@ -858,6 +859,11 @@ function parseAppearanceFields(formData: FormData, onError: (message: string) =>
     address: str(formData, "address"),
     city: str(formData, "city"),
     state: str(formData, "state"),
+    // Location Connections pass — optional direct link to a real Findmi
+    // Location (AccountRelationField in AppearanceFieldsForm already fills
+    // venue_name/address/city/state from the chosen Location client-side,
+    // so this is purely the authoritative FK alongside that text snapshot).
+    location_id: str(formData, "location_id"),
     external_url,
     // Reuses the existing appearances.flyer_image_url column admin's own
     // AppearanceForm already writes to, and the file itself was already

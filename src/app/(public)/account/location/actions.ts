@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { requireLocationMember } from "@/lib/permissions";
+import { requireEventMember, requireLocationMember } from "@/lib/permissions";
 import { errorRedirectUrl, errorRedirectUrlWithFields, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -434,4 +434,45 @@ export async function updateMemberLocationPhotos(locationId: string, formData: F
   revalidatePath(redirectPath);
   if (location && !location.is_demo) revalidatePath(`/location/${location.slug}`);
   redirect(appendQuery(redirectPath, { saved: "1" }));
+}
+
+// ── WHAT'S HAPPENING HERE ────────────────────────────────────────────────
+/** "Add Existing Event Here" — connects one or more of an ALREADY-OWNED
+ * Event's own occurrences to this Location, by setting
+ * event_occurrences.location_id (the same real, canonical relationship
+ * Event Manager's own Dates tab already writes to — never a second
+ * location_events-style table). Requires the acting account to manage
+ * BOTH this Location AND the target Event — requireEventMember() throws
+ * (never silently rewriting someone else's Event) if they only manage the
+ * Location. Scoped by both occurrence id and event_id on the write itself,
+ * so a crafted occurrence id belonging to a different event can never be
+ * picked up. Vendor participation (event_occurrence_businesses) is never
+ * touched by this — only the occurrence's own location_id. */
+export async function assignExistingEventOccurrencesToLocation(locationId: string, eventId: string, formData: FormData) {
+  const redirectPath = `/account/location/${locationId}?tab=happening`;
+  const admin = await requireLocationManager(locationId, redirectPath);
+
+  try {
+    await requireEventMember(eventId);
+  } catch {
+    redirect(errorRedirectUrl(redirectPath, "You don't manage that event, so it can't be added here."));
+  }
+
+  const occurrenceIds = formData.getAll("occurrence_ids").map(String).filter(Boolean);
+  if (occurrenceIds.length === 0) {
+    redirect(errorRedirectUrl(redirectPath, "Choose at least one date to assign to this venue."));
+  }
+
+  const { error } = await admin
+    .from("event_occurrences")
+    .update({ location_id: locationId })
+    .eq("event_id", eventId)
+    .in("id", occurrenceIds);
+  if (error) redirect(errorRedirectUrl(redirectPath, "Couldn't assign that date. Please try again."));
+
+  revalidatePath(redirectPath);
+  revalidatePath(`/account/event/${eventId}`);
+  const { data: location } = await admin.from("locations").select("slug, is_demo").eq("id", locationId).maybeSingle();
+  if (location && !location.is_demo) revalidatePath(`/location/${location.slug}`);
+  redirect(appendQuery(redirectPath, { event_added: "1" }));
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import MemberImageField from "./MemberImageField";
+import { AccountRelationField, type AccountSearchResult } from "@/components/account/AccountRelationPicker";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -17,6 +18,12 @@ export interface AppearanceFieldValues {
   state: string;
   external_url: string;
   flyer_image_url: string | null;
+  /** Location Connections pass — an existing Findmi Location this
+   * standalone appearance is at, if any. Picking one here auto-fills
+   * venue_name/address/city/state below from that Location's own real
+   * data, same "location is authoritative, text is a snapshot" pattern
+   * Event Manager's own occurrence Location picker already uses. */
+  location: AccountSearchResult | null;
 }
 
 /** Shared fields for both "Add an appearance manually" and "Edit
@@ -42,6 +49,24 @@ export default function AppearanceFieldsForm({
   submitLabel: string;
 }) {
   const [timeError, setTimeError] = useState<string | null>(null);
+  const venueNameRef = useRef<HTMLInputElement>(null);
+  const cityRef = useRef<HTMLInputElement>(null);
+  const stateRef = useRef<HTMLInputElement>(null);
+
+  // Picking an existing Findmi Location fills the plain text fields below
+  // from its own real name/city/state — a convenience snapshot, never the
+  // source of truth once location_id is set (see getUpcomingAtLocation's
+  // FK-first matching). Address isn't returned by the account search
+  // endpoint (only name/city/state), so it's left for the visitor to add
+  // if they want it; the Location link itself is what makes this
+  // appearance findable from that Location's own page either way.
+  function handleLocationSelect(location: AccountSearchResult | null) {
+    if (!location) return;
+    if (venueNameRef.current) venueNameRef.current.value = location.label;
+    const [city, state] = (location.sublabel ?? "").split(",").map((s) => s.trim());
+    if (cityRef.current && city) cityRef.current.value = city;
+    if (stateRef.current && state) stateRef.current.value = state;
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     const form = e.currentTarget;
@@ -72,7 +97,17 @@ export default function AppearanceFieldsForm({
         <input type="time" name="end_time" required defaultValue={defaultValues.end_time} className={inputClass} />
       </div>
       {timeError && <p className="text-xs text-red-600">{timeError}</p>}
+      <AccountRelationField
+        label="Findmi Location (optional)"
+        name="location_id"
+        entity="locations"
+        initial={defaultValues.location}
+        placeholder="Search Findmi Locations…"
+        clearLabel="Not a Findmi Location"
+        onSelect={handleLocationSelect}
+      />
       <input
+        ref={venueNameRef}
         type="text"
         name="venue_name"
         defaultValue={defaultValues.venue_name}
@@ -81,8 +116,8 @@ export default function AppearanceFieldsForm({
       />
       <input type="text" name="address" defaultValue={defaultValues.address} placeholder="Address" className={inputClass} />
       <div className="grid grid-cols-2 gap-2">
-        <input type="text" name="city" defaultValue={defaultValues.city} placeholder="City" className={inputClass} />
-        <input type="text" name="state" defaultValue={defaultValues.state} placeholder="State" className={inputClass} />
+        <input ref={cityRef} type="text" name="city" defaultValue={defaultValues.city} placeholder="City" className={inputClass} />
+        <input ref={stateRef} type="text" name="state" defaultValue={defaultValues.state} placeholder="State" className={inputClass} />
       </div>
       <input
         type="url"

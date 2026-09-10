@@ -112,8 +112,9 @@ export default function LocationForm({
       {location && (
         <div className="border-t border-black/5 pt-5">
           <p className="mb-2 text-xs text-ink/45">
-            Deleting removes this location permanently. It doesn&rsquo;t affect any
-            business, event, or appearance — locations aren&rsquo;t linked to them yet.
+            Deleting removes this location permanently. Any Event date or Business appearance linked to it keeps its
+            own record — it just loses this Location link (falls back to its plain venue name/address text) rather
+            than being deleted itself.
           </p>
           <DeleteButton
             action={deleteLocation.bind(null, location.id)}

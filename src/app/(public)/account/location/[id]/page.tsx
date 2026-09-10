@@ -16,6 +16,7 @@ import MarketAreaFields from "@/components/MarketAreaFields";
 import MemberLocationImageField from "./MemberLocationImageField";
 import MemberLocationGalleryField from "./MemberLocationGalleryField";
 import {
+  assignExistingEventOccurrencesToLocation,
   updateMemberLocationContact,
   updateMemberLocationDetails,
   updateMemberLocationHandle,
@@ -64,10 +65,10 @@ export default async function ManageLocationPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; saved?: string; error?: string; created?: string }>;
+  searchParams: Promise<{ tab?: string; saved?: string; error?: string; created?: string; event_added?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam, saved, error, created } = await searchParams;
+  const { tab: tabParam, saved, error, created, event_added: eventAdded } = await searchParams;
   const tab = tabParam && OWNER_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   // Admin Manage-As — same shape as Business Manager/Event Manager:
@@ -112,6 +113,157 @@ export default async function ManageLocationPage({
     data: { user: sessionUser },
   } = await sessionSupabase.auth.getUser();
   const eventEligible = sessionUser ? await canCurrentUserManageEvents(admin, sessionUser.id) : false;
+
+  // Venue Command Center pass — "What's Happening Here" becomes a real
+  // operational view: every upcoming Event occurrence AND standalone
+  // Business appearance whose own event_occurrences.location_id /
+  // appearances.location_id already points at this Location (the same
+  // canonical FKs the public page reads via getUpcomingAtLocation — this
+  // is a richer, manager-facing query, not a second relationship), plus
+  // "canManage" so a View vs. Manage link is only ever offered for an
+  // Event/Business the CURRENT session actually has real membership over.
+  // Location ownership and Event/Business ownership stay fully separate —
+  // this never grants management, only decides which link to show.
+  type UpcomingHereItem = {
+    kind: "occurrence" | "appearance";
+    id: string;
+    startAt: string;
+    endAt: string | null;
+    title: string;
+    subtitle: string | null;
+    publicHref: string;
+    canManage: boolean;
+    manageHref: string | null;
+    confirmedCount: number | null;
+  };
+  let upcomingHere: UpcomingHereItem[] = [];
+  type ManageableEvent = {
+    id: string;
+    name: string;
+    occurrences: { id: string; start_at: string; end_at: string; assignedHere: boolean }[];
+  };
+  let manageableEvents: ManageableEvent[] = [];
+  let manageableBusinesses: { id: string; name: string }[] = [];
+
+  if (sessionUser) {
+    const nowIso = new Date().toISOString();
+    const [{ data: occRows }, { data: apRows }, { data: myEventLinks }, { data: myBusinessLinks }] = await Promise.all([
+      admin
+        .from("event_occurrences")
+        .select("id, start_at, end_at, event:events(id, name, slug, organizer_name, publication_status, is_demo)")
+        .eq("location_id", id)
+        .eq("status", "scheduled")
+        .gt("end_at", nowIso)
+        .order("start_at", { ascending: true }),
+      admin
+        .from("appearances")
+        .select("id, title, start_at, end_at, business:businesses(id, name, slug)")
+        .eq("location_id", id)
+        .is("event_id", null)
+        .neq("status", "canceled")
+        .gt("end_at", nowIso)
+        .order("start_at", { ascending: true }),
+      admin.from("event_members").select("event_id").eq("user_id", sessionUser.id),
+      admin.from("business_members").select("business_id").eq("user_id", sessionUser.id),
+    ]);
+
+    const manageableEventIds = new Set((myEventLinks ?? []).map((r) => r.event_id));
+    const manageableBusinessIds = new Set((myBusinessLinks ?? []).map((r) => r.business_id));
+
+    const occurrenceIds = (occRows ?? []).map((r) => r.id);
+    const { data: confirmedRows } =
+      occurrenceIds.length > 0
+        ? await admin
+            .from("event_occurrence_businesses")
+            .select("occurrence_id")
+            .eq("status", "approved")
+            .in("occurrence_id", occurrenceIds)
+        : { data: [] as { occurrence_id: string }[] };
+    const confirmedCountByOccurrence = new Map<string, number>();
+    for (const row of confirmedRows ?? []) {
+      confirmedCountByOccurrence.set(row.occurrence_id, (confirmedCountByOccurrence.get(row.occurrence_id) ?? 0) + 1);
+    }
+
+    const fromOccurrences: UpcomingHereItem[] = (occRows ?? []).flatMap((r) => {
+      const e = Array.isArray(r.event) ? r.event[0] : r.event;
+      if (!e || e.is_demo) return [];
+      return [
+        {
+          kind: "occurrence" as const,
+          id: r.id,
+          startAt: r.start_at,
+          endAt: r.end_at,
+          title: e.name,
+          subtitle: e.organizer_name,
+          publicHref: `/event/${e.slug}`,
+          canManage: manageableEventIds.has(e.id),
+          manageHref: manageableEventIds.has(e.id) ? `/account/event/${e.id}?tab=dates` : null,
+          confirmedCount: confirmedCountByOccurrence.get(r.id) ?? 0,
+        },
+      ];
+    });
+
+    const fromAppearances: UpcomingHereItem[] = (apRows ?? []).flatMap((r) => {
+      const b = Array.isArray(r.business) ? r.business[0] : r.business;
+      if (!b) return [];
+      return [
+        {
+          kind: "appearance" as const,
+          id: r.id,
+          startAt: r.start_at,
+          endAt: r.end_at,
+          title: r.title,
+          subtitle: b.name,
+          publicHref: `/business/${b.slug}`,
+          canManage: manageableBusinessIds.has(b.id),
+          manageHref: manageableBusinessIds.has(b.id) ? `/account/business/${b.id}?tab=findmi-here` : null,
+          confirmedCount: null,
+        },
+      ];
+    });
+
+    upcomingHere = [...fromOccurrences, ...fromAppearances].sort((a, b) => a.startAt.localeCompare(b.startAt));
+
+    // "Add Existing Event Here" — every Event the current session
+    // manages, with ITS OWN existing occurrences only (never a new one
+    // fabricated here — a legacy single-date Event with no Additional
+    // Dates has nothing to pick until one is added from that Event's own
+    // Dates tab). assignedHere just preselects the checkbox for a date
+    // already pointed at this Location, so re-visiting reflects reality.
+    if (manageableEventIds.size > 0) {
+      const [{ data: myEvents }, { data: myOccRows }] = await Promise.all([
+        admin.from("events").select("id, name").in("id", Array.from(manageableEventIds)).eq("is_demo", false),
+        admin
+          .from("event_occurrences")
+          .select("id, event_id, start_at, end_at, location_id")
+          .in("event_id", Array.from(manageableEventIds))
+          .eq("status", "scheduled")
+          .gt("end_at", nowIso)
+          .order("start_at", { ascending: true }),
+      ]);
+      manageableEvents = (myEvents ?? []).map((e) => ({
+        id: e.id,
+        name: e.name,
+        occurrences: (myOccRows ?? [])
+          .filter((o) => o.event_id === e.id)
+          .map((o) => ({ id: o.id, start_at: o.start_at, end_at: o.end_at, assignedHere: o.location_id === id })),
+      }));
+    }
+
+    // "Add Appearance Here" — only offered for a Business the acting
+    // session actually manages (never lets a Location manager create an
+    // appearance for someone else's Business). Links into that Business's
+    // own existing Findmi Here tab (Option 2 form now supports picking
+    // this Location) rather than a second creation form.
+    if (manageableBusinessIds.size > 0) {
+      const { data: myBusinesses } = await admin
+        .from("businesses")
+        .select("id, name")
+        .in("id", Array.from(manageableBusinessIds))
+        .eq("is_demo", false);
+      manageableBusinesses = myBusinesses ?? [];
+    }
+  }
 
   const publicHref = !location.is_demo ? `/location/${location.slug}` : null;
   const selectedMarket = marketsWithAreas.find((m) => m.id === location.market_id) ?? null;
@@ -321,31 +473,145 @@ export default async function ManageLocationPage({
         )}
 
         {tab === "happening" && (
-          <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">What&rsquo;s Happening Here</p>
-            <p className="mt-1 text-sm text-ink/60">
-              Events and businesses scheduled to be at this venue. To add one, use &ldquo;+ Add an Event
-              Here&rdquo; from the Overview tab.
-            </p>
-            {happenings.length === 0 ? (
-              <p className="mt-4 text-sm text-ink/50">Nothing scheduled here yet.</p>
-            ) : (
-              <div className="mt-4 flex flex-col gap-2">
-                {happenings.map((h) => (
-                  <div key={h.id} className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 p-3.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-ink">{h.title}</p>
-                      <p className="truncate text-xs text-ink/50">
-                        {new Date(h.start_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
-                      </p>
-                    </div>
-                    <Link href={h.href} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-semibold text-ink/50 hover:text-ink">
-                      View ↗
-                    </Link>
-                  </div>
-                ))}
+          <div className="flex flex-col gap-5">
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">What&rsquo;s Happening Here</p>
+              <p className="mt-1 text-sm text-ink/60">
+                Every Event date and Business appearance already connected to this venue, plus the tools to connect
+                more.
+              </p>
+
+              {eventAdded === "1" && !error && (
+                <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                  Connected to this venue.
+                </p>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href={`/account/event/new?location_id=${id}`} className={primaryButtonClass}>
+                  + Create Event Here
+                </Link>
+                {!eventEligible && (
+                  <p className="basis-full text-xs text-ink/45">
+                    Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {sessionUser && manageableEvents.length > 0 && (
+              <div className={cardClass}>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Add an Existing Event Here</p>
+                <p className="mt-1 text-sm text-ink/60">
+                  Connect a date from an Event you already manage. Only Events you manage appear here — Findmi never
+                  lets a venue reassign someone else&rsquo;s Event.
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  {manageableEvents.map((e) => (
+                    <details key={e.id} className="group rounded-2xl border border-black/10 p-3.5">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                        <span className="text-sm font-semibold text-ink">{e.name}</span>
+                        <span className="text-xs text-ink/40">
+                          {e.occurrences.length === 0 ? "No dates yet" : `${e.occurrences.length} date${e.occurrences.length === 1 ? "" : "s"}`}
+                        </span>
+                      </summary>
+                      <div className="mt-3 border-t border-black/10 pt-3">
+                        {e.occurrences.length === 0 ? (
+                          <p className="text-xs text-ink/50">
+                            This Event has no additional dates yet.{" "}
+                            <Link href={`/account/event/${e.id}?tab=dates`} className="font-semibold text-findmi-700 hover:underline">
+                              Add one from its Dates tab
+                            </Link>{" "}
+                            first.
+                          </p>
+                        ) : (
+                          <form action={assignExistingEventOccurrencesToLocation.bind(null, id, e.id)} className="flex flex-col gap-2">
+                            {e.occurrences.map((o) => (
+                              <label key={o.id} className="flex items-center gap-2.5 text-sm text-ink">
+                                <input
+                                  type="checkbox"
+                                  name="occurrence_ids"
+                                  value={o.id}
+                                  defaultChecked={o.assignedHere}
+                                  className="h-4 w-4 shrink-0 accent-findmi"
+                                />
+                                {new Date(o.start_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                                {o.assignedHere && <span className="text-xs font-semibold text-findmi-700">Already here</span>}
+                              </label>
+                            ))}
+                            <button type="submit" className="mt-1 w-fit rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
+                              Save
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                    </details>
+                  ))}
+                </div>
               </div>
             )}
+
+            {sessionUser && manageableBusinesses.length > 0 && (
+              <div className={cardClass}>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Add an Appearance Here</p>
+                <p className="mt-1 text-sm text-ink/60">
+                  Adding a standalone Findmi Here entry (no Event required) for a Business you manage. Search for
+                  &ldquo;{location.name}&rdquo; when picking a Location on that Business&rsquo;s Findmi Here tab.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {manageableBusinesses.map((b) => (
+                    <Link
+                      key={b.id}
+                      href={`/account/business/${b.id}?tab=findmi-here`}
+                      className="rounded-full border border-black/10 px-3.5 py-2 text-xs font-semibold text-ink/70 transition hover:border-black/20"
+                    >
+                      + Add for {b.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Upcoming Here</p>
+              {upcomingHere.length === 0 ? (
+                <p className="mt-3 text-sm text-ink/50">Nothing scheduled here yet.</p>
+              ) : (
+                <div className="mt-3 flex flex-col gap-2">
+                  {upcomingHere.map((item) => (
+                    <div key={`${item.kind}-${item.id}`} className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 p-3.5">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
+                          <span className="shrink-0 rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
+                            {item.kind === "occurrence" ? "Event" : "Appearance"}
+                          </span>
+                        </div>
+                        <p className="truncate text-xs text-ink/50">
+                          {new Date(item.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                          {item.subtitle ? ` · ${item.subtitle}` : ""}
+                        </p>
+                        {item.confirmedCount !== null && (
+                          <p className="mt-0.5 text-xs font-semibold text-findmi-700">
+                            {item.confirmedCount} business{item.confirmedCount === 1 ? "" : "es"} confirmed
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <Link href={item.publicHref} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-ink/50 hover:text-ink">
+                          View ↗
+                        </Link>
+                        {item.manageHref && (
+                          <Link href={item.manageHref} className="text-xs font-semibold text-findmi-700 hover:underline">
+                            Manage
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

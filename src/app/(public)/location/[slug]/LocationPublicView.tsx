@@ -12,7 +12,7 @@ import { HappeningCard, HappeningRow } from "@/components/HappeningCard";
 import { HorizontalScroller } from "@/components/Section";
 import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
-import { LOCATION_WEEKDAYS, formatDayHours, hasAnyHours, isOpenNow } from "@/lib/locationHours";
+import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, isOpenNow } from "@/lib/locationHours";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
 import { getSupabase } from "@/lib/supabase";
@@ -65,6 +65,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}` : null;
   const showHours = hasAnyHours(location.hours);
   const openNow = showHours ? isOpenNow(location.hours) : null;
+  const hoursSummary = showHours ? getHoursSummaryLabel(location.hours) : null;
   const website = isSafeExternalUrl(location.website_url) ? location.website_url : null;
 
   return (
@@ -221,54 +222,14 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       </div>
 
       <div className="px-4 sm:px-0">
-        {/* 4. About — hidden entirely when no description. Never repeats
-            address/hours/contact. */}
-        {location.description && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About</h2>
-            <p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
-              {location.description}
-            </p>
-          </section>
-        )}
-
-        {/* 6. Hours — compact, conditional, never an inaccurate badge
-            (the Open Now/Closed pill above already only renders when
-            showHours is true). No holiday exceptions/split shifts/
-            timezone overhaul. */}
-        {showHours && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Hours</h2>
-            <div className="mt-3 max-w-sm rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
-              <dl className="flex flex-col gap-1">
-                {LOCATION_WEEKDAYS.map(({ key, label }) => (
-                  <div key={key} className="flex items-center justify-between text-sm">
-                    <dt className="text-ink/60">{label}</dt>
-                    <dd className="font-medium text-ink">{formatDayHours(location.hours?.[key])}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          </section>
-        )}
-
-        {/* 7. Gallery — same shared ImageGalleryStrip as Business/Event
-            (scroll strip + lightbox), hidden entirely below 2 images.
-            Never duplicates the cover — location_images is a separate
-            source from cover_image_url. */}
-        {galleryImages.length > 1 && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
-            <div className="mt-3">
-              <ImageGalleryStrip images={galleryImages} alt={location.name} />
-            </div>
-          </section>
-        )}
-
-        {/* 9. Coming Up Here — presentation only; the underlying
-            occurrence-aware query (getUpcomingAtLocation) is untouched.
-            Exactly one empty-state message, never both a "0 upcoming"
-            line and a separate block. */}
+        {/* Coming Up Here comes FIRST now — "what happens here" is the
+            primary reason to visit a Location page, so it belongs
+            immediately below identity/actions rather than after About/
+            Gallery/Hours. Presentation only; the underlying occurrence-
+            aware query (getUpcomingAtLocation) is untouched. Exactly one
+            empty-state message, never both a "0 upcoming" line and a
+            separate block. Stays right here even when About/Gallery are
+            both empty. */}
         <section className="mt-8">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">Coming Up Here</h2>
 
@@ -296,13 +257,68 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           )}
         </section>
 
-        {/* 10/11. Claim — final major section before footer, deliberately
-            quiet (ClaimButton's own compact card variant, no oversized
-            styling added here) and narrower than the page so it never
-            competes with Follow/Directions/Message above. ClaimButton
-            itself renders nothing once the Location has a real member
-            (state "member"), so an already-claimed Location shows no
-            claim surface at all — unchanged existing behavior. */}
+        {/* About — hidden entirely when no description. Never repeats
+            address/hours/contact. */}
+        {location.description && (
+          <section className="mt-8">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About</h2>
+            <p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
+              {location.description}
+            </p>
+          </section>
+        )}
+
+        {/* Gallery — same shared ImageGalleryStrip as Business/Event
+            (scroll strip + lightbox), hidden entirely below 2 images.
+            Never duplicates the cover — location_images is a separate
+            source from cover_image_url. */}
+        {galleryImages.length > 1 && (
+          <section className="mt-8">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
+            <div className="mt-3">
+              <ImageGalleryStrip images={galleryImages} alt={location.name} />
+            </div>
+          </section>
+        )}
+
+        {/* Hours — now a compact, collapsed-by-default accordion below
+            Coming Up Here (never a big permanently-open block ahead of
+            the discovery content). Native <details>/<summary> gives real
+            disclosure semantics for free, no dependency. The summary
+            line reuses the same reliable "Open until X" / "Closed now"
+            computation as the identity badge above — never shown when
+            isOpenNow can't say for sure. No holiday exceptions/split
+            shifts/timezone overhaul. */}
+        {showHours && (
+          <section className="mt-8">
+            <details className="group rounded-2xl border border-black/5 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden sm:p-5">
+                <span className="font-display text-lg font-bold tracking-tight text-ink">Hours</span>
+                <span className="flex items-center gap-2 text-sm text-ink/60">
+                  {hoursSummary}
+                  <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/40 transition group-open:rotate-180" />
+                </span>
+              </summary>
+              <dl className="flex flex-col gap-1 border-t border-black/5 p-4 pt-3 sm:p-5 sm:pt-4">
+                {LOCATION_WEEKDAYS.map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between text-sm">
+                    <dt className="text-ink/60">{label}</dt>
+                    <dd className="font-medium text-ink">{formatDayHours(location.hours?.[key])}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          </section>
+        )}
+
+        {/* Claim — final major section before footer, deliberately quiet
+            (ClaimButton's own compact card variant, no oversized styling
+            added here) and narrower than the page so it never competes
+            with Follow/Directions/Message above. ClaimButton itself
+            renders nothing once the Location has a real member (state
+            "member"), so an already-claimed Location shows no claim
+            surface at all — unchanged existing behavior. Stays at the
+            bottom, never moved back up. */}
         <div className="mt-10 max-w-sm">
           <ClaimButton type="location" slug={location.slug} entityName={location.name} variant="card" />
         </div>
@@ -353,6 +369,14 @@ function MailGlyph({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" strokeWidth="1.6" />
       <path d="M4.5 7l7.5 6 7.5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

@@ -417,6 +417,10 @@ export default async function ManageBusinessPage({
     event_id: string | null;
     event_occurrence_id: string | null;
     participationStatus: EventParticipationStatus | null;
+    // Location Connections pass — the real Findmi Location this
+    // standalone appearance is linked to, if any (embedded via the FK for
+    // the Edit form's own AccountRelationField default).
+    location: { id: string; name: string; city: string | null } | null;
   };
   let appearances: OwnAppearance[] = [];
   // Owner Action UX pass — carries name/date/venue as separate fields
@@ -431,7 +435,7 @@ export default async function ManageBusinessPage({
       admin
         .from("appearances")
         .select(
-          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id"
+          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, location:locations(id, name, city)"
         )
         .eq("business_id", id)
         .neq("status", "canceled")
@@ -448,6 +452,7 @@ export default async function ManageBusinessPage({
 
     appearances = (appearanceRows ?? []).map((a) => ({
       ...a,
+      location: Array.isArray(a.location) ? (a.location[0] ?? null) : a.location,
       participationStatus: a.event_occurrence_id
         ? (statusByOccurrence.get(a.event_occurrence_id) ?? null)
         : a.event_id
@@ -680,6 +685,11 @@ export default async function ManageBusinessPage({
     state: add_state ?? "",
     external_url: add_external_url ?? "",
     flyer_image_url: add_flyer_image_url ?? null,
+    // Not round-tripped through a validation-error redirect (unlike the
+    // fields above) — a rejected submission just asks the visitor to
+    // re-pick the Location, same as every other field's raw string would
+    // need resolving back to a label anyway. Always blank on a fresh load.
+    location: null,
   };
 
   const basePath = `/account/business/${id}`;
@@ -1295,6 +1305,7 @@ export default async function ManageBusinessPage({
                         state: edit_state ?? a.state ?? "",
                         external_url: edit_external_url ?? a.external_url ?? "",
                         flyer_image_url: edit_flyer_image_url ?? a.flyer_image_url,
+                        location: a.location ? { value: a.location.id, label: a.location.name, sublabel: a.location.city ?? undefined } : null,
                       }
                     : {
                         title: a.title,
@@ -1307,6 +1318,7 @@ export default async function ManageBusinessPage({
                         state: a.state ?? "",
                         external_url: a.external_url ?? "",
                         flyer_image_url: a.flyer_image_url,
+                        location: a.location ? { value: a.location.id, label: a.location.name, sublabel: a.location.city ?? undefined } : null,
                       };
                   return (
                     <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">

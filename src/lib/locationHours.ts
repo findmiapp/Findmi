@@ -20,7 +20,7 @@ export function hasAnyHours(hours: LocationHours | null | undefined): boolean {
   return Boolean(hours && Object.keys(hours).length > 0);
 }
 
-function formatClock(hhmm: string): string {
+export function formatClock(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
   const period = h >= 12 ? "PM" : "AM";
@@ -51,4 +51,17 @@ export function isOpenNow(hours: LocationHours | null | undefined): boolean | nu
   const [closeH, closeM] = today.close.split(":").map(Number);
   const minutesNow = now.getHours() * 60 + now.getMinutes();
   return minutesNow >= openH * 60 + openM && minutesNow < closeH * 60 + closeM;
+}
+
+/** Compact collapsed-accordion summary — "Open until 6PM" / "Closed now" —
+ * only ever built from today's own real open/close window (isOpenNow's
+ * same reliability rule), never a guess about tomorrow's hours or any
+ * other day. Returns null when there's nothing reliable to say (no hours
+ * entered at all), so the caller can fall back to just "Hours". */
+export function getHoursSummaryLabel(hours: LocationHours | null | undefined): string | null {
+  const open = isOpenNow(hours);
+  if (open === null) return null;
+  if (!open) return "Closed now";
+  const today = hours![JS_DAY_TO_KEY[new Date().getDay()]];
+  return today?.close ? `Open until ${formatClock(today.close)}` : "Open now";
 }

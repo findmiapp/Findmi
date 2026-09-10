@@ -636,6 +636,12 @@ export interface Appearance {
   state: string | null;
   latitude: number | null;
   longitude: number | null;
+  // Location Connections pass — an optional direct link to a real Findmi
+  // Location, alongside the legacy venue_name/address/city/state text
+  // fields (kept for a standalone appearance with no matching Location on
+  // Findmi). When set, this is authoritative for "does this appearance
+  // belong to this Location" — see getUpcomingAtLocation's FK-first match.
+  location_id: string | null;
   status: AppearanceStatus;
   source: AppearanceSource;
   is_featured: boolean;

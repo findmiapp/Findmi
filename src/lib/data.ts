@@ -2614,9 +2614,12 @@ export async function getAlternativeBusinesses(
 
 // ----------------------------------------------------------------------------
 // Locations
-// The schema doesn't (yet) have a foreign key from events/appearances to
-// locations — venues are stored as free text on each row. Until that FK
-// exists, "what's happening here" is a best-effort match on venue name.
+// Both Events and standalone Appearances can reference a real Findmi
+// Location directly — event_occurrences.location_id and
+// appearances.location_id — which getUpcomingAtLocation below treats as
+// authoritative. The legacy venue_name text match on both tables remains a
+// fallback for rows created before those FKs existed (or that never picked
+// a real Findmi Location), never double-counted against an FK match.
 // ----------------------------------------------------------------------------
 
 // Location V2 — a location's single primary category/subcategory, embedded
@@ -2729,10 +2732,15 @@ export interface LocationHappening {
  * present; the legacy `events.venue_name` ILIKE match — the only signal that
  * existed before that FK — is then run as a fallback for events NOT already
  * matched via the FK, so an event with a real occurrence-location link is
- * never double-counted. `appearances` has no `location_id` column and no
- * write path that would populate one, so it stays on venue_name text
- * matching only — adding a column nothing writes to would just be dead
- * schema. */
+ * never double-counted.
+ *
+ * Location Connections pass — standalone appearances now follow the exact
+ * same FK-first-then-ILIKE-fallback shape: `appearances.location_id` wins
+ * when a Business picked a real Findmi Location; the legacy venue_name
+ * ILIKE match still covers every appearance created before that FK existed
+ * (or where the Business just typed a venue name Findmi doesn't have a
+ * Location record for), filtered to never double-count one already matched
+ * via the FK. */
 export async function getUpcomingAtLocation(
   location: { id: string; name: string },
   limit = 12
@@ -2768,13 +2776,27 @@ export async function getUpcomingAtLocation(
     });
   }
 
+  const APPEARANCE_COLUMNS =
+    "id, title, start_at, end_at, description, business:businesses(slug, name, cover_image_url, is_demo, publication_status)";
+
+  const { data: linkedAppearances } = await supabase
+    .from("appearances")
+    .select(APPEARANCE_COLUMNS)
+    .eq("location_id", location.id)
+    .is("event_id", null)
+    .neq("status", "canceled")
+    .gt("end_at", nowIso)
+    .order("start_at", { ascending: true })
+    .limit(limit);
+  const matchedAppearanceIds = new Set((linkedAppearances ?? []).map((a) => a.id));
+
   // Same active-duration principle as the rest of this pass: eligibility
   // is end_at-based (still active or in the future), not start_at-only.
   // end_at is required on new/edited events and appearances now, so both
   // are plain comparisons — a null end_at is NOT treated as open-ended (a
   // handful of legacy appearances still have one and are excluded here
   // until backfilled — see this pass's report).
-  const [{ data: events }, { data: appearances }] = await Promise.all([
+  const [{ data: events }, { data: fallbackAppearances }] = await Promise.all([
     supabase
       .from("events")
       .select("id, slug, name, cover_image_url, start_at, end_at, organizer_name")
@@ -2785,9 +2807,7 @@ export async function getUpcomingAtLocation(
       .limit(limit),
     supabase
       .from("appearances")
-      .select(
-        "id, title, start_at, end_at, description, business:businesses(slug, name, cover_image_url, is_demo, publication_status)"
-      )
+      .select(APPEARANCE_COLUMNS)
       .ilike("venue_name", location.name)
       .is("event_id", null)
       .neq("status", "canceled")
@@ -2795,6 +2815,10 @@ export async function getUpcomingAtLocation(
       .order("start_at", { ascending: true })
       .limit(limit),
   ]);
+  const appearances = [
+    ...(linkedAppearances ?? []),
+    ...(fallbackAppearances ?? []).filter((a) => !matchedAppearanceIds.has(a.id)),
+  ];
 
   const fromEvents: LocationHappening[] = (events ?? [])
     .filter((e) => !matchedEventIds.has(e.id))
