@@ -5,7 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getActiveMarkets } from "@/lib/data";
-import EventLocationField from "@/components/account/EventLocationField";
+import EventGeographyFields from "@/components/EventGeographyFields";
 import { createMemberEvent } from "../actions";
 
 /** Multi-Entity Self-Service V1, Stage 3 — Create Event From Venue. A
@@ -148,7 +148,18 @@ export default async function AddEventPage({
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberEvent} className="flex flex-col gap-4">
-          <EventLocationField initialLocation={locationHint} initialManual={null} />
+          {/* Geography Foundation Pass 2 — Location selection/manual venue
+              entry (EventLocationField, unchanged) plus a live Findmi
+              Market suggestion derived from whichever one is effective.
+              See EventGeographyFields' own doc comment. */}
+          <EventGeographyFields
+            markets={markets}
+            initialLocation={locationHint}
+            initialManual={null}
+            defaultMarketId={submittedMarketId ?? ""}
+            defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
+          />
+
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Event name</span>
             <input
@@ -183,46 +194,6 @@ export default async function AddEventPage({
               />
             </label>
           </div>
-
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">
-              Market <span className="font-normal text-ink/40">(optional)</span>
-            </span>
-            <select name="market_id" defaultValue={submittedMarketId ?? ""} className={inputClass}>
-              <option value="">Choose a market…</option>
-              {markets.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1.5 text-xs text-ink/45">You can add or change this later from your Event Manager.</p>
-          </label>
-
-          <details className="group -mt-2" open={Boolean(submittedRequestedMarketText)}>
-            <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-              Don&rsquo;t see your Market?
-            </summary>
-            <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-ink/70">Request a Market</span>
-                <input
-                  type="text"
-                  name="requested_market_text"
-                  defaultValue={submittedRequestedMarketText ?? ""}
-                  placeholder="e.g. Austin, TX"
-                  className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
-                />
-              </label>
-              <p className="mt-1.5 text-xs text-ink/45">
-                Your event will still be created — Findmi will review your request and follow up once your Market is
-                available.
-              </p>
-              <p className="mt-1 text-xs text-ink/40">
-                If you fill this in, leave Market above set to &ldquo;Choose a market…&rdquo;.
-              </p>
-            </div>
-          </details>
 
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Event

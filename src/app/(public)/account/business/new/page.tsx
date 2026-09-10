@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getActiveMarkets, getCategories } from "@/lib/data";
+import BusinessGeographyFields from "@/components/BusinessGeographyFields";
 import { createMemberBusiness } from "../actions";
 
 export const metadata: Metadata = {
@@ -179,75 +180,18 @@ export default async function AddBusinessPage({
             </select>
           </label>
 
-          {/* City/State — useful minimal disambiguation + duplicate
-              detection, not a Pro location editor. Optional. */}
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">
-                City <span className="font-normal text-ink/40">(optional)</span>
-              </span>
-              <input type="text" name="city" defaultValue={submittedCity ?? ""} className={inputClass} />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">
-                State <span className="font-normal text-ink/40">(optional)</span>
-              </span>
-              <input type="text" name="state" defaultValue={submittedState ?? ""} className={inputClass} />
-            </label>
-          </div>
-
-          {/* Markets Foundation V1 follow-up, extended by Consumer Area
-              Picker + Market Requests V1 — distinct from Based In above
-              (home address, purely descriptive) and from FindMi Here
-              (actual appearance geography, unaffected by this). "Region"
-              is deliberately never surfaced — the customer-facing name
-              for this concept is Market only.
-              Not a plain `required` select anymore: a business can also
-              request a Market that isn't listed yet (via the <details>
-              below) and still be created — createMemberBusiness enforces
-              "exactly one of the two" server-side, matching
-              create_owned_business()'s own validation. */}
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">Primary Market</span>
-            <select name="market_id" defaultValue={submittedMarketId ?? ""} className={inputClass}>
-              <option value="">Choose a market…</option>
-              {markets.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1.5 text-xs text-ink/45">Where should people generally discover this business on Findmi?</p>
-            <p className="mt-0.5 text-xs text-ink/40">
-              This is separate from where you appear at events — you can still add appearances outside your Primary
-              Market.
-            </p>
-          </label>
-
-          <details className="group -mt-2" open={Boolean(submittedRequestedMarketText)}>
-            <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-              Don&rsquo;t see your Market?
-            </summary>
-            <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-ink/70">Request a Market</span>
-                <input
-                  type="text"
-                  name="requested_market_text"
-                  defaultValue={submittedRequestedMarketText ?? ""}
-                  placeholder="e.g. Austin, TX"
-                  className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
-                />
-              </label>
-              <p className="mt-1.5 text-xs text-ink/45">
-                Your business will still be created — Findmi will review your request and follow up once your Market
-                is available. You won&rsquo;t show up in general discovery until then.
-              </p>
-              <p className="mt-1 text-xs text-ink/40">
-                If you fill this in, leave Primary Market above set to &ldquo;Choose a market…&rdquo;.
-              </p>
-            </div>
-          </details>
+          {/* Geography Foundation Pass 2 — city/state (still the same
+              optional, purely-descriptive factual fields as before) now
+              drive a live Findmi Market suggestion instead of leaving the
+              owner to separately solve Findmi's own taxonomy. See
+              BusinessGeographyFields' own doc comment. */}
+          <BusinessGeographyFields
+            markets={markets}
+            defaultCity={submittedCity ?? ""}
+            defaultState={submittedState ?? ""}
+            defaultMarketId={submittedMarketId ?? ""}
+            defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
+          />
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">

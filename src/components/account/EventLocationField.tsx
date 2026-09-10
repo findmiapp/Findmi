@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAccountSearch, type AccountSearchResult } from "./useAccountSearch";
 
@@ -68,9 +68,19 @@ function resultToSelected(r: AccountSearchResult): SelectedLocationDetail {
 export default function EventLocationField({
   initialLocation,
   initialManual,
+  onGeographyChange,
 }: {
   initialLocation: SelectedLocationDetail | null;
   initialManual: ManualVenueValues | null;
+  /** Geography Foundation Pass 2 — purely additive, optional hook so a
+   * parent (native Event creation's own geography suggestion) can react
+   * to this field's EFFECTIVE city/state, whichever source (a selected
+   * real Location, or manual venue text) they currently come from,
+   * without this component needing to know anything about Market/Area
+   * suggestion itself. Every other existing caller (Event Manager's
+   * Location tab, the per-occurrence Dates tab) omits this prop and is
+   * completely unaffected. */
+  onGeographyChange?: (geography: { city: string; state: string }) => void;
 }) {
   const hasManualSeed = Boolean(
     initialManual && (initialManual.venue_name || initialManual.address || initialManual.city || initialManual.state || initialManual.postal_code)
@@ -89,6 +99,17 @@ export default function EventLocationField({
   }
 
   const address = selected ? fullAddress(selected) : "";
+  const effectiveCity = selected ? (selected.city ?? "") : manual.city;
+  const effectiveState = selected ? (selected.state ?? "") : manual.state;
+
+  useEffect(() => {
+    onGeographyChange?.({ city: effectiveCity, state: effectiveState });
+    // onGeographyChange is expected to be a stable identity (or omitted)
+    // from the one caller that passes it — only the effective city/state
+    // values should retrigger this, same as every other derived-value
+    // effect in this codebase.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveCity, effectiveState]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -96,8 +117,8 @@ export default function EventLocationField({
       <input type="hidden" name="location_id" value={selected?.id ?? ""} />
       <input type="hidden" name="venue_name" value={selected ? selected.name : manual.venue_name} />
       <input type="hidden" name="address" value={selected ? (selected.address ?? "") : manual.address} />
-      <input type="hidden" name="city" value={selected ? (selected.city ?? "") : manual.city} />
-      <input type="hidden" name="state" value={selected ? (selected.state ?? "") : manual.state} />
+      <input type="hidden" name="city" value={effectiveCity} />
+      <input type="hidden" name="state" value={effectiveState} />
       <input type="hidden" name="postal_code" value={selected ? (selected.postal_code ?? "") : manual.postal_code} />
 
       {selected ? (

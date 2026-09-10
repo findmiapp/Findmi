@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
-import MarketAreaFields from "@/components/MarketAreaFields";
+import LocationGeographyFields from "@/components/LocationGeographyFields";
 import { createMemberLocation } from "../actions";
 
 export const metadata: Metadata = {
@@ -98,53 +98,18 @@ export default async function AddLocationPage({
             <input type="text" name="address" defaultValue={submittedAddress ?? ""} className={inputClass} />
           </label>
 
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
-              <input type="text" name="city" defaultValue={submittedCity ?? ""} className={inputClass} />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
-              <input type="text" name="state" defaultValue={submittedState ?? ""} className={inputClass} />
-            </label>
-          </div>
-
-          <div>
-            <span className="mb-1.5 block text-sm font-medium text-ink">
-              Market &amp; Area <span className="font-normal text-ink/40">(optional)</span>
-            </span>
-            <MarketAreaFields
-              markets={marketsWithAreas}
-              defaultMarketId={submittedMarketId ?? null}
-              defaultAreaId={submittedAreaId ?? null}
-            />
-            <p className="mt-1.5 text-xs text-ink/45">You can add or change this later from your Location Manager.</p>
-          </div>
-
-          <details className="group -mt-2" open={Boolean(submittedRequestedMarketText)}>
-            <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-              Don&rsquo;t see your Market?
-            </summary>
-            <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-ink/70">Request a Market</span>
-                <input
-                  type="text"
-                  name="requested_market_text"
-                  defaultValue={submittedRequestedMarketText ?? ""}
-                  placeholder="e.g. Austin, TX"
-                  className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
-                />
-              </label>
-              <p className="mt-1.5 text-xs text-ink/45">
-                Your venue will still be created — Findmi will review your request and follow up once your Market is
-                available.
-              </p>
-              <p className="mt-1 text-xs text-ink/40">
-                If you fill this in, leave Market above set to &ldquo;Choose a market…&rdquo;.
-              </p>
-            </div>
-          </details>
+          {/* Geography Foundation Pass 2 — city/state now drive a live
+              Findmi Market/Area suggestion instead of leaving the owner
+              to separately solve Findmi's own taxonomy. See
+              LocationGeographyFields' own doc comment. */}
+          <LocationGeographyFields
+            markets={marketsWithAreas}
+            defaultCity={submittedCity ?? ""}
+            defaultState={submittedState ?? ""}
+            defaultMarketId={submittedMarketId ?? ""}
+            defaultAreaId={submittedAreaId ?? ""}
+            defaultRequestedMarketText={submittedRequestedMarketText ?? ""}
+          />
 
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Venue
