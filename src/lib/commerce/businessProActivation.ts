@@ -24,20 +24,40 @@ export type BusinessProActivationResult =
  * webhook's own signature check is what makes calling this safe.
  *
  * Idempotent and race-safe the same way activateMembership() already is
- * (Stripe redelivers events): the UPDATE itself is guarded to
- * plan_tier = 'free', so a second delivery of the same (or any) event for
- * this business matches zero rows and does nothing — never extends
- * plan_expires_at again, never touches a business that's already Pro,
- * and — since a pro_seller business is never 'free' — can never
- * downgrade or otherwise touch one either. That safety is unchanged by
- * this pass; only the RETURN VALUE now distinguishes why zero rows
- * matched, instead of always assuming it was safe.
+ * (Stripe redelivers events) — the UPDATE itself carries the entire
+ * eligibility condition in its WHERE clause (never a separate read-then-
+ * write), so two concurrent deliveries can never both apply it.
+ *
+ * Business Pro Expiration Enforcement pass — this used to be guarded to
+ * plan_tier = 'free' only, which meant an EXPIRED Pro business (still
+ * stored as plan_tier = 'pro' — expiration never rewrites plan_tier, see
+ * lib/entitlements.ts) could pay for a new $99 term via
+ * createBusinessProCheckoutSession (its own eligibility check now uses
+ * ACTIVE entitlement) but this activation step would then match zero
+ * rows and silently do nothing, leaving a real paying customer un-
+ * reactivated. The WHERE clause now matches EITHER:
+ *   - plan_tier = 'free' (first-time activation), OR
+ *   - plan_tier = 'pro' AND plan_expires_at is in the past (reactivating
+ *     a lapsed term)
+ * A business with plan_expires_at = null is a permanent/manual grant
+ * (see isBusinessPro's own comment) and is never "in the past", so it
+ * can never match the second branch. An ACTIVE (non-expired) pro/
+ * pro_seller business also never matches either branch, so a redelivered
+ * webhook event for an already-active business still matches zero rows
+ * and does nothing — never extends plan_expires_at again. pro_seller is
+ * deliberately excluded from both branches (this checkout never sells or
+ * renews that tier — no seller checkout exists yet), so a pro_seller
+ * business, expired or not, is never touched here even by mistake.
  *
  * Deliberately narrow: only plan_tier/plan_source/plan_started_at/
  * plan_expires_at/plan_payment_reference are written. publication_status,
  * business_members, and ownership are never touched here — a paid
  * business can be Pro + still pending_review until a founder separately
- * approves it, exactly as this pass specifies.
+ * approves it, exactly as this pass specifies. plan_started_at IS
+ * overwritten to the new term's start on a reactivation (unlike the Pro
+ * Invite RPC's coalesce-only behavior) — a paid term is a fresh,
+ * standalone $99/365-day purchase, not an extension of the earlier lapsed
+ * one, so its own start date should reflect that.
  */
 export async function activateBusinessPro(
   businessId: string,
@@ -55,6 +75,7 @@ export async function activateBusinessPro(
   const startedAt = new Date();
   const expiresAt = new Date(startedAt);
   expiresAt.setDate(expiresAt.getDate() + BUSINESS_PRO_INTRO_DAYS);
+  const nowIso = startedAt.toISOString();
 
   const { data: updated, error } = await supabase
     .from("businesses")
@@ -66,7 +87,7 @@ export async function activateBusinessPro(
       plan_payment_reference: stripeSessionId,
     })
     .eq("id", businessId)
-    .eq("plan_tier", "free")
+    .or(`plan_tier.eq.free,and(plan_tier.eq.pro,plan_expires_at.lte.${nowIso})`)
     .select("id")
     .maybeSingle();
 
@@ -85,19 +106,22 @@ export async function activateBusinessPro(
   }
 
   if (updated) {
+    // Covers both a first-time Free->Pro activation and reactivating a
+    // lapsed Pro term — both are a genuine, successful write of a fresh
+    // 365-day term, so both report the same "activated" outcome.
     console.log("[business-pro-activation] activated", { businessId, stripeSessionId });
     return { status: "activated" };
   }
 
-  // Zero rows matched with no error — either this business is already Pro
-  // (a legitimate idempotent redelivery, or a pro_seller that was never
-  // 'free' to begin with), or businessId doesn't resolve to a real row at
-  // all. Those are very different outcomes — a missing/invalid target must
-  // never be silently treated as a safe no-op — so resolve which one this
-  // actually is before deciding.
+  // Zero rows matched with no error — either this business already has
+  // ACTIVE Pro (a legitimate idempotent redelivery of this same event, or
+  // any other still-current pro/pro_seller business), or businessId
+  // doesn't resolve to a real row at all. Those are very different
+  // outcomes — a missing/invalid target must never be silently treated as
+  // a safe no-op — so resolve which one this actually is before deciding.
   const { data: existing, error: lookupError } = await supabase
     .from("businesses")
-    .select("id, plan_tier")
+    .select("id, plan_tier, plan_expires_at")
     .eq("id", businessId)
     .maybeSingle();
 
@@ -123,6 +147,7 @@ export async function activateBusinessPro(
     businessId,
     stripeSessionId,
     planTier: existing.plan_tier,
+    planExpiresAt: existing.plan_expires_at,
   });
   return { status: "already_pro" };
 }

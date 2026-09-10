@@ -66,7 +66,7 @@ function isSafeExternalUrl(url: string | null | undefined): url is string {
 async function resolveIsPro(businessId: string): Promise<boolean> {
   const admin = getAdminSupabase();
   if (!admin) return false;
-  const { data } = await admin.from("businesses").select("plan_tier").eq("id", businessId).maybeSingle();
+  const { data } = await admin.from("businesses").select("plan_tier, plan_expires_at").eq("id", businessId).maybeSingle();
   return isBusinessPro(data ?? {});
 }
 

@@ -283,7 +283,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, slug, logo_url, cover_image_url, plan_tier, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, market_area_id"
+        "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, market_area_id"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -307,6 +307,17 @@ export default async function ManageBusinessPage({
   if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
 
   const pro = isBusinessPro(business);
+  // Business Pro Expiration Enforcement pass — plan_tier still 'pro'/
+  // 'pro_seller' while `pro` (ACTIVE entitlement) is false means this
+  // business HAD Pro and its term lapsed, as opposed to a business that
+  // was never Pro at all. Drives the Plan & Status tab below so a lapsed
+  // owner sees "Pro expired" + the real expiration date + a Renew CTA,
+  // not the same generic "Unlock your full Findmi presence" copy shown
+  // to a business that never upgraded.
+  const isExpiredPro = !pro && (business.plan_tier === "pro" || business.plan_tier === "pro_seller");
+  const planExpiresAtLabel = business.plan_expires_at
+    ? new Date(business.plan_expires_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : null;
   const currentCategoryId = businessCategoryRows?.[0]?.category_id ?? "";
   const galleryImages = (galleryRows ?? []).map((r) => r.url);
   const profileAction = updateBusinessProfile.bind(null, id);
@@ -1576,30 +1587,54 @@ export default async function ManageBusinessPage({
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Plan &amp; Status</p>
             <span
               className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                pro ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/60"
+                pro ? "bg-findmi text-white" : isExpiredPro ? "bg-amber-100 text-amber-800" : "bg-black/[0.06] text-ink/60"
               }`}
             >
-              {pro ? "Pro" : "Free"} Plan
+              {pro ? "Pro" : isExpiredPro ? "Pro expired" : "Free"} Plan
             </span>
 
             {pro ? (
               <p className="mt-3 text-sm text-ink/60">
-                Findmi Pro is active — your full business profile, gallery, products, and complete upcoming schedule
-                are all unlocked.
+                Findmi Pro is active{planExpiresAtLabel ? ` — expires ${planExpiresAtLabel}` : ""} — your full
+                business profile, gallery, products, and complete upcoming schedule are all unlocked.
               </p>
             ) : (
-              <div className="mt-3 rounded-2xl border border-findmi/20 bg-findmi-50 p-4 sm:p-5">
-                <p className="text-sm font-bold text-ink">Unlock your full Findmi presence</p>
-                {/* Final Conversion Consistency pass — "appearances" removed:
-                    Free can already add/manage appearances (Passes 1-2), so
-                    naming it here as a Pro upgrade reason was stale. Replaced
-                    with the actual Pro-exclusive distinction — the full
-                    upcoming schedule showing publicly (Free's public profile
-                    shows only its next 1). */}
-                <p className="mt-1 text-sm text-ink/60">
-                  Upgrade to Pro for your full business details, contact links, gallery, products, and your complete
-                  upcoming schedule.
-                </p>
+              <div
+                className={`mt-3 rounded-2xl border p-4 sm:p-5 ${
+                  isExpiredPro ? "border-amber-200 bg-amber-50" : "border-findmi/20 bg-findmi-50"
+                }`}
+              >
+                {isExpiredPro ? (
+                  <>
+                    {/* Business Pro Expiration Enforcement pass — a lapsed
+                        renewal, not a first-time upgrade: the copy and CTA
+                        below say "Renew"/"expired", never "Unlock"/"Upgrade",
+                        since this business already had the full Pro
+                        experience and nothing about its stored data changed
+                        — renewing simply restores access immediately. */}
+                    <p className="text-sm font-bold text-ink">
+                      Your Findmi Pro plan expired{planExpiresAtLabel ? ` on ${planExpiresAtLabel}` : ""}
+                    </p>
+                    <p className="mt-1 text-sm text-ink/60">
+                      Renew Pro to restore your full business details, contact links, gallery, products, and complete
+                      upcoming schedule — nothing was removed, it&rsquo;s all still there.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-bold text-ink">Unlock your full Findmi presence</p>
+                    {/* Final Conversion Consistency pass — "appearances" removed:
+                        Free can already add/manage appearances (Passes 1-2), so
+                        naming it here as a Pro upgrade reason was stale. Replaced
+                        with the actual Pro-exclusive distinction — the full
+                        upcoming schedule showing publicly (Free's public profile
+                        shows only its next 1). */}
+                    <p className="mt-1 text-sm text-ink/60">
+                      Upgrade to Pro for your full business details, contact links, gallery, products, and your complete
+                      upcoming schedule.
+                    </p>
+                  </>
+                )}
                 {isAdminElevated ? (
                   // Admin Manage-As V1 — starting a Stripe checkout or
                   // redeeming a Pro Invite is identity-sensitive/financial
@@ -1612,12 +1647,15 @@ export default async function ManageBusinessPage({
                         exact, owned business_id is already known here (this page
                         already required requireBusinessMember(id) above), so this
                         routes through the internal /upgrade/pro handoff instead of
-                        straight to the external Tally form. */}
+                        straight to the external Tally form. Same route restores an
+                        expired Pro business too — startBusinessProCheckout's own
+                        eligibility check uses ACTIVE entitlement, not raw
+                        plan_tier, so it correctly allows this repurchase. */}
                     <Link
                       href={`/upgrade/pro?business=${id}`}
                       className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                     >
-                      Upgrade to Pro
+                      {isExpiredPro ? "Renew Pro" : "Upgrade to Pro"}
                     </Link>
 
                     {/* Pro Invite Sharing UX pass, made consistent across every

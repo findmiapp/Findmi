@@ -216,7 +216,7 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
 
   const { data: business } = await admin
     .from("businesses")
-    .select("id, slug, plan_tier")
+    .select("id, slug, plan_tier, plan_expires_at")
     .eq("id", businessId)
     .maybeSingle();
   if (!business) redirect(appendQuery(redirectPath, { error: "Business not found." }));
@@ -404,7 +404,7 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
 
   const { data: business } = await admin
     .from("businesses")
-    .select("id, name, slug, plan_tier")
+    .select("id, name, slug, plan_tier, plan_expires_at")
     .eq("id", businessId)
     .maybeSingle();
   if (!business) redirect(appendQuery(redirectPath, { error: "Business not found." }));

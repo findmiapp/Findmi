@@ -58,14 +58,21 @@ export async function createBusinessProCheckoutSession(
 
   const { data: business } = await admin
     .from("businesses")
-    .select("id, name, plan_tier")
+    .select("id, name, plan_tier, plan_expires_at")
     .eq("id", businessId)
     .maybeSingle();
   if (!business) return { error: "Business not found." };
   if (isBusinessPro(business)) {
-    // Covers both plan_tier === 'pro' and 'pro_seller' — a Pro Seller
-    // already inherits full Pro access and must never be offered this
-    // $99 checkout (see isBusinessPro's own pro_seller handling).
+    // Business Pro Expiration Enforcement pass — isBusinessPro is now an
+    // ACTIVE-entitlement check (plan_tier AND a current/absent
+    // plan_expires_at), not a raw plan_tier read. Covers both
+    // plan_tier === 'pro' and 'pro_seller' — a Pro Seller already
+    // inherits full Pro access and must never be offered this $99
+    // checkout (see isBusinessPro's own pro_seller handling). An
+    // EXPIRED Pro business (plan_tier still 'pro', plan_expires_at in
+    // the past) now correctly falls through past this guard instead of
+    // being blocked from repurchasing — see activateBusinessPro for the
+    // matching reactivation-safe write.
     return { error: "This business already has Pro access." };
   }
 

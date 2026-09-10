@@ -102,10 +102,21 @@ export default async function UpgradeToProPage({
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
-  const { data: business } = await admin.from("businesses").select("id, name, plan_tier").eq("id", businessId).maybeSingle();
+  const { data: business } = await admin
+    .from("businesses")
+    .select("id, name, plan_tier, plan_expires_at")
+    .eq("id", businessId)
+    .maybeSingle();
   if (!business) redirect(errorRedirectUrl("/account", "Business not found."));
 
   const pro = isBusinessPro(business);
+  // Business Pro Expiration Enforcement pass — plan_tier being 'pro'/
+  // 'pro_seller' while `pro` (the ACTIVE entitlement) is false means this
+  // is a lapsed renewal, not a first-time purchase — the copy below says
+  // "Renew" instead of "Upgrade" so an expired business isn't told it's
+  // starting from scratch. Uses the exact same $99 checkout flow either
+  // way (startBusinessProCheckout below) — only the wording differs.
+  const isExpiredPro = !pro && (business.plan_tier === "pro" || business.plan_tier === "pro_seller");
   const manageHref = `/account/business/${businessId}`;
 
   if (pro) {
@@ -127,7 +138,7 @@ export default async function UpgradeToProPage({
     <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
-        Upgrade {business.name} to Findmi Pro
+        {isExpiredPro ? `Renew Findmi Pro for ${business.name}` : `Upgrade ${business.name} to Findmi Pro`}
       </h1>
 
       <div className="mt-6 rounded-3xl border border-findmi/20 bg-findmi-50 p-5 sm:p-6">

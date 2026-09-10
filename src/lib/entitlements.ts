@@ -23,9 +23,47 @@ import type { Business, PlanTier } from "./types";
  * Pro (a Pro Seller must never lose Pro entitlements), and the future
  * seller-only surface gates on isBusinessProSeller instead, never on a
  * raw plan_tier === "pro_seller" comparison scattered around the app.
+ *
+ * Business Pro Expiration Enforcement pass — isBusinessPro now also
+ * requires plan_expires_at to still be current. A business's Pro term is
+ * $99/365 days (see businessProCheckout.ts); once that date is reached,
+ * the business keeps its stored plan_tier of 'pro' (never rewritten to
+ * 'free' — see activateBusinessPro/renewal comments for why) but no
+ * longer counts as ACTIVE Pro here, so every Pro-gated feature that
+ * already calls this one function automatically locks again without any
+ * of them needing their own date check. Renewing (a fresh Stripe
+ * checkout or a new Pro Invite redemption) simply writes a new, later
+ * plan_expires_at — Pro access returns immediately, no data
+ * reconstruction, since nothing was ever deleted.
+ *
+ * null/undefined plan_expires_at is PERMANENT Pro, not "already expired"
+ * — confirmed against live production data before this pass: the large
+ * majority of existing Pro businesses are founder/admin-granted with no
+ * expiration date recorded at all (no payment or invite trail), and
+ * treating that as expired would have instantly locked most of today's
+ * real Pro businesses. Only a business with an ACTUAL past-or-now
+ * plan_expires_at timestamp is treated as expired.
+ *
+ * Deliberately NOT applied to isPlanTierPro below: that bare-value
+ * resolver has no expiration column to check, and is also the exact
+ * function canCurrentUserManageEvents() (Event Management entitlement —
+ * a separate, account-level system) calls directly, which this pass must
+ * not change the behavior of.
  */
-export function isBusinessPro(business: Pick<Business, "plan_tier">): boolean {
-  return isPlanTierPro(business.plan_tier);
+export function isBusinessPro(business: Pick<Business, "plan_tier" | "plan_expires_at">): boolean {
+  return isPlanTierPro(business.plan_tier) && isPlanExpirationActive(business.plan_expires_at);
+}
+
+/** Shared by isBusinessPro above: true when a plan_expires_at value
+ * still leaves Pro currently active. null/undefined = no expiration ever
+ * set = permanent grant (see isBusinessPro's own comment on why). A
+ * timestamp exactly at or before "now" counts as expired, never "still
+ * active until strictly greater." Server-side Date.now() only — never
+ * depends on the browser's clock, since every caller of isBusinessPro
+ * runs in a Server Action/Server Component. */
+function isPlanExpirationActive(planExpiresAt: string | null | undefined): boolean {
+  if (!planExpiresAt) return true;
+  return new Date(planExpiresAt).getTime() > Date.now();
 }
 
 /** Same resolver for a bare plan_tier value, for a caller that only has
