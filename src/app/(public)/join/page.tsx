@@ -129,36 +129,45 @@ export default async function JoinPage({
 
   return (
     <div>
-      {/* HERO / VALUE — headline, one short line, the primary Pro CTA, and
-          two quiet contextual secondary actions that no longer visually
-          compete with it (only the actionable phrase gets link styling —
-          see SecondaryActions). */}
+      {/* HERO — recomposed (/Join Hero Composition pass) into
+          PROMISE -> CHOOSE YOUR PATH -> PROOF: headline + one short line,
+          then a compact two-tile decision module (Pro/Free, anchoring
+          down into their own full sections below rather than starting
+          signup immediately), then a single quiet claim link. The large
+          direct Pro button and its renewal-reassurance line are gone from
+          the hero — that information still lives in the full Pro section
+          below (ProCard, untouched). */}
       <div className="mx-auto max-w-4xl px-6 pt-14 sm:pt-16">
         <div className="max-w-xl">
           <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
-            {hero.heading}
+            <HeroHeadline heading={hero.heading} />
           </h1>
           <p className="mt-3 text-base text-ink/60">{hero.body}</p>
 
-          <a
-            href={proCtaHref}
-            className="mt-6 flex h-12 w-full max-w-xs items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-          >
-            Get Findmi Pro — $99/year
-          </a>
-          <p className="mt-2.5 text-xs text-ink/40">One year of Findmi Pro · No automatic renewal</p>
+          <ChoosePathTiles proCard={proCard} free={free} />
 
-          <div className="mt-4">
-            <SecondaryActions freeCtaHref={freeCtaHref} claim={claim} />
-          </div>
+          {/* Single quiet claim action — Free already has its own tile
+              above, so no duplicate "Start free" link here (see
+              SecondaryActions, still used unchanged by the Final CTA
+              below). Reuses the exact same claim.body/ctaLabel/ctaUrl the
+              rest of the page already resolves — nothing new added to the
+              CMS. */}
+          <Link
+            href={claim.ctaUrl}
+            className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ink/60 underline underline-offset-2 hover:text-ink"
+          >
+            {claim.body} {claim.ctaLabel} <span aria-hidden>→</span>
+          </Link>
         </div>
       </div>
 
       {/* REAL FINDMI PROOF — a real, compact BusinessLogoCard (the exact
           component/data access the homepage's own "Brands We Love" row
           uses), not a text box. Falls back to a plain link only if the
-          business can't be resolved. */}
-      <div className="mx-auto max-w-4xl px-6 pt-10 sm:pt-12">
+          business can't be resolved. Tightened top spacing (pt-10/sm:pt-12
+          -> pt-7/sm:pt-8) so this reads as evidence right under the new
+          hero decision module rather than a separate, unrelated section. */}
+      <div className="mx-auto max-w-4xl px-6 pt-7 sm:pt-8">
         <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">See Findmi in action</p>
         <div className="mx-auto mt-3 max-w-xs">
           {proofBusiness ? (
@@ -179,7 +188,11 @@ export default async function JoinPage({
 
       {/* FINDMI PRO — the dominant, primary product section. */}
       {proCard.visible && (
-        <div className="mx-auto max-w-xl px-4 pt-10 sm:px-6 sm:pt-12">
+        // id="pro" — the Hero's "Explore Pro" tile anchors here (/Join
+        // Hero Composition pass). scroll-mt clears the fixed mobile
+        // header (h-14, plus the admin toolbar's own top-7 offset when
+        // present) so the jump doesn't land the card flush under it.
+        <div id="pro" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-10 sm:px-6 sm:pt-12">
           <ProCard card={proCard} extra={proExtra} />
         </div>
       )}
@@ -187,7 +200,8 @@ export default async function JoinPage({
       {/* FREE — secondary fallback. Visibly quieter than Pro, but still
           positive/legitimate. */}
       {free.visible && (
-        <div className="mx-auto max-w-xl px-4 pt-6 sm:px-6">
+        // id="free" — the Hero's "Explore Free" tile anchors here.
+        <div id="free" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-6 sm:px-6">
           <FreeSection card={free} ctaHref={freeCtaHref} />
         </div>
       )}
@@ -236,6 +250,70 @@ export default async function JoinPage({
  * plain muted text, so neither reads as a second/third primary button
  * next to the turquoise Pro CTA. Destinations are the exact same
  * freeCtaHref/claim.ctaUrl every other CTA on this page already uses. */
+/** /Join Hero Composition pass — forces a deliberate two-line break on
+ * mobile ("Get discovered" / "on Findmi.") instead of letting the browser
+ * wrap wherever it likes, which could otherwise strand "Findmi." alone on
+ * its own line. Splits on " on Findmi" (the current default heading's own
+ * natural break point) into two `block sm:inline` spans — block stacks
+ * them on mobile, sm:inline lets the heading flow as one line again at
+ * larger widths, exactly as before this pass. This is presentation-only:
+ * the CMS-editable string itself (hero.heading) is untouched. If a
+ * founder ever edits the headline to something that doesn't contain that
+ * substring, this quietly falls back to plain, unsplit text — no crash,
+ * no assumption enforced on future copy. */
+function HeroHeadline({ heading }: { heading: string }) {
+  const breakAt = " on Findmi";
+  const idx = heading.indexOf(breakAt);
+  if (idx === -1) return <>{heading}</>;
+  const before = heading.slice(0, idx);
+  const after = heading.slice(idx + 1); // drop the leading space; keep "on Findmi…"
+  return (
+    <>
+      <span className="block sm:inline">{before}</span> <span className="block sm:inline">{after}</span>
+    </>
+  );
+}
+
+/** /Join Hero Composition pass — the new "Choose Your Path" module:
+ * PROMISE (headline/body above) -> CHOOSE YOUR PATH (these two tiles) ->
+ * PROOF (the real BusinessLogoCard below). Compact navigation tiles, not
+ * pricing cards — they anchor down into the page's own full Pro/Free
+ * sections (#pro/#free) rather than starting signup immediately; the
+ * actual conversion CTAs/destinations live only in those full sections
+ * (ProCard/FreeSection, both untouched by this pass). Price/context
+ * values reuse the same resolved CMS fields those full sections already
+ * use (proCard.price/priceSuffix, free.price) rather than hardcoding a
+ * second copy of them; the short comparison phrases below have no
+ * existing CMS field to map to and are small fixed presentation
+ * microcopy, kept code-level per this pass's own scope instruction rather
+ * than wiring up new CMS fields for two short marketing phrases. */
+function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: ResolvedJoinFreeCard }) {
+  const proPrice = [proCard.price, proCard.priceSuffix].filter(Boolean).join("");
+  return (
+    <div className="mt-6 grid grid-cols-2 gap-2.5">
+      <Link
+        href="#pro"
+        className="rounded-2xl border border-findmi/30 bg-findmi-50 p-3.5 transition hover:border-findmi/50"
+      >
+        <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
+        <p className="mt-1 font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
+        <p className="mt-1 text-xs text-ink/60">Complete profile + full Findmi Here schedule</p>
+        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-findmi-700">
+          Explore Pro <span aria-hidden>→</span>
+        </p>
+      </Link>
+      <Link href="#free" className="rounded-2xl border border-black/10 bg-white p-3.5 transition hover:border-black/20">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Start free</p>
+        <p className="mt-1 font-display text-lg font-bold tracking-tight text-ink">{free.price} · No card required</p>
+        <p className="mt-1 text-xs text-ink/60">Basic profile + your next appearance</p>
+        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
+          Explore Free <span aria-hidden>→</span>
+        </p>
+      </Link>
+    </div>
+  );
+}
+
 function SecondaryActions({
   freeCtaHref,
   claim,

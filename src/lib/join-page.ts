@@ -126,9 +126,13 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
   },
 };
 
+// /Join Hero Composition pass — body replaced per that pass's own locked
+// copy; heading unchanged (its mobile line-wrap is handled purely in
+// presentation — see join/page.tsx's HeroHeadline — not by editing this
+// string).
 export const JOIN_HERO_DEFAULTS = {
   heading: "Get discovered on Findmi.",
-  body: "Where you’ll be, what you sell, and how customers can find you. All in one place.",
+  body: "Your business, products and upcoming appearances. One place customers can follow.",
 };
 
 export const JOIN_GLOBAL_DEFAULTS = {
