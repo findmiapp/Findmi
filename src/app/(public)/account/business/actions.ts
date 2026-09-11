@@ -16,7 +16,7 @@ import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
 import { attributeReferral } from "@/lib/commerce/referrals";
-import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
+import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
@@ -875,50 +875,86 @@ function parseAppearanceFields(formData: FormData, onError: (message: string) =>
   };
 }
 
-/** Event + Appearance Geography Completion pass — a standalone
- * appearance's Market/Area is never picked directly by the owner; it's
- * derived from the physical city/state they already typed, via the same
- * matcher every other entity's free-text geography goes through. A match
- * is applied immediately; no match neither blocks creation nor falls back
- * to the Business's own home market_id — it just leaves both columns null
- * and logs a linked, admin-reviewable Market Request (deliberately reusing
- * the "business_creation" source — there's no appearance-specific source
- * value in the market_requests table's source CHECK constraint, and adding
- * one would mean a second migration outside the approved scope of this
- * pass). No city/state at all means nothing to match — both stay null. */
+/** Event + Appearance Geography Completion pass, corrected by Geography
+ * Foundation Pass 4.5 — a standalone appearance's Market/Area is never
+ * picked directly by the owner; it's derived from the physical city/state
+ * they already typed, via the same matcher every other entity's free-text
+ * geography goes through.
+ *
+ * Pass 4.5 root-cause fix: this used to ALWAYS attempt a match and, on no
+ * match, log a linked market_requests row via
+ * `source: "business_creation", sourceBusinessId: businessId` — the exact
+ * same shape a genuine Business-creation request uses. applyMarketRequestResolution()
+ * dispatches purely on which FK column is populated (never the `source`
+ * string), so it had no way to tell "this business_id came from a real
+ * Business-creation flow" apart from "this business_id came from an
+ * Appearance" — an admin resolving that request could silently grant the
+ * Business a business_markets distribution assignment it never explicitly
+ * chose, based solely on where it happened to appear. That violated the
+ * locked BASE / ACTIVITY / DISTRIBUTION separation.
+ *
+ * Fixed by NEVER writing source_business_id for appearance-driven
+ * geography again, for both linked and unlinked appearances:
+ *
+ *  - `locationId` present: the Location is now the canonical activity-
+ *    geography source for this appearance (see
+ *    lib/appearance-geography.ts's resolveEffectiveAppearanceGeography,
+ *    Pass 4) — this appearance's own market_id/market_area_id are no
+ *    longer read by anything once linked, so there is nothing to usefully
+ *    match or request here. Skip both entirely rather than create a
+ *    request that would only ever duplicate the Location's OWN geography
+ *    request lifecycle (already handled, see Pass 1's source_location_id
+ *    propagation) and risk the exact business_markets contamination this
+ *    pass exists to close.
+ *  - `locationId` absent, city/state matches an existing Market/Area:
+ *    unchanged — a genuine deterministic match, never request-based, so
+ *    it was never part of the bug.
+ *  - `locationId` absent, no match: still leaves both columns null
+ *    (unchanged), but NO market_requests row is created anymore. A
+ *    genuinely new, appearance-specific `source` value (so admin could
+ *    resolve this into ONLY the appearance's own activity geography,
+ *    never a Business) would need a market_requests CHECK-constraint
+ *    migration — out of this pass's no-migration scope (see this pass's
+ *    own final report for the exact proposed migration). Reusing any of
+ *    the four EXISTING source values (business_creation/event_creation/
+ *    location_creation/consumer) to represent this instead would either
+ *    reintroduce the same bug (business_creation) or misattribute a
+ *    business's own appearance activity as something it isn't
+ *    (event/location/anonymous-consumer demand) — this pass's own
+ *    instruction against "abusing an unrelated source label" rules all
+ *    four out. Admin still gets a plain informational email for
+ *    visibility; there is deliberately no queue entry to act on, since
+ *    the previous one only ever seemed actionable by mistake. */
 async function resolveStandaloneAppearanceGeography(
   admin: SupabaseClient,
   businessId: string,
   city: string | null,
-  state: string | null
+  state: string | null,
+  locationId: string | null
 ): Promise<{ market_id: string | null; market_area_id: string | null }> {
+  if (locationId) return { market_id: null, market_area_id: null };
+
   const text = [city, state].filter(Boolean).join(", ");
   if (!text) return { market_id: null, market_area_id: null };
 
   const match = await findExistingGeographyMatch(admin, text);
   if (match) return { market_id: match.marketId, market_area_id: match.areaId ?? null };
 
-  const linked = await createLinkedMarketRequest(admin, {
-    text,
-    city,
-    state,
-    source: "business_creation",
-    sourceBusinessId: businessId,
+  // Informational only, deliberately no market_requests row and no
+  // "Review" CTA — see this function's own doc comment for why creating
+  // one here isn't safe without a schema change this pass doesn't make.
+  const { data: businessRow } = await admin.from("businesses").select("name").eq("id", businessId).maybeSingle();
+  const businessName = businessRow?.name ?? "Unknown business";
+  await notifyAdmin({
+    subject: `Appearance activity outside known Findmi areas — ${businessName}`,
+    heading: "Appearance activity geography unresolved",
+    body: [
+      `Requested: ${text}`,
+      `Business: ${businessName}`,
+      "Source: Where You'll Be (standalone appearance)",
+      "For awareness only — this does not create a resolvable Market Request and never affects the business's own discovery Market.",
+    ],
   });
-  if (linked.created) {
-    // Admin Notification Email Copy Polish pass — a small existing-data
-    // lookup so the email reads with the business's real name instead of
-    // a raw id the admin would otherwise have to go look up themselves.
-    const { data: businessRow } = await admin.from("businesses").select("name").eq("id", businessId).maybeSingle();
-    const businessName = businessRow?.name ?? "Unknown business";
-    await notifyAdmin({
-      subject: `Market/Area request — ${businessName}`,
-      heading: "New Market/Area request",
-      body: [`Requested: ${text}`, `Business: ${businessName}`, "Source: Where You'll Be"],
-      actionLabel: "Review Market Requests",
-      actionUrl: "/admin/market-requests",
-    });
-  }
   return { market_id: null, market_area_id: null };
 }
 
@@ -936,7 +972,7 @@ export async function addManualAppearance(businessId: string, formData: FormData
     redirect(buildAppearanceErrorUrl(redirectPath, message, "add", formData));
   };
   const fields = parseAppearanceFields(formData, onError);
-  const geography = await resolveStandaloneAppearanceGeography(admin, businessId, fields.city, fields.state);
+  const geography = await resolveStandaloneAppearanceGeography(admin, businessId, fields.city, fields.state, fields.location_id);
 
   const { error } = await admin.from("appearances").insert({
     business_id: businessId,
@@ -992,7 +1028,7 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
   // saved again unchanged.
   const geography =
     existing && !existing.event_id && (fields.city !== existing.city || fields.state !== existing.state)
-      ? await resolveStandaloneAppearanceGeography(admin, businessId, fields.city, fields.state)
+      ? await resolveStandaloneAppearanceGeography(admin, businessId, fields.city, fields.state, fields.location_id)
       : {};
 
   const { error } = await admin
