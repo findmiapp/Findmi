@@ -486,13 +486,60 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
   if (marketBusinessIds) query = query.in("id", marketBusinessIds);
   if (eligibleFeaturedIds) query = query.in("id", eligibleFeaturedIds);
 
+  // Homepage closing-flow pass — businesses has no dedicated sort/order
+  // column (checked against the live schema; none exists), so the only
+  // real founder-controlled ordering signal here is the is_featured/
+  // founding_member tiering itself (both toggled in admin) — that stays
+  // completely authoritative and untouched below. The final `.order("name")`
+  // this used to end on was the actual problem: an alphabetical tiebreak
+  // is incidental (nothing to do with founder intent) and never varies,
+  // so the exact same businesses always occupied the same slots within a
+  // tier. Dropped in favor of a random shuffle WITHIN each tier only (see
+  // shuffleWithinFeaturedTiers below) — explicit tiers never mix. `.limit`
+  // moved to after the shuffle (was here, at the SQL level) so a fair
+  // pool of eligible businesses can rotate through the visible slots,
+  // not just whichever 8 Postgres happened to return first.
   const { data, error } = await query
     .order("is_featured", { ascending: false })
-    .order("founding_member", { ascending: false })
-    .order("name")
-    .limit(params.limit ?? 8);
+    .order("founding_member", { ascending: false });
   logPublicQueryError("getHomepageRowBusinesses", error);
-  return attachCategories((data as unknown as Business[]) ?? []);
+  const shuffled = shuffleWithinFeaturedTiers((data as unknown as Business[]) ?? []);
+  return attachCategories(shuffled.slice(0, params.limit ?? 8));
+}
+
+/** Groups by the (is_featured, founding_member) tier — in the same tier
+ * order the caller's own SQL `.order()` already produced — and shuffles
+ * only WITHIN each tier (Fisher–Yates), never across tiers. Explicit
+ * founder-set tiers (is_featured, founding_member) are never reordered
+ * relative to each other; only which businesses appear first WITHIN a
+ * tied tier varies. Homepage closing-flow pass — this runs once per
+ * Server Component render of the "businesses" homepage row, i.e. once
+ * per ISR regeneration of the homepage (revalidate = 60 in page.tsx),
+ * not once per request while a generated page is still cached/fresh —
+ * see this pass's own report for exactly what "random" means here. */
+function shuffleWithinFeaturedTiers(businesses: Business[]): Business[] {
+  const tiers = new Map<string, Business[]>();
+  const tierKeysInOrder: string[] = [];
+  for (const b of businesses) {
+    const key = `${b.is_featured}:${b.founding_member}`;
+    let group = tiers.get(key);
+    if (!group) {
+      group = [];
+      tiers.set(key, group);
+      tierKeysInOrder.push(key);
+    }
+    group.push(b);
+  }
+  const result: Business[] = [];
+  for (const key of tierKeysInOrder) {
+    const group = tiers.get(key)!;
+    for (let i = group.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [group[i], group[j]] = [group[j], group[i]];
+    }
+    result.push(...group);
+  }
+  return result;
 }
 
 /** Categories that can actually return a business from a specific

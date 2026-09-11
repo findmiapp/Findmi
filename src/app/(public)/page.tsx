@@ -272,32 +272,14 @@ export default async function HomePage({
         </section>
       )}
 
-      {/* Keep Exploring — homepage discovery flow pass: replaces the
-          generic black "closing_cta" SaaS marketing block (see the
-          `resolve("closing_cta")` note above) with a light, compact,
-          discovery-oriented close. Plain links to the same canonical
-          /businesses and /events destinations every "View all" on this
-          page already uses — no new routes, no new architecture, no
-          pricing/signup pitch, no redundant business-acquisition CTA
-          (that job belongs to the product-demo module above and /join). */}
-      <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">Keep exploring</p>
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-          <Link href="/businesses" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
-            Explore businesses →
-          </Link>
-          <Link href="/events" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
-            Explore events →
-          </Link>
-        </div>
-      </section>
-
-      {/* Final business CTA — restored (screenshot-showcase pass): a prior
-          pass had stopped rendering this, but it's the strong, final
-          business-conversion statement and belongs near the bottom of the
-          homepage, after the remaining discovery/category content, before
-          the footer. Exact prior implementation — eyebrow/heading/body/cta
-          are all founder-editable via Site Editor rather than hardcoded. */}
+      {/* Final business CTA — restored (screenshot-showcase pass) and now
+          repositioned ABOVE Keep Exploring (homepage closing-flow pass):
+          it's the strong, final business-conversion statement, so it
+          belongs immediately after the remaining discovery/category
+          content, closer to the footer than a plain links strip. Exact
+          prior implementation, untouched — eyebrow/heading/body/cta are
+          all founder-editable via Site Editor rather than hardcoded; only
+          its position in the page moved. */}
       {closingSec.visible && (
         <section className="mx-auto max-w-6xl px-6 py-10">
           <div className="flex flex-col items-start gap-4 rounded-3xl bg-ink px-6 py-8 text-white sm:px-10 sm:py-9">
@@ -315,6 +297,26 @@ export default async function HomePage({
           </div>
         </section>
       )}
+
+      {/* Keep Exploring — homepage closing-flow pass: a compact, footer-
+          adjacent navigation strip (not a section-sized block) — py-10/
+          mt-3 tightened to py-4/mt-2, no other structural change. Plain
+          links to the same canonical /businesses and /events destinations
+          every "View all" on this page already uses — no new routes, no
+          pricing/signup pitch, no redundant business-acquisition CTA
+          (that job belongs to the product-demo module and the black CTA
+          directly above). */}
+      <section className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
+        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">Keep exploring</p>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
+          <Link href="/businesses" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+            Explore businesses →
+          </Link>
+          <Link href="/events" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+            Explore events →
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
