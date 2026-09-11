@@ -17,7 +17,6 @@ import {
   getHomeCategories,
   getMarketAreaLabel,
   getNextAppearanceHints,
-  getShowcaseBusiness,
   getUpcomingEvents,
 } from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
@@ -93,21 +92,18 @@ export default async function HomePage({
 
   // Founder Site Editor overrides for the structural sections that stay
   // fixed-position (hero, event discovery heading/copy, explore by
-  // category) — every field falls back to the current hardcoded default
-  // (HOMEPAGE_SECTIONS) when no row/field exists.
+  // category, closing CTA) — every field falls back to the current
+  // hardcoded default (HOMEPAGE_SECTIONS) when no row/field exists.
   //
-  // Homepage discovery flow pass — the generic black "closing_cta"
-  // section (eyebrow/heading/body/CTA) is no longer rendered on the
-  // homepage: the refined Business/Brand product-demo module now owns
-  // business-acquisition, and /join owns Free/Pro conversion, so this
-  // block just duplicated both with generic SaaS framing. Its
-  // resolveSection() call, HOMEPAGE_SECTIONS registry entry, and admin
-  // Site Editor field are all left completely intact — this is a
-  // presentation-only change (narrowest safe implementation), not a
-  // content/CMS deletion.
+  // Screenshot showcase pass — closing_cta (the black "GET DISCOVERED
+  // TODAY" / "More Visibility..." block) is restored after a prior pass
+  // removed its rendering; it was correctly identified as still desired
+  // (the final business-conversion statement before the footer) and
+  // restored using this exact existing implementation, not rebuilt.
   const resolve = (key: string) => resolveSection(siteSections, key, HOMEPAGE_SECTIONS[key]);
   const upcomingSec = resolve("featured_events");
   const exploreSec = resolve("explore_by_category");
+  const closingSec = resolve("closing_cta");
   const heroSec = resolve("hero");
 
   // Hero collage — founder-configured images (Site Editor → Hero → Image
@@ -295,6 +291,30 @@ export default async function HomePage({
           </Link>
         </div>
       </section>
+
+      {/* Final business CTA — restored (screenshot-showcase pass): a prior
+          pass had stopped rendering this, but it's the strong, final
+          business-conversion statement and belongs near the bottom of the
+          homepage, after the remaining discovery/category content, before
+          the footer. Exact prior implementation — eyebrow/heading/body/cta
+          are all founder-editable via Site Editor rather than hardcoded. */}
+      {closingSec.visible && (
+        <section className="mx-auto max-w-6xl px-6 py-10">
+          <div className="flex flex-col items-start gap-4 rounded-3xl bg-ink px-6 py-8 text-white sm:px-10 sm:py-9">
+            <p className="text-xs font-bold uppercase tracking-wide text-findmi">{closingSec.eyebrow}</p>
+            <h2 className="font-display max-w-lg whitespace-pre-line text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
+              {closingSec.heading}
+            </h2>
+            <p className="max-w-md text-sm text-white/70">{closingSec.body}</p>
+            <Link
+              href={closingSec.ctaUrl ?? "/join"}
+              className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            >
+              {closingSec.ctaLabel}
+            </Link>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -328,32 +348,27 @@ async function HomepageRowSection({
   isBrandsRow?: boolean;
 }) {
   if (resolved.contentType === "business_showcase") {
-    // Real demo business (The Native Rose) — fetched only when a
-    // business_showcase row actually exists, not on every homepage load.
-    // Falls back to illustrative markup inside the carousel itself if
-    // this resolves to null (live-QA correction, Part 14).
-    const demo = await getShowcaseBusiness();
-    // Homepage carousel refinement pass — the redundant Findmi logo mark
-    // above the headline is gone (the global header already establishes
-    // the brand); outer padding/gaps tightened throughout (p-5/sm:p-9 ->
-    // p-4/sm:p-6, mt-5 -> mt-3/mt-4) so the module fits its content
-    // instead of leaving large blank bands above/below the phone, while
-    // the phone itself grows (see BusinessShowcaseCarousel's own
-    // PhoneFrame) to become the section's visual centerpiece.
+    // Homepage Business Acquisition Section Rebuild pass — this section no
+    // longer fetches/depends on live business data at all: it shows real,
+    // static screenshots (see BusinessShowcaseCarousel's own note) rather
+    // than a data-driven UI approximation, so there's nothing to fetch or
+    // null-check here anymore. Outer card styling (white/pale-aqua
+    // gradient, restrained border, rounded-3xl) is unchanged; only the
+    // copy hierarchy and CTA label changed (see this pass's own report).
     return (
       <section className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
         <div className="overflow-hidden rounded-3xl border border-findmi/15 bg-gradient-to-br from-findmi-50 via-white to-white p-4 sm:p-6">
           <h2 className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">{row.title}</h2>
           {row.subtitle && <p className="mt-1.5 max-w-md text-sm text-ink/60">{row.subtitle}</p>}
           <div className="mt-4">
-            <BusinessShowcaseCarousel demo={demo} />
+            <BusinessShowcaseCarousel />
           </div>
           <div className="mt-4 flex justify-center sm:justify-start">
             <Link
               href="/join"
               className="inline-flex items-center justify-center rounded-full bg-findmi px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-findmi-600"
             >
-              Get Discovered →
+              Create your Findmi page
             </Link>
           </div>
         </div>
