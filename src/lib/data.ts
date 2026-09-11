@@ -9,6 +9,7 @@ import {
   type DiscoveryWindow,
 } from "./format";
 import { resolveEffectiveEventMarket } from "./event-markets";
+import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
 import type {
   Appearance,
   Business,
@@ -2012,6 +2013,16 @@ export async function getFindMiHereFeed(
   // location -> parent event) events themselves use; Area from
   // events.market_area_id directly (no per-occurrence Area column
   // exists). Never substitutes the Business's own home Market/Area.
+  //
+  // Geography Foundation Pass 4 — a STANDALONE appearance connected to a
+  // real Location (appearance.location_id set, no event_id) now resolves
+  // through resolveEffectiveAppearanceGeography the same way an event
+  // occurrence's linked Location already overrides its own stored value
+  // above: the Location's current market_id/market_area_id are canonical,
+  // never the appearance's own possibly-stale snapshot, so correcting a
+  // Location's Findmi area later is immediately reflected here with no
+  // Appearance row rewrite. A standalone appearance with no location_id
+  // keeps using its own stored snapshot exactly as before this pass.
   if (marketId) {
     const occIds = Array.from(
       new Set(items.filter((i) => i.event_id && i.event_occurrence_id).map((i) => i.event_occurrence_id as string))
@@ -2023,14 +2034,22 @@ export async function getFindMiHereFeed(
         occById.set(o.id, { market_id: o.market_id, location_id: o.location_id });
       }
     }
+    const standaloneLocationIds = items
+      .filter((i) => !i.event_id && i.location_id)
+      .map((i) => i.location_id as string);
     const locationIds = Array.from(
-      new Set(Array.from(occById.values()).map((o) => o.location_id).filter((id): id is string => Boolean(id)))
+      new Set([
+        ...Array.from(occById.values())
+          .map((o) => o.location_id)
+          .filter((id): id is string => Boolean(id)),
+        ...standaloneLocationIds,
+      ])
     );
-    const locationMarketById = new Map<string, string | null>();
+    const locationGeographyById = new Map<string, { market_id: string | null; market_area_id: string | null }>();
     if (locationIds.length > 0) {
-      const { data: locRows } = await supabase.from("locations").select("id, market_id").in("id", locationIds);
-      for (const l of (locRows ?? []) as { id: string; market_id: string | null }[]) {
-        locationMarketById.set(l.id, l.market_id);
+      const { data: locRows } = await supabase.from("locations").select("id, market_id, market_area_id").in("id", locationIds);
+      for (const l of (locRows ?? []) as { id: string; market_id: string | null; market_area_id: string | null }[]) {
+        locationGeographyById.set(l.id, { market_id: l.market_id, market_area_id: l.market_area_id });
       }
     }
 
@@ -2042,12 +2061,20 @@ export async function getFindMiHereFeed(
         effectiveMarketId = resolveEffectiveEventMarket({
           eventMarketId: item.event?.market_id ?? null,
           occurrenceMarketId: occ?.market_id ?? null,
-          locationMarketId: occ?.location_id ? (locationMarketById.get(occ.location_id) ?? null) : null,
+          locationMarketId: occ?.location_id ? (locationGeographyById.get(occ.location_id)?.market_id ?? null) : null,
         }).marketId;
         effectiveAreaId = item.event?.market_area_id ?? null;
       } else {
-        effectiveMarketId = item.market_id ?? null;
-        effectiveAreaId = item.market_area_id ?? null;
+        const locationGeography = item.location_id ? locationGeographyById.get(item.location_id) : undefined;
+        const effective = resolveEffectiveAppearanceGeography({
+          locationId: item.location_id ?? null,
+          appearanceMarketId: item.market_id ?? null,
+          appearanceAreaId: item.market_area_id ?? null,
+          locationMarketId: locationGeography?.market_id ?? null,
+          locationAreaId: locationGeography?.market_area_id ?? null,
+        });
+        effectiveMarketId = effective.marketId;
+        effectiveAreaId = effective.areaId;
       }
       return areaId ? effectiveAreaId === areaId : effectiveMarketId === marketId;
     });
