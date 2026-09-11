@@ -7,10 +7,13 @@ export const dynamic = "force-dynamic";
 // several images can genuinely take longer than a serverless function's
 // default execution budget. This raises it for the Server Actions this
 // route invokes (analyzeAppearances/createAppearancesBulk); the
-// Anthropic client's own 55s per-request timeout (see
-// lib/admin/appearance-import.ts) stays comfortably under this, so a
-// real Anthropic-side hang fails with a clean, caught error instead of
-// the whole function being killed first.
+// Anthropic client's own 40s per-request timeout (see
+// lib/admin/appearance-import.ts — reduced from an earlier 55s after a
+// production 6-image import blew past this 60s ceiling as an uncatchable
+// hard kill instead of a clean caught error) leaves real headroom under
+// this for the rest of the function's own work, so a real Anthropic-side
+// hang or a genuinely slow multi-image request fails with a clean,
+// caught error instead of the whole function being killed first.
 export const maxDuration = 60;
 
 export default async function ImportAppearancesPage({

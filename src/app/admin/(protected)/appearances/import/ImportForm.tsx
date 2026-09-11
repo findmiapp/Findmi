@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { RelationField, type SearchResult } from "@/components/admin/RelationPicker";
 import { analyzeAppearances, createAppearancesBulk, type CreateRowInput, type DraftRow } from "./actions";
 
@@ -80,6 +81,7 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [rows, setRows] = useState<EditableRow[] | null>(null);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [isAnalyzing, startAnalyzing] = useTransition();
   const [isCreating, startCreating] = useTransition();
 
@@ -136,17 +138,35 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
     imageFiles.forEach((f) => fd.append("images", f));
 
     startAnalyzing(async () => {
-      const result = await analyzeAppearances(fd);
-      if (result.error) {
-        setAnalyzeError(result.error);
-        return;
+      // Appearance Importer Multi-Image Crash pass — analyzeAppearances
+      // already catches every error it can predict and returns a plain
+      // { error } string (see that function's own try/catch), but a
+      // production 6-image import proved the Server Action invocation
+      // itself can still fail outside that — a Vercel function timeout,
+      // a dropped connection, an oversized request — which throws here
+      // instead of resolving. Previously nothing caught that: an
+      // unhandled rejection inside this transition crashed the whole
+      // admin page to Next's generic client-exception screen. Caught now
+      // and shown as a normal, in-page error instead.
+      try {
+        const result = await analyzeAppearances(fd);
+        if (result.error) {
+          setAnalyzeError(result.error);
+          return;
+        }
+        setRows(result.rows.map(rowFromDraft));
+      } catch (err) {
+        unstable_rethrow(err);
+        setAnalyzeError(
+          "Something went wrong reaching the server — the request may have timed out or the connection was interrupted. Try again, or with fewer/smaller images."
+        );
       }
-      setRows(result.rows.map(rowFromDraft));
     });
   }
 
   function handleCreate() {
     if (!business || !rows) return;
+    setCreateError(null);
     const payload: CreateRowInput[] = rows
       .filter((r) => r.selected)
       .map((r) => ({
@@ -162,7 +182,21 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
         event_id: r.event_id,
       }));
     startCreating(async () => {
-      await createAppearancesBulk(business.value, payload);
+      // Same reasoning as handleAnalyze's own try/catch above —
+      // createAppearancesBulk succeeds via redirect() (which Next.js
+      // implements by throwing a special, framework-internal error that
+      // MUST keep propagating — unstable_rethrow re-throws exactly that
+      // case unchanged), so this only ever catches a genuine failure
+      // (timeout, dropped connection) and shows it in-page instead of
+      // crashing.
+      try {
+        await createAppearancesBulk(business.value, payload);
+      } catch (err) {
+        unstable_rethrow(err);
+        setCreateError(
+          "Something went wrong reaching the server while creating these appearances — the request may have timed out or the connection was interrupted. Please try again."
+        );
+      }
     });
   }
 
@@ -441,6 +475,10 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
               </div>
             ))}
           </div>
+
+          {createError && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{createError}</p>
+          )}
 
           <button
             type="button"

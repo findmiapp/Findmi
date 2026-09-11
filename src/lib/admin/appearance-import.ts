@@ -131,12 +131,21 @@ function getModel(): string {
   return process.env.ANTHROPIC_APPEARANCE_MODEL?.trim() || DEFAULT_MODEL;
 }
 
-// A genuine Anthropic-side hang should fail cleanly (a caught
-// APIConnectionTimeoutError, item 3) well before Vercel's own function
-// timeout kills the whole request with no useful error at all — see the
-// `maxDuration` export on the import route, which gives this enough
-// budget to actually finish within that window.
-const REQUEST_TIMEOUT_MS = 55_000;
+// Appearance Importer Multi-Image Crash pass — a production 6-image
+// import (this function's own supported maximum, MAX_IMPORT_IMAGES) was
+// killed by Vercel's hard 60s maxDuration ceiling (see the import route's
+// own `maxDuration` export) rather than by this timeout: this window only
+// wraps the Anthropic call itself, not the business lookup, the base64
+// image-decoding loop above, or the event/duplicate-match queries that
+// still run AFTER it (analyzeAppearances, appearances/import/actions.ts)
+// — all of which share the same 60s budget. The previous 55s value left
+// only ~5s for all of that combined, so a genuinely slow (not hung)
+// 6-image Vision call could still blow the outer deadline as an
+// uncatchable hard kill instead of this clean, already-handled
+// APIConnectionTimeoutError. 40s leaves real headroom for the rest of the
+// function to reliably finish inside 60s — a genuinely slower request now
+// fails via the existing clean, catchable timeout message below instead.
+const REQUEST_TIMEOUT_MS = 40_000;
 
 // ---------------------------------------------------------------------
 // Extraction
