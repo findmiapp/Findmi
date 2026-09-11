@@ -64,7 +64,16 @@ export default function AppearanceCard({
         {live ? (
           <>
             <LiveDot className="text-white" />
-            <span className="text-[10px] font-bold uppercase tracking-wide">Now</span>
+            {/* Appearance UX Cleanup pass, item 4 — "Happening" reads small
+                above the bold "NOW" instead of a bare "NOW" alone, so the
+                badge is unambiguous at a glance. Tight/normal tracking
+                (not the surrounding uppercase badges' usual tracking-wide)
+                and a small size keep "Happening" from overflowing this
+                w-12 tile; "NOW" stays the dominant, bold line. */}
+            <span className="flex flex-col items-center leading-[1.15]">
+              <span className="text-[6.5px] font-bold uppercase tracking-normal">Happening</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-wide">Now</span>
+            </span>
           </>
         ) : (
           <>

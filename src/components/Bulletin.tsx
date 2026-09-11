@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 // Final refinement pass, items 4/8 — shared Bulletin/Announcement pattern
@@ -18,6 +21,19 @@ import Link from "next/link";
 // other pre-filtered props like socialLinks; this component just decides
 // how to render a link vs. a static block). Passing a bad/unsafe string
 // as `url` is a caller bug, not something this component re-checks.
+//
+// Appearance UX Cleanup pass, item 3 — a long announcement body could
+// make this card tall enough to dominate the page. Presentation only:
+// the stored body text is never truncated/changed, just visually clamped
+// (existing `line-clamp-3` utility, already used elsewhere for card
+// titles/excerpts — see globals.css) with a client-side View more/Show
+// less toggle. This promoted the component from a Server Component to a
+// Client Component (needed for the expand/collapse state); every prop
+// stays the same plain, serializable string/null shape, so both call
+// sites (Business Profile, Event Detail) are unaffected. Whether a real
+// overflow exists is measured against the actual rendered height
+// (scrollHeight vs clientHeight) rather than guessed from character
+// count, so a short announcement never shows a toggle it doesn't need.
 export default function Bulletin({
   label,
   heading,
@@ -30,51 +46,101 @@ export default function Bulletin({
   url?: string | null;
 }) {
   const text = body?.trim();
+  const bodyRef = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [isClamped, setIsClamped] = useState(false);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [text]);
+
+  useEffect(() => {
+    // Measured while still collapsed (expanded starts false on every
+    // mount/text change above) — scrollHeight is the true full-content
+    // height regardless of the line-clamp; clientHeight is bounded to the
+    // clamped 3 lines. Intentionally NOT re-run when `expanded` toggles:
+    // once known, whether the collapsed state truncates doesn't change.
+    const el = bodyRef.current;
+    if (!el) return;
+    setIsClamped(el.scrollHeight > el.clientHeight + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
   if (!text) return null;
 
   const displayLabel = label?.trim() || "Bulletin";
   const external = url ? /^https:\/\//i.test(url) : false;
 
-  const content = (
+  const mainContent = (
     <>
       <MegaphoneGlyph className="h-6 w-6 shrink-0 text-findmi-700" />
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">{displayLabel}</p>
         {heading?.trim() && <p className="mt-0.5 text-sm font-bold text-ink">{heading.trim()}</p>}
-        <p className="mt-0.5 whitespace-pre-line text-sm text-ink/75">{text}</p>
+        <p
+          ref={bodyRef}
+          className={`mt-0.5 whitespace-pre-line text-sm text-ink/75 ${expanded ? "" : "line-clamp-3"}`}
+        >
+          {text}
+        </p>
       </div>
       {url && <ChevronGlyph className="h-4 w-4 shrink-0 self-center text-findmi-700/60" />}
     </>
   );
 
-  const boxClass = "flex items-center gap-3 rounded-2xl border border-findmi/25 bg-findmi-50/70 px-4 py-3.5";
+  // The toggle is always a sibling of (never nested inside) the optional
+  // url Link/anchor below — nesting a <button> inside an <a> is invalid
+  // HTML and would also trigger navigation on click instead of expanding.
+  // Rendered outside the box's padding-consistent row so it reads as part
+  // of the same card without being part of the click target.
+  const toggle = isClamped && (
+    <button
+      type="button"
+      onClick={() => setExpanded((v) => !v)}
+      className="mt-1.5 text-xs font-bold text-findmi-700 hover:underline"
+    >
+      {expanded ? "Show less" : "View more"}
+    </button>
+  );
+
+  const rowClass = "flex items-center gap-3";
+  // Item 5 — the row (not a small link buried inside it) is the clickable
+  // target when a url is present, with the chevron above as the visual
+  // affordance that it goes somewhere. Hover styling stays on the outer
+  // box below (not just the inner anchor) — :hover on a nested child
+  // naturally also matches its ancestor's own :hover, so this still
+  // highlights the whole card on hover exactly as before.
+  const boxClass = `rounded-2xl border border-findmi/25 bg-findmi-50/70 px-4 py-3.5 ${
+    url ? "transition hover:border-findmi/40 hover:bg-findmi-50" : ""
+  }`;
 
   if (url) {
-    // Item 5 — the whole block is the clickable target (not a small link
-    // buried inside it), with the chevron above as the visual affordance
-    // that it goes somewhere. Internal path vs. external URL matches
-    // every other destination on this page (Link for "/...", a plain
-    // anchor for "https://...").
     if (external) {
       return (
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className={`${boxClass} transition hover:border-findmi/40 hover:bg-findmi-50`}
-        >
-          {content}
-        </a>
+        <div className={boxClass}>
+          <a href={url} target="_blank" rel="noreferrer" className={rowClass}>
+            {mainContent}
+          </a>
+          {toggle}
+        </div>
       );
     }
     return (
-      <Link href={url} className={`${boxClass} transition hover:border-findmi/40 hover:bg-findmi-50`}>
-        {content}
-      </Link>
+      <div className={boxClass}>
+        <Link href={url} className={rowClass}>
+          {mainContent}
+        </Link>
+        {toggle}
+      </div>
     );
   }
 
-  return <div className={boxClass}>{content}</div>;
+  return (
+    <div className={boxClass}>
+      <div className={rowClass}>{mainContent}</div>
+      {toggle}
+    </div>
+  );
 }
 
 function MegaphoneGlyph({ className }: { className?: string }) {

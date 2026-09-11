@@ -45,7 +45,13 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
         {live ? (
           <>
             <LiveDot className="text-white" />
-            <span className="text-[11px] font-bold uppercase tracking-wide">Now</span>
+            {/* Appearance UX Cleanup pass, item 4 — same two-line
+                "Happening"/"NOW" treatment as AppearanceCard's identical
+                tile pattern; see that file's own note. */}
+            <span className="flex flex-col items-center leading-[1.15]">
+              <span className="text-[7px] font-bold uppercase tracking-normal">Happening</span>
+              <span className="text-xs font-extrabold uppercase tracking-wide">Now</span>
+            </span>
           </>
         ) : (
           <>

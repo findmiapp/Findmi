@@ -44,11 +44,22 @@ export default async function AdminAppearancesPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3">
+      {/* Appearance Mobile Cleanup pass — this row's action-button group
+          (unlike its single-button siblings on /admin/businesses,
+          /admin/events, etc.) holds two full-label pill buttons that
+          don't fit beside the heading at ~390px. `shrink-0` on the group
+          previously forced it to keep its full content width with
+          nowhere to go, pushing the whole page wider than the viewport.
+          `flex-wrap` here lets the group drop to its own row under the
+          heading when it doesn't fit; `flex-wrap` on the group itself is
+          a second line of defense so the two buttons stack instead of
+          overflowing even on that row. Desktop (`sm:`) keeps the
+          original single-row, auto-width layout unchanged. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
           Where You&rsquo;ll Be
         </h1>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
           <Link
             href="/admin/appearances/import"
             className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink hover:border-black/20"

@@ -6,12 +6,14 @@ import { unstable_rethrow } from "next/navigation";
 import { RelationField, type SearchResult } from "@/components/admin/RelationPicker";
 import { analyzeAppearances, createAppearancesBulk, type CreateRowInput, type DraftRow } from "./actions";
 
-// Mirrors lib/admin/appearance-import.ts's own limit — that file has
-// `import "server-only"` at the top (correctly, since it holds the
-// Anthropic client), so a client component can't import a value from it.
-// This copy is a UI convenience only; the server enforces the real limit
-// regardless of what this component does.
-const MAX_IMAGES = 6;
+// Appearance UX Cleanup pass — the server (lib/admin/appearance-import.ts,
+// `import "server-only"`, so a client component can't import its constant
+// directly) still architecturally supports up to MAX_IMPORT_IMAGES (6);
+// that's deliberately untouched. This is a narrower, UI-only input
+// constraint: real production use showed one screenshot per analysis is
+// substantially more reliable and easier to review, so this selector caps
+// at 1 regardless of what the server would still accept.
+const MAX_IMAGES = 1;
 const ACCEPTED_IMAGE_TYPES = "image/jpeg,image/png,image/gif,image/webp";
 
 const inputClass =
@@ -118,8 +120,10 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
   }
 
   function addImages(files: FileList | null) {
-    if (!files) return;
-    setImageFiles((prev) => [...prev, ...Array.from(files)].slice(0, MAX_IMAGES));
+    if (!files || files.length === 0) return;
+    // One image at a time (see MAX_IMAGES above) — a new selection
+    // replaces whatever was previously chosen rather than accumulating.
+    setImageFiles([files[0]]);
   }
 
   function handleAnalyze() {
@@ -235,7 +239,8 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
         </label>
 
         <div>
-          <span className="mb-1.5 block text-sm font-medium text-ink">Flyers / Screenshots</span>
+          <span className="mb-1.5 block text-sm font-medium text-ink">Flyer / Screenshot</span>
+          <p className="mb-2 text-xs text-ink/55">Upload one schedule screenshot at a time for the most reliable results.</p>
           {imageFiles.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {imageFiles.map((f, i) => (
@@ -258,11 +263,10 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
           )}
           {imageFiles.length < MAX_IMAGES && (
             <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30">
-              Add Image(s)
+              Add Image
               <input
                 type="file"
                 accept={ACCEPTED_IMAGE_TYPES}
-                multiple
                 className="hidden"
                 onChange={(e) => {
                   addImages(e.target.files);
@@ -272,8 +276,7 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
             </label>
           )}
           <p className="mt-1 text-xs text-ink/40">
-            JPG, PNG, GIF, or WEBP, up to {MAX_IMAGES} images, 5MB each. Not saved permanently — used only
-            to analyze this batch.
+            JPG, PNG, GIF, or WEBP, up to 5MB. Not saved permanently — used only to analyze this screenshot.
           </p>
         </div>
 
