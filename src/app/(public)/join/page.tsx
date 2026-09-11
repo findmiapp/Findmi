@@ -287,6 +287,18 @@ function HeroHeadline({ heading }: { heading: string }) {
  * existing CMS field to map to and are small fixed presentation
  * microcopy, kept code-level per this pass's own scope instruction rather
  * than wiring up new CMS fields for two short marketing phrases. */
+/** /Join hero tile micro-fix pass — the prior "$0 · No card required" pass
+ * shrank "$0" along with the qualifier, which lost the price's visual
+ * prominence entirely. Fixed by keeping "$0" at the exact same font-size/
+ * weight/tracking as Pro's price and placing the qualifier as its own
+ * smaller two-line block beside it (no dot separator).
+ *
+ * Both tiles now share a min-height per row (price row: min-h-7, matching
+ * text-lg's own 1.75rem line-height; description row: min-h-8, room for
+ * up to 2 lines of text-xs) instead of one-off margins, so the label/
+ * price/description/Explore rows start at the same vertical position on
+ * both cards regardless of the Free price row's extra qualifier line —
+ * the four-row rhythm the pass asked for. */
 function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: ResolvedJoinFreeCard }) {
   const proPrice = [proCard.price, proCard.priceSuffix].filter(Boolean).join("");
   return (
@@ -296,23 +308,24 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
         className="rounded-2xl border border-findmi/30 bg-findmi-50 p-3.5 transition hover:border-findmi/50"
       >
         <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
-        <p className="mt-1 font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
-        <p className="mt-1 text-xs text-ink/60">Complete profile + full Findmi Here schedule</p>
+        <div className="mt-1 flex min-h-7 items-center">
+          <p className="font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
+        </div>
+        <p className="mt-1 min-h-8 text-xs text-ink/60">Complete profile + full Findmi Here schedule</p>
         <p className="mt-2 flex items-center gap-1 text-xs font-bold text-findmi-700">
           Explore Pro <span aria-hidden>→</span>
         </p>
       </Link>
       <Link href="#free" className="rounded-2xl border border-black/10 bg-white p-3.5 transition hover:border-black/20">
         <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Start free</p>
-        {/* /Join micro UI fixes pass — text-lg wrapped awkwardly at ~390px
-            (this line is noticeably longer than Pro's "$99/year"); sized
-            down to text-xs as one uniform treatment (not split into a
-            bigger "$0" + smaller rest) so it stays a single balanced
-            line without widening the tile. */}
-        <p className="mt-1 whitespace-nowrap font-display text-xs font-bold tracking-tight text-ink">
-          {free.price} · No card required
-        </p>
-        <p className="mt-1 text-xs text-ink/60">Basic profile + your next appearance</p>
+        <div className="mt-1 flex min-h-7 items-center gap-1.5">
+          <p className="font-display text-lg font-bold tracking-tight text-ink">{free.price}</p>
+          <span className="flex flex-col text-[11px] font-medium leading-[1.15] text-ink/50">
+            <span>No card</span>
+            <span>required</span>
+          </span>
+        </div>
+        <p className="mt-1 min-h-8 text-xs text-ink/60">Basic profile + your next appearance</p>
         <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
           Explore Free <span aria-hidden>→</span>
         </p>
