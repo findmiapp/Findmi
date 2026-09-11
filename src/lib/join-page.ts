@@ -60,18 +60,19 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // either way since it has no public rendering path anymore.
     tagline:
       "Built for independent businesses, makers, vendors and brands that want to be discovered wherever they show up.\n\n$99 for one year of Findmi Pro.",
-    // Join Page Conversion Rebuild pass — replaces the prior list: drops
-    // "Connect with Findmi events" (Events are open to Free businesses
-    // too — this must never read as Pro-exclusive) and "Bookings" (no
-    // complete booking system exists to claim). See this pass's own
-    // report for the exact requested wording.
+    // Join Page Conversion Rebuild pass — drops "Connect with Findmi
+    // events" (Events are open to Free businesses too — this must never
+    // read as Pro-exclusive) and "Bookings" (no complete booking system
+    // exists to claim). /Join Final Visual Conversion pass — compressed
+    // from 7 to 5 lines (merged "Gallery, About & contact links" into one
+    // line, "Products & services"+"Customer inquiries" into one line,
+    // dropped "Business updates") to reduce the Pro card's vertical
+    // weight on mobile without dropping any real claim.
     features: [
       "Complete business profile",
       "Full Findmi Here schedule",
-      "Gallery, About & contact links",
-      "Products & services",
-      "Customer inquiries",
-      "Business updates",
+      "Photos, links & contact information",
+      "Products & customer inquiries",
       "Expanded discovery across Findmi",
     ],
     ctaLabel: "Get Findmi Pro",

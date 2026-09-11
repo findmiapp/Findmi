@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import BusinessLogoCard from "@/components/BusinessLogoCard";
+import CompactCard from "@/components/CompactCard";
+import ProductCard from "@/components/ProductCard";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
+import { getBusinessBySlug, getNextAppearanceHints, getProductsForBusiness, type NextAppearanceHint } from "@/lib/data";
+import { cityState, formatDateShort } from "@/lib/format";
+import type { BusinessWithCategories, Product } from "@/lib/types";
 import {
   getJoinPageSections,
   resolveJoinCard,
@@ -25,9 +31,6 @@ import {
 // startMembershipCheckout, lib/commerce/membershipCheckout.ts/
 // membershipActivation.ts, and /join/success are all preserved untouched
 // and fully working — this page just no longer imports or links to them.
-// Reactivating automated payment later is a matter of restoring the plan-
-// picker section (git history has the exact prior version) rather than
-// rebuilding anything.
 //
 // Founder Site Editor pass — every text/pricing/feature/CTA/visibility
 // value below comes from lib/join-page.ts's resolve*() helpers, which read
@@ -36,18 +39,21 @@ import {
 //
 // Join Page Conversion Rebuild pass — this page's structure/hierarchy was
 // rebuilt around one objective: converting a stranger into a Findmi Pro
-// customer (Hero w/ CTAs -> real-profile proof -> Pro, the primary
-// product -> Free, the secondary fallback -> what customers get ->
-// Regional/National -> a quietly-collapsed Pro Invite utility -> a final
-// conversion close). See this pass's own report for the exact
-// section-by-section old-copy -> new-copy mapping. Every underlying
-// Free/Pro/geography/entitlement/checkout/claim behavior below is
-// UNCHANGED — this pass only touches presentation and copy. A handful of
-// admin-editable fields (Pro's general description tagline, Free's
-// disclosure/"Requires Pro" list, Multi-Region's price/title tile) no
-// longer have a rendering slot in the new locked structure and are left
-// in place as harmless, still-editable-but-unused legacy content — see
-// each field's own comment in lib/join-page.ts.
+// customer.
+//
+// /Join Final Visual Conversion pass — this is a presentation-only polish
+// of that same structure, not another rewrite: quieter secondary CTAs
+// (Hero/Final) so they stop visually competing with the primary Pro
+// button; the "Real Findmi Proof" section now renders an actual compact
+// BusinessLogoCard for The Native Rose (real name/logo/cover/category/
+// location/NEXT UP appearance — the exact same component and bulk
+// getNextAppearanceHints() data access the homepage's own "Brands We
+// Love" row already uses) instead of a plain text link; the Pro feature
+// list is compressed 7->5 lines; "What You Get" now shows real compact
+// previews (CompactCard for the real business, ProductCard for a real
+// product when one exists) instead of four flat gray text tiles; Regional/
+// National's checklist collapses into one inline line. No entitlement,
+// payment, geography, or schema behavior changed anywhere in this pass.
 export const revalidate = 60;
 
 export const metadata: Metadata = {
@@ -60,6 +66,12 @@ export const metadata: Metadata = {
 // mechanism (see account/business/new/page.tsx and lib/auth/
 // safe-redirect.ts) — no new auth/session infrastructure.
 const PRO_NATIVE_CTA_URL = "/account/business/new?plan=pro";
+
+// The one real profile used as this page's "show, don't tell" proof —
+// same destination the page has always used. Fetched once here and reused
+// for both the Real Findmi Proof module and the "What You Get" Business
+// Profile / Findmi Here tiles, rather than querying it more than once.
+const PROOF_BUSINESS_SLUG = "the-native-rose";
 
 /** Pro Invite / Complimentary Access Codes pass — findmi.app/join?invite=CODE
  * is the invite link's public entry point. This page has no other use for
@@ -98,19 +110,29 @@ export default async function JoinPage({
   const whatYouGet = resolveJoinWhatYouGet(overrides);
   // Preserves the existing sales CTA destination: this card's own cta_url
   // override if a founder has set one, else the shared global Join form
-  // URL (Tally), exactly as before — only the PUBLIC presentation (its
-  // own bespoke section instead of a generic pricing card) changed.
+  // URL (Tally), exactly as before.
   const regional = resolveJoinCard(overrides, "card_multi_region", global.ctaUrl);
   const inviteSection = resolveJoinInviteSection(overrides);
   const claim = resolveJoinClaimBusiness(overrides);
 
+  // Real product proof — fetched once, reused by both the Proof module and
+  // the "What You Get" tiles below. Never fabricated: a missing business/
+  // appearance/product (e.g. this exact sandbox, which can't reach
+  // production Supabase — see CLAUDE.md) degrades to the existing generic
+  // presentation for that one piece, nothing invented in its place.
+  const proofBusiness = await getBusinessBySlug(PROOF_BUSINESS_SLUG);
+  const [appearanceHints, proofProducts] = proofBusiness
+    ? await Promise.all([getNextAppearanceHints([proofBusiness.id]), getProductsForBusiness(proofBusiness.id)])
+    : [new Map<string, NextAppearanceHint>(), [] as Product[]];
+  const proofAppearance = proofBusiness ? (appearanceHints.get(proofBusiness.id) ?? null) : null;
+  const proofProduct = proofProducts[0] ?? null;
+
   return (
     <div>
-      {/* HERO / VALUE — headline, one short line, then the three real
-          conversion actions and a single reassurance line, all above the
-          fold. No more "New Listings Are Reviewed..." notice here — see
-          this pass's own report for why it's removed rather than
-          replaced. */}
+      {/* HERO / VALUE — headline, one short line, the primary Pro CTA, and
+          two quiet contextual secondary actions that no longer visually
+          compete with it (only the actionable phrase gets link styling —
+          see SecondaryActions). */}
       <div className="mx-auto max-w-4xl px-6 pt-14 sm:pt-16">
         <div className="max-w-xl">
           <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
@@ -118,43 +140,40 @@ export default async function JoinPage({
           </h1>
           <p className="mt-3 text-base text-ink/60">{hero.body}</p>
 
-          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <a
-              href={proCtaHref}
-              className="flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-            >
-              Get Findmi Pro — $99/year
-            </a>
-            <Link
-              href={freeCtaHref}
-              className="text-sm font-semibold text-ink/60 underline underline-offset-2 hover:text-ink"
-            >
-              Start free
-            </Link>
-            <Link
-              href={claim.ctaUrl}
-              className="text-sm font-semibold text-ink/60 underline underline-offset-2 hover:text-ink"
-            >
-              {claim.body} {claim.ctaLabel}
-            </Link>
+          <a
+            href={proCtaHref}
+            className="mt-6 flex h-12 w-full max-w-xs items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Get Findmi Pro — $99/year
+          </a>
+          <p className="mt-2.5 text-xs text-ink/40">One year of Findmi Pro · No automatic renewal</p>
+
+          <div className="mt-4">
+            <SecondaryActions freeCtaHref={freeCtaHref} claim={claim} />
           </div>
-          <p className="mt-3 text-xs text-ink/40">One year of Findmi Pro · No automatic renewal</p>
         </div>
       </div>
 
-      {/* REAL FINDMI PROOF — real-product proof appears high on the page
-          now, not buried at the bottom. Reuses the same "What you get"
-          Native Rose destination (founder-editable there) rather than
-          introducing a second URL field for the same real profile. */}
+      {/* REAL FINDMI PROOF — a real, compact BusinessLogoCard (the exact
+          component/data access the homepage's own "Brands We Love" row
+          uses), not a text box. Falls back to a plain link only if the
+          business can't be resolved. */}
       <div className="mx-auto max-w-4xl px-6 pt-10 sm:pt-12">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/10 bg-mist/40 px-5 py-4">
-          <p className="text-sm font-semibold text-ink/70">See Findmi in action.</p>
-          <a
-            href={whatYouGet.ctaUrl}
-            className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
-          >
-            View The Native Rose <span aria-hidden>→</span>
-          </a>
+        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">See Findmi in action</p>
+        <div className="mx-auto mt-3 max-w-xs">
+          {proofBusiness ? (
+            <BusinessLogoCard business={proofBusiness} ctaLabel="View live profile" nextAppearance={proofAppearance} />
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/10 bg-mist/40 px-5 py-4">
+              <p className="text-sm font-semibold text-ink/70">See Findmi in action.</p>
+              <a
+                href={`/business/${PROOF_BUSINESS_SLUG}`}
+                className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
+              >
+                View live profile <span aria-hidden>→</span>
+              </a>
+            </div>
+          )}
         </div>
       </div>
 
@@ -166,17 +185,16 @@ export default async function JoinPage({
       )}
 
       {/* FREE — secondary fallback. Visibly quieter than Pro, but still
-          positive/legitimate — no crossed-out "Requires Pro" list, no
-          disclosure toggle. */}
+          positive/legitimate. */}
       {free.visible && (
         <div className="mx-auto max-w-xl px-4 pt-6 sm:px-6">
           <FreeSection card={free} ctaHref={freeCtaHref} />
         </div>
       )}
 
-      {/* WHAT CUSTOMERS GET — explains the overall product ecosystem, not
-          a Pro-exclusivity list. No outbound CTA here anymore (the real
-          profile proof moved up to its own section above). */}
+      {/* WHAT CUSTOMERS GET — a compact product demonstration (real
+          business/product previews where available) rather than four flat
+          gray explanation boxes. */}
       {whatYouGet.visible && (
         <div className="mx-auto max-w-4xl px-6 py-16">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">{whatYouGet.eyebrow}</p>
@@ -185,17 +203,12 @@ export default async function JoinPage({
           </h2>
           {whatYouGet.body && <p className="mt-2 text-sm text-ink/60">{whatYouGet.body}</p>}
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {whatYouGet.tiles.map((tile, i) => (
-              <PreviewTile key={`${i}-${tile.label}`} label={tile.label} detail={tile.detail} />
-            ))}
-          </div>
+          <WhatYouGetGrid business={proofBusiness} appearance={proofAppearance} product={proofProduct} />
         </div>
       )}
 
-      {/* REGIONAL / NATIONAL — a sales pathway for higher-value customers,
-          not "Pricing Plan #3". No price/title tile, no generic
-          PlanCard. */}
+      {/* REGIONAL / NATIONAL — a secondary sales pathway, compressed to
+          read quickly rather than competing with Pro for vertical space. */}
       {regional.visible && (
         <div className="mx-auto max-w-4xl px-6 pb-16">
           <RegionalSection card={regional} />
@@ -210,17 +223,43 @@ export default async function JoinPage({
       )}
 
       {/* FINAL CONVERSION SECTION — the page always ends on a conversion
-          action, never an explanatory card with nothing to do next. */}
+          action, with the same quiet secondary-action hierarchy as the
+          Hero. */}
       <FinalCta proCtaHref={proCtaHref} freeCtaHref={freeCtaHref} claim={claim} />
     </div>
   );
 }
 
-function PreviewTile({ label, detail }: { label: string; detail: string }) {
+/** Quiet contextual secondary actions — shared by the Hero and the Final
+ * CTA so both stay in sync. Only the actionable phrase ("Start free" /
+ * "Claim your business") gets strong link styling; the lead-in context is
+ * plain muted text, so neither reads as a second/third primary button
+ * next to the turquoise Pro CTA. Destinations are the exact same
+ * freeCtaHref/claim.ctaUrl every other CTA on this page already uses. */
+function SecondaryActions({
+  freeCtaHref,
+  claim,
+  align = "left",
+}: {
+  freeCtaHref: string;
+  claim: ResolvedJoinClaimBusiness;
+  align?: "left" | "center";
+}) {
+  const linkClass = "font-semibold text-ink/70 underline underline-offset-2 hover:text-ink";
   return (
-    <div className="rounded-2xl border border-black/5 bg-mist/40 p-4">
-      <p className="text-sm font-semibold text-ink">{label}</p>
-      <p className="mt-1 text-xs text-ink/60">{detail}</p>
+    <div className={`flex flex-col gap-1.5 text-sm text-ink/45 ${align === "center" ? "items-center text-center" : ""}`}>
+      <p>
+        Not ready for Pro?{" "}
+        <Link href={freeCtaHref} className={linkClass}>
+          Start free
+        </Link>
+      </p>
+      <p>
+        Already on Findmi?{" "}
+        <Link href={claim.ctaUrl} className={linkClass}>
+          {claim.ctaLabel}
+        </Link>
+      </p>
     </div>
   );
 }
@@ -247,16 +286,46 @@ function ChevronGlyph({ className = "" }: { className?: string }) {
   );
 }
 
+function CalendarGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function EventsGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function TagGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M11.5 4H5a1 1 0 00-1 1v6.5a1 1 0 00.3.7l9 9a1 1 0 001.4 0l6.5-6.5a1 1 0 000-1.4l-9-9a1 1 0 00-.7-.3z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <circle cx="8.2" cy="8.2" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** Findmi Pro's own dominant presentation. Presentation only: the actual
  * Findmi Here feature/code and Pro entitlement/checkout are completely
- * untouched.
- *
- * Join Page Conversion Rebuild pass — the general description `tagline`
- * field (a longer paragraph that used to run beneath the Findmi Here
- * highlight block) is deliberately no longer rendered here: it repeated
- * the $99/year price already stated once above, which this pass's own
- * anti-redundancy instruction rules out. `extra.descriptionLine` (new)
- * now carries the one-line summary directly under the price instead. */
+ * untouched. */
 function ProCard({ card, extra }: { card: ResolvedJoinCard; extra: ResolvedJoinProExtra }) {
   const { title, price, priceSuffix, features, ctaLabel, ctaUrl } = card;
   return (
@@ -277,6 +346,9 @@ function ProCard({ card, extra }: { card: ResolvedJoinCard; extra: ResolvedJoinP
         <p className="mt-1.5 text-sm text-ink/60">{extra.highlightBody}</p>
       </div>
 
+      {/* /Join Final Visual Conversion pass — compressed to 5 lines (see
+          lib/join-page.ts's own comment); still the founder-editable
+          feature list, nothing hardcoded here. */}
       <ul className="mt-5 flex flex-col gap-1.5">
         {features.map((f, i) => (
           <li key={`${i}-${f}`} className="flex items-start gap-2 text-xs text-ink/55">
@@ -297,22 +369,18 @@ function ProCard({ card, extra }: { card: ResolvedJoinCard; extra: ResolvedJoinP
   );
 }
 
-/** Free's quiet, secondary, positive presentation.
- *
- * Join Page Conversion Rebuild pass — replaces the prior expandable "View
- * what's included" disclosure and crossed-out "Requires Pro" list: Free
- * must read as legitimate, not visually punished. No price is shown
- * either (not part of the locked copy for this section). Presentation
- * only — no Free entitlement changed. */
+/** Free's quiet, secondary, positive presentation. /Join Final Visual
+ * Conversion pass — same copy/benefits/CTA as before, only vertical
+ * spacing tightened slightly to match the page's improved rhythm. */
 function FreeSection({ card, ctaHref }: { card: ResolvedJoinFreeCard; ctaHref: string }) {
   const { title, shortTagline, description, includedFeatures, ctaLabel } = card;
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4 sm:p-5">
       <p className="font-display text-lg font-bold tracking-tight text-ink">{title}</p>
       <p className="mt-1 text-sm font-semibold text-ink/70">{shortTagline}</p>
-      <p className="mt-1.5 text-sm text-ink/60">{description}</p>
+      <p className="mt-1 text-sm text-ink/60">{description}</p>
 
-      <ul className="mt-3 flex flex-col gap-1.5">
+      <ul className="mt-2.5 flex flex-col gap-1.5">
         {includedFeatures.map((f, i) => (
           <li key={`${i}-${f}`} className="flex items-start gap-2 text-sm text-ink/70">
             <CheckGlyph />
@@ -323,22 +391,125 @@ function FreeSection({ card, ctaHref }: { card: ResolvedJoinFreeCard; ctaHref: s
 
       <Link
         href={ctaHref}
-        className="mt-4 flex h-11 items-center justify-center rounded-full border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
+        className="mt-3 flex h-11 items-center justify-center rounded-full border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
       >
         {ctaLabel}
       </Link>
-      <p className="mt-2.5 text-center text-xs text-ink/45">
+      <p className="mt-2 text-center text-xs text-ink/45">
         Upgrade to Pro anytime for your complete profile, full schedule, products and more.
       </p>
     </div>
   );
 }
 
-/** Regional/National — a sales pathway for higher-value customers, kept
- * deliberately distinct from the PlanCard/pricing-tile look (no price
- * tile, no emphasis border). Still resolved via the same
- * resolveJoinCard()/admin form as every other card — only this bespoke
- * public presentation is new. */
+/** "What You Get" — a compact 2x2 product demonstration.
+ *
+ * /Join Final Visual Conversion pass — replaces four flat gray text tiles.
+ * Business Profile and Findmi Here reuse the exact same real proof
+ * business/appearance fetched once above (CompactCard — the existing
+ * "dense row" pattern already used by the homepage's own secondary rows —
+ * for the profile; a compact NEXT UP-style chip for the schedule).
+ * Products & Services reuses ProductCard with a real active product when
+ * one exists. Events has no cheap single-query "one real event for this
+ * business" data source today, so it uses a plain, truthful generic tile
+ * (no specific event/date invented) — exactly the fallback this pass's
+ * own instructions call for when live data isn't naturally available.
+ * Every tile shares one outer frame so the grid stays visually even
+ * regardless of which real component renders inside it. */
+function WhatYouGetGrid({
+  business,
+  appearance,
+  product,
+}: {
+  business: BusinessWithCategories | null;
+  appearance: NextAppearanceHint | null;
+  product: Product | null;
+}) {
+  const profileMeta = business
+    ? [business.categories[0]?.name, cityState(business.city, business.state)].filter(Boolean).join(" · ")
+    : "";
+
+  return (
+    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+      <DemoTile label="Business Profile">
+        {business ? (
+          <CompactCard
+            href={`/business/${business.slug}`}
+            image={business.cover_image_url ?? business.logo_url}
+            title={business.name}
+            meta={profileMeta || undefined}
+            cta="View Profile"
+          />
+        ) : (
+          <GenericTile
+            icon={<TagGlyph className="h-5 w-5 text-findmi-700" />}
+            detail="Your story, photos, categories and contact information in one place."
+          />
+        )}
+      </DemoTile>
+
+      <DemoTile label="Products & Services">
+        {product ? (
+          <div className="mx-auto max-w-[180px]">
+            <ProductCard product={product} />
+          </div>
+        ) : (
+          <GenericTile
+            icon={<TagGlyph className="h-5 w-5 text-findmi-700" />}
+            detail="A catalog customers can browse — and buy where enabled."
+          />
+        )}
+      </DemoTile>
+
+      <DemoTile label="Findmi Here">
+        {appearance ? (
+          <div className="flex items-start gap-2 rounded-xl bg-findmi-50 px-3 py-2.5">
+            <CalendarGlyph className="mt-0.5 h-4 w-4 shrink-0 text-findmi-700" />
+            <p className="text-xs text-ink">
+              <span className="mr-1 font-bold uppercase tracking-wide text-findmi-700">Next Up</span>
+              <span className="font-semibold">{appearance.venue}</span> · {formatDateShort(appearance.startAt)}
+            </p>
+          </div>
+        ) : (
+          <GenericTile
+            icon={<CalendarGlyph className="h-5 w-5 text-findmi-700" />}
+            detail="Your upcoming appearances so customers always know where you'll be next."
+          />
+        )}
+      </DemoTile>
+
+      <DemoTile label="Events">
+        <GenericTile
+          icon={<EventsGlyph className="h-5 w-5 text-findmi-700" />}
+          detail="Connect your business to the markets, pop-ups and events where you're participating."
+        />
+      </DemoTile>
+    </div>
+  );
+}
+
+function DemoTile({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-black/10 bg-white p-3">
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function GenericTile({ icon, detail }: { icon: React.ReactNode; detail: string }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-xl bg-mist/40 px-3 py-3">
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <p className="text-xs text-ink/60">{detail}</p>
+    </div>
+  );
+}
+
+/** Regional/National — a secondary sales pathway, compressed so it doesn't
+ * out-weigh the core $99 conversion. Still resolved via the same
+ * resolveJoinCard()/admin form as every other card — only this bespoke,
+ * now-compressed public presentation is new. */
 function RegionalSection({ card }: { card: ResolvedJoinCard }) {
   const { eyebrow, title, tagline, features, ctaLabel, ctaUrl } = card;
   return (
@@ -346,15 +517,9 @@ function RegionalSection({ card }: { card: ResolvedJoinCard }) {
       <p className="text-xs font-bold uppercase tracking-wide text-ink/40">{eyebrow}</p>
       <h3 className="mt-1.5 font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">{title}</h3>
       <p className="mt-2 max-w-2xl text-sm text-ink/60">{tagline}</p>
-
-      <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-        {features.map((f, i) => (
-          <li key={`${i}-${f}`} className="flex items-start gap-2 text-sm text-ink/70">
-            <CheckGlyph />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
+      {/* /Join Final Visual Conversion pass — the 5-item checklist is now
+          one compressed inline line instead of five full-height rows. */}
+      <p className="mt-2 max-w-2xl text-xs text-ink/45">{features.join(" · ")}</p>
 
       <a
         href={ctaUrl}
@@ -389,7 +554,8 @@ function InviteDisclosure({ section }: { section: ResolvedJoinInviteSection }) {
 }
 
 /** Final Conversion Section — the page always ends on a conversion
- * action. Reuses the exact same CTA destinations as the Hero. */
+ * action. Reuses the exact same CTA destinations as the Hero, with the
+ * same quiet secondary-action hierarchy. */
 function FinalCta({
   proCtaHref,
   freeCtaHref,
@@ -409,27 +575,14 @@ function FinalCta({
           Build your Findmi presence and make it easier for customers to find you wherever you show up.
         </p>
 
-        <div className="mt-6 flex flex-col items-center gap-3">
+        <div className="mt-6 flex flex-col items-center gap-4">
           <a
             href={proCtaHref}
             className="flex h-12 w-full max-w-xs items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
             Get Findmi Pro — $99/year
           </a>
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-            <Link
-              href={freeCtaHref}
-              className="text-sm font-semibold text-ink/60 underline underline-offset-2 hover:text-ink"
-            >
-              Start free
-            </Link>
-            <Link
-              href={claim.ctaUrl}
-              className="text-sm font-semibold text-ink/60 underline underline-offset-2 hover:text-ink"
-            >
-              {claim.ctaLabel}
-            </Link>
-          </div>
+          <SecondaryActions freeCtaHref={freeCtaHref} claim={claim} align="center" />
         </div>
       </div>
     </div>
