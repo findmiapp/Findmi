@@ -24,14 +24,14 @@ export default function TermsPage() {
           </p>
         </section>
         <section>
-          <h2 className="text-base font-semibold text-ink">Business memberships</h2>
+          <h2 className="text-base font-semibold text-ink">Findmi Pro</h2>
           <p className="mt-2">
-            Findmi Founding Membership is $99 per year, billed through Stripe. Founding pricing
-            is retained for as long as your membership remains continuously active; a lapsed
-            membership may be re-enrolled at then-current pricing. Membership does not
-            guarantee sales, bookings, or inclusion in any specific event — it provides a
-            Findmi profile, appearance listings, and discovery inclusion as described on our
-            Join page. We may remove content or suspend a profile that violates these terms.
+            Findmi Pro is $99 per year, billed through Stripe. This pricing is retained for as
+            long as your Pro subscription remains continuously active; a lapsed subscription may
+            be re-enrolled at then-current pricing. Pro does not guarantee sales, bookings, or
+            inclusion in any specific event — it provides a Findmi profile, appearance listings,
+            and discovery inclusion as described on our Join page. We may remove content or
+            suspend a profile that violates these terms.
           </p>
         </section>
         <section>

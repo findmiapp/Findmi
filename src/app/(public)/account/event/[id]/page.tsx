@@ -58,7 +58,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "dates", label: "Dates" },
   { key: "location", label: "Location" },
   { key: "market", label: "Findmi Area" },
-  { key: "images", label: "Images" },
+  { key: "images", label: "Gallery" },
   { key: "participants", label: "Businesses" },
   { key: "status", label: "Status" },
 ];
@@ -210,7 +210,7 @@ export default async function ManageEventPage({
     { key: "location", label: "Location", complete: Boolean(event.venue_name), tab: "location" },
     {
       key: "photos",
-      label: "Photos",
+      label: "Gallery",
       complete: Boolean(event.cover_image_url) || result.galleryImages.length > 0,
       tab: "images",
     },
@@ -679,7 +679,7 @@ export default async function ManageEventPage({
               </div>
             </div>
             <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-              Save Images
+              Save Gallery
             </button>
           </form>
         )}

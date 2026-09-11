@@ -41,7 +41,7 @@ const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p
 const OWNER_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "details", label: "Venue Details" },
-  { key: "photos", label: "Photos" },
+  { key: "photos", label: "Gallery" },
   { key: "contact", label: "Contact / Links" },
   { key: "market", label: "Findmi Area" },
   { key: "happening", label: "What's Happening Here" },
@@ -339,8 +339,8 @@ export default async function ManageLocationPage({
               </div>
             </dl>
             <p className="mt-4 text-sm text-ink/60">
-              Use the tabs above to edit your venue details, add photos, set contact info, choose your Findmi area, add
-              an event here, and see what&rsquo;s coming up.
+              Use the tabs above to edit your venue details, add gallery photos, set contact info, choose your Findmi
+              area, add an event here, and see what&rsquo;s coming up.
             </p>
             <Link href={`/account/event/new?location_id=${id}`} className={`mt-4 inline-flex w-fit ${primaryButtonClass}`}>
               + Add an Event Here
@@ -403,7 +403,7 @@ export default async function ManageLocationPage({
               </div>
             </div>
             <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-              Save Photos
+              Save Gallery
             </button>
           </form>
         )}
@@ -633,7 +633,7 @@ export default async function ManageLocationPage({
             </span>
             <p className="mt-3 text-sm text-ink/60">
               {location.is_demo
-                ? "Findmi reviews every new venue before it appears in public discovery. You can keep editing details, photos, and contact info in the meantime."
+                ? "Findmi reviews every new venue before it appears in public discovery. You can keep editing details, your gallery, and contact info in the meantime."
                 : "This venue is live and visible in Findmi discovery."}
             </p>
           </div>
