@@ -83,6 +83,41 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Event <-> Venue/Location Relational Workflow pass — admin counterpart
+  // of /api/account/search's own "locations" branch (same select shape,
+  // same 20-row bound); this one just isn't gated behind requireAdmin()
+  // twice — the middleware + requireAdmin() above already cover it. No
+  // is_demo filter (unlike the member route) — admin intentionally sees
+  // demo Locations too, same convention as this route's own businesses/
+  // events branches above (flagged via sublabel, never hidden).
+  if (entity === "locations") {
+    const { data } = await supabase
+      .from("locations")
+      .select("id, name, slug, city, state, address, postal_code, is_demo, category:categories(name)")
+      .or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`)
+      .order("name")
+      .limit(20);
+    return NextResponse.json({
+      results: (data ?? []).map((l) => {
+        const category = Array.isArray(l.category) ? (l.category[0] ?? null) : l.category;
+        return {
+          value: l.id,
+          label: l.name,
+          sublabel:
+            [l.is_demo ? "Demo" : null, [l.city, l.state].filter(Boolean).join(", ") || null]
+              .filter(Boolean)
+              .join(" · ") || undefined,
+          slug: l.slug,
+          city: l.city,
+          state: l.state,
+          address: l.address,
+          postal_code: l.postal_code,
+          category: category?.name ?? null,
+        };
+      }),
+    });
+  }
+
   if (entity === "people") {
     const { data } = await supabase
       .from("people")

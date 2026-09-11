@@ -286,6 +286,33 @@ export async function createMemberEvent(formData: FormData) {
           longitude: location.longitude,
         })
         .eq("id", eventId);
+
+      // Event <-> Venue/Location Relational Workflow pass — events has no
+      // location_id column of its own (only event_occurrences does — see
+      // that table's own comment and updateMemberEventLocation's note
+      // below), so the copy above alone discards the real relationship
+      // the owner just picked, keeping only its text snapshot. This gives
+      // the brand-new event a genuine canonical Location relationship
+      // from the moment of creation, via its own default occurrence — the
+      // exact same event_occurrences insert shape addMemberEventDate
+      // already uses for "Add a Date", just seeded with this event's own
+      // start/end instead of a separately-typed date. Best-effort only,
+      // same posture as the venue-copy above: a failure here never blocks
+      // event creation, which already succeeded. Never runs for the
+      // manual-venue path (no real Location was actually selected there,
+      // so there is no relationship to create — text-only, exactly as
+      // before).
+      await admin.from("event_occurrences").insert({
+        event_id: eventId,
+        start_at: startIso,
+        end_at: endIso,
+        location_id: locationHintId,
+        venue_name: location.name,
+        address: location.address,
+        city: location.city,
+        state: location.state,
+        postal_code: location.postal_code,
+      });
     }
   } else if (manualVenue.venue_name || manualVenue.address || manualVenue.city || manualVenue.state || manualVenue.postal_code) {
     await admin.from("events").update(manualVenue).eq("id", eventId);
@@ -609,12 +636,19 @@ export async function removeMemberEventDate(eventId: string, occurrenceId: strin
 // events has no location_id column of its own (only event_occurrences
 // does) — the parent event's "Location" is always the plain venue_name/
 // address/city/state text fields admin's own EventForm already edits
-// this way. Selecting an existing FindMi Location here is an autofill
-// convenience only: it copies that Location's fields down into these
-// same text columns, it does NOT create a structural FK relationship
-// (there is none to create) — see this pass's own Step 7 instruction not
-// to build Stage 3's Location-ownership system early. The typed-text
-// fallback stays equally available and is never blocked.
+// this way. Selecting an existing FindMi Location here still ALWAYS
+// copies that Location's fields down into these same text columns
+// (unconditional, unchanged) — that text snapshot is what every legacy
+// display path already reads. Event <-> Venue/Location Relational
+// Workflow pass — when there is no event_occurrences row yet for this
+// event (a plain, single-date event that has never touched the Dates
+// tab), a real Location selection here ALSO seeds that event's one
+// default occurrence with the genuine location_id relationship, mirroring
+// createMemberEvent's own new occurrence-seeding behavior. If the event
+// already has one or more occurrences (multi-date/recurring), this never
+// guesses which one the owner means — that's the Dates tab's own job, per
+// occurrence — so this only ever touches the text snapshot in that case,
+// exactly as before.
 export async function updateMemberEventLocation(eventId: string, formData: FormData) {
   const redirectPath = `/account/event/${eventId}?tab=location`;
   const admin = await requireEventManager(eventId, redirectPath);
@@ -636,6 +670,13 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
     postal_code: str(formData, "postal_code"),
   };
 
+  let matchedLocation: {
+    name: string;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+  } | null = null;
   if (locationId) {
     const { data: location } = await admin
       .from("locations")
@@ -643,6 +684,7 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
       .eq("id", locationId)
       .maybeSingle();
     if (location) {
+      matchedLocation = location;
       payload = {
         venue_name: location.name,
         address: location.address,
@@ -655,8 +697,33 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
     }
   }
 
-  const { error } = await admin.from("events").update(payload).eq("id", eventId);
+  const { data: event, error } = await admin
+    .from("events")
+    .update(payload)
+    .eq("id", eventId)
+    .select("start_at, end_at")
+    .maybeSingle();
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  if (matchedLocation && event) {
+    const { count } = await admin
+      .from("event_occurrences")
+      .select("id", { count: "exact", head: true })
+      .eq("event_id", eventId);
+    if (!count) {
+      await admin.from("event_occurrences").insert({
+        event_id: eventId,
+        start_at: event.start_at,
+        end_at: event.end_at,
+        location_id: locationId,
+        venue_name: matchedLocation.name,
+        address: matchedLocation.address,
+        city: matchedLocation.city,
+        state: matchedLocation.state,
+        postal_code: matchedLocation.postal_code,
+      });
+    }
+  }
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { saved: "1" }));

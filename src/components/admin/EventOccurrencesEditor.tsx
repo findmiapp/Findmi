@@ -6,6 +6,7 @@ import type { AdminMarketOption } from "@/lib/admin/business-markets";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
 import { resolveEffectiveEventMarket } from "@/lib/event-markets";
+import { RelationField } from "./RelationPicker";
 import OccurrenceVendorManager from "./OccurrenceVendorManager";
 
 const inputClass =
@@ -304,23 +305,43 @@ export default function EventOccurrencesEditor({
               </div>
 
               <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-ink/60">Location</span>
-                  <select
-                    name={`location_id_${row.id}`}
-                    value={row.location_id}
-                    onChange={(e) => updateRow(row.id, { location_id: e.target.value })}
-                    className={`${inputClass} w-full`}
-                  >
-                    <option value="">No Findmi Location</option>
-                    {locations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name}
-                        {loc.city ? ` — ${loc.city}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {/* Event <-> Venue/Location Relational Workflow pass — was
+                    a raw <select> listing every Location in the system
+                    (the exact "giant dropdown" anti-pattern CLAUDE.md's
+                    own admin UX principles rule out once an entity count
+                    can grow past a screenful). Swapped for the same
+                    searchable RelationField picker already used for
+                    Business/Event/Product relationships elsewhere in
+                    admin — same hidden input name
+                    (`location_id_${row.id}`), so saveEvent's own parsing
+                    is completely unaffected; `locations` (still passed in
+                    for this) is only used to resolve the already-selected
+                    Location's display card on load, never to populate a
+                    dropdown. */}
+                <RelationField
+                  label="Location"
+                  name={`location_id_${row.id}`}
+                  entity="locations"
+                  placeholder="Search Findmi Locations…"
+                  clearLabel="No Findmi Location"
+                  createHref="/admin/locations/new"
+                  createLabel="New Location"
+                  initial={
+                    row.location_id
+                      ? (() => {
+                          const loc = locations.find((l) => l.id === row.location_id);
+                          return loc
+                            ? {
+                                value: loc.id,
+                                label: loc.name,
+                                sublabel: [loc.city, loc.state].filter(Boolean).join(", ") || undefined,
+                              }
+                            : null;
+                        })()
+                      : null
+                  }
+                  onSelect={(value) => updateRow(row.id, { location_id: value?.value ?? "" })}
+                />
                 <label className="flex items-center gap-1.5 self-end pb-2 text-xs text-ink/70">
                   <input
                     type="checkbox"

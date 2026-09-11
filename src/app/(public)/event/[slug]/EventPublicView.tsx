@@ -91,11 +91,23 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // getUpcomingAtLocation's own venue_name fallback already uses: if
       // this event's stored venue fields exactly match a real, public
       // Location, render it as a clickable Location relationship instead
-      // of plain text (see this pass's own spec) — any mismatch (a
-      // manually-typed venue) just renders as plain text, exactly as
-      // before.
+      // of plain text — any mismatch (a manually-typed venue) just
+      // renders as plain text, exactly as before. Event <-> Venue/
+      // Location Relational Workflow pass — this stays only as the
+      // fallback now; see canonicalLocation below, which prefers the real
+      // occurrence-linked relationship whenever one exists.
       event.venue_name ? findLocationByExactVenue(event.venue_name, event.address) : Promise.resolve(null),
     ]);
+  // Event <-> Venue/Location Relational Workflow pass — upcomingOccurrences
+  // is already sorted nearest-first and already carries each occurrence's
+  // REAL resolved Location (see getUpcomingOccurrencesForEvent), so the
+  // nearest upcoming occurrence with a real Location relationship is the
+  // authoritative "About the Venue" link whenever one exists — the exact
+  // relationship this event was actually built with, not a best-effort
+  // text reconstruction. Only an event with zero occurrences, or whose
+  // occurrence(s) have no linked Location, falls back to matchedLocation
+  // (unchanged legacy behavior — never broken for existing events).
+  const canonicalLocation = upcomingOccurrences.find((o) => o.location)?.location ?? matchedLocation;
   // Depends on upcomingOccurrences' own ids, so this can't join the
   // Promise.all above — one extra query, only for a recurring event, for
   // every one of its upcoming occurrences' rosters at once (never one
@@ -547,19 +559,22 @@ export async function EventPublicView({ slug }: { slug: string }) {
         )}
 
         {/* Item 10 — Venue, now with its own optional compact gallery.
-            events has no FindMi Location relationship today (see the pass
-            report), so this always renders the real stored venue fields
-            as plain text plus this event's own venue_image gallery rows,
-            never a fabricated Location link. */}
+            Always renders the real stored venue fields as plain text
+            (address/city/state — useful human-readable info regardless)
+            plus this event's own venue_image gallery rows. The "View
+            Location" link below is clickable and goes to a real Findmi
+            Location profile whenever canonicalLocation resolved one
+            (occurrence relationship preferred, exact-text-match fallback
+            for legacy events) — never a fabricated link. */}
         {hasVenueDetails && (
           <section className="mt-8">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">About the Venue</h2>
             <div className="mt-3 flex flex-col gap-1 text-sm text-ink/70">
               {event.venue_name && <p className="font-semibold text-ink">{event.venue_name}</p>}
               {(event.address || location) && <p>{[event.address, location].filter(Boolean).join(", ")}</p>}
-              {matchedLocation && (
+              {canonicalLocation && (
                 <Link
-                  href={`/location/${matchedLocation.slug}`}
+                  href={`/location/${canonicalLocation.slug}`}
                   className="mt-1 inline-block w-fit text-xs font-semibold text-findmi-700 underline underline-offset-2"
                 >
                   View Location ↗

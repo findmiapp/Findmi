@@ -156,26 +156,43 @@ export default async function ManageEventPage({
   if (!result) redirect(errorRedirectUrl("/account", "Event not found."));
   const { event, participants, occurrences } = result;
 
-  // Event Manager Location UX pass — events has no location_id column of
-  // its own (see updateMemberEventLocation's own note — only
-  // event_occurrences does), so the whole-event Location tab can't read a
-  // real persisted relationship back out. Best-effort reconstruction only,
-  // same exact-match philosophy getUpcomingAtLocation's own venue_name
-  // fallback already relies on: if the event's current venue fields
-  // exactly match a real, public Location, show it as "selected" (with
-  // its View Location link) instead of raw manual text. Any mismatch — a
-  // manually-typed venue, or one that doesn't match a live Location — just
-  // falls through to the manual fields, exactly as before.
-  const matchedLocationRow = event.venue_name
+  // Event <-> Venue/Location Relational Workflow pass — events has no
+  // location_id column of its own (only event_occurrences does), so the
+  // whole-event Location tab prefers the REAL relationship from this
+  // event's own occurrences (created by createMemberEvent/
+  // updateMemberEventLocation whenever a real Location was actually
+  // selected — see those actions' own notes) over the best-effort exact-
+  // text-match reconstruction below. `occurrences` is already fetched
+  // above for the Dates tab, so this is one extra lookup only when an
+  // occurrence actually has a location_id.
+  const occurrenceLocationId = occurrences.find((o) => o.location_id)?.location_id ?? null;
+  const occurrenceLocationRow = occurrenceLocationId
     ? await admin
         .from("locations")
         .select("id, name, slug, city, state, address, postal_code, category:categories(name)")
-        .eq("is_demo", false)
-        .eq("name", event.venue_name)
-        .eq("address", event.address ?? "")
+        .eq("id", occurrenceLocationId)
         .maybeSingle()
         .then((r) => r.data)
     : null;
+  // Event Manager Location UX pass — fallback only: if the event's
+  // current venue fields exactly match a real, public Location, show it
+  // as "selected" (with its View Location link) instead of raw manual
+  // text. Any mismatch — a manually-typed venue, or one that doesn't
+  // match a live Location — just falls through to the manual fields,
+  // exactly as before. Only consulted when there's no real occurrence
+  // relationship above.
+  const matchedLocationRow =
+    occurrenceLocationRow ??
+    (event.venue_name
+      ? await admin
+          .from("locations")
+          .select("id, name, slug, city, state, address, postal_code, category:categories(name)")
+          .eq("is_demo", false)
+          .eq("name", event.venue_name)
+          .eq("address", event.address ?? "")
+          .maybeSingle()
+          .then((r) => r.data)
+      : null);
   const matchedEventLocation = matchedLocationRow
     ? {
         id: matchedLocationRow.id,
