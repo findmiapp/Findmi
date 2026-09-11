@@ -106,17 +106,20 @@ export default function LocationGeographyFields({
         )}
 
         {!overridden && status === "no_match" && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/60">
-            <span>
-              No Findmi area yet for &ldquo;{[city, state].filter(Boolean).join(", ")}&rdquo; — we&rsquo;ll add it for
-              review.
-            </span>
+          <div className="rounded-xl border border-black/10 bg-mist/30 px-3.5 py-3">
+            <p className="text-sm font-semibold text-ink/70">
+              You&rsquo;re bringing Findmi to {[city, state].filter(Boolean).join(", ")}!
+            </p>
+            <p className="mt-0.5 text-xs text-ink/50">
+              We&rsquo;re excited to expand into your area. Continue creating your venue and we&rsquo;ll take care of
+              the rest.
+            </p>
             <button
               type="button"
               onClick={() => setOverridden(true)}
-              className="text-xs font-semibold underline underline-offset-2"
+              className="mt-1.5 text-xs font-semibold text-ink/60 underline underline-offset-2"
             >
-              Choose an existing area instead
+              Choose a different area
             </button>
           </div>
         )}

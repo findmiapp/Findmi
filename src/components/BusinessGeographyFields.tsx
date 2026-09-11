@@ -141,16 +141,17 @@ export default function BusinessGeographyFields({
 
           {!overridden && status === "no_match" && (
             <div className="rounded-xl border border-black/10 bg-mist/30 px-3.5 py-3">
-              <p className="text-sm font-semibold text-ink/70">{enteredPlace} isn&rsquo;t on Findmi yet.</p>
+              <p className="text-sm font-semibold text-ink/70">You&rsquo;re bringing Findmi to {enteredPlace}!</p>
               <p className="mt-0.5 text-xs text-ink/50">
-                We&rsquo;ll add it for review. You can continue creating your business.
+                We&rsquo;re excited to expand into your area. Continue creating your business and we&rsquo;ll take care
+                of the rest.
               </p>
               <button
                 type="button"
                 onClick={() => setOverridden(true)}
                 className="mt-1.5 text-xs font-semibold text-ink/60 underline underline-offset-2"
               >
-                Choose an existing area instead
+                Choose a different area
               </button>
             </div>
           )}
