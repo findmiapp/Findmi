@@ -21,11 +21,17 @@ import { cityState, formatCurrency, formatDateShort } from "@/lib/format";
 // ish in a few spots. Phone got bigger, spacing tightened throughout
 // (caption/pagination/CTA sit closer together) so density goes up without
 // the section itself getting taller.
+//
+// Homepage carousel refinement pass — captions recomposed into the
+// "build your presence -> show where you'll be -> showcase what you sell
+// -> get discovered" product story; the phone itself grows ~18% (see
+// PhoneFrame) and the phone/caption gap tightens (gap-3 -> gap-2) as this
+// section's own vertical-rhythm cleanup.
 const SLIDES = [
-  { id: "profile", caption: "Turn your business into a profile people can actually discover." },
-  { id: "appearances", caption: "Show customers exactly where to find you next." },
-  { id: "products", caption: "Put your products in front of customers before they even arrive." },
-  { id: "discovery", caption: "Be discovered while people are deciding what to do, where to go, and what to buy." },
+  { id: "profile", caption: "Give customers one place to know your business." },
+  { id: "appearances", caption: "Show customers exactly where you'll be next." },
+  { id: "products", caption: "Put what you sell in front of customers." },
+  { id: "discovery", caption: "Be discovered while customers decide where to go and what to buy." },
 ] as const;
 
 export default function BusinessShowcaseCarousel({ demo }: { demo: ShowcaseBusinessData | null }) {
@@ -54,7 +60,7 @@ export default function BusinessShowcaseCarousel({ demo }: { demo: ShowcaseBusin
       >
         {SLIDES.map((slide) => (
           <div key={slide.id} className="w-full shrink-0 snap-center px-1">
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-7">
+            <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-7">
               <PhoneFrame>{renderScreen(slide.id, demo)}</PhoneFrame>
               <p className="max-w-[240px] text-center text-sm font-medium text-ink/70 sm:max-w-xs sm:text-left sm:text-base">
                 {slide.caption}
@@ -79,9 +85,14 @@ export default function BusinessShowcaseCarousel({ demo }: { demo: ShowcaseBusin
   );
 }
 
+// Homepage carousel refinement pass — grown ~18% on both axes (was
+// h-64/w-36, sm:h-72/w-40) so the phone reads as this module's visual
+// centerpiece instead of a small demo floating in a much bigger card;
+// aspect ratio preserved so the resize is a straightforward scale-up, not
+// a recomposition of the phone mockup itself.
 function PhoneFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative h-64 w-36 shrink-0 rounded-[1.75rem] border-[6px] border-ink bg-ink shadow-lg sm:h-72 sm:w-40">
+    <div className="relative h-[300px] w-[170px] shrink-0 rounded-[1.75rem] border-[6px] border-ink bg-ink shadow-lg sm:h-[335px] sm:w-[190px]">
       <div className="absolute left-1/2 top-1.5 z-10 h-1 w-8 -translate-x-1/2 rounded-full bg-black/40" />
       <div className="h-full w-full overflow-hidden rounded-[1.25rem] bg-white">{children}</div>
     </div>
@@ -191,7 +202,15 @@ function RealProductsScreen({ demo }: { demo: ShowcaseBusinessData }) {
     <div className="flex h-full flex-col gap-1.5 p-2">
       <p className="px-0.5 text-[8px] font-bold uppercase tracking-wide text-ink/40">Shop</p>
       {products.length === 0 ? (
-        <p className="px-0.5 text-[7px] text-ink/40">No products yet.</p>
+        // Homepage carousel refinement pass — the real showcase business
+        // currently has no active products, but a marketing module must
+        // never render a literal empty state ("No products yet."). This
+        // demonstrates the same product-grid/CTA interface with generic,
+        // non-fabricated placeholder tiles (an icon, no invented name,
+        // price, customer, or sales claim) rather than a different
+        // business's real product, which would break this slide's own
+        // "your business" narrative.
+        <GenericProductTiles />
       ) : products.length === 1 ? (
         // A single product gets a larger card rather than a 2-col grid
         // with one dead empty cell.
@@ -207,6 +226,44 @@ function RealProductsScreen({ demo }: { demo: ShowcaseBusinessData }) {
         Shop Now
       </div>
     </div>
+  );
+}
+
+/** Homepage carousel refinement pass — the generic product-grid fallback
+ * used only when the real showcase business has zero active products
+ * (see RealProductsScreen). Same card shell as a real ProductTile (aspect-
+ * square image area + a label line beneath), but with a plain tag icon
+ * and a muted placeholder bar instead of a photo/name/price — it shows
+ * the product interface itself, never a fabricated item, customer, or
+ * sale. */
+function GenericProductTiles() {
+  return (
+    <div className="grid flex-1 grid-cols-2 gap-1.5">
+      {[0, 1].map((i) => (
+        <div key={i} className="flex flex-col overflow-hidden rounded-md border border-black/5">
+          <div className="flex aspect-square items-center justify-center bg-findmi-50">
+            <TagGlyph className="h-4 w-4 text-findmi-300" />
+          </div>
+          <div className="px-1 py-1">
+            <div className="h-[3px] w-3/4 rounded-full bg-black/10" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TagGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M11.5 4H5a1 1 0 00-1 1v6.5a1 1 0 00.3.7l9 9a1 1 0 001.4 0l6.5-6.5a1 1 0 000-1.4l-9-9a1 1 0 00-.7-.3z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="8.2" cy="8.2" r="1.3" fill="currentColor" />
+    </svg>
   );
 }
 

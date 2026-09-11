@@ -8,7 +8,6 @@ import HomeEventCard from "@/components/HomeEventCard";
 import HomeWeather from "@/components/HomeWeather";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
-import Logo from "@/components/Logo";
 import SearchBar from "@/components/SearchBar";
 import HomeEventDiscovery from "@/components/HomeEventDiscovery";
 import AreaPicker from "@/components/discover/AreaPicker";
@@ -335,25 +334,27 @@ async function HomepageRowSection({
     // Falls back to illustrative markup inside the carousel itself if
     // this resolves to null (live-QA correction, Part 14).
     const demo = await getShowcaseBusiness();
+    // Homepage carousel refinement pass — the redundant Findmi logo mark
+    // above the headline is gone (the global header already establishes
+    // the brand); outer padding/gaps tightened throughout (p-5/sm:p-9 ->
+    // p-4/sm:p-6, mt-5 -> mt-3/mt-4) so the module fits its content
+    // instead of leaving large blank bands above/below the phone, while
+    // the phone itself grows (see BusinessShowcaseCarousel's own
+    // PhoneFrame) to become the section's visual centerpiece.
     return (
-      <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <div className="overflow-hidden rounded-3xl border border-findmi/15 bg-gradient-to-br from-findmi-50 via-white to-white p-5 sm:p-9">
-          {/* Launch-polish pass item 7 — restrained FindMi brand mark on
-              the business/brand promotional section, using the existing
-              logo asset/component (no new asset, no full Homepage Builder
-              editability). */}
-          <Logo heightClassName="h-6" className="mb-3" />
+      <section className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
+        <div className="overflow-hidden rounded-3xl border border-findmi/15 bg-gradient-to-br from-findmi-50 via-white to-white p-4 sm:p-6">
           <h2 className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">{row.title}</h2>
           {row.subtitle && <p className="mt-1.5 max-w-md text-sm text-ink/60">{row.subtitle}</p>}
-          <div className="mt-5">
+          <div className="mt-4">
             <BusinessShowcaseCarousel demo={demo} />
           </div>
-          <div className="mt-5 flex justify-center sm:justify-start">
+          <div className="mt-4 flex justify-center sm:justify-start">
             <Link
               href="/join"
               className="inline-flex items-center justify-center rounded-full bg-findmi px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-findmi-600"
             >
-              Join Findmi →
+              Get Discovered →
             </Link>
           </div>
         </div>
