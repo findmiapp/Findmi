@@ -114,14 +114,22 @@ export default function AreaPicker({
 
   return (
     <div>
+      {/* Homepage discovery flow pass — presentation only: dropped the
+          "Filter by City/Area:" label (reads like an admin/filter-form
+          field) for a location pin + chevron, the consumer-facing
+          "explore here" framing the task asked for. Underlying geography
+          behavior (onClick/aria-expanded, ?market=/?area= state,
+          matching) is completely untouched below. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-expanded={open}
+        aria-label={`Explore area: ${currentLabel}`}
         className="flex h-10 items-center gap-1.5 rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
       >
-        <span className="text-ink/40">Filter by City/Area:</span>
+        <PinGlyph className="h-3.5 w-3.5 shrink-0 text-ink/40" />
         <span className="font-semibold text-ink">{currentLabel}</span>
+        <ChevronDownGlyph className="h-3 w-3 shrink-0 text-ink/40" />
       </button>
 
       {open && (
@@ -318,6 +326,28 @@ function CloseGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PinGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ChevronDownGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className}>
+      <path d="M5 7.5l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

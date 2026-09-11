@@ -1,14 +1,11 @@
-import { Fragment } from "react";
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
-import DiscoveryTopics from "@/components/DiscoveryTopics";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
 import HomeWeather from "@/components/HomeWeather";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
-import SearchBar from "@/components/SearchBar";
 import HomeEventDiscovery from "@/components/HomeEventDiscovery";
 import AreaPicker from "@/components/discover/AreaPicker";
 import {
@@ -24,13 +21,7 @@ import {
   getUpcomingEvents,
 } from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
-import {
-  getSiteSections,
-  resolveSection,
-  resolveDiscoveryTopics,
-  resolveWeatherConfig,
-  HOMEPAGE_SECTIONS,
-} from "@/lib/site-sections";
+import { getSiteSections, resolveSection, resolveWeatherConfig, HOMEPAGE_SECTIONS } from "@/lib/site-sections";
 import type { Category } from "@/lib/types";
 import { getWeatherContext } from "@/lib/weather";
 
@@ -102,12 +93,21 @@ export default async function HomePage({
 
   // Founder Site Editor overrides for the structural sections that stay
   // fixed-position (hero, event discovery heading/copy, explore by
-  // category, closing CTA) — every field falls back to the current
-  // hardcoded default (HOMEPAGE_SECTIONS) when no row/field exists.
+  // category) — every field falls back to the current hardcoded default
+  // (HOMEPAGE_SECTIONS) when no row/field exists.
+  //
+  // Homepage discovery flow pass — the generic black "closing_cta"
+  // section (eyebrow/heading/body/CTA) is no longer rendered on the
+  // homepage: the refined Business/Brand product-demo module now owns
+  // business-acquisition, and /join owns Free/Pro conversion, so this
+  // block just duplicated both with generic SaaS framing. Its
+  // resolveSection() call, HOMEPAGE_SECTIONS registry entry, and admin
+  // Site Editor field are all left completely intact — this is a
+  // presentation-only change (narrowest safe implementation), not a
+  // content/CMS deletion.
   const resolve = (key: string) => resolveSection(siteSections, key, HOMEPAGE_SECTIONS[key]);
   const upcomingSec = resolve("featured_events");
   const exploreSec = resolve("explore_by_category");
-  const closingSec = resolve("closing_cta");
   const heroSec = resolve("hero");
 
   // Hero collage — founder-configured images (Site Editor → Hero → Image
@@ -123,18 +123,20 @@ export default async function HomePage({
     (src): src is string => Boolean(src)
   );
 
-  // Discovery Topics — navigation-only shortcut row, founder-editable at
-  // /admin/site/homepage (see lib/site-sections.ts). Already filtered to
-  // visible topics with a real destination; renders nothing if the
-  // founder hasn't configured any.
-  const discoveryTopics = resolveDiscoveryTopics(siteSections);
-
-  // Homepage order pass: Discovery Topics now mounts immediately after
-  // the "Brands We Love" business carousel — identified by content
-  // type (the first "businesses" Homepage Row), not by its founder-
-  // editable title text, since that title isn't a stable key. Falls
-  // back to rendering after every row if no businesses row exists at
-  // all (e.g. the founder deleted it), so this never silently vanishes.
+  // Brands We Love fallback-copy gate — identified by content type (the
+  // first "businesses" Homepage Row), not by its founder-editable title
+  // text, since that title isn't a stable key. See isBrandsRow below
+  // (HomepageRowSection): only that one row gets the "Brands We Love" /
+  // "Real businesses, worth discovering" blank-copy fallback.
+  //
+  // Homepage discovery flow pass — this index previously also positioned
+  // the "Food + Drink / Markets + Fairs / View All" Discovery Topics row
+  // right after this one. That row is no longer rendered on the homepage
+  // (see the report: its two category chips duplicated Explore By
+  // Category below, and its "View All" duplicated the new Keep Exploring
+  // section's role — see this pass's own report). Its component/CMS
+  // config (site_sections "discovery_topics", /admin/site/homepage) is
+  // completely untouched, just unused here now.
   const brandsRowIndex = homepageRows.findIndex((row) => row.content_type === "businesses");
 
   // Weather / Local Context — founder-configurable city (see
@@ -218,53 +220,53 @@ export default async function HomePage({
         </Section>
       </div>
 
-      {/* Search — homepage order pass: moved from right after the Hero
-          to right after the complete Upcoming Events section (heading,
-          filters, and event feed all above this now). Component/
-          behavior/styling untouched. */}
-      <section className="border-b border-black/5 bg-white px-4 py-3 sm:px-6 sm:py-4">
-        <div className="mx-auto max-w-6xl">
-          <SearchBar marketSlug={marketSlug} />
-        </div>
-      </section>
+      {/* Homepage discovery flow pass — the homepage-body search field
+          that used to sit here (between Upcoming Events and Brands We
+          Love) is removed: the global/header search already covers this,
+          and it left a large, redundant field between two discovery
+          sections. SearchBar's component/API/global header search are
+          completely untouched — this only stops this ONE page-body call
+          site from rendering it. */}
 
-      {/* Founder-managed Homepage Rows — the central architectural change
-          of this pass. Each row is a real database record (see
-          /admin/site/homepage/rows): add/rename/edit/hide/reorder/delete
-          without a code change, Businesses/Events/Products/Business
-          Showcase, Dynamic (filtered) or Curated (hand-picked).
-          Discovery Topics (homepage order pass) mounts immediately after
-          the "Brands We Love" businesses row specifically — not after
-          the whole list — via brandsRowIndex above; falls back to
-          rendering after every row if no businesses row exists. */}
+      {/* Founder-managed Homepage Rows — each row is a real database
+          record (see /admin/site/homepage/rows): add/rename/edit/hide/
+          reorder/delete without a code change, Businesses/Events/
+          Products/Business Showcase, Dynamic (filtered) or Curated
+          (hand-picked). isBrandsRow (Brands We Love fallback copy) still
+          targets brandsRowIndex exactly as before. */}
       {homepageRows.map((row, i) => (
-        <Fragment key={row.id}>
-          <HomepageRowSection
-            row={row}
-            resolved={resolvedRows[i]}
-            marketSlug={marketSlug}
-            areaSlug={areaSlug}
-            isBrandsRow={i === brandsRowIndex}
-          />
-          {i === brandsRowIndex && <DiscoveryTopics topics={discoveryTopics} />}
-        </Fragment>
+        <HomepageRowSection
+          key={row.id}
+          row={row}
+          resolved={resolvedRows[i]}
+          marketSlug={marketSlug}
+          areaSlug={areaSlug}
+          isBrandsRow={i === brandsRowIndex}
+        />
       ))}
-      {brandsRowIndex === -1 && <DiscoveryTopics topics={discoveryTopics} />}
 
-      {/* Explore By Category — compact, broader entry point (categories
-          already appeared near the hero, so this stays small). */}
+      {/* Explore By Category — compact rail, existing category data/
+          destinations untouched. Homepage discovery flow pass — pills
+          switched from a rounded-2xl/px-4 py-3 "card" treatment to a
+          rounded-full/px-4 py-2 pill (matching the same compact-pill
+          pattern already used elsewhere on this page), and the section's
+          own py-6 tightened to py-5, so this reads as a full, intentional
+          rail rather than a few oversized controls surrounded by
+          whitespace. Still the same horizontally-scrollable-on-mobile,
+          wraps-on-sm: layout as before (that mechanic already existed);
+          no new carousel, no data/query change. */}
       {categories.length > 0 && (
-        <section className="py-6">
+        <section className="py-5">
           <div className="mx-auto max-w-6xl">
             <div className="mb-3 px-4 sm:px-6">
               <h2 className="text-lg font-semibold tracking-tight text-ink">{exploreSec.heading}</h2>
             </div>
-            <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 sm:flex-wrap sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-2 overflow-x-auto px-4 pb-1 sm:flex-wrap sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {categories.map((c) => (
                 <Link
                   key={c.id}
                   href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}${marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`}
-                  className="flex shrink-0 items-center gap-2 rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:border-findmi/50 hover:bg-findmi-50"
+                  className="flex shrink-0 items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-ink transition hover:border-findmi/50 hover:bg-findmi-50"
                 >
                   {c.name}
                 </Link>
@@ -274,28 +276,25 @@ export default async function HomePage({
         </section>
       )}
 
-      {/* Final business CTA — stronger conversion moment near the bottom.
-          Eyebrow/heading/body/cta are all founder-editable via Site
-          Editor rather than hardcoded — see the report re: why this isn't
-          bound to membership_plans.annual_price directly (the live
-          founding-500 plan is currently a $1 test price, not $99). */}
-      {closingSec.visible && (
-        <section className="mx-auto max-w-6xl px-6 py-10">
-          <div className="flex flex-col items-start gap-4 rounded-3xl bg-ink px-6 py-8 text-white sm:px-10 sm:py-9">
-            <p className="text-xs font-bold uppercase tracking-wide text-findmi">{closingSec.eyebrow}</p>
-            <h2 className="font-display max-w-lg whitespace-pre-line text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
-              {closingSec.heading}
-            </h2>
-            <p className="max-w-md text-sm text-white/70">{closingSec.body}</p>
-            <Link
-              href={closingSec.ctaUrl ?? "/join"}
-              className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-            >
-              {closingSec.ctaLabel}
-            </Link>
-          </div>
-        </section>
-      )}
+      {/* Keep Exploring — homepage discovery flow pass: replaces the
+          generic black "closing_cta" SaaS marketing block (see the
+          `resolve("closing_cta")` note above) with a light, compact,
+          discovery-oriented close. Plain links to the same canonical
+          /businesses and /events destinations every "View all" on this
+          page already uses — no new routes, no new architecture, no
+          pricing/signup pitch, no redundant business-acquisition CTA
+          (that job belongs to the product-demo module above and /join). */}
+      <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">Keep exploring</p>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+          <Link href="/businesses" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+            Explore businesses →
+          </Link>
+          <Link href="/events" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+            Explore events →
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }

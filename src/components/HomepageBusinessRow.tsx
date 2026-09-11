@@ -125,9 +125,14 @@ export default function HomepageBusinessRow({
       ) : items.length === 0 ? (
         <p className="px-4 text-sm text-ink/45 sm:px-6">No brands in this category yet.</p>
       ) : (
+        /* Homepage discovery flow pass — mobile card width w-[80vw]
+           max-w-sm -> w-[76vw] max-w-[340px] (desktop sm:w-96 unchanged):
+           a small tightening only, so the next card's peek reads more
+           clearly as swipeable without over-compressing this pattern —
+           BusinessLogoCard itself is untouched. */
         <div className="flex gap-4 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {items.map((b) => (
-            <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
+            <div key={b.id} className="w-[76vw] max-w-[340px] shrink-0 sm:w-96">
               <BusinessLogoCard business={b} nextAppearance={hints[b.id]} />
             </div>
           ))}

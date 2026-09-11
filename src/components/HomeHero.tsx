@@ -85,7 +85,10 @@ export default function HomeHero({
             top, which is still ~70-90px higher than the previous pass's
             Image 1 position simply because there's no CTA + its margins
             sitting between body and the collage anymore. */}
-        <div className="px-6 pb-3 pt-8 sm:hidden">
+        {/* Homepage discovery flow pass — pt-8→pt-6 (24px, was 32px): safe
+            to tighten since the collage's own position is anchored to
+            body's bottom (mt-1, see below), never to this top padding. */}
+        <div className="px-6 pb-3 pt-6 sm:hidden">
           <div>
             <h1 className="max-w-[90%] font-display text-[clamp(1.7rem,8.2vw,2rem)] font-bold leading-[0.97] tracking-tight text-ink">
               {headingContent}
@@ -151,20 +154,21 @@ export default function HomeHero({
             </div>
           )}
 
-          {/* CTA — copy + spacing micro pass: link label "Join FindMi."→
-              "Get discovered." (same /join destination, no new route);
-              mt-3.5→mt-3 (12px, was 14px) moves it slightly closer to
-              the image above; the wrapper's own pb-3.5→pb-3 above trims
-              the gap below it before the Hero ends. Font size, italic
-              treatment, underline, and the padding/negative-margin tap-
-              target preservation are all otherwise unchanged. */}
-          <p className="mt-3 text-[8px] italic leading-[1.3] text-ink/40">
-            Have a business?{" "}
+          {/* Homepage discovery flow pass — was text-[8px] italic, small
+              enough to read as fine print/accidental rather than an
+              intentional secondary pathway. Bumped to a legible-but-still-
+              clearly-secondary size (11px, not italic, muted lead-in +
+              stronger link — the same quiet-secondary-action pattern used
+              elsewhere on the site), with "→" added and the trailing
+              period dropped. Still one compact line, same /join
+              destination, same tap-target preservation. */}
+          <p className="mt-3 text-[11px] leading-[1.3] text-ink/45">
+            Have a business or brand?{" "}
             <Link
               href="/join"
-              className="not-italic -my-[5px] -mx-1 inline-block px-1 py-[5px] font-medium text-ink/60 underline underline-offset-2 hover:text-ink"
+              className="-my-[5px] -mx-1 inline-block px-1 py-[5px] font-semibold text-ink/70 underline underline-offset-2 hover:text-ink"
             >
-              Get discovered.
+              Get discovered →
             </Link>
           </p>
         </div>
@@ -176,13 +180,13 @@ export default function HomeHero({
               {headingContent}
             </h1>
             {description && <p className="mt-4 max-w-md text-base text-ink/60">{description}</p>}
-            {/* CTA copy micro pass: label "Join FindMi."→"Get discovered."
-                (same /join destination) — desktop spacing/typography/
-                layout otherwise untouched. */}
-            <p className="mt-2 text-sm italic text-ink/40">
-              Have a business?{" "}
-              <Link href="/join" className="not-italic font-medium text-ink/60 underline underline-offset-2 hover:text-ink">
-                Get discovered.
+            {/* Homepage discovery flow pass — same copy/weight update as
+                the mobile line above; desktop spacing/layout otherwise
+                untouched. */}
+            <p className="mt-2 text-sm text-ink/45">
+              Have a business or brand?{" "}
+              <Link href="/join" className="font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+                Get discovered →
               </Link>
             </p>
           </div>

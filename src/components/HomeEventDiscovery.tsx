@@ -189,9 +189,18 @@ export default function HomeEventDiscovery({
               : "Nothing in this window yet."}
         </p>
       ) : (
+        /* Homepage discovery flow pass — mobile card width w-[74vw]
+           max-w-[320px] -> w-[66vw] max-w-[270px] (desktop sm:w-72
+           unchanged): the old width left almost no next-card peek and
+           read as one dominant near-full-viewport card. Height scales
+           down with it (HomeEventCard's aspect-[4/5] is untouched), so
+           imagery/title/date/location stay exactly as readable, just in
+           a visibly smaller, obviously-swipeable card. Scoped to this
+           "Upcoming Events Near You" row only — the generic "events"
+           Homepage Row further down keeps its own existing size. */
         <div className="mt-3 flex gap-3 overflow-x-auto px-4 pb-1 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:snap-center [scroll-snap-type:x_mandatory]">
           {items.map((event) => (
-            <div key={event.id} className="w-[74vw] max-w-[320px] shrink-0 sm:w-72">
+            <div key={event.id} className="w-[66vw] max-w-[270px] shrink-0 sm:w-72">
               <HomeEventCard event={event} />
             </div>
           ))}
