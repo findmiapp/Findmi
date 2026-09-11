@@ -29,7 +29,14 @@ export default function ProInviteCodeEntry({
 }) {
   return (
     <div className="rounded-2xl border border-black/10 bg-mist/40 p-4">
-      <p className="text-sm font-semibold text-ink/70">{heading}</p>
+      {/* Join Page Conversion Rebuild pass — heading is now conditionally
+       * rendered (was unconditional) so /join can pass heading="" when it
+       * wraps this component in its own <details>/<summary> disclosure
+       * (the summary IS the heading there — see join/page.tsx's
+       * InviteDisclosure) without a redundant blank paragraph. Every other
+       * caller passes a real non-empty string (or omits the prop, which
+       * still defaults to a real string), so this is purely additive. */}
+      {heading && <p className="text-sm font-semibold text-ink/70">{heading}</p>}
       {helperText && <p className="mt-1 text-xs text-ink/50">{helperText}</p>}
       <form action={goToRedeemCode} className="mt-2 flex flex-col gap-2 sm:flex-row">
         <input type="hidden" name="return_to" value={returnTo} />

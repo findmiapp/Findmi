@@ -365,7 +365,13 @@ function ProExtraEditor({ proExtra }: { proExtra: ReturnType<typeof resolveJoinP
           hint="Small line directly under the card title, above the price."
         />
         <TextField
-          label="Supporting note under the price"
+          label="Description line (under the price)"
+          name="description_line"
+          defaultValue={proExtra.descriptionLine}
+          hint="One line summarizing Pro, shown right under the price."
+        />
+        <TextField
+          label="Supporting note under that"
           name="no_renewal_note"
           defaultValue={proExtra.noRenewalNote}
         />

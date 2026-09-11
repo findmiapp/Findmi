@@ -52,16 +52,27 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // server-controlled, see that file's PRO_NATIVE_CTA_URL).
     price: "$99",
     priceSuffix: "/year",
+    // Join Page Conversion Rebuild pass — this general description line is
+    // no longer rendered on the Pro card at all (it duplicated the price,
+    // which the rebuilt card already states once — see ProCard's own
+    // comment). Left as admin-editable legacy content (still shown in
+    // /admin/site/join's Pro tab) purely so nothing is deleted; harmless
+    // either way since it has no public rendering path anymore.
     tagline:
       "Built for independent businesses, makers, vendors and brands that want to be discovered wherever they show up.\n\n$99 for one year of Findmi Pro.",
+    // Join Page Conversion Rebuild pass — replaces the prior list: drops
+    // "Connect with Findmi events" (Events are open to Free businesses
+    // too — this must never read as Pro-exclusive) and "Bookings" (no
+    // complete booking system exists to claim). See this pass's own
+    // report for the exact requested wording.
     features: [
-      "Full business profile",
-      "Photos, About & links",
-      "Manage Products / Bookings / Inquiries",
-      "Add & manage appearances",
-      "Connect with Findmi events",
+      "Complete business profile",
+      "Full Findmi Here schedule",
+      "Gallery, About & contact links",
+      "Products & services",
+      "Customer inquiries",
       "Business updates",
-      "Enhanced discovery",
+      "Expanded discovery across Findmi",
     ],
     ctaLabel: "Get Findmi Pro",
     emphasis: true,
@@ -85,30 +96,38 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     ctaLabel: "List an Event",
     emphasis: false,
   },
+  // Join Page Conversion Rebuild pass — this card no longer renders through
+  // the generic PlanCard/CardGrid mechanism (see join/page.tsx); it now has
+  // its own bespoke "Regional / National" section per the locked structure.
+  // Still resolved through the exact same resolveJoinCard()/admin form as
+  // before — only the PUBLIC presentation changed, not how it's edited.
   card_multi_region: {
     label: "Card 3 — Multi-Region / National",
-    eyebrow: "For larger brands",
-    title: "Multi-Region / National",
+    eyebrow: "For regional & national brands",
+    title: "Take Findmi across markets.",
+    // No longer rendered publicly (the rebuilt section deliberately shows
+    // no price/title tile — see join/page.tsx's RegionalSection) — left in
+    // place as harmless legacy admin content, same as card_discovery_pro's
+    // now-unrendered tagline above.
     price: "Custom",
     priceSuffix: null,
     tagline:
-      "For larger brands, touring businesses, organizations, and multi-location concepts that need broader coverage.",
+      "For brands operating across multiple cities, regions or locations, we’ll build a Findmi presence around your footprint.",
     features: [
-      "Multiple regions/markets",
+      "Multiple Findmi areas",
       "Multi-location support",
-      "Touring / traveling brand support",
-      "Expanded Findmi presence",
-      "Event/campaign opportunities",
-      "Custom onboarding and support",
+      "Expanded discovery",
+      "Dedicated onboarding",
+      "Campaign and activation support",
     ],
-    ctaLabel: "Talk to Findmi",
+    ctaLabel: "Talk to Findmi Sales",
     emphasis: false,
   },
 };
 
 export const JOIN_HERO_DEFAULTS = {
   heading: "Get discovered on Findmi.",
-  body: "Choose how you’d like to join, tell us a bit about you, and we’ll follow up to get you set up.",
+  body: "Where you’ll be, what you sell, and how customers can find you. All in one place.",
 };
 
 export const JOIN_GLOBAL_DEFAULTS = {
@@ -212,10 +231,13 @@ export interface JoinTile {
 // join/page.tsx, now founder-editable (config_json.tiles on the existing
 // what_you_get row) while keeping the exact current copy as the fallback.
 export const JOIN_WHAT_YOU_GET_TILE_DEFAULTS: JoinTile[] = [
-  { label: "Business Profile", detail: "Your story, photos, categories, and contact info in one place." },
-  { label: "Products & Services", detail: "A real catalog customers can browse — and buy, where you enable it." },
-  { label: "Findmi Here", detail: "Appearance cards so customers always know where you'll be next." },
-  { label: "Events", detail: "Join markets and pop-ups as a participating, featured vendor." },
+  { label: "Business Profile", detail: "Your story, photos, categories and contact information in one place." },
+  { label: "Products & Services", detail: "A catalog customers can browse — and buy where enabled." },
+  { label: "Findmi Here", detail: "Your upcoming appearances so customers always know where you'll be next." },
+  {
+    label: "Events",
+    detail: "Connect your business to the markets, pop-ups and events where you're participating.",
+  },
 ];
 
 function resolveTiles(cfg: Record<string, unknown>): JoinTile[] {
@@ -246,20 +268,28 @@ export function resolveJoinWhatYouGet(overrides: Map<string, SiteSection>) {
 
 // ── Free plan card (previously static JSX, never founder-editable) ──────
 
+// Join Page Conversion Rebuild pass — `price`, `disclosureLabel` and
+// `requiresProFeatures` are no longer rendered on the public page at all
+// (the expandable "View what's included" / crossed-out "Requires Pro" list
+// is removed per the locked structure — Free must read as positive and
+// legitimate, not visually punished). Left in place as harmless legacy
+// admin content, same convention as the now-unrendered Pro `tagline`
+// above — nothing is deleted, only presentation changed.
 export const JOIN_FREE_CARD_DEFAULTS = {
-  title: "Free",
+  title: "Want to start free?",
   price: "$0",
-  shortTagline: "Get Your Business On Findmi.",
-  description: "Create Your Basic Profile And Appear On Event Pages When Participating Organizers Add Your Business.",
+  shortTagline: "Get your business on Findmi.",
+  description: "Create a basic Findmi presence today. No payment or credit card required.",
   disclosureLabel: "View What's Included",
   includedFeatures: [
-    "Logo + Cover Image & Basic Profile",
-    "Show Your Next Upcoming Appearance",
-    "Appear On Participating Event/Vendor Rosters",
-    "Findmi Search & Discovery",
+    "Basic business profile",
+    "Logo + cover image",
+    "Your next upcoming appearance",
+    "Participate on Findmi event pages",
+    "Findmi search & discovery",
   ],
   requiresProFeatures: ["Full Upcoming Schedule", "Gallery", "Products & Services", "Website & Social Links", "Full Business Profile"],
-  ctaLabel: "Start with Basic",
+  ctaLabel: "Start free",
 };
 
 export interface ResolvedJoinFreeCard {
@@ -305,20 +335,29 @@ export function resolveJoinFreeCard(overrides: Map<string, SiteSection>): Resolv
 // saving one never wipes the other's fields (see actions.ts).
 
 export const JOIN_PRO_EXTRA_DEFAULTS = {
-  billingLabel: "Build Out Your Complete Findmi Presence.",
-  noRenewalNote: "No Automatic Renewal.",
+  billingLabel: "Your complete Findmi presence.",
+  // Join Page Conversion Rebuild pass — new field: the one-line description
+  // shown right under the price ("Everything you need to get discovered
+  // wherever you show up."). Added rather than repurposing an existing
+  // field so `noRenewalNote` below keeps its own literal, unambiguous
+  // meaning ("No automatic renewal.") in its existing spot further down.
+  descriptionLine: "Everything you need to get discovered wherever you show up.",
+  noRenewalNote: "No automatic renewal.",
   highlightHeading: "Findmi Here",
-  highlightSubheading: "Show Customers Where To Find You Next.",
-  highlightBody: "Your Full Upcoming Schedule Shows On Your Public Profile — Not Just Your Next Appearance.",
+  highlightSubheading: "Show customers where you’ll be next.",
+  highlightBody: "Your complete upcoming schedule lives right on your Findmi profile.",
   // Display copy only — see this pass's own report / the admin field's own
   // hint. The actual charged amount always comes from
   // BUSINESS_PRO_INTRO_PRICE_CENTS (businessProCheckout.ts), never from
-  // this text, no matter what an admin types here.
-  priceFootnote: "$99 For One Year Of Findmi Pro.",
+  // this text, no matter what an admin types here. Join Page Conversion
+  // Rebuild pass — no longer restates the price (already shown once,
+  // directly above) per that pass's own anti-redundancy instruction.
+  priceFootnote: "One year · No automatic renewal",
 };
 
 export interface ResolvedJoinProExtra {
   billingLabel: string;
+  descriptionLine: string;
   noRenewalNote: string;
   highlightHeading: string;
   highlightSubheading: string;
@@ -333,6 +372,7 @@ export function resolveJoinProExtra(overrides: Map<string, SiteSection>): Resolv
   const pick = (key: keyof typeof d) => (typeof cfg[key] === "string" && (cfg[key] as string).trim() ? (cfg[key] as string) : d[key]);
   return {
     billingLabel: pick("billingLabel"),
+    descriptionLine: pick("descriptionLine"),
     noRenewalNote: pick("noRenewalNote"),
     highlightHeading: pick("highlightHeading"),
     highlightSubheading: pick("highlightSubheading"),
@@ -344,11 +384,17 @@ export function resolveJoinProExtra(overrides: Map<string, SiteSection>): Resolv
 // ── Invite/referral presentation ─────────────────────────────────────────
 
 export const JOIN_INVITE_SECTION_DEFAULTS = {
-  heading: "Have a Pro Invite Code?",
+  heading: "Have a Findmi Pro invite code?",
   helperText: "",
 };
 
-export function resolveJoinInviteSection(overrides: Map<string, SiteSection>) {
+export interface ResolvedJoinInviteSection {
+  visible: boolean;
+  heading: string;
+  helperText: string | null;
+}
+
+export function resolveJoinInviteSection(overrides: Map<string, SiteSection>): ResolvedJoinInviteSection {
   const row = overrides.get("invite_section");
   const d = JOIN_INVITE_SECTION_DEFAULTS;
   return {
@@ -360,13 +406,27 @@ export function resolveJoinInviteSection(overrides: Map<string, SiteSection>) {
 
 // ── "Already listed on FindMi? Claim your business" line ────────────────
 
+// Join Page Conversion Rebuild pass — this is no longer a standalone
+// mid-page paragraph; `body`+`ctaLabel` are now composed inline as a
+// secondary action in the Hero ("Already listed? Claim your business")
+// and `ctaLabel` alone is reused again in the Final Conversion section
+// ("Claim your business") — see join/page.tsx. Shortened/de-arrowed to
+// read naturally in both spots; `ctaUrl` (the actual claim destination)
+// is unchanged.
 export const JOIN_CLAIM_BUSINESS_DEFAULTS = {
-  body: "Already listed on Findmi?",
-  ctaLabel: "Claim your business →",
+  body: "Already listed?",
+  ctaLabel: "Claim your business",
   ctaUrl: "/businesses",
 };
 
-export function resolveJoinClaimBusiness(overrides: Map<string, SiteSection>) {
+export interface ResolvedJoinClaimBusiness {
+  visible: boolean;
+  body: string;
+  ctaLabel: string;
+  ctaUrl: string;
+}
+
+export function resolveJoinClaimBusiness(overrides: Map<string, SiteSection>): ResolvedJoinClaimBusiness {
   const row = overrides.get("claim_business");
   const d = JOIN_CLAIM_BUSINESS_DEFAULTS;
   return {

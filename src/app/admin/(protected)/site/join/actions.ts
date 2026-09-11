@@ -156,6 +156,7 @@ export async function saveJoinCard(cardKey: JoinCardKey, formData: FormData) {
 export async function saveJoinProExtra(formData: FormData) {
   const config_json = await mergeConfigJson("card_discovery_pro", {
     billingLabel: str(formData, "billing_label"),
+    descriptionLine: str(formData, "description_line"),
     noRenewalNote: str(formData, "no_renewal_note"),
     highlightHeading: str(formData, "highlight_heading"),
     highlightSubheading: str(formData, "highlight_subheading"),
