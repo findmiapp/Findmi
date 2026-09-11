@@ -304,7 +304,14 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
       </Link>
       <Link href="#free" className="rounded-2xl border border-black/10 bg-white p-3.5 transition hover:border-black/20">
         <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Start free</p>
-        <p className="mt-1 font-display text-lg font-bold tracking-tight text-ink">{free.price} · No card required</p>
+        {/* /Join micro UI fixes pass — text-lg wrapped awkwardly at ~390px
+            (this line is noticeably longer than Pro's "$99/year"); sized
+            down to text-xs as one uniform treatment (not split into a
+            bigger "$0" + smaller rest) so it stays a single balanced
+            line without widening the tile. */}
+        <p className="mt-1 whitespace-nowrap font-display text-xs font-bold tracking-tight text-ink">
+          {free.price} · No card required
+        </p>
         <p className="mt-1 text-xs text-ink/60">Basic profile + your next appearance</p>
         <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
           Explore Free <span aria-hidden>→</span>
@@ -619,7 +626,11 @@ function RegionalSection({ card }: { card: ResolvedJoinCard }) {
 function InviteDisclosure({ section }: { section: ResolvedJoinInviteSection }) {
   return (
     <details className="group">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-ink/60 [&::-webkit-details-marker]:hidden">
+      {/* /Join micro UI fixes pass — justify-center added so text+chevron
+          move as one centered unit (was flush-left) to match the centered
+          composition around it; gap-1.5 keeps them together, expand/
+          collapse and the form below are otherwise untouched. */}
+      <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 text-sm font-semibold text-ink/60 [&::-webkit-details-marker]:hidden">
         {section.heading}
         <ChevronGlyph className="transition-transform group-open:rotate-180" />
       </summary>
