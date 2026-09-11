@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useGeographySuggestion } from "@/lib/useGeographySuggestion";
+import type { GeographyMatch } from "@/lib/market-requests";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -14,31 +15,39 @@ export interface BusinessGeographyFieldsProps {
   defaultRequestedMarketText: string;
 }
 
+/** "Staten Island · New York City" for an Area match, plain "North Jersey"
+ * for a Market-only match — a presentation-only reformatting of the
+ * existing GeographyMatch fields (never touches findExistingGeographyMatch
+ * or GeographyMatch.label itself, which stays an em-dash "Area — Market"
+ * string used elsewhere, e.g. the admin Market Requests queue). */
+function formatSuggestionHeadline(suggestion: GeographyMatch): string {
+  if (suggestion.type === "area" && suggestion.areaLabel) {
+    return `${suggestion.areaLabel} · ${suggestion.marketLabel}`;
+  }
+  return suggestion.marketLabel;
+}
+
 /**
- * Geography Foundation Pass 2 — replaces Business creation's old
- * "type city/state, then separately go figure out what a Findmi Market
- * is" two-step with one flow: city/state (still the same factual fields
- * as before, just now controlled so they can drive a live suggestion)
- * feed useGeographySuggestion, which reuses the existing
- * findExistingGeographyMatch(...) matcher. A match pre-fills the Primary
- * Market choice as an editable suggestion; no match automatically
- * prepares a Market Request from the SAME city/state text — the visitor
- * never has to type "Nashville" a second time into a separate field, and
- * is never sent looking for a buried "Don't see your Market?" disclosure.
+ * Business Geography Onboarding UX Correction pass — closes the gap Pass 2
+ * left open: that pass wired up live city/state -> Findmi area matching,
+ * but still showed the plain "Choose a market…" select immediately in the
+ * blank/idle state (same as before Pass 2 existed), so a brand-new visitor
+ * still saw an unexplained Findmi taxonomy dropdown before ever typing
+ * anything. Root cause was `showManualPicker = overridden || status ===
+ * "idle"` — "idle" (nothing typed yet) was treated the same as "the owner
+ * wants the manual picker," which was backwards.
  *
- * Business creation has no Area picker at creation today (see the
- * architecture audit's own Part 4A instruction: use the Market portion of
- * an Area match, don't invent new storage) — an Area match still resolves
- * the correct parent Market perfectly well; the Area itself is simply not
- * captured here, same limitation as before this pass, just no longer
- * requiring the owner to solve it manually when a Market suggestion is
- * available.
+ * Fixed by making the ENTIRE "Findmi area" section (suggestion banner,
+ * no-match notice, or the manual selector) appear only once city OR state
+ * has real input (`hasInput` below) — before that, this renders only the
+ * plain City/State fields under a "Business location" heading, with no
+ * mention of Markets/Areas at all. The manual `<select>` itself is now
+ * reachable ONLY via the explicit "Change area" / "Choose an existing area
+ * instead" actions (`overridden`), never automatically.
  *
- * `market_id`/`requested_market_text` are still submitted as the exact
- * same two field names createMemberBusiness already validates as
- * mutually exclusive — this component only ever fills in ONE of them at
- * a time, so that server-side "choose one or the other" rule is
- * unaffected by this pass.
+ * City/State are now `required` (see this pass's own report for why no
+ * existing Business type needed them optional) — still plain text
+ * fields, no geocoding, no country field added.
  */
 export default function BusinessGeographyFields({
   markets,
@@ -66,97 +75,103 @@ export default function BusinessGeographyFields({
     }
   }, [status, suggestion, overridden]);
 
-  const showManualPicker = overridden || status === "idle";
+  const hasInput = Boolean(city.trim() || state.trim());
   const requestedMarketText =
     !overridden && status === "no_match" ? [city.trim(), state.trim()].filter(Boolean).join(", ") : "";
+  const enteredPlace = [city.trim(), state.trim()].filter(Boolean).join(", ");
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-4">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">
-            City <span className="font-normal text-ink/40">(optional)</span>
-          </span>
-          <input
-            type="text"
-            name="city"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            className={inputClass}
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">
-            State <span className="font-normal text-ink/40">(optional)</span>
-          </span>
-          <input
-            type="text"
-            name="state"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            className={inputClass}
-          />
-        </label>
-      </div>
-
       <div>
-        <span className="mb-1.5 block text-sm font-medium text-ink">Findmi area</span>
-
-        {!showManualPicker && status === "checking" && (
-          <p className="rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/50">
-            Checking Findmi…
+        <span className="mb-1.5 block text-sm font-medium text-ink">Business location</span>
+        <div className="grid grid-cols-2 gap-4">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-ink/60">City</span>
+            <input
+              type="text"
+              name="city"
+              required
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className={inputClass}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-ink/60">State</span>
+            <input
+              type="text"
+              name="state"
+              required
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+              className={inputClass}
+            />
+          </label>
+        </div>
+        {!hasInput && (
+          <p className="mt-1.5 text-xs text-ink/45">
+            Enter where your business is based. Findmi will determine the best area for discovery.
           </p>
         )}
+      </div>
 
-        {!showManualPicker && status === "matched" && suggestion && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-findmi/25 bg-findmi-50 px-3.5 py-2.5 text-sm text-findmi-700">
-            <span>
-              Suggested Findmi area: <strong>{suggestion.label}</strong>
-            </span>
-            <button
-              type="button"
-              onClick={() => setOverridden(true)}
-              className="text-xs font-semibold underline underline-offset-2"
-            >
-              Change area
-            </button>
-          </div>
-        )}
+      {hasInput && (
+        <div>
+          <span className="mb-1.5 block text-sm font-medium text-ink">Findmi area</span>
 
-        {!showManualPicker && status === "no_match" && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/60">
-            <span>
-              No Findmi area yet for &ldquo;{[city, state].filter(Boolean).join(", ")}&rdquo; — we&rsquo;ll add it for
-              review.
-            </span>
-            <button
-              type="button"
-              onClick={() => setOverridden(true)}
-              className="text-xs font-semibold underline underline-offset-2"
-            >
-              Choose an existing area instead
-            </button>
-          </div>
-        )}
+          {!overridden && status === "checking" && (
+            <p className="rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/50">
+              Checking Findmi…
+            </p>
+          )}
 
-        {showManualPicker && (
-          <>
-            <select
-              value={marketId}
-              onChange={(e) => {
-                setMarketId(e.target.value);
-                setOverridden(true);
-              }}
-              className={inputClass}
-            >
-              <option value="">Choose an area</option>
-              {markets.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            {overridden && (city.trim() || state.trim()) && (
+          {!overridden && status === "matched" && suggestion && (
+            <div className="rounded-xl border border-findmi/25 bg-findmi-50 px-3.5 py-3">
+              <p className="text-sm font-bold text-findmi-700">{formatSuggestionHeadline(suggestion)}</p>
+              <p className="mt-0.5 text-xs text-findmi-700/70">Suggested from {enteredPlace}</p>
+              <button
+                type="button"
+                onClick={() => setOverridden(true)}
+                className="mt-1.5 text-xs font-semibold text-findmi-700 underline underline-offset-2"
+              >
+                Change area
+              </button>
+            </div>
+          )}
+
+          {!overridden && status === "no_match" && (
+            <div className="rounded-xl border border-black/10 bg-mist/30 px-3.5 py-3">
+              <p className="text-sm font-semibold text-ink/70">{enteredPlace} isn&rsquo;t on Findmi yet.</p>
+              <p className="mt-0.5 text-xs text-ink/50">
+                We&rsquo;ll add it for review. You can continue creating your business.
+              </p>
+              <button
+                type="button"
+                onClick={() => setOverridden(true)}
+                className="mt-1.5 text-xs font-semibold text-ink/60 underline underline-offset-2"
+              >
+                Choose an existing area instead
+              </button>
+            </div>
+          )}
+
+          {overridden && (
+            <>
+              <select
+                value={marketId}
+                onChange={(e) => setMarketId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Choose an area</option>
+                {markets.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-xs text-ink/45">
+                This controls your primary discovery area. Your appearances can be anywhere.
+              </p>
               <button
                 type="button"
                 onClick={() => setOverridden(false)}
@@ -164,18 +179,13 @@ export default function BusinessGeographyFields({
               >
                 Use Findmi&rsquo;s suggestion instead
               </button>
-            )}
-          </>
-        )}
-
-        <p className="mt-1.5 text-xs text-ink/45">Where should people generally discover this business on Findmi?</p>
-        <p className="mt-0.5 text-xs text-ink/40">
-          This is separate from where you appear at events — you can still add appearances outside this area.
-        </p>
-      </div>
+            </>
+          )}
+        </div>
+      )}
 
       <input type="hidden" name="market_id" value={marketId} />
-      <input type="hidden" name="requested_market_text" value={showManualPicker ? "" : requestedMarketText} />
+      <input type="hidden" name="requested_market_text" value={overridden ? "" : requestedMarketText} />
     </>
   );
 }

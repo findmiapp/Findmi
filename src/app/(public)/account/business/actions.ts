@@ -1244,6 +1244,16 @@ export async function createMemberBusiness(formData: FormData) {
 
   if (!name) fail("Business name is required.");
   if (!categoryId) fail("Choose a category.");
+  // Business Geography Onboarding UX Correction pass — city/state used to
+  // be purely optional disambiguation text; they're now what actually
+  // drives the automatic Findmi area suggestion the creation form shows
+  // (see BusinessGeographyFields), so a blank value here would silently
+  // leave a new business with no discovery geography and no Market
+  // Request either. Required only at NATIVE CREATION time — this never
+  // retroactively requires it on an existing business (Business Manager's
+  // own profile-edit form is untouched), so no legitimate already-created
+  // business is affected.
+  if (!city || !state) fail("City and state are required.");
   // Primary Market During Business Creation V1, extended by Consumer Area
   // Picker + Market Requests V1 — checked here for a fast, friendly error
   // before any duplicate-check/slug work runs, but create_owned_business()

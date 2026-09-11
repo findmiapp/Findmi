@@ -180,10 +180,11 @@ export default async function AddBusinessPage({
             </select>
           </label>
 
-          {/* Geography Foundation Pass 2 — city/state (still the same
-              optional, purely-descriptive factual fields as before) now
-              drive a live Findmi Market suggestion instead of leaving the
-              owner to separately solve Findmi's own taxonomy. See
+          {/* Geography Foundation Pass 2, corrected by the Business
+              Geography Onboarding UX Correction pass — city/state (now
+              required) drive a live Findmi area suggestion, shown only
+              once the owner has actually typed something, instead of
+              leaving them to separately solve Findmi's own taxonomy. See
               BusinessGeographyFields' own doc comment. */}
           <BusinessGeographyFields
             markets={markets}
