@@ -118,7 +118,7 @@ export default function BusinessGeographyFields({
               onClick={() => setOverridden(true)}
               className="text-xs font-semibold underline underline-offset-2"
             >
-              Choose a different Market
+              Change area
             </button>
           </div>
         )}
@@ -126,15 +126,15 @@ export default function BusinessGeographyFields({
         {!showManualPicker && status === "no_match" && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/60">
             <span>
-              We don&rsquo;t have this Findmi area yet. We&rsquo;ll add &ldquo;{[city, state].filter(Boolean).join(", ")}
-              &rdquo; for review.
+              No Findmi area yet for &ldquo;{[city, state].filter(Boolean).join(", ")}&rdquo; — we&rsquo;ll add it for
+              review.
             </span>
             <button
               type="button"
               onClick={() => setOverridden(true)}
               className="text-xs font-semibold underline underline-offset-2"
             >
-              Choose an existing Market instead
+              Choose an existing area instead
             </button>
           </div>
         )}
@@ -149,7 +149,7 @@ export default function BusinessGeographyFields({
               }}
               className={inputClass}
             >
-              <option value="">Choose a market…</option>
+              <option value="">Choose an area</option>
               {markets.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -170,8 +170,7 @@ export default function BusinessGeographyFields({
 
         <p className="mt-1.5 text-xs text-ink/45">Where should people generally discover this business on Findmi?</p>
         <p className="mt-0.5 text-xs text-ink/40">
-          This is separate from where you appear at events — you can still add appearances outside your Primary
-          Market.
+          This is separate from where you appear at events — you can still add appearances outside this area.
         </p>
       </div>
 

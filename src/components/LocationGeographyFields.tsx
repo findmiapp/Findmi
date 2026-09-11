@@ -85,9 +85,11 @@ export default function LocationGeographyFields({
       </div>
 
       <div>
-        <span className="mb-1.5 block text-sm font-medium text-ink">
-          Market &amp; Area <span className="font-normal text-ink/40">(optional)</span>
-        </span>
+        {!showManualPicker && (
+          <span className="mb-1.5 block text-sm font-medium text-ink">
+            Findmi area <span className="font-normal text-ink/40">(optional)</span>
+          </span>
+        )}
 
         {!overridden && status === "checking" && (
           <p className="rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/50">
@@ -106,15 +108,15 @@ export default function LocationGeographyFields({
         {!overridden && status === "no_match" && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/60">
             <span>
-              We don&rsquo;t have this Findmi area yet. We&rsquo;ll add &ldquo;{[city, state].filter(Boolean).join(", ")}
-              &rdquo; for review.
+              No Findmi area yet for &ldquo;{[city, state].filter(Boolean).join(", ")}&rdquo; — we&rsquo;ll add it for
+              review.
             </span>
             <button
               type="button"
               onClick={() => setOverridden(true)}
               className="text-xs font-semibold underline underline-offset-2"
             >
-              Choose an existing Market instead
+              Choose an existing area instead
             </button>
           </div>
         )}
@@ -125,6 +127,11 @@ export default function LocationGeographyFields({
             markets={markets}
             defaultMarketId={!overridden && suggestion ? suggestion.marketId : defaultMarketId}
             defaultAreaId={!overridden && suggestion?.type === "area" ? (suggestion.areaId ?? null) : defaultAreaId}
+            marketLabel="Findmi area"
+            areaLabel="Specific area"
+            blankMarketOptionLabel="Choose an area"
+            noAreasAvailableLabel="No specific area available here"
+            noSpecificAreaLabel="No specific area"
           />
         )}
 
@@ -134,7 +141,7 @@ export default function LocationGeographyFields({
             onClick={() => setOverridden(true)}
             className="mt-1.5 text-xs font-semibold text-ink/50 underline underline-offset-2"
           >
-            Choose a different Market
+            Change area
           </button>
         )}
         {overridden && (city.trim() || state.trim()) && (

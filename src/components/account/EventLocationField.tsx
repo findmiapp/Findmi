@@ -79,8 +79,12 @@ export default function EventLocationField({
    * without this component needing to know anything about Market/Area
    * suggestion itself. Every other existing caller (Event Manager's
    * Location tab, the per-occurrence Dates tab) omits this prop and is
-   * completely unaffected. */
-  onGeographyChange?: (geography: { city: string; state: string }) => void;
+   * completely unaffected. `locationName` (Geography Foundation Pass 3) is
+   * non-null only when the effective geography came from a real selected
+   * Location — so the parent can say "based on {name}" instead of leaving
+   * the owner to wonder whether they still need to separately resolve
+   * geography for a venue they already picked. */
+  onGeographyChange?: (geography: { city: string; state: string; locationName: string | null }) => void;
 }) {
   const hasManualSeed = Boolean(
     initialManual && (initialManual.venue_name || initialManual.address || initialManual.city || initialManual.state || initialManual.postal_code)
@@ -103,13 +107,13 @@ export default function EventLocationField({
   const effectiveState = selected ? (selected.state ?? "") : manual.state;
 
   useEffect(() => {
-    onGeographyChange?.({ city: effectiveCity, state: effectiveState });
+    onGeographyChange?.({ city: effectiveCity, state: effectiveState, locationName: selected?.name ?? null });
     // onGeographyChange is expected to be a stable identity (or omitted)
-    // from the one caller that passes it — only the effective city/state
-    // values should retrigger this, same as every other derived-value
-    // effect in this codebase.
+    // from the one caller that passes it — only the effective city/state/
+    // selected-Location values should retrigger this, same as every other
+    // derived-value effect in this codebase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveCity, effectiveState]);
+  }, [effectiveCity, effectiveState, selected]);
 
   return (
     <div className="flex flex-col gap-2">

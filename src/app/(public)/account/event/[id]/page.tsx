@@ -57,7 +57,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "details", label: "Event Details" },
   { key: "dates", label: "Dates" },
   { key: "location", label: "Location" },
-  { key: "market", label: "Area" },
+  { key: "market", label: "Findmi Area" },
   { key: "images", label: "Images" },
   { key: "participants", label: "Businesses" },
   { key: "status", label: "Status" },
@@ -612,47 +612,53 @@ export default async function ManageEventPage({
 
         {tab === "market" && (
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Market / Area</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area</p>
             <p className="mt-1 text-sm text-ink/60">
-              Findmi discovery geography — where this Event appears in Findmi search/browse. Separate from the
-              physical Venue/Address set on the Location tab.
+              Where this Event appears in Findmi search/browse. Separate from the physical Venue/Address set on the
+              Location tab.
             </p>
             <p className="mt-2 text-sm text-ink/60">
               {selectedMarket
-                ? `Current Market: ${selectedMarket.name}${
+                ? `Findmi area: ${selectedMarket.name}${
                     event.market_area_id
                       ? ` — ${
                           marketsWithAreas.find((m) => m.id === event.market_id)?.areas.find((a) => a.id === event.market_area_id)
-                            ?.name ?? "Area assigned"
+                            ?.name ?? "specific area assigned"
                         }`
                       : ""
                   }`
                 : pendingMarketRequest
-                  ? `Pending review — ${pendingMarketRequest.requestedText}`
-                  : "Not assigned yet."}
+                  ? `Findmi area pending review — ${pendingMarketRequest.requestedText}`
+                  : "No Findmi area selected yet."}
             </p>
             <form action={updateMemberEventMarket.bind(null, id)} className="mt-3 flex flex-col gap-3">
               <MarketAreaFields
                 markets={marketsWithAreas}
                 defaultMarketId={event.market_id}
                 defaultAreaId={event.market_area_id}
+                marketLabel="Findmi area"
+                areaLabel="Specific area"
+                blankMarketOptionLabel="No Findmi area selected"
+                noAreasAvailableLabel="No specific area available here"
+                noSpecificAreaLabel="No specific area"
               />
               <details className="group -mt-1">
                 <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-                  Don&rsquo;t see your Market or Area?
+                  Don&rsquo;t see your Findmi area?
                 </summary>
                 <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink/70">Request a Market</span>
+                    <span className="mb-1.5 block text-xs font-medium text-ink/70">Tell us where</span>
                     <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
                   </label>
                   <p className="mt-1.5 text-xs text-ink/45">
-                    Findmi will review your request. Leave Market above set to &ldquo;Unassigned&rdquo; when using this.
+                    Findmi will review it. Leave the Findmi area above set to &ldquo;No Findmi area selected&rdquo; when
+                    using this.
                   </p>
                 </div>
               </details>
               <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-                Save Market
+                Save
               </button>
             </form>
           </div>

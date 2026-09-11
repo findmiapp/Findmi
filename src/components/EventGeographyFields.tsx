@@ -47,6 +47,13 @@ export default function EventGeographyFields({
 }: EventGeographyFieldsProps) {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
+  // Geography Foundation Pass 3 — non-null only while the effective
+  // geography above is coming from a real selected Location, so the
+  // suggestion banner can say "based on {name}" instead of leaving the
+  // owner to wonder whether they still need to separately resolve
+  // geography for a venue they already picked (see the architecture
+  // audit's own Part 6/7 instruction).
+  const [locationName, setLocationName] = useState<string | null>(null);
   const [marketId, setMarketId] = useState(defaultMarketId);
   const [overridden, setOverridden] = useState(Boolean(defaultMarketId || defaultRequestedMarketText));
   const { status, suggestion } = useGeographySuggestion(city, state, !overridden);
@@ -69,15 +76,16 @@ export default function EventGeographyFields({
       <EventLocationField
         initialLocation={initialLocation}
         initialManual={initialManual}
-        onGeographyChange={({ city: c, state: s }) => {
+        onGeographyChange={({ city: c, state: s, locationName: name }) => {
           setCity(c);
           setState(s);
+          setLocationName(name);
         }}
       />
 
       <div>
         <span className="mb-1.5 block text-sm font-medium text-ink">
-          Market <span className="font-normal text-ink/40">(optional)</span>
+          Findmi area <span className="font-normal text-ink/40">(optional)</span>
         </span>
 
         {!showManualPicker && status === "checking" && (
@@ -89,14 +97,15 @@ export default function EventGeographyFields({
         {!showManualPicker && status === "matched" && suggestion && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-findmi/25 bg-findmi-50 px-3.5 py-2.5 text-sm text-findmi-700">
             <span>
-              Suggested Findmi area: <strong>{suggestion.label}</strong>
+              {locationName ? `Based on ${locationName}: ` : "Suggested Findmi area: "}
+              <strong>{suggestion.label}</strong>
             </span>
             <button
               type="button"
               onClick={() => setOverridden(true)}
               className="text-xs font-semibold underline underline-offset-2"
             >
-              Choose a different Market
+              Change area
             </button>
           </div>
         )}
@@ -104,15 +113,15 @@ export default function EventGeographyFields({
         {!showManualPicker && status === "no_match" && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 bg-mist/30 px-3.5 py-2.5 text-sm text-ink/60">
             <span>
-              We don&rsquo;t have this Findmi area yet. We&rsquo;ll add &ldquo;{[city, state].filter(Boolean).join(", ")}
-              &rdquo; for review.
+              No Findmi area yet for &ldquo;{[city, state].filter(Boolean).join(", ")}&rdquo; — we&rsquo;ll add it for
+              review.
             </span>
             <button
               type="button"
               onClick={() => setOverridden(true)}
               className="text-xs font-semibold underline underline-offset-2"
             >
-              Choose an existing Market instead
+              Choose an existing area instead
             </button>
           </div>
         )}
@@ -127,7 +136,7 @@ export default function EventGeographyFields({
               }}
               className={inputClass}
             >
-              <option value="">Choose a market…</option>
+              <option value="">Choose an area</option>
               {markets.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}

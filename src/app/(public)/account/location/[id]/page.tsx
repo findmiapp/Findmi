@@ -43,7 +43,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "details", label: "Venue Details" },
   { key: "photos", label: "Photos" },
   { key: "contact", label: "Contact / Links" },
-  { key: "market", label: "Market / Area" },
+  { key: "market", label: "Findmi Area" },
   { key: "happening", label: "What's Happening Here" },
   { key: "status", label: "Status" },
 ];
@@ -339,8 +339,8 @@ export default async function ManageLocationPage({
               </div>
             </dl>
             <p className="mt-4 text-sm text-ink/60">
-              Use the tabs above to edit your venue details, add photos, set contact info, choose your Market, add an
-              event here, and see what&rsquo;s coming up.
+              Use the tabs above to edit your venue details, add photos, set contact info, choose your Findmi area, add
+              an event here, and see what&rsquo;s coming up.
             </p>
             <Link href={`/account/event/new?location_id=${id}`} className={`mt-4 inline-flex w-fit ${primaryButtonClass}`}>
               + Add an Event Here
@@ -437,36 +437,42 @@ export default async function ManageLocationPage({
 
         {tab === "market" && (
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Market / Area</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area</p>
             <p className="mt-1 text-sm text-ink/60">
               {selectedMarket
-                ? `Current Market: ${selectedMarket.name}${selectedArea ? ` — ${selectedArea.name}` : ""}`
+                ? `Findmi area: ${selectedMarket.name}${selectedArea ? ` — ${selectedArea.name}` : ""}`
                 : pendingMarketRequest
-                  ? `Pending review — ${pendingMarketRequest.requestedText}`
-                  : "Not assigned yet."}
+                  ? `Findmi area pending review — ${pendingMarketRequest.requestedText}`
+                  : "No Findmi area selected yet."}
             </p>
             <form action={updateMemberLocationMarket.bind(null, id)} className="mt-3 flex flex-col gap-3">
               <MarketAreaFields
                 markets={marketsWithAreas}
                 defaultMarketId={location.market_id}
                 defaultAreaId={location.market_area_id}
+                marketLabel="Findmi area"
+                areaLabel="Specific area"
+                blankMarketOptionLabel="No Findmi area selected"
+                noAreasAvailableLabel="No specific area available here"
+                noSpecificAreaLabel="No specific area"
               />
               <details className="group -mt-1">
                 <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-                  Don&rsquo;t see your Market?
+                  Don&rsquo;t see your Findmi area?
                 </summary>
                 <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink/70">Request a Market</span>
+                    <span className="mb-1.5 block text-xs font-medium text-ink/70">Tell us where</span>
                     <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
                   </label>
                   <p className="mt-1.5 text-xs text-ink/45">
-                    Findmi will review your request. Leave Market above set to &ldquo;Unassigned&rdquo; when using this.
+                    Findmi will review it. Leave the Findmi area above set to &ldquo;No Findmi area selected&rdquo; when
+                    using this.
                   </p>
                 </div>
               </details>
               <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-                Save Market
+                Save
               </button>
             </form>
           </div>

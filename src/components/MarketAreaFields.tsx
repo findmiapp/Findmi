@@ -40,6 +40,18 @@ export default function MarketAreaFields({
   areaFieldName = "market_area_id",
   marketLabel = "Market",
   areaLabel = "Area",
+  // Geography Foundation Pass 3 — the blank-option copy is the one piece
+  // of this shared component that's admin-only internal language by
+  // default ("Unassigned" reads fine to a founder reviewing assignments,
+  // but is a confusing internal-state leak to a normal owner). Every
+  // existing admin call site (LocationForm/EventForm/AppearanceForm)
+  // passes none of these three and keeps the exact same text as before
+  // this pass; owner-facing call sites (Location creation/Manager, Event
+  // Manager) pass owner-friendly overrides instead — see
+  // LocationGeographyFields/account pages for the actual wording.
+  blankMarketOptionLabel = "Unassigned",
+  noAreasAvailableLabel = "No Areas for this Market",
+  noSpecificAreaLabel = "No specific Area",
 }: {
   markets: MarketWithAreaOptions[];
   defaultMarketId: string | null;
@@ -48,6 +60,9 @@ export default function MarketAreaFields({
   areaFieldName?: string;
   marketLabel?: string;
   areaLabel?: string;
+  blankMarketOptionLabel?: string;
+  noAreasAvailableLabel?: string;
+  noSpecificAreaLabel?: string;
 }) {
   const [marketId, setMarketId] = useState(defaultMarketId ?? "");
   const [areaId, setAreaId] = useState(defaultAreaId ?? "");
@@ -72,7 +87,7 @@ export default function MarketAreaFields({
           }}
           className={selectClass}
         >
-          <option value="">Unassigned</option>
+          <option value="">{blankMarketOptionLabel}</option>
           {markets.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name}
@@ -89,7 +104,7 @@ export default function MarketAreaFields({
           disabled={areaOptions.length === 0}
           className={selectClass}
         >
-          <option value="">{areaOptions.length === 0 ? "No Areas for this Market" : "No specific Area"}</option>
+          <option value="">{areaOptions.length === 0 ? noAreasAvailableLabel : noSpecificAreaLabel}</option>
           {areaOptions.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}

@@ -116,7 +116,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "opportunities", label: "Opportunities" },
   { key: "links", label: "Links & Contact" },
   { key: "plan", label: "Plan & Status" },
-  { key: "market", label: "Market" },
+  { key: "market", label: "Findmi Area" },
   { key: "followers", label: "Followers" },
   { key: "inquiries", label: "Inquiries" },
   { key: "orders", label: "Orders" },
@@ -1698,28 +1698,28 @@ export default async function ManageBusinessPage({
             <div className={cardClass}>
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Based In</p>
               <p className="mt-1.5 text-sm text-ink">{[business.city, business.state].filter(Boolean).join(", ") || "Not set"}</p>
-              <p className="mt-2 text-xs text-ink/45">Your business&rsquo;s home address — separate from your Market below.</p>
+              <p className="mt-2 text-xs text-ink/45">Your business&rsquo;s home address — separate from your Findmi area below.</p>
             </div>
 
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Primary Market</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area</p>
               {primaryMarket ? (
                 <p className="mt-1.5 text-sm font-semibold text-ink">{primaryMarket.marketName}</p>
               ) : pendingMarketRequest ? (
                 <>
                   <p className="mt-1.5 text-sm font-semibold text-amber-700">
-                    Pending review — {pendingMarketRequest.requestedText}
+                    Findmi area pending review — {pendingMarketRequest.requestedText}
                   </p>
                   <p className="mt-2 text-xs text-ink/45">
-                    Findmi is reviewing your requested Market. Your business is live in the meantime, but won&rsquo;t
-                    appear in general Market-based discovery until this is approved.
+                    Findmi is reviewing your requested area. Your business is live in the meantime, but won&rsquo;t
+                    appear in general area-based discovery until this is approved.
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="mt-1.5 text-sm font-semibold text-ink/60">Not assigned yet</p>
+                  <p className="mt-1.5 text-sm font-semibold text-ink/60">No Findmi area selected yet</p>
                   <p className="mt-2 text-xs text-ink/45">
-                    Your Findmi Market determines where your business receives general discovery. Where you&rsquo;ll be
+                    Your Findmi area determines where your business receives general discovery. Where you&rsquo;ll be
                     — events and pop-ups — can still happen anywhere.
                   </p>
                   <p className="mt-2 text-xs text-ink/40">Contact Findmi to update this.</p>
@@ -1729,7 +1729,7 @@ export default async function ManageBusinessPage({
 
             {additionalMarkets.length > 0 && (
               <div className={cardClass}>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Markets</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Findmi Areas</p>
                 <ul className="mt-1.5 flex flex-col gap-1">
                   {additionalMarkets.map((m) => (
                     <li key={m.id} className="text-sm text-ink">
@@ -1741,10 +1741,10 @@ export default async function ManageBusinessPage({
             )}
 
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Market Allowance</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area Allowance</p>
               <p className="mt-1.5 text-sm text-ink">
                 {marketLimit === null
-                  ? `${activeMarketCount} active market${activeMarketCount === 1 ? "" : "s"} / Unlimited`
+                  ? `${activeMarketCount} active area${activeMarketCount === 1 ? "" : "s"} / Unlimited`
                   : `${activeMarketCount} active / ${marketLimit} allowed`}{" "}
                 on your current plan
               </p>
