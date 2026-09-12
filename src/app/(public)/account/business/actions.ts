@@ -144,11 +144,22 @@ export async function uploadMemberBusinessImage(
 // distributed across the three functions.
 
 /** Profile tab — Free's allowlist (name/logo/cover/short description/
- * city/state/category — the same set Free Business Editing Pass 3
- * established); Pro additionally gets PROFILE_PRO_COLUMNS (full
- * description, country). Category itself isn't in this list — it's
- * handled separately below via the atomic set_business_category() RPC,
- * same as the original action. */
+ * city/state/category/description/website/Instagram — see Free Basic
+ * Profile Editing pass); Pro additionally gets PROFILE_PRO_COLUMNS
+ * (country only, at this point). Category itself isn't in this list —
+ * it's handled separately below via the atomic set_business_category()
+ * RPC, same as the original action.
+ *
+ * Free Basic Profile Editing pass — description/website_url/
+ * instagram_url moved here from Pro-only (description was in
+ * PROFILE_PRO_COLUMNS; website_url/instagram_url were in the entirely
+ * Pro-gated LINKS_COLUMNS below). These are genuine Free profile fields
+ * now (About/Website/Instagram are part of Free's public presence — see
+ * BusinessPublicView.tsx), not merely Free-visible-if-already-set: a
+ * Free owner can create AND later edit them through this SAME action,
+ * same as every other Free field. Email/phone/Facebook/TikTok/CTAs/
+ * Bulletin/inquiry config/Products/custom URL/Gallery are unaffected and
+ * remain exactly as Pro-gated as before. */
 const PROFILE_FREE_COLUMNS = [
   "name",
   "logo_url",
@@ -157,20 +168,25 @@ const PROFILE_FREE_COLUMNS = [
   "city",
   "state",
   "postal_code",
+  "description",
+  "website_url",
+  "instagram_url",
 ] as const;
-const PROFILE_PRO_COLUMNS = ["description", "country"] as const;
+const PROFILE_PRO_COLUMNS = ["country"] as const;
 const PROFILE_ALLOWED_COLUMNS = [...PROFILE_FREE_COLUMNS, ...PROFILE_PRO_COLUMNS] as const;
 
 /** Links & Contact tab — entirely Pro-only (gated via
  * requireProBusinessMember, not a per-column allowlist like Profile —
  * there's no Free variant of this tab at all). Every one of these is an
- * existing businesses column, unchanged from the original action's
- * PRO_ONLY_COLUMNS minus description/country (now in Profile above). */
+ * existing businesses column. Free Basic Profile Editing pass —
+ * website_url/instagram_url moved OUT of this list, into
+ * PROFILE_FREE_COLUMNS above (Profile tab is now their one home, for
+ * both tiers — no longer edited here at all, avoiding two save paths for
+ * the same columns). Facebook/TikTok stay here, unchanged/still
+ * Pro-only. */
 const LINKS_COLUMNS = [
   "email",
   "phone",
-  "website_url",
-  "instagram_url",
   "facebook_url",
   "tiktok_url",
   "bulletin_enabled",
@@ -182,10 +198,11 @@ const LINKS_COLUMNS = [
 
 /**
  * Profile tab save — name, logo, cover image, short description, city,
- * state, category regardless of plan tier; Pro additionally gets full
- * description and country. Same "payload built FROM allowedColumns, not
- * just gated by it" discipline as the original action, and the same
- * atomic set_business_category() category replace.
+ * state, category, full description, website, and Instagram regardless
+ * of plan tier (Free Basic Profile Editing pass); Pro additionally gets
+ * country. Same "payload built FROM allowedColumns, not just gated by
+ * it" discipline as the original action, and the same atomic
+ * set_business_category() category replace.
  *
  * Authorization is never trusted from the client — identical
  * authorize-then-elevate shape as every other action in this file:
@@ -230,10 +247,11 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
   const name = str(formData, "name");
   if (!name) redirect(appendQuery(redirectPath, { error: "Business name is required." }));
 
-  // Pro-only fields — read from the submitted form regardless of tier
-  // (harmless: only the columns actually named in allowedColumns below
-  // ever reach the real Supabase payload), same "extra fields are simply
-  // never looked at" pattern this action already documents.
+  // country is the one remaining Pro-only field — read from the
+  // submitted form regardless of tier (harmless: only the columns
+  // actually named in allowedColumns below ever reach the real Supabase
+  // payload), same "extra fields are simply never looked at" pattern
+  // this action already documents.
   const candidateValues: Record<(typeof PROFILE_ALLOWED_COLUMNS)[number], string | null> = {
     name,
     logo_url: str(formData, "logo_url"),
@@ -243,6 +261,8 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
     state: str(formData, "state"),
     postal_code: str(formData, "postal_code"),
     description: str(formData, "description"),
+    website_url: str(formData, "website_url"),
+    instagram_url: str(formData, "instagram_url"),
     country: str(formData, "country"),
   };
   const payload = Object.fromEntries(allowedColumns.map((column) => [column, candidateValues[column]]));
@@ -296,11 +316,13 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
 }
 
 /**
- * Links & Contact tab save — email, phone, website/Instagram/Facebook/
- * TikTok, and the announcement/bulletin fields. Entirely Pro-only (see
+ * Links & Contact tab save — email, phone, Facebook/TikTok, and the
+ * announcement/bulletin fields. Entirely Pro-only (see
  * requireProBusinessMember) — a Free business's tab is locked in the UI
  * (see the page), and this action independently re-enforces the same
- * gate server-side regardless of what the client renders.
+ * gate server-side regardless of what the client renders. Free Basic
+ * Profile Editing pass — website_url/instagram_url no longer live here;
+ * they're saved through updateBusinessProfile now (both tiers).
  */
 export async function updateBusinessLinks(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}?tab=links`;
@@ -309,8 +331,6 @@ export async function updateBusinessLinks(businessId: string, formData: FormData
   const payload: Record<(typeof LINKS_COLUMNS)[number], string | boolean | null> = {
     email: str(formData, "email"),
     phone: str(formData, "phone"),
-    website_url: str(formData, "website_url"),
-    instagram_url: str(formData, "instagram_url"),
     facebook_url: str(formData, "facebook_url"),
     tiktok_url: str(formData, "tiktok_url"),
     bulletin_enabled: bool(formData, "bulletin_enabled"),

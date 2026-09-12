@@ -26,9 +26,13 @@ export const dynamic = "force-dynamic";
 // Entitlement pass: Free's public profile shows its next 3, Pro shows
 // the full schedule) and products/services merchandising (previously
 // missing from this list entirely).
+// Free Basic Profile Editing pass — dropped "Full About section" and
+// narrowed "Website, contact & social links" to "Contact info, Facebook
+// & TikTok": About/description and Website are now genuine Free profile
+// fields (create + edit), so they're no longer Pro-exclusive claims.
+// Public email/phone and Facebook/TikTok remain Pro-only, unchanged.
 const CORE_BENEFITS = [
-  "Full About section",
-  "Website, contact & social links",
+  "Public contact info, Facebook & TikTok",
   "Enhanced photo gallery",
   "Products & services showcase",
   "Show your full upcoming schedule",

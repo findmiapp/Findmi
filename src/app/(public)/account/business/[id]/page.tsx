@@ -1083,31 +1083,60 @@ export default async function ManageBusinessPage({
                 </label>
               </div>
 
-              {/* Pro-only additions — PROFILE_PRO_COLUMNS in
-                  ../actions.ts allows these only when this business's
-                  server-resolved plan_tier is Pro. Free never renders
-                  this block, so a Free owner can't even see these
-                  inputs, let alone submit them — and even if they
-                  crafted a raw request with these field names, the
-                  action's own allowlist (resolved server-side, never
-                  from the submitted form) silently drops them. */}
+              {/* Free Basic Profile Editing pass — About/description,
+                  Website and Instagram are genuine Free profile fields
+                  now (PROFILE_FREE_COLUMNS in ../actions.ts authorizes
+                  the write for both tiers), so they're always rendered
+                  here regardless of plan, same presentation-follows-
+                  authorization pattern as city/state/ZIP above. Moved
+                  out of the Links & Contact tab (Website/Instagram used
+                  to live there, entirely Pro-gated) since Profile is now
+                  their one home for every tier. */}
+              <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">About / full description</span>
+                <textarea
+                  name="description"
+                  rows={5}
+                  defaultValue={business.description ?? ""}
+                  className={inputClass}
+                />
+              </label>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">Website</span>
+                  <input
+                    type="url"
+                    name="website_url"
+                    defaultValue={business.website_url ?? ""}
+                    placeholder="https://…"
+                    className={inputClass}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">Instagram</span>
+                  <input
+                    type="url"
+                    name="instagram_url"
+                    defaultValue={business.instagram_url ?? ""}
+                    placeholder="https://instagram.com/…"
+                    className={inputClass}
+                  />
+                </label>
+              </div>
+
+              {/* Pro-only addition — PROFILE_PRO_COLUMNS in ../actions.ts
+                  allows this only when this business's server-resolved
+                  plan_tier is Pro. Free never renders this field, so a
+                  Free owner can't even see it, let alone submit it — and
+                  even if they crafted a raw request with this field
+                  name, the action's own allowlist (resolved server-side,
+                  never from the submitted form) silently drops it. */}
               {pro && (
-                <>
-                  <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">About / full description</span>
-                    <textarea
-                      name="description"
-                      rows={5}
-                      defaultValue={business.description ?? ""}
-                      className={inputClass}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
-                    <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
-                  </label>
-                </>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
+                  <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
+                </label>
               )}
 
               <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
@@ -1481,16 +1510,11 @@ export default async function ManageBusinessPage({
             <div className={cardClass}>
               <form action={linksAction} className="flex flex-col gap-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Website</span>
-                  <input
-                    type="url"
-                    name="website_url"
-                    defaultValue={business.website_url ?? ""}
-                    placeholder="https://…"
-                    className={inputClass}
-                  />
-                </label>
+                {/* Free Basic Profile Editing pass — Website/Instagram
+                    moved to the Profile tab (both tiers edit them
+                    there now); this tab keeps only what's still
+                    entirely Pro-only: email/phone/Facebook/TikTok/
+                    Announcement. */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
@@ -1501,17 +1525,7 @@ export default async function ManageBusinessPage({
                     <input type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
                   </label>
                 </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Instagram</span>
-                    <input
-                      type="url"
-                      name="instagram_url"
-                      defaultValue={business.instagram_url ?? ""}
-                      placeholder="https://instagram.com/…"
-                      className={inputClass}
-                    />
-                  </label>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-ink">Facebook</span>
                     <input
@@ -1591,7 +1605,7 @@ export default async function ManageBusinessPage({
             <UpgradeLockedTab
               businessId={id}
               tabKey="links"
-              description="Add your website, socials, contact info, and a live announcement."
+              description="Add public contact info, Facebook/TikTok, and a live announcement."
               isAdminElevated={isAdminElevated}
             />
           ))}
