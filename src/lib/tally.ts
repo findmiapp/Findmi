@@ -4,6 +4,34 @@
  * hidden-field contract stays in one place.
  */
 
+/**
+ * Hard-block Tally Destinations pass — the single source of truth for "is
+ * this a Tally destination." No Findmi user may ever be navigated to
+ * Tally, regardless of what a future founder/CMS/Form Manager
+ * configuration sets a CTA or form URL to — this must hold architecturally,
+ * not merely because Tally isn't configured today. Every resolver that
+ * turns admin-configured input into a user-facing href/action
+ * (lib/forms.ts's toResolvedForm, lib/join-page.ts's site_sections cta_url
+ * resolution, FormAction's own render-time backstop) checks a candidate
+ * URL against this before letting it render/navigate.
+ *
+ * Matches tally.so itself and any subdomain (e.g. forms.tally.so) via a
+ * real hostname comparison — never a loose substring match, so
+ * "tallyapp.com" or "nottally.so" are correctly NOT blocked. Malformed/
+ * unparseable input is treated as "not Tally" (callers already separately
+ * validate well-formedness/absoluteness where that matters elsewhere) —
+ * this function's only job is the Tally-hostname check. Safe to import
+ * from client components (no server-only dependencies here).
+ */
+export function isTallyUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === "tally.so" || hostname.endsWith(".tally.so");
+  } catch {
+    return false;
+  }
+}
+
 const INQUIRY_BASE = process.env.NEXT_PUBLIC_TALLY_INQUIRY_URL ?? "";
 
 // .env.example ships NEXT_PUBLIC_TALLY_ONBOARDING_URL with this exact

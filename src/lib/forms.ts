@@ -11,7 +11,7 @@
  * stays server-side elsewhere (see /api/webhooks/tally).
  */
 import { getSupabase } from "./supabase";
-import { getOnboardingFormUrl } from "./tally";
+import { getOnboardingFormUrl, isTallyUrl } from "./tally";
 import type { FindmiForm, FormEntityType, FormPurpose } from "./types";
 
 export const FORM_PURPOSES: FormPurpose[] = [
@@ -116,8 +116,36 @@ function appendParams(base: string, params: Record<string, string>): string {
   return `${base}${base.includes("?") ? "&" : "?"}${qs}`;
 }
 
-function toResolvedForm(form: FindmiForm, params: Record<string, string>): ResolvedForm {
-  return { url: appendParams(form.form_url, params), displayMode: form.display_mode, formId: form.id };
+/** Hard-block Tally Destinations pass — the ONE place every Form Manager
+ * row (any purpose: booking, RSVP, vendor onboarding, etc.) is turned into
+ * a user-facing ResolvedForm, so it's also the one place that must refuse
+ * to do so for a Tally destination. Returns null (never a ResolvedForm
+ * whose url happens to be tally.so) when the row's form_url resolves to
+ * Tally — every caller below already treats null as "no usable form here,
+ * try the next fallback (or render nothing)," so this needs no other
+ * plumbing to fail closed. See lib/tally.ts's isTallyUrl for why this
+ * check has to live centrally rather than trusted to stay unconfigured. */
+function toResolvedForm(form: FindmiForm, params: Record<string, string>): ResolvedForm | null {
+  const url = appendParams(form.form_url, params);
+  if (isTallyUrl(url)) return null;
+  return { url, displayMode: form.display_mode, formId: form.id };
+}
+
+/** Tries each form lookup in priority order, same as the plain `??` chains
+ * this replaces, except it also keeps going when a higher-priority match
+ * resolves to a blocked (Tally) destination instead of dead-ending there —
+ * a blocked match is treated exactly like an absent one. */
+async function firstUsableForm(
+  lookups: Array<() => Promise<FindmiForm | null>>,
+  params: Record<string, string>
+): Promise<ResolvedForm | null> {
+  for (const lookup of lookups) {
+    const form = await lookup();
+    if (!form) continue;
+    const resolved = toResolvedForm(form, params);
+    if (resolved) return resolved;
+  }
+  return null;
 }
 
 /**
@@ -143,12 +171,15 @@ export async function resolveBusinessInquiryForm(
     ...(product ? { product_id: product.id, product_name: product.name } : {}),
   };
 
-  const form =
-    (await getAssignedForm(supabase, "business", business.id, "booking")) ??
-    (await getAssignedForm(supabase, "business", business.id, "business_inquiry")) ??
-    (await getDefaultForm(supabase, "booking")) ??
-    (await getDefaultForm(supabase, "business_inquiry"));
-  return form ? toResolvedForm(form, params) : null;
+  return firstUsableForm(
+    [
+      () => getAssignedForm(supabase, "business", business.id, "booking"),
+      () => getAssignedForm(supabase, "business", business.id, "business_inquiry"),
+      () => getDefaultForm(supabase, "booking"),
+      () => getDefaultForm(supabase, "business_inquiry"),
+    ],
+    params
+  );
 }
 
 /**
@@ -173,12 +204,15 @@ export async function resolveProductInquiryForm(
     source: "findmi_product",
   };
 
-  const form =
-    (await getAssignedForm(supabase, "product", product.id, "product_inquiry")) ??
-    (await getAssignedForm(supabase, "business", business.id, "business_inquiry")) ??
-    (await getDefaultForm(supabase, "product_inquiry")) ??
-    (await getDefaultForm(supabase, "business_inquiry"));
-  return form ? toResolvedForm(form, params) : null;
+  return firstUsableForm(
+    [
+      () => getAssignedForm(supabase, "product", product.id, "product_inquiry"),
+      () => getAssignedForm(supabase, "business", business.id, "business_inquiry"),
+      () => getDefaultForm(supabase, "product_inquiry"),
+      () => getDefaultForm(supabase, "business_inquiry"),
+    ],
+    params
+  );
 }
 
 /**
@@ -200,14 +234,23 @@ export async function resolveEventActionForm(
 
   if (supabase) {
     const assigned = await getAssignedForm(supabase, "event", event.id, purpose);
-    if (assigned) return toResolvedForm(assigned, params);
+    // toResolvedForm returns null for a blocked (Tally) destination —
+    // treated the same as no assignment, falling through below rather
+    // than dead-ending on it.
+    if (assigned) {
+      const resolved = toResolvedForm(assigned, params);
+      if (resolved) return resolved;
+    }
   }
 
   if (directUrl) return { url: directUrl, displayMode: "external", formId: null };
 
   if (supabase) {
     const def = await getDefaultForm(supabase, purpose);
-    if (def) return toResolvedForm(def, params);
+    if (def) {
+      const resolved = toResolvedForm(def, params);
+      if (resolved) return resolved;
+    }
   }
 
   return null;
@@ -291,6 +334,13 @@ export async function resolveOnboardingForm(
           }
         : {};
       const resolved = toResolvedForm(form, params);
+      if (!resolved) {
+        console.error(
+          "[resolveOnboardingForm] Form Manager vendor_onboarding row resolved to a blocked (Tally) destination — refusing to render it",
+          { context, formId: form.id }
+        );
+        return null;
+      }
       const ok = isAbsoluteHttpUrl(resolved.url);
       console.log("[resolveOnboardingForm]", {
         context,

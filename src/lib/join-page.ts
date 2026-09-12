@@ -13,6 +13,7 @@
 // hardcoded defaults below — the current live copy. /join never renders
 // blank just because this table is empty or unreachable.
 import { getSupabase } from "./supabase";
+import { isTallyUrl } from "./tally";
 import type { SiteSection } from "./types";
 
 const PAGE_KEY = "join";
@@ -183,10 +184,16 @@ export function resolveJoinGlobal(overrides: Map<string, SiteSection>): Resolved
   const row = overrides.get("global");
   const cfg = (row?.config_json ?? {}) as Record<string, unknown>;
   const supportingText = typeof cfg.supportingText === "string" && cfg.supportingText.trim() ? cfg.supportingText : null;
+  // Hard-block Tally Destinations pass — a founder-configured cta_url
+  // override still wins over the default, but never when it resolves to
+  // Tally: that's ignored exactly like an unset override, falling back to
+  // JOIN_GLOBAL_DEFAULTS.ctaUrl (see lib/tally.ts's isTallyUrl).
+  const rawCtaUrl = row?.cta_url;
+  const ctaUrl = rawCtaUrl && !isTallyUrl(rawCtaUrl) ? rawCtaUrl : JOIN_GLOBAL_DEFAULTS.ctaUrl;
   return {
     message: row?.body ?? JOIN_GLOBAL_DEFAULTS.message,
     supportingText,
-    ctaUrl: row?.cta_url ?? JOIN_GLOBAL_DEFAULTS.ctaUrl,
+    ctaUrl,
   };
 }
 
@@ -217,6 +224,12 @@ export function resolveJoinCard(
     ? (cfg.features.filter((f): f is string => typeof f === "string" && f.trim().length > 0))
     : defaults.features;
 
+  // Hard-block Tally Destinations pass — same rule as resolveJoinGlobal:
+  // a Tally-resolving per-card override is ignored, falling back to
+  // globalCtaUrl (itself already guaranteed non-Tally by resolveJoinGlobal).
+  const rawCardCtaUrl = row?.cta_url;
+  const ctaUrl = rawCardCtaUrl && !isTallyUrl(rawCardCtaUrl) ? rawCardCtaUrl : globalCtaUrl;
+
   return {
     key,
     visible: row?.is_visible ?? true,
@@ -227,7 +240,7 @@ export function resolveJoinCard(
     tagline: row?.body ?? defaults.tagline,
     features: features.length > 0 ? features : defaults.features,
     ctaLabel: row?.cta_label ?? defaults.ctaLabel,
-    ctaUrl: row?.cta_url ?? globalCtaUrl,
+    ctaUrl,
     emphasis: typeof cfg.emphasis === "boolean" ? cfg.emphasis : defaults.emphasis,
   };
 }

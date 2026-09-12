@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { isTallyUrl } from "@/lib/tally";
 
 /**
  * Confirmed root cause of the /join/eyJ... 404 (see incident trace): the
@@ -59,6 +60,14 @@ export default function FormAction({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+
+  // Hard-block Tally Destinations pass — render-time backstop. Every
+  // resolver upstream (lib/forms.ts) already refuses to hand this
+  // component a Tally href, but this is the one place every Form-Manager/
+  // event/business/product action actually renders a clickable
+  // link/button, so it double-checks rather than trusting every caller to
+  // remember. Renders nothing rather than a dead or misdirected action.
+  if (isTallyUrl(href)) return null;
 
   if (displayMode === "external") {
     return (
