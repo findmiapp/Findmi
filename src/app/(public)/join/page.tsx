@@ -144,6 +144,18 @@ export default async function JoinPage({
           </h1>
           <p className="mt-3 text-base text-ink/60">{hero.body}</p>
 
+          {/* Final Join Conversion Story pass — a quick recognition
+              moment, not a marketing essay: names the actual habit
+              (posting schedules to Instagram/Stories/Facebook every week)
+              before the Pro/Free decision becomes the dominant content.
+              Fixed page copy, same as the "See Findmi in action" eyebrow
+              below — this isn't a distinct CMS concept, just one more
+              short line in the same hero block. */}
+          <p className="mt-5 text-sm font-semibold text-ink">Still posting where you&rsquo;ll be every week?</p>
+          <p className="mt-1 text-sm text-ink/60">
+            Give customers one link they can keep. Update your schedule without changing the link.
+          </p>
+
           <ChoosePathTiles proCard={proCard} free={free} />
 
           {/* Single quiet claim action — Free already has its own tile
@@ -168,13 +180,13 @@ export default async function JoinPage({
           -> pt-7/sm:pt-8) so this reads as evidence right under the new
           hero decision module rather than a separate, unrelated section. */}
       <div className="mx-auto max-w-4xl px-6 pt-7 sm:pt-8">
-        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">See Findmi in action</p>
+        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">One link. Wherever you go.</p>
         <div className="mx-auto mt-3 max-w-xs">
           {proofBusiness ? (
             <BusinessLogoCard business={proofBusiness} ctaLabel="View live profile" nextAppearance={proofAppearance} />
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/10 bg-mist/40 px-5 py-4">
-              <p className="text-sm font-semibold text-ink/70">See Findmi in action.</p>
+              <p className="text-sm font-semibold text-ink/70">One link. Wherever you go.</p>
               <a
                 href={`/business/${PROOF_BUSINESS_SLUG}`}
                 className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
@@ -221,6 +233,23 @@ export default async function JoinPage({
         </div>
       )}
 
+      {/* NETWORK / DISCOVERY — Final Join Conversion Story pass. Fixed
+          page copy (same treatment as the hero's "still posting" line
+          above), placed right after the concrete "What You Get"
+          demonstration: the page itself is the opening promise,
+          discovery across Findmi is the additional benefit that comes
+          after it, not the lead. Deliberately makes no traffic/audience/
+          lead-volume/ranking claim. */}
+      <div className="mx-auto max-w-4xl px-6 pb-16 text-center">
+        <h2 className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">
+          Your page is only the beginning.
+        </h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm text-ink/60">
+          Findmi connects your business to the markets, events, locations and areas where you show up, giving
+          customers more ways to find you.
+        </p>
+      </div>
+
       {/* REGIONAL / NATIONAL — a secondary sales pathway, compressed to
           read quickly rather than competing with Pro for vertical space. */}
       {regional.visible && (
@@ -250,27 +279,31 @@ export default async function JoinPage({
  * plain muted text, so neither reads as a second/third primary button
  * next to the turquoise Pro CTA. Destinations are the exact same
  * freeCtaHref/claim.ctaUrl every other CTA on this page already uses. */
-/** /Join Hero Composition pass — forces a deliberate two-line break on
- * mobile instead of letting the browser wrap wherever it likes, which
- * could otherwise strand a short trailing word alone on its own line.
- * Splits on the current default heading's own natural sentence break
- * ("One Findmi page." / "Everywhere customers can find you." — updated by
- * the Join Conversion Copy Cleanup pass) into two `block sm:inline`
- * spans — block stacks them on mobile, sm:inline lets the heading flow as
- * one line again at larger widths. This is presentation-only: the
- * CMS-editable string itself (hero.heading) is untouched. If a founder
- * ever edits the headline to something that doesn't contain that
- * substring, this quietly falls back to plain, unsplit text — no crash,
- * no assumption enforced on future copy. */
+/** Final Join Conversion Story pass — forces a deliberate two-line break
+ * on mobile (rather than letting the browser wrap wherever it likes) AND
+ * accents the second line in the existing Findmi teal, so "Make it easy
+ * to find." reads as the actual promise, not just a continuation of the
+ * first line. Splits on the current default heading's own natural
+ * sentence break ("Your business moves." / "Make it easy to find.") into
+ * two `block sm:inline` spans — block stacks them on mobile, sm:inline
+ * lets the heading flow as one line again at larger widths where there's
+ * room; the accent color applies at every width, not just mobile. This is
+ * presentation-only: the CMS-editable string itself (hero.heading) is
+ * untouched, and no new color is introduced — text-findmi-700 is the same
+ * accent already used for eyebrows/links elsewhere on this page. If a
+ * founder ever edits the headline to something that doesn't contain that
+ * substring, this quietly falls back to plain, unsplit, unaccented text —
+ * no crash, no assumption enforced on future copy. */
 function HeroHeadline({ heading }: { heading: string }) {
-  const breakAt = " Everywhere";
+  const breakAt = " Make";
   const idx = heading.indexOf(breakAt);
   if (idx === -1) return <>{heading}</>;
   const before = heading.slice(0, idx);
-  const after = heading.slice(idx + 1); // drop the leading space; keep "on Findmi…"
+  const after = heading.slice(idx + 1); // drop the leading space; keep "Make it easy to find."
   return (
     <>
-      <span className="block sm:inline">{before}</span> <span className="block sm:inline">{after}</span>
+      <span className="block sm:inline">{before}</span>{" "}
+      <span className="block text-findmi-700 sm:inline">{after}</span>
     </>
   );
 }
@@ -326,7 +359,7 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
             <span>required</span>
           </span>
         </div>
-        <p className="mt-1 min-h-8 text-xs text-ink/60">Your profile + next 3 appearances</p>
+        <p className="mt-1 min-h-8 text-xs text-ink/60">Your business page + next 3 appearances</p>
         <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
           Explore Free <span aria-hidden>→</span>
         </p>
@@ -661,7 +694,9 @@ function InviteDisclosure({ section }: { section: ResolvedJoinInviteSection }) {
 
 /** Final Conversion Section — the page always ends on a conversion
  * action. Reuses the exact same CTA destinations as the Hero, with the
- * same quiet secondary-action hierarchy. */
+ * same quiet secondary-action hierarchy. Final Join Conversion Story
+ * pass — heading/body restated around the concrete page (name/offer/
+ * schedule), matching the hero, instead of generic "discovery" framing. */
 function FinalCta({
   proCtaHref,
   freeCtaHref,
@@ -675,11 +710,9 @@ function FinalCta({
     <div className="border-t border-black/5 bg-mist/30">
       <div className="mx-auto max-w-2xl px-6 py-16 text-center">
         <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
-          Ready to get discovered?
+          Give customers one place to find you.
         </h2>
-        <p className="mt-2 text-sm text-ink/60">
-          Build your Findmi presence and make it easier for customers to find you wherever you show up.
-        </p>
+        <p className="mt-2 text-sm text-ink/60">Your business, what you offer and everywhere you&rsquo;ll be next.</p>
 
         <div className="mt-6 flex flex-col items-center gap-4">
           <a

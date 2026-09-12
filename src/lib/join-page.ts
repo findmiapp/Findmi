@@ -69,15 +69,18 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // Join Page Conversion Rebuild pass — drops "Connect with Findmi
     // events" (Events are open to Free businesses too — this must never
     // read as Pro-exclusive) and "Bookings" (no complete booking system
-    // exists to claim). /Join Final Visual Conversion pass — compressed
-    // from 7 to 5 lines. Join Conversion Copy Cleanup pass — restated as
+    // exists to claim). Join Conversion Copy Cleanup pass — restated as
     // the actual current Pro-only capabilities (About/website/Instagram
     // moved to Free, so "Complete business profile" no longer belonged
-    // here as a Pro claim).
+    // here as a Pro claim). Final Join Conversion Story pass — split
+    // "Photos, products & business updates" back into "Photos + products"
+    // (matches the Findmi Story pass's benefit wording) plus its own
+    // "Business updates" line.
     features: [
       "Full Findmi Here schedule",
-      "Photos, products & business updates",
+      "Photos + products",
       "Contact info + customer inquiries",
+      "Business updates",
       "Custom Findmi URL",
       "Expanded discovery across Findmi",
     ],
@@ -132,14 +135,14 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
   },
 };
 
-// Join Conversion Copy Cleanup pass — replaced the generic "Get discovered
-// on Findmi." with a clearer statement of what a customer actually sees.
-// The mobile line-wrap is handled purely in presentation — see
-// join/page.tsx's HeroHeadline, whose split point moved with this copy —
-// not by editing this string.
+// Final Join Conversion Story pass — leads with the actual problem
+// (a moving business, hard to keep track of) rather than "discovery."
+// The mobile line-wrap AND the accent color on the second line are both
+// handled purely in presentation — see join/page.tsx's HeroHeadline,
+// whose split point moved with this copy — not by editing this string.
 export const JOIN_HERO_DEFAULTS = {
-  heading: "One Findmi page. Everywhere customers can find you.",
-  body: "Show your business, what you offer and where you'll be next, all in one place.",
+  heading: "Your business moves. Make it easy to find.",
+  body: "One page for your business, what you offer and everywhere you'll be next.",
 };
 
 export const JOIN_GLOBAL_DEFAULTS = {
@@ -367,12 +370,13 @@ export const JOIN_PRO_EXTRA_DEFAULTS = {
   // shown right under the price. Added rather than repurposing an existing
   // field so `noRenewalNote` below keeps its own literal, unambiguous
   // meaning ("No automatic renewal.") in its existing spot further down.
-  // Join Conversion Copy Cleanup pass — restated in plain, direct terms.
-  descriptionLine: "Give customers one place to see your business, what you offer and everywhere you'll be next.",
+  // Final Join Conversion Story pass — restated around the concrete
+  // things a customer finds on the page.
+  descriptionLine: "Your full schedule, products, photos and everything customers need to find and connect with your business.",
   noRenewalNote: "No automatic renewal.",
   highlightHeading: "Findmi Here",
   highlightSubheading: "Show customers where you’ll be next.",
-  highlightBody: "Your full upcoming schedule lives right on your Findmi profile.",
+  highlightBody: "Keep your full upcoming schedule on one page.",
   // Display copy only — see this pass's own report / the admin field's own
   // hint. The actual charged amount always comes from
   // BUSINESS_PRO_INTRO_PRICE_CENTS (businessProCheckout.ts), never from
