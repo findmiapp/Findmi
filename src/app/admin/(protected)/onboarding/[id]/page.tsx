@@ -10,7 +10,7 @@ import {
   onboardingStatusLabel,
   publicationStatusLabel,
 } from "@/lib/admin/membership-queries";
-import { resolveOnboardingForm } from "@/lib/forms";
+import { getPublicOrigin } from "@/lib/site-url";
 import MembershipEditForm from "./MembershipEditForm";
 import { approveMembership, markComped, pauseMembership, rejectMembership, updateMembership } from "../actions";
 
@@ -36,16 +36,23 @@ export default async function MembershipDetailPage({
     getBusinessOptionByIdForMembership(membership.existing_business_id),
   ]);
 
-  const inviteForm =
-    membership.billing_status === "comped"
-      ? await resolveOnboardingForm({
-          id: membership.id,
-          source: "invited",
-          planSlug: membership.plan?.slug,
-          existingBusinessId: membership.existing_business_id,
-        })
-      : null;
-  const inviteUrl = inviteForm?.url ?? null;
+  // Remove Public Tally Links pass — this used to resolve an external
+  // (Tally) intake form via resolveOnboardingForm(). Comped invites now
+  // point the vendor straight at Findmi's own native business creation
+  // flow instead: they sign in, land on /account/business/new with their
+  // intended name pre-filled, and submit there directly — no Stripe
+  // (no ?plan=pro), since the "comped" grant is recorded on this
+  // membership and applied out-of-band by the founder (see markComped /
+  // "Linked business" below), not through the create-business form.
+  // getPublicOrigin() is the same absolute-URL helper the Pro Invite
+  // detail page already uses for its own shareable link.
+  const inviteUrl = membership.billing_status === "comped"
+    ? `${getPublicOrigin()}/account/business/new${
+        membership.intended_business_name
+          ? `?name=${encodeURIComponent(membership.intended_business_name)}`
+          : ""
+      }`
+    : null;
 
   const updateAction = updateMembership.bind(null, id);
   const approveAction = approveMembership.bind(null, id);

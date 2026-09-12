@@ -19,8 +19,13 @@ const PAGE_KEY = "join";
 
 /** The single fallback CTA URL every card uses when it has no override
  * of its own. Defined once here — nowhere else in the app should
- * hardcode the Tally URL. */
-export const JOIN_FORM_URL_DEFAULT = "https://tally.so/r/0QR7LN";
+ * hardcode a form URL. Native mailto (same hello@findmi.app convention
+ * as terms/privacy) rather than an external form: this card ("Talk to
+ * Findmi Sales") intentionally has no self-serve destination, so a
+ * founder-configured cta_url override (site_sections "join"/"global" or
+ * "card_multi_region") remains the way to point it anywhere else,
+ * including back at a native route like /account/business/new. */
+export const JOIN_FORM_URL_DEFAULT = "mailto:hello@findmi.app";
 
 export const JOIN_CARD_KEYS = ["card_discovery_pro", "card_events_markets", "card_multi_region"] as const;
 export type JoinCardKey = (typeof JOIN_CARD_KEYS)[number];

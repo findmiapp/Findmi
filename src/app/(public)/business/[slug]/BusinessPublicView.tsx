@@ -246,8 +246,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // CTA (inquiry_cta_url, any external URL — no Tally form required) ->
   // business-specific booking/inquiry form -> global default form ->
   // business email fallback -> graceful unavailable state (see
-  // lib/forms.ts for resolveBusinessInquiryForm's existing DB/env
-  // precedence, untouched). Never fabricated; a business with none of
+  // lib/forms.ts for resolveBusinessInquiryForm's Form Manager
+  // precedence — Remove Public Tally Links pass dropped its old env-var
+  // Tally fallback, so it now resolves to null rather than an external
+  // form when nothing is configured). Never fabricated; a business with none of
   // these still correctly shows no CTA. The label is independently
   // overridable (inquiry_cta_label) regardless of which URL tier resolves,
   // defaulting to "Inquire" exactly as before when unset.

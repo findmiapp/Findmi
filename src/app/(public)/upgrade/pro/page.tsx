@@ -41,17 +41,17 @@ const primaryButtonClass =
 /** Pro Upgrade — Internal Checkout Handoff Foundation pass. The one
  * canonical internal surface for an EXISTING claimed business's owner/
  * manager to start a Pro upgrade — every owner-facing "Upgrade to Pro" CTA
- * that already knows a specific, owned business_id routes here instead of
- * straight to the external Tally form (see account/page.tsx and
- * account/business/[id]/page.tsx).
+ * that already knows a specific, owned business_id routes here (see
+ * account/page.tsx and account/business/[id]/page.tsx).
  *
  * This page only IDENTIFIES the upgrade (who, which business, confirms
- * Free) and hands off to the existing external Tally form — it does not
- * process payment and does not touch businesses.plan_tier. See this
- * pass's report for exactly which Tally hidden fields would need to be
- * configured before a business_id could safely be appended to that
- * handoff link; none are appended today because none are demonstrably
- * configured (see the CTA below).
+ * Free) and hands off to native Stripe checkout via
+ * startBusinessProCheckout below — it does not process payment itself and
+ * does not touch businesses.plan_tier directly (that happens server-side,
+ * post-payment, in the Stripe webhook — see lib/commerce/*). Remove
+ * Public Tally Links pass — this JSDoc used to describe an external Tally
+ * handoff; that was already stale by the time of that pass (the CTA below
+ * was already native Stripe) and is corrected here.
  *
  * Deliberately NOT reachable for a still-pending claimant: this page
  * requires a REAL business_members row (requireBusinessMember), the same

@@ -11,7 +11,7 @@
  * stays server-side elsewhere (see /api/webhooks/tally).
  */
 import { getSupabase } from "./supabase";
-import { getInquiryFormUrl, getOnboardingFormUrl } from "./tally";
+import { getOnboardingFormUrl } from "./tally";
 import type { FindmiForm, FormEntityType, FormPurpose } from "./types";
 
 export const FORM_PURPOSES: FormPurpose[] = [
@@ -123,14 +123,18 @@ function toResolvedForm(form: FindmiForm, params: Record<string, string>): Resol
 /**
  * Business "Book / Inquire" — a business can point its own button at
  * either a booking-specific or a general-inquiry form (both purposes are
- * checked at the business tier, then again as global defaults) before
- * falling back to the legacy NEXT_PUBLIC_TALLY_INQUIRY_URL env var.
+ * checked at the business tier, then again as global defaults). Remove
+ * Public Tally Links pass — this no longer falls back to the legacy
+ * NEXT_PUBLIC_TALLY_INQUIRY_URL env var; with no Form Manager form
+ * configured, the caller gets null and (per every existing caller's own
+ * pattern) simply renders no CTA rather than a fabricated/external link.
  */
 export async function resolveBusinessInquiryForm(
   business: { id: string; name: string; slug: string },
   product?: { id: string; name: string }
 ): Promise<ResolvedForm | null> {
   const supabase = getSupabase();
+  if (!supabase) return null;
   const params = {
     business_id: business.id,
     business_name: business.name,
@@ -139,30 +143,27 @@ export async function resolveBusinessInquiryForm(
     ...(product ? { product_id: product.id, product_name: product.name } : {}),
   };
 
-  if (supabase) {
-    const form =
-      (await getAssignedForm(supabase, "business", business.id, "booking")) ??
-      (await getAssignedForm(supabase, "business", business.id, "business_inquiry")) ??
-      (await getDefaultForm(supabase, "booking")) ??
-      (await getDefaultForm(supabase, "business_inquiry"));
-    if (form) return toResolvedForm(form, params);
-  }
-
-  const envUrl = getInquiryFormUrl(business, product);
-  return envUrl ? { url: envUrl, displayMode: "external", formId: null } : null;
+  const form =
+    (await getAssignedForm(supabase, "business", business.id, "booking")) ??
+    (await getAssignedForm(supabase, "business", business.id, "business_inquiry")) ??
+    (await getDefaultForm(supabase, "booking")) ??
+    (await getDefaultForm(supabase, "business_inquiry"));
+  return form ? toResolvedForm(form, params) : null;
 }
 
 /**
  * Product inquiry (non-purchasable products) — product-specific form,
  * then the business's own inquiry form, then either purpose's global
- * default, then the legacy env fallback. Purchasable products never call
- * this — they use Add to Cart.
+ * default. Purchasable products never call this — they use Add to Cart.
+ * Remove Public Tally Links pass — no longer falls back to the legacy
+ * env URL; see resolveBusinessInquiryForm's comment above.
  */
 export async function resolveProductInquiryForm(
   product: { id: string; name: string },
   business: { id: string; name: string; slug: string }
 ): Promise<ResolvedForm | null> {
   const supabase = getSupabase();
+  if (!supabase) return null;
   const params = {
     business_id: business.id,
     business_name: business.name,
@@ -172,17 +173,12 @@ export async function resolveProductInquiryForm(
     source: "findmi_product",
   };
 
-  if (supabase) {
-    const form =
-      (await getAssignedForm(supabase, "product", product.id, "product_inquiry")) ??
-      (await getAssignedForm(supabase, "business", business.id, "business_inquiry")) ??
-      (await getDefaultForm(supabase, "product_inquiry")) ??
-      (await getDefaultForm(supabase, "business_inquiry"));
-    if (form) return toResolvedForm(form, params);
-  }
-
-  const envUrl = getInquiryFormUrl(business, product);
-  return envUrl ? { url: envUrl, displayMode: "external", formId: null } : null;
+  const form =
+    (await getAssignedForm(supabase, "product", product.id, "product_inquiry")) ??
+    (await getAssignedForm(supabase, "business", business.id, "business_inquiry")) ??
+    (await getDefaultForm(supabase, "product_inquiry")) ??
+    (await getDefaultForm(supabase, "business_inquiry"));
+  return form ? toResolvedForm(form, params) : null;
 }
 
 /**

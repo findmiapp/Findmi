@@ -209,11 +209,11 @@ export default function ClaimButton({
         {/* Post-claim Pro offer — priority review only, never a guarantee
             of approval (see below), and never a prerequisite to the claim
             itself (Universal Free Claim UX pass — claiming is free for
-            every entity type). Not a payment integration: a plain link
-            out to the existing Tally Pro-upgrade form. Business and
-            location claims only — kept scoped to the entity types this
-            upsell already existed for; extending it to event claims too
-            is unrelated cleanup outside this pass's own scope. */}
+            every entity type). Not a payment integration here: a plain
+            native link to /join (see below) — no external form. Business
+            and location claims only — kept scoped to the entity types
+            this upsell already existed for; extending it to event claims
+            too is unrelated cleanup outside this pass's own scope. */}
         {type !== "event" && (
           <div className="mt-3 rounded-xl border border-findmi/20 bg-findmi-50 p-3">
             <p className="text-xs font-bold text-ink">Need access sooner?</p>
