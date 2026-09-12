@@ -193,7 +193,7 @@ export default async function JoinPage({
         // header (h-14, plus the admin toolbar's own top-7 offset when
         // present) so the jump doesn't land the card flush under it.
         <div id="pro" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-10 sm:px-6 sm:pt-12">
-          <ProCard card={proCard} extra={proExtra} />
+          <ProCard card={proCard} extra={proExtra} ctaHref={proCtaHref} />
         </div>
       )}
 
@@ -423,9 +423,21 @@ function TagGlyph({ className = "" }: { className?: string }) {
 
 /** Findmi Pro's own dominant presentation. Presentation only: the actual
  * Findmi Here feature/code and Pro entitlement/checkout are completely
- * untouched. */
-function ProCard({ card, extra }: { card: ResolvedJoinCard; extra: ResolvedJoinProExtra }) {
-  const { title, price, priceSuffix, features, ctaLabel, ctaUrl } = card;
+ * untouched.
+ *
+ * Fix Pro join CTA routing pass — this button now always uses the native
+ * `ctaHref` prop (the same PRO_NATIVE_CTA_URL-derived `proCtaHref` the
+ * page's own FinalCta button already used), never `card.ctaUrl`. This is
+ * a real product action (start native Pro business creation -> Stripe),
+ * not a sales-contact action — it must never inherit the founder's
+ * generic/global sales CTA override (see resolveJoinGlobal/
+ * resolveJoinCard in lib/join-page.ts, which the Regional/National sales
+ * card still correctly uses). The admin Join editor already hides the CTA
+ * URL field for this card (hideCtaUrl) for exactly this reason; only this
+ * component's own rendering had been left pointed at the resolved-but-
+ * ignorable card.ctaUrl instead. */
+function ProCard({ card, extra, ctaHref }: { card: ResolvedJoinCard; extra: ResolvedJoinProExtra; ctaHref: string }) {
+  const { title, price, priceSuffix, features, ctaLabel } = card;
   return (
     <div className="flex flex-col rounded-3xl border border-findmi/40 bg-white p-6 shadow-[0_4px_24px_rgba(20,176,188,0.14)] sm:p-8">
       <h3 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h3>
@@ -457,7 +469,7 @@ function ProCard({ card, extra }: { card: ResolvedJoinCard; extra: ResolvedJoinP
       </ul>
 
       <a
-        href={ctaUrl}
+        href={ctaHref}
         className="mt-6 flex h-12 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
         {ctaLabel}
