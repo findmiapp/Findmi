@@ -58,7 +58,7 @@ export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Join Findmi",
-  description: "Get discovered on Findmi — tell us about your business or event and we'll be in touch.",
+  description: "Show customers who you are, what you offer and where you'll be next, all in one Findmi page.",
 };
 
 // The one core Free/Pro business-acquisition path — never Tally. Pro
@@ -251,18 +251,19 @@ export default async function JoinPage({
  * next to the turquoise Pro CTA. Destinations are the exact same
  * freeCtaHref/claim.ctaUrl every other CTA on this page already uses. */
 /** /Join Hero Composition pass — forces a deliberate two-line break on
- * mobile ("Get discovered" / "on Findmi.") instead of letting the browser
- * wrap wherever it likes, which could otherwise strand "Findmi." alone on
- * its own line. Splits on " on Findmi" (the current default heading's own
- * natural break point) into two `block sm:inline` spans — block stacks
- * them on mobile, sm:inline lets the heading flow as one line again at
- * larger widths, exactly as before this pass. This is presentation-only:
- * the CMS-editable string itself (hero.heading) is untouched. If a
- * founder ever edits the headline to something that doesn't contain that
+ * mobile instead of letting the browser wrap wherever it likes, which
+ * could otherwise strand a short trailing word alone on its own line.
+ * Splits on the current default heading's own natural sentence break
+ * ("One Findmi page." / "Everywhere customers can find you." — updated by
+ * the Join Conversion Copy Cleanup pass) into two `block sm:inline`
+ * spans — block stacks them on mobile, sm:inline lets the heading flow as
+ * one line again at larger widths. This is presentation-only: the
+ * CMS-editable string itself (hero.heading) is untouched. If a founder
+ * ever edits the headline to something that doesn't contain that
  * substring, this quietly falls back to plain, unsplit text — no crash,
  * no assumption enforced on future copy. */
 function HeroHeadline({ heading }: { heading: string }) {
-  const breakAt = " on Findmi";
+  const breakAt = " Everywhere";
   const idx = heading.indexOf(breakAt);
   if (idx === -1) return <>{heading}</>;
   const before = heading.slice(0, idx);
@@ -311,7 +312,7 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
         <div className="mt-1 flex min-h-7 items-center">
           <p className="font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
         </div>
-        <p className="mt-1 min-h-8 text-xs text-ink/60">Complete profile + full Findmi Here schedule</p>
+        <p className="mt-1 min-h-8 text-xs text-ink/60">Your complete Findmi page + full schedule</p>
         <p className="mt-2 flex items-center gap-1 text-xs font-bold text-findmi-700">
           Explore Pro <span aria-hidden>→</span>
         </p>
@@ -325,7 +326,7 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
             <span>required</span>
           </span>
         </div>
-        <p className="mt-1 min-h-8 text-xs text-ink/60">Basic profile + your next appearance</p>
+        <p className="mt-1 min-h-8 text-xs text-ink/60">Your profile + next 3 appearances</p>
         <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
           Explore Free <span aria-hidden>→</span>
         </p>
@@ -506,7 +507,7 @@ function FreeSection({ card, ctaHref }: { card: ResolvedJoinFreeCard; ctaHref: s
         {ctaLabel}
       </Link>
       <p className="mt-2 text-center text-xs text-ink/45">
-        Upgrade to Pro anytime for your complete profile, full schedule, products and more.
+        Need your full schedule, products, custom Findmi URL and more? Upgrade to Pro anytime.
       </p>
     </div>
   );
@@ -551,10 +552,7 @@ function WhatYouGetGrid({
             cta="View Profile"
           />
         ) : (
-          <GenericTile
-            icon={<TagGlyph className="h-5 w-5 text-findmi-700" />}
-            detail="Your story, photos, categories and contact information in one place."
-          />
+          <GenericTile icon={<TagGlyph className="h-5 w-5 text-findmi-700" />} detail="Who you are." />
         )}
       </DemoTile>
 
@@ -564,10 +562,7 @@ function WhatYouGetGrid({
             <ProductCard product={product} />
           </div>
         ) : (
-          <GenericTile
-            icon={<TagGlyph className="h-5 w-5 text-findmi-700" />}
-            detail="A catalog customers can browse — and buy where enabled."
-          />
+          <GenericTile icon={<TagGlyph className="h-5 w-5 text-findmi-700" />} detail="What you offer." />
         )}
       </DemoTile>
 
@@ -581,17 +576,14 @@ function WhatYouGetGrid({
             </p>
           </div>
         ) : (
-          <GenericTile
-            icon={<CalendarGlyph className="h-5 w-5 text-findmi-700" />}
-            detail="Your upcoming appearances so customers always know where you'll be next."
-          />
+          <GenericTile icon={<CalendarGlyph className="h-5 w-5 text-findmi-700" />} detail="Where you'll be next." />
         )}
       </DemoTile>
 
       <DemoTile label="Events">
         <GenericTile
           icon={<EventsGlyph className="h-5 w-5 text-findmi-700" />}
-          detail="Connect your business to the markets, pop-ups and events where you're participating."
+          detail="The markets, pop-ups and events you're part of."
         />
       </DemoTile>
     </div>

@@ -223,18 +223,23 @@ export default async function AddBusinessPage({
               the Pro Positioning pass to the same hierarchy as /join:
               Pro first/dominant with FindMi Here spotlighted, Free
               smaller/quieter directly below as a genuinely selectable
-              "basic index" option. Radio values/names and the default
-              selection logic are UNCHANGED — Free stays defaultChecked
-              unless ?plan=pro was passed in (never auto-selecting a
-              paid plan just because it's now visually first) — so
-              createMemberBusiness (untouched) submits identically to
-              before. Every bullet below is a CURRENT entitlement (see
-              account/business/actions.ts's FREE_ALLOWED_COLUMNS/
-              PRO_ONLY_COLUMNS and business/[slug]/page.tsx's own `pro &&`
-              gates) — nothing promised here that doesn't already exist.
-              Choosing Pro doesn't create the business as Pro directly:
-              it's still created Free + pending_review first (same RPC),
-              then this action immediately continues into native Stripe
+              option. Join Conversion Copy Cleanup pass — dropped the
+              "basic index"/"basic listing" framing and the strike-through
+              denial line, which had gone stale after Free gained About/
+              Website/Instagram/3 appearances/5 markets; Free now states
+              its own real benefits instead. Radio values/names and the
+              default selection logic are UNCHANGED — Free stays
+              defaultChecked unless ?plan=pro was passed in (never
+              auto-selecting a paid plan just because it's now visually
+              first) — so createMemberBusiness (untouched) submits
+              identically to before. Every bullet below is a CURRENT
+              entitlement (see account/business/actions.ts's
+              PROFILE_FREE_COLUMNS/PROFILE_PRO_COLUMNS/LINKS_COLUMNS and
+              business/[slug]/page.tsx's own `pro &&` gates) — nothing
+              promised here that doesn't already exist. Choosing Pro
+              doesn't create the business as Pro directly: it's still
+              created Free + pending_review first (same RPC), then this
+              action immediately continues into native Stripe
               checkout for that exact business — see createMemberBusiness. */}
           {hasInvite ? (
             // Pro Invite / Complimentary Access Codes pass — an invite in
@@ -286,32 +291,43 @@ export default async function AddBusinessPage({
                   </div>
 
                   <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
-                    <PlanBullet>Full business profile</PlanBullet>
-                    <PlanBullet>Gallery</PlanBullet>
-                    <PlanBullet>Website, socials &amp; contact information</PlanBullet>
+                    <PlanBullet>Full Findmi Here schedule</PlanBullet>
+                    <PlanBullet>Gallery + products</PlanBullet>
+                    <PlanBullet>Contact info + customer inquiries</PlanBullet>
                     <PlanBullet>Business updates</PlanBullet>
-                    <PlanBullet>Richer discovery presence</PlanBullet>
+                    <PlanBullet>Custom Findmi URL</PlanBullet>
+                    <PlanBullet>Expanded discovery</PlanBullet>
                   </ul>
                 </label>
 
-                {/* Free — small, quiet "basic index" option directly below
-                    Pro, not an equal competing card. */}
+                {/* Free — small, quiet option directly below Pro, not an
+                    equal competing card. Join Conversion Copy Cleanup pass
+                    — corrected to reflect Free's real entitlements (About/
+                    Website/Instagram/3 appearances/5 markets), not the
+                    older, narrower "basic listing" framing. */}
                 <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-ink/70">Just need a basic listing?</p>
+                    <p className="text-sm font-semibold text-ink/70">Prefer to start free?</p>
                     <input type="radio" name="plan_choice" value="free" defaultChecked={!wantsPro} className="h-4 w-4 accent-findmi" />
                   </div>
                   <p className="flex items-baseline gap-1.5">
-                    <span className="text-sm font-bold text-ink">Free Basic Index</span>
+                    <span className="text-sm font-bold text-ink">Findmi Free</span>
                     <span className="text-sm text-ink/45">· $0</span>
                   </p>
-                  <p className="text-xs text-ink/60">Get your name, logo, category and short description into Findmi.</p>
-                  <p className="mt-1 text-xs text-ink/35 line-through decoration-ink/25">
-                    Full About section · Gallery · Website + social links · Findmi Here · Business updates
+                  <p className="text-xs text-ink/60">Create your Findmi page and show your next 3 appearances.</p>
+                  <ul className="mt-1 flex flex-col gap-1 text-xs text-ink/50">
+                    <PlanBullet>Business profile + About</PlanBullet>
+                    <PlanBullet>Website + Instagram</PlanBullet>
+                    <PlanBullet>Next 3 upcoming appearances</PlanBullet>
+                    <PlanBullet>Up to 5 markets</PlanBullet>
+                    <PlanBullet>Findmi search &amp; discovery</PlanBullet>
+                  </ul>
+                  <p className="mt-1 text-xs text-ink/45">
+                    Upgrade anytime for your full schedule, products, custom Findmi URL and more.
                   </p>
                 </label>
               </div>
-              <p className="mt-1.5 text-xs text-ink/40">$99 for one year of Findmi Pro.</p>
+              <p className="mt-1.5 text-xs text-ink/40">$99 for one year of Findmi Pro. No automatic renewal.</p>
 
               {/* Make Pro Invite First-Class pass — a first-time vendor
                   with a complimentary code should never have to choose
