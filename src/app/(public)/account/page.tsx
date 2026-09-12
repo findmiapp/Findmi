@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { listConversationsForUser } from "@/lib/opportunities";
+import { getAccountCommandCenter } from "@/lib/dashboard";
+import { getTemporalLabel } from "@/lib/format";
 import NavIcon from "@/components/NavIcon";
+import LiveDot from "@/components/LiveDot";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import BusinessScopedAction, { ActionStripLink, PlusGlyph } from "./BusinessScopedAction";
@@ -184,6 +187,25 @@ export default async function AccountHomePage({
   const savedCount = (savedBusinessesCount ?? 0) + (savedEventsCount ?? 0) + (savedProductsCount ?? 0);
   const followingCount = (followingBusinessesCount ?? 0) + (followingEventsCount ?? 0) + (followingLocationsCount ?? 0);
 
+  // Account Command Center V1 — the two new operational sections below
+  // (Needs Your Attention, Coming Up). Reuses the SAME managed-entity
+  // lists already computed above (myBusinesses/myEvents/myLocations,
+  // myPendingClaims) rather than re-querying business_members/
+  // event_members/location_members a second time — see lib/dashboard.ts's
+  // own doc comment for the full data-source/dedup design. A signed-in
+  // visitor always has SOME identity, but this page has no meaningful
+  // Command Center without an admin client, same "no admin, no
+  // service-role reads" fallback every other admin-gated read on this
+  // page already uses.
+  const { attention: attentionItems, schedule: scheduleItems } = admin
+    ? await getAccountCommandCenter(admin, {
+        businesses: myBusinesses,
+        events: myEvents,
+        locations: myLocations,
+        pendingClaimsCount: myPendingClaims.length,
+      })
+    : { attention: [], schedule: [] };
+
   // Owner Action UX pass — one flat, filterable list for ManageOnFindmiList
   // (client component — filtering needs interactivity /account's own
   // server-rendered sections can't provide). Same data/pills/CTA rules as
@@ -303,13 +325,292 @@ export default async function AccountHomePage({
         </div>
       )}
 
-      {/* 1. DISCOVERY — Account Hub V2 pass. The first thing any account
-          holder sees, regardless of whether they manage anything: Findmi
-          is for discovering what's around them. /find is the existing
+      {/* 1. NEEDS YOUR ATTENTION — Account Command Center V1. Compact,
+          mobile-first rows only — never a giant card. Only rendered at
+          all when at least one real actionable/informational item exists
+          (see lib/dashboard.ts's own doc comment for exactly what
+          qualifies). Pending-review rows deliberately read as status
+          updates, not errors — no red styling for a normal workflow
+          state; red stays reserved for whatever already used it
+          elsewhere (e.g. the Happening Now badge), never borrowed here. */}
+      {attentionItems.length > 0 && (
+        <section className="mt-5">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Your Attention</h2>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {attentionItems.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm transition hover:border-black/10"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50">
+                  <span className="h-2 w-2 rounded-full bg-findmi" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
+                  {item.subtitle && <span className="block truncate text-xs text-ink/50">{item.subtitle}</span>}
+                </span>
+                <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 2. COMING UP — Account Command Center V1, the core of it. One
+          chronological list already deduplicated and sorted server-side
+          (lib/dashboard.ts) across every Business appearance, organized
+          Event occurrence, and managed-Location happening the account
+          touches — never three separate stacked lists. Tile treatment
+          mirrors AppearanceCard/HappeningCard's own existing live/date
+          tile exactly (same classNames, same Happening/NOW two-line
+          badge from the Appearance UX Cleanup pass) rather than inventing
+          a new date-label system. Capped at a fixed count — see
+          lib/dashboard.ts's SCHEDULE_DISPLAY_LIMIT — with no "View all"
+          link, since no unified schedule route exists yet to point one
+          at (never inventing one in this pass). */}
+      {scheduleItems.length > 0 ? (
+        <section className="mt-5">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Coming Up</h2>
+          <div className="mt-2 flex flex-col gap-2">
+            {scheduleItems.map((item) => {
+              const { label, live } = getTemporalLabel(item.startAt, item.endAt);
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm transition hover:border-black/10"
+                >
+                  <span
+                    className={`flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-2 ${
+                      live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/[0.04] text-ink"
+                    }`}
+                  >
+                    {live ? (
+                      <>
+                        <LiveDot className="text-white" />
+                        <span className="flex flex-col items-center leading-[1.15]">
+                          <span className="text-[7px] font-bold uppercase tracking-normal">Happening</span>
+                          <span className="text-xs font-extrabold uppercase tracking-wide">Now</span>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink/50">
+                          {new Date(item.startAt).toLocaleDateString("en-US", { month: "short" })}
+                        </span>
+                        <span className="text-lg font-bold leading-none">{new Date(item.startAt).getDate()}</span>
+                      </>
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
+                    {item.where && <span className="block truncate text-xs text-ink/50">{item.where}</span>}
+                    <span className="block truncate text-[11px] text-ink/40">
+                      {!live && `${label} · `}
+                      {item.relatedTo.join(" · ")}
+                    </span>
+                  </span>
+                  <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      ) : (
+        hasAnyManaged && (
+          // Empty Coming Up — only shown for an account that already
+          // manages something (a brand-new, zero-entity account keeps its
+          // existing acquisition experience below untouched, never a
+          // second competing empty state). Reuses BusinessScopedAction's
+          // own existing zero/one/many routing — never a new creation
+          // pathway.
+          <section className="mt-5 rounded-2xl border border-black/10 bg-mist/30 p-4">
+            <p className="text-sm font-bold text-ink">Nothing on your schedule yet.</p>
+            <p className="mt-1 text-xs text-ink/60">Add where you&rsquo;ll be next so people can find you.</p>
+            {myBusinesses.length > 0 && (
+              <div className="mt-2.5">
+                <BusinessScopedAction
+                  variant="link"
+                  businesses={myBusinesses}
+                  tab="findmi-here"
+                  icon={<PlusGlyph className="h-3.5 w-3.5" />}
+                  label="Add Where You'll Be"
+                />
+              </div>
+            )}
+          </section>
+        )
+      )}
+
+      {/* 3. MANAGE ON FINDMI — Account Hub V2 pass, extended with
+          All/Businesses/Events/Venues filtering (ManageOnFindmiList,
+          client-side over the same entities already loaded above — no
+          new query). Only renders when the visitor actually manages
+          something; otherwise the compact acquisition block below runs
+          instead. Still one unified list, never three separate stacked
+          dashboards. Moved ahead of Create on Findmi/Discover by the
+          Account Command Center V1 pass — operational information (this,
+          plus Attention/Coming Up above) now surfaces before discovery
+          content for a RETURNING member. */}
+      {hasAnyManaged ? (
+        <section className="mt-6">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Manage on Findmi</h2>
+          <ManageOnFindmiList entities={managedEntities} />
+        </section>
+      ) : (
+        /* Zero-Managed-Entity acquisition block — Section 8. Purely the
+           motivational prompt now: Add Business/Event/Venue already live
+           in the Create/Add strip below, so repeating them here would be
+           a duplicate CTA. */
+        <section className="mt-6 rounded-3xl border border-black/10 bg-mist/30 p-4 sm:p-5">
+          <p className="text-sm font-bold text-ink">Have something people should discover?</p>
+          <p className="mt-1 text-xs text-ink/60">List your business, event, or venue on Findmi.</p>
+          <Link
+            href="/join"
+            className="mt-3 flex h-11 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Get discovered
+          </Link>
+        </section>
+      )}
+
+      {/* Pending Claims — kept compact, own section, right after
+          management/acquisition since a claim in progress is on its way
+          to becoming a managed entity. Unchanged copy/behavior; only new
+          addition is the id anchor Needs Your Attention's own pending-
+          claims summary row deep-links/scrolls to. */}
+      {myPendingClaims.length > 0 && (
+        <section id="pending-claims" className="mt-6">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Pending Claims</h2>
+          <div className="mt-2 flex flex-col gap-3">
+            {myPendingClaims.map((c) => (
+              <div
+                key={c.id}
+                className="flex flex-col gap-3 rounded-3xl border border-findmi/20 bg-findmi-50/50 p-4 shadow-sm sm:p-5"
+              >
+                <Link href={`/business/${c.slug}`} className="flex flex-col gap-1">
+                  <p className="text-sm font-bold text-ink">{c.name}</p>
+                  <p className="text-xs font-semibold text-findmi-700">Claim under review</p>
+                  <p className="text-xs text-ink/50">Typically reviewed within 48–72 hours.</p>
+                </Link>
+                {/* Pro Upgrade — Internal Checkout Handoff Foundation pass:
+                    this claimant doesn't own this business yet (the claim
+                    is still pending founder approval), so this can never
+                    route through the owner-only /upgrade/pro handoff —
+                    that would let a payment imply/expedite ownership. /join
+                    is the general acquisition entry point, not tied to any
+                    specific business_members row. */}
+                <Link
+                  href="/join"
+                  className="flex h-9 w-fit items-center justify-center rounded-full bg-findmi px-4 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Upgrade to Pro
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 4. CREATE ON FINDMI — Account Hub Final Micro-Polish pass. The
+          full-width CTA renders via BusinessScopedAction's "full" variant
+          OUTSIDE the horizontally-scrolling row below — see that
+          component's own doc comment for why: a scrolling ancestor
+          clips the absolutely-positioned "Which business?" chooser and
+          makes a lead tile prone to swipe/tap ambiguity on mobile (its own
+          many-Business chooser now escapes that clipping via a portal —
+          see StripChooser in BusinessScopedAction.tsx — but the tile stays
+          out of the scroll row's way regardless). The small "Where I'll
+          Be" tile below is a second, intentionally repetitive entry point
+          into the SAME BusinessScopedAction / Findmi Here flow
+          (tab="findmi-here", same PlusGlyph — never the location-pin
+          icon) — Account Create-Strip Correction pass: this compact tile
+          reads as an action ("Where I'll Be"), not a repeated feature
+          name; the CTA above and the "Findmi Here" card below still carry
+          the feature name itself. Both share one routing decision, never
+          duplicated. Business/Venue/Product (also business-scoped,
+          never silently defaulting to the first managed business) keep
+          their existing order in the scrolling row, Event last —
+          creating/managing an Event is a distinct, less frequent action
+          from scheduling an existing Business's appearances (see the
+          "What's the difference?" note below) — and still links to the
+          existing /account/event/new, which already shows its own
+          graceful non-qualifying-visitor explainer (Multi-Entity
+          Self-Service V1); entitlement gating stays authoritative there,
+          never re-decided here. */}
+      <section className="mt-6">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Create on Findmi</h2>
+        <div className="mt-2">
+          <BusinessScopedAction
+            variant="full"
+            businesses={myBusinesses}
+            tab="findmi-here"
+            icon={<PlusGlyph className="h-4 w-4" />}
+            label="Add Where I'll Be (Findmi Here)"
+          />
+        </div>
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <BusinessScopedAction businesses={myBusinesses} tab="findmi-here" icon={<PlusGlyph className="h-4 w-4" />} label="Where I'll Be" />
+          <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
+          <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
+          <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
+          <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
+        </div>
+      </section>
+
+      {/* 4b. FINDMI HERE — deliberately its own card, not another strip
+          pill: important, and reworked to clearly read and behave like a
+          tappable action (filled-aqua icon badge instead of the earlier
+          location-style pin/target look, bold "Add to your schedule →"
+          line). Headline lightly aligned with "+ Where I'll Be" above so
+          the two reinforce each other. Invokes the SAME BusinessScopedAction
+          routing as + Where I'll Be above — one business routes straight
+          there, several reveal a "Which business?" chooser, zero routes
+          to Add Business — never a second, parallel authorization
+          decision. Selecting an existing Event through this flow never
+          grants Event ownership; it only adds a Findmi Here appearance
+          for the Business. Product no longer lives in/under this card —
+          it's back in the Create on Findmi row above. */}
+      <section className="mt-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
+        <BusinessScopedAction
+          variant="card"
+          businesses={myBusinesses}
+          tab="findmi-here"
+          icon={<PlusGlyph className="h-4 w-4" />}
+          label="Findmi Here"
+          eyebrow="Findmi Here"
+          headline="Add where your business will be next."
+          description="Markets, pop-ups, events, festivals, and other places you're appearing."
+          cta="Add to your schedule →"
+        />
+      </section>
+
+      {/* 4c. FINDMI HERE VS EVENT — one compact line, not a new help
+          section: makes the distinction legible without requiring any
+          Findmi data-model knowledge. Links to the existing
+          /account/event/new destination, which already carries its own
+          qualifying/non-qualifying explainer — no new educational
+          route. */}
+      <div className="mt-3 rounded-xl bg-black/[0.02] px-3.5 py-3">
+        <p className="text-xs font-bold text-ink/70">What&rsquo;s the difference?</p>
+        <p className="mt-1 text-xs leading-relaxed text-ink/50">
+          Findmi Here is for places your business will be appearing. Events are for events you organize and manage.
+        </p>
+        <Link href="/account/event/new" className="mt-1.5 inline-block text-xs font-bold text-findmi-700 underline underline-offset-2">
+          Learn about Events →
+        </Link>
+      </div>
+
+      {/* 5. DISCOVERY — Account Hub V2 pass. Findmi is also for
+          discovering what's around them; /find is the existing
           time+place discovery surface (now/today/weekend/anytime, city/
           category filters) — the closest existing route to "explore near
-          you"; no geolocation added, no new route invented. */}
-      <section className="mt-5 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5">
+          you"; no geolocation added, no new route invented. Moved below
+          the operational sections above by the Account Command Center V1
+          pass — a RETURNING member's own attention/schedule/management
+          now comes first; this content is unchanged otherwise. */}
+      <section className="mt-6 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5">
         <p className="text-sm font-bold text-ink">Discover what&rsquo;s happening around you.</p>
         <Link
           href="/find"
@@ -350,161 +651,7 @@ export default async function AccountHomePage({
         </div>
       </section>
 
-      {/* 2. CREATE ON FINDMI — Account Hub Final Micro-Polish pass. The
-          full-width CTA renders via BusinessScopedAction's "full" variant
-          OUTSIDE the horizontally-scrolling row below — see that
-          component's own doc comment for why: a scrolling ancestor
-          clips the absolutely-positioned "Which business?" chooser and
-          makes a lead tile prone to swipe/tap ambiguity on mobile (its own
-          many-Business chooser now escapes that clipping via a portal —
-          see StripChooser in BusinessScopedAction.tsx — but the tile stays
-          out of the scroll row's way regardless). The small "Where I'll
-          Be" tile below is a second, intentionally repetitive entry point
-          into the SAME BusinessScopedAction / Findmi Here flow
-          (tab="findmi-here", same PlusGlyph — never the location-pin
-          icon) — Account Create-Strip Correction pass: this compact tile
-          reads as an action ("Where I'll Be"), not a repeated feature
-          name; the CTA above and the "Findmi Here" card below still carry
-          the feature name itself. Both share one routing decision, never
-          duplicated. Business/Venue/Product (also business-scoped,
-          never silently defaulting to the first managed business) keep
-          their existing order in the scrolling row, Event last —
-          creating/managing an Event is a distinct, less frequent action
-          from scheduling an existing Business's appearances (see the
-          "What's the difference?" note below) — and still links to the
-          existing /account/event/new, which already shows its own
-          graceful non-qualifying-visitor explainer (Multi-Entity
-          Self-Service V1); entitlement gating stays authoritative there,
-          never re-decided here. */}
-      <section className="mt-4">
-        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Create on Findmi</h2>
-        <div className="mt-2">
-          <BusinessScopedAction
-            variant="full"
-            businesses={myBusinesses}
-            tab="findmi-here"
-            icon={<PlusGlyph className="h-4 w-4" />}
-            label="Add Where I'll Be (Findmi Here)"
-          />
-        </div>
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <BusinessScopedAction businesses={myBusinesses} tab="findmi-here" icon={<PlusGlyph className="h-4 w-4" />} label="Where I'll Be" />
-          <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
-          <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
-          <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
-          <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
-        </div>
-      </section>
-
-      {/* 2b. FINDMI HERE — deliberately its own card, not another strip
-          pill: important, and reworked to clearly read and behave like a
-          tappable action (filled-aqua icon badge instead of the earlier
-          location-style pin/target look, bold "Add to your schedule →"
-          line). Headline lightly aligned with "+ Where I'll Be" above so
-          the two reinforce each other. Invokes the SAME BusinessScopedAction
-          routing as + Where I'll Be above — one business routes straight
-          there, several reveal a "Which business?" chooser, zero routes
-          to Add Business — never a second, parallel authorization
-          decision. Selecting an existing Event through this flow never
-          grants Event ownership; it only adds a Findmi Here appearance
-          for the Business. Product no longer lives in/under this card —
-          it's back in the Create on Findmi row above. */}
-      <section className="mt-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
-        <BusinessScopedAction
-          variant="card"
-          businesses={myBusinesses}
-          tab="findmi-here"
-          icon={<PlusGlyph className="h-4 w-4" />}
-          label="Findmi Here"
-          eyebrow="Findmi Here"
-          headline="Add where your business will be next."
-          description="Markets, pop-ups, events, festivals, and other places you're appearing."
-          cta="Add to your schedule →"
-        />
-      </section>
-
-      {/* 2c. FINDMI HERE VS EVENT — one compact line, not a new help
-          section: makes the distinction legible without requiring any
-          Findmi data-model knowledge. Links to the existing
-          /account/event/new destination, which already carries its own
-          qualifying/non-qualifying explainer — no new educational
-          route. */}
-      <div className="mt-3 rounded-xl bg-black/[0.02] px-3.5 py-3">
-        <p className="text-xs font-bold text-ink/70">What&rsquo;s the difference?</p>
-        <p className="mt-1 text-xs leading-relaxed text-ink/50">
-          Findmi Here is for places your business will be appearing. Events are for events you organize and manage.
-        </p>
-        <Link href="/account/event/new" className="mt-1.5 inline-block text-xs font-bold text-findmi-700 underline underline-offset-2">
-          Learn about Events →
-        </Link>
-      </div>
-
-      {/* 3. MANAGE ON FINDMI — Account Hub V2 pass, extended with
-          All/Businesses/Events/Venues filtering (ManageOnFindmiList,
-          client-side over the same entities already loaded above — no
-          new query). Only renders when the visitor actually manages
-          something; otherwise the compact acquisition block below runs
-          instead. Still one unified list, never three separate stacked
-          dashboards. */}
-      {hasAnyManaged ? (
-        <section className="mt-6">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Manage on Findmi</h2>
-          <ManageOnFindmiList entities={managedEntities} />
-        </section>
-      ) : (
-        /* Zero-Managed-Entity acquisition block — Section 8. Purely the
-           motivational prompt now: Add Business/Event/Venue already live
-           in the Create/Add strip above, so repeating them here would be
-           a duplicate CTA. */
-        <section className="mt-6 rounded-3xl border border-black/10 bg-mist/30 p-4 sm:p-5">
-          <p className="text-sm font-bold text-ink">Have something people should discover?</p>
-          <p className="mt-1 text-xs text-ink/60">List your business, event, or venue on Findmi.</p>
-          <Link
-            href="/join"
-            className="mt-3 flex h-11 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-          >
-            Get discovered
-          </Link>
-        </section>
-      )}
-
-      {/* Pending Claims — kept compact, own section, right after
-          management/acquisition since a claim in progress is on its way
-          to becoming a managed entity. Unchanged copy/behavior. */}
-      {myPendingClaims.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Pending Claims</h2>
-          <div className="mt-2 flex flex-col gap-3">
-            {myPendingClaims.map((c) => (
-              <div
-                key={c.id}
-                className="flex flex-col gap-3 rounded-3xl border border-findmi/20 bg-findmi-50/50 p-4 shadow-sm sm:p-5"
-              >
-                <Link href={`/business/${c.slug}`} className="flex flex-col gap-1">
-                  <p className="text-sm font-bold text-ink">{c.name}</p>
-                  <p className="text-xs font-semibold text-findmi-700">Claim under review</p>
-                  <p className="text-xs text-ink/50">Typically reviewed within 48–72 hours.</p>
-                </Link>
-                {/* Pro Upgrade — Internal Checkout Handoff Foundation pass:
-                    this claimant doesn't own this business yet (the claim
-                    is still pending founder approval), so this can never
-                    route through the owner-only /upgrade/pro handoff —
-                    that would let a payment imply/expedite ownership. /join
-                    is the general acquisition entry point, not tied to any
-                    specific business_members row. */}
-                <Link
-                  href="/join"
-                  className="flex h-9 w-fit items-center justify-center rounded-full bg-findmi px-4 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                >
-                  Upgrade to Pro
-                </Link>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 4. YOUR ACTIVITY — Account Hub V2 pass. Saved/Following/Orders
+      {/* 6. YOUR ACTIVITY — Account Hub V2 pass. Saved/Following/Orders
           shrink to one compact grid row with real counts (already
           account-backed data, same tables /account/saved,following,orders
           themselves read); Profile joins them here as the 4th utility
@@ -521,7 +668,7 @@ export default async function AccountHomePage({
         </div>
       </section>
 
-      {/* 5. ACCOUNT UTILITIES — Redeem invite code. Account Hub Mobile
+      {/* 7. ACCOUNT UTILITIES — Redeem invite code. Account Hub Mobile
           Polish pass's small disclosure, unchanged: submits through the
           exact same goToRedeemCode action, no invite logic touched, just
           kept secondary/last on the page. */}
@@ -549,6 +696,19 @@ export default async function AccountHomePage({
         </details>
       </section>
     </div>
+  );
+}
+
+// Account Command Center V1 — the trailing chevron on every Needs Your
+// Attention / Coming Up row, same plain-chevron-no-stem style already
+// used for a tappable row's affordance elsewhere (e.g. AppearanceCard's
+// own ArrowGlyph), just unfilled/outline here since these rows are plain
+// list rows, not circular icon buttons.
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
