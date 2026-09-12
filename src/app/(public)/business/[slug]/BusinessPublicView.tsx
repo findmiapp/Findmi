@@ -70,6 +70,24 @@ async function resolveIsPro(businessId: string): Promise<boolean> {
   return isBusinessPro(data ?? {});
 }
 
+/** TRUSTED CONTACT READ — Contact Data Exposure Remediation pass.
+ * businesses.email/phone are no longer in PUBLIC_BUSINESS_COLUMNS or in
+ * anon/authenticated's column grant at all (see that constant's own note
+ * and the restrict_business_contact_columns migration) — the public
+ * getBusinessBySlug() lookup above can no longer return them. This is the
+ * one legitimate reader: same service-role pattern as resolveIsPro just
+ * above, selecting only the two columns needed, for one specific business
+ * id. The caller is responsible for only invoking this AFTER `pro` is
+ * already true — never call this for a Free business (no server-side
+ * entitlement check happens here; this function only reads, it doesn't
+ * decide who's allowed to see the result). */
+async function resolveBusinessContact(businessId: string): Promise<{ email: string | null; phone: string | null }> {
+  const admin = getAdminSupabase();
+  if (!admin) return { email: null, phone: null };
+  const { data } = await admin.from("businesses").select("email, phone").eq("id", businessId).maybeSingle();
+  return { email: data?.email ?? null, phone: data?.phone ?? null };
+}
+
 /** Owner-preview fallback — Native Business Onboarding Pass 2. When the
  * public/live lookup above (getBusinessBySlug) finds nothing, a
  * newly-created or newly-claimed business's own real owner/manager/staff
@@ -177,6 +195,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   if (!business) notFound();
 
   const pro = await resolveIsPro(business.id);
+  // Only ever read for a Pro business — see resolveBusinessContact's own
+  // doc comment. Free never triggers this extra service-role round trip.
+  const contact = pro ? await resolveBusinessContact(business.id) : { email: null, phone: null };
 
   // "Discover More Like This" surfaces OTHER businesses, not additional
   // content about this one, so it's unaffected by plan tier — fetched
@@ -230,9 +251,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // these still correctly shows no CTA. The label is independently
   // overridable (inquiry_cta_label) regardless of which URL tier resolves,
   // defaulting to "Inquire" exactly as before when unset.
-  const mailtoFallback = business.email
+  const mailtoFallback = contact.email
     ? {
-        url: `mailto:${business.email}?subject=${encodeURIComponent(`Inquiry via Findmi — ${business.name}`)}`,
+        url: `mailto:${contact.email}?subject=${encodeURIComponent(`Inquiry via Findmi — ${business.name}`)}`,
         displayMode: "external" as const,
       }
     : null;
@@ -262,7 +283,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   );
 
   const hasDetails = Boolean(
-    location || business.service_radius_miles || business.phone || business.email || socialLinks.length > 0
+    location || business.service_radius_miles || contact.phone || contact.email || socialLinks.length > 0
   );
 
   const canonicalUrl = await resolveCanonicalUrl(business.id, business.slug);
@@ -291,7 +312,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     ...(pro && (business.description || business.short_description)
       ? { description: business.description ?? business.short_description }
       : {}),
-    ...(pro && business.phone ? { telephone: business.phone } : {}),
+    ...(pro && contact.phone ? { telephone: contact.phone } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
     // Free identity has no location — withheld from structured data too,
     // same reasoning as description/phone/sameAs above.
@@ -506,7 +527,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           {/* DetailsBlock covers phone/email/social/website — all
               contact/promotional fields, so Pro-only. */}
           {pro && hasDetails && (
-            <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-6 hidden lg:block" />
+            <DetailsBlock
+              business={{ phone: contact.phone, email: contact.email, service_radius_miles: business.service_radius_miles }}
+              location={location}
+              socialLinks={socialLinks}
+              className="mt-6 hidden lg:block"
+            />
           )}
         </div>
 
@@ -657,7 +683,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           )}
 
           {pro && hasDetails && (
-            <DetailsBlock business={business} location={location} socialLinks={socialLinks} className="mt-8 lg:hidden" />
+            <DetailsBlock
+              business={{ phone: contact.phone, email: contact.email, service_radius_miles: business.service_radius_miles }}
+              location={location}
+              socialLinks={socialLinks}
+              className="mt-8 lg:hidden"
+            />
           )}
 
           {/* Claim placement pass — moved off the top action area (never

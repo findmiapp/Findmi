@@ -1,0 +1,25 @@
+-- Contact Data Exposure Remediation pass — businesses.email/phone were
+-- part of the original column-level grant to anon/authenticated
+-- (20260831000000_restrict_internal_commerce_columns.sql), meaning any
+-- client with only the public anon key could request
+-- businesses?select=email,phone directly via PostgREST — every business's
+-- raw contact info, regardless of Free/Pro plan tier or
+-- publication_status (pending_review/demo included), bypassing the
+-- product's own Pro-only contact-display rule entirely.
+--
+-- Application code no longer depends on this: PUBLIC_BUSINESS_COLUMNS
+-- (src/lib/data.ts) no longer includes email/phone, and the one
+-- legitimate reader — the Pro Business profile page
+-- (src/app/(public)/business/[slug]/BusinessPublicView.tsx) — now reads
+-- both fields through its own trusted, service-role read
+-- (resolveBusinessContact()), invoked only after resolveIsPro() has
+-- already confirmed the business is Pro, mirroring that function's own
+-- existing pattern. No other PUBLIC_BUSINESS_COLUMNS consumer (search,
+-- listing, event/occurrence rosters) ever read these two columns.
+--
+-- This migration narrows the existing column-level grant only — same
+-- additive-grant-list architecture as the market_area_id/is_pro_member
+-- migrations, just in reverse (a narrow revoke, not a new grant). No RLS
+-- policy change, no table/schema change, no data mutation. service_role
+-- is unaffected — it bypasses table/column grants entirely.
+revoke select (email, phone) on public.businesses from anon, authenticated;

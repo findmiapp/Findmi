@@ -47,7 +47,7 @@ import type {
 // any of this and are intentionally left alone.
 export const PUBLIC_BUSINESS_COLUMNS =
   "id, slug, name, short_description, description, logo_url, cover_image_url, " +
-  "website_url, instagram_url, facebook_url, tiktok_url, email, phone, city, " +
+  "website_url, instagram_url, facebook_url, tiktok_url, city, " +
   "state, country, service_radius_miles, verified, founding_member, " +
   "membership_status, created_at, updated_at, is_demo, commerce_enabled, " +
   "publication_status, is_featured, inquiry_cta_label, inquiry_cta_url, " +
@@ -64,6 +64,20 @@ export const PUBLIC_BUSINESS_COLUMNS =
 // derived from plan_tier with its OWN narrow anon/authenticated grant, so
 // public cards can show a Pro Member badge without plan_tier itself ever
 // becoming public (see 20260908190000_business_is_pro_member_public_grant.sql).
+//
+// Contact Data Exposure Remediation pass — email/phone removed from this
+// list (and from anon/authenticated's column grant entirely — see the
+// restrict_business_contact_columns migration) for the same reason
+// plan_tier etc. are excluded above: having them in the anon column grant
+// meant every business's raw contact info was directly retrievable via
+// PostgREST regardless of Free/Pro or publication_status, bypassing the
+// product's own Pro-only contact-display rule. The one legitimate reader
+// (the Pro Business profile page) now fetches email/phone through its own
+// trusted, service-role read — see resolveBusinessContact() in
+// BusinessPublicView.tsx, called only after resolveIsPro() already
+// confirmed Pro, mirroring that function's own existing pattern. No other
+// PUBLIC_BUSINESS_COLUMNS consumer (search/listing/roster queries) ever
+// read these two fields.
 
 export const PUBLIC_PRODUCT_COLUMNS =
   "id, business_id, name, slug, description, image_url, price, price_label, " +
