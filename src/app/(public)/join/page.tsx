@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import BusinessLogoCard from "@/components/BusinessLogoCard";
+import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import CompactCard from "@/components/CompactCard";
 import ProductCard from "@/components/ProductCard";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
@@ -44,16 +44,24 @@ import {
 // /Join Final Visual Conversion pass — this is a presentation-only polish
 // of that same structure, not another rewrite: quieter secondary CTAs
 // (Hero/Final) so they stop visually competing with the primary Pro
-// button; the "Real Findmi Proof" section now renders an actual compact
-// BusinessLogoCard for The Native Rose (real name/logo/cover/category/
-// location/NEXT UP appearance — the exact same component and bulk
-// getNextAppearanceHints() data access the homepage's own "Brands We
-// Love" row already uses) instead of a plain text link; the Pro feature
-// list is compressed 7->5 lines; "What You Get" now shows real compact
-// previews (CompactCard for the real business, ProductCard for a real
-// product when one exists) instead of four flat gray text tiles; Regional/
-// National's checklist collapses into one inline line. No entitlement,
-// payment, geography, or schema behavior changed anywhere in this pass.
+// button; the Pro feature list is compressed 7->5 lines; "What You Get"
+// now shows real compact previews (CompactCard for the real business,
+// ProductCard for a real product when one exists) instead of four flat
+// gray text tiles; Regional/National's checklist collapses into one
+// inline line. No entitlement, payment, geography, or schema behavior
+// changed anywhere in this pass.
+//
+// Join Native Rose Showcase Upgrade pass — the "Real Findmi Proof"
+// section (now "See what your Findmi can become.") no longer renders a
+// single compact BusinessLogoCard; it reuses the exact same
+// BusinessShowcaseCarousel the homepage's own business_showcase row
+// renders (real Native Rose screenshots, no second implementation, no
+// invented mock screens), since this section's job here — after the
+// visitor has already seen the core pitch and Pro/Free choice — is pure
+// product visualization, not identity proof. getNextAppearanceHints()
+// is still fetched below; it's unrelated to this carousel (which is
+// static screenshots, same as on the homepage) and still feeds "What You
+// Get"'s Findmi Here tile.
 export const revalidate = 60;
 
 export const metadata: Metadata = {
@@ -173,28 +181,34 @@ export default async function JoinPage({
         </div>
       </div>
 
-      {/* REAL FINDMI PROOF — a real, compact BusinessLogoCard (the exact
-          component/data access the homepage's own "Brands We Love" row
-          uses), not a text box. Falls back to a plain link only if the
-          business can't be resolved. Tightened top spacing (pt-10/sm:pt-12
-          -> pt-7/sm:pt-8) so this reads as evidence right under the new
-          hero decision module rather than a separate, unrelated section. */}
+      {/* NATIVE ROSE SHOWCASE — Join Native Rose Showcase Upgrade pass.
+          Reuses the homepage's own BusinessShowcaseCarousel unmodified
+          (same real screenshots, same component, no second carousel to
+          maintain). Tightened top spacing (pt-10/sm:pt-12 -> pt-7/sm:pt-8)
+          so this reads as evidence right under the new hero decision
+          module rather than a separate, unrelated section. The carousel
+          itself stays a plain horizontally-swipeable row (native
+          scroll-snap, no JS drag state) — wrapping it in a link would
+          fight that on touch, so clickability lives in the existing
+          "View live profile" link below instead, same destination/label
+          this section already used before this pass. */}
       <div className="mx-auto max-w-4xl px-6 pt-7 sm:pt-8">
-        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">One link. Wherever you go.</p>
-        <div className="mx-auto mt-3 max-w-xs">
-          {proofBusiness ? (
-            <BusinessLogoCard business={proofBusiness} ctaLabel="View live profile" nextAppearance={proofAppearance} />
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/10 bg-mist/40 px-5 py-4">
-              <p className="text-sm font-semibold text-ink/70">One link. Wherever you go.</p>
-              <a
-                href={`/business/${PROOF_BUSINESS_SLUG}`}
-                className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
-              >
-                View live profile <span aria-hidden>→</span>
-              </a>
-            </div>
-          )}
+        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">
+          See what your Findmi can become.
+        </p>
+        <p className="mx-auto mt-1.5 max-w-sm text-center text-sm text-ink/60">
+          One page. Your business, products and everywhere you&rsquo;ll be next.
+        </p>
+        <div className="mt-4">
+          <BusinessShowcaseCarousel />
+        </div>
+        <div className="mt-3 flex justify-center">
+          <a
+            href={`/business/${PROOF_BUSINESS_SLUG}`}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
+          >
+            View live profile <span aria-hidden>→</span>
+          </a>
         </div>
       </div>
 
@@ -310,7 +324,8 @@ function HeroHeadline({ heading }: { heading: string }) {
 
 /** /Join Hero Composition pass — the new "Choose Your Path" module:
  * PROMISE (headline/body above) -> CHOOSE YOUR PATH (these two tiles) ->
- * PROOF (the real BusinessLogoCard below). Compact navigation tiles, not
+ * PROOF (the real Native Rose showcase carousel below). Compact
+ * navigation tiles, not
  * pricing cards — they anchor down into the page's own full Pro/Free
  * sections (#pro/#free) rather than starting signup immediately; the
  * actual conversion CTAs/destinations live only in those full sections
