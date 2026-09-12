@@ -405,9 +405,10 @@ export default async function ManageBusinessPage({
   // edit/remove/withdraw) is a Free capability (Passes 1-2 already
   // authorized it at the Server Action layer; this page's UI just
   // hadn't caught up). The Free/Pro distinction is DISPLAY DEPTH on the
-  // public business profile (business/[slug]/page.tsx, untouched by
-  // this pass — Free shows only its next 1, Pro shows the full
-  // schedule), never management access here. Two separate reads: (1)
+  // public business profile (business/[slug]/page.tsx — Free/Pro
+  // Entitlement pass: Free shows its next 3 eligible upcoming
+  // appearances, Pro shows the full schedule), never management access
+  // here. Two separate reads: (1)
   // this business's OWN appearances (its real FindMi Here calendar —
   // see ../actions.ts for the write side), and (2) its official
   // event-roster status (event_businesses/event_occurrence_businesses),
@@ -860,15 +861,29 @@ export default async function ManageBusinessPage({
                 keeps working at its existing /business/[slug] URL. This is
                 THE BUSINESS's public identity, never presented as the
                 account owner's own — never auto-suggested from the
-                business name either. */}
+                business name either.
+                Free/Pro Entitlement pass — choosing/changing this handle
+                is Pro-only (updateBusinessHandle now enforces it
+                server-side via requireProBusinessMember). For Free this
+                renders a read-only variant instead of the editable
+                FindmiUrlCard (shared with Event/Location Managers,
+                untouched, since only Business's handle is plan-gated): an
+                existing handle keeps working and stays copyable, just not
+                editable, and the same /upgrade/pro?business={id} link
+                every other locked tab already uses is the only path to
+                unlock it — no new modal/paywall. */}
             <div className={cardClass}>
-              <FindmiUrlCard
-                entityType="business"
-                entityId={id}
-                entityLabel={business.name}
-                currentHandle={businessHandle}
-                action={updateBusinessHandle.bind(null, id)}
-              />
+              {pro ? (
+                <FindmiUrlCard
+                  entityType="business"
+                  entityId={id}
+                  entityLabel={business.name}
+                  currentHandle={businessHandle}
+                  action={updateBusinessHandle.bind(null, id)}
+                />
+              ) : (
+                <LockedFindmiUrl businessId={id} currentHandle={businessHandle} />
+              )}
             </div>
 
             {/* Command Center V1 — Today is the most prominent operational
@@ -1627,8 +1642,9 @@ export default async function ManageBusinessPage({
                         Free can already add/manage appearances (Passes 1-2), so
                         naming it here as a Pro upgrade reason was stale. Replaced
                         with the actual Pro-exclusive distinction — the full
-                        upcoming schedule showing publicly (Free's public profile
-                        shows only its next 1). */}
+                        upcoming schedule showing publicly (Free/Pro Entitlement
+                        pass: Free's public profile shows its next 3, Pro shows
+                        the full schedule). */}
                     <p className="mt-1 text-sm text-ink/60">
                       Upgrade to Pro for your full business details, contact links, gallery, products, and your complete
                       upcoming schedule.
@@ -2336,6 +2352,41 @@ export default async function ManageBusinessPage({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Free/Pro Entitlement pass — read-only counterpart to FindmiUrlCard for
+ * a Free business. An already-claimed handle (from before this business
+ * was Free, or claimed while briefly Pro) is preserved and kept
+ * copyable/functional (inbound links must never break); there's simply no
+ * form to change it. No handle yet: plain "Upgrade to Pro" prompt, same
+ * copy convention ("Available with Findmi Pro" upgrade card) as
+ * UpgradeLockedTab below, reused rather than duplicated as a full tab
+ * lock since this lives inline on Overview, not its own tab. */
+function LockedFindmiUrl({ businessId, currentHandle }: { businessId: string; currentHandle: string | null }) {
+  const url = currentHandle ? `findmi.app/${currentHandle}` : null;
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
+      {url ? (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2.5">
+          <p className="min-w-0 break-all text-base font-bold text-findmi-700">{url}</p>
+          <CopyButton
+            value={`https://${url}`}
+            label="Copy Link"
+            className="shrink-0 rounded-full border border-black/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/70 transition hover:bg-black/5"
+          />
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-ink/60">Choose an easy-to-share FindMi link for your business.</p>
+      )}
+      <p className="mt-2 text-xs text-ink/50">
+        Upgrade to Pro to {url ? "customize" : "choose"} your Findmi URL.{" "}
+        <Link href={`/upgrade/pro?business=${businessId}`} className="font-semibold text-findmi-700 underline underline-offset-2">
+          Upgrade to Pro
+        </Link>
+      </p>
     </div>
   );
 }

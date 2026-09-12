@@ -449,12 +449,22 @@ async function requireAuthorizedBusinessMember(businessId: string, redirectPath:
 // Never mandatory (a business with no username keeps working at its
 // existing /business/[slug] URL — see resolveBusinessInquiryForm's own
 // posture on optional fields), never auto-generated from the business's
-// name/slug. requireAuthorizedBusinessMember is the SAME authorization
-// this file's every other business mutation uses — no separate/looser
-// check for handles.
+// name/slug.
+//
+// Free/Pro Entitlement pass — choosing/changing a custom Findmi username
+// is Pro-only (locked rule: Free keeps its existing system-generated
+// /business/[slug] URL). Now uses requireProBusinessMember, the SAME
+// business-specific Pro re-check every other Pro-gated write in this file
+// uses (Links/Gallery/Products) — was previously
+// requireAuthorizedBusinessMember, which only checked membership, not
+// plan, so any Free owner could claim/change a handle through this action
+// even though the page's UI never offered it as Free. This action never
+// touches an EXISTING handle on a currently-Free business (see
+// claimEntityHandle/lib/handles.ts, untouched) — it only blocks a NEW
+// claim/change while Free; a previously-claimed handle keeps resolving.
 export async function updateBusinessHandle(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
-  const admin = await requireAuthorizedBusinessMember(businessId, redirectPath);
+  const { admin } = await requireProBusinessMember(businessId, redirectPath);
 
   const usernameRaw = str(formData, "username");
   if (!usernameRaw) redirect(appendQuery(redirectPath, { error: "Enter a username first." }));

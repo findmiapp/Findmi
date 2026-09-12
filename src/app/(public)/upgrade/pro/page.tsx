@@ -22,9 +22,10 @@ export const dynamic = "force-dynamic";
 // appearances", "Connect to existing FindMi events") described adding/
 // managing appearances as Pro-exclusive; Free can do all of that too now
 // (Passes 1-2). Replaced with the two things that are actually
-// Pro-exclusive: the full upcoming schedule showing publicly (Free's
-// public profile shows only its next 1) and products/services
-// merchandising (previously missing from this list entirely).
+// Pro-exclusive: the full upcoming schedule showing publicly (Free/Pro
+// Entitlement pass: Free's public profile shows its next 3, Pro shows
+// the full schedule) and products/services merchandising (previously
+// missing from this list entirely).
 const CORE_BENEFITS = [
   "Full About section",
   "Website, contact & social links",

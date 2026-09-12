@@ -211,16 +211,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   let people: Awaited<ReturnType<typeof getPeopleForBusiness>> = [];
   let inquiryForm: Awaited<ReturnType<typeof resolveBusinessInquiryForm>> = null;
   let galleryImages: Awaited<ReturnType<typeof getBusinessGalleryImages>> = [];
-  // Free Appearances Pass 2 — appearances is now fetched for EVERY
-  // business, Free included (locked product rule: Free's public profile
-  // shows its single next upcoming appearance). Still the same query,
-  // still data-layer limited via getUpcomingAppearancesForBusiness's own
-  // `limit` param (never over-fetched then trimmed) — Free asks for 1,
-  // Pro keeps the existing default of 20, same parallel-fetch shape as
-  // before for Pro. This affects the business-profile query/render only:
-  // storage, creation (Pass 1), event rosters, and /find are completely
-  // unaffected. Every other Pro-only section below (products/people/
-  // inquiry form/gallery) is unchanged, still gated `if (pro)`.
+  // Free Appearances Pass 2, extended by the Free/Pro Entitlement pass —
+  // appearances is fetched for EVERY business, Free included (locked
+  // product rule: Free's public profile shows its next THREE eligible
+  // upcoming appearances). Still the same query, still data-layer limited
+  // via getUpcomingAppearancesForBusiness's own `limit` param (never
+  // over-fetched then trimmed) — Free asks for 3, Pro keeps the existing
+  // default of 20, same parallel-fetch shape as before for Pro. This is a
+  // PUBLIC DISPLAY limit only — it never touches owner-side Appearance
+  // creation/management (Command Center's own aggregation queries this
+  // same table with no such limit), storage, event rosters, or /find.
+  // Every other Pro-only section below (products/people/inquiry form/
+  // gallery) is unchanged, still gated `if (pro)`.
   let appearances: Awaited<ReturnType<typeof getUpcomingAppearancesForBusiness>>;
   if (pro) {
     [products, appearances, people, inquiryForm, galleryImages] = await Promise.all([
@@ -231,7 +233,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
       getBusinessGalleryImages(business.id),
     ]);
   } else {
-    appearances = await getUpcomingAppearancesForBusiness(business.id, 1);
+    appearances = await getUpcomingAppearancesForBusiness(business.id, 3);
   }
 
   // "Meet the Owners" only when every configured role genuinely says so —
@@ -284,9 +286,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     isSafeExternalUrl(l.href)
   );
 
-  const hasDetails = Boolean(
-    location || business.service_radius_miles || contact.phone || contact.email || socialLinks.length > 0
-  );
+  // Free/Pro Entitlement pass — Website and Instagram are basic-profile
+  // fields, unlocked for Free (see CLAUDE.md's "FREE = PRESENCE +
+  // SCHEDULE" principle); Facebook/TikTok aren't named in that unlock and
+  // stay Pro-only, same as before. Phone/email already can't reach this
+  // point for Free — `contact` above is hardcoded to {null, null} unless
+  // pro. Location stays Pro-only too (unchanged Free-identity rule below),
+  // so a Free business gets DetailsBlock's contact-icon row without its
+  // location line.
+  const freeSocialLinks = socialLinks.filter((l) => l.label === "Website" || l.label === "Instagram");
+  const detailsLocation = pro ? location : "";
+  const detailsSocialLinks = pro ? socialLinks : freeSocialLinks;
+  const hasVisibleDetails = Boolean(detailsLocation || contact.phone || contact.email || detailsSocialLinks.length > 0);
 
   const canonicalUrl = await resolveCanonicalUrl(business.id, business.slug);
 
@@ -294,15 +305,16 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // column; nothing here is inferred or fabricated (no ratings, priceRange,
   // geo coordinates, or hours — none of those are modeled in the schema).
   // address only includes locality/region since businesses has no street-
-  // address field to draw from. Free-tier gating applies here too — not
-  // just on-page: description/phone/social links are all hidden on the
-  // page for Free (see below), so they're withheld from this structured
-  // data as well rather than only visually hidden.
-  const sameAs = pro
-    ? [business.website_url, business.instagram_url, business.facebook_url, business.tiktok_url].filter(
-        isSafeExternalUrl
-      )
-    : [];
+  // address field to draw from. Plan-tier gating applies here too, kept in
+  // sync with the on-page rendering above rather than only visually
+  // hidden: description/website/Instagram are public for both tiers now
+  // (Free/Pro Entitlement pass), Facebook/TikTok/phone/location stay
+  // Pro-only, and contact.phone is already null for Free regardless.
+  const sameAs = [
+    business.website_url,
+    business.instagram_url,
+    ...(pro ? [business.facebook_url, business.tiktok_url] : []),
+  ].filter(isSafeExternalUrl);
   const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
@@ -311,10 +323,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     ...(business.cover_image_url || business.logo_url
       ? { image: [business.cover_image_url, business.logo_url].filter((v): v is string => Boolean(v)) }
       : {}),
-    ...(pro && (business.description || business.short_description)
+    ...(business.description || business.short_description
       ? { description: business.description ?? business.short_description }
       : {}),
-    ...(pro && contact.phone ? { telephone: contact.phone } : {}),
+    ...(contact.phone ? { telephone: contact.phone } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
     // Free identity has no location — withheld from structured data too,
     // same reasoning as description/phone/sameAs above.
@@ -526,13 +538,19 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               only, not a backend change (see Business Manager's
               Inquiries tab, which still reads/writes this setting). */}
 
-          {/* DetailsBlock covers phone/email/social/website — all
-              contact/promotional fields, so Pro-only. */}
-          {pro && hasDetails && (
+          {/* DetailsBlock covers phone/email/social/website/location.
+              Free/Pro Entitlement pass — Website/Instagram are now basic-
+              profile fields (see freeSocialLinks above), so this no longer
+              gates the whole block on `pro`; phone/email/location still
+              come from plan-aware values that are already blank for Free
+              (contact.{phone,email} are hardcoded null unless pro;
+              detailsLocation is "" unless pro), so a Free business simply
+              never has anything Pro-only to show here. */}
+          {hasVisibleDetails && (
             <DetailsBlock
               business={{ phone: contact.phone, email: contact.email, service_radius_miles: business.service_radius_miles }}
-              location={location}
-              socialLinks={socialLinks}
+              location={detailsLocation}
+              socialLinks={detailsSocialLinks}
               className="mt-6 hidden lg:block"
             />
           )}
@@ -643,11 +661,13 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             </section>
           )}
 
-          {/* About/description — Pro-only, and unlike products/gallery/
-              appearances/people this comes straight off the already-
-              fetched `business` row rather than a conditionally-run
-              query, so it needs an explicit pro && gate here. */}
-          {pro && business.description && (
+          {/* About/description — Free/Pro Entitlement pass: unlocked for
+              Free (basic-profile field, see CLAUDE.md's "FREE = PRESENCE +
+              SCHEDULE" principle). Unlike products/gallery/appearances/
+              people this comes straight off the already-fetched `business`
+              row rather than a conditionally-run query, so no plan check
+              is needed here at all now — it renders whenever set. */}
+          {business.description && (
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">About {business.name}</h2>
               <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{business.description}</p>
@@ -684,11 +704,11 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             </section>
           )}
 
-          {pro && hasDetails && (
+          {hasVisibleDetails && (
             <DetailsBlock
               business={{ phone: contact.phone, email: contact.email, service_radius_miles: business.service_radius_miles }}
-              location={location}
-              socialLinks={socialLinks}
+              location={detailsLocation}
+              socialLinks={detailsSocialLinks}
               className="mt-8 lg:hidden"
             />
           )}
@@ -781,7 +801,7 @@ function BusinessCtaRow({ business }: { business: Business }) {
  * sticky rail) via the `className` prop rather than duplicated markup —
  * each call site just toggles which breakpoint it's visible on. Only
  * fields that are actually set ever render; the whole block is skipped by
- * its caller (`hasDetails`) when nothing real exists. */
+ * its caller (`hasVisibleDetails`) when nothing real exists. */
 function DetailsBlock({
   business,
   location,

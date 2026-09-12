@@ -272,15 +272,16 @@ export default async function AddBusinessPage({
                       manage appearances now (Passes 1-2), so this no longer
                       frames "adding appearances" as the Pro-exclusive
                       benefit — the real Pro distinction is the full
-                      schedule showing publicly (Free's public profile
-                      shows only its next 1). Also drops the "Featured with
-                      Pro" eyebrow (implied FindMi itself features the
+                      schedule showing publicly (Free/Pro Entitlement pass:
+                      Free's public profile shows its next 3, Pro shows the
+                      full schedule). Also drops the "Featured with Pro"
+                      eyebrow (implied FindMi itself features the
                       business), matching join/page.tsx's ProCard. */}
                   <div className="rounded-2xl bg-findmi-50 p-3">
                     <p className="text-sm font-bold text-ink">Findmi Here</p>
                     <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers where to find you next.</p>
                     <p className="mt-1 text-xs text-ink/60">
-                      Your full upcoming schedule shows on your public profile — not just your next appearance.
+                      Your full upcoming schedule shows on your public profile — not just your next few appearances.
                     </p>
                   </div>
 

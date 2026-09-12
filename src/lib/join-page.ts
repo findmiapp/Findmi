@@ -307,11 +307,12 @@ export const JOIN_FREE_CARD_DEFAULTS = {
   includedFeatures: [
     "Basic business profile",
     "Logo + cover image",
-    "Your next upcoming appearance",
+    "About, website & Instagram",
+    "Your next 3 upcoming appearances",
     "Participate on Findmi event pages",
     "Findmi search & discovery",
   ],
-  requiresProFeatures: ["Full Upcoming Schedule", "Gallery", "Products & Services", "Website & Social Links", "Full Business Profile"],
+  requiresProFeatures: ["Full Upcoming Schedule", "Gallery", "Products & Services", "Public Contact Info", "Custom Findmi URL"],
   ctaLabel: "Start free",
 };
 
