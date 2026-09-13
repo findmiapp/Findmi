@@ -30,6 +30,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireBusinessMember, requireEventMember, requireLocationMember } from "@/lib/permissions";
 import {
+  createInquiryConversation,
   createOpportunity,
   getOrCreateConversation,
   isAuthorizedForConversation,
@@ -38,10 +39,131 @@ import {
   resolveOpportunityByContext,
   sendTextMessage,
   type ConversationEntityType,
+  type InquirySubjectType,
 } from "@/lib/opportunities";
+import { isBusinessPro } from "@/lib/entitlements";
+import type { PlanTier } from "@/lib/types";
 import { ensureEventAppearance, cancelEventAppearance } from "@/lib/appearance-event-sync";
 
 type ActionResult = { conversationId: string } | { error: string };
+
+// ── Controlled public inquiries (Inquire / Contact Organizer / Contact) ──
+//
+// Unify Site-Wide Communications pass. Deliberately separate from every
+// action above: those are DIRECT MESSAGE (entity-to-entity, requires
+// requireVerifiedSender + managing the acting entity). This is the
+// product's other, intentionally more open entry point — INQUIRE/CONTACT
+// — reachable by a signed-in consumer OR a true guest, never gated on
+// managing any Business/Event/Location. See lib/opportunities.ts's
+// createInquiryConversation for how the two converge on the same
+// Conversation architecture regardless of who's sending.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_NAME_LENGTH = 120;
+const MAX_MESSAGE_LENGTH = 4000;
+const MAX_TOPIC_LENGTH = 60;
+
+export interface SubmitEntityInquiryInput {
+  targetType: "business" | "event" | "location";
+  targetId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  /** Business inquiries only — an honest label prepended to the message
+   * body (no schema change needed for a "topic" concept — see this
+   * pass's report). Ignored for event/location targets. */
+  topic?: string;
+  message: string;
+  /** Honeypot — a real visitor never fills this (see InquireButton's own
+   * hidden field). A non-empty value is silently treated as success with
+   * no conversation created, same convention fc17e04 established for
+   * /join/sales. */
+  companySite?: string;
+}
+
+function subjectTypeFor(targetType: "business" | "event" | "location"): InquirySubjectType {
+  if (targetType === "business") return "business_inquiry";
+  if (targetType === "event") return "event_inquiry";
+  return "venue_inquiry";
+}
+
+const TARGET_TABLE: Record<"business" | "event" | "location", "businesses" | "events" | "locations"> = {
+  business: "businesses",
+  event: "events",
+  location: "locations",
+};
+
+/** The one entry point InquireButton (Business Inquire / Event Contact
+ * Organizer / Venue Contact) submits to. Never requires the sender to
+ * manage anything — that restriction is exclusively for DIRECT MESSAGE
+ * (messageBusiness/messageEventOrganizer/messageLocation above). The
+ * target entity is always re-verified server-side (never trusted from
+ * the client beyond its id), and Business Inquiry keeps its existing Pro
+ * entitlement gate (ensureIsPro) — this pass changes the CTA's
+ * destination, not who gets to use it. */
+export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Promise<{ ok: true } | { error: string }> {
+  if (input.companySite && input.companySite.trim()) return { ok: true };
+
+  const name = input.name.trim().slice(0, MAX_NAME_LENGTH);
+  const email = input.email.trim().toLowerCase();
+  const message = input.message.trim().slice(0, MAX_MESSAGE_LENGTH);
+  if (!name) return { error: "Enter your name." };
+  if (!EMAIL_RE.test(email)) return { error: "Enter a valid email address." };
+  if (!message) return { error: "Write a message." };
+
+  const phone = input.phone?.trim().slice(0, 40) || null;
+  const topic = input.topic?.trim().slice(0, MAX_TOPIC_LENGTH) || null;
+  const fullMessage = input.targetType === "business" && topic ? `Topic: ${topic}\n\n${message}` : message;
+
+  const admin = getAdminSupabase();
+  if (!admin) return { error: "Server isn't configured." };
+
+  const targetColumns = input.targetType === "business" ? "id, plan_tier, plan_expires_at" : "id";
+  const { data: target } = await admin
+    .from(TARGET_TABLE[input.targetType])
+    .select(targetColumns)
+    .eq("id", input.targetId)
+    .eq("is_demo", false)
+    .maybeSingle();
+  if (!target) return { error: "That's no longer available." };
+
+  // Business Inquiry stays a Pro capability — this pass changes its
+  // destination (native Conversation instead of mailto/external form),
+  // never who gets to use it. isBusinessPro is the same shared check
+  // BusinessPublicView's own resolveIsPro uses.
+  if (input.targetType === "business") {
+    const businessRow = target as unknown as { plan_tier: PlanTier | null; plan_expires_at: string | null };
+    if (!isBusinessPro({ plan_tier: businessRow.plan_tier ?? undefined, plan_expires_at: businessRow.plan_expires_at })) {
+      return { error: "This business isn't accepting inquiries right now." };
+    }
+  }
+
+  // Real session re-derived server-side, never trusted from the client —
+  // present only to add the sender as a "personal" participant so they
+  // can read replies in their own /account/messages; entirely optional
+  // (Phase 9's own "no account required" rule).
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  try {
+    await createInquiryConversation(admin, {
+      subjectType: subjectTypeFor(input.targetType),
+      subjectId: input.targetId,
+      targetEntityType: input.targetType,
+      targetEntityId: input.targetId,
+      senderUserId: user?.id ?? null,
+      guestName: name,
+      guestEmail: email,
+      guestPhone: phone,
+      message: fullMessage,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't send your message. Please try again." };
+  }
+
+  return { ok: true };
+}
 
 /** Shared preamble every initiation action below starts with: a real
  * Supabase Auth session, email-verified (Section 1/5/14's own explicit

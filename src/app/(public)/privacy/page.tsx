@@ -11,7 +11,7 @@ export default function PrivacyPage() {
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
         Privacy Policy
       </h1>
-      <p className="mt-2 text-sm text-ink/50">Last updated August 2026</p>
+      <p className="mt-2 text-sm text-ink/50">Last updated September 2026</p>
 
       <div className="mt-8 space-y-8 text-sm leading-relaxed text-ink/70">
         <section>
@@ -40,6 +40,22 @@ export default function PrivacyPage() {
             contacted or followed. We use third-party service providers — including Supabase
             for our database, Stripe for payment processing, Tally for form collection, and
             Vercel for hosting — to operate Findmi. We do not sell your personal information.
+          </p>
+        </section>
+        <section>
+          <h2 className="text-base font-semibold text-ink">Messages and communications</h2>
+          <p className="mt-2">
+            When you send a direct message, or submit an Inquire, Contact Organizer, Contact
+            Venue, or Talk to Sales form, we collect and process the contents of that
+            communication along with your name, email, and any other contact information or
+            context you provide, so it can be delivered to its intended recipient (the
+            business, organizer, or venue you contacted, or Findmi&rsquo;s sales team). We
+            retain this information, along with related timestamps and metadata, to operate
+            our messaging and inquiry features, provide support, maintain the security of the
+            platform, investigate misuse, fraud, or spam, enforce our policies, and comply with
+            legal obligations. Authorized Findmi personnel and the service providers necessary
+            to operate the service (see below) may access this information for those purposes.
+            We do not sell the contents of your messages or inquiries.
           </p>
         </section>
         <section>

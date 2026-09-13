@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrlWithFields, num, str } from "@/lib/admin/form-helpers";
 import { sendOperationalNotification } from "@/lib/notifications/send";
+import { createInquiryConversation } from "@/lib/opportunities";
 
 // Multi-Region / National Sales Inquiry pass — the one public entry
 // point for /join's "Talk to Sales" flow (join/sales/page.tsx's form).
@@ -142,11 +143,9 @@ export async function submitSalesInquiry(formData: FormData) {
     fail("Couldn't submit your inquiry. Please try again.");
     return;
   }
+  const salesInquiryId = inserted.id as string;
 
-  // Notification is best-effort and strictly AFTER the row is durably
-  // persisted — see notifySalesInbox's own note. Its outcome never
-  // changes what the prospect sees next.
-  await notifySalesInbox(inserted.id as string, `New Findmi Multi-Region Sales Inquiry — ${businessName}`, [
+  const summaryLines = [
     `Contact: ${contactName}`,
     `Business / brand: ${businessName}`,
     `Email: ${email}`,
@@ -156,7 +155,42 @@ export async function submitSalesInquiry(formData: FormData) {
     `Regions / areas served or interested in: ${regions}`,
     `Goals: ${goals}`,
     "Source: /join — Multi-Region / National",
-  ]);
+  ];
+
+  // Unify Site-Wide Communications pass — this lead also becomes a real
+  // Findmi Conversation (subject_type='findmi_sales'), the same
+  // architecture every other inquiry now uses, instead of only living as
+  // a structured sales_inquiries row. sales_inquiries stays the
+  // structured qualification/CRM record (fc17e04, untouched); the
+  // Conversation is where any back-and-forth actually happens, and
+  // admin can open it from /admin/sales-inquiries. Best-effort: a
+  // failure here never blocks the lead (already durably persisted above)
+  // or the guaranteed notification below.
+  try {
+    const { conversationId } = await createInquiryConversation(admin!, {
+      subjectType: "findmi_sales",
+      subjectId: salesInquiryId,
+      targetEntityType: null,
+      targetEntityId: null,
+      senderUserId: null,
+      guestName: contactName,
+      guestEmail: email,
+      guestPhone: phone,
+      message: summaryLines.join("\n"),
+    });
+    await admin!.from("sales_inquiries").update({ conversation_id: conversationId }).eq("id", salesInquiryId);
+  } catch (err) {
+    console.error(`[sales-inquiries] failed to create conversation for inquiry ${salesInquiryId}`, err);
+  }
+
+  // Findmiapp@gmail.com is the authoritative recipient for this lead —
+  // preserved from fc17e04 exactly as instructed, since findmi_sales has
+  // no entity participants (no Business/Event/Location on the other
+  // end) for createInquiryConversation's own notifyNewMessage to notify.
+  // Best-effort and strictly AFTER the row is durably persisted — see
+  // notifySalesInbox's own note. Its outcome never changes what the
+  // prospect sees next.
+  await notifySalesInbox(salesInquiryId, `New Findmi Multi-Region Sales Inquiry — ${businessName}`, summaryLines);
 
   redirect(SUCCESS_PATH);
 }

@@ -11,7 +11,7 @@ export default function TermsPage() {
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
         Terms of Service
       </h1>
-      <p className="mt-2 text-sm text-ink/50">Last updated August 2026</p>
+      <p className="mt-2 text-sm text-ink/50">Last updated September 2026</p>
 
       <div className="mt-8 space-y-8 text-sm leading-relaxed text-ink/70">
         <section>
@@ -40,6 +40,22 @@ export default function TermsPage() {
             Findmi connects consumers and businesses but is not a party to any booking,
             purchase, or agreement made between them. Businesses are responsible for their own
             products, services, pricing, availability, and fulfillment.
+          </p>
+        </section>
+        <section>
+          <h2 className="text-base font-semibold text-ink">Communications and messages</h2>
+          <p className="mt-2">
+            Findmi provides messaging and inquiry tools (including direct messages between
+            businesses, organizers, and venues, and controlled inquiry forms like Inquire,
+            Contact Organizer, Contact Venue, and Talk to Sales) so people can communicate
+            through the platform. Messages and inquiries you submit through Findmi are
+            transmitted and stored by Findmi in order to deliver them to the intended
+            recipient. You may not use these tools for unlawful, abusive, fraudulent,
+            harassing, or spam purposes. Authorized Findmi personnel and service providers may
+            access, review, or process communications when reasonably necessary to operate the
+            service, deliver messages to their intended recipients, provide support,
+            investigate abuse, fraud, or spam, protect the security of users and the platform,
+            enforce these terms, or comply with legal obligations.
           </p>
         </section>
         <section>

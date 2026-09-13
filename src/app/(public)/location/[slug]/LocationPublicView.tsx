@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
+import InquireButton from "@/components/InquireButton";
+import { shouldShowMessageButton } from "@/lib/message-visibility";
 import LocationFollowButton from "@/components/LocationFollowButton";
 import LocationSaveButton from "@/components/LocationSaveButton";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
@@ -54,9 +56,10 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const [happenings, galleryImages] = await Promise.all([
+  const [happenings, galleryImages, showMessageButton] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),
     getLocationGalleryImages(location.id),
+    shouldShowMessageButton("location", location.id),
   ]);
   const fullAddress = [location.address, cityStateZip(location.city, location.state, location.postal_code)]
     .filter(Boolean)
@@ -178,7 +181,9 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               Get Directions
             </a>
           )}
-          <MessageButton size="default" targetType="location" targetId={location.id} targetName={location.name} />
+          {showMessageButton && (
+            <MessageButton size="default" targetType="location" targetId={location.id} targetName={location.name} />
+          )}
         </div>
 
         {(website || location.phone || location.email) && (
@@ -207,14 +212,20 @@ export async function LocationPublicView({ slug }: { slug: string }) {
                   Call
                 </a>
               )}
+              {/* Unify Site-Wide Communications pass — this pill no
+                  longer exposes location.email directly via mailto; it
+                  opens the native Venue Contact inquiry form instead
+                  (subject_type='venue_inquiry'), gated on the exact same
+                  "does this venue have contact info on file" condition
+                  as before. */}
               {location.email && (
-                <a
-                  href={`mailto:${location.email}`}
+                <InquireButton
+                  targetType="location"
+                  targetId={location.id}
+                  targetName={location.name}
+                  label="Contact"
                   className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-                >
-                  <MailGlyph className="h-3.5 w-3.5 shrink-0" />
-                  Email
-                </a>
+                />
               )}
             </div>
           </div>
@@ -360,15 +371,6 @@ function PhoneGlyph({ className }: { className?: string }) {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-function MailGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M4.5 7l7.5 6 7.5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

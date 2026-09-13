@@ -71,7 +71,11 @@ export default async function ConversationPage({
   });
 
   const otherParties = thread.parties.filter((p) => !myParties.some((m) => m.entityType === p.entityType && m.entityId === p.entityId));
-  const title = otherParties.map((p) => p.label).join(" & ") || "Conversation";
+  // Unify Site-Wide Communications pass — a guest-originated inquiry has
+  // no participant at all for the guest side (see createInquiryConversation),
+  // so otherParties is empty; fall back to the guest's own name rather
+  // than the generic "Conversation".
+  const title = otherParties.map((p) => p.label).join(" & ") || thread.guestName || "Conversation";
 
   const timeline: TimelineItem[] = [
     ...thread.messages.map((m): TimelineItem => ({ kind: "message", createdAt: m.createdAt, message: m })),
@@ -86,6 +90,16 @@ export default async function ConversationPage({
         ← Messages
       </Link>
       <h1 className="mt-1.5 font-display text-2xl font-bold tracking-tight text-ink">{title}</h1>
+      {/* Unify Site-Wide Communications pass — a guest inquiry has no
+          Findmi account to reply from (Phase 12's own "smallest safe V1"
+          limitation), so their contact info is surfaced here instead —
+          the way an authorized manager actually follows up. */}
+      {thread.guestEmail && (
+        <p className="mt-1 text-xs text-ink/45">
+          Guest contact: {thread.guestEmail}
+          {thread.guestPhone && ` · ${thread.guestPhone}`}
+        </p>
+      )}
 
       {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-xs text-red-600">{error}</p>}
 

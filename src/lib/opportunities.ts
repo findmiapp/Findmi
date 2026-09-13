@@ -220,7 +220,14 @@ export async function getOrCreateConversation(
     subjectId: string;
     partyA: ConversationParty;
     partyB: ConversationParty;
-    actingUserId: string;
+    // Unify Site-Wide Communications pass — widened from `string`: a
+    // guest-originated inquiry (see createInquiryConversation below) has
+    // no session at all, so partyA is "personal" with no participant row
+    // ever added for it (addPartyParticipants already no-ops for
+    // "personal" when actingUserId is falsy — this was already its
+    // behavior, just never reachable through this exported signature
+    // before). Every existing caller still passes a real string.
+    actingUserId: string | null;
   }
 ): Promise<{ id: string; created: boolean }> {
   const existing = await findConversationByEntityPair(admin, params.partyA, params.partyB);
@@ -275,13 +282,26 @@ async function getEntityDisplayName(
  * conversation's first message and a later reply both funnel through
  * here exactly once — never a second, separate "conversation created"
  * email that would double up on the very first message. */
-async function notifyNewMessage(
+/** Exported (Unify Site-Wide Communications pass) so
+ * createInquiryConversation below can reuse it verbatim for a controlled
+ * public inquiry's opening message — the exact same "every OTHER current
+ * participant, resolved from conversation_participants" recipient set,
+ * so a Business/Event/Location Inquiry notifies its managers through the
+ * identical path a direct MESSAGE reply already does; no second
+ * notification mechanism. `senderUserId` is now nullable (a guest has
+ * none — nothing in recipientUserIds can equal null, so the exclusion
+ * filter is simply a no-op for a guest, which is correct: every manager
+ * should be notified). `senderNameOverride` lets a guest's typed name be
+ * used in the email instead of resolving an entity display name (there
+ * is no sender entity for a guest/personal participant to look up). */
+export async function notifyNewMessage(
   admin: SupabaseClient,
   conversationId: string,
-  senderUserId: string,
+  senderUserId: string | null,
   senderEntityType: ConversationEntityType,
   senderEntityId: string | null,
-  body: string
+  body: string,
+  senderNameOverride?: string
 ): Promise<void> {
   const { data } = await admin.from("conversation_participants").select("user_id").eq("conversation_id", conversationId);
   const recipientUserIds = [...new Set(((data ?? []) as { user_id: string }[]).map((row) => row.user_id))].filter(
@@ -292,7 +312,7 @@ async function notifyNewMessage(
   const to = dedupeEmails(emails);
   if (to.length === 0) return;
 
-  const senderName = await getEntityDisplayName(admin, senderEntityType, senderEntityId);
+  const senderName = senderNameOverride ?? (await getEntityDisplayName(admin, senderEntityType, senderEntityId));
   const preview = body.length > 160 ? `${body.slice(0, 157)}...` : body;
 
   await sendProductNotification({
@@ -323,6 +343,109 @@ export async function sendTextMessage(
   const participantId = await addParticipant(admin, conversationId, senderUserId, senderEntityType, senderEntityId);
   await addMessage(admin, conversationId, participantId, "text", body);
   await notifyNewMessage(admin, conversationId, senderUserId, senderEntityType, senderEntityId, body);
+}
+
+export type InquirySubjectType = "business_inquiry" | "event_inquiry" | "venue_inquiry" | "findmi_sales";
+
+/** Unify Site-Wide Communications pass — the one entry point every
+ * CONTROLLED PUBLIC INQUIRY (Business Inquire, Event Contact Organizer,
+ * Venue Contact, Findmi Multi-Region Sales) creates its opening message
+ * through, so these become real Conversations in the exact same
+ * architecture as a direct MESSAGE — never a second, parallel inbox.
+ * The critical difference from messageBusiness/messageEventOrganizer/
+ * messageLocation (connect/actions.ts) is authorization: THIS function is
+ * for the "controlled public entry point" half of the product's own
+ * MESSAGE-vs-INQUIRE distinction — the caller does NOT need to manage any
+ * Business/Event/Location to use it (a signed-in consumer or a true
+ * guest may both reach here), so it never calls requireBusinessMember()/
+ * etc. for the SENDER side. It still fully authorizes the TARGET side —
+ * callers pass a real, pre-validated targetEntityId, and every current
+ * member of that entity becomes a participant exactly like any other
+ * Conversation (addEntityParticipants).
+ *
+ * Sender identity is exactly one of:
+ *   - an authenticated consumer: senderUserId set -> added as a real
+ *     "personal" participant (existing entity_type, previously unused by
+ *     any caller but always supported), so they can read replies in
+ *     their own /account/messages exactly like an entity manager can.
+ *   - a true guest: senderUserId null -> NO participant row is created
+ *     (conversation_participants.user_id is NOT NULL, so a guest simply
+ *     never becomes one) — their identity is instead stored on
+ *     conversations.guest_name/guest_email/guest_phone, and their
+ *     opening message has sender_participant_id null, the same
+ *     "unattributed" shape a system message already uses.
+ *
+ * `targetEntityType`/`targetEntityId` are null only for findmi_sales,
+ * which has no Business/Event/Location on the other end — subjectId is
+ * the sales_inquiries row's own id there (see join/sales/actions.ts),
+ * and notification is the caller's own responsibility in that case
+ * (there are no entity managers to notify — see that file's own note). */
+export async function createInquiryConversation(
+  admin: SupabaseClient,
+  params: {
+    subjectType: InquirySubjectType;
+    subjectId: string;
+    targetEntityType: "business" | "event" | "location" | null;
+    targetEntityId: string | null;
+    senderUserId: string | null;
+    guestName: string | null;
+    guestEmail: string | null;
+    guestPhone: string | null;
+    message: string;
+  }
+): Promise<{ conversationId: string }> {
+  const { subjectType, subjectId, targetEntityType, targetEntityId, senderUserId, guestName, guestEmail, guestPhone, message } = params;
+
+  // Reuse an existing thread for a signed-in consumer re-inquiring about
+  // the same entity (same dedup rule every other Conversation entry
+  // point already applies) — never attempted for a guest, who has no
+  // stable participant identity to match against.
+  let conversationId: string | null = null;
+  if (senderUserId && targetEntityType && targetEntityId) {
+    conversationId = await findConversationByEntityPair(
+      admin,
+      { entityType: "personal", entityId: null },
+      { entityType: targetEntityType, entityId: targetEntityId }
+    );
+  }
+
+  if (!conversationId) {
+    const { data: conversation, error } = await admin
+      .from("conversations")
+      .insert({
+        subject_type: subjectType,
+        subject_id: subjectId,
+        guest_name: senderUserId ? null : guestName,
+        guest_email: senderUserId ? null : guestEmail,
+        guest_phone: senderUserId ? null : guestPhone,
+      })
+      .select("id")
+      .single();
+    if (error || !conversation) throw new Error(error?.message ?? "Could not create conversation.");
+    conversationId = (conversation as { id: string }).id;
+  }
+
+  if (targetEntityType && targetEntityId) {
+    await addEntityParticipants(admin, conversationId, targetEntityType, targetEntityId);
+  }
+
+  let senderParticipantId: string | null = null;
+  if (senderUserId) {
+    senderParticipantId = await addParticipant(admin, conversationId, senderUserId, "personal", null);
+  }
+
+  await addMessage(admin, conversationId, senderParticipantId, "text", message);
+
+  // findmi_sales has no entity participants to notify (no Business/Event/
+  // Location on the other end) — the caller sends its own explicit
+  // notification to Findmiapp@gmail.com instead (see join/sales/
+  // actions.ts). For every other inquiry type this is the SAME
+  // notification path a direct MESSAGE reply already uses.
+  if (targetEntityType) {
+    await notifyNewMessage(admin, conversationId, senderUserId, "personal", null, message, guestName ?? undefined);
+  }
+
+  return { conversationId };
 }
 
 /** Entity-aware identity, re-derived live (Section 14) — never trusts a
@@ -1078,6 +1201,15 @@ export interface ConversationThread {
   parties: ConversationThreadParty[];
   messages: ConversationMessageItem[];
   opportunityCards: ConversationOpportunityCard[];
+  /** Unify Site-Wide Communications pass — set only for a guest-
+   * originated inquiry (see createInquiryConversation). Surfaced here so
+   * an authorized entity manager can actually follow up with a guest who
+   * has no /account/messages of their own to reply from (Phase 12's own
+   * "recipient may follow up using the supplied contact information"
+   * requirement) — null for every other Conversation. */
+  guestName: string | null;
+  guestEmail: string | null;
+  guestPhone: string | null;
 }
 
 /** The conversation thread view's one data source — chronological
@@ -1093,6 +1225,13 @@ export async function getConversationThread(
 ): Promise<ConversationThread | null> {
   const authorized = await isAuthorizedForConversation(admin, conversationId, viewerUserId);
   if (!authorized) return null;
+
+  const { data: conversationRow } = await admin
+    .from("conversations")
+    .select("guest_name, guest_email, guest_phone")
+    .eq("id", conversationId)
+    .maybeSingle();
+  const guest = conversationRow as { guest_name: string | null; guest_email: string | null; guest_phone: string | null } | null;
 
   const { data: participantRows } = await admin
     .from("conversation_participants")
@@ -1123,12 +1262,16 @@ export async function getConversationThread(
     (messageRows ?? []) as { id: string; kind: MessageKind; body: string; created_at: string; sender_participant_id: string | null }[]
   ).map((m) => {
     const sender = m.sender_participant_id ? participantById.get(m.sender_participant_id) : null;
+    // Unify Site-Wide Communications pass — a guest's opening message has
+    // no participant at all (see createInquiryConversation); fall back to
+    // the conversation's own guest_name rather than leaving it blank.
+    const guestLabel = !sender && guest?.guest_name ? `${guest.guest_name} (Guest)` : null;
     return {
       id: m.id,
       kind: m.kind,
       body: m.body,
       createdAt: m.created_at,
-      senderLabel: sender ? (labels.get(labelKey(sender.entity_type, sender.entity_id, sender.user_id)) ?? null) : null,
+      senderLabel: sender ? (labels.get(labelKey(sender.entity_type, sender.entity_id, sender.user_id)) ?? null) : guestLabel,
       senderEntityType: sender?.entity_type ?? null,
       senderUserId: sender?.user_id ?? null,
     };
@@ -1158,7 +1301,15 @@ export async function getConversationThread(
     };
   });
 
-  return { id: conversationId, parties: [...partiesMap.values()], messages, opportunityCards };
+  return {
+    id: conversationId,
+    parties: [...partiesMap.values()],
+    messages,
+    opportunityCards,
+    guestName: guest?.guest_name ?? null,
+    guestEmail: guest?.guest_email ?? null,
+    guestPhone: guest?.guest_phone ?? null,
+  };
 }
 
 export interface ConversationListItem {
@@ -1191,7 +1342,7 @@ export async function listConversationsForUser(admin: SupabaseClient, userId: st
   if (conversationIds.length === 0) return [];
 
   const [{ data: conversationRows }, { data: participantRows }, { data: messageRows }] = await Promise.all([
-    admin.from("conversations").select("id, created_at").in("id", conversationIds),
+    admin.from("conversations").select("id, created_at, guest_name").in("id", conversationIds),
     admin.from("conversation_participants").select("conversation_id, entity_type, entity_id, user_id").in("conversation_id", conversationIds),
     admin
       .from("conversation_messages")
@@ -1221,20 +1372,30 @@ export async function listConversationsForUser(admin: SupabaseClient, userId: st
   for (const m of (messageRows ?? []) as { conversation_id: string; body: string; created_at: string }[]) {
     if (!lastMessageByConversation.has(m.conversation_id)) lastMessageByConversation.set(m.conversation_id, m);
   }
-  const createdAtByConversation = new Map(((conversationRows ?? []) as { id: string; created_at: string }[]).map((c) => [c.id, c.created_at]));
+  const conversationMeta = new Map(
+    ((conversationRows ?? []) as { id: string; created_at: string; guest_name: string | null }[]).map((c) => [c.id, c])
+  );
 
   const items: ConversationListItem[] = [];
   for (const conversationId of conversationIds) {
     const parties = partiesByConversation.get(conversationId) ?? [];
     const other = parties.find((p) => !myEntityKeys.has(labelKey(p.entity_type, p.entity_id, p.user_id)));
-    if (!other) continue;
+    const guestName = conversationMeta.get(conversationId)?.guest_name ?? null;
+    // Unify Site-Wide Communications pass — a guest-originated inquiry
+    // has no participant row for the guest side at all (see
+    // createInquiryConversation), so `other` is never found for one.
+    // Previously that meant the conversation silently never appeared in
+    // this list (only reachable via the notification email's direct
+    // link) — now it shows using the guest's own name instead of being
+    // skipped, same as a real other-party conversation would.
+    if (!other && !guestName) continue;
     const last = lastMessageByConversation.get(conversationId) ?? null;
     items.push({
       id: conversationId,
-      otherPartyLabel: labels.get(labelKey(other.entity_type, other.entity_id, other.user_id)) ?? "Findmi Member",
-      otherPartyEntityType: other.entity_type,
+      otherPartyLabel: other ? (labels.get(labelKey(other.entity_type, other.entity_id, other.user_id)) ?? "Findmi Member") : guestName!,
+      otherPartyEntityType: other?.entity_type ?? "personal",
       lastMessageBody: last?.body ?? null,
-      lastActivityAt: last?.created_at ?? createdAtByConversation.get(conversationId) ?? new Date(0).toISOString(),
+      lastActivityAt: last?.created_at ?? conversationMeta.get(conversationId)?.created_at ?? new Date(0).toISOString(),
     });
   }
 

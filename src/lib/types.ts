@@ -736,6 +736,10 @@ export interface SalesInquiry {
   source: string;
   status: "new" | "contacted" | "qualified" | "closed";
   created_at: string;
+  /** Unify Site-Wide Communications pass — links to this lead's
+   * canonical Findmi Sales Conversation, when one was created (nullable/
+   * additive: rows submitted before this pass have none). */
+  conversation_id: string | null;
 }
 
 export interface FindmiLocation {

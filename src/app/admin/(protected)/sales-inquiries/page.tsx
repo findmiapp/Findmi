@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getAdminSalesInquiries } from "@/lib/admin/sales-inquiries";
 import { formatDateShort } from "@/lib/format";
 import { updateSalesInquiryStatus } from "./actions";
@@ -71,7 +72,14 @@ export default async function AdminSalesInquiriesPage({
                 <td className="px-4 py-3 text-ink/70">{inquiry.city_market_count}</td>
                 <td className="px-4 py-3 max-w-[220px] text-ink/70">{inquiry.regions}</td>
                 <td className="px-4 py-3 max-w-[280px] text-ink/70">{inquiry.goals}</td>
-                <td className="px-4 py-3 text-ink/50">{formatDateShort(inquiry.created_at)}</td>
+                <td className="px-4 py-3 text-ink/50">
+                  {formatDateShort(inquiry.created_at)}
+                  {inquiry.conversation_id && (
+                    <Link href={`/admin/conversations/${inquiry.conversation_id}`} className="mt-1 block text-xs font-semibold text-findmi-700">
+                      View Conversation
+                    </Link>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <form action={updateSalesInquiryStatus} className="flex items-center gap-2">
                     <input type="hidden" name="id" value={inquiry.id} />

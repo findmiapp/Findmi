@@ -6,6 +6,8 @@ import AddToCalendarButton from "@/components/AddToCalendarButton";
 import { CategoryPill } from "@/components/Badge";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
+import InquireButton from "@/components/InquireButton";
+import { shouldShowMessageButton } from "@/lib/message-visibility";
 import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
@@ -139,17 +141,17 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // architecture) outranks the purpose's global default. Only when NONE of
   // those exist does the action disappear. Tickets/Directions aren't
   // form-driven purposes and keep their existing direct-URL-only behavior.
-  const [rsvpForm, vendorAppForm, contactForm] = await Promise.all([
+  // Unify Site-Wide Communications pass — Contact Organizer no longer
+  // resolves through Form Manager/a direct URL/organizer_email mailto
+  // (event.contact_url/event.organizer_email stay in the schema, simply
+  // unread here now); it's always the native InquireButton below, which
+  // creates a real Conversation (subject_type='event_inquiry'). The
+  // founder's own contact_enabled toggle is still authoritative for
+  // whether it shows at all — see showContact below.
+  const [rsvpForm, vendorAppForm] = await Promise.all([
     event.rsvp_enabled ? resolveEventActionForm("rsvp", event, event.rsvp_url) : Promise.resolve(null),
     event.vendor_applications_enabled && !vendorDeadlinePassed
       ? resolveEventActionForm("vendor_application", event, event.vendor_application_url)
-      : Promise.resolve(null),
-    event.contact_enabled
-      ? resolveEventActionForm(
-          "contact_organizer",
-          event,
-          event.contact_url || (event.organizer_email ? `mailto:${event.organizer_email}` : null)
-        )
       : Promise.resolve(null),
   ]);
 
@@ -182,7 +184,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const legacyVendorApplyCta = !hasOccurrences ? customCtas.find((c) => c.label === "Apply to Vend") ?? null : null;
   const legacyTierACtas = legacyVendorApplyCta ? customCtas.filter((c) => c.label !== "Apply to Vend") : customCtas;
 
-  const showContact = Boolean(contactForm);
+  const showContact = event.contact_enabled;
+  const showMessageButton = await shouldShowMessageButton("event", event.id);
   const showFollow = event.follow_enabled;
   const showDirections = event.directions_enabled && Boolean(directionsHref);
 
@@ -293,13 +296,15 @@ export async function EventPublicView({ slug }: { slug: string }) {
           MESSAGE still renders alone in this same fixed row for that
           case, so it's never buried in the scroller either way. */}
       <div className="mt-4 flex flex-wrap items-center gap-2.5">
-        <MessageButton
-          size="default"
-          targetType="event"
-          targetId={event.id}
-          targetName={event.name}
-          eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
-        />
+        {showMessageButton && (
+          <MessageButton
+            size="default"
+            targetType="event"
+            targetId={event.id}
+            targetName={event.name}
+            eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
+          />
+        )}
         {legacyVendorApplyCta && (
           <FormAction
             href={legacyVendorApplyCta.href}
@@ -400,22 +405,14 @@ export async function EventPublicView({ slug }: { slug: string }) {
               behind a swipe. This rail is secondary utilities only now:
               Save/Directions/Add to Calendar/Share/Contact/Event
               Details. */}
-          {showContact && contactForm && (
-            contactForm.url.startsWith("mailto:") ? (
-              <a
-                href={contactForm.url}
-                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-              >
-                Contact Organizer
-              </a>
-            ) : (
-              <FormAction
-                href={contactForm.url}
-                displayMode={contactForm.displayMode}
-                label="Contact Organizer"
-                className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-              />
-            )
+          {showContact && (
+            <InquireButton
+              targetType="event"
+              targetId={event.id}
+              targetName={event.name}
+              label="Contact Organizer"
+              className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+            />
           )}
           {event.external_url && (
             <a

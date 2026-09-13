@@ -13,7 +13,8 @@ import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
-import FormAction from "@/components/FormAction";
+import InquireButton, { BUSINESS_INQUIRY_TOPICS } from "@/components/InquireButton";
+import { shouldShowMessageButton } from "@/lib/message-visibility";
 import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
 import type { Business, BusinessWithCategories } from "@/lib/types";
@@ -28,7 +29,6 @@ import {
   PUBLIC_BUSINESS_COLUMNS,
 } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
-import { resolveBusinessInquiryForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { validateCustomDestination } from "@/lib/navigation";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -209,7 +209,6 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
 
   let products: Awaited<ReturnType<typeof getProductsForBusiness>> = [];
   let people: Awaited<ReturnType<typeof getPeopleForBusiness>> = [];
-  let inquiryForm: Awaited<ReturnType<typeof resolveBusinessInquiryForm>> = null;
   let galleryImages: Awaited<ReturnType<typeof getBusinessGalleryImages>> = [];
   // Free Appearances Pass 2, extended by the Free/Pro Entitlement pass —
   // appearances is fetched for EVERY business, Free included (locked
@@ -225,11 +224,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // gallery) is unchanged, still gated `if (pro)`.
   let appearances: Awaited<ReturnType<typeof getUpcomingAppearancesForBusiness>>;
   if (pro) {
-    [products, appearances, people, inquiryForm, galleryImages] = await Promise.all([
+    [products, appearances, people, galleryImages] = await Promise.all([
       getProductsForBusiness(business.id),
       getUpcomingAppearancesForBusiness(business.id),
       getPeopleForBusiness(business.id),
-      resolveBusinessInquiryForm(business),
       getBusinessGalleryImages(business.id),
     ]);
   } else {
@@ -243,27 +241,21 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     people.length > 0 && people.every((p) => /owner|founder/i.test(p.role ?? ""));
   const peopleHeading = allOwnersOrFounders ? "Meet the Owners" : `Meet the People Behind ${business.name}`;
 
-  // Resolution (Business Profile V2 polish pass, item 4 — a new tier
-  // added AHEAD of the existing chain): business's own custom Inquiry
-  // CTA (inquiry_cta_url, any external URL — no Tally form required) ->
-  // business-specific booking/inquiry form -> global default form ->
-  // business email fallback -> graceful unavailable state (see
-  // lib/forms.ts for resolveBusinessInquiryForm's Form Manager
-  // precedence — Remove Public Tally Links pass dropped its old env-var
-  // Tally fallback, so it now resolves to null rather than an external
-  // form when nothing is configured). Never fabricated; a business with none of
-  // these still correctly shows no CTA. The label is independently
-  // overridable (inquiry_cta_label) regardless of which URL tier resolves,
-  // defaulting to "Inquire" exactly as before when unset.
-  const mailtoFallback = contact.email
-    ? {
-        url: `mailto:${contact.email}?subject=${encodeURIComponent(`Inquiry via Findmi — ${business.name}`)}`,
-        displayMode: "external" as const,
-      }
-    : null;
-  const customInquiryUrl = isSafeExternalUrl(business.inquiry_cta_url) ? business.inquiry_cta_url : null;
-  const inquiryAction = customInquiryUrl ? { url: customInquiryUrl, displayMode: "external" as const } : (inquiryForm ?? mailtoFallback);
+  // Unify Site-Wide Communications pass — Inquire no longer resolves to
+  // any external URL/Form Manager form/mailto (all of which either
+  // exposed the business's private email or left the thread outside
+  // Findmi entirely). It's now always the native InquireButton below,
+  // which creates a real Conversation (subject_type='business_inquiry')
+  // — see components/InquireButton.tsx and
+  // lib/opportunities.ts's createInquiryConversation. inquiry_cta_url/
+  // inquiry_cta_label stay in the schema (inquiry_cta_label is still the
+  // button's own founder-editable label); inquiry_cta_url is simply no
+  // longer read for the destination, same "label stays editable,
+  // destination is server-controlled" pattern used elsewhere on Findmi
+  // (Join's Pro/Multi-Region CTAs). Free-tier hidden, unchanged
+  // entitlement — see the `pro &&` gate below.
   const inquiryLabel = business.inquiry_cta_label?.trim() || "Inquire";
+  const showMessageButton = await shouldShowMessageButton("business", business.id);
 
   const location = cityStateZip(business.city, business.state, business.postal_code);
   // categories[0] is the same "good enough for a compact label" primary-
@@ -446,8 +438,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                   no longer relies on a fixed w-20 slot — see
                   FollowButton's own shrink-0 sizing). Not Pro-gated:
                   messaging between businesses/organizers is core
-                  platform behavior, not a paid profile feature. */}
-              <MessageButton targetType="business" targetId={business.id} targetName={business.name} />
+                  platform behavior, not a paid profile feature.
+                  Unify Site-Wide Communications pass — MESSAGE is a
+                  DIRECT MESSAGE affordance (entity-to-entity), so it
+                  must not even render for a viewer who isn't signed in
+                  and managing an eligible Business/Event — never shown
+                  disabled, never shown then redirected to login. See
+                  lib/message-visibility.ts's own note; Inquire below is
+                  the separate, always-available controlled entry
+                  point. */}
+              {showMessageButton && (
+                <MessageButton targetType="business" targetId={business.id} targetName={business.name} />
+              )}
               <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
               <SaveButton slug={business.slug} />
             </div>
@@ -504,24 +506,16 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               above — this row is purely Inquire, the single most-
               configurable primary action (item 4's custom URL/label).
               Inquire is contact functionality — Free-tier hidden. */}
-          {pro && inquiryAction && (
+          {pro && (
             <div className="min-w-0">
-              {inquiryAction.url.startsWith("mailto:") ? (
-                <a
-                  href={inquiryAction.url}
-                  rel="noreferrer"
-                  className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                >
-                  {inquiryLabel}
-                </a>
-              ) : (
-                <FormAction
-                  href={inquiryAction.url}
-                  displayMode={inquiryAction.displayMode}
-                  label={inquiryLabel}
-                  className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                />
-              )}
+              <InquireButton
+                targetType="business"
+                targetId={business.id}
+                targetName={business.name}
+                label={inquiryLabel}
+                topics={BUSINESS_INQUIRY_TOPICS}
+                className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              />
             </div>
           )}
 
