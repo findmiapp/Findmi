@@ -88,32 +88,49 @@ export async function uploadMemberBusinessImage(
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "No file selected." };
 
-  const validated = await validateImageFile(file);
-  if ("error" in validated) return validated;
+  // Product Image Upload Crash fix — everything below this point used to
+  // run unguarded. validateImageFile/getAdminSupabase already fail
+  // gracefully (return {error}/null), but the actual network calls
+  // (Storage upload, magic-byte read off the file) can THROW instead —
+  // a dropped connection, a transient Storage timeout, etc. — rather than
+  // returning a normal Supabase {error}. This function is called from
+  // MemberImageField's startTransition (see that file's own comment); an
+  // async transition that throws is surfaced by React to the nearest
+  // Error Boundary, and this app has no error.tsx anywhere, so an
+  // unguarded throw here used to take down the ENTIRE page (Next.js's
+  // generic "Application error: a client-side exception has occurred"),
+  // not just this one upload. Catching here turns any such failure back
+  // into the same {error} shape every caller already handles normally.
+  try {
+    const validated = await validateImageFile(file);
+    if ("error" in validated) return validated;
 
-  const admin = getAdminSupabase();
-  if (!admin) return { error: "Storage isn't configured on the server." };
+    const admin = getAdminSupabase();
+    if (!admin) return { error: "Storage isn't configured on the server." };
 
-  // Same server-generated-path convention as uploadImage() — a random
-  // UUID plus the validated extension, never anything derived from the
-  // submitted filename or businessId.
-  const path = `${crypto.randomUUID()}.${validated.extension}`;
+    // Same server-generated-path convention as uploadImage() — a random
+    // UUID plus the validated extension, never anything derived from the
+    // submitted filename or businessId.
+    const path = `${crypto.randomUUID()}.${validated.extension}`;
 
-  // A HEIC/HEIF upload was already converted to JPEG bytes above (see
-  // validateImageFile) — upload THOSE, never the original File, with the
-  // matching contentType. Every other format is uploaded exactly as
-  // before, unchanged.
-  const uploadBody = validated.converted?.buffer ?? file;
-  const uploadContentType = validated.converted?.contentType ?? file.type;
+    // A HEIC/HEIF upload was already converted to JPEG bytes above (see
+    // validateImageFile) — upload THOSE, never the original File, with the
+    // matching contentType. Every other format is uploaded exactly as
+    // before, unchanged.
+    const uploadBody = validated.converted?.buffer ?? file;
+    const uploadContentType = validated.converted?.contentType ?? file.type;
 
-  const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, uploadBody, {
-    contentType: uploadContentType,
-    upsert: false,
-  });
-  if (error) return { error: error.message };
+    const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, uploadBody, {
+      contentType: uploadContentType,
+      upsert: false,
+    });
+    if (error) return { error: error.message };
 
-  const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(path);
-  return { url: data.publicUrl };
+    const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(path);
+    return { url: data.publicUrl };
+  } catch {
+    return { error: "Upload failed. Please try again." };
+  }
 }
 
 // OWNER BUSINESS MUTATION — MINIMAL FOUNDATION

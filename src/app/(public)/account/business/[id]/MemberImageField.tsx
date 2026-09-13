@@ -12,7 +12,23 @@ import { uploadMemberBusinessImage } from "../actions";
  * updateMemberBusiness form exactly like every other field on it — this
  * component has no submit/save behavior of its own. `accept="image/*"`
  * on the native file input is what gives the mobile-friendly photo
- * picker (camera roll / camera) for free, no extra UI needed. */
+ * picker (camera roll / camera) for free, no extra UI needed.
+ *
+ * Product Image Upload Crash fix — this field is single-image by design
+ * everywhere it's used (Logo, Cover, and Product image via
+ * ProductFieldsForm — products.image_url is a single column, never a
+ * gallery). Two hardening changes: (1) `multiple={false}` is now
+ * explicit, and a selection that somehow still yields more than one file
+ * (some mobile photo pickers ignore the missing `multiple` attribute) is
+ * rejected with a clear message rather than silently uploading only the
+ * first one; (2) the upload call is now wrapped in try/catch. Previously
+ * an unexpected throw from uploadMemberBusinessImage (a Server Action —
+ * a dropped connection mid-upload, not a normal returned {error}) was
+ * unhandled inside this startTransition callback; for an async
+ * transition, React surfaces that to the nearest Error Boundary, and
+ * this app has no error.tsx anywhere, so it took down the whole page
+ * with Next.js's generic production crash screen instead of just
+ * failing this one upload. */
 export default function MemberImageField({
   businessId,
   label,
@@ -29,16 +45,25 @@ export default function MemberImageField({
   const [isPending, startTransition] = useTransition();
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = e.target.files;
     e.target.value = "";
-    if (!file) return;
+    if (!files || files.length === 0) return;
+    if (files.length > 1) {
+      setError("Please choose a single image.");
+      return;
+    }
+    const file = files[0];
     setError(null);
     const fd = new FormData();
     fd.set("file", file);
     startTransition(async () => {
-      const result = await uploadMemberBusinessImage(businessId, fd);
-      if (result.error) setError(result.error);
-      else if (result.url) setUrl(result.url);
+      try {
+        const result = await uploadMemberBusinessImage(businessId, fd);
+        if (result.error) setError(result.error);
+        else if (result.url) setUrl(result.url);
+      } catch {
+        setError("Upload failed. Please try again.");
+      }
     });
   }
 
@@ -55,7 +80,14 @@ export default function MemberImageField({
         <input type="hidden" name={name} value={url} />
         <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30">
           {isPending ? "Uploading…" : url ? "Replace Image" : "Choose Image"}
-          <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={isPending} />
+          <input
+            type="file"
+            accept="image/*"
+            multiple={false}
+            className="hidden"
+            onChange={handleFile}
+            disabled={isPending}
+          />
         </label>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>

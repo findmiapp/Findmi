@@ -1,0 +1,19 @@
+-- Personal Profile Save Permission fix — production bug: an authenticated
+-- user's own "Save Changes" on /account/profile (updateProfile in
+-- account/profile/actions.ts) failed with "permission denied for table
+-- profiles". Root cause proven live: the profiles_update_own RLS policy
+-- (20260901010000_account_foundation.sql) already correctly restricts
+-- UPDATE to auth.uid() = id — that policy was never the problem — but the
+-- `authenticated` role had no table-level UPDATE grant on public.profiles
+-- at all (confirmed via information_schema.role_table_grants: SELECT/
+-- INSERT/DELETE/etc. were present, UPDATE was not). In Postgres, the base
+-- GRANT is checked before RLS policies are ever evaluated, so a missing
+-- GRANT produces exactly this "permission denied for table" error
+-- regardless of how correct the RLS policy is.
+--
+-- This is a pure grant restoration, not a widening: `anon` gets nothing
+-- here (still cannot update any profile), and the existing
+-- profiles_update_own policy still fully restricts every authenticated
+-- write to the caller's own row — this migration only lets that already-
+-- correct policy actually run instead of being blocked one layer earlier.
+grant update on public.profiles to authenticated;
