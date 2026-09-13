@@ -521,12 +521,20 @@ export async function EventPublicView({ slug }: { slug: string }) {
           <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-10" />
         </div>
 
-        {/* Item 9 — compact gallery preview strip. Only renders with real
-            gallery images beyond the cover (ImageGalleryStrip's own
-            length<2 guard), never a placeholder wall of tiles. */}
+        {/* Item 9 — compact gallery preview strip. Event Gallery
+            Duplication fix — this must show ONLY the event's real
+            gallery images (images.gallery), never coverAndGallery: that
+            array exists for the hero lightbox above (cover + gallery,
+            so swiping through the hero reaches every real image), and
+            passing it here too meant the cover rendered a second time as
+            its own thumbnail — one real gallery upload looked like two
+            identical-looking tiles. minCount={1} (default is 2 for every
+            other ImageGalleryStrip caller) so a single real upload still
+            renders as its own one-item strip rather than being hidden by
+            the "nothing to browse" guard meant for 0 images. */}
         {images.gallery.length > 0 && (
           <div className="mt-2.5">
-            <ImageGalleryStrip images={coverAndGallery} alt={event.name} unoptimized />
+            <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} />
           </div>
         )}
       </div>

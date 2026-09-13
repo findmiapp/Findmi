@@ -2910,6 +2910,13 @@ export interface LocationHappening {
    * a real appearance's own description, read by formatAppearanceTime/
    * formatAppearanceDateRange to detect an imported "time TBD" row. */
   description: string | null;
+  /** Location Upcoming CTA Semantics fix — which real entity this item
+   * is, set once here (where the query already knows it — occurrence/
+   * event rows are always "event", appearance rows are always
+   * "appearance") rather than guessed later from title/text. Drives the
+   * CTA label only (HappeningCard/HappeningRow) — href/destination is
+   * unaffected either way. */
+  type: "event" | "appearance";
 }
 
 /** Upcoming events and standalone appearances at a location, merged into one
@@ -2961,6 +2968,7 @@ export async function getUpcomingAtLocation(
       href: `/event/${e.slug}`,
       imageUrl: e.cover_image_url,
       description: null,
+      type: "event",
     });
   }
 
@@ -3019,10 +3027,11 @@ export async function getUpcomingAtLocation(
       href: `/event/${e.slug}`,
       imageUrl: e.cover_image_url,
       description: null,
+      type: "event" as const,
     }));
 
   const fromAppearances: LocationHappening[] = (appearances ?? [])
-    .map((a) => {
+    .map((a): LocationHappening | null => {
       const b = Array.isArray(a.business) ? a.business[0] : a.business;
       if (!b || b.is_demo || b.publication_status !== "live") return null;
       return {
@@ -3034,6 +3043,7 @@ export async function getUpcomingAtLocation(
         href: `/business/${b.slug}`,
         imageUrl: b.cover_image_url,
         description: a.description,
+        type: "appearance" as const,
       };
     })
     .filter((x): x is LocationHappening => x !== null);

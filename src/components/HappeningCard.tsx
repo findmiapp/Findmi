@@ -4,6 +4,15 @@ import { formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import LiveDot from "./LiveDot";
 import PostCard from "./PostCard";
 
+/** Location Upcoming CTA Semantics fix — "Find Them" made sense for
+ * finding a business/vendor, not opening an Event happening at this
+ * Location. `item.type` is set once, at the query (getUpcomingAtLocation
+ * in lib/data.ts), never inferred here from title/text. Destination
+ * (item.href) is unaffected either way. */
+function happeningCtaLabel(type: LocationHappening["type"]): string {
+  return type === "event" ? "View Event" : "View Appearance";
+}
+
 /** Photo card for a horizontal carousel of what's coming up at a location. */
 export function HappeningCard({ item }: { item: LocationHappening }) {
   const { label: when, live } = getTemporalLabel(item.start_at, item.end_at);
@@ -20,7 +29,7 @@ export function HappeningCard({ item }: { item: LocationHappening }) {
         ...(item.subtitle ? [{ icon: "tag" as const, text: item.subtitle }] : []),
         { icon: "calendar", text: formatAppearanceDateRange(item.start_at, item.end_at, item.description) },
       ]}
-      cta="Find Them"
+      cta={happeningCtaLabel(item.type)}
     />
   );
 }
@@ -77,7 +86,7 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
         )}
       </div>
       <span className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
-        Find Them
+        {happeningCtaLabel(item.type)}
       </span>
     </Link>
   );

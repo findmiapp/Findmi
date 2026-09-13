@@ -7,8 +7,10 @@ import ImageLightbox from "./ImageLightbox";
 // Shared compact thumbnail strip — used for the Business Gallery, the
 // Event Gallery, and the About the Venue gallery (final refinement pass,
 // items 9/10/15). Tapping any tile opens the same ImageLightbox,
-// positioned at that tile's own index. Renders nothing with 0-1 images
-// (nothing to browse).
+// positioned at that tile's own index. Renders nothing below `minCount`
+// images (default 2 — "nothing to browse" with 0-1); see `minCount`'s
+// own doc comment for the one caller (the Event page's own gallery
+// strip) that lowers this to 1.
 //
 // Gallery thumbnails missing fix — this used next/image's <Image>
 // directly, only bypassing Vercel's optimizer when a caller explicitly
@@ -45,6 +47,7 @@ export default function ImageGalleryStrip({
   images,
   alt,
   unoptimized,
+  minCount = 2,
 }: {
   images: string[];
   alt: string;
@@ -54,10 +57,17 @@ export default function ImageGalleryStrip({
    * automatically. Kept only for a caller that needs to force it for a
    * non-Supabase URL too. */
   unoptimized?: boolean;
+  /** Event gallery duplication fix — defaults to 2 (unchanged behavior
+   * for every existing caller: Business Gallery, the Event page's own
+   * venue-photos strip). The Event page's own gallery strip passes 1
+   * here, since it now receives ONLY the event's real gallery images
+   * (never the cover) — a single real upload is one genuine photo worth
+   * showing, not "nothing to browse." */
+  minCount?: number;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [failedIndices, setFailedIndices] = useState<Set<number>>(new Set());
-  if (images.length < 2) return null;
+  if (images.length < minCount) return null;
 
   return (
     <>
