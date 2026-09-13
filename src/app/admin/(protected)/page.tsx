@@ -300,7 +300,7 @@ export default async function AdminDashboardPage() {
           <ManageCard letter="Ma" label="Markets" description="Findmi Markets, consumer Area names, and areas included." href="/admin/markets" />
           <ManageCard letter="Mr" label="Market Requests" description="Geography consumers/businesses/events have asked for." href="/admin/market-requests" />
           <ManageCard letter="Si" label="Sales Inquiries" description="Multi-Region/National leads from Join's Talk to Sales." href="/admin/sales-inquiries" />
-          <ManageCard letter="Co" label="Conversations" description="Direct messages and Business/Event/Venue inquiries." href="/admin/conversations" />
+          <ManageCard letter="Co" label="Communications" description="All platform communications — inquiries, direct messages, and sales." href="/admin/conversations" />
           <ManageCard letter="S" label="Site Editor" description="Homepage, navigation, and site content." href="/admin/site" />
         </div>
       </section>

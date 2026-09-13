@@ -1,16 +1,24 @@
 import { getAdminSupabase } from "./supabase-admin";
 
-// Unify Site-Wide Communications pass — the smallest admin-only
-// visibility into the canonical Conversation architecture (Phase 15 of
-// that pass). Read-only: no moderation tooling, no per-message actions,
-// just enough to see what's happening across every context (direct
-// MESSAGE, Business/Event/Venue Inquiry, Findmi Sales) in one place. Not
-// a second inbox for the founder to work leads from — /admin/sales-
-// inquiries stays the structured CRM view for Findmi Sales specifically;
-// this is the raw communication record. Same "admin reads only, plain
-// getAdminSupabase()" pattern as referral-queries.ts/pro_invites — the
-// real authorization is /admin/(protected)'s own session gate, already
-// enforced before any page here ever renders.
+// Communications Dashboard pass — turns the existing read-only
+// Conversation visibility (Unify Site-Wide Communications pass) into a
+// usable site-wide COMMUNICATIONS dashboard: type filters, search, a
+// resolved sender/recipient/context line per row, and related-entity
+// links. Still exactly the same underlying architecture and the same
+// "admin reads only, plain getAdminSupabase()" pattern — no new tables,
+// no schema change, no moderation/reply/edit/delete capability added.
+// /admin/sales-inquiries stays the structured CRM view for Findmi Sales;
+// this is still the raw communication record, not a competing inbox.
+
+export type CommunicationType = "all" | "business" | "product" | "event" | "venue" | "sales";
+
+const TYPE_SUBJECT_TYPE: Record<Exclude<CommunicationType, "all">, string> = {
+  business: "business_inquiry",
+  product: "product_inquiry",
+  event: "event_inquiry",
+  venue: "venue_inquiry",
+  sales: "findmi_sales",
+};
 
 const SUBJECT_TYPE_LABEL: Record<string, string> = {
   business_inquiry: "Business Inquiry",
@@ -62,42 +70,83 @@ async function resolveParticipantLabels(
   });
 }
 
-export interface AdminConversationListItem {
-  id: string;
-  contextLabel: string;
-  createdAt: string;
-  participantLabels: string[];
-  guestName: string | null;
-  guestEmail: string | null;
-  messageCount: number;
-  lastMessagePreview: string | null;
-  lastMessageAt: string | null;
+/** Best-effort only — business_inquiry's chosen topic has no column of
+ * its own; it's carried as a "Topic: X" prefix on the CONVERSATION'S
+ * OPENING message (see connect/actions.ts's submitEntityInquiry). Never
+ * fabricated: a conversation whose first message doesn't match this
+ * exact shape (e.g. a reply, or an older/direct message type) simply
+ * gets no topic line. */
+function extractTopicPrefix(body: string | undefined): string | null {
+  if (!body) return null;
+  const match = /^Topic: (.+?)\n\n/.exec(body);
+  return match ? match[1] : null;
 }
 
-/** Newest first, capped — an operational recent-activity view, not a
- * paginated full archive (this pass's own explicit "no broad moderation
- * dashboard" scope). */
-export async function getAdminConversationList(limit = 100): Promise<AdminConversationListItem[]> {
+export interface AdminEntityLink {
+  label: string;
+  href: string;
+}
+
+export interface AdminConversationListItem {
+  id: string;
+  subjectType: string;
+  typeLabel: string;
+  createdAt: string;
+  lastActivityAt: string;
+  senderLabel: string | null;
+  recipientLabel: string | null;
+  participantLabels: string[];
+  guestEmail: string | null;
+  contextLine: string | null;
+  lastMessagePreview: string | null;
+  messageCount: number;
+  entityLink: AdminEntityLink | null;
+}
+
+interface CandidateConversation {
+  id: string;
+  subject_type: string;
+  subject_id: string;
+  created_at: string;
+  guest_name: string | null;
+  guest_email: string | null;
+}
+
+/** Communications Dashboard pass — the one list query, now filterable by
+ * type and a simple metadata search, sorted by most-recent-activity
+ * (latest message time, falling back to when the conversation started).
+ * A bounded number of batch queries regardless of row count (never
+ * per-row): conversations, participants, messages (for both the latest-
+ * preview AND the business_inquiry topic-prefix — same fetch, no second
+ * pass), then one lookup each for products/sales_inquiries subject
+ * context. Fetches a generous, still-bounded candidate window (not the
+ * whole table) so sorting/searching happens correctly before the final
+ * `limit` is applied — see this pass's own report on why a DB-level
+ * LIMIT before that resort could otherwise drop a conversation whose
+ * latest reply is recent even though it was created long ago. */
+export async function getAdminConversationList(params: {
+  type?: CommunicationType;
+  search?: string;
+  limit?: number;
+} = {}): Promise<AdminConversationListItem[]> {
+  const { type = "all", search, limit = 60 } = params;
   const admin = getAdminSupabase();
   if (!admin) return [];
 
-  const { data: conversationRows } = await admin
+  const CANDIDATE_CAP = 500;
+  let query = admin
     .from("conversations")
-    .select("id, subject_type, created_at, guest_name, guest_email")
+    .select("id, subject_type, subject_id, created_at, guest_name, guest_email")
     .order("created_at", { ascending: false })
-    .limit(limit);
-  const conversations = (conversationRows ?? []) as {
-    id: string;
-    subject_type: string;
-    created_at: string;
-    guest_name: string | null;
-    guest_email: string | null;
-  }[];
+    .limit(CANDIDATE_CAP);
+  if (type !== "all") query = query.eq("subject_type", TYPE_SUBJECT_TYPE[type]);
+  const { data: conversationRows } = await query;
+  const conversations = (conversationRows ?? []) as CandidateConversation[];
   if (conversations.length === 0) return [];
   const ids = conversations.map((c) => c.id);
 
   const [{ data: participantRows }, { data: messageRows }] = await Promise.all([
-    admin.from("conversation_participants").select("conversation_id, entity_type, entity_id, user_id").in("conversation_id", ids),
+    admin.from("conversation_participants").select("id, conversation_id, entity_type, entity_id, user_id").in("conversation_id", ids),
     admin
       .from("conversation_messages")
       .select("conversation_id, body, created_at")
@@ -105,36 +154,123 @@ export async function getAdminConversationList(limit = 100): Promise<AdminConver
       .order("created_at", { ascending: false }),
   ]);
 
-  const participants = (participantRows ?? []) as (ParticipantRow & { conversation_id: string })[];
+  const participants = (participantRows ?? []) as (ParticipantRow & { id: string; conversation_id: string })[];
   const labels = await resolveParticipantLabels(admin, participants);
-  const labelsByConversation = new Map<string, string[]>();
+  const participantsByConversation = new Map<string, { entityType: ParticipantRow["entity_type"]; label: string }[]>();
   participants.forEach((p, i) => {
-    const list = labelsByConversation.get(p.conversation_id) ?? [];
-    list.push(labels[i]);
-    labelsByConversation.set(p.conversation_id, list);
+    const list = participantsByConversation.get(p.conversation_id) ?? [];
+    list.push({ entityType: p.entity_type, label: labels[i] });
+    participantsByConversation.set(p.conversation_id, list);
   });
 
   const messageCountByConversation = new Map<string, number>();
   const lastMessageByConversation = new Map<string, { body: string; created_at: string }>();
+  const firstMessageByConversation = new Map<string, { body: string; created_at: string }>();
+  // Iterated newest-first: the first write per id is the latest message,
+  // the last write per id (unconditional) ends up being the earliest —
+  // both captured in one pass over one query, no second fetch.
   for (const m of (messageRows ?? []) as { conversation_id: string; body: string; created_at: string }[]) {
     messageCountByConversation.set(m.conversation_id, (messageCountByConversation.get(m.conversation_id) ?? 0) + 1);
     if (!lastMessageByConversation.has(m.conversation_id)) lastMessageByConversation.set(m.conversation_id, m);
+    firstMessageByConversation.set(m.conversation_id, m);
   }
 
-  return conversations.map((c) => {
+  // Subject context — only for the two inquiry types whose subject_id
+  // points somewhere OTHER than the recipient entity participant
+  // (product_inquiry -> a Product; findmi_sales -> a sales_inquiries
+  // row). business_inquiry/event_inquiry/venue_inquiry's subject_id IS
+  // the recipient entity id, already covered by participant labels.
+  const productSubjectIds = [...new Set(conversations.filter((c) => c.subject_type === "product_inquiry").map((c) => c.subject_id))];
+  const salesSubjectIds = [...new Set(conversations.filter((c) => c.subject_type === "findmi_sales").map((c) => c.subject_id))];
+  const [{ data: productRows }, { data: salesRows }] = await Promise.all([
+    productSubjectIds.length ? admin.from("products").select("id, name, business_id").in("id", productSubjectIds) : Promise.resolve({ data: [] }),
+    salesSubjectIds.length
+      ? admin.from("sales_inquiries").select("id, business_name, city_market_count, regions").in("id", salesSubjectIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const productById = new Map(
+    ((productRows ?? []) as { id: string; name: string; business_id: string }[]).map((p) => [p.id, p])
+  );
+  const productBusinessIds = [...new Set([...productById.values()].map((p) => p.business_id))];
+  const { data: productBusinessRows } = productBusinessIds.length
+    ? await admin.from("businesses").select("id, name").in("id", productBusinessIds)
+    : { data: [] };
+  const businessNameById = new Map(((productBusinessRows ?? []) as { id: string; name: string }[]).map((b) => [b.id, b.name]));
+  const salesById = new Map(
+    ((salesRows ?? []) as { id: string; business_name: string; city_market_count: number; regions: string }[]).map((s) => [s.id, s])
+  );
+
+  const items: AdminConversationListItem[] = conversations.map((c) => {
     const last = lastMessageByConversation.get(c.id) ?? null;
+    const first = firstMessageByConversation.get(c.id) ?? null;
+    const parties = participantsByConversation.get(c.id) ?? [];
+    const personalParty = parties.find((p) => p.entityType === "personal");
+    const entityParty = parties.find((p) => p.entityType !== "personal");
+
+    let senderLabel: string | null = c.guest_name ?? personalParty?.label ?? null;
+    let recipientLabel: string | null = entityParty?.label ?? null;
+    let contextLine: string | null = null;
+    let entityLink: AdminEntityLink | null = null;
+
+    if (c.subject_type === "business_inquiry") {
+      contextLine = extractTopicPrefix(first?.body);
+      if (entityParty) entityLink = { label: "View Business", href: `/admin/businesses/${c.subject_id}` };
+    } else if (c.subject_type === "product_inquiry") {
+      const product = productById.get(c.subject_id);
+      if (product) {
+        contextLine = `Product: ${product.name}`;
+        recipientLabel = businessNameById.get(product.business_id) ?? recipientLabel;
+        entityLink = { label: "View Product", href: `/admin/products/${c.subject_id}` };
+      }
+    } else if (c.subject_type === "event_inquiry") {
+      entityLink = { label: "View Event", href: `/admin/events/${c.subject_id}` };
+    } else if (c.subject_type === "venue_inquiry") {
+      entityLink = { label: "View Venue", href: `/admin/locations/${c.subject_id}` };
+    } else if (c.subject_type === "findmi_sales") {
+      const sale = salesById.get(c.subject_id);
+      recipientLabel = "Findmi";
+      if (sale) {
+        senderLabel = sale.business_name || senderLabel;
+        contextLine = [sale.city_market_count ? `${sale.city_market_count} cities` : null, sale.regions || null]
+          .filter(Boolean)
+          .join(" · ") || null;
+      }
+      entityLink = { label: "View Sales Inquiry", href: "/admin/sales-inquiries" };
+    }
+
     return {
       id: c.id,
-      contextLabel: conversationContextLabel(c.subject_type),
+      subjectType: c.subject_type,
+      typeLabel: conversationContextLabel(c.subject_type),
       createdAt: c.created_at,
-      participantLabels: labelsByConversation.get(c.id) ?? [],
-      guestName: c.guest_name,
+      lastActivityAt: last?.created_at ?? c.created_at,
+      senderLabel,
+      recipientLabel,
+      participantLabels: parties.map((p) => p.label),
       guestEmail: c.guest_email,
+      contextLine,
+      lastMessagePreview: last ? (last.body.length > 140 ? `${last.body.slice(0, 137)}...` : last.body) : null,
       messageCount: messageCountByConversation.get(c.id) ?? 0,
-      lastMessagePreview: last ? (last.body.length > 120 ? `${last.body.slice(0, 117)}...` : last.body) : null,
-      lastMessageAt: last?.created_at ?? null,
+      entityLink,
     };
   });
+
+  // Search — metadata-only (Step 5's own documented limitation: only the
+  // LATEST message body is checked, not full history, to avoid scanning
+  // every message of every conversation for a list view). Every field
+  // checked here is already resolved above, so this costs no extra
+  // query — a plain in-memory filter over the already-built rows.
+  const term = search?.trim().toLowerCase();
+  const filtered = term
+    ? items.filter((item) =>
+        [item.senderLabel, item.recipientLabel, item.guestEmail, item.contextLine, item.lastMessagePreview, ...item.participantLabels]
+          .filter((v): v is string => Boolean(v))
+          .some((v) => v.toLowerCase().includes(term))
+      )
+    : items;
+
+  filtered.sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime());
+  return filtered.slice(0, limit);
 }
 
 export interface AdminConversationMessage {
@@ -147,12 +283,17 @@ export interface AdminConversationMessage {
 
 export interface AdminConversationDetail {
   id: string;
-  contextLabel: string;
+  subjectType: string;
+  typeLabel: string;
   createdAt: string;
+  senderLabel: string | null;
+  recipientLabel: string | null;
   participantLabels: string[];
   guestName: string | null;
   guestEmail: string | null;
   guestPhone: string | null;
+  contextLine: string | null;
+  entityLink: AdminEntityLink | null;
   messages: AdminConversationMessage[];
 }
 
@@ -162,13 +303,14 @@ export async function getAdminConversationDetail(conversationId: string): Promis
 
   const { data: conversation } = await admin
     .from("conversations")
-    .select("id, subject_type, created_at, guest_name, guest_email, guest_phone")
+    .select("id, subject_type, subject_id, created_at, guest_name, guest_email, guest_phone")
     .eq("id", conversationId)
     .maybeSingle();
   if (!conversation) return null;
   const row = conversation as {
     id: string;
     subject_type: string;
+    subject_id: string;
     created_at: string;
     guest_name: string | null;
     guest_email: string | null;
@@ -182,15 +324,53 @@ export async function getAdminConversationDetail(conversationId: string): Promis
   const participants = (participantRows ?? []) as (ParticipantRow & { id: string })[];
   const labels = await resolveParticipantLabels(admin, participants);
   const labelByParticipantId = new Map(participants.map((p, i) => [p.id, labels[i]]));
+  const entityParty = participants.find((p) => p.entity_type !== "personal");
+  const personalParty = participants.find((p) => p.entity_type === "personal");
+
+  let senderLabel: string | null = row.guest_name ?? (personalParty ? (labelByParticipantId.get(personalParty.id) ?? null) : null);
+  let recipientLabel: string | null = entityParty ? (labelByParticipantId.get(entityParty.id) ?? null) : null;
+  let contextLine: string | null = null;
+  let entityLink: AdminEntityLink | null = null;
 
   const { data: messageRows } = await admin
     .from("conversation_messages")
     .select("id, kind, body, created_at, sender_participant_id")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
-  const messages: AdminConversationMessage[] = (
-    (messageRows ?? []) as { id: string; kind: string; body: string; created_at: string; sender_participant_id: string | null }[]
-  ).map((m) => ({
+  const rawMessages = (messageRows ?? []) as { id: string; kind: string; body: string; created_at: string; sender_participant_id: string | null }[];
+
+  if (row.subject_type === "business_inquiry") {
+    contextLine = extractTopicPrefix(rawMessages[0]?.body);
+    entityLink = { label: "View Business", href: `/admin/businesses/${row.subject_id}` };
+  } else if (row.subject_type === "product_inquiry") {
+    const { data: product } = await admin.from("products").select("id, name, business_id").eq("id", row.subject_id).maybeSingle();
+    if (product) {
+      const p = product as { id: string; name: string; business_id: string };
+      contextLine = `Product: ${p.name}`;
+      const { data: business } = await admin.from("businesses").select("name").eq("id", p.business_id).maybeSingle();
+      recipientLabel = (business as { name: string } | null)?.name ?? recipientLabel;
+      entityLink = { label: "View Product", href: `/admin/products/${row.subject_id}` };
+    }
+  } else if (row.subject_type === "event_inquiry") {
+    entityLink = { label: "View Event", href: `/admin/events/${row.subject_id}` };
+  } else if (row.subject_type === "venue_inquiry") {
+    entityLink = { label: "View Venue", href: `/admin/locations/${row.subject_id}` };
+  } else if (row.subject_type === "findmi_sales") {
+    recipientLabel = "Findmi";
+    const { data: sale } = await admin
+      .from("sales_inquiries")
+      .select("business_name, city_market_count, regions")
+      .eq("id", row.subject_id)
+      .maybeSingle();
+    if (sale) {
+      const s = sale as { business_name: string; city_market_count: number; regions: string };
+      senderLabel = s.business_name || senderLabel;
+      contextLine = [s.city_market_count ? `${s.city_market_count} cities` : null, s.regions || null].filter(Boolean).join(" · ") || null;
+    }
+    entityLink = { label: "View Sales Inquiry", href: "/admin/sales-inquiries" };
+  }
+
+  const messages: AdminConversationMessage[] = rawMessages.map((m) => ({
     id: m.id,
     kind: m.kind,
     body: m.body,
@@ -204,12 +384,17 @@ export async function getAdminConversationDetail(conversationId: string): Promis
 
   return {
     id: row.id,
-    contextLabel: conversationContextLabel(row.subject_type),
+    subjectType: row.subject_type,
+    typeLabel: conversationContextLabel(row.subject_type),
     createdAt: row.created_at,
+    senderLabel,
+    recipientLabel,
     participantLabels: labels,
     guestName: row.guest_name,
     guestEmail: row.guest_email,
     guestPhone: row.guest_phone,
+    contextLine,
+    entityLink,
     messages,
   };
 }
