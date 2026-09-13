@@ -19,23 +19,57 @@ import Link from "next/link";
 // model genuinely doesn't translate to desktop's copy-left/collage-right
 // row, and this pass is mobile-only per its own brief.
 //
-// `images` are real cover photos already fetched for other homepage
-// sections (featured businesses / the live appearances feed) — never
-// stock/decorative photography, never fabricated: with fewer than 3
-// available, this renders however many real ones there are, and with
-// zero it renders no collage at all.
+// `images` are real cover photos: slot 0/1 (Large Image / Overlay Image)
+// are purely founder-uploaded (Site Editor → Hero, see
+// resolveHeroImageSlots — never a Business/Event/Product photo), slot 2
+// is a real photo already fetched for other homepage sections when left
+// unconfigured. With fewer than 3 available, this renders however many
+// real ones there are, and with zero it renders no collage at all.
+// Positions are threaded through BY INDEX, never compacted — a disabled/
+// empty slot 0 is a real gap, it never pulls slot 1's photo into its
+// spot (see the homepage's own note on this).
 //
 // Geometry changed; editability didn't — heading/body/CTA and all three
 // image slots are still the same founder-editable Site Editor fields
 // (Hero → Heading/Body/Image 1-3).
+//
+// Homepage Hero Founder Control pass — `imageLinks` is the optional
+// destination for slot 0/1 only (index-aligned: linkA for `a`, linkB for
+// `b`); slot 2 has no admin control for this and is never clickable. An
+// empty/missing link leaves the image exactly as before (unwrapped, not
+// clickable) — see HeroImageLink below.
 const DEFAULT_HEADING_LINES = ["Find what's", "around you.", "Get discovered."];
+
+function HeroImageLink({ href, children }: { href: string | null | undefined; children: React.ReactNode }) {
+  if (!href) return <>{children}</>;
+  // Same internal-vs-external convention as NavDesktop's NavLink
+  // (external = starts with http(s)://) — the only other place on the
+  // site a founder-entered destination becomes a real link.
+  if (/^https?:\/\//i.test(href)) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="block h-full w-full">
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} className="block h-full w-full">
+      {children}
+    </Link>
+  );
+}
 
 export default function HomeHero({
   images,
+  imageLinks,
   heading,
   description,
 }: {
-  images: string[];
+  images: Array<string | null | undefined>;
+  /** Optional destination for slot 0 ("Large Image") / slot 1 ("Overlay
+   * Image") only — index-aligned with `images`. Omit or leave a slot
+   * null/blank for an image that isn't clickable. */
+  imageLinks?: Array<string | null | undefined>;
   /** Founder-editable via Site Editor → Hero → Heading (Discovery/
    * Archive V2 Part 18) — newlines control the visual lines, same as
    * closing_cta's heading already does elsewhere on this page. Rendered
@@ -46,6 +80,7 @@ export default function HomeHero({
   description: string | null;
 }) {
   const [a, b, c] = images;
+  const [linkA, linkB] = imageLinks ?? [];
   // Real lines only, capped at 3 — the hero's compact height (and the
   // last-line accent treatment below) is designed around exactly that
   // many; extra lines are silently dropped rather than blowing up the
@@ -129,7 +164,9 @@ export default function HomeHero({
                   position as before — unaffected by the container
                   resize, left edge (0) also unchanged. */}
               <div className="absolute left-0 top-[19.2px] h-[113.6px] w-[82.5%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
-                <SupabaseImage src={a} alt="" fill sizes="82vw" className="object-cover" />
+                <HeroImageLink href={linkA}>
+                  <SupabaseImage src={a} alt="" fill sizes="82vw" className="object-cover" />
+                </HeroImageLink>
               </div>
               {b && (
                 // Image 2 — coffee, the only support image left on
@@ -141,7 +178,9 @@ export default function HomeHero({
                 // bit more overlap onto bread as its left edge extends
                 // further left — expected/acceptable per spec.
                 <div className="absolute right-[1.5%] top-[-119px] z-10 h-[161px] w-[37.5%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <SupabaseImage src={b} alt="" fill sizes="38vw" className="object-cover" />
+                  <HeroImageLink href={linkB}>
+                    <SupabaseImage src={b} alt="" fill sizes="38vw" className="object-cover" />
+                  </HeroImageLink>
                 </div>
               )}
               {/* Image 3 (pizza) intentionally not rendered on mobile —
@@ -199,23 +238,27 @@ export default function HomeHero({
             // breakpoint without per-tile breakpoint math.
             <div className="relative h-72 w-[22rem] shrink-0 lg:h-96 lg:w-[28rem] xl:h-[26rem] xl:w-[32rem]">
               <div className="absolute left-0 top-0 h-[70%] w-[72%] overflow-hidden rounded-3xl shadow-md ring-4 ring-white">
-                <SupabaseImage
-                  src={a}
-                  alt=""
-                  fill
-                  sizes="(min-width: 1024px) 330px, 253px"
-                  className="object-cover"
-                />
+                <HeroImageLink href={linkA}>
+                  <SupabaseImage
+                    src={a}
+                    alt=""
+                    fill
+                    sizes="(min-width: 1024px) 330px, 253px"
+                    className="object-cover"
+                  />
+                </HeroImageLink>
               </div>
               {b && (
                 <div className="absolute right-0 top-0 z-10 h-[38%] w-[40%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <SupabaseImage
-                    src={b}
-                    alt=""
-                    fill
-                    sizes="(min-width: 1024px) 190px, 141px"
-                    className="object-cover"
-                  />
+                  <HeroImageLink href={linkB}>
+                    <SupabaseImage
+                      src={b}
+                      alt=""
+                      fill
+                      sizes="(min-width: 1024px) 190px, 141px"
+                      className="object-cover"
+                    />
+                  </HeroImageLink>
                 </div>
               )}
               {c && (

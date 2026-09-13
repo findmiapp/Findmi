@@ -28,9 +28,12 @@ export async function saveSiteSection(sectionKey: string, formData: FormData) {
   // Preserve the existing sort_order (set by Move Up/Down, or the
   // section's registry default) — this form never touches ordering, so an
   // upsert must not silently reset it to the table's own default of 0.
+  // config_json is also read here now (Homepage Hero Founder Control
+  // pass) so any key this action doesn't itself manage survives the
+  // upsert untouched — merge semantics, never a blind replace.
   const { data: existing } = await supabase
     .from("site_sections")
-    .select("sort_order")
+    .select("sort_order, config_json")
     .eq("page_key", PAGE_KEY)
     .eq("section_key", sectionKey)
     .maybeSingle();
@@ -53,10 +56,30 @@ export async function saveSiteSection(sectionKey: string, formData: FormData) {
   // migration, not a new one. Omitted entirely for sections without
   // imageSlots, so upsert leaves any other section's config_json alone.
   if (def.imageSlots) {
-    const images = Array.from({ length: def.imageSlots }, (_, i) => str(formData, `image_${i + 1}`)).filter(
-      (url): url is string => Boolean(url)
-    );
-    payload.config_json = { images };
+    const existingConfig = (existing?.config_json ?? {}) as Record<string, unknown>;
+    if (sectionKey === "hero") {
+      // Homepage Hero Founder Control pass — Large Image (slot 1) and
+      // Overlay Image (slot 2) each get their own optional destination
+      // link + enabled toggle (see HeroImageFields/resolveHeroImageSlots);
+      // Image 3 (desktop-only) keeps the old plain shape. Slots are saved
+      // BY POSITION — unlike the generic branch below, a blank slot stays
+      // null rather than being filtered out, so slot 1 staying empty can
+      // never shift slot 2's photo/link/enabled values into its place.
+      const images = Array.from({ length: def.imageSlots }, (_, i) => str(formData, `image_${i + 1}`));
+      const imageLinks: (string | null)[] = [0, 1].map((i) => {
+        const raw = str(formData, `image_${i + 1}_link`);
+        if (!raw) return null;
+        const check = validateCustomDestination(raw);
+        return check.ok ? check.value : null; // invalid input dropped, same as Discovery Topics' own links
+      });
+      const imageEnabled = [0, 1].map((i) => bool(formData, `image_${i + 1}_enabled`));
+      payload.config_json = { ...existingConfig, images, imageLinks, imageEnabled };
+    } else {
+      const images = Array.from({ length: def.imageSlots }, (_, i) => str(formData, `image_${i + 1}`)).filter(
+        (url): url is string => Boolean(url)
+      );
+      payload.config_json = { ...existingConfig, images };
+    }
   }
 
   const { error } = await supabase

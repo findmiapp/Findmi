@@ -20,7 +20,13 @@ import {
   getUpcomingEvents,
 } from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
-import { getSiteSections, resolveSection, resolveWeatherConfig, HOMEPAGE_SECTIONS } from "@/lib/site-sections";
+import {
+  getSiteSections,
+  resolveHeroImageSlots,
+  resolveSection,
+  resolveWeatherConfig,
+  HOMEPAGE_SECTIONS,
+} from "@/lib/site-sections";
 import type { Category } from "@/lib/types";
 import { getWeatherContext } from "@/lib/weather";
 
@@ -106,18 +112,26 @@ export default async function HomePage({
   const closingSec = resolve("closing_cta");
   const heroSec = resolve("hero");
 
-  // Hero collage — founder-configured images (Site Editor → Hero → Image
-  // 1/2/3) take priority; any unconfigured slot falls back to a real
-  // photo already being fetched above (never stock/decorative imagery,
-  // never fabricated). With zero of either, no collage renders.
-  const fallbackImages = [
-    heroFallbackBrands[0]?.cover_image_url,
-    heroFallbackBrands[1]?.cover_image_url,
-    heroFallbackBrands[2]?.cover_image_url,
-  ].filter((src): src is string => Boolean(src));
-  const heroImages = Array.from({ length: 3 }, (_, i) => heroSec.images[i] ?? fallbackImages[i]).filter(
-    (src): src is string => Boolean(src)
-  );
+  // Homepage Hero Founder Control pass — Image 1 ("Large Image", the
+  // large lower/left tile) and Image 2 ("Overlay Image", the smaller
+  // upper-right tile) are now purely founder-controlled (Site Editor →
+  // Hero), each with its own optional destination link and an
+  // enabled/disabled toggle, and NEVER fall back to a Business/Event/
+  // Product photo — a disabled or unconfigured slot is a real gap, not
+  // a stand-in from platform content. Image 3 (desktop-only,
+  // bottom-right) is unchanged from before: it still falls back to a
+  // real photo already being fetched above when left unconfigured — it
+  // isn't one of the two founder-named positions in this pass. Slot 0/1
+  // are threaded through BY INDEX (never compacted), so turning one off
+  // can never shift the other into its spot.
+  const heroImageSlots = resolveHeroImageSlots(siteSections);
+  const heroThirdSlotFallback = heroFallbackBrands[2]?.cover_image_url ?? undefined;
+  const heroImages: Array<string | undefined> = [
+    heroImageSlots[0]?.enabled && heroImageSlots[0].url ? heroImageSlots[0].url : undefined,
+    heroImageSlots[1]?.enabled && heroImageSlots[1].url ? heroImageSlots[1].url : undefined,
+    heroImageSlots[2]?.url ?? heroThirdSlotFallback,
+  ];
+  const heroImageLinks = [heroImageSlots[0]?.link, heroImageSlots[1]?.link];
 
   // Brands We Love fallback-copy gate — identified by content type (the
   // first "businesses" Homepage Row), not by its founder-editable title
@@ -151,7 +165,7 @@ export default async function HomePage({
           unavailable. */}
       <HomeWeather context={weatherContext} />
 
-      <HomeHero images={heroImages} heading={heroSec.heading} description={heroSec.body} />
+      <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
       {/* Consumer Area Picker V1 — compact, URL-only ("?market=", never
           persisted to a cookie/localStorage/session). Searchable — see

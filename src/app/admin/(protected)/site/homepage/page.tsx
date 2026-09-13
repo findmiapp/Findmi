@@ -7,6 +7,7 @@ import {
   getDiscoveryTopicsRaw,
   HOMEPAGE_ORDERABLE_KEYS,
   HOMEPAGE_SECTIONS,
+  resolveHeroImageSlots,
   resolveSection,
   resolveWeatherConfig,
   type SectionDefaults,
@@ -192,6 +193,51 @@ function DiscoveryTopicsCard({ overrides }: { overrides: Awaited<ReturnType<type
   );
 }
 
+// Homepage Hero Founder Control pass — Large Image (slot 1) and Overlay
+// Image (slot 2) each get their own optional destination link + enabled
+// toggle, and never fall back to a Business/Event/Product photo (see
+// resolveHeroImageSlots's own note). Image 3 (desktop-only, bottom-right)
+// keeps the old plain ImageField shape — no link/enabled control, same
+// real-photo fallback as before — it isn't one of the two founder-named
+// positions this pass adds controls for. Field names (`image_1`,
+// `image_1_link`, `image_1_enabled`, …) are read by saveSiteSection's
+// own hero-specific branch.
+function HeroImageFields({ overrides }: { overrides: Awaited<ReturnType<typeof getAdminSiteSections>> }) {
+  const slots = resolveHeroImageSlots(overrides);
+  const labels = ["Large Image", "Overlay Image"];
+  const hints = [
+    "The large image anchoring the bottom/left of the collage.",
+    "The smaller image that overlaps its top-right corner.",
+  ];
+
+  return (
+    <div className="flex flex-col gap-3">
+      {[0, 1].map((i) => (
+        <div key={i} className="rounded-xl border border-black/5 bg-black/[0.015] p-3">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">{labels[i]}</p>
+          <ImageField label="Image" name={`image_${i + 1}`} defaultValue={slots[i]?.url ?? null} />
+          <div className="mt-2 grid gap-3 sm:grid-cols-[3fr_1fr]">
+            <TextField
+              label="Destination link (optional)"
+              name={`image_${i + 1}_link`}
+              defaultValue={slots[i]?.link ?? null}
+              placeholder="/businesses or https://…"
+              hint={`${hints[i]} Internal path (/…) or https://. Leave blank so the image isn't clickable.`}
+            />
+            <CheckboxField label="Enabled" name={`image_${i + 1}_enabled`} defaultChecked={slots[i]?.enabled ?? true} />
+          </div>
+        </div>
+      ))}
+      <ImageField label="Image 3 (desktop only)" name="image_3" defaultValue={slots[2]?.url ?? null} />
+      <p className="text-xs text-ink/45">
+        Large Image and Overlay Image never fall back to a featured business, event, or product photo — leave one
+        off and that position is simply empty on the homepage. Image 3 (desktop only, bottom-right) still falls
+        back to a real photo already on Findmi when left blank, same as before.
+      </p>
+    </div>
+  );
+}
+
 function SectionCard({
   sectionKey,
   def,
@@ -248,7 +294,7 @@ function SectionCard({
       ) : null}
 
       <form action={action} className="mt-3 flex flex-col gap-3">
-        {def.imageSlots ? (
+        {def.imageSlots ? sectionKey === "hero" ? <HeroImageFields overrides={overrides} /> : (
           <div>
             <div className="grid gap-3 sm:grid-cols-3">
               {Array.from({ length: def.imageSlots }, (_, i) => (

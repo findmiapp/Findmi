@@ -81,6 +81,52 @@ export function resolveSection(
   };
 }
 
+export interface HeroImageSlot {
+  /** Storage URL, or null when this slot has never been configured. */
+  url: string | null;
+  /** Founder-entered destination (internal path or https://) — null =
+   * not clickable. Only ever set for slot 0/1 (see resolveHeroImageSlots
+   * below); slot 2 has no admin control for this and is always null. */
+  link: string | null;
+  /** Defaults to true (so hero rows saved before this field existed —
+   * i.e. every row today — keep rendering exactly as before). Only
+   * slot 0/1 have an admin toggle for this; slot 2 is always true. */
+  enabled: boolean;
+}
+
+/** Homepage Hero Founder Control pass — resolves the Hero's 3 image
+ * slots BY POSITION (never filtered/compacted the way resolveSection's
+ * generic `images` is), so slot 0 ("Large Image") and slot 1 ("Overlay
+ * Image") each keep their own identity even when the other is blank or
+ * disabled. Deliberately bypasses resolveSection()/ResolvedSection
+ * entirely — those stay untouched and still serve every other
+ * imageSlots-less section on every other page unchanged — because
+ * slot 0/1 here must NEVER fall back to a Business/Event/Product photo,
+ * unlike every other founder image slot on the site, which is exactly
+ * the guarantee a shared/generic resolver can't safely make for
+ * everyone at once. Slot 2 (desktop-only, bottom-right) has no link/
+ * enabled admin control and always resolves enabled:true — its
+ * real-photo fallback when unconfigured is applied by the caller
+ * (see the homepage's own hero-image composition), unchanged from
+ * before this pass. */
+export function resolveHeroImageSlots(overrides: Map<string, SiteSection>): HeroImageSlot[] {
+  const row = overrides.get("hero");
+  const cfg = (row?.config_json ?? {}) as Record<string, unknown>;
+  const rawImages = Array.isArray(cfg.images) ? (cfg.images as unknown[]) : [];
+  const rawLinks = Array.isArray(cfg.imageLinks) ? (cfg.imageLinks as unknown[]) : [];
+  const rawEnabled = Array.isArray(cfg.imageEnabled) ? (cfg.imageEnabled as unknown[]) : [];
+  const slotCount = HOMEPAGE_SECTIONS.hero.imageSlots ?? 0;
+
+  return Array.from({ length: slotCount }, (_, i) => ({
+    url: typeof rawImages[i] === "string" && rawImages[i] ? (rawImages[i] as string) : null,
+    // Only slot 0/1 ever get a link — the admin form never writes one
+    // for slot 2, but this stays index-based (not slot-restricted) so a
+    // stray value can't silently apply to the wrong slot either.
+    link: typeof rawLinks[i] === "string" && rawLinks[i] ? (rawLinks[i] as string) : null,
+    enabled: rawEnabled[i] === false ? false : true,
+  }));
+}
+
 // ---------------------------------------------------------------------
 // Homepage registry — the single source of truth for section keys,
 // default copy, which fields each section exposes, and default order.
@@ -97,13 +143,19 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // the established teal-accent/no-wrap treatment regardless of how
     // many lines are entered (see HomeHero's own note). This default is
     // the exact current copy, so an unconfigured hero renders byte-
-    // identical to before. The collage imagery is separately founder-
-    // editable here too. HomeHero falls back to real, non-fabricated
-    // business/appearance photos already being fetched for other
-    // sections when no image slot is configured — see the homepage's own
-    // hero-image fallback logic. The description line under the headline
+    // identical to before. The description line under the headline
     // (`body`) was made founder-editable in the UI cleanup pass — same
     // generic body-field machinery every other section already used.
+    //
+    // Homepage Hero Founder Control pass — the collage's Image 1 ("Large
+    // Image") and Image 2 ("Overlay Image") are resolved separately, via
+    // resolveHeroImageSlots() below, NOT through this section's generic
+    // `images`/imageSlots machinery — they're purely founder-controlled
+    // (own optional link + enabled toggle each) with no fallback to any
+    // Business/Event/Product photo. Only Image 3 (desktop-only,
+    // bottom-right) still uses the old generic path and its real-photo
+    // fallback when unconfigured. `imageSlots: 3` stays as the admin
+    // card's slot count for that reason.
     label: "Hero",
     heading: "Find what's\naround you.\nGet discovered.",
     body: "Discover local businesses, events, pop-ups, products, and more — all in one place.",
