@@ -658,10 +658,19 @@ function GenericTile({ icon, detail }: { icon: React.ReactNode; detail: string }
 
 /** Regional/National — a secondary sales pathway, compressed so it doesn't
  * out-weigh the core $99 conversion. Still resolved via the same
- * resolveJoinCard()/admin form as every other card — only this bespoke,
- * now-compressed public presentation is new. */
+ * resolveJoinCard()/admin form as every other card for its copy/label —
+ * only this bespoke, now-compressed public presentation is new.
+ *
+ * Multi-Region / National Sales Inquiry pass — the CTA destination is no
+ * longer `card.ctaUrl` (which previously resolved to the wrong mailto,
+ * see lib/join-page.ts's JOIN_FORM_URL_DEFAULT/JOIN_GLOBAL_DEFAULTS).
+ * It's now a hardcoded native route, /join/sales, the same "label stays
+ * founder-editable, destination is server-controlled" pattern this page
+ * already uses for the Pro CTA (see PRO_NATIVE_CTA_URL above) — a
+ * founder-configured cta_url override on this card is simply no longer
+ * read for the link itself. */
 function RegionalSection({ card }: { card: ResolvedJoinCard }) {
-  const { eyebrow, title, tagline, features, ctaLabel, ctaUrl } = card;
+  const { eyebrow, title, tagline, features, ctaLabel } = card;
   return (
     <div className="rounded-3xl border border-black/10 bg-mist/40 p-6 sm:p-8">
       <p className="text-xs font-bold uppercase tracking-wide text-ink/40">{eyebrow}</p>
@@ -671,12 +680,12 @@ function RegionalSection({ card }: { card: ResolvedJoinCard }) {
           one compressed inline line instead of five full-height rows. */}
       <p className="mt-2 max-w-2xl text-xs text-ink/45">{features.join(" · ")}</p>
 
-      <a
-        href={ctaUrl}
+      <Link
+        href="/join/sales"
         className="mt-5 inline-flex h-11 items-center justify-center rounded-full border border-black/15 px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
       >
         {ctaLabel}
-      </a>
+      </Link>
     </div>
   );
 }

@@ -718,6 +718,26 @@ export interface SiteSection {
   updated_at: string;
 }
 
+// Multi-Region / National Sales Inquiry pass — a lead submitted through
+// /join's Multi-Region/National "Talk to Sales" form (see
+// join/sales/actions.ts). Never publicly readable (see that table's own
+// RLS note) — read only via requireAdminSupabase() at
+// /admin/sales-inquiries.
+export interface SalesInquiry {
+  id: string;
+  contact_name: string;
+  business_name: string;
+  email: string;
+  phone: string | null;
+  website_or_instagram: string | null;
+  city_market_count: number;
+  regions: string;
+  goals: string;
+  source: string;
+  status: "new" | "contacted" | "qualified" | "closed";
+  created_at: string;
+}
+
 export interface FindmiLocation {
   id: string;
   name: string;
