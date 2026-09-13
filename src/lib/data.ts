@@ -2247,6 +2247,13 @@ export interface ProductWithBusiness extends Product {
     city: string | null;
     state: string | null;
     native_inquiries_enabled: boolean;
+    // Product Inquiry Consolidation pass — same owner-controlled columns
+    // BusinessPublicView's Inquire gate already reads; Product Inquiry
+    // reuses them (Pro + accepts_inquiries + "product_order" enabled)
+    // rather than the separate native_inquiries_enabled toggle above,
+    // which stays here unread/untouched for legacy-data compatibility.
+    accepts_inquiries: boolean;
+    inquiry_topics: string[];
     /** Seller's real primary category (business_categories), attached the
      * same way getFeaturedProducts/getMarketplaceProducts already do —
      * products have no taxonomy of their own. This is SELLER identity
@@ -2268,7 +2275,7 @@ export async function getProductBySlug(slug: string): Promise<ProductWithBusines
   const { data, error } = await supabase
     .from("products")
     .select(
-      `${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, native_inquiries_enabled, is_demo, publication_status)`
+      `${PUBLIC_PRODUCT_COLUMNS}, business:businesses(id, name, slug, logo_url, cover_image_url, commerce_enabled, city, state, native_inquiries_enabled, accepts_inquiries, inquiry_topics, is_demo, publication_status)`
     )
     .eq("slug", slug)
     .eq("is_active", true);

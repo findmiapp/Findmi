@@ -186,6 +186,98 @@ export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Prom
   return { ok: true };
 }
 
+export interface SubmitProductInquiryInput {
+  productId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  message: string;
+  companySite?: string;
+}
+
+/** Product Inquiry Consolidation pass — the canonical replacement for the
+ * old native_inquiries_enabled-gated "Message {business} on Findmi" link
+ * (which created an `inquiries` row, a separate legacy system — see this
+ * pass's own trace). A Product inquiry is really a Business Inquiry with
+ * Product context: subject_type='product_inquiry'/subject_id=productId
+ * (so the Conversation's own canonical "what is this about" pointer is
+ * the Product, not the Business — same subject_type/subject_id split
+ * createInquiryConversation already supports), but the actual
+ * participants/notification/authorization are the Business's, via the
+ * exact same targetEntityType="business" path submitEntityInquiry uses —
+ * a Product has no members of its own to notify. Gated by the SAME
+ * Business configuration as Business Inquiry (Pro + accepts_inquiries),
+ * plus "product_order" specifically being one of the Business's enabled
+ * topics (Step 5's "simplest coherent rule") — never a separate toggle
+ * the owner would have to additionally understand. */
+export async function submitProductInquiry(input: SubmitProductInquiryInput): Promise<{ ok: true } | { error: string }> {
+  if (input.companySite && input.companySite.trim()) return { ok: true };
+
+  const name = input.name.trim().slice(0, MAX_NAME_LENGTH);
+  const email = input.email.trim().toLowerCase();
+  const message = input.message.trim().slice(0, MAX_MESSAGE_LENGTH);
+  if (!name) return { error: "Enter your name." };
+  if (!EMAIL_RE.test(email)) return { error: "Enter a valid email address." };
+  if (!message) return { error: "Write a message." };
+  const phone = input.phone?.trim().slice(0, 40) || null;
+
+  const admin = getAdminSupabase();
+  if (!admin) return { error: "Server isn't configured." };
+
+  const { data: product } = await admin
+    .from("products")
+    .select("id, name, business_id, is_active, businesses(plan_tier, plan_expires_at, accepts_inquiries, inquiry_topics, is_demo)")
+    .eq("id", input.productId)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!product) return { error: "That product isn't available." };
+
+  type ProductRow = {
+    id: string;
+    name: string;
+    business_id: string;
+    businesses:
+      | { plan_tier: PlanTier | null; plan_expires_at: string | null; accepts_inquiries: boolean; inquiry_topics: string[] | null; is_demo: boolean }
+      | { plan_tier: PlanTier | null; plan_expires_at: string | null; accepts_inquiries: boolean; inquiry_topics: string[] | null; is_demo: boolean }[]
+      | null;
+  };
+  const row = product as unknown as ProductRow;
+  const business = Array.isArray(row.businesses) ? row.businesses[0] : row.businesses;
+  if (!business || business.is_demo) return { error: "That product isn't available." };
+  if (!isBusinessPro({ plan_tier: business.plan_tier ?? undefined, plan_expires_at: business.plan_expires_at })) {
+    return { error: "This business isn't accepting inquiries right now." };
+  }
+  const enabledTopics = sanitizeBusinessInquiryTopics(business.inquiry_topics);
+  if (!business.accepts_inquiries || !enabledTopics.includes("product_order")) {
+    return { error: "This business isn't accepting product inquiries right now." };
+  }
+
+  const fullMessage = `Product: ${row.name}\n\n${message}`;
+
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  try {
+    await createInquiryConversation(admin, {
+      subjectType: "product_inquiry",
+      subjectId: row.id,
+      targetEntityType: "business",
+      targetEntityId: row.business_id,
+      senderUserId: user?.id ?? null,
+      guestName: name,
+      guestEmail: email,
+      guestPhone: phone,
+      message: fullMessage,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't send your message. Please try again." };
+  }
+
+  return { ok: true };
+}
+
 /** Shared preamble every initiation action below starts with: a real
  * Supabase Auth session, email-verified (Section 1/5/14's own explicit
  * requirement), plus a working service-role client. Never re-derives

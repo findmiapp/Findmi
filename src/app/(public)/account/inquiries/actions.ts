@@ -3,137 +3,35 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { notifyAdmin } from "@/lib/notifications/adminNotify";
-import { getEntityManagerEmails } from "@/lib/notifications/recipients";
-import { sendProductNotification } from "@/lib/notifications/productNotify";
 
 function appendQuery(base: string, params: Record<string, string>): string {
   const sep = base.includes("?") ? "&" : "?";
   return `${base}${sep}${new URLSearchParams(params).toString()}`;
 }
 
-/** Native inquiry creation — the one write path a signed-in customer uses
- * to start a business/product conversation on FindMi (see
- * account/inquiries/new/page.tsx, the only caller). business_id is
- * resolved and re-validated server-side from the form's own hidden
- * fields against the real businesses/products tables (never trusted as
- * "this business has native inquiries enabled" without checking), and
- * user_id always comes from the authenticated session, never the client
- * — inquiries_insert_customer RLS also enforces that server-side as a
- * second layer. customer_name/email/phone are only ever set here if the
- * visitor explicitly typed them into the optional fields below — this
- * action never reads anything from their auth session's own email. */
+/** Product Inquiry Consolidation pass — RETIRED. This was the one write
+ * path that ever created an `inquiries` row (see account/inquiries/new/
+ * page.tsx, its only caller); that entry point's own UI link has been
+ * removed from the Product page in favor of the canonical Conversation
+ * flow (connect/actions.ts's submitProductInquiry). No new legacy
+ * inquiry is created by this function anymore — it never reaches the
+ * insert below — but the function itself, the `inquiries`/
+ * `inquiry_messages` tables, and every existing row are left completely
+ * untouched (nothing to preserve was ever written here in production —
+ * confirmed live: both tables have zero rows). This redirect is the
+ * actual guard against someone reaching a stale bookmark/URL for
+ * /account/inquiries/new and creating a fresh legacy row after the
+ * canonical path went live. */
 export async function createNativeInquiry(formData: FormData) {
-  const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
   const businessId = String(formData.get("business_id") ?? "").trim();
   const productId = String(formData.get("product_id") ?? "").trim() || null;
-  const returnTo = appendQuery("/account/inquiries/new", {
-    business: businessId,
-    ...(productId ? { product: productId } : {}),
-  });
-  if (!user) redirect(`/login?next=${encodeURIComponent(returnTo)}`);
-  if (!businessId) redirect(appendQuery("/account/inquiries", { error: "Missing business." }));
-
-  const { data: business } = await supabase
-    .from("businesses")
-    .select("id, name, native_inquiries_enabled")
-    .eq("id", businessId)
-    .maybeSingle();
-  if (!business || !(business as { native_inquiries_enabled: boolean }).native_inquiries_enabled) {
-    redirect(appendQuery("/account/inquiries", { error: "This business isn't accepting Findmi inquiries." }));
-  }
-
-  if (productId) {
-    const { data: product } = await supabase
-      .from("products")
-      .select("id, business_id")
-      .eq("id", productId)
-      .maybeSingle();
-    if (!product || (product as { business_id: string }).business_id !== businessId) {
-      redirect(appendQuery(returnTo, { error: "That product could not be found for this business." }));
-    }
-  }
-
-  const message = String(formData.get("message") ?? "").trim();
-  if (!message) redirect(appendQuery(returnTo, { error: "Enter a message." }));
-
-  // User-provided contact fields — entirely optional, and clearly labeled
-  // as such on the form itself. Never pre-filled from the auth session.
-  const customerName = String(formData.get("customer_name") ?? "").trim() || null;
-  const customerEmail = String(formData.get("customer_email") ?? "").trim() || null;
-  const customerPhone = String(formData.get("customer_phone") ?? "").trim() || null;
-
-  const { data: inquiry, error } = await supabase
-    .from("inquiries")
-    .insert({
-      business_id: businessId,
-      product_id: productId,
-      user_id: user.id,
-      customer_name: customerName,
-      customer_email: customerEmail,
-      customer_phone: customerPhone,
-      message,
-      status: "new",
-      source: productId ? "findmi_product_native" : "findmi_business_native",
+  redirect(
+    appendQuery(businessId ? `/account/inquiries/new` : "/account/inquiries", {
+      ...(businessId ? { business: businessId } : {}),
+      ...(productId ? { product: productId } : {}),
+      error: "This way of messaging a business has moved — use the Inquire button on the business or product page instead.",
     })
-    .select("id")
-    .single();
-  if (error || !inquiry) redirect(appendQuery(returnTo, { error: error?.message ?? "Couldn't send that inquiry." }));
-
-  // The inquiry's own `message` field already carries the opening text
-  // (kept for compatibility with the anonymous/legacy row shape), but the
-  // thread itself needs a first row too so the detail page has something
-  // to render as message #1 without special-casing "the original
-  // inquiry" differently from every reply after it.
-  await supabase.from("inquiry_messages").insert({
-    inquiry_id: (inquiry as { id: string }).id,
-    sender_type: "customer",
-    sender_user_id: user.id,
-    body: message,
-  });
-
-  // Admin Action Email Notifications V1 — only for the brand-new inquiry
-  // above, never for later replies in the same thread (sendCustomerMessage
-  // below is a completely separate function this pass doesn't touch).
-  // Uses `business.name` already fetched above — no extra query.
-  await notifyAdmin({
-    subject: `New inquiry — ${(business as { name: string }).name}`,
-    heading: "New inquiry received",
-    body: [`Business: ${(business as { name: string }).name}`, `From: ${customerName ?? user.email ?? "Findmi member"}`],
-    actionLabel: "Review Inquiry",
-    actionUrl: `/admin/inquiries/${(inquiry as { id: string }).id}`,
-  });
-
-  // Resend Transactional Notification System pass — the actionable
-  // recipient for a Product/Business inquiry is the Business itself, not
-  // just the founder's admin queue above (kept unchanged). Every CURRENT
-  // business_members manager, excluding the inquiring customer in the
-  // (rare) case they happen to also manage this exact business — never
-  // notify someone about their own inquiry.
-  const admin = getAdminSupabase();
-  if (admin) {
-    const to = await getEntityManagerEmails(admin, "business", businessId, user.id);
-    const preview = message.length > 160 ? `${message.slice(0, 157)}...` : message;
-    await sendProductNotification({
-      to,
-      type: "inquiry_new",
-      subject: `New inquiry — ${(business as { name: string }).name}`,
-      heading: "New inquiry received",
-      body: [
-        `${customerName ?? "A Findmi member"} sent an inquiry about ${(business as { name: string }).name}${productId ? " (regarding a specific product)" : ""}.`,
-        `"${preview}"`,
-      ],
-      actionLabel: "Reply to Inquiry",
-      actionUrl: `/account/business/${businessId}?tab=inquiries`,
-    });
-  }
-
-  revalidatePath("/account/inquiries");
-  redirect(`/account/inquiries/${(inquiry as { id: string }).id}`);
+  );
 }
 
 export async function sendCustomerMessage(inquiryId: string, formData: FormData) {

@@ -10,6 +10,10 @@ import FormAction from "@/components/FormAction";
 import ProductCard from "@/components/ProductCard";
 import ProductSaveButton from "@/components/ProductSaveButton";
 import ShareButton from "@/components/ShareButton";
+import InquireButton from "@/components/InquireButton";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { isBusinessPro } from "@/lib/entitlements";
+import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import {
   getFulfillmentOptionsForProduct,
   getProductBySlug,
@@ -70,6 +74,26 @@ export default async function ProductPage({
   // commerce_enabled. "in_stock" and null (not tracked) both allow it.
   const soldOut = product.inventory_status === "out_of_stock";
   const canAddToCart = product.purchasable && product.business.commerce_enabled && !soldOut;
+
+  // Product Inquiry Consolidation pass — plan_tier/plan_expires_at aren't
+  // in the anon column grant (same reason BusinessPublicView's own
+  // resolveIsPro exists as a separate service-role read rather than
+  // joining them into the public product query). accepts_inquiries/
+  // inquiry_topics ARE anon-safe and already came back on product.business.
+  const sellerPro = await (async () => {
+    const admin = getAdminSupabase();
+    if (!admin) return false;
+    const { data } = await admin
+      .from("businesses")
+      .select("plan_tier, plan_expires_at")
+      .eq("id", product.business_id)
+      .maybeSingle();
+    return isBusinessPro(data ?? {});
+  })();
+  const canProductInquire =
+    sellerPro &&
+    product.business.accepts_inquiries &&
+    sanitizeBusinessInquiryTopics(product.business.inquiry_topics).includes("product_order");
 
   const [fulfillmentOptions, appearances, sellerProducts, inquiryAction] = await Promise.all([
     canAddToCart ? getFulfillmentOptionsForProduct(product.id) : Promise.resolve([]),
@@ -253,17 +277,25 @@ export default async function ProductPage({
             </div>
           )}
 
-          {/* Native Inquiries V1 — additive alongside the existing Tally/
-              mailto inquiry action above, never a replacement for it.
-              Opt-in per business (native_inquiries_enabled). */}
-          {product.business.native_inquiries_enabled && (
+          {/* Product Inquiry Consolidation pass — replaces the old
+              native_inquiries_enabled-gated link into the separate legacy
+              `inquiries` system. Same canonical Conversation architecture
+              as Business Inquire (createInquiryConversation), tagged
+              subject_type='product_inquiry' with this Product as context
+              — gated on the Business's OWN accepts_inquiries + "Product /
+              Order" being one of its enabled topics, never a second
+              toggle the owner has to separately understand. */}
+          {canProductInquire && (
             <div className="mt-2 text-center">
-              <Link
-                href={`/account/inquiries/new?business=${product.business.id}&product=${product.id}`}
+              <InquireButton
+                targetType="business"
+                targetId={product.business.id}
+                targetName={product.business.name}
+                productId={product.id}
+                topics={["product_order"]}
+                label={`Ask ${product.business.name} on Findmi`}
                 className="text-sm font-semibold text-ink/55 underline underline-offset-2 transition hover:text-ink"
-              >
-                Message {product.business.name} on Findmi
-              </Link>
+              />
             </div>
           )}
         </div>

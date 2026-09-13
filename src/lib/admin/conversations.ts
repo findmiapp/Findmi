@@ -14,6 +14,7 @@ import { getAdminSupabase } from "./supabase-admin";
 
 const SUBJECT_TYPE_LABEL: Record<string, string> = {
   business_inquiry: "Business Inquiry",
+  product_inquiry: "Product Inquiry",
   event_inquiry: "Event Inquiry",
   venue_inquiry: "Venue Inquiry",
   findmi_sales: "Findmi Sales",

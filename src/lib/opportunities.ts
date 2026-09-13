@@ -345,7 +345,7 @@ export async function sendTextMessage(
   await notifyNewMessage(admin, conversationId, senderUserId, senderEntityType, senderEntityId, body);
 }
 
-export type InquirySubjectType = "business_inquiry" | "event_inquiry" | "venue_inquiry" | "findmi_sales";
+export type InquirySubjectType = "business_inquiry" | "event_inquiry" | "venue_inquiry" | "findmi_sales" | "product_inquiry";
 
 /** Unify Site-Wide Communications pass — the one entry point every
  * CONTROLLED PUBLIC INQUIRY (Business Inquire, Event Contact Organizer,

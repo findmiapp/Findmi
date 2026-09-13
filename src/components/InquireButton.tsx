@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { submitEntityInquiry } from "@/app/(public)/connect/actions";
+import { submitEntityInquiry, submitProductInquiry } from "@/app/(public)/connect/actions";
 import { BUSINESS_INQUIRY_TOPIC_LABELS, type BusinessInquiryTopic } from "@/lib/business-inquiry-topics";
 
 // Unify Site-Wide Communications pass — the ONE controlled public
@@ -33,6 +33,7 @@ export default function InquireButton({
   targetName,
   label = "Inquire",
   topics,
+  productId,
   className,
 }: {
   targetType: "business" | "event" | "location";
@@ -43,6 +44,12 @@ export default function InquireButton({
    * filtered server-side by the caller). Omit for Event/Location, which
    * have no topic concept. */
   topics?: BusinessInquiryTopic[];
+  /** Product Inquiry Consolidation pass — when set, submits via
+   * submitProductInquiry instead of submitEntityInquiry (targetType stays
+   * "business": the Product's own selling Business is still who receives
+   * and manages this Conversation; the Product is carried as context, not
+   * as a different kind of recipient). Business-only, same as `topics`. */
+  productId?: string;
   className: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -95,16 +102,25 @@ export default function InquireButton({
     setSubmitting(true);
     setError(null);
     try {
-      const result = await submitEntityInquiry({
-        targetType,
-        targetId,
-        name,
-        email,
-        phone: phone || undefined,
-        topic: topics ? topic || undefined : undefined,
-        message,
-        companySite: companySite || undefined,
-      });
+      const result = productId
+        ? await submitProductInquiry({
+            productId,
+            name,
+            email,
+            phone: phone || undefined,
+            message,
+            companySite: companySite || undefined,
+          })
+        : await submitEntityInquiry({
+            targetType,
+            targetId,
+            name,
+            email,
+            phone: phone || undefined,
+            topic: topics ? topic || undefined : undefined,
+            message,
+            companySite: companySite || undefined,
+          });
       if ("error" in result) {
         setError(result.error);
         setSubmitting(false);

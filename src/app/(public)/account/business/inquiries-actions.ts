@@ -183,6 +183,15 @@ export async function setBusinessInquirySettings(businessId: string, formData: F
   const submittedTopics = formData.getAll("inquiry_topics").map(String);
   const topics = sanitizeBusinessInquiryTopics(submittedTopics);
 
+  // Server-side reinforcement of CustomerInquiriesForm's own client-side
+  // guard (Save disabled with zero topics selected while Accept
+  // Inquiries is on) — never let a raw/bypassed submit save the
+  // "owner believes it's on, customers see nothing" configuration BusinessPublicView's
+  // own gate would otherwise silently produce.
+  if (acceptsInquiries && topics.length === 0) {
+    redirect(appendQuery(tabPath, { error: "Choose at least one inquiry type, or turn off Accept Inquiries." }));
+  }
+
   const { error } = await admin!
     .from("businesses")
     .update({ accepts_inquiries: acceptsInquiries, inquiry_topics: topics })

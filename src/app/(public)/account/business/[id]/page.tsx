@@ -49,8 +49,9 @@ import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import { getBusinessFollowerSummary } from "@/lib/business-followers";
 import { getBusinessInquiryDetail, getBusinessInquiryList } from "@/lib/inquiries";
-import { sendBusinessReply, setBusinessInquirySettings, setNativeInquiriesEnabled, updateInquiryStatus } from "../inquiries-actions";
-import { BUSINESS_INQUIRY_TOPIC_LABELS, BUSINESS_INQUIRY_TOPIC_VALUES, sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
+import { sendBusinessReply, updateInquiryStatus } from "../inquiries-actions";
+import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
+import CustomerInquiriesForm from "./CustomerInquiriesForm";
 import { getApplicationsForBusiness, getPendingInvitationsForBusiness } from "@/lib/opportunities";
 import {
   getBusinessOrderDetail,
@@ -1918,63 +1919,23 @@ export default async function ManageBusinessPage({
             elsewhere on this page. */}
         {activeTab === "inquiries" && (
           <div className="flex flex-col gap-3">
-            {/* Business-Controlled Inquiry Settings pass — the owner
-                switch for the UNIFIED Business Inquiry flow (public
-                InquireButton). Deliberately a separate card/setting from
-                "Accept Product-page inquiries" below, a different legacy
-                feature — see that card's own updated copy. Pro-only,
-                same upsell convention every other Pro-gated tab section
-                already uses (UpgradeLockedTab). */}
+            {/* Product Inquiry Consolidation pass — the owner now
+                understands exactly ONE customer-inquiry concept. Accept
+                Inquiries + Inquiry Types (below) is authoritative for
+                Business Inquire AND for Product-page inquiries (a Product
+                inquiry is this same setting, gated additionally on
+                "Product / Order" being enabled — see
+                connect/actions.ts's submitProductInquiry). The old
+                separate "Accept Product-page inquiries" card/legacy
+                inquiries system is no longer presented as a business-
+                facing option; see this pass's report for what happens to
+                its existing (empty) historical data and admin view. */}
             {pro ? (
-              <form action={setBusinessInquirySettings.bind(null, id)} className={cardClass}>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Customer Inquiries</p>
-                {/* `group` + `has-[:checked]` (Tailwind 3.4+, no JS) shows
-                    Inquiry Types only while Accept Inquiries is checked —
-                    same "hidden until enabled" behavior the task asked
-                    for, without a client component for a single toggle. */}
-                <div className="group mt-3">
-                  <label className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      name="accepts_inquiries"
-                      defaultChecked={business.accepts_inquiries}
-                      className="mt-0.5 h-5 w-5 shrink-0 accent-findmi"
-                    />
-                    <span>
-                      <span className="block text-sm font-medium text-ink">Accept inquiries</span>
-                      <span className="block text-xs text-ink/45">
-                        Allow customers to contact your business through Findmi.
-                      </span>
-                    </span>
-                  </label>
-
-                  <div className="mt-4 hidden group-has-[input[name=accepts_inquiries]:checked]:block">
-                    <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Inquiry Types</p>
-                    <p className="mt-1 text-xs text-ink/45">Choose what customers can contact you about.</p>
-                    <div className="mt-2 flex flex-col gap-1.5">
-                      {BUSINESS_INQUIRY_TOPIC_VALUES.map((value) => (
-                        <label key={value} className="flex items-center gap-2.5 rounded-lg px-1 py-1 hover:bg-black/[0.02]">
-                          <input
-                            type="checkbox"
-                            name="inquiry_topics"
-                            value={value}
-                            defaultChecked={sanitizeBusinessInquiryTopics(business.inquiry_topics).includes(value)}
-                            className="h-4 w-4 shrink-0 accent-findmi"
-                          />
-                          <span className="text-sm text-ink/80">{BUSINESS_INQUIRY_TOPIC_LABELS[value]}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="mt-4 rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                >
-                  Save
-                </button>
-              </form>
+              <CustomerInquiriesForm
+                businessId={id}
+                defaultAcceptsInquiries={business.accepts_inquiries}
+                defaultTopics={sanitizeBusinessInquiryTopics(business.inquiry_topics)}
+              />
             ) : (
               <UpgradeLockedTab
                 businessId={id}
@@ -1982,47 +1943,6 @@ export default async function ManageBusinessPage({
                 description="Let customers inquire about your business directly through Findmi."
                 isAdminElevated={isAdminElevated}
               />
-            )}
-
-            <form action={setNativeInquiriesEnabled.bind(null, id)} className={cardClass}>
-              <label className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  name="native_inquiries_enabled"
-                  defaultChecked={business.native_inquiries_enabled}
-                  className="mt-0.5 h-5 w-5 shrink-0 accent-findmi"
-                />
-                <span>
-                  {/* Messaging UX Unification pass — this setting only
-                      ever gated the legacy inquiries/inquiry_messages
-                      compose link (still reachable from your Product
-                      pages), never the new Messages/Conversation system —
-                      confirmed by trace, unchanged behavior here, copy
-                      only. Messages (Business<->Business, Business<->
-                      Event, Business<->Location) is always on for every
-                      Business, no setting required, so this copy no
-                      longer says "message you directly on Findmi," which
-                      now reads as the same thing as Messages. */}
-                  <span className="block text-sm font-medium text-ink">Accept Product-page inquiries</span>
-                  <span className="block text-xs text-ink/45">
-                    Lets signed-in customers send a legacy Findmi inquiry from your Product pages — separate from
-                    Messages (Business/Event/Venue conversations, always on) and from your existing Inquire button.
-                  </span>
-                </span>
-              </label>
-              <button
-                type="submit"
-                className="mt-3 rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              >
-                Save
-              </button>
-            </form>
-
-            {!business.native_inquiries_enabled && (
-              <p className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">
-                Product-page inquiries aren&rsquo;t enabled for this business yet — turn them on above to let
-                signed-in customers send one from your Product pages.
-              </p>
             )}
 
             {openInquiry ? (
