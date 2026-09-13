@@ -42,6 +42,7 @@ import {
   type InquirySubjectType,
 } from "@/lib/opportunities";
 import { isBusinessPro } from "@/lib/entitlements";
+import { BUSINESS_INQUIRY_TOPIC_LABELS, isBusinessInquiryTopic, sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import type { PlanTier } from "@/lib/types";
 import { ensureEventAppearance, cancelEventAppearance } from "@/lib/appearance-event-sync";
 
@@ -111,13 +112,13 @@ export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Prom
   if (!message) return { error: "Write a message." };
 
   const phone = input.phone?.trim().slice(0, 40) || null;
-  const topic = input.topic?.trim().slice(0, MAX_TOPIC_LENGTH) || null;
-  const fullMessage = input.targetType === "business" && topic ? `Topic: ${topic}\n\n${message}` : message;
+  const rawTopic = input.topic?.trim().slice(0, MAX_TOPIC_LENGTH) || null;
 
   const admin = getAdminSupabase();
   if (!admin) return { error: "Server isn't configured." };
 
-  const targetColumns = input.targetType === "business" ? "id, plan_tier, plan_expires_at" : "id";
+  const targetColumns =
+    input.targetType === "business" ? "id, plan_tier, plan_expires_at, accepts_inquiries, inquiry_topics" : "id";
   const { data: target } = await admin
     .from(TARGET_TABLE[input.targetType])
     .select(targetColumns)
@@ -126,16 +127,36 @@ export async function submitEntityInquiry(input: SubmitEntityInquiryInput): Prom
     .maybeSingle();
   if (!target) return { error: "That's no longer available." };
 
-  // Business Inquiry stays a Pro capability — this pass changes its
-  // destination (native Conversation instead of mailto/external form),
-  // never who gets to use it. isBusinessPro is the same shared check
-  // BusinessPublicView's own resolveIsPro uses.
+  // Business-Controlled Inquiry Settings pass — Business Inquiry stays a
+  // Pro capability (isBusinessPro, same check BusinessPublicView's own
+  // resolveIsPro uses), but Pro alone is no longer sufficient: the owner
+  // must have explicitly turned on Accept Inquiries AND the submitted
+  // topic must be one of THIS business's currently enabled topics —
+  // never trusted from the client, re-derived fresh from the row just
+  // read. This is what stops someone manually calling this action for a
+  // business with inquiries off, or with a topic that business never
+  // enabled (or no longer does).
+  let topicLabel: string | null = null;
   if (input.targetType === "business") {
-    const businessRow = target as unknown as { plan_tier: PlanTier | null; plan_expires_at: string | null };
+    const businessRow = target as unknown as {
+      plan_tier: PlanTier | null;
+      plan_expires_at: string | null;
+      accepts_inquiries: boolean;
+      inquiry_topics: string[] | null;
+    };
     if (!isBusinessPro({ plan_tier: businessRow.plan_tier ?? undefined, plan_expires_at: businessRow.plan_expires_at })) {
       return { error: "This business isn't accepting inquiries right now." };
     }
+    const enabledTopics = sanitizeBusinessInquiryTopics(businessRow.inquiry_topics);
+    if (!businessRow.accepts_inquiries || enabledTopics.length === 0) {
+      return { error: "This business isn't accepting inquiries right now." };
+    }
+    if (!rawTopic || !isBusinessInquiryTopic(rawTopic) || !enabledTopics.includes(rawTopic)) {
+      return { error: "Choose a valid inquiry topic." };
+    }
+    topicLabel = BUSINESS_INQUIRY_TOPIC_LABELS[rawTopic];
   }
+  const fullMessage = topicLabel ? `Topic: ${topicLabel}\n\n${message}` : message;
 
   // Real session re-derived server-side, never trusted from the client —
   // present only to add the sender as a "personal" participant so they

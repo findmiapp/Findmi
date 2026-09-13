@@ -13,7 +13,8 @@ import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
-import InquireButton, { BUSINESS_INQUIRY_TOPICS } from "@/components/InquireButton";
+import InquireButton from "@/components/InquireButton";
+import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
@@ -247,14 +248,19 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Findmi entirely). It's now always the native InquireButton below,
   // which creates a real Conversation (subject_type='business_inquiry')
   // — see components/InquireButton.tsx and
-  // lib/opportunities.ts's createInquiryConversation. inquiry_cta_url/
-  // inquiry_cta_label stay in the schema (inquiry_cta_label is still the
-  // button's own founder-editable label); inquiry_cta_url is simply no
-  // longer read for the destination, same "label stays editable,
-  // destination is server-controlled" pattern used elsewhere on Findmi
-  // (Join's Pro/Multi-Region CTAs). Free-tier hidden, unchanged
-  // entitlement — see the `pro &&` gate below.
+  // lib/opportunities.ts's createInquiryConversation. inquiry_cta_url
+  // stays in the schema, simply unread now (inquiry_cta_label is still
+  // the button's own founder-editable label).
+  //
+  // Business-Controlled Inquiry Settings pass — Pro alone no longer
+  // shows INQUIRE (that was the actual bug this pass fixes — see its own
+  // migration note). The owner must have explicitly turned on Accept
+  // Inquiries (accepts_inquiries) AND selected at least one inquiry
+  // topic; neither is inferred from Pro status, existing contact info,
+  // or any legacy CTA field. No business was bulk-enabled.
   const inquiryLabel = business.inquiry_cta_label?.trim() || "Inquire";
+  const enabledInquiryTopics = sanitizeBusinessInquiryTopics(business.inquiry_topics);
+  const canInquire = pro && business.accepts_inquiries && enabledInquiryTopics.length > 0;
   const showMessageButton = await shouldShowMessageButton("business", business.id);
 
   const location = cityStateZip(business.city, business.state, business.postal_code);
@@ -506,14 +512,14 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               above — this row is purely Inquire, the single most-
               configurable primary action (item 4's custom URL/label).
               Inquire is contact functionality — Free-tier hidden. */}
-          {pro && (
+          {canInquire && (
             <div className="min-w-0">
               <InquireButton
                 targetType="business"
                 targetId={business.id}
                 targetName={business.name}
                 label={inquiryLabel}
-                topics={BUSINESS_INQUIRY_TOPICS}
+                topics={enabledInquiryTopics}
                 className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               />
             </div>

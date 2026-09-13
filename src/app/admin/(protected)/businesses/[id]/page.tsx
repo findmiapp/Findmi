@@ -24,6 +24,11 @@ import GalleryField from "@/components/admin/GalleryField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import BusinessPeopleRoster from "@/components/admin/BusinessPeopleRoster";
 import { getCurrentAccessByEntity } from "@/lib/admin/claim-queries";
+import {
+  BUSINESS_INQUIRY_TOPIC_LABELS,
+  BUSINESS_INQUIRY_TOPIC_VALUES,
+  sanitizeBusinessInquiryTopics,
+} from "@/lib/business-inquiry-topics";
 import PendingReviewPanel from "@/components/admin/PendingReviewPanel";
 import BusinessLifecyclePanel from "@/components/admin/BusinessLifecyclePanel";
 import {
@@ -450,25 +455,45 @@ export default async function EditBusinessPage({
             <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Inquire Button</p>
             <div className="rounded-2xl border border-black/10 p-4">
               <p className="mb-3 text-xs text-ink/45">
-                Optional — point the profile&rsquo;s primary Inquire button at any external URL with custom text,
-                no Tally form required. Leave blank to keep the existing Form Manager/email behavior.
+                Button text only — the destination is always the native Findmi inquiry form now (a real
+                Conversation, never an external URL/email). The owner controls whether Inquire shows at all and
+                which topics it offers below; this is the same configuration their own Business Manager edits, not
+                a separate admin-only setting.
               </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
-                  label="Button Text"
-                  name="inquiry_cta_label"
-                  defaultValue={business.inquiry_cta_label}
-                  placeholder="Inquire"
-                  hint="Defaults to “Inquire” when blank."
+              <TextField
+                label="Button Text"
+                name="inquiry_cta_label"
+                defaultValue={business.inquiry_cta_label}
+                placeholder="Inquire"
+                hint="Defaults to “Inquire” when blank."
+              />
+              {/* inquiry_cta_url stays in the schema (harmless, unread —
+                  see BusinessPublicView's own note) rather than dropped
+                  from the form outright; no input for it here anymore
+                  since nothing reads it. */}
+
+              <div className="mt-4 border-t border-black/5 pt-4">
+                <CheckboxField
+                  label="Accept inquiries"
+                  name="accepts_inquiries"
+                  defaultChecked={business.accepts_inquiries}
+                  hint="Allow customers to contact this business through Findmi (Pro only, unchanged by this field alone — Business Inquiry still requires an active Pro plan)."
                 />
-                <TextField
-                  label="Destination URL"
-                  name="inquiry_cta_url"
-                  type="url"
-                  defaultValue={business.inquiry_cta_url}
-                  placeholder="https://…"
-                  hint="Overrides Form Manager/email when set."
-                />
+                <p className="mb-1.5 mt-3 text-xs font-medium text-ink">Inquiry Types</p>
+                <div className="flex flex-col gap-1.5">
+                  {BUSINESS_INQUIRY_TOPIC_VALUES.map((value) => (
+                    <label key={value} className="flex items-center gap-2.5 rounded-lg px-1 py-1 hover:bg-black/[0.02]">
+                      <input
+                        type="checkbox"
+                        name="inquiry_topics"
+                        value={value}
+                        defaultChecked={sanitizeBusinessInquiryTopics(business.inquiry_topics).includes(value)}
+                        className="h-4 w-4 shrink-0 accent-findmi"
+                      />
+                      <span className="text-sm text-ink/80">{BUSINESS_INQUIRY_TOPIC_LABELS[value]}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
 

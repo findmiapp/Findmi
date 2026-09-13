@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { submitEntityInquiry } from "@/app/(public)/connect/actions";
+import { BUSINESS_INQUIRY_TOPIC_LABELS, type BusinessInquiryTopic } from "@/lib/business-inquiry-topics";
 
 // Unify Site-Wide Communications pass — the ONE controlled public
 // inquiry entry point (Business Inquire / Event Contact Organizer /
@@ -15,21 +16,16 @@ import { submitEntityInquiry } from "@/app/(public)/connect/actions";
 // inbox — but a guest has no /account/messages to view it in, so this
 // shows an inline success state in the SAME modal instead of navigating
 // anywhere, regardless of whether the sender happens to be signed in.
-
-/** Business Inquiry's suggested V1 topics — free text isn't needed here
- * (Findmi has no existing configurable topic list to preserve; see this
- * pass's own trace), just a short honest label prepended to the message
- * body server-side (no schema change). Event/Location contact forms
- * don't get a topic picker — not "already useful/consistent" for those. */
-export const BUSINESS_INQUIRY_TOPICS = [
-  "General Inquiry",
-  "Product / Order",
-  "Wholesale",
-  "Catering / Booking",
-  "Event / Pop-Up",
-  "Collaboration",
-  "Other",
-];
+//
+// Business-Controlled Inquiry Settings pass — `topics` is now the
+// Business's OWN currently-enabled stable values (never a hardcoded
+// universal list — the caller, BusinessPublicView, already filtered to
+// only what the owner turned on via sanitizeBusinessInquiryTopics).
+// Exactly one enabled topic auto-selects it (shown as plain context
+// text, no picker); more than one shows a small set of selectable rows
+// — never a native <select>, which read as visually inconsistent with
+// Findmi on Android (see this pass's own report) — built from existing
+// Findmi control styling, no new dependency.
 
 export default function InquireButton({
   targetType,
@@ -43,8 +39,10 @@ export default function InquireButton({
   targetId: string;
   targetName: string;
   label?: string;
-  /** Business only — omit for Event/Location, which have no topic field. */
-  topics?: string[];
+  /** Business only — the Business's own currently-enabled topics (already
+   * filtered server-side by the caller). Omit for Event/Location, which
+   * have no topic concept. */
+  topics?: BusinessInquiryTopic[];
   className: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -52,7 +50,7 @@ export default function InquireButton({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [topic, setTopic] = useState(topics?.[0] ?? "");
+  const [topic, setTopic] = useState<BusinessInquiryTopic | "">(topics?.[0] ?? "");
   const [message, setMessage] = useState("");
   const [companySite, setCompanySite] = useState(""); // honeypot
   const [submitting, setSubmitting] = useState(false);
@@ -89,8 +87,11 @@ export default function InquireButton({
     buttonRef.current?.focus();
   }
 
+  const needsTopicChoice = Boolean(topics && topics.length > 1);
+  const canSubmit = Boolean(name.trim() && email.trim() && message.trim() && (!needsTopicChoice || topic));
+
   async function submit() {
-    if (!name.trim() || !email.trim() || !message.trim()) return;
+    if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -100,7 +101,7 @@ export default function InquireButton({
         name,
         email,
         phone: phone || undefined,
-        topic: topics ? topic : undefined,
+        topic: topics ? topic || undefined : undefined,
         message,
         companySite: companySite || undefined,
       });
@@ -191,17 +192,39 @@ export default function InquireButton({
                     <span className={labelClass}>Email</span>
                     <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
                   </label>
-                  {topics && (
-                    <label className="block">
+                  {topics && topics.length === 1 && (
+                    // Single enabled topic — auto-selected (see `topic`'s
+                    // initial state above), shown as plain context text
+                    // rather than a one-item picker.
+                    <p className="text-xs text-ink/45">
+                      Topic: <span className="font-medium text-ink/70">{BUSINESS_INQUIRY_TOPIC_LABELS[topics[0]]}</span>
+                    </p>
+                  )}
+                  {topics && topics.length > 1 && (
+                    <div className="block">
                       <span className={labelClass}>Inquiry topic</span>
-                      <select value={topic} onChange={(e) => setTopic(e.target.value)} className={inputClass}>
-                        {topics.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Inquiry topic">
+                        {topics.map((t) => {
+                          const selected = topic === t;
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              onClick={() => setTopic(t)}
+                              className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${
+                                selected
+                                  ? "border-findmi bg-findmi-50 text-findmi-700"
+                                  : "border-black/10 bg-white text-ink/60 hover:border-black/20"
+                              }`}
+                            >
+                              {BUSINESS_INQUIRY_TOPIC_LABELS[t]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
                   <label className="block">
                     <span className={labelClass}>Message</span>
@@ -222,7 +245,7 @@ export default function InquireButton({
                   <button
                     type="button"
                     onClick={submit}
-                    disabled={submitting || !name.trim() || !email.trim() || !message.trim()}
+                    disabled={submitting || !canSubmit}
                     className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                   >
                     {submitting ? "Sending…" : "Send"}

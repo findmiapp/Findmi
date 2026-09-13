@@ -5,6 +5,9 @@ import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember } from "@/lib/permissions";
+import { isBusinessPro } from "@/lib/entitlements";
+import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
+import type { PlanTier } from "@/lib/types";
 
 function appendQuery(base: string, params: Record<string, string>): string {
   const sep = base.includes("?") ? "&" : "?";
@@ -135,6 +138,59 @@ export async function setNativeInquiriesEnabled(businessId: string, formData: Fo
   if (error) redirect(appendQuery(tabPath, { error: error.message }));
 
   revalidatePath(`/account/business/${businessId}`);
+  redirect(tabPath);
+}
+
+/** Business-Controlled Inquiry Settings pass — the owner-facing on/off
+ * switch + topic picker for the UNIFIED Business Inquiry flow (public
+ * InquireButton, subject_type='business_inquiry'). Deliberately a
+ * SEPARATE action/setting from setNativeInquiriesEnabled above, which
+ * gates a different, legacy feature (see that setting's own updated
+ * copy) — this pass never repurposes it. Off by default; this is the
+ * only write path that ever turns it on. A Free business can never
+ * enable this (Business Inquiry stays Pro-only, re-verified here even
+ * though the editor UI already hides the controls for Free) — an
+ * unauthorized attempt is rejected rather than silently accepted. */
+export async function setBusinessInquirySettings(businessId: string, formData: FormData) {
+  const tabPath = `/account/business/${businessId}?tab=inquiries`;
+
+  try {
+    await requireBusinessMember(businessId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "You don't have access to this business.";
+    redirect(appendQuery(tabPath, { error: message }));
+  }
+
+  const admin = getAdminSupabase();
+  if (!admin) redirect(appendQuery(tabPath, { error: "Server isn't configured." }));
+
+  const { data: businessRow } = await admin!
+    .from("businesses")
+    .select("slug, plan_tier, plan_expires_at")
+    .eq("id", businessId)
+    .maybeSingle();
+  const pro = isBusinessPro({
+    plan_tier: (businessRow?.plan_tier as PlanTier | null) ?? undefined,
+    plan_expires_at: (businessRow?.plan_expires_at as string | null) ?? null,
+  });
+  if (!pro) redirect(appendQuery(tabPath, { error: "Business Inquiry is a Findmi Pro feature." }));
+
+  const acceptsInquiries = formData.get("accepts_inquiries") === "on";
+  // Checkboxes submit one entry per checked box under the shared name
+  // "inquiry_topics" — sanitizeBusinessInquiryTopics both validates
+  // against the stable value list AND normalizes ordering, so stray/
+  // tampered values from a raw request can never be persisted.
+  const submittedTopics = formData.getAll("inquiry_topics").map(String);
+  const topics = sanitizeBusinessInquiryTopics(submittedTopics);
+
+  const { error } = await admin!
+    .from("businesses")
+    .update({ accepts_inquiries: acceptsInquiries, inquiry_topics: topics })
+    .eq("id", businessId);
+  if (error) redirect(appendQuery(tabPath, { error: error.message }));
+
+  revalidatePath(`/account/business/${businessId}`);
+  if (businessRow?.slug) revalidatePath(`/business/${businessRow.slug}`);
   redirect(tabPath);
 }
 

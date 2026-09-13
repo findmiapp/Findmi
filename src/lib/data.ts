@@ -54,7 +54,8 @@ export const PUBLIC_BUSINESS_COLUMNS =
   "cta_1_label, cta_1_url, cta_1_enabled, cta_2_label, cta_2_url, " +
   "cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled, " +
   "bulletin_heading, bulletin_body, bulletin_label, bulletin_url, " +
-  "native_inquiries_enabled, market_area_id, is_pro_member";
+  "native_inquiries_enabled, market_area_id, is_pro_member, " +
+  "accepts_inquiries, inquiry_topics";
 // Intentionally excluded (matches the migration exactly — never add these
 // back here without also widening the grant): lead_status,
 // marketplace_fee_percent, processing_fee_payer, payout_method,

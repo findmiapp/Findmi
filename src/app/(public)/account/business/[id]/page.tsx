@@ -49,7 +49,8 @@ import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import { getBusinessFollowerSummary } from "@/lib/business-followers";
 import { getBusinessInquiryDetail, getBusinessInquiryList } from "@/lib/inquiries";
-import { sendBusinessReply, setNativeInquiriesEnabled, updateInquiryStatus } from "../inquiries-actions";
+import { sendBusinessReply, setBusinessInquirySettings, setNativeInquiriesEnabled, updateInquiryStatus } from "../inquiries-actions";
+import { BUSINESS_INQUIRY_TOPIC_LABELS, BUSINESS_INQUIRY_TOPIC_VALUES, sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { getApplicationsForBusiness, getPendingInvitationsForBusiness } from "@/lib/opportunities";
 import {
   getBusinessOrderDetail,
@@ -283,7 +284,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, market_area_id"
+        "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, accepts_inquiries, inquiry_topics, market_area_id"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -1917,6 +1918,72 @@ export default async function ManageBusinessPage({
             elsewhere on this page. */}
         {activeTab === "inquiries" && (
           <div className="flex flex-col gap-3">
+            {/* Business-Controlled Inquiry Settings pass — the owner
+                switch for the UNIFIED Business Inquiry flow (public
+                InquireButton). Deliberately a separate card/setting from
+                "Accept Product-page inquiries" below, a different legacy
+                feature — see that card's own updated copy. Pro-only,
+                same upsell convention every other Pro-gated tab section
+                already uses (UpgradeLockedTab). */}
+            {pro ? (
+              <form action={setBusinessInquirySettings.bind(null, id)} className={cardClass}>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Customer Inquiries</p>
+                {/* `group` + `has-[:checked]` (Tailwind 3.4+, no JS) shows
+                    Inquiry Types only while Accept Inquiries is checked —
+                    same "hidden until enabled" behavior the task asked
+                    for, without a client component for a single toggle. */}
+                <div className="group mt-3">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      name="accepts_inquiries"
+                      defaultChecked={business.accepts_inquiries}
+                      className="mt-0.5 h-5 w-5 shrink-0 accent-findmi"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-ink">Accept inquiries</span>
+                      <span className="block text-xs text-ink/45">
+                        Allow customers to contact your business through Findmi.
+                      </span>
+                    </span>
+                  </label>
+
+                  <div className="mt-4 hidden group-has-[input[name=accepts_inquiries]:checked]:block">
+                    <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Inquiry Types</p>
+                    <p className="mt-1 text-xs text-ink/45">Choose what customers can contact you about.</p>
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      {BUSINESS_INQUIRY_TOPIC_VALUES.map((value) => (
+                        <label key={value} className="flex items-center gap-2.5 rounded-lg px-1 py-1 hover:bg-black/[0.02]">
+                          <input
+                            type="checkbox"
+                            name="inquiry_topics"
+                            value={value}
+                            defaultChecked={sanitizeBusinessInquiryTopics(business.inquiry_topics).includes(value)}
+                            className="h-4 w-4 shrink-0 accent-findmi"
+                          />
+                          <span className="text-sm text-ink/80">{BUSINESS_INQUIRY_TOPIC_LABELS[value]}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="mt-4 rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Save
+                </button>
+              </form>
+            ) : (
+              <UpgradeLockedTab
+                businessId={id}
+                tabKey="inquiries"
+                description="Let customers inquire about your business directly through Findmi."
+                isAdminElevated={isAdminElevated}
+              />
+            )}
+
             <form action={setNativeInquiriesEnabled.bind(null, id)} className={cardClass}>
               <label className="flex items-start gap-3">
                 <input

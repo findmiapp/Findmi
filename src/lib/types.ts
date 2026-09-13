@@ -234,6 +234,15 @@ export interface Business {
   // path (signed-in only) alongside the existing Tally/mailto Inquire
   // CTA, which is completely unaffected either way.
   native_inquiries_enabled: boolean;
+  // Business-Controlled Inquiry Settings pass — the owner-controlled
+  // gate for the UNIFIED Business Inquiry flow (InquireButton /
+  // subject_type='business_inquiry'), deliberately distinct from
+  // native_inquiries_enabled above (a different, legacy feature — see
+  // that pass's own migration note). Off by default for every business;
+  // inquiry_topics holds only stable BusinessInquiryTopic values (see
+  // lib/business-inquiry-topics.ts), never arbitrary UI labels.
+  accepts_inquiries: boolean;
+  inquiry_topics: string[];
   // Business Plan Entitlement — not publicly readable (see the PlanTier
   // type above; plan_tier is deliberately off the anon/authenticated
   // column-level grant). Optional here because most existing SELECTs

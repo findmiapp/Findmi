@@ -10,6 +10,7 @@ import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
 
 /** Business review-decision notification — every CURRENT
@@ -168,6 +169,12 @@ export async function saveBusiness(id: string | null, formData: FormData) {
     // Business Profile V2 polish pass, item 4/5.
     inquiry_cta_label: str(formData, "inquiry_cta_label"),
     inquiry_cta_url: str(formData, "inquiry_cta_url"),
+    // Business-Controlled Inquiry Settings pass — same underlying
+    // columns the member editor's Customer Inquiries card writes
+    // (account/business/inquiries-actions.ts's setBusinessInquirySettings)
+    // — one Business configuration, not a competing admin-only model.
+    accepts_inquiries: bool(formData, "accepts_inquiries"),
+    inquiry_topics: sanitizeBusinessInquiryTopics(formData.getAll("inquiry_topics").map(String)),
     cta_1_label: str(formData, "cta_1_label"),
     cta_1_url: str(formData, "cta_1_url"),
     cta_1_enabled: bool(formData, "cta_1_enabled"),
@@ -330,6 +337,12 @@ export async function saveBusinessProfile(id: string, formData: FormData) {
     service_radius_miles: num(formData, "service_radius_miles"),
     inquiry_cta_label: str(formData, "inquiry_cta_label"),
     inquiry_cta_url: str(formData, "inquiry_cta_url"),
+    // Business-Controlled Inquiry Settings pass — same underlying
+    // columns the member editor's Customer Inquiries card writes
+    // (account/business/inquiries-actions.ts's setBusinessInquirySettings)
+    // — one Business configuration, not a competing admin-only model.
+    accepts_inquiries: bool(formData, "accepts_inquiries"),
+    inquiry_topics: sanitizeBusinessInquiryTopics(formData.getAll("inquiry_topics").map(String)),
     cta_1_label: str(formData, "cta_1_label"),
     cta_1_url: str(formData, "cta_1_url"),
     cta_1_enabled: bool(formData, "cta_1_enabled"),
