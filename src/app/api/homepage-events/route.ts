@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
  * every other consumer page).
  */
 export async function GET(request: NextRequest) {
-  const timeKey = request.nextUrl.searchParams.get("when") ?? "upNext";
+  const timeKey = request.nextUrl.searchParams.get("when") ?? "next";
   const category = request.nextUrl.searchParams.get("category")?.trim() || undefined;
   const market = request.nextUrl.searchParams.get("market")?.trim() || undefined;
   const area = request.nextUrl.searchParams.get("area")?.trim() || undefined;

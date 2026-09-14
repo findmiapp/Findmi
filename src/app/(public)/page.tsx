@@ -55,10 +55,11 @@ export default async function HomePage({
   const [
     categories,
     eventCategories,
-    upNextRaw,
+    nextRaw,
     todayRaw,
+    weekRaw,
     weekendRaw,
-    anytimeRaw,
+    allRaw,
     heroFallbackBrands,
     homepageRows,
     siteSections,
@@ -70,21 +71,23 @@ export default async function HomePage({
     // by every candidate occurrence's EFFECTIVE physical Market (see
     // lib/event-markets.ts), never business Market entitlement. Absent =
     // today's unfiltered behavior, unchanged.
-    getUpcomingEvents(10, "anytime", marketSlug, areaSlug), // "Up Next" — see HomeEventDiscovery's own note on this
+    getUpcomingEvents(10, "anytime", marketSlug, areaSlug), // "Next Up" — see HomeEventDiscovery's own note on this
     getUpcomingEvents(10, "now", marketSlug, areaSlug),
+    getUpcomingEvents(10, "week", marketSlug, areaSlug), // Standardize Upcoming Event Time Filters pass — new "This Week" tab
     getUpcomingEvents(10, "weekend", marketSlug, areaSlug),
-    getUpcomingEvents(10, "anytime", marketSlug, areaSlug), // "All Events" — same real chronological query as Up Next
+    getUpcomingEvents(10, "anytime", marketSlug, areaSlug), // "All" — same real chronological query as Next Up
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
   ]);
 
-  const [upNextEvents, todayEvents, weekendEvents, anytimeEvents] = await Promise.all([
-    attachEventCategories(upNextRaw),
+  const [nextEvents, todayEvents, weekEvents, weekendEvents, allEvents] = await Promise.all([
+    attachEventCategories(nextRaw),
     attachEventCategories(todayRaw),
+    attachEventCategories(weekRaw),
     attachEventCategories(weekendRaw),
-    attachEventCategories(anytimeRaw),
+    attachEventCategories(allRaw),
   ]);
 
   // Each row's content is resolved in parallel — one query per row
@@ -219,10 +222,11 @@ export default async function HomePage({
             // the homepage's own Market/Area changes — same lesson already
             // applied to HomepageBusinessRow's own cache below.
             key={`${marketSlug ?? "all"}-${areaSlug ?? "all"}`}
-            upNext={upNextEvents}
+            next={nextEvents}
             today={todayEvents}
+            week={weekEvents}
             weekend={weekendEvents}
-            anytime={anytimeEvents}
+            all={allEvents}
             eventCategories={eventCategories}
             marketSlug={marketSlug}
             areaSlug={areaSlug}

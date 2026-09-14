@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Category, EventWithCategories } from "@/lib/types";
+import { DISCOVERY_TIME_TABS, type DiscoveryTimeKey } from "@/lib/format";
 import HomeEventCard from "./HomeEventCard";
 
 // Homepage "Upcoming Events Near You" discovery — primary time filters +
@@ -9,13 +10,17 @@ import HomeEventCard from "./HomeEventCard";
 // the two COMBINE (This Weekend + a category = both conditions applied
 // together), per the 2026 feed-builder pass (Part 3).
 //
-// "Up Next" is the default tab (not "Today" — a homepage that goes quiet
+// "Next Up" is the default tab (not "Today" — a homepage that goes quiet
 // whenever nothing's happening in the next 24h reads as dead). It's the
-// exact same real, chronological, unfiltered upcoming-events query "All
-// Events" already uses — nearest start time first. That overlap is
-// intentional and disclosed, not a bug.
+// exact same real, chronological, unfiltered upcoming-events query "All"
+// already uses — nearest start time first. That overlap is intentional
+// and disclosed, not a bug.
 //
-// The four time windows are prefetched server-side (zero latency, the
+// Standardize Upcoming Event Time Filters pass — the five tabs (keys,
+// labels, order) now come from DISCOVERY_TIME_TABS (lib/format.ts), the
+// one shared definition also used by /events, instead of a local copy.
+//
+// All five time windows are prefetched server-side (zero latency, the
 // common no-category case). Selecting a category re-fetches from
 // /api/homepage-events (live, combining both filters server-side via the
 // same getEventsDiscovery() every other events query uses) rather than
@@ -29,20 +34,14 @@ import HomeEventCard from "./HomeEventCard";
 // caught error just left the cache empty, so it rendered the same
 // "Nothing in this category" copy a real empty result would), which
 // meant a transient failure silently read as "your filters are broken."
-const TIME_TABS = [
-  { key: "upNext", label: "Up Next" },
-  { key: "today", label: "Today" },
-  { key: "weekend", label: "This Weekend" },
-  { key: "anytime", label: "All Events" },
-] as const;
-
-type TimeKey = (typeof TIME_TABS)[number]["key"];
+type TimeKey = DiscoveryTimeKey;
 
 export default function HomeEventDiscovery({
-  upNext,
+  next,
   today,
+  week,
   weekend,
-  anytime,
+  all,
   eventCategories,
   marketSlug,
   areaSlug,
@@ -59,8 +58,8 @@ export default function HomeEventDiscovery({
    * change handling as marketSlug (see page.tsx's key={...}). */
   areaSlug?: string;
 }) {
-  const prefetched: Record<TimeKey, EventWithCategories[]> = { upNext, today, weekend, anytime };
-  const [activeTime, setActiveTime] = useState<TimeKey>("upNext");
+  const prefetched: Record<TimeKey, EventWithCategories[]> = { next, today, week, weekend, all };
+  const [activeTime, setActiveTime] = useState<TimeKey>("next");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, EventWithCategories[]>>({});
   const [loading, setLoading] = useState(false);
@@ -118,7 +117,7 @@ export default function HomeEventDiscovery({
   return (
     <div>
       <div className="flex gap-2 overflow-x-auto px-4 pb-0.5 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {TIME_TABS.map((t) => (
+        {DISCOVERY_TIME_TABS.map((t) => (
           <button
             key={t.key}
             type="button"
@@ -179,14 +178,19 @@ export default function HomeEventDiscovery({
           </button>
         </div>
       ) : items.length === 0 ? (
-        // Compact, honest empty state — Today especially must never
-        // silently substitute other events while staying highlighted.
+        // Compact, honest empty state — Today/This Week/This Weekend must
+        // never silently substitute other events while staying
+        // highlighted (Standardize Upcoming Event Time Filters pass).
         <p className="mt-4 px-4 text-sm text-ink/45 sm:px-6">
           {activeTime === "today"
-            ? "Nothing today — check This Weekend or All Events."
-            : activeCategory
-              ? "No events here yet. Try another date or category."
-              : "Nothing in this window yet."}
+            ? "Nothing today — check This Week or This Weekend."
+            : activeTime === "week"
+              ? "Nothing this week yet — check This Weekend or All."
+              : activeTime === "weekend"
+                ? "Nothing this weekend yet — check All."
+                : activeCategory
+                  ? "No events here yet. Try another date or category."
+                  : "Nothing in this window yet."}
         </p>
       ) : (
         /* Homepage discovery flow pass — mobile card width w-[74vw]

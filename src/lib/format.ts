@@ -261,27 +261,46 @@ function getLocalDayBounds(dayOffset = 0): { start: Date; end: Date } {
   return { start: new Date(startUTC), end: new Date(endUTC) };
 }
 
-export type DiscoveryWindow = "now" | "next" | "weekend" | "month" | "anytime";
+export type DiscoveryWindow = "now" | "next" | "week" | "weekend" | "month" | "anytime";
 
-/** The four primary time tabs shared by the homepage's event discovery
- * (HomeEventDiscovery.tsx, untouched — excluded system) and the /events
- * archive (Discovery/Archive V2 Part 8) — "Up Next" maps to the exact
- * same real, unfiltered chronological query "All Events" already uses
- * (see HomeEventDiscovery's own note on that intentional overlap), not a
- * second interpretation of it. Extracted here (was a private const
- * inside /api/homepage-events/route.ts) so both callers import the same
- * mapping instead of each defining their own copy. */
-export type DiscoveryTimeKey = "upNext" | "today" | "weekend" | "anytime";
+/** Standardize Upcoming Event Time Filters pass — the ONE canonical
+ * time-filter definition (keys, labels, order, and the window each key
+ * resolves to) shared by every consumer-facing Event discovery surface:
+ * the homepage's HomeEventDiscovery, the /events archive, and
+ * /api/homepage-events' own live category re-fetch. Centralized here so
+ * "This Week"/"This Weekend" can never drift into competing definitions
+ * across those surfaces. Order and labels are locked: Next Up, Today,
+ * This Week, This Weekend, All. "next" maps to the exact same real,
+ * unfiltered chronological query "all" uses (an intentional, disclosed
+ * overlap — see HomeEventDiscovery's own note), not a second
+ * interpretation of it.
+ *
+ * Deliberately NOT the vocabulary for /find (FindWindow: live/today/
+ * weekend/anytime — FindMi Here Appearance discovery, a different
+ * feature with its own "Here Now" concept) or /discover (its own
+ * compact 3-tab today/weekend/upcoming control spanning multiple
+ * content types at once, by design) — both are out of scope for this
+ * pass; only genuine Event-discovery surfaces use this. */
+export type DiscoveryTimeKey = "next" | "today" | "week" | "weekend" | "all";
+export const DISCOVERY_TIME_TABS: { key: DiscoveryTimeKey; label: string }[] = [
+  { key: "next", label: "Next Up" },
+  { key: "today", label: "Today" },
+  { key: "week", label: "This Week" },
+  { key: "weekend", label: "This Weekend" },
+  { key: "all", label: "All" },
+];
 export const WINDOW_BY_TIME_KEY: Record<DiscoveryTimeKey, DiscoveryWindow> = {
-  upNext: "anytime",
+  next: "anytime",
   today: "now",
+  week: "week",
   weekend: "weekend",
-  anytime: "anytime",
+  all: "anytime",
 };
 
-/** Findmi's discovery time filter — TODAY (now) / NEXT WEEK (next) / THIS
- * WEEKEND / THIS MONTH / ALL EVENTS (anytime) — resolved to real UTC
- * bounds in APP_TIMEZONE. null means "no filter." */
+/** Findmi's discovery time filter — TODAY (now) / THIS WEEK (week) / THIS
+ * WEEKEND (weekend) / ALL (anytime) — resolved to real UTC bounds in
+ * APP_TIMEZONE. null means "no filter." ("next" and "month" are older,
+ * currently-unused window values kept as-is — not part of this pass.) */
 export function getDiscoveryWindowBounds(
   when: DiscoveryWindow
 ): { start: Date; end: Date } | null {
@@ -313,14 +332,31 @@ export function getDiscoveryWindowBounds(
     const end = getLocalDayBounds(daysInMonth - nowDay + 1).start;
     return { start, end };
   }
-  // weekend: the upcoming (or current) Saturday through end of Sunday
+
   const weekdayShort = new Intl.DateTimeFormat("en-US", {
     timeZone: APP_TIMEZONE,
     weekday: "short",
   }).format(new Date());
   const dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekdayShort); // 0=Sun..6=Sat
-  const satOffset = (6 - dow + 7) % 7;
-  return { start: getLocalDayBounds(satOffset).start, end: getLocalDayBounds(satOffset + 1).end };
+
+  if (when === "week") {
+    // THIS WEEK — from the start of today through 11:59:59 PM of the
+    // current week's Sunday (so it always includes This Weekend), never
+    // a rolling 7-day window. Standard "days until Sunday" (Sunday
+    // itself needs 0 more days).
+    const daysUntilSunday = (7 - dow) % 7;
+    return { start: getLocalDayBounds(0).start, end: getLocalDayBounds(daysUntilSunday).end };
+  }
+
+  // weekend: Friday through the end of Sunday, for the current/upcoming
+  // weekend. Never reaches back into an already-passed Friday once the
+  // weekend has started (Sat/Sun) — same "never before today" principle
+  // "now"/"today" already follow — so an event that already ended
+  // earlier this weekend is correctly excluded rather than resurfaced.
+  const isAlreadyWeekend = dow === 5 || dow === 6 || dow === 0; // Fri, Sat, or Sun
+  const friOffset = isAlreadyWeekend ? 0 : (5 - dow + 7) % 7;
+  const sunOffset = isAlreadyWeekend ? (dow === 6 ? 1 : dow === 5 ? 2 : 0) : friOffset + 2;
+  return { start: getLocalDayBounds(friOffset).start, end: getLocalDayBounds(sunOffset).end };
 }
 
 /** Bounds for one specific calendar date (YYYY-MM-DD, interpreted in

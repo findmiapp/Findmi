@@ -198,8 +198,8 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   featured_events: {
     // Homepage's first live feed. Heading is exactly "Upcoming Events Near
     // You" per the 2026 feed-builder pass — the primary time filter
-    // (Up Next/Today/This Weekend/All Events) and secondary category chips
-    // live in HomeEventDiscovery, not here.
+    // (Next Up/Today/This Week/This Weekend/All) and secondary category
+    // chips live in HomeEventDiscovery, not here.
     label: "Featured Events",
     heading: "Upcoming Events Near You",
     body: "Markets, pop-ups, and festivals coming up",

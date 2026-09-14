@@ -6,10 +6,10 @@ import type { Category } from "@/lib/types";
  * getEventCategories(), passed in by the page — never business
  * categories). Location is the same free-text city/state match events
  * already support. No popularity/attendance/capacity/distance/price —
- * none of those exist on `events`. Time (Up Next/Today/This
- * Weekend/All Events) is a separate, primary top-level control on the
- * page, not inside this sheet — it's the dominant axis for event
- * discovery, same treatment the homepage already uses.
+ * none of those exist on `events`. Time (Next Up/Today/This Week/This
+ * Weekend/All) is a separate, primary top-level control on the page, not
+ * inside this sheet — it's the dominant axis for event discovery, same
+ * treatment the homepage already uses.
  *
  * Consumer Area Picker + Market Requests V1 — the Area/Market field
  * moved OUT of this sheet into its own standalone, immediate-apply

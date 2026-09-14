@@ -13,7 +13,7 @@ import {
   getEventsDiscovery,
   getMarketAreaLabel,
 } from "@/lib/data";
-import { WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
+import { DISCOVERY_TIME_TABS, WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Events",
@@ -22,12 +22,10 @@ export const metadata: Metadata = {
 export const revalidate = 60;
 
 const PAGE_SIZE = 24;
-const TIME_TABS: { key: DiscoveryTimeKey; label: string }[] = [
-  { key: "upNext", label: "Up Next" },
-  { key: "today", label: "Today" },
-  { key: "weekend", label: "This Weekend" },
-  { key: "anytime", label: "All Events" },
-];
+// Standardize Upcoming Event Time Filters pass — TIME_TABS is now the
+// one shared DISCOVERY_TIME_TABS (lib/format.ts), also used by the
+// homepage's HomeEventDiscovery, instead of a local copy.
+const TIME_TABS = DISCOVERY_TIME_TABS;
 
 interface Params {
   when?: string;
@@ -51,7 +49,7 @@ interface Params {
 
 export default async function EventsPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
-  const timeKey: DiscoveryTimeKey = TIME_TABS.some((t) => t.key === params.when) ? (params.when as DiscoveryTimeKey) : "upNext";
+  const timeKey: DiscoveryTimeKey = TIME_TABS.some((t) => t.key === params.when) ? (params.when as DiscoveryTimeKey) : "next";
   // Reuses the exact same time-window mapping/logic the homepage's
   // HomeEventDiscovery already proved out (WINDOW_BY_TIME_KEY ->
   // getDiscoveryWindowBounds) — not a second interpretation of "weekend."
@@ -79,7 +77,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   const events = await attachEventCategories(fetchedRaw.slice(0, limit));
 
   const baseParams = new URLSearchParams();
-  if (timeKey !== "upNext") baseParams.set("when", timeKey);
+  if (timeKey !== "next") baseParams.set("when", timeKey);
   if (params.q) baseParams.set("q", params.q);
   if (params.category) baseParams.set("category", params.category);
   if (params.location) baseParams.set("location", params.location);
@@ -107,7 +105,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
 
   const sheetFilterCount = [params.category, params.location].filter(Boolean).length;
-  const filtering = chips.length > 0 || timeKey !== "upNext";
+  const filtering = chips.length > 0 || timeKey !== "next";
 
   const loadMoreHref = (() => {
     const p = new URLSearchParams(baseParams);
@@ -117,7 +115,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
   const timeHref = (key: DiscoveryTimeKey) => {
     const p = new URLSearchParams(baseParams);
-    if (key === "upNext") p.delete("when");
+    if (key === "next") p.delete("when");
     else p.set("when", key);
     p.delete("limit");
     return `/events${p.toString() ? `?${p.toString()}` : ""}`;
@@ -127,10 +125,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     params.q || params.category || params.location || params.market
       ? `No events matched${marketAreaLabel ? ` in ${marketAreaLabel}` : params.market ? ` in that area` : ""}${categoryName ? ` ${categoryName}` : ""}${params.location ? ` in ${params.location}` : ""}${params.q ? ` for "${params.q}"` : ""}.`
       : timeKey === "today"
-        ? "Nothing today — try This Weekend or All Events."
-        : timeKey === "weekend"
-          ? "Nothing this weekend yet — try All Events."
-          : "No upcoming events yet — check back soon.";
+        ? "Nothing today — try This Week or This Weekend."
+        : timeKey === "week"
+          ? "Nothing this week yet — try This Weekend or All."
+          : timeKey === "weekend"
+            ? "Nothing this weekend yet — try All."
+            : "No upcoming events yet — check back soon.";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
@@ -175,12 +175,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
             />
           </FilterSheet>
         </div>
-        {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref={timeKey === "upNext" ? "/events" : `/events?when=${timeKey}`} />}
+        {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref={timeKey === "next" ? "/events" : `/events?when=${timeKey}`} />}
       </form>
 
       <p className="mt-5 text-sm text-ink/50">
         {events.length === 0 && !hasMore ? 0 : `${events.length}${hasMore ? "+" : ""}`} event{events.length === 1 && !hasMore ? "" : "s"}
-        {timeKey === "weekend" ? " this weekend" : timeKey === "today" ? " today" : ""}
+        {timeKey === "weekend" ? " this weekend" : timeKey === "today" ? " today" : timeKey === "week" ? " this week" : ""}
       </p>
 
       {events.length === 0 ? (

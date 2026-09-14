@@ -1632,7 +1632,7 @@ export interface EventDiscoveryParams {
   areaSlug?: string;
 }
 
-/** Shared events query — backs /events' "All Events" browse state and
+/** Shared events query — backs /events' "All" browse state and
  * every curated row on that page (This Weekend, category rows, etc.), per
  * CLAUDE.md's "reuse architecture only where it meaningfully prevents
  * duplication" — one query helper, not five bespoke ones.
