@@ -3,24 +3,17 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { resolveBusinessScopedHref, type BusinessOption } from "./businessScope";
 
-export interface BusinessOption {
-  id: string;
-  name: string;
-}
-
-/** Global Quick-Create pass — the exact zero/one/many routing decision
- * BusinessScopedAction itself makes below, pulled out so a second caller
- * (QuickCreateMenu) can reuse it without re-deciding it. Returns a real
- * href for zero (Add Business) or one (straight to that Business's tab);
- * null means "ambiguous" — the caller must render a chooser (see
- * WhichBusinessPanel) instead of navigating directly, same as this
- * component's own "many" branches do. */
-export function resolveBusinessScopedHref(businesses: BusinessOption[], tab: string): string | null {
-  if (businesses.length === 0) return "/account/business/new";
-  if (businesses.length === 1) return `/account/business/${businesses[0].id}?tab=${tab}`;
-  return null;
-}
+// Launch V2 Pass 1.1 — resolveBusinessScopedHref/BusinessOption now live in
+// businessScope.ts (a plain, non-"use client" module) so a Server
+// Component can call the function directly without tripping the RSC
+// client-reference boundary (see that file's own doc comment for the
+// P0 this fixes). Re-exported here unchanged so every existing client
+// caller of THIS file (e.g. QuickCreateMenu) keeps working with no
+// import-path change.
+export { resolveBusinessScopedHref };
+export type { BusinessOption };
 
 // Account Action Button Cleanup pass — the default ("pill") variant used
 // to be a vertical icon-badge-over-label tile that, at a glance, read like

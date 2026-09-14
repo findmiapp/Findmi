@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cityState } from "@/lib/format";
-import { getUpcomingAppearancesForBusiness, getUpcomingOccurrencesForEvent, eventHasAnyOccurrences } from "@/lib/data";
+import {
+  getUpcomingAppearancesForBusiness,
+  getPastAppearancesForBusiness,
+  getUpcomingOccurrencesForEvent,
+  eventHasAnyOccurrences,
+} from "@/lib/data";
 import { getPendingInvitationsForBusiness } from "@/lib/opportunities";
 import { isBusinessPro, isPlanTierPro } from "@/lib/entitlements";
 import type { PlanTier } from "@/lib/types";
@@ -41,12 +46,6 @@ export const CUSTOMER_SUBJECT_TYPES = new Set([
   "business_location_chat",
 ]);
 
-/** There is no real unread state anywhere in this schema (see this pass's
- * own audit) — recency is the one honest, truthful proxy signal for
- * "needs a look," used consistently everywhere a customer-Conversation
- * count is shown. */
-export const RECENT_CONVERSATION_WINDOW_DAYS = 7;
-
 export interface DashboardBusiness {
   id: string;
   name: string;
@@ -71,18 +70,6 @@ export interface CommandCenterInput {
    * in rather than re-queried here for the same reason as the managed
    * entity lists above. */
   pendingClaimsCount: number;
-  /** Launch V2 Pass 1 — replaces the old legacy-`inquiries`-table new-
-   * count (see this pass's own audit: that table has had zero live rows
-   * since the canonical Conversations system took over every inquiry
-   * entry point). Already computed by account/page.tsx from the SAME
-   * listConversationsForUser() call Home's own Inbox preview uses — a
-   * count of canonical customer Conversations (business/product/event/
-   * venue inquiry, or a direct entity Message) with activity in the last
-   * RECENT_CONVERSATION_WINDOW_DAYS. There is no real unread state
-   * anywhere in this schema, so this is deliberately an honest "recent
-   * activity" signal, never a fabricated "unread" one — see the attention
-   * item's own wording below. */
-  recentCustomerConversationCount: number;
 }
 
 export interface AttentionItem {
@@ -113,6 +100,22 @@ export interface ScheduleItem {
    * dedup section below. */
   relatedTo: string[];
   href: string;
+  /** Launch V2 Pass 1.1 — enough for a caller (Home's Next Up, Schedule's
+   * Upcoming) to render a CONTEXT-CORRECT action per row without a new
+   * mutation path: 'business_appearance' carries the real
+   * businessId/appearanceId this pass's existing owner Appearance actions
+   * (updateOwnerAppearance/removeOwnerAppearance) need; 'event' and
+   * 'location' carry no such ids — a real organized Event or a Location
+   * happening is never edited through the Appearance form, `href` above
+   * is already their correct Manage/View destination. Follows the exact
+   * same first-seen source precedence as `href`/title/where above (never
+   * a second, separate precedence rule) — when one real happening is
+   * both an organized Event and a participating Business's appearance,
+   * the Event's own action wins, same as it already wins the display
+   * fields. */
+  actionKind: "business_appearance" | "event" | "location";
+  appearanceId?: string;
+  appearanceBusinessId?: string;
 }
 
 export interface CommandCenterData {
@@ -252,10 +255,25 @@ async function getLocationAppearances(admin: SupabaseClient, locationIds: string
   return rows;
 }
 
+export interface UnifiedScheduleInput {
+  businesses: DashboardBusiness[];
+  events: DashboardEvent[];
+  locations: DashboardLocation[];
+}
+
 /**
- * The one data source for both new /account sections.
+ * Launch V2 Pass 1.1 — extracted out of getAccountCommandCenter so Home's
+ * Next Up AND /account/schedule's Upcoming derive from the exact same
+ * unified owner-schedule semantics (Business appearances, organized
+ * Event occurrences, and managed Location happenings, FK-deduplicated)
+ * instead of Schedule's own narrower Business-only aggregation from Pass
+ * 1 — the live QA bug this fixes (an organized Event showed on Home's
+ * Next Up but not on Schedule). getAccountCommandCenter below now just
+ * calls this with its own SCHEDULE_DISPLAY_LIMIT; Schedule calls it
+ * directly with a much higher limit for its own full Upcoming list — one
+ * function, two callers, no duplicated aggregation logic.
  *
- * DEDUPLICATION (Coming Up) — precedence, most authoritative first:
+ * DEDUPLICATION — precedence, most authoritative first:
  *   1. occurrence:{event_occurrence_id} — an Appearance/Location happening
  *      linked to a real event_occurrences row, OR that occurrence read
  *      directly for a managed Event. This is the strongest available
@@ -280,22 +298,12 @@ async function getLocationAppearances(admin: SupabaseClient, locationIds: string
  * event_id column actually says so — never merely because they share a
  * time or location.
  */
-export async function getAccountCommandCenter(admin: SupabaseClient, input: CommandCenterInput): Promise<CommandCenterData> {
-  const { businesses, events, locations, pendingClaimsCount } = input;
-  const businessIds = businesses.map((b) => b.id);
+export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedScheduleInput, limit: number): Promise<ScheduleItem[]> {
+  const { businesses, events, locations } = input;
   const eventIds = events.map((e) => e.id);
   const locationIds = locations.map((l) => l.id);
 
-  const [
-    invitationsByBusiness,
-    planRows,
-    appearancesByBusiness,
-    occurrencesByEvent,
-    locationOccurrences,
-    locationAppearances,
-  ] = await Promise.all([
-    Promise.all(businesses.map((b) => getPendingInvitationsForBusiness(admin, b.id))),
-    getPlanRows(admin, businessIds),
+  const [appearancesByBusiness, occurrencesByEvent, locationOccurrences, locationAppearances] = await Promise.all([
     Promise.all(businesses.map((b) => getUpcomingAppearancesForBusiness(b.id, PER_SOURCE_FETCH_LIMIT))),
     Promise.all(events.map((e) => getUpcomingOccurrencesForEvent(e.id, PER_SOURCE_FETCH_LIMIT))),
     getLocationOccurrences(admin, locationIds),
@@ -309,6 +317,112 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
   // has upcoming occurrences.
   const eventIdsWithoutUpcomingOccurrences = eventIds.filter((_, i) => occurrencesByEvent[i].length === 0);
   const fallbackEvents = await getFallbackNonRecurringEvents(admin, eventIdsWithoutUpcomingOccurrences);
+
+  const scheduleMap = new Map<string, ScheduleItem>();
+  function upsertSchedule(key: string, relatedLabel: string, factory: () => Omit<ScheduleItem, "key" | "relatedTo">) {
+    const existing = scheduleMap.get(key);
+    if (existing) {
+      if (!existing.relatedTo.includes(relatedLabel)) existing.relatedTo.push(relatedLabel);
+      return;
+    }
+    scheduleMap.set(key, { key, relatedTo: [relatedLabel], ...factory() });
+  }
+
+  // Priority 1 — organizer's own Events (occurrence-based, then the
+  // non-recurring fallback, both keyed so they merge correctly with any
+  // matching Appearance found below).
+  events.forEach((e, i) => {
+    for (const occ of occurrencesByEvent[i]) {
+      upsertSchedule(`occurrence:${occ.id}`, "Your Event", () => ({
+        startAt: occ.start_at,
+        endAt: occ.end_at,
+        description: null,
+        title: e.name,
+        where: occ.location ? [occ.location.name, cityState(occ.location.city, occ.location.state)].filter(Boolean).join(" · ") : null,
+        href: `/account/event/${e.id}?tab=dates`,
+        actionKind: "event",
+      }));
+    }
+  });
+  for (const ev of fallbackEvents) {
+    const e = events.find((x) => x.id === ev.event_id);
+    if (!e) continue;
+    upsertSchedule(`event:${ev.event_id}`, "Your Event", () => ({
+      startAt: ev.start_at,
+      endAt: ev.end_at,
+      description: null,
+      title: e.name,
+      where: [ev.venue_name, cityState(ev.city, ev.state)].filter(Boolean).join(" · ") || null,
+      href: `/account/event/${e.id}`,
+      actionKind: "event",
+    }));
+  }
+
+  // Priority 2 — Business appearances, keyed by the strongest relationship
+  // the appearance's own columns actually record.
+  businesses.forEach((b, i) => {
+    for (const a of appearancesByBusiness[i]) {
+      const key = a.event_occurrence_id ? `occurrence:${a.event_occurrence_id}` : a.event_id ? `event:${a.event_id}` : `appearance:${a.id}`;
+      upsertSchedule(key, b.name, () => ({
+        startAt: a.start_at,
+        endAt: a.end_at,
+        description: a.description,
+        title: a.title,
+        where: [a.venue_name, cityState(a.city, a.state)].filter(Boolean).join(" · ") || null,
+        href: `/account/business/${b.id}?tab=findmi-here`,
+        actionKind: "business_appearance",
+        appearanceId: a.id,
+        appearanceBusinessId: b.id,
+      }));
+    }
+  });
+
+  // Priority 3 — happenings at a managed Location the user doesn't
+  // otherwise own/organize. Only ever adds a NEW entry when the key
+  // wasn't already produced above; otherwise just contributes the "At
+  // {location}" relationship label to the existing entry.
+  for (const row of locationOccurrences) {
+    const loc = locations.find((x) => x.id === row.location_id);
+    if (!loc) continue;
+    upsertSchedule(`occurrence:${row.occurrence_id}`, `At ${loc.name}`, () => ({
+      startAt: row.start_at,
+      endAt: row.end_at,
+      description: null,
+      title: row.event_name,
+      where: loc.name,
+      href: `/event/${row.event_slug}`,
+      actionKind: "location",
+    }));
+  }
+  for (const row of locationAppearances) {
+    const loc = locations.find((x) => x.id === row.location_id);
+    if (!loc) continue;
+    upsertSchedule(`appearance:${row.appearance_id}`, `At ${loc.name}`, () => ({
+      startAt: row.start_at,
+      endAt: row.end_at,
+      description: null,
+      title: row.title,
+      where: loc.name,
+      href: row.business_slug ? `/business/${row.business_slug}` : `/account/location/${loc.id}`,
+      actionKind: "location",
+    }));
+  }
+
+  return [...scheduleMap.values()]
+    .filter((item) => !item.endAt || new Date(item.endAt).getTime() > Date.now())
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+    .slice(0, limit);
+}
+
+export async function getAccountCommandCenter(admin: SupabaseClient, input: CommandCenterInput): Promise<CommandCenterData> {
+  const { businesses, events, locations, pendingClaimsCount } = input;
+  const businessIds = businesses.map((b) => b.id);
+
+  const [invitationsByBusiness, planRows, schedule] = await Promise.all([
+    Promise.all(businesses.map((b) => getPendingInvitationsForBusiness(admin, b.id))),
+    getPlanRows(admin, businessIds),
+    getUnifiedSchedule(admin, { businesses, events, locations }, SCHEDULE_DISPLAY_LIMIT),
+  ]);
 
   // ---- Needs Your Attention ----
   const attention: AttentionItem[] = [];
@@ -324,23 +438,13 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
     }
   });
 
-  // Launch V2 Pass 1 — canonical Conversations replace the legacy
-  // `inquiries` table as the attention source (see CommandCenterInput's
-  // own doc comment). One combined item, not a per-business breakdown —
-  // input.recentCustomerConversationCount already spans every managed
-  // Business/Event/Location, and a real per-business count would need a
-  // second, heavier query this pass doesn't add. Honest wording ("recent
-  // conversation(s)", never "new"/"unread" — there is no real unread
-  // state to report).
-  if (input.recentCustomerConversationCount > 0) {
-    const count = input.recentCustomerConversationCount;
-    attention.push({
-      key: "recent_conversations",
-      title: `${count} recent customer conversation${count === 1 ? "" : "s"}`,
-      subtitle: "Business, product, event, and venue inquiries",
-      href: "/account/messages?filter=customers",
-    });
-  }
+  // Launch V2 Pass 1.1 — the generic "N recent customer conversations"
+  // item that used to live here is REMOVED (live QA: it duplicated the
+  // Inbox preview on Home while making the actual conversations less
+  // immediate). Needs Your Attention is now genuinely operational-status
+  // only; real customer-Conversation visibility lives entirely in the
+  // Inbox preview/page instead (see account/page.tsx and
+  // account/messages/page.tsx) — never a fabricated "unread" count here.
 
   // Pending Review — informational only, never framed as an error/action
   // the member caused. Wording deliberately matches the existing Business
@@ -405,7 +509,71 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
     }
   }
 
-  // ---- Coming Up ----
+  return { attention, schedule };
+}
+
+interface PastLocationAppearanceRow {
+  appearance_id: string;
+  location_id: string;
+  start_at: string;
+  end_at: string;
+  title: string;
+  business_slug: string | null;
+}
+/** Launch V2 Pass 1.1 — Past mirror of getLocationAppearances above (same
+ * real-FK-only, standalone-appearance-only scope), for Schedule's Past
+ * view. See getUnifiedPastSchedule's own doc comment for the one
+ * deliberate scope limitation this pass keeps for Past (no past Event
+ * occurrences yet). */
+async function getPastLocationAppearances(admin: SupabaseClient, locationIds: string[]): Promise<PastLocationAppearanceRow[]> {
+  if (locationIds.length === 0) return [];
+  const { data } = await admin
+    .from("appearances")
+    .select("id, location_id, start_at, end_at, title, business:businesses(slug, is_demo)")
+    .in("location_id", locationIds)
+    .is("event_id", null)
+    .neq("status", "canceled")
+    .lte("end_at", new Date().toISOString())
+    .order("start_at", { ascending: false })
+    .limit(PER_SOURCE_FETCH_LIMIT * locationIds.length);
+  const rows: PastLocationAppearanceRow[] = [];
+  for (const row of (data ?? []) as { id: string; location_id: string; start_at: string; end_at: string; title: string; business: { slug: string; is_demo: boolean } | { slug: string; is_demo: boolean }[] | null }[]) {
+    const business = Array.isArray(row.business) ? (row.business[0] ?? null) : row.business;
+    if (business?.is_demo) continue;
+    rows.push({ appearance_id: row.id, location_id: row.location_id, start_at: row.start_at, end_at: row.end_at, title: row.title, business_slug: business?.slug ?? null });
+  }
+  return rows;
+}
+
+/**
+ * Launch V2 Pass 1.1 — Schedule's Past view (Section 5 of that pass).
+ * Deliberately narrower than getUnifiedSchedule above: Business
+ * appearances (getPastAppearancesForBusiness) and standalone Location
+ * appearances, both real direct queries with an obvious "past" filter.
+ *
+ * KNOWN, DELIBERATE LIMITATION: past organized Event occurrences are NOT
+ * included here. Reconstructing "past occurrences for an event" correctly
+ * needs the same recurring-vs-non-recurring branching
+ * getUpcomingOccurrencesForEvent/getFallbackNonRecurringEvents already
+ * handle for Upcoming, mirrored for a past window — real work, and a
+ * genuine risk of subtly wrong results if rushed. Per this pass's own
+ * instructions ("implement only the safe existing entity types and
+ * explicitly report any limitation"), this is reported rather than
+ * guessed at. A past-organized-Event's own dates remain fully visible
+ * today from its Event Manager (/account/event/[id], Dates tab) — this
+ * limitation is about Schedule's own Past list, not about losing access
+ * to that data. Same FK-based dedup as Upcoming (an appearance and its
+ * own location happening never double up).
+ */
+export async function getUnifiedPastSchedule(admin: SupabaseClient, input: UnifiedScheduleInput, limit: number): Promise<ScheduleItem[]> {
+  const { businesses, locations } = input;
+  const locationIds = locations.map((l) => l.id);
+
+  const [appearancesByBusiness, pastLocationAppearances] = await Promise.all([
+    Promise.all(businesses.map((b) => getPastAppearancesForBusiness(b.id, PER_SOURCE_FETCH_LIMIT))),
+    getPastLocationAppearances(admin, locationIds),
+  ]);
+
   const scheduleMap = new Map<string, ScheduleItem>();
   function upsertSchedule(key: string, relatedLabel: string, factory: () => Omit<ScheduleItem, "key" | "relatedTo">) {
     const existing = scheduleMap.get(key);
@@ -416,36 +584,6 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
     scheduleMap.set(key, { key, relatedTo: [relatedLabel], ...factory() });
   }
 
-  // Priority 1 — organizer's own Events (occurrence-based, then the
-  // non-recurring fallback, both keyed so they merge correctly with any
-  // matching Appearance found below).
-  events.forEach((e, i) => {
-    for (const occ of occurrencesByEvent[i]) {
-      upsertSchedule(`occurrence:${occ.id}`, "Your Event", () => ({
-        startAt: occ.start_at,
-        endAt: occ.end_at,
-        description: null,
-        title: e.name,
-        where: occ.location ? [occ.location.name, cityState(occ.location.city, occ.location.state)].filter(Boolean).join(" · ") : null,
-        href: `/account/event/${e.id}?tab=dates`,
-      }));
-    }
-  });
-  for (const ev of fallbackEvents) {
-    const e = events.find((x) => x.id === ev.event_id);
-    if (!e) continue;
-    upsertSchedule(`event:${ev.event_id}`, "Your Event", () => ({
-      startAt: ev.start_at,
-      endAt: ev.end_at,
-      description: null,
-      title: e.name,
-      where: [ev.venue_name, cityState(ev.city, ev.state)].filter(Boolean).join(" · ") || null,
-      href: `/account/event/${e.id}`,
-    }));
-  }
-
-  // Priority 2 — Business appearances, keyed by the strongest relationship
-  // the appearance's own columns actually record.
   businesses.forEach((b, i) => {
     for (const a of appearancesByBusiness[i]) {
       const key = a.event_occurrence_id ? `occurrence:${a.event_occurrence_id}` : a.event_id ? `event:${a.event_id}` : `appearance:${a.id}`;
@@ -456,27 +594,14 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
         title: a.title,
         where: [a.venue_name, cityState(a.city, a.state)].filter(Boolean).join(" · ") || null,
         href: `/account/business/${b.id}?tab=findmi-here`,
+        actionKind: "business_appearance",
+        appearanceId: a.id,
+        appearanceBusinessId: b.id,
       }));
     }
   });
 
-  // Priority 3 — happenings at a managed Location the user doesn't
-  // otherwise own/organize. Only ever adds a NEW entry when the key
-  // wasn't already produced above; otherwise just contributes the "At
-  // {location}" relationship label to the existing entry.
-  for (const row of locationOccurrences) {
-    const loc = locations.find((x) => x.id === row.location_id);
-    if (!loc) continue;
-    upsertSchedule(`occurrence:${row.occurrence_id}`, `At ${loc.name}`, () => ({
-      startAt: row.start_at,
-      endAt: row.end_at,
-      description: null,
-      title: row.event_name,
-      where: loc.name,
-      href: `/event/${row.event_slug}`,
-    }));
-  }
-  for (const row of locationAppearances) {
+  for (const row of pastLocationAppearances) {
     const loc = locations.find((x) => x.id === row.location_id);
     if (!loc) continue;
     upsertSchedule(`appearance:${row.appearance_id}`, `At ${loc.name}`, () => ({
@@ -486,13 +611,9 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
       title: row.title,
       where: loc.name,
       href: row.business_slug ? `/business/${row.business_slug}` : `/account/location/${loc.id}`,
+      actionKind: "location",
     }));
   }
 
-  const schedule = [...scheduleMap.values()]
-    .filter((item) => !item.endAt || new Date(item.endAt).getTime() > Date.now())
-    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-    .slice(0, SCHEDULE_DISPLAY_LIMIT);
-
-  return { attention, schedule };
+  return [...scheduleMap.values()].sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime()).slice(0, limit);
 }

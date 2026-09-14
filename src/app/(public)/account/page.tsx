@@ -5,16 +5,15 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { listConversationsForUser } from "@/lib/opportunities";
 import { conversationContextLabel } from "@/lib/admin/conversations";
-import { getAccountCommandCenter, CUSTOMER_SUBJECT_TYPES, RECENT_CONVERSATION_WINDOW_DAYS } from "@/lib/dashboard";
+import { getAccountCommandCenter } from "@/lib/dashboard";
 import { getTemporalLabel, formatDateShort } from "@/lib/format";
 import { getPublicOrigin } from "@/lib/site-url";
-import NavIcon from "@/components/NavIcon";
 import LiveDot from "@/components/LiveDot";
 import ShareButton from "@/components/ShareButton";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import AccountNav from "./AccountNav";
-import BusinessScopedAction, { ActionStripLink, PlusGlyph } from "./BusinessScopedAction";
+import BusinessScopedAction, { PlusGlyph } from "./BusinessScopedAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
 
 export const metadata: Metadata = {
@@ -147,22 +146,15 @@ export default async function AccountHomePage({
   const businessIds = myBusinesses.map((b) => b.id);
   const proBusinessIds = await getProBusinessIdSet(admin, businessIds);
 
-  // Launch V2 Pass 1 — ONE listConversationsForUser call now backs both
-  // the Inbox preview AND the Needs Your Attention customer-conversation
-  // signal (replacing the old legacy-`inquiries`-table count) — see
-  // lib/dashboard.ts's own CommandCenterInput doc comment.
-  // Excludes 'opportunity'-subject_type Conversations (created only when
-  // a note is attached to an invitation/application) — same reasoning as
-  // the Inbox page's own filter: that interaction already has a
-  // structured representation under Needs Your Attention/Opportunities,
-  // so it never doubles up here.
+  // Launch V2 Pass 1.1 — the Inbox preview is now the ONLY customer-
+  // conversation signal on Home (see Needs Your Attention below); no
+  // separate recency-windowed count is computed anymore. Excludes
+  // 'opportunity'-subject_type Conversations (created only when a note is
+  // attached to an invitation/application) — that interaction already
+  // has a structured representation under Needs Your Attention/
+  // Opportunities, so it never doubles up here.
   const conversations = (admin ? await listConversationsForUser(admin, user.id) : []).filter((c) => c.subjectType !== "opportunity");
   const inboxPreview = conversations.slice(0, 3);
-  const recentCustomerConversationCount = conversations.filter((c) => {
-    if (!CUSTOMER_SUBJECT_TYPES.has(c.subjectType)) return false;
-    const ageDays = (Date.now() - new Date(c.lastActivityAt).getTime()) / (24 * 60 * 60 * 1000);
-    return ageDays <= RECENT_CONVERSATION_WINDOW_DAYS;
-  }).length;
 
   const { attention: attentionItems, schedule: scheduleItems } = admin
     ? await getAccountCommandCenter(admin, {
@@ -170,7 +162,6 @@ export default async function AccountHomePage({
         events: myEvents,
         locations: myLocations,
         pendingClaimsCount: myPendingClaims.length,
-        recentCustomerConversationCount,
       })
     : { attention: [], schedule: [] };
   const nextUp = scheduleItems[0] ?? null;
@@ -310,7 +301,14 @@ export default async function AccountHomePage({
                   href={nextUp.href}
                   className="shrink-0 rounded-full border border-black/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
                 >
-                  Edit
+                  {/* Launch V2 Pass 1.1 — context-correct action label:
+                      only a real owner Appearance is ever "edited" here;
+                      an organized Event or a Location happening you don't
+                      otherwise own gets its own real Manage/View
+                      destination instead (same href precedence as
+                      display fields — see ScheduleItem's own doc
+                      comment). */}
+                  {nextUp.actionKind === "business_appearance" ? "Edit" : nextUp.actionKind === "event" ? "Manage Event" : "View"}
                 </Link>
               </div>
             );
@@ -329,8 +327,13 @@ export default async function AccountHomePage({
       )}
 
       {/* C. PRIMARY CTA — the ONE dominant + Add Where I'll Be entry
-          point on Home (the old duplicate large Findmi Here card below it
-          is gone). */}
+          point on Home. Launch V2 Pass 1.1 — the small creation strip
+          that used to sit directly beneath this (Business/Venue/Product/
+          Event) is REMOVED per live QA: it competed with this action and
+          added a second horizontal-scroll row. Those routes are still
+          reachable, unchanged, from the site header's own global "+"
+          (QuickCreateMenu) — nothing here deletes them, this just stops
+          duplicating that entry point on Home. */}
       <div className="mt-3">
         <BusinessScopedAction
           variant="full"
@@ -340,43 +343,12 @@ export default async function AccountHomePage({
           label="+ Add Where I'll Be"
         />
       </div>
-      <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
-        <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
-        <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
-        <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
-      </div>
 
-      {/* D. NEEDS YOUR ATTENTION — same rendering as before; the source
-          data now includes real canonical customer Conversations instead
-          of the dead legacy inquiries table (see lib/dashboard.ts). */}
-      {attentionItems.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Your Attention</h2>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {attentionItems.map((item) => (
-              <Link
-                key={item.key}
-                href={item.href}
-                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm transition hover:border-black/10"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50">
-                  <span className="h-2 w-2 rounded-full bg-findmi" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
-                  {item.subtitle && <span className="block truncate text-xs text-ink/50">{item.subtitle}</span>}
-                </span>
-                <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* E. INBOX PREVIEW — 2–3 latest canonical Conversations, no full
-          history load (listConversationsForUser already caps each
-          conversation to its single latest message). */}
+      {/* D. INBOX PREVIEW — Launch V2 Pass 1.1: moved ABOVE Needs Your
+          Attention (live QA — "who contacted me" is more immediate than a
+          generic count of the same conversations). 2–3 latest canonical
+          Conversations, no full history load (listConversationsForUser
+          already caps each conversation to its single latest message). */}
       <section className="mt-6">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Inbox</h2>
@@ -412,6 +384,38 @@ export default async function AccountHomePage({
           </p>
         )}
       </section>
+
+      {/* E. NEEDS YOUR ATTENTION — Launch V2 Pass 1.1: the generic "N
+          recent customer conversations" item is gone (see
+          lib/dashboard.ts — getAccountCommandCenter no longer pushes it);
+          the Inbox preview above already represents those conversations
+          truthfully, without pretending a count implies "unread." Only
+          genuinely operational/status items remain: pending invitations,
+          pending Business/Event/Location review, pending claims, expired
+          Pro. */}
+      {attentionItems.length > 0 && (
+        <section className="mt-6">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Your Attention</h2>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {attentionItems.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm transition hover:border-black/10"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50">
+                  <span className="h-2 w-2 rounded-full bg-findmi" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
+                  {item.subtitle && <span className="block truncate text-xs text-ink/50">{item.subtitle}</span>}
+                </span>
+                <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* F. YOUR FINDMI — kept compact, only for the common single-
           business case (multi-business owners reach each business's own

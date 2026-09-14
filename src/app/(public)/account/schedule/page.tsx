@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { getUpcomingAppearancesForBusiness, getPastAppearancesForBusiness, type AppearanceWithEventSlug } from "@/lib/data";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getUnifiedSchedule, getUnifiedPastSchedule, type ScheduleItem } from "@/lib/dashboard";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { formatDateShort, formatTime } from "@/lib/format";
 import AccountNav from "../AccountNav";
@@ -16,27 +17,19 @@ export const metadata: Metadata = {
 };
 export const dynamic = "force-dynamic";
 
-interface ScheduleRow {
-  appearance: AppearanceWithEventSlug;
-  businessId: string;
-  businessName: string;
-}
+const SCHEDULE_LIMIT = 50;
 
-/** Launch V2 Pass 1 — the dedicated Schedule surface (Section 5/6). The
- * user job: "manage everywhere you'll be." Upcoming/Past, no calendar —
- * both lists are the SAME per-business queries the Business Manager's own
- * Findmi Here tab already uses (getUpcomingAppearancesForBusiness, plus
- * the new mirrored getPastAppearancesForBusiness this pass adds), just
- * aggregated across every business this account manages and sorted into
- * one chronological list. Edit/Remove reuse the exact same Server
- * Actions (updateOwnerAppearance/removeOwnerAppearance) and the same
- * AppearanceFieldsForm component the Business Manager uses — no
- * duplicate mutation logic. "Apply to an existing Event" is NOT
- * reimplemented here (that flow needs a per-business list of open
- * Events, which already lives in the Findmi Here tab) — the dominant +
- * Add Where I'll Be CTA below routes straight there via
- * BusinessScopedAction, the same zero/one/many routing Home's own CTA
- * uses. */
+/** Launch V2 Pass 1.1 — live QA fix. Pass 1's Schedule only aggregated
+ * getUpcomingAppearancesForBusiness (Business appearances), so an
+ * organized Event that appeared on Home's Next Up (sourced from the
+ * unified getAccountCommandCenter/getUnifiedSchedule graph) was silently
+ * missing here. Schedule now calls the SAME getUnifiedSchedule Home
+ * calls internally — Business appearances, organized Event occurrences,
+ * and managed Location happenings, FK-deduplicated — just with a much
+ * higher limit for its own full Upcoming list. Past uses the narrower
+ * getUnifiedPastSchedule (Business + Location appearances only — see
+ * that function's own doc comment for the one deliberate, reported
+ * limitation: no past Event occurrences yet). */
 export default async function AccountSchedulePage({
   searchParams,
 }: {
@@ -51,52 +44,79 @@ export default async function AccountSchedulePage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/account/schedule");
 
-  const { data: businessMemberships } = await supabase
-    .from("business_members")
-    .select("business_id, businesses(id, name)")
-    .eq("user_id", user.id);
-
-  type Row = { business_id: string; businesses: { id: string; name: string } | { id: string; name: string }[] | null };
-  const businesses = ((businessMemberships ?? []) as Row[])
-    .map((m) => {
-      const b = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
-      return b ? { id: b.id, name: b.name } : null;
-    })
-    .filter((b): b is { id: string; name: string } => Boolean(b));
-
-  const perBusinessLimit = 20;
-  const [upcomingByBusiness, pastByBusiness] = await Promise.all([
-    Promise.all(businesses.map((b) => getUpcomingAppearancesForBusiness(b.id, perBusinessLimit))),
-    Promise.all(businesses.map((b) => getPastAppearancesForBusiness(b.id, perBusinessLimit))),
+  const [{ data: businessMemberships }, { data: eventMemberships }, { data: locationMemberships }] = await Promise.all([
+    supabase.from("business_members").select("business_id, businesses(id, name)").eq("user_id", user.id),
+    supabase.from("event_members").select("event_id, events(id, name, is_demo)").eq("user_id", user.id),
+    supabase.from("location_members").select("location_id, locations(id, name, is_demo)").eq("user_id", user.id),
   ]);
 
-  const upcoming: ScheduleRow[] = businesses
-    .flatMap((b, i) => upcomingByBusiness[i].map((appearance) => ({ appearance, businessId: b.id, businessName: b.name })))
-    .sort((a, b) => new Date(a.appearance.start_at).getTime() - new Date(b.appearance.start_at).getTime());
-  const past: ScheduleRow[] = businesses
-    .flatMap((b, i) => pastByBusiness[i].map((appearance) => ({ appearance, businessId: b.id, businessName: b.name })))
-    .sort((a, b) => new Date(b.appearance.start_at).getTime() - new Date(a.appearance.start_at).getTime());
+  type BusinessRow = { business_id: string; businesses: { id: string; name: string } | { id: string; name: string }[] | null };
+  const businesses = ((businessMemberships ?? []) as BusinessRow[])
+    .map((m) => {
+      const b = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
+      return b ? { id: b.id, name: b.name, pendingReview: false } : null;
+    })
+    .filter((b): b is { id: string; name: string; pendingReview: boolean } => Boolean(b));
+
+  type EventRow = { event_id: string; events: { id: string; name: string; is_demo: boolean } | { id: string; name: string; is_demo: boolean }[] | null };
+  const events = ((eventMemberships ?? []) as EventRow[])
+    .map((m) => {
+      const e = Array.isArray(m.events) ? m.events[0] : m.events;
+      return e ? { id: e.id, name: e.name, isDemo: e.is_demo } : null;
+    })
+    .filter((e): e is { id: string; name: string; isDemo: boolean } => Boolean(e));
+
+  type LocationRow = { location_id: string; locations: { id: string; name: string; is_demo: boolean } | { id: string; name: string; is_demo: boolean }[] | null };
+  const locations = ((locationMemberships ?? []) as LocationRow[])
+    .map((m) => {
+      const l = Array.isArray(m.locations) ? m.locations[0] : m.locations;
+      return l ? { id: l.id, name: l.name, isDemo: l.is_demo } : null;
+    })
+    .filter((l): l is { id: string; name: string; isDemo: boolean } => Boolean(l));
+
+  const admin = getAdminSupabase();
+  const [upcoming, past] = admin
+    ? await Promise.all([
+        getUnifiedSchedule(admin, { businesses, events, locations }, SCHEDULE_LIMIT),
+        getUnifiedPastSchedule(admin, { businesses, events, locations }, SCHEDULE_LIMIT),
+      ])
+    : [[], []];
 
   const rows = section === "upcoming" ? upcoming : past;
-  const multiBusiness = businesses.length > 1;
 
-  // Correctness fix — getUpcomingAppearancesForBusiness/
-  // getPastAppearancesForBusiness (reused above, unmodified) don't join
-  // the linked Findmi Location's name/city the way the Business Manager's
-  // own richer Findmi Here-tab query does; only appearances.location_id
-  // (the real FK) comes through on a plain `*` select. Resolving it here
-  // — scoped to this page only, never touching the shared functions used
-  // elsewhere (including the public Business page) — matters for
-  // correctness, not just display: AppearanceFieldsForm's location field
-  // round-trips through parseAppearanceFields' `location_id` on every
-  // save, so an unresolved (null) initial value here would silently
-  // UNLINK an appearance's real Location the moment an owner edits it
-  // from Schedule without re-picking it.
-  const upcomingLocationIds = [...new Set(upcoming.map((r) => r.appearance.location_id).filter((v): v is string => Boolean(v)))];
+  // Correctness fix (unchanged reasoning from Pass 1) — ScheduleItem
+  // deliberately doesn't carry raw Appearance fields (venue_name/address/
+  // city/state/location_id/external_url/flyer_image_url) since Event- and
+  // Location-sourced items have no such columns at all; only Upcoming
+  // rows with actionKind 'business_appearance' need them, for the inline
+  // Edit form's defaults. Resolved here, scoped to this page only, never
+  // touching the shared getUnifiedSchedule/ScheduleItem shape. Skipping
+  // this (defaulting to blank) would silently UNLINK a real Findmi
+  // Location the moment an owner edits from Schedule without re-picking
+  // it — same risk this fix already addressed in Pass 1.
+  const editableAppearanceIds = upcoming.filter((i) => i.actionKind === "business_appearance" && i.appearanceId).map((i) => i.appearanceId!);
+  const appearanceById = new Map<
+    string,
+    { id: string; venue_name: string | null; address: string | null; city: string | null; state: string | null; external_url: string | null; flyer_image_url: string | null; location_id: string | null }
+  >();
   const locationById = new Map<string, { id: string; name: string; city: string | null }>();
-  if (upcomingLocationIds.length > 0) {
-    const { data: locationRows } = await supabase.from("locations").select("id, name, city").in("id", upcomingLocationIds);
-    for (const l of (locationRows ?? []) as { id: string; name: string; city: string | null }[]) locationById.set(l.id, l);
+  if (admin && editableAppearanceIds.length > 0) {
+    const { data: appearanceRows } = await admin
+      .from("appearances")
+      .select("id, venue_name, address, city, state, external_url, flyer_image_url, location_id")
+      .in("id", editableAppearanceIds);
+    for (const a of (appearanceRows ?? []) as { id: string; venue_name: string | null; address: string | null; city: string | null; state: string | null; external_url: string | null; flyer_image_url: string | null; location_id: string | null }[]) {
+      appearanceById.set(a.id, a);
+    }
+    const locationIds = [...new Set([...appearanceById.values()].map((a) => a.location_id).filter((v): v is string => Boolean(v)))];
+    if (locationIds.length > 0) {
+      const { data: locationRows } = await admin.from("locations").select("id, name, city").in("id", locationIds);
+      for (const l of (locationRows ?? []) as { id: string; name: string; city: string | null }[]) locationById.set(l.id, l);
+    }
+  }
+
+  function actionLabel(item: ScheduleItem): string {
+    return item.actionKind === "business_appearance" ? "Edit" : item.actionKind === "event" ? "Manage Event" : "View";
   }
 
   return (
@@ -141,59 +161,71 @@ export default async function AccountSchedulePage({
             {section === "upcoming" ? "Nothing on your schedule yet." : "No past appearances yet."}
           </p>
         ) : (
-          rows.map(({ appearance: a, businessId, businessName }) => {
-            const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
-            const storedEndTime = a.end_at ? isoToLocalDateTime(a.end_at).split("T")[1] : "";
-            const linkedLocation = a.location_id ? (locationById.get(a.location_id) ?? null) : null;
+          rows.map((item) => {
+            const rawAppearance = item.appearanceId ? appearanceById.get(item.appearanceId) : undefined;
+            const linkedLocation = rawAppearance?.location_id ? (locationById.get(rawAppearance.location_id) ?? null) : null;
+            const [storedDate, storedStartTime] = isoToLocalDateTime(item.startAt).split("T");
+            const storedEndTime = item.endAt ? isoToLocalDateTime(item.endAt).split("T")[1] : "";
+
             return (
-              <div key={a.id} className="rounded-2xl border border-black/10 bg-white p-3.5 shadow-sm">
+              <div key={item.key} className="rounded-2xl border border-black/10 bg-white p-3.5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
+                      <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
                       <span className="shrink-0 rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
-                        {a.event_id ? "Findmi Event" : "Added by you"}
+                        {item.actionKind === "event" ? "Findmi Event" : item.actionKind === "business_appearance" ? "Added by you" : "At a venue you manage"}
                       </span>
                     </div>
                     <p className="mt-0.5 text-xs text-ink/60">
-                      {formatDateShort(a.start_at)} · {formatTime(a.start_at)}
-                      {a.end_at ? `–${formatTime(a.end_at)}` : ""}
+                      {formatDateShort(item.startAt)} · {formatTime(item.startAt)}
+                      {item.endAt ? `–${formatTime(item.endAt)}` : ""}
                     </p>
-                    {(a.venue_name || a.city) && (
-                      <p className="mt-0.5 text-xs text-ink/50">
-                        {[a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
-                      </p>
-                    )}
-                    {multiBusiness && <p className="mt-0.5 text-xs font-semibold text-findmi-700">{businessName}</p>}
+                    {item.where && <p className="mt-0.5 text-xs text-ink/50">{item.where}</p>}
+                    <p className="mt-0.5 text-xs font-semibold text-findmi-700">{item.relatedTo.join(" · ")}</p>
                   </div>
+                  {/* Launch V2 Pass 1.1, Section 6 — context-correct action:
+                      only a real owner Appearance is ever edited inline
+                      here; an organized Event or a Location happening you
+                      don't otherwise own links to its own real Manage/
+                      View destination instead — no invented mutation
+                      path for either. */}
+                  {item.actionKind !== "business_appearance" && (
+                    <Link
+                      href={item.href}
+                      className="shrink-0 rounded-full border border-black/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+                    >
+                      {actionLabel(item)}
+                    </Link>
+                  )}
                 </div>
 
-                {section === "upcoming" && (
+                {section === "upcoming" && item.actionKind === "business_appearance" && item.appearanceId && item.appearanceBusinessId && (
                   <div className="mt-2 flex items-center gap-3">
                     <details className="flex-1">
                       <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
                       <div className="mt-3">
                         <AppearanceFieldsForm
-                          businessId={businessId}
-                          action={updateOwnerAppearance.bind(null, businessId, a.id)}
+                          businessId={item.appearanceBusinessId}
+                          action={updateOwnerAppearance.bind(null, item.appearanceBusinessId, item.appearanceId)}
                           defaultValues={{
-                            title: a.title,
+                            title: item.title,
                             date: storedDate,
                             start_time: storedStartTime,
                             end_time: storedEndTime,
-                            venue_name: a.venue_name ?? "",
-                            address: a.address ?? "",
-                            city: a.city ?? "",
-                            state: a.state ?? "",
-                            external_url: a.external_url ?? "",
-                            flyer_image_url: a.flyer_image_url,
+                            venue_name: rawAppearance?.venue_name ?? "",
+                            address: rawAppearance?.address ?? "",
+                            city: rawAppearance?.city ?? "",
+                            state: rawAppearance?.state ?? "",
+                            external_url: rawAppearance?.external_url ?? "",
+                            flyer_image_url: rawAppearance?.flyer_image_url ?? null,
                             location: linkedLocation ? { value: linkedLocation.id, label: linkedLocation.name, sublabel: linkedLocation.city ?? undefined } : null,
                           }}
                           submitLabel="Save"
                         />
                       </div>
                     </details>
-                    <form action={removeOwnerAppearance.bind(null, businessId, a.id)}>
+                    <form action={removeOwnerAppearance.bind(null, item.appearanceBusinessId, item.appearanceId)}>
                       <button type="submit" className="shrink-0 text-xs font-semibold text-red-600 hover:underline">
                         Remove
                       </button>
@@ -205,6 +237,12 @@ export default async function AccountSchedulePage({
           })
         )}
       </div>
+
+      {section === "past" && (
+        <p className="mt-4 text-xs text-ink/40">
+          Past organized Events aren&rsquo;t included here yet — view an Event&rsquo;s own dates from its Event Manager.
+        </p>
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import AccountNav from "../AccountNav";
-import { resolveBusinessScopedHref } from "../BusinessScopedAction";
+import { resolveBusinessScopedHref } from "../businessScope";
 
 export const metadata: Metadata = {
   title: "Business",
