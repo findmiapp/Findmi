@@ -57,7 +57,7 @@ export default function HomepageRowCard({
   canMoveUp: boolean;
   canMoveDown: boolean;
 }) {
-  const [contentType, setContentType] = useState<HomepageRowContentType>(row.content_type);
+  const [contentType, setContentType] = useState<HomepageRowContentType>(row.content_type ?? "businesses");
   const [mode, setMode] = useState<HomepageRowMode>(row.mode);
 
   const isShowcase = contentType === "business_showcase";

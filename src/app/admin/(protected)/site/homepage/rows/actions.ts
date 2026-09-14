@@ -4,9 +4,23 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { bool, errorRedirectUrl, num, str } from "@/lib/admin/form-helpers";
+import { getHomepageDiscoveryPageId } from "@/lib/discovery-pages";
 import type { HomepageRowContentType, HomepageRowMode, HomepageRowTimeWindow } from "@/lib/homepage-rows";
 
 const EDIT_PATH = "/admin/site/homepage/rows";
+
+// Discovery Page Builder Phase 1 — homepage_rows is now page-scoped
+// (page_id). This whole file only ever manages the reserved Homepage
+// page's rows, so every query below is explicitly scoped to it — without
+// this, once a second page's rows exist in the same physical table,
+// fetching/reordering "all rows sorted by sort_order" here could target a
+// foreign page's row as a neighbor. Resolved once per action call (cheap,
+// tiny-table lookup, cached in lib/discovery-pages.ts).
+async function homepageId(): Promise<string> {
+  const id = await getHomepageDiscoveryPageId();
+  if (!id) throw new Error("Homepage discovery page is missing — this should never happen.");
+  return id;
+}
 const CONTENT_TYPES: HomepageRowContentType[] = ["businesses", "events", "products", "business_showcase"];
 const MODES: HomepageRowMode[] = ["dynamic", "curated"];
 const TIME_WINDOWS: HomepageRowTimeWindow[] = ["now", "weekend", "anytime"];
@@ -35,12 +49,20 @@ function readRowFields(formData: FormData) {
 
 export async function createHomepageRow(formData: FormData) {
   const supabase = await requireAdminSupabase();
+  const pageId = await homepageId();
 
-  const { data: existing } = await supabase.from("homepage_rows").select("sort_order").order("sort_order", { ascending: false }).limit(1);
+  const { data: existing } = await supabase
+    .from("homepage_rows")
+    .select("sort_order")
+    .eq("page_id", pageId)
+    .is("parent_id", null)
+    .order("sort_order", { ascending: false })
+    .limit(1);
   const nextOrder = (existing?.[0]?.sort_order ?? 0) + 10;
 
   const title = str(formData, "title") ?? "New Row";
   const { error } = await supabase.from("homepage_rows").insert({
+    page_id: pageId,
     title,
     content_type: "businesses",
     mode: "dynamic",
@@ -83,8 +105,14 @@ export async function deleteHomepageRow(id: string) {
 // through.
 async function moveRow(id: string, direction: "up" | "down") {
   const supabase = await requireAdminSupabase();
+  const pageId = await homepageId();
 
-  const { data } = await supabase.from("homepage_rows").select("id, sort_order").order("sort_order", { ascending: true });
+  const { data } = await supabase
+    .from("homepage_rows")
+    .select("id, sort_order")
+    .eq("page_id", pageId)
+    .is("parent_id", null)
+    .order("sort_order", { ascending: true });
   const rows = data ?? [];
   const index = rows.findIndex((r) => r.id === id);
   const neighborIndex = direction === "up" ? index - 1 : index + 1;

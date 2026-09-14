@@ -26,7 +26,7 @@ export default async function HomepageRowsPage({
   // once here, one query per pickable row, rather than inside each card.
   const previews = await Promise.all(
     rows.map((row) =>
-      row.mode === "curated" && row.content_type !== "business_showcase" && row.curated_ids.length > 0
+      row.mode === "curated" && row.content_type && row.content_type !== "business_showcase" && row.curated_ids.length > 0
         ? getCuratedItemPreviews(row.content_type, row.curated_ids)
         : Promise.resolve([])
     )

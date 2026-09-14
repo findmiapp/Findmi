@@ -5,15 +5,20 @@ import { Avatar, EntitySearchAdd, type SearchResult } from "./RelationPicker";
 
 /** Curated-mode item picker for one Homepage Row — same search-and-add
  * pattern as ParticipationRoster (event rosters), reused rather than
- * reinvented. Renders hidden `curated_id` inputs in the founder's chosen
- * order, which the row's Server Action reads via formData.getAll and
- * saves as-is into homepage_rows.curated_ids. */
+ * reinvented. Renders hidden `curated_id` inputs (or `fieldName`, if
+ * given) in the founder's chosen order, which the row's Server Action
+ * reads via formData.getAll and saves as-is into homepage_rows.curated_ids
+ * (or .pinned_ids, for Hybrid mode's pinned-records picker — Discovery
+ * Page Builder Phase 1 reuses this exact component for both, rather than
+ * building a second entity-search system). */
 export default function HomepageRowCuratedPicker({
   entity,
   initialItems,
+  fieldName = "curated_id",
 }: {
   entity: "businesses" | "events" | "products";
   initialItems: SearchResult[];
+  fieldName?: string;
 }) {
   const [items, setItems] = useState<SearchResult[]>(initialItems);
 
@@ -50,7 +55,7 @@ export default function HomepageRowCuratedPicker({
         <div className="mt-2 flex flex-col gap-1.5">
           {items.map((item, index) => (
             <div key={item.value} className="flex items-center justify-between gap-2 rounded-xl border border-black/10 bg-white px-3 py-2">
-              <input type="hidden" name="curated_id" value={item.value} />
+              <input type="hidden" name={fieldName} value={item.value} />
               <div className="flex min-w-0 items-center gap-2.5">
                 <Avatar url={item.image_url} label={item.label} />
                 <div className="min-w-0">

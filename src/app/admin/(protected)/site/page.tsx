@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 // each additional public page gets its own Site Editor screen later.
 const PAGES = [
   { key: "homepage", label: "Homepage", href: "/admin/site/homepage", available: true },
+  { key: "pages", label: "Discovery Pages (Phase 1)", href: "/admin/site/pages", available: true },
   { key: "join", label: "Join Page", href: "/admin/site/join", available: true },
   { key: "about", label: "About Page", href: "/admin/site/about", available: true },
   { key: "navigation", label: "Navigation", href: "/admin/site/navigation", available: true },
