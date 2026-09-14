@@ -340,7 +340,7 @@ export default async function AccountHomePage({
           businesses={myBusinesses}
           tab="findmi-here"
           icon={<PlusGlyph className="h-4 w-4" />}
-          label="+ Add Where I'll Be"
+          label="Add Where I'll Be"
         />
       </div>
 
