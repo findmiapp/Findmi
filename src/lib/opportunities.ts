@@ -1318,13 +1318,34 @@ export interface ConversationListItem {
   otherPartyEntityType: ConversationEntityType;
   lastMessageBody: string | null;
   lastActivityAt: string;
+  /** Launch V2 Pass 1 (Inbox) — the conversation's own subject_type/
+   * subject_id, additive to the original Messages entry point's fields.
+   * Never rendered raw — callers resolve it to a human label via
+   * conversationContextLabel (lib/admin/conversations.ts's own pure,
+   * non-privileged label map, shared verbatim rather than duplicated). */
+  subjectType: string;
+  subjectId: string;
+  /** Which of the CURRENT user's own managed entities is a participant on
+   * this conversation (e.g. "Native Rose") — distinct from
+   * otherPartyLabel, which is always the OTHER side. Needed so a
+   * multi-business owner's Inbox can show which of their businesses an
+   * inquiry actually reached. Null only for a "personal" conversation the
+   * user has no managed-entity stake in. */
+  myEntityLabel: string | null;
+  /** Resolved product name when subject_type === 'product_inquiry' and
+   * subject_id names a real product — same subject_id resolution
+   * approach already proven in the admin Communications dashboard
+   * (lib/admin/conversations.ts). Null for every other subject_type. */
+  productName: string | null;
 }
 
-/** The Messages entry point's one data source — every Conversation the
- * user is currently authorized for (via any managed entity, or a
+/** The Messages/Inbox entry point's one data source — every Conversation
+ * the user is currently authorized for (via any managed entity, or a
  * "personal" participant row of their own), newest activity first. Per
  * Section 11: no folders/search/unread count — just participant name,
- * last message preview, last activity timestamp. */
+ * last message preview, last activity timestamp (Launch V2 Pass 1 adds
+ * subjectType/myEntityLabel/productName, purely additive, so the
+ * original Messages page's own usage is unaffected). */
 export async function listConversationsForUser(admin: SupabaseClient, userId: string): Promise<ConversationListItem[]> {
   const managed = await getUserManagedEntities(admin, userId);
   const businessIds = managed.businesses.map((b) => b.id);
@@ -1342,7 +1363,7 @@ export async function listConversationsForUser(admin: SupabaseClient, userId: st
   if (conversationIds.length === 0) return [];
 
   const [{ data: conversationRows }, { data: participantRows }, { data: messageRows }] = await Promise.all([
-    admin.from("conversations").select("id, created_at, guest_name").in("id", conversationIds),
+    admin.from("conversations").select("id, created_at, guest_name, subject_type, subject_id").in("id", conversationIds),
     admin.from("conversation_participants").select("conversation_id, entity_type, entity_id, user_id").in("conversation_id", conversationIds),
     admin
       .from("conversation_messages")
@@ -1353,6 +1374,17 @@ export async function listConversationsForUser(admin: SupabaseClient, userId: st
 
   const participants = (participantRows ?? []) as { conversation_id: string; entity_type: ConversationEntityType; entity_id: string | null; user_id: string }[];
   const labels = await labelsForParticipants(admin, participants);
+
+  // Launch V2 Pass 1 — product name resolution, same "batch by ids
+  // actually needed" shape as labelsForParticipants above; only ever
+  // queried for conversations whose subject_type is product_inquiry.
+  const conversationMetaRows = (conversationRows ?? []) as { id: string; created_at: string; guest_name: string | null; subject_type: string; subject_id: string }[];
+  const productSubjectIds = [...new Set(conversationMetaRows.filter((c) => c.subject_type === "product_inquiry").map((c) => c.subject_id))];
+  const productNameById = new Map<string, string>();
+  if (productSubjectIds.length > 0) {
+    const { data: productRows } = await admin.from("products").select("id, name").in("id", productSubjectIds);
+    for (const p of (productRows ?? []) as { id: string; name: string }[]) productNameById.set(p.id, p.name);
+  }
 
   const myEntityKeys = new Set<string>([
     `personal:${userId}`,
@@ -1372,15 +1404,15 @@ export async function listConversationsForUser(admin: SupabaseClient, userId: st
   for (const m of (messageRows ?? []) as { conversation_id: string; body: string; created_at: string }[]) {
     if (!lastMessageByConversation.has(m.conversation_id)) lastMessageByConversation.set(m.conversation_id, m);
   }
-  const conversationMeta = new Map(
-    ((conversationRows ?? []) as { id: string; created_at: string; guest_name: string | null }[]).map((c) => [c.id, c])
-  );
+  const conversationMeta = new Map(conversationMetaRows.map((c) => [c.id, c]));
 
   const items: ConversationListItem[] = [];
   for (const conversationId of conversationIds) {
     const parties = partiesByConversation.get(conversationId) ?? [];
     const other = parties.find((p) => !myEntityKeys.has(labelKey(p.entity_type, p.entity_id, p.user_id)));
-    const guestName = conversationMeta.get(conversationId)?.guest_name ?? null;
+    const mine = parties.find((p) => myEntityKeys.has(labelKey(p.entity_type, p.entity_id, p.user_id)));
+    const meta = conversationMeta.get(conversationId) ?? null;
+    const guestName = meta?.guest_name ?? null;
     // Unify Site-Wide Communications pass — a guest-originated inquiry
     // has no participant row for the guest side at all (see
     // createInquiryConversation), so `other` is never found for one.
@@ -1395,7 +1427,11 @@ export async function listConversationsForUser(admin: SupabaseClient, userId: st
       otherPartyLabel: other ? (labels.get(labelKey(other.entity_type, other.entity_id, other.user_id)) ?? "Findmi Member") : guestName!,
       otherPartyEntityType: other?.entity_type ?? "personal",
       lastMessageBody: last?.body ?? null,
-      lastActivityAt: last?.created_at ?? conversationMeta.get(conversationId)?.created_at ?? new Date(0).toISOString(),
+      lastActivityAt: last?.created_at ?? meta?.created_at ?? new Date(0).toISOString(),
+      subjectType: meta?.subject_type ?? "",
+      subjectId: meta?.subject_id ?? "",
+      myEntityLabel: mine ? (labels.get(labelKey(mine.entity_type, mine.entity_id, mine.user_id)) ?? null) : null,
+      productName: meta?.subject_type === "product_inquiry" ? (productNameById.get(meta.subject_id) ?? null) : null,
     });
   }
 

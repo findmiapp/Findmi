@@ -1205,6 +1205,39 @@ export async function getUpcomingAppearancesForBusiness(
   return dedupeAppearances(rows).slice(0, limit);
 }
 
+/** Launch V2 Pass 1 — Schedule's PAST list. Same shape/dedup as
+ * getUpcomingAppearancesForBusiness above (own query, own over-fetch,
+ * same betterAppearance/dedupeAppearances), just the mirrored
+ * end_at-in-the-past filter and newest-first ordering — the smallest
+ * additional query the Launch UX audit identified as needed, no schema
+ * change. */
+export async function getPastAppearancesForBusiness(
+  businessId: string,
+  limit = 20
+): Promise<AppearanceWithEventSlug[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const nowIso = new Date().toISOString();
+  const { data } = await supabase
+    .from("appearances")
+    .select("*, event:events(slug)")
+    .eq("business_id", businessId)
+    .neq("status", "canceled")
+    .lte("end_at", nowIso)
+    .order("start_at", { ascending: false })
+    .limit(limit * 2);
+
+  type RawRow = Appearance &
+    DedupableAppearance & { event: { slug: string } | { slug: string }[] | null };
+  const rows = ((data ?? []) as never[]).map((row: unknown) => {
+    const r = row as RawRow;
+    const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
+    return { ...r, event };
+  });
+
+  return dedupeAppearances(rows).slice(0, limit);
+}
+
 /** The one real FindMi business the homepage's "Have a business or
  * brand?" showcase demonstrates with (live-QA correction, 2026 nav pass,
  * Part 14) — was previously an entirely illustrative/static mockup. A

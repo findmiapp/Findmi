@@ -48,8 +48,7 @@ import { getPublicOrigin } from "@/lib/site-url";
 import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import { getBusinessFollowerSummary } from "@/lib/business-followers";
-import { getBusinessInquiryDetail, getBusinessInquiryList } from "@/lib/inquiries";
-import { sendBusinessReply, updateInquiryStatus } from "../inquiries-actions";
+import { getBusinessInquiryList } from "@/lib/inquiries";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import CustomerInquiriesForm from "./CustomerInquiriesForm";
 import { getApplicationsForBusiness, getPendingInvitationsForBusiness } from "@/lib/opportunities";
@@ -120,7 +119,7 @@ const OWNER_TABS: TabNavItem[] = [
   { key: "plan", label: "Plan & Status" },
   { key: "market", label: "Findmi Area" },
   { key: "followers", label: "Followers" },
-  { key: "inquiries", label: "Inquiries" },
+  { key: "inquiries", label: "Customer Inquiries" },
   { key: "orders", label: "Orders" },
   // Referral Partner + Discount Foundation — only ever shown/valid when
   // this business actually has a referral_partners row (an admin set
@@ -185,7 +184,6 @@ export default async function ManageBusinessPage({
     edit_state?: string;
     edit_external_url?: string;
     edit_flyer_image_url?: string;
-    open?: string;
     order?: string;
     order_status?: string;
     add_name?: string;
@@ -206,7 +204,6 @@ export default async function ManageBusinessPage({
     saved,
     error,
     created,
-    open: openInquiryId,
     order: openOrderId,
     order_status: orderStatusFilter,
     pro_payment: proPayment,
@@ -359,17 +356,14 @@ export default async function ManageBusinessPage({
   // assigned yet" so the owner isn't left guessing. Never implies an
   // approved Market — see getPendingMarketRequestForBusiness's own note.
   const pendingMarketRequest = primaryMarket ? null : await getPendingMarketRequestForBusiness(admin, id);
-  // Native Inquiries V1 — same authorize-then-elevate admin client. The
-  // list is always fetched (cheap, same pattern as followerSummary
-  // above); the detail/thread is only fetched when `open` names one of
-  // THIS business's own inquiries — getBusinessInquiryDetail's own
-  // .eq("business_id", id) means a foreign/mistyped id here just yields
-  // null, never another business's thread.
+  // Launch V2 Pass 1 — this tab no longer renders the legacy thread/reply
+  // UI (see Section 13 of that pass's own report: the real, live
+  // customer-inquiry inbox is now the canonical Inbox at
+  // /account/messages). inquiryList is still fetched — Overview's own
+  // Needs Attention card (buildNeedsAttentionItems, untouched this pass)
+  // still reads unreadInquiryCount from it — but nothing here fetches or
+  // renders a single legacy inquiry's thread anymore.
   const inquiryList = await getBusinessInquiryList(admin, id);
-  const openInquiry = openInquiryId ? await getBusinessInquiryDetail(admin, openInquiryId, id) : null;
-  if (openInquiry) {
-    await supabase.rpc("mark_inquiry_read", { p_inquiry_id: openInquiryId, p_as: "business" });
-  }
   // Opportunities + Conversation Foundation V1 — the previously-missing
   // Business-side "Event Invitations"/"My Applications" surfaces. Same
   // authorize-then-elevate admin client, always fetched (cheap, same
@@ -1919,17 +1913,20 @@ export default async function ManageBusinessPage({
             elsewhere on this page. */}
         {activeTab === "inquiries" && (
           <div className="flex flex-col gap-3">
-            {/* Product Inquiry Consolidation pass — the owner now
-                understands exactly ONE customer-inquiry concept. Accept
-                Inquiries + Inquiry Types (below) is authoritative for
-                Business Inquire AND for Product-page inquiries (a Product
-                inquiry is this same setting, gated additionally on
-                "Product / Order" being enabled — see
-                connect/actions.ts's submitProductInquiry). The old
-                separate "Accept Product-page inquiries" card/legacy
-                inquiries system is no longer presented as a business-
-                facing option; see this pass's report for what happens to
-                its existing (empty) historical data and admin view. */}
+            {/* Launch V2 Pass 1, Section 13 — this tab is now
+                CONFIGURATION ONLY. The legacy list/thread/reply UI that
+                used to render below (backed by the `inquiries`/
+                `inquiry_messages` tables) is removed: those tables have
+                had zero live rows since the canonical Conversations
+                system took over every inquiry entry point (see this
+                pass's own audit), so that UI could only ever show "No
+                inquiries yet" while the REAL live customer inquiries this
+                setting controls were only visible at /account/messages
+                (the Inbox) — two inquiry surfaces for one real system.
+                CustomerInquiriesForm below is untouched: same Accept
+                Inquiries toggle, same Inquiry Types, same accepts_inquiries/
+                inquiry_topics columns, same Pro gate, same public Inquire
+                behavior. */}
             {pro ? (
               <CustomerInquiriesForm
                 businessId={id}
@@ -1945,134 +1942,13 @@ export default async function ManageBusinessPage({
               />
             )}
 
-            {openInquiry ? (
-              <div className={cardClass}>
-                <Link href={`${basePath}?tab=inquiries`} className="text-xs font-semibold text-ink/50 hover:text-ink">
-                  ← All inquiries
-                </Link>
-
-                <div className="mt-2 flex items-center gap-2.5">
-                  <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-mist">
-                    {openInquiry.customerProfile?.avatar_url && (
-                      <SupabaseImage
-                        src={openInquiry.customerProfile.avatar_url}
-                        alt={openInquiry.customerProfile.display_name ?? openInquiry.customerProfile.username}
-                        fill
-                        sizes="36px"
-                        className="object-cover"
-                      />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-ink">
-                      {openInquiry.customerProfile
-                        ? openInquiry.customerProfile.display_name || `@${openInquiry.customerProfile.username}`
-                        : "Findmi customer"}
-                    </p>
-                    {openInquiry.inquiry.product_id && <p className="text-xs text-ink/45">Product inquiry</p>}
-                  </div>
-                </div>
-
-                <form action={updateInquiryStatus.bind(null, id, openInquiry.inquiry.id)} className="mt-3 flex items-center gap-2">
-                  <select
-                    name="status"
-                    defaultValue={openInquiry.inquiry.status}
-                    className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink"
-                  >
-                    {["new", "replied", "contacted", "booked", "closed"].map((s) => (
-                      <option key={s} value={s}>
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="submit"
-                    className="rounded-full bg-black/[0.05] px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:bg-black/[0.08]"
-                  >
-                    Update Status
-                  </button>
-                </form>
-
-                {(openInquiry.inquiry.customer_email || openInquiry.inquiry.customer_phone) && (
-                  <p className="mt-2 text-xs text-ink/40">
-                    Customer-provided contact:{" "}
-                    {[openInquiry.inquiry.customer_email, openInquiry.inquiry.customer_phone].filter(Boolean).join(" · ")}
-                  </p>
-                )}
-
-                <div className="mt-4 flex flex-col gap-3">
-                  {openInquiry.messages.map((m) => (
-                    <div key={m.id} className={`flex flex-col ${m.sender_type === "customer" ? "items-start" : "items-end"}`}>
-                      <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                          m.sender_type === "customer" ? "bg-black/[0.04] text-ink" : "bg-findmi text-white"
-                        }`}
-                      >
-                        <p className="whitespace-pre-line">{m.body}</p>
-                      </div>
-                      <p className="mt-1 px-1 text-[11px] text-ink/35">
-                        {m.sender_type === "customer" ? "Customer" : business.name} · {new Date(m.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <form action={sendBusinessReply.bind(null, id, openInquiry.inquiry.id)} className="mt-4 flex flex-col gap-2">
-                  <textarea
-                    name="body"
-                    required
-                    rows={3}
-                    placeholder={`Reply as ${business.name}…`}
-                    className={`${inputClass} resize-y`}
-                  />
-                  <button
-                    type="submit"
-                    className="self-start rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                  >
-                    Send Reply
-                  </button>
-                </form>
-              </div>
-            ) : inquiryList.length === 0 ? (
-              <p className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">No inquiries yet.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {inquiryList.map((inq) => (
-                  <Link
-                    key={inq.id}
-                    href={`${basePath}?tab=inquiries&open=${inq.id}`}
-                    className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
-                  >
-                    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-mist">
-                      {inq.customerProfile?.avatar_url && (
-                        <SupabaseImage
-                          src={inq.customerProfile.avatar_url}
-                          alt={inq.customerProfile.display_name ?? inq.customerProfile.username}
-                          fill
-                          sizes="36px"
-                          className="object-cover"
-                        />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <p className="truncate text-sm font-semibold text-ink">
-                          {inq.customerProfile
-                            ? inq.customerProfile.display_name || `@${inq.customerProfile.username}`
-                            : "Findmi customer"}
-                        </p>
-                        {inq.unread && <span className="h-2 w-2 shrink-0 rounded-full bg-findmi" aria-label="Unread" />}
-                      </div>
-                      {inq.productName && <p className="truncate text-xs text-ink/45">Re: {inq.productName}</p>}
-                      {inq.lastMessage && <p className="mt-0.5 truncate text-xs text-ink/55">{inq.lastMessage.body}</p>}
-                    </div>
-                    <span className="shrink-0 rounded-full bg-black/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/55">
-                      {inq.status}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            )}
+            <Link
+              href="/account/messages"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
+            >
+              <span className="text-sm font-semibold text-ink">View customer conversations in your Inbox</span>
+              <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700">Open Inbox →</span>
+            </Link>
           </div>
         )}
 

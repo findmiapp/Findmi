@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { listConversationsForUser } from "@/lib/opportunities";
-import { getAccountCommandCenter } from "@/lib/dashboard";
-import { getTemporalLabel } from "@/lib/format";
+import { conversationContextLabel } from "@/lib/admin/conversations";
+import { getAccountCommandCenter, CUSTOMER_SUBJECT_TYPES, RECENT_CONVERSATION_WINDOW_DAYS } from "@/lib/dashboard";
+import { getTemporalLabel, formatDateShort } from "@/lib/format";
+import { getPublicOrigin } from "@/lib/site-url";
 import NavIcon from "@/components/NavIcon";
 import LiveDot from "@/components/LiveDot";
+import ShareButton from "@/components/ShareButton";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
+import AccountNav from "./AccountNav";
 import BusinessScopedAction, { ActionStripLink, PlusGlyph } from "./BusinessScopedAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
 
@@ -22,10 +25,10 @@ export const metadata: Metadata = {
 // ISR-cached; every response here is specific to whoever is signed in.
 export const dynamic = "force-dynamic";
 
-/** Account Hub V2 Hierarchy pass — plan_tier isn't in the public anon/
- * authenticated column grant (see lib/entitlements.ts's own comment),
- * so showing a "Pro" pill on a managed business here needs the
- * service-role client. Read-only, display-only — never a write. */
+/** Launch V2 Pass 1 — plan_tier isn't in the public anon/authenticated
+ * column grant (see lib/entitlements.ts's own comment), so showing a
+ * "Pro" pill on a managed business here needs the service-role client.
+ * Read-only, display-only — never a write. */
 async function getProBusinessIdSet(
   admin: ReturnType<typeof getAdminSupabase>,
   businessIds: string[]
@@ -35,18 +38,22 @@ async function getProBusinessIdSet(
   return new Set((data ?? []).filter((r) => r.plan_tier === "pro" || r.plan_tier === "pro_seller").map((r) => r.id));
 }
 
-/** Account Hub V2 Hierarchy + Action UX pass — the same account model,
- * the same tables, the same routes as before. What changed is emphasis:
- * discovery first, then a fixed Create/Add strip (never routing a
- * Business-scoped action to whichever business happens to load first —
- * see BusinessScopedAction), then whatever the visitor actively manages
- * (one filterable list — see ManageOnFindmiList — not giant cards or
- * three separate dashboards), then personal activity as small utility
- * tiles, then account-utility odds and ends (invite redemption, pending
- * claims). No new backend/queries beyond a few cheap additive reads
- * (head-counts for the utility tiles, plan_tier for the Pro pill) —
- * every one of those already had an authoritative source elsewhere in
- * the app (business/[id]); this page just also reads it now. */
+/** Launch V2 Pass 1 — refocuses Home around the Launch UX audit's own
+ * three questions (Where am I going? What needs me? What do customers
+ * see?), in that order, ahead of anything else. Same account model, same
+ * tables, same routes as before (nothing here is a new query beyond the
+ * existing getAccountCommandCenter/listConversationsForUser calls this
+ * page already made) — what changed is which of the OLD page's 13
+ * sections survive, and in what order. Removed entirely: the standalone
+ * Messages shortcut (superseded by the Inbox preview below), the full
+ * Coming Up list (consolidated into one NEXT UP item — the complete
+ * schedule now lives at /account/schedule), the duplicate large Findmi
+ * Here CTA card, the "What's the difference?" explainer, and the Your
+ * Activity utility-tile row (Saved/Following/Orders/Profile now live in
+ * AccountNav's own "More" menu; Messages is now Inbox). Demoted (kept,
+ * moved lower, made visually secondary): Manage on Findmi, Pending
+ * Claims, Discover, Redeem invite code. See this pass's own report for
+ * the full before/after list. */
 export default async function AccountHomePage({
   searchParams,
 }: {
@@ -68,19 +75,9 @@ export default async function AccountHomePage({
     { data: pendingClaimRows },
     { data: eventMemberships },
     { data: locationMemberships },
-    { count: savedBusinessesCount },
-    { count: savedEventsCount },
-    { count: savedProductsCount },
-    { count: followingBusinessesCount },
-    { count: followingEventsCount },
-    { count: followingLocationsCount },
-    { count: ordersCount },
   ] = await Promise.all([
     // Progressive Email Verification pass — email_verified_at read in the
-    // same query as display_name (no extra round trip). Deliberately not
-    // added to the shared Profile type (lib/types.ts) — that interface's
-    // own comment says never add auth-adjacent metadata to it, since it
-    // also backs the public profile view.
+    // same query as display_name (no extra round trip).
     supabase
       .from("profiles")
       .select("display_name, email_verified_at")
@@ -94,21 +91,6 @@ export default async function AccountHomePage({
       .eq("status", "pending"),
     supabase.from("event_members").select("event_id, events(name, is_demo)").eq("user_id", user.id),
     supabase.from("location_members").select("location_id, locations(name, is_demo)").eq("user_id", user.id),
-    // Your Activity tile counts — same account-backed tables
-    // /account/saved, /account/following, /account/orders already read
-    // (account_saved_*/account_followed_*/orders, all RLS-scoped to
-    // auth.uid()); head-only counts here, no row payloads.
-    supabase.from("account_saved_businesses").select("business_id", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("account_saved_events").select("event_id", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("account_saved_products").select("product_id", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("account_followed_businesses").select("business_id", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("account_followed_events").select("event_id", { count: "exact", head: true }).eq("user_id", user.id),
-    // Surface Followed Locations pass — the "Following" tile below is an
-    // all-entity aggregate by design (generic label, links to
-    // /account/following, which now lists all three), so Locations join
-    // the same sum Businesses/Events already contribute to.
-    supabase.from("account_followed_locations").select("location_id", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("orders").select("id", { count: "exact", head: true }).eq("user_id", user.id),
   ]);
 
   type BusinessMembershipRow = {
@@ -161,56 +143,40 @@ export default async function AccountHomePage({
     })
     .filter((l): l is { id: string; name: string; isDemo: boolean } => Boolean(l));
 
-  // plan_tier isn't in the public anon/authenticated column grant/RLS
-  // (see lib/entitlements.ts's own comment) — same authorize-then-elevate
-  // shape every other admin-client read in this codebase uses, with the
-  // caller's own already-verified user.id as the only input. Read-only,
-  // display-only — never a write.
-  //
-  // Owner Action UX pass — the Create/Add strip's + Event button now
-  // links unconditionally to /account/event/new, which already shows its
-  // own graceful non-qualifying-visitor explainer (Multi-Entity
-  // Self-Service V1) — so canCurrentUserManageEvents is no longer read
-  // here; entitlement gating stays authoritative in that one existing
-  // place instead of being re-decided/duplicated on this page too.
   const admin = getAdminSupabase();
   const businessIds = myBusinesses.map((b) => b.id);
   const proBusinessIds = await getProBusinessIdSet(admin, businessIds);
 
-  // Public Messaging V1, Section 11 — Messages joins the Your Activity
-  // tile row below, same "compact entry point, real count" treatment as
-  // Saved/Following/Orders. No unread tracking (explicitly deferred this
-  // pass) — just a total conversation count.
-  const messagesCount = admin ? (await listConversationsForUser(admin, user.id)).length : 0;
+  // Launch V2 Pass 1 — ONE listConversationsForUser call now backs both
+  // the Inbox preview AND the Needs Your Attention customer-conversation
+  // signal (replacing the old legacy-`inquiries`-table count) — see
+  // lib/dashboard.ts's own CommandCenterInput doc comment.
+  // Excludes 'opportunity'-subject_type Conversations (created only when
+  // a note is attached to an invitation/application) — same reasoning as
+  // the Inbox page's own filter: that interaction already has a
+  // structured representation under Needs Your Attention/Opportunities,
+  // so it never doubles up here.
+  const conversations = (admin ? await listConversationsForUser(admin, user.id) : []).filter((c) => c.subjectType !== "opportunity");
+  const inboxPreview = conversations.slice(0, 3);
+  const recentCustomerConversationCount = conversations.filter((c) => {
+    if (!CUSTOMER_SUBJECT_TYPES.has(c.subjectType)) return false;
+    const ageDays = (Date.now() - new Date(c.lastActivityAt).getTime()) / (24 * 60 * 60 * 1000);
+    return ageDays <= RECENT_CONVERSATION_WINDOW_DAYS;
+  }).length;
 
-  const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
-  const savedCount = (savedBusinessesCount ?? 0) + (savedEventsCount ?? 0) + (savedProductsCount ?? 0);
-  const followingCount = (followingBusinessesCount ?? 0) + (followingEventsCount ?? 0) + (followingLocationsCount ?? 0);
-
-  // Account Command Center V1 — the two new operational sections below
-  // (Needs Your Attention, Coming Up). Reuses the SAME managed-entity
-  // lists already computed above (myBusinesses/myEvents/myLocations,
-  // myPendingClaims) rather than re-querying business_members/
-  // event_members/location_members a second time — see lib/dashboard.ts's
-  // own doc comment for the full data-source/dedup design. A signed-in
-  // visitor always has SOME identity, but this page has no meaningful
-  // Command Center without an admin client, same "no admin, no
-  // service-role reads" fallback every other admin-gated read on this
-  // page already uses.
   const { attention: attentionItems, schedule: scheduleItems } = admin
     ? await getAccountCommandCenter(admin, {
         businesses: myBusinesses,
         events: myEvents,
         locations: myLocations,
         pendingClaimsCount: myPendingClaims.length,
+        recentCustomerConversationCount,
       })
     : { attention: [], schedule: [] };
+  const nextUp = scheduleItems[0] ?? null;
 
-  // Owner Action UX pass — one flat, filterable list for ManageOnFindmiList
-  // (client component — filtering needs interactivity /account's own
-  // server-rendered sections can't provide). Same data/pills/CTA rules as
-  // before, just reshaped with an explicit `kind` per row instead of three
-  // separate .map() blocks.
+  const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
+
   const managedEntities: ManagedEntity[] = [
     ...myBusinesses.map(
       (b): ManagedEntity => ({
@@ -250,6 +216,7 @@ export default async function AccountHomePage({
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountSync />
+      <AccountNav />
 
       <header>
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
@@ -258,58 +225,15 @@ export default async function AccountHomePage({
         </h1>
       </header>
 
-      {/* Messages Dashboard Shortcut pass — a compact, high-priority
-          entry point to /account/messages, placed immediately below the
-          welcome header and before Discover. Reuses the exact
-          conversation count already computed above (messagesCount, via
-          listConversationsForUser) — no new query, no unread-message
-          architecture, no notification badge. This is an ADDITIONAL
-          shortcut; the existing Messages tile inside Your Activity below
-          is untouched. Entire strip is one tappable Link, ~60px tall,
-          visually lighter than the Discover card below (white/bordered,
-          not aqua-filled). */}
-      <Link
-        href="/account/messages"
-        className="mt-4 flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-4 py-3 shadow-sm transition hover:border-black/10"
-      >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
-          <MessageGlyph />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-ink">Messages</p>
-          <p className="truncate text-xs text-ink/50">
-            {messagesCount === 0
-              ? "Start a conversation"
-              : `${messagesCount} conversation${messagesCount === 1 ? "" : "s"}`}
-          </p>
-        </div>
-        <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700">View →</span>
-      </Link>
-
       {error && (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
-      {/* Multi-Entity Self-Service V1, Stage 2B — redeemProInvite redirects
-          straight here (no separate business-scoped success screen, since
-          no Business was ever touched) after an Event Management invite
-          redemption. */}
       {eventManagementGranted === "1" && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           Event Management access activated — you can now add an Event below.
         </p>
       )}
 
-      {/* Progressive Email Verification pass — ACCOUNT CREATED vs. EMAIL
-          VERIFIED, kept deliberately separate. profiles.email_verified_at
-          (read above, same query as display_name) is now the authoritative
-          FindMi-owned signal — NOT auth.users.email_confirmed_at, which
-          becomes meaningless the moment Supabase's "Confirm email" setting
-          is disabled (every new account gets auto-confirmed at signup; see
-          this pass's own report). Deliberately non-blocking: no gate, no
-          redirect, no implication the account or Pro is unusable — just a
-          reminder plus a link to the dedicated verify-email flow.
-          Verification is enforced only where it actually matters (claiming
-          an existing Business/Event/Location — see /api/account/claim). */}
       {!profile?.email_verified_at && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <p>
@@ -325,16 +249,109 @@ export default async function AccountHomePage({
         </div>
       )}
 
-      {/* 1. NEEDS YOUR ATTENTION — Account Command Center V1. Compact,
-          mobile-first rows only — never a giant card. Only rendered at
-          all when at least one real actionable/informational item exists
-          (see lib/dashboard.ts's own doc comment for exactly what
-          qualifies). Pending-review rows deliberately read as status
-          updates, not errors — no red styling for a normal workflow
-          state; red stays reserved for whatever already used it
-          elsewhere (e.g. the Happening Now badge), never borrowed here. */}
+      {/* A. BUSINESS CONTEXT — only rendered when there's an actual choice
+          to orient the owner to (2+ managed businesses). One business
+          doesn't need a card just to name itself. */}
+      {myBusinesses.length > 1 && (
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {myBusinesses.map((b) => (
+            <Link
+              key={b.id}
+              href={`/account/business/${b.id}`}
+              className="shrink-0 rounded-full border border-black/10 bg-white px-3.5 py-1.5 text-xs font-bold text-ink transition hover:border-findmi/40"
+            >
+              {b.name}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* B. NEXT UP — the single most relevant upcoming happening, from
+          the SAME deduplicated Command Center schedule data as before;
+          the full chronological list now lives at /account/schedule. */}
+      {nextUp ? (
+        <section className="mt-4">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Next Up</h2>
+          {(() => {
+            const { label, live } = getTemporalLabel(nextUp.startAt, nextUp.endAt);
+            return (
+              <div className="mt-2 flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm">
+                <span
+                  className={`flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-2 ${
+                    live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/[0.04] text-ink"
+                  }`}
+                >
+                  {live ? (
+                    <>
+                      <LiveDot className="text-white" />
+                      <span className="flex flex-col items-center leading-[1.15]">
+                        <span className="text-[7px] font-bold uppercase tracking-normal">Happening</span>
+                        <span className="text-xs font-extrabold uppercase tracking-wide">Now</span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-ink/50">
+                        {new Date(nextUp.startAt).toLocaleDateString("en-US", { month: "short" })}
+                      </span>
+                      <span className="text-lg font-bold leading-none">{new Date(nextUp.startAt).getDate()}</span>
+                    </>
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink">{nextUp.title}</p>
+                  {nextUp.where && <p className="truncate text-xs text-ink/50">{nextUp.where}</p>}
+                  <p className="truncate text-[11px] text-ink/40">
+                    {!live && `${label} · `}
+                    {nextUp.relatedTo.join(" · ")}
+                  </p>
+                </div>
+                <Link
+                  href={nextUp.href}
+                  className="shrink-0 rounded-full border border-black/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+                >
+                  Edit
+                </Link>
+              </div>
+            );
+          })()}
+          <Link href="/account/schedule" className="mt-1.5 inline-block text-xs font-semibold text-findmi-700 underline underline-offset-2">
+            View Schedule →
+          </Link>
+        </section>
+      ) : (
+        hasAnyManaged && (
+          <section className="mt-4 rounded-2xl border border-black/10 bg-mist/30 p-4">
+            <p className="text-sm font-bold text-ink">Nothing on your schedule yet.</p>
+            <p className="mt-1 text-xs text-ink/60">Add where you&rsquo;ll be next so people can find you.</p>
+          </section>
+        )
+      )}
+
+      {/* C. PRIMARY CTA — the ONE dominant + Add Where I'll Be entry
+          point on Home (the old duplicate large Findmi Here card below it
+          is gone). */}
+      <div className="mt-3">
+        <BusinessScopedAction
+          variant="full"
+          businesses={myBusinesses}
+          tab="findmi-here"
+          icon={<PlusGlyph className="h-4 w-4" />}
+          label="+ Add Where I'll Be"
+        />
+      </div>
+      <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
+        <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
+        <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
+        <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
+      </div>
+
+      {/* D. NEEDS YOUR ATTENTION — same rendering as before; the source
+          data now includes real canonical customer Conversations instead
+          of the dead legacy inquiries table (see lib/dashboard.ts). */}
       {attentionItems.length > 0 && (
-        <section className="mt-5">
+        <section className="mt-6">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Your Attention</h2>
           <div className="mt-2 flex flex-col gap-1.5">
             {attentionItems.map((item) => (
@@ -357,112 +374,73 @@ export default async function AccountHomePage({
         </section>
       )}
 
-      {/* 2. COMING UP — Account Command Center V1, the core of it. One
-          chronological list already deduplicated and sorted server-side
-          (lib/dashboard.ts) across every Business appearance, organized
-          Event occurrence, and managed-Location happening the account
-          touches — never three separate stacked lists. Tile treatment
-          mirrors AppearanceCard/HappeningCard's own existing live/date
-          tile exactly (same classNames, same Happening/NOW two-line
-          badge from the Appearance UX Cleanup pass) rather than inventing
-          a new date-label system. Capped at a fixed count — see
-          lib/dashboard.ts's SCHEDULE_DISPLAY_LIMIT — with no "View all"
-          link, since no unified schedule route exists yet to point one
-          at (never inventing one in this pass). */}
-      {scheduleItems.length > 0 ? (
-        <section className="mt-5">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Coming Up</h2>
-          <div className="mt-2 flex flex-col gap-2">
-            {scheduleItems.map((item) => {
-              const { label, live } = getTemporalLabel(item.startAt, item.endAt);
-              return (
-                <Link
-                  key={item.key}
-                  href={item.href}
-                  className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm transition hover:border-black/10"
-                >
-                  <span
-                    className={`flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-2 ${
-                      live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/[0.04] text-ink"
-                    }`}
-                  >
-                    {live ? (
-                      <>
-                        <LiveDot className="text-white" />
-                        <span className="flex flex-col items-center leading-[1.15]">
-                          <span className="text-[7px] font-bold uppercase tracking-normal">Happening</span>
-                          <span className="text-xs font-extrabold uppercase tracking-wide">Now</span>
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink/50">
-                          {new Date(item.startAt).toLocaleDateString("en-US", { month: "short" })}
-                        </span>
-                        <span className="text-lg font-bold leading-none">{new Date(item.startAt).getDate()}</span>
-                      </>
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
-                    {item.where && <span className="block truncate text-xs text-ink/50">{item.where}</span>}
-                    <span className="block truncate text-[11px] text-ink/40">
-                      {!live && `${label} · `}
-                      {item.relatedTo.join(" · ")}
-                    </span>
-                  </span>
-                  <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
-                </Link>
-              );
-            })}
+      {/* E. INBOX PREVIEW — 2–3 latest canonical Conversations, no full
+          history load (listConversationsForUser already caps each
+          conversation to its single latest message). */}
+      <section className="mt-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Inbox</h2>
+          <Link href="/account/messages" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+            View Inbox →
+          </Link>
+        </div>
+        {inboxPreview.length > 0 ? (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {inboxPreview.map((c) => (
+              <Link
+                key={c.id}
+                href={`/account/messages/${c.id}`}
+                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm transition hover:border-black/10"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
+                  {c.otherPartyLabel.slice(0, 1)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
+                  <p className="truncate text-xs text-ink/50">
+                    {conversationContextLabel(c.subjectType)}
+                    {c.lastMessageBody ? ` · ${c.lastMessageBody}` : ""}
+                  </p>
+                </div>
+                <p className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</p>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">
+            Your Findmi conversations will appear here.
+          </p>
+        )}
+      </section>
+
+      {/* F. YOUR FINDMI — kept compact, only for the common single-
+          business case (multi-business owners reach each business's own
+          public page from that Business Manager instead — no new
+          switcher invented for this). */}
+      {myBusinesses.length === 1 && (
+        <section className="mt-6 rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Your Findmi</h2>
+          <p className="mt-1 text-sm font-semibold text-ink">{myBusinesses[0].name}</p>
+          <div className="mt-2.5 flex gap-2">
+            <Link
+              href={`/business/${myBusinesses[0].slug}`}
+              className="flex h-9 flex-1 items-center justify-center rounded-full border border-black/10 text-xs font-bold text-ink transition hover:border-black/20"
+            >
+              View Public Page
+            </Link>
+            <ShareButton url={`${getPublicOrigin()}/business/${myBusinesses[0].slug}`} title={myBusinesses[0].name} />
           </div>
         </section>
-      ) : (
-        hasAnyManaged && (
-          // Empty Coming Up — only shown for an account that already
-          // manages something (a brand-new, zero-entity account keeps its
-          // existing acquisition experience below untouched, never a
-          // second competing empty state). Reuses BusinessScopedAction's
-          // own existing zero/one/many routing — never a new creation
-          // pathway.
-          <section className="mt-5 rounded-2xl border border-black/10 bg-mist/30 p-4">
-            <p className="text-sm font-bold text-ink">Nothing on your schedule yet.</p>
-            <p className="mt-1 text-xs text-ink/60">Add where you&rsquo;ll be next so people can find you.</p>
-            {myBusinesses.length > 0 && (
-              <div className="mt-2.5">
-                <BusinessScopedAction
-                  variant="link"
-                  businesses={myBusinesses}
-                  tab="findmi-here"
-                  icon={<PlusGlyph className="h-3.5 w-3.5" />}
-                  label="Add Where You'll Be"
-                />
-              </div>
-            )}
-          </section>
-        )
       )}
 
-      {/* 3. MANAGE ON FINDMI — Account Hub V2 pass, extended with
-          All/Businesses/Events/Venues filtering (ManageOnFindmiList,
-          client-side over the same entities already loaded above — no
-          new query). Only renders when the visitor actually manages
-          something; otherwise the compact acquisition block below runs
-          instead. Still one unified list, never three separate stacked
-          dashboards. Moved ahead of Create on Findmi/Discover by the
-          Account Command Center V1 pass — operational information (this,
-          plus Attention/Coming Up above) now surfaces before discovery
-          content for a RETURNING member. */}
+      {/* Manage on Findmi — demoted: smaller heading, lower on the page,
+          same list/component as before. */}
       {hasAnyManaged ? (
         <section className="mt-6">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Manage on Findmi</h2>
           <ManageOnFindmiList entities={managedEntities} />
         </section>
       ) : (
-        /* Zero-Managed-Entity acquisition block — Section 8. Purely the
-           motivational prompt now: Add Business/Event/Venue already live
-           in the Create/Add strip below, so repeating them here would be
-           a duplicate CTA. */
         <section className="mt-6 rounded-3xl border border-black/10 bg-mist/30 p-4 sm:p-5">
           <p className="text-sm font-bold text-ink">Have something people should discover?</p>
           <p className="mt-1 text-xs text-ink/60">List your business, event, or venue on Findmi.</p>
@@ -475,11 +453,6 @@ export default async function AccountHomePage({
         </section>
       )}
 
-      {/* Pending Claims — kept compact, own section, right after
-          management/acquisition since a claim in progress is on its way
-          to becoming a managed entity. Unchanged copy/behavior; only new
-          addition is the id anchor Needs Your Attention's own pending-
-          claims summary row deep-links/scrolls to. */}
       {myPendingClaims.length > 0 && (
         <section id="pending-claims" className="mt-6">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Pending Claims</h2>
@@ -494,13 +467,6 @@ export default async function AccountHomePage({
                   <p className="text-xs font-semibold text-findmi-700">Claim under review</p>
                   <p className="text-xs text-ink/50">Typically reviewed within 48–72 hours.</p>
                 </Link>
-                {/* Pro Upgrade — Internal Checkout Handoff Foundation pass:
-                    this claimant doesn't own this business yet (the claim
-                    is still pending founder approval), so this can never
-                    route through the owner-only /upgrade/pro handoff —
-                    that would let a payment imply/expedite ownership. /join
-                    is the general acquisition entry point, not tied to any
-                    specific business_members row. */}
                 <Link
                   href="/join"
                   className="flex h-9 w-fit items-center justify-center rounded-full bg-findmi px-4 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
@@ -513,165 +479,15 @@ export default async function AccountHomePage({
         </section>
       )}
 
-      {/* 4. CREATE ON FINDMI — Account Hub Final Micro-Polish pass. The
-          full-width CTA renders via BusinessScopedAction's "full" variant
-          OUTSIDE the horizontally-scrolling row below — see that
-          component's own doc comment for why: a scrolling ancestor
-          clips the absolutely-positioned "Which business?" chooser and
-          makes a lead tile prone to swipe/tap ambiguity on mobile (its own
-          many-Business chooser now escapes that clipping via a portal —
-          see StripChooser in BusinessScopedAction.tsx — but the tile stays
-          out of the scroll row's way regardless). The small "Where I'll
-          Be" tile below is a second, intentionally repetitive entry point
-          into the SAME BusinessScopedAction / Findmi Here flow
-          (tab="findmi-here", same PlusGlyph — never the location-pin
-          icon) — Account Create-Strip Correction pass: this compact tile
-          reads as an action ("Where I'll Be"), not a repeated feature
-          name; the CTA above and the "Findmi Here" card below still carry
-          the feature name itself. Both share one routing decision, never
-          duplicated. Business/Venue/Product (also business-scoped,
-          never silently defaulting to the first managed business) keep
-          their existing order in the scrolling row, Event last —
-          creating/managing an Event is a distinct, less frequent action
-          from scheduling an existing Business's appearances (see the
-          "What's the difference?" note below) — and still links to the
-          existing /account/event/new, which already shows its own
-          graceful non-qualifying-visitor explainer (Multi-Entity
-          Self-Service V1); entitlement gating stays authoritative there,
-          never re-decided here. */}
-      <section className="mt-6">
-        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Create on Findmi</h2>
-        <div className="mt-2">
-          <BusinessScopedAction
-            variant="full"
-            businesses={myBusinesses}
-            tab="findmi-here"
-            icon={<PlusGlyph className="h-4 w-4" />}
-            label="Add Where I'll Be (Findmi Here)"
-          />
-        </div>
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <BusinessScopedAction businesses={myBusinesses} tab="findmi-here" icon={<PlusGlyph className="h-4 w-4" />} label="Where I'll Be" />
-          <ActionStripLink href="/account/business/new" icon={<NavIcon name="storefront" className="h-4 w-4" />} label="Business" />
-          <ActionStripLink href="/account/location/new" icon={<NavIcon name="pin" className="h-4 w-4" />} label="Venue" />
-          <BusinessScopedAction businesses={myBusinesses} tab="products" icon={<NavIcon name="tag" className="h-4 w-4" />} label="Product" />
-          <ActionStripLink href="/account/event/new" icon={<NavIcon name="calendar" className="h-4 w-4" />} label="Event" />
-        </div>
-      </section>
-
-      {/* 4b. FINDMI HERE — deliberately its own card, not another strip
-          pill: important, and reworked to clearly read and behave like a
-          tappable action (filled-aqua icon badge instead of the earlier
-          location-style pin/target look, bold "Add to your schedule →"
-          line). Headline lightly aligned with "+ Where I'll Be" above so
-          the two reinforce each other. Invokes the SAME BusinessScopedAction
-          routing as + Where I'll Be above — one business routes straight
-          there, several reveal a "Which business?" chooser, zero routes
-          to Add Business — never a second, parallel authorization
-          decision. Selecting an existing Event through this flow never
-          grants Event ownership; it only adds a Findmi Here appearance
-          for the Business. Product no longer lives in/under this card —
-          it's back in the Create on Findmi row above. */}
-      <section className="mt-3 rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
-        <BusinessScopedAction
-          variant="card"
-          businesses={myBusinesses}
-          tab="findmi-here"
-          icon={<PlusGlyph className="h-4 w-4" />}
-          label="Findmi Here"
-          eyebrow="Findmi Here"
-          headline="Add where your business will be next."
-          description="Markets, pop-ups, events, festivals, and other places you're appearing."
-          cta="Add to your schedule →"
-        />
-      </section>
-
-      {/* 4c. FINDMI HERE VS EVENT — one compact line, not a new help
-          section: makes the distinction legible without requiring any
-          Findmi data-model knowledge. Links to the existing
-          /account/event/new destination, which already carries its own
-          qualifying/non-qualifying explainer — no new educational
-          route. */}
-      <div className="mt-3 rounded-xl bg-black/[0.02] px-3.5 py-3">
-        <p className="text-xs font-bold text-ink/70">What&rsquo;s the difference?</p>
-        <p className="mt-1 text-xs leading-relaxed text-ink/50">
-          Findmi Here is for places your business will be appearing. Events are for events you organize and manage.
-        </p>
-        <Link href="/account/event/new" className="mt-1.5 inline-block text-xs font-bold text-findmi-700 underline underline-offset-2">
-          Learn about Events →
+      {/* Discover — demoted to one compact link (was a full white card +
+          filled CTA + chip row). Still reaches the same /find surface. */}
+      <div className="mt-6">
+        <Link href="/find" className="text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink">
+          Explore what&rsquo;s happening on Findmi →
         </Link>
       </div>
 
-      {/* 5. DISCOVERY — Account Hub V2 pass. Findmi is also for
-          discovering what's around them; /find is the existing
-          time+place discovery surface (now/today/weekend/anytime, city/
-          category filters) — the closest existing route to "explore near
-          you"; no geolocation added, no new route invented. Moved below
-          the operational sections above by the Account Command Center V1
-          pass — a RETURNING member's own attention/schedule/management
-          now comes first; this content is unchanged otherwise. */}
-      <section className="mt-6 rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5">
-        <p className="text-sm font-bold text-ink">Discover what&rsquo;s happening around you.</p>
-        <Link
-          href="/find"
-          className="mt-3 flex h-11 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-        >
-          Explore near you
-        </Link>
-        <div className="mt-2.5 flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <Link
-            href="/events"
-            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
-          >
-            Events
-          </Link>
-          <Link
-            href="/businesses"
-            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
-          >
-            Businesses
-          </Link>
-          {/* Account Hub Live QA pass — consumer discovery, not owner
-              Product creation; routes to the existing public Marketplace
-              destination (same route the main nav's "Marketplace" item
-              already uses), never to the Business-scoped Product manager
-              below. */}
-          <Link
-            href="/marketplace"
-            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
-          >
-            Products
-          </Link>
-          <Link
-            href="/locations"
-            className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
-          >
-            Venues
-          </Link>
-        </div>
-      </section>
-
-      {/* 6. YOUR ACTIVITY — Account Hub V2 pass. Saved/Following/Orders
-          shrink to one compact grid row with real counts (already
-          account-backed data, same tables /account/saved,following,orders
-          themselves read); Profile joins them here as the 4th utility
-          tile rather than a large standalone card, and remains the way
-          into sign-out (via /account/profile, unchanged). */}
-      <section className="mt-8">
-        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Your Activity</h2>
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-5 sm:overflow-visible">
-          <UtilityCard href="/account/saved" label="Saved" count={savedCount} icon={<NavIcon name="bookmark" className="h-4 w-4" />} />
-          <UtilityCard href="/account/following" label="Following" count={followingCount} icon={<HeartGlyph />} />
-          <UtilityCard href="/account/messages" label="Messages" count={messagesCount} icon={<MessageGlyph />} />
-          <UtilityCard href="/account/orders" label="Orders" count={ordersCount ?? 0} icon={<NavIcon name="cart" className="h-4 w-4" />} />
-          <UtilityCard href="/account/profile" label="Profile" icon={<NavIcon name="person" className="h-4 w-4" />} />
-        </div>
-      </section>
-
-      {/* 7. ACCOUNT UTILITIES — Redeem invite code. Account Hub Mobile
-          Polish pass's small disclosure, unchanged: submits through the
-          exact same goToRedeemCode action, no invite logic touched, just
-          kept secondary/last on the page. */}
+      {/* Redeem invite code — unchanged, kept last/secondary. */}
       <section className="mt-6">
         <details className="group">
           <summary className="w-fit cursor-pointer text-xs font-semibold text-ink/45 underline underline-offset-2 transition hover:text-ink/70 [&::-webkit-details-marker]:hidden">
@@ -699,75 +515,10 @@ export default async function AccountHomePage({
   );
 }
 
-// Account Command Center V1 — the trailing chevron on every Needs Your
-// Attention / Coming Up row, same plain-chevron-no-stem style already
-// used for a tappable row's affordance elsewhere (e.g. AppearanceCard's
-// own ArrowGlyph), just unfilled/outline here since these rows are plain
-// list rows, not circular icon buttons.
 function ChevronGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** Account Hub V2 Hierarchy pass — replaces the old large AccountCard
- * (icon + label + description) with a compact utility tile (icon, label,
- * optional count) so Saved/Following/Orders/Profile read as clearly
- * secondary to Discover/Manage on Findmi above, without losing access. */
-function UtilityCard({
-  href,
-  label,
-  count,
-  icon,
-}: {
-  href: string;
-  label: string;
-  count?: number;
-  icon: ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-black/5 bg-white px-2 py-3 text-center shadow-sm transition hover:border-black/10 sm:w-auto"
-    >
-      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">{icon}</div>
-      <p className="text-xs font-bold text-ink">{label}</p>
-      {typeof count === "number" && <p className="text-[10px] text-ink/40">{count}</p>}
-    </Link>
-  );
-}
-
-// NavIcon's curated set (bookmark/cart/person, reused above) doesn't
-// include a heart — that set is tied to the founder's admin-configurable
-// nav_items icon picker (lib/navigation.ts's NavIconKey), which "Following"
-// isn't part of. Same 24x24/stroke-1.8 style as NavIcon rather than a new
-// icon language.
-// Public Messaging V1 — a small speech-bubble glyph, same 24x24/
-// stroke-1.8 style as HeartGlyph above, for the Messages utility tile.
-function MessageGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
-      <path
-        d="M4 5.5h16a1 1 0 011 1V15a1 1 0 01-1 1H9l-4 3.5V16H4a1 1 0 01-1-1V6.5a1 1 0 011-1z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function HeartGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
-      <path
-        d="M12 20.5s-7.5-4.6-7.5-9.8A4.35 4.35 0 0112 7.5a4.35 4.35 0 017.5 3.2c0 5.2-7.5 9.8-7.5 9.8z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }

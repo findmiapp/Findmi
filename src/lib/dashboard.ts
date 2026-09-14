@@ -24,6 +24,29 @@ import type { PlanTier } from "@/lib/types";
 // than re-querying business_members/event_members/location_members a
 // second time — one fewer redundant round trip per page load.
 
+/** Launch V2 Pass 1 — the subject_types that count as a "customer"
+ * Conversation for both Home's attention signal and the Inbox's
+ * CUSTOMERS filter (single source of truth, reused by both rather than
+ * duplicated). Deliberately excludes 'opportunity' (already represented,
+ * unduplicated, by the real Opportunities workflow — see the Inbox page's
+ * own note) and 'findmi_sales' (never reaches an owner's managed-entity
+ * Conversation list in the first place — it has no entity participant). */
+export const CUSTOMER_SUBJECT_TYPES = new Set([
+  "business_inquiry",
+  "product_inquiry",
+  "event_inquiry",
+  "venue_inquiry",
+  "event_business_chat",
+  "business_business_chat",
+  "business_location_chat",
+]);
+
+/** There is no real unread state anywhere in this schema (see this pass's
+ * own audit) — recency is the one honest, truthful proxy signal for
+ * "needs a look," used consistently everywhere a customer-Conversation
+ * count is shown. */
+export const RECENT_CONVERSATION_WINDOW_DAYS = 7;
+
 export interface DashboardBusiness {
   id: string;
   name: string;
@@ -48,6 +71,18 @@ export interface CommandCenterInput {
    * in rather than re-queried here for the same reason as the managed
    * entity lists above. */
   pendingClaimsCount: number;
+  /** Launch V2 Pass 1 — replaces the old legacy-`inquiries`-table new-
+   * count (see this pass's own audit: that table has had zero live rows
+   * since the canonical Conversations system took over every inquiry
+   * entry point). Already computed by account/page.tsx from the SAME
+   * listConversationsForUser() call Home's own Inbox preview uses — a
+   * count of canonical customer Conversations (business/product/event/
+   * venue inquiry, or a direct entity Message) with activity in the last
+   * RECENT_CONVERSATION_WINDOW_DAYS. There is no real unread state
+   * anywhere in this schema, so this is deliberately an honest "recent
+   * activity" signal, never a fabricated "unread" one — see the attention
+   * item's own wording below. */
+  recentCustomerConversationCount: number;
 }
 
 export interface AttentionItem {
@@ -93,21 +128,6 @@ export interface CommandCenterData {
 // own small per-call limit.
 const PER_SOURCE_FETCH_LIMIT = 12;
 const SCHEDULE_DISPLAY_LIMIT = 8;
-
-async function getNewInquiryCounts(admin: SupabaseClient, businessIds: string[]): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
-  if (businessIds.length === 0) return counts;
-  const { data } = await admin
-    .from("inquiries")
-    .select("business_id")
-    .in("business_id", businessIds)
-    .eq("status", "new");
-  for (const row of (data ?? []) as { business_id: string | null }[]) {
-    if (!row.business_id) continue;
-    counts.set(row.business_id, (counts.get(row.business_id) ?? 0) + 1);
-  }
-  return counts;
-}
 
 interface PlanRow {
   id: string;
@@ -268,7 +288,6 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
 
   const [
     invitationsByBusiness,
-    inquiryCounts,
     planRows,
     appearancesByBusiness,
     occurrencesByEvent,
@@ -276,7 +295,6 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
     locationAppearances,
   ] = await Promise.all([
     Promise.all(businesses.map((b) => getPendingInvitationsForBusiness(admin, b.id))),
-    getNewInquiryCounts(admin, businessIds),
     getPlanRows(admin, businessIds),
     Promise.all(businesses.map((b) => getUpcomingAppearancesForBusiness(b.id, PER_SOURCE_FETCH_LIMIT))),
     Promise.all(events.map((e) => getUpcomingOccurrencesForEvent(e.id, PER_SOURCE_FETCH_LIMIT))),
@@ -306,16 +324,22 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
     }
   });
 
-  for (const b of businesses) {
-    const count = inquiryCounts.get(b.id) ?? 0;
-    if (count > 0) {
-      attention.push({
-        key: `inquiry:${b.id}`,
-        title: `${count} new inquir${count === 1 ? "y" : "ies"} for ${b.name}`,
-        subtitle: null,
-        href: `/account/business/${b.id}?tab=inquiries`,
-      });
-    }
+  // Launch V2 Pass 1 — canonical Conversations replace the legacy
+  // `inquiries` table as the attention source (see CommandCenterInput's
+  // own doc comment). One combined item, not a per-business breakdown —
+  // input.recentCustomerConversationCount already spans every managed
+  // Business/Event/Location, and a real per-business count would need a
+  // second, heavier query this pass doesn't add. Honest wording ("recent
+  // conversation(s)", never "new"/"unread" — there is no real unread
+  // state to report).
+  if (input.recentCustomerConversationCount > 0) {
+    const count = input.recentCustomerConversationCount;
+    attention.push({
+      key: "recent_conversations",
+      title: `${count} recent customer conversation${count === 1 ? "" : "s"}`,
+      subtitle: "Business, product, event, and venue inquiries",
+      href: "/account/messages?filter=customers",
+    });
   }
 
   // Pending Review — informational only, never framed as an error/action
