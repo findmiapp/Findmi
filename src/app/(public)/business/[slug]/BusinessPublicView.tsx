@@ -289,13 +289,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // SCHEDULE" principle); Facebook/TikTok aren't named in that unlock and
   // stay Pro-only, same as before. Phone/email already can't reach this
   // point for Free — `contact` above is hardcoded to {null, null} unless
-  // pro. Location stays Pro-only too (unchanged Free-identity rule below),
-  // so a Free business gets DetailsBlock's contact-icon row without its
-  // location line.
+  // pro. Location stays Pro-only too (unchanged Free-identity rule, see
+  // the identity block above) — that's a separate, independent gate from
+  // BusinessLinksRow below, which only ever handles contact/social.
   const freeSocialLinks = socialLinks.filter((l) => l.label === "Website" || l.label === "Instagram");
-  const detailsLocation = pro ? location : "";
   const detailsSocialLinks = pro ? socialLinks : freeSocialLinks;
-  const hasVisibleDetails = Boolean(detailsLocation || contact.phone || contact.email || detailsSocialLinks.length > 0);
+  // Compact Location + Links pass — location is no longer part of this
+  // check at all: it already renders compactly inline with category in
+  // the identity block above (line ~490, `pro && location`), which was
+  // ALWAYS the real, correct, compact placement — the old DetailsBlock
+  // duplicated it a second time inside a large card below. This is now
+  // purely "is there any contact/social action to show."
+  const hasContactActions = Boolean(contact.phone || contact.email || detailsSocialLinks.length > 0);
 
   const canonicalUrl = await resolveCanonicalUrl(business.id, business.slug);
 
@@ -538,18 +543,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               only, not a backend change (see Business Manager's
               Inquiries tab, which still reads/writes this setting). */}
 
-          {/* DetailsBlock covers phone/email/social/website/location.
-              Free/Pro Entitlement pass — Website/Instagram are now basic-
-              profile fields (see freeSocialLinks above), so this no longer
-              gates the whole block on `pro`; phone/email/location still
-              come from plan-aware values that are already blank for Free
-              (contact.{phone,email} are hardcoded null unless pro;
-              detailsLocation is "" unless pro), so a Free business simply
-              never has anything Pro-only to show here. */}
-          {hasVisibleDetails && (
-            <DetailsBlock
-              business={{ phone: contact.phone, email: contact.email, service_radius_miles: business.service_radius_miles }}
-              location={detailsLocation}
+          {/* Compact Location + Links pass — BusinessLinksRow covers only
+              phone/email/social/website now (location lives solely in the
+              identity block above). Free/Pro Entitlement pass — Website/
+              Instagram are now basic-profile fields (see freeSocialLinks
+              above), so this isn't gated on `pro` as a whole; phone/email
+              still come from plan-aware values already blank for Free
+              (contact.{phone,email} are hardcoded null unless pro), so a
+              Free business simply never has anything Pro-only to show
+              here. */}
+          {hasContactActions && (
+            <BusinessLinksRow
+              business={{ phone: contact.phone, email: contact.email }}
               socialLinks={detailsSocialLinks}
               className="mt-6 hidden lg:block"
             />
@@ -704,10 +709,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             </section>
           )}
 
-          {hasVisibleDetails && (
-            <DetailsBlock
-              business={{ phone: contact.phone, email: contact.email, service_radius_miles: business.service_radius_miles }}
-              location={detailsLocation}
+          {hasContactActions && (
+            <BusinessLinksRow
+              business={{ phone: contact.phone, email: contact.email }}
               socialLinks={detailsSocialLinks}
               className="mt-8 lg:hidden"
             />
@@ -796,71 +800,62 @@ function BusinessCtaRow({ business }: { business: Business }) {
   );
 }
 
-/** Compact "Details" block — Business Profile V2 Part 14/8. Rendered twice
- * (once for mobile's later position in the page, once inside the desktop
- * sticky rail) via the `className` prop rather than duplicated markup —
- * each call site just toggles which breakpoint it's visible on. Only
- * fields that are actually set ever render; the whole block is skipped by
- * its caller (`hasVisibleDetails`) when nothing real exists. */
-function DetailsBlock({
+/** Compact Location + Links pass — replaces the old DetailsBlock, which
+ * wrapped a duplicate location line (already shown compactly inline with
+ * category in the identity block above) plus a handful of bare circular
+ * icon buttons inside a large bordered/shadowed card. On a Business with
+ * only one or two real links, that produced a mostly-empty card reading
+ * as unfinished — exactly the live-QA-reported bug. This renders ONLY
+ * real, entitled contact/social actions as a compact wrapping row of
+ * labeled pills — no card, no "Details" heading, no reserved/empty slots.
+ * Rendered twice (mobile's later page position, desktop's sticky rail)
+ * via the `className` prop rather than duplicated markup, same
+ * responsive technique as before. The caller (`hasContactActions`) skips
+ * this entirely when there's nothing real to show — no empty container
+ * ever renders, so page flow closes the gap naturally. */
+function BusinessLinksRow({
   business,
-  location,
   socialLinks,
   className,
 }: {
-  business: { phone: string | null; email: string | null; service_radius_miles: number | null };
-  location: string;
+  business: { phone: string | null; email: string | null };
   socialLinks: { href: string; label: string; icon: "instagram" | "globe" | "facebook" | "tiktok" }[];
   className: string;
 }) {
-  // Phone/email join the social links as the same ~44px circular icon
-  // buttons, in one horizontal wrapping row — a single compact contact
-  // strip instead of separate text lines + a separate icon row.
-  const contactLinks: { href: string; label: string; icon: ContactIcon; external: boolean }[] = [
-    ...(business.phone ? [{ href: `tel:${business.phone}`, label: business.phone, icon: "phone" as const, external: false }] : []),
-    ...(business.email ? [{ href: `mailto:${business.email}`, label: business.email, icon: "mail" as const, external: false }] : []),
-    ...socialLinks.map((l) => ({ ...l, external: true })),
+  // Phone/email join the social links as the same compact pill, in one
+  // horizontal wrapping row. Labels stay short ("Call"/"Email") so the
+  // row reads evenly regardless of how long the real number/address is —
+  // that real value is still there for assistive tech and on hover via
+  // aria-label/title, never lost, just not stretching the pill.
+  const actions: { href: string; label: string; title: string; icon: ContactIcon; external: boolean }[] = [
+    ...(business.phone
+      ? [{ href: `tel:${business.phone}`, label: "Call", title: business.phone, icon: "phone" as const, external: false }]
+      : []),
+    ...(business.email
+      ? [{ href: `mailto:${business.email}`, label: "Email", title: business.email, icon: "mail" as const, external: false }]
+      : []),
+    ...socialLinks.map((l) => ({ href: l.href, label: l.label, title: l.label, icon: l.icon, external: true })),
   ];
+  if (actions.length === 0) return null;
 
   return (
-    <section className={className}>
-      <h2 className="font-display text-sm font-bold uppercase tracking-wide text-ink/40">Details</h2>
-      {/* UI cleanup pass item 4: wrapped in a real card (white, thin
-          border, soft shadow) instead of plain text floating on the page.
-          Details polish pass: tighter padding/gaps, a stronger pill-badge
-          treatment for the map pin, and phone/email folded into the same
-          circular icon row as the social links below instead of their own
-          separate text lines — less empty space, one compact contact
-          strip. */}
-      <div className="mt-3 rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-        {location && (
-          <p className="flex items-center gap-2.5 text-sm text-ink/70">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
-              <PinGlyph className="h-4 w-4" />
-            </span>
-            <span>
-              {location}
-              {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
-            </span>
-          </p>
-        )}
-        {contactLinks.length > 0 && (
-          <div className={`flex flex-wrap items-center gap-2 ${location ? "mt-3 border-t border-black/[0.06] pt-3" : ""}`}>
-            {contactLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                {...(link.external ? { target: "_blank", rel: "noreferrer" } : {})}
-                aria-label={link.label}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700 transition hover:bg-findmi-100"
-              >
-                <ContactGlyph icon={link.icon} />
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+    <div className={`flex flex-wrap gap-2 ${className}`}>
+      {actions.map((action) => (
+        <a
+          key={action.label}
+          href={action.href}
+          {...(action.external ? { target: "_blank", rel: "noreferrer" } : {})}
+          title={action.title}
+          aria-label={action.title}
+          className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-white px-3.5 text-xs font-bold text-ink transition hover:border-findmi/40 hover:bg-findmi-50"
+        >
+          <span className="text-findmi-700">
+            <ContactGlyph icon={action.icon} />
+          </span>
+          {action.label}
+        </a>
+      ))}
+    </div>
   );
 }
 
@@ -916,20 +911,6 @@ function SocialGlyph({ icon }: { icon: "instagram" | "globe" | "facebook" | "tik
         strokeLinejoin="round"
       />
       <path d="M13 4c.4 2.3 2.2 4 4.5 4.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PinGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
 }
