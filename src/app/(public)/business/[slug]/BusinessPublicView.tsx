@@ -609,7 +609,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Find {business.name} Here</h2>
               <div className="mt-3 flex flex-col gap-2">
                 {appearances.slice(0, 3).map((a) => (
-                  <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
+                  <AppearanceCard
+                    key={a.id}
+                    appearance={a}
+                    eventSlug={a.event?.slug}
+                    analyticsContext={{ pageType: "business" }}
+                  />
                 ))}
                 {appearances.length > 3 && (
                   // Business Profile V2 — same zero-JS <details> disclosure
@@ -627,7 +632,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                     </summary>
                     <div className="mt-2 flex flex-col gap-2">
                       {appearances.slice(3).map((a) => (
-                        <AppearanceCard key={a.id} appearance={a} eventSlug={a.event?.slug} />
+                        <AppearanceCard
+                          key={a.id}
+                          appearance={a}
+                          eventSlug={a.event?.slug}
+                          analyticsContext={{ pageType: "business" }}
+                        />
                       ))}
                     </div>
                   </details>

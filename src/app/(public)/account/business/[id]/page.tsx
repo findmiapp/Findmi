@@ -912,10 +912,17 @@ export default async function ManageBusinessPage({
           {/* One quiet metadata line — plan emphasis, location, and the
               two secondary actions, separated by a plain middot rather
               than each wrapped in its own badge/pill. The separator is
-              CSS-generated (`:not(:first-child)`) so it tracks whichever
+              CSS-generated (`:not(:last-child)`) so it tracks whichever
               items actually render (location/slug are conditional)
-              without any array-building in the JSX itself. */}
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-ink/45 [&>*:not(:first-child)]:before:mr-1.5 [&>*:not(:first-child)]:before:text-ink/25 [&>*:not(:first-child)]:before:content-['·']">
+              without any array-building in the JSX itself. Attached via
+              `:after` on the PRECEDING item (not `:before` on the
+              following one) deliberately — a flex item's own
+              pseudo-element is part of that same atomic item, so
+              flex-wrap can only ever break BETWEEN items, never inside
+              one; gluing the dot to the end of the item before it makes
+              an orphaned leading "·" at the start of a wrapped line
+              structurally impossible. */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-ink/45 [&>*:not(:last-child)]:after:ml-1.5 [&>*:not(:last-child)]:after:text-ink/25 [&>*:not(:last-child)]:after:content-['·']">
             <span className={pro ? "font-semibold text-findmi-700" : ""}>{pro ? "Pro" : "Free"}</span>
             {businessGeographyLabel && <span>{businessGeographyLabel}</span>}
             {business.slug && (
