@@ -4,11 +4,15 @@
 // accept.
 //
 // Phase 1 covered page views, Save/Follow, Business contact/social
-// clicks, and Share. Phase 2A (this pass) adds viewport impressions,
-// entity clicks, Directions, Event CTA clicks, Product outbound clicks,
-// discovery-section attribution, and search/filter interactions — still
-// no generic "button_click": every name below represents one meaningful,
-// semantically distinct action. QR/experiential-reporting event names
+// clicks, and Share. Phase 2A added viewport impressions, entity clicks,
+// Directions, Event CTA clicks, Product outbound clicks, discovery-
+// section attribution, and search/filter interactions. Phase 2B (this
+// pass) adds exactly one new event — qr_scan — plus session acquisition
+// attribution (see lib/analytics/session.ts's findmi_acq cookie) that
+// rides along on every event's acquisition_source/acquisition_qr_
+// campaign_id columns, not a new taxonomy concept. Still no generic
+// "button_click", and no qr_click/qr_view/qr_open — one resolved request
+// to /q/[code] is exactly one qr_scan. Experiential-reporting event names
 // remain out of scope for a future pass.
 //
 // No dependency added for this — the validation this file needs (a fixed
@@ -34,6 +38,8 @@ export const ANALYTICS_EVENT_NAMES = [
   "search",
   "filter_change",
   "discovery_section_impression",
+  // Phase 2B addition:
+  "qr_scan",
 ] as const;
 export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];
 
@@ -96,6 +102,8 @@ export const ANALYTICS_PAGE_TYPES = [
   "businesses",
   "locations",
   "marketplace",
+  // Phase 2B — the QR resolution route itself (see src/app/q/[code]).
+  "qr",
 ] as const;
 export type AnalyticsPageType = (typeof ANALYTICS_PAGE_TYPES)[number];
 
@@ -109,6 +117,19 @@ export function isAnalyticsPageType(value: unknown): value is AnalyticsPageType 
 // through to the renderer rather than re-deriving it.
 export const ANALYTICS_ENTITY_ORIGINS = ["pinned", "auto"] as const;
 export type AnalyticsEntityOrigin = (typeof ANALYTICS_ENTITY_ORIGINS)[number];
+
+// Phase 2B — analytics_events.acquisition_source. Exactly one source
+// type exists in V1 (a QR scan establishing first-touch); the column and
+// this closed vocabulary are deliberately generic so a future UTM/
+// referrer-based first-touch source can be added later without a schema
+// change — see lib/analytics/session.ts's own note on why that's
+// explicitly NOT built this pass.
+export const ANALYTICS_ACQUISITION_SOURCES = ["qr"] as const;
+export type AnalyticsAcquisitionSource = (typeof ANALYTICS_ACQUISITION_SOURCES)[number];
+
+export function isAnalyticsAcquisitionSource(value: unknown): value is AnalyticsAcquisitionSource {
+  return typeof value === "string" && (ANALYTICS_ACQUISITION_SOURCES as readonly string[]).includes(value);
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

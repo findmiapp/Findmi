@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { resolveSessionId } from "@/lib/analytics/session";
+import { readAcquisition, resolveSessionId } from "@/lib/analytics/session";
 import { isRateLimited } from "@/lib/analytics/rateLimit";
+import { insertAnalyticsEvent } from "@/lib/analytics/serverTrack";
 import {
   clampText,
   isAnalyticsEventName,
@@ -74,9 +75,13 @@ export async function POST(request: NextRequest) {
 
   const metadata = sanitizeMetadata(body.metadata);
 
-  // session_id and user_id are deliberately NOT read from `body` at all —
-  // see the module doc comment above.
-  const [sessionId, supabase] = await Promise.all([resolveSessionId(), getServerSupabase()]);
+  // session_id, user_id, and acquisition are deliberately NOT read from
+  // `body` at all — see the module doc comment above and
+  // lib/analytics/session.ts's own note on acquisition spoofing. A
+  // client cannot claim to be QR-acquired (or claim any qr_campaign_id)
+  // by supplying it in the payload; both are resolved solely from
+  // server-verified cookies.
+  const [sessionId, supabase, acquisition] = await Promise.all([resolveSessionId(), getServerSupabase(), readAcquisition()]);
 
   if (isRateLimited(sessionId)) {
     return NextResponse.json({ error: "Too many events." }, { status: 429 });
@@ -89,7 +94,7 @@ export async function POST(request: NextRequest) {
   const admin = getAdminSupabase();
   if (!admin) return NextResponse.json({ error: "Server isn't configured." }, { status: 500 });
 
-  const { error } = await admin.from("analytics_events").insert({
+  const ok = await insertAnalyticsEvent(admin, {
     event_name: eventName,
     subject_type: clampText(body.subject_type, 64) ?? null,
     subject_id: optionalUuid(body.subject_id) ?? null,
@@ -110,10 +115,12 @@ export async function POST(request: NextRequest) {
     utm_source: clampText(body.utm_source, 256) ?? null,
     utm_medium: clampText(body.utm_medium, 256) ?? null,
     utm_campaign: clampText(body.utm_campaign, 256) ?? null,
+    acquisition_source: acquisition?.source ?? null,
+    acquisition_qr_campaign_id: acquisition?.qrCampaignId ?? null,
     metadata,
   });
 
-  if (error) {
+  if (!ok) {
     // Never surface the underlying DB error to the client — analytics
     // failures must stay invisible to the visitor either way (see the
     // client tracker), this just avoids leaking schema/internal detail.

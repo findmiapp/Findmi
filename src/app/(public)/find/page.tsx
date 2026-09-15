@@ -362,7 +362,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
               // card, never a scroller with nothing to scroll (no snap/
               // overflow-x wrapper, no fake peek).
               <div className="mt-2.5 max-w-sm">
-                <FindCarouselCard item={carouselItems[0]} />
+                <FindCarouselCard item={carouselItems[0]} position={1} />
               </div>
             ) : (
               // Native CSS scroll-snap horizontal carousel — same
@@ -390,9 +390,9 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
               // spacers themselves valid — and empty — snap stops).
               <div className="mt-2.5 flex gap-3 overflow-x-auto pb-1 -mx-4 sm:mx-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [scroll-snap-type:x_mandatory]">
                 <div className="w-4 shrink-0 sm:hidden" aria-hidden="true" />
-                {carouselItems.map((item) => (
+                {carouselItems.map((item, i) => (
                   <div key={item.id} className="w-[76vw] max-w-[320px] shrink-0 snap-start sm:w-72">
-                    <FindCarouselCard item={item} />
+                    <FindCarouselCard item={item} position={i + 1} />
                   </div>
                 ))}
                 <div className="w-4 shrink-0 sm:hidden" aria-hidden="true" />
@@ -404,8 +404,8 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
             <div className="mt-6">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">{SECTION_LABELS[when].more}</p>
               <div className="mt-2.5 flex flex-col gap-2">
-                {moreItems.map((item) => (
-                  <FindAppearanceRow key={item.id} item={item} />
+                {moreItems.map((item, i) => (
+                  <FindAppearanceRow key={item.id} item={item} position={i + 1} />
                 ))}
               </div>
             </div>
@@ -451,7 +451,7 @@ function findAppearanceTrackPayload(item: AppearanceFeedItem) {
   };
 }
 
-function FindCarouselCard({ item }: { item: AppearanceFeedItem }) {
+function FindCarouselCard({ item, position }: { item: AppearanceFeedItem; position?: number }) {
   const { label, live } = getTemporalLabel(item.start_at, item.end_at);
   const location = cityState(item.city, item.state);
   const dateAndPlace = [formatAppearanceDateRange(item.start_at, item.end_at, item.description), location]
@@ -462,6 +462,13 @@ function FindCarouselCard({ item }: { item: AppearanceFeedItem }) {
     <AnalyticsLink
       href={`/business/${item.business.slug}`}
       trackPayload={{ ...findAppearanceTrackPayload(item), placement: "carousel" }}
+      impressionPayload={{
+        ...findAppearanceTrackPayload(item),
+        event_name: "entity_impression",
+        placement: "carousel",
+        page_path: "/find",
+        ...(position != null ? { metadata: { rendered_position: position } } : {}),
+      }}
       className="group relative block aspect-[4/3] w-full overflow-hidden rounded-2xl bg-black/5 transition active:scale-[0.98]"
     >
       {item.business.cover_image_url ? (
@@ -506,7 +513,7 @@ function FindCarouselCard({ item }: { item: AppearanceFeedItem }) {
   );
 }
 
-function FindAppearanceRow({ item }: { item: AppearanceFeedItem }) {
+function FindAppearanceRow({ item, position }: { item: AppearanceFeedItem; position?: number }) {
   const { label: when, live } = getTemporalLabel(item.start_at, item.end_at);
   const location = cityState(item.city, item.state);
 
@@ -514,6 +521,13 @@ function FindAppearanceRow({ item }: { item: AppearanceFeedItem }) {
     <AnalyticsLink
       href={`/business/${item.business.slug}`}
       trackPayload={{ ...findAppearanceTrackPayload(item), placement: "list_row" }}
+      impressionPayload={{
+        ...findAppearanceTrackPayload(item),
+        event_name: "entity_impression",
+        placement: "list_row",
+        page_path: "/find",
+        ...(position != null ? { metadata: { rendered_position: position } } : {}),
+      }}
       className={`flex items-center gap-2.5 rounded-2xl border p-2.5 transition active:scale-[0.99] ${
         live ? "border-findmi/40 bg-findmi-50" : "border-black/5 bg-white hover:border-black/10"
       }`}
