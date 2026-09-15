@@ -20,6 +20,18 @@ export interface TabNavItem {
  * same `-mx-4 ... px-4 sm:mx-0 sm:px-0` bleed-to-edge trick AccountNav
  * uses so the scroll area reaches the viewport edge on small screens
  * without the whole page gaining horizontal scroll.
+ *
+ * Reachability fix (Location Gallery live-QA pass) — this row (7 items
+ * for Location, several for Event) reliably overflows a phone viewport,
+ * but used to hide the native scrollbar entirely with no other cue that
+ * more tabs existed past the visible ones — the exact same "mobile-safe
+ * but not mobile-correct" failure mode already documented and fixed once
+ * in AccountNav.tsx's own history (an overflow-x-auto strip there clipped
+ * Inbox off-screen with nothing hinting a user could scroll to it).
+ * Letting the browser's own scrollbar render restores that missing cue
+ * without changing the tab set, active-tab logic, or any tab's own href —
+ * scrolling itself already worked; only the total absence of an
+ * affordance to discover it is what's fixed here.
  */
 export default function TabNav({
   items,
@@ -33,7 +45,7 @@ export default function TabNav({
   return (
     <nav
       aria-label="Sections"
-      className="sticky top-0 z-10 -mx-4 flex gap-1.5 overflow-x-auto bg-paper/95 px-4 py-2 backdrop-blur [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
+      className="sticky top-0 z-10 -mx-4 flex gap-1.5 overflow-x-auto bg-paper/95 px-4 py-2 backdrop-blur sm:mx-0 sm:px-0"
     >
       {items.map((item) => {
         const active = item.key === activeKey;
