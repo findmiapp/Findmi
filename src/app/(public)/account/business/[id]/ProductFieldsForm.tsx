@@ -56,68 +56,89 @@ export default function ProductFieldsForm({
 }) {
   return (
     <form action={action} className="flex flex-col gap-2">
-      <input
-        type="text"
-        name="name"
-        required
-        defaultValue={defaultValues.name}
-        placeholder="Product name"
-        className={inputClass}
-      />
-      <textarea
-        name="description"
-        defaultValue={defaultValues.description}
-        placeholder="Description (optional)"
-        rows={3}
-        className={inputClass}
-      />
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-ink/60">Product name</span>
+        <input
+          type="text"
+          name="name"
+          required
+          defaultValue={defaultValues.name}
+          placeholder="e.g. Hand-poured candle"
+          className={inputClass}
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-ink/60">
+          Description <span className="font-normal text-ink/40">Optional</span>
+        </span>
+        <textarea name="description" defaultValue={defaultValues.description} rows={3} className={inputClass} />
+      </label>
       <MemberImageField
         businessId={businessId}
-        label="Product image (optional)"
+        label="Photo (optional)"
         name="image_url"
         defaultValue={defaultValues.image_url}
       />
-      <select name="category_id" defaultValue={defaultValues.category_id} className={inputClass}>
-        <option value="">No category</option>
-        {categories.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-ink/60">Category</span>
+        <select name="category_id" defaultValue={defaultValues.category_id} className={inputClass}>
+          <option value="">No category</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className="grid grid-cols-2 gap-2">
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-ink/60">Price</span>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            name="price"
+            defaultValue={defaultValues.price}
+            placeholder="Optional"
+            className={inputClass}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-ink/60">Type</span>
+          <select name="product_type" defaultValue={defaultValues.product_type} className={inputClass}>
+            <option value="product">Product</option>
+            <option value="service">Service</option>
+          </select>
+        </label>
+      </div>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-ink/60">
+          Price label <span className="font-normal text-ink/40">Optional</span>
+        </span>
         <input
-          type="number"
-          step="0.01"
-          min="0"
-          name="price"
-          defaultValue={defaultValues.price}
-          placeholder="Price (optional)"
+          type="text"
+          name="price_label"
+          defaultValue={defaultValues.price_label}
+          placeholder='e.g. "From $20" — used when there&rsquo;s no exact Price above'
           className={inputClass}
         />
-        <select name="product_type" defaultValue={defaultValues.product_type} className={inputClass}>
-          <option value="product">Product</option>
-          <option value="service">Service</option>
-        </select>
-      </div>
-      <input
-        type="text"
-        name="price_label"
-        defaultValue={defaultValues.price_label}
-        placeholder='Price label (optional, e.g. "From $20")'
-        className={inputClass}
-      />
-      <input
-        type="url"
-        name="external_purchase_url"
-        defaultValue={defaultValues.external_purchase_url}
-        placeholder="Purchase link (optional)"
-        className={inputClass}
-      />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-ink/60">
+          Purchase link <span className="font-normal text-ink/40">Optional</span>
+        </span>
+        <input
+          type="url"
+          name="external_purchase_url"
+          defaultValue={defaultValues.external_purchase_url}
+          placeholder="Where can customers buy this?"
+          className={inputClass}
+        />
+      </label>
       {showDistributionChoice && (
-        <fieldset className="mt-1 rounded-xl border border-black/10 p-3">
-          <legend className="px-1 text-xs font-semibold text-ink">Where Should This Product Appear?</legend>
-          <label className="mt-1 flex cursor-pointer items-start gap-2">
+        <div className="mt-1 flex flex-col gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink/35">Where should this appear?</span>
+          <label className="flex cursor-pointer items-start gap-2">
             <input
               type="radio"
               name="distribution"
@@ -126,13 +147,11 @@ export default function ProductFieldsForm({
               className="mt-1"
             />
             <span>
-              <span className="block text-sm font-medium text-ink">Catalog Only</span>
-              <span className="block text-xs text-ink/50">
-                Show This Product On Your Findmi Business Profile And Storefront Only.
-              </span>
+              <span className="block text-sm font-medium text-ink">Business profile only</span>
+              <span className="block text-xs text-ink/50">Shown on your Findmi business profile only.</span>
             </span>
           </label>
-          <label className="mt-2 flex cursor-pointer items-start gap-2">
+          <label className="flex cursor-pointer items-start gap-2">
             <input
               type="radio"
               name="distribution"
@@ -141,18 +160,18 @@ export default function ProductFieldsForm({
               className="mt-1"
             />
             <span>
-              <span className="block text-sm font-medium text-ink">Submit To Marketplace</span>
+              <span className="block text-sm font-medium text-ink">Submit to Findmi Marketplace</span>
               <span className="block text-xs text-ink/50">
-                Request Broader Placement Across Findmi Marketplace And Discovery. Marketplace Approval And
-                Commission Terms Apply.
+                Request broader placement across Findmi Marketplace and discovery. Marketplace approval and
+                commission terms apply.
               </span>
             </span>
           </label>
-        </fieldset>
+        </div>
       )}
       <button
         type="submit"
-        className="mt-1 rounded-full bg-findmi px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        className="mt-1 w-fit rounded-full bg-findmi px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
         {submitLabel}
       </button>

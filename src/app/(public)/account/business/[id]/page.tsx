@@ -654,14 +654,20 @@ export default async function ManageBusinessPage({
   // to default each product's edit form to its current category.
   //
   // Product Moderation pass — moderation_status/pending_changes now read
-  // too, purely for display: a "Pending Review" / "Live" / "Changes
-  // Pending Review" / "Rejected" / "Inactive" badge (displayState below)
-  // and, for a live product with a standing proposal, defaulting the Edit
-  // form to the PROPOSED values rather than the live ones (so the owner
-  // is editing their draft, not silently reverting it). Nothing here
-  // grants any write capability — createMemberProduct/updateMemberProduct
-  // (../actions.ts) are the only place moderation_status ever changes,
-  // fully server-side, regardless of what this page renders.
+  // too, purely for display, and, for a live product with a standing
+  // proposal, defaulting the Edit form to the PROPOSED values rather than
+  // the live ones (so the owner is editing their draft, not silently
+  // reverting it). Nothing here grants any write capability —
+  // createMemberProduct/updateMemberProduct (../actions.ts) are the only
+  // place moderation_status ever changes, fully server-side, regardless
+  // of what this page renders.
+  //
+  // Products V3 — the old per-axis displayState/marketplaceState string
+  // unions (rendered as two separate always-visible badges) are gone;
+  // productDisplayStatus (below the component) now derives ONE
+  // presentation-only label from moderationStatus/hasPendingChanges/
+  // marketplaceStatus/is_active directly, so this type only keeps the
+  // real underlying fields, never a pre-rendered display string.
   type OwnProduct = {
     id: string;
     name: string;
@@ -676,14 +682,12 @@ export default async function ManageBusinessPage({
     categoryId: string;
     moderationStatus: "pending_review" | "live" | "rejected";
     hasPendingChanges: boolean;
-    displayState: "Pending Review" | "Live" | "Changes Pending Review" | "Rejected" | "Inactive";
     editDefaults: ProductFieldValues;
     // Product Marketplace Distribution pass — SEPARATE from
-    // moderationStatus/displayState above, never merged with it: this is
-    // whether the product may appear in broader FindMi Marketplace/
-    // discovery surfaces, not whether its content is approved.
+    // moderationStatus above, never merged with it: this is whether the
+    // product may appear in broader FindMi Marketplace/discovery
+    // surfaces, not whether its content is approved.
     marketplaceStatus: "catalog_only" | "submitted" | "approved" | "rejected" | "paused";
-    marketplaceState: "Catalog Only" | "Marketplace Review Pending" | "Marketplace Approved" | "Marketplace Not Approved" | "Marketplace Paused";
   };
   let products: OwnProduct[] = [];
   let productCategories: Awaited<ReturnType<typeof getProductCategories>> = [];
@@ -714,17 +718,6 @@ export default async function ManageBusinessPage({
       const hasPendingChanges = moderationStatus === "live" && pendingChanges != null;
       const categoryId = categoryByProduct.get(p.id) ?? "";
 
-      const displayState: OwnProduct["displayState"] =
-        moderationStatus === "pending_review"
-          ? "Pending Review"
-          : moderationStatus === "rejected"
-            ? "Rejected"
-            : !p.is_active
-              ? "Inactive"
-              : hasPendingChanges
-                ? "Changes Pending Review"
-                : "Live";
-
       // Edit form defaults: the standing proposal's values when one
       // exists (falls back to the live value for any field the proposal
       // didn't include), otherwise the product's own current values.
@@ -745,16 +738,6 @@ export default async function ManageBusinessPage({
       };
 
       const marketplaceStatus = (p.marketplace_status ?? "catalog_only") as OwnProduct["marketplaceStatus"];
-      const marketplaceState: OwnProduct["marketplaceState"] =
-        marketplaceStatus === "submitted"
-          ? "Marketplace Review Pending"
-          : marketplaceStatus === "approved"
-            ? "Marketplace Approved"
-            : marketplaceStatus === "rejected"
-              ? "Marketplace Not Approved"
-              : marketplaceStatus === "paused"
-                ? "Marketplace Paused"
-                : "Catalog Only";
 
       return {
         ...p,
@@ -762,10 +745,8 @@ export default async function ManageBusinessPage({
         categoryId,
         moderationStatus,
         hasPendingChanges,
-        displayState,
         editDefaults,
         marketplaceStatus,
-        marketplaceState,
       };
     });
   }
@@ -833,6 +814,12 @@ export default async function ManageBusinessPage({
   // owner's typed input invisible.
   const addHasDraft = Boolean(
     add_title || add_date || add_start_time || add_end_time || add_venue_name || add_address || add_city || add_state || add_external_url || add_flyer_image_url
+  );
+  // Products V3 — same "reopen the composer on a rejected submission"
+  // rule as addHasDraft above, against createMemberProduct's own
+  // preservedFields (see ../actions.ts).
+  const addProductHasDraft = Boolean(
+    addProductName || addProductDescription || addProductImageUrl || addProductPrice || addProductPriceLabel || addProductExternalUrl || addProductCategoryId
   );
 
   const basePath = `/account/business/${id}`;
@@ -1443,179 +1430,186 @@ export default async function ManageBusinessPage({
         )}
 
         {/* ── Products ─────────────────────────────────────────────── */}
+        {/* ── Products ─────────────────────────────────────────────── */}
+        {/* Products V3 — same flat visual grammar as Command Center/Where
+            I'll Be: no outer card, a top-of-tab + Add composer (never
+            requiring a scroll past the whole catalog to reach it), flat
+            divided rows, ONE consolidated plain-English status per row
+            (see productDisplayStatus below — presentation-only, the real
+            moderation_status/marketplace_status two-axis model underneath
+            is completely unchanged and still fully detailed inside Edit).
+            Business logic untouched: createMemberProduct/
+            updateMemberProduct/setMemberProductActive/
+            submitProductToMarketplace/returnProductToCatalog are the
+            exact same actions as before. */}
         {activeTab === "products" &&
           (pro ? (
-            <div className={cardClass}>
-              <p className="font-display text-base font-bold tracking-tight text-ink">Products</p>
-              <p className="mt-1 text-sm text-ink/60">Show customers what you make, sell or offer.</p>
+            <div className="flex flex-col gap-5">
+              <details className="group" open={addProductHasDraft}>
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                  <div className="min-w-0">
+                    <p className="font-display text-base font-bold tracking-tight text-ink">
+                      {products.length > 0 ? "Products" : "What do you offer?"}
+                    </p>
+                    <p className="mt-1 text-sm text-ink/60">
+                      {products.length > 0
+                        ? "Manage what customers can discover from your business."
+                        : "Add what you sell, make or offer."}
+                    </p>
+                  </div>
+                  <span className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
+                    <span className="group-open:hidden">{products.length > 0 ? "+ Add" : "+ Add Product"}</span>
+                    <span className="hidden group-open:inline">Close</span>
+                  </span>
+                </summary>
 
-              {products.length > 0 ? (
-                <ul className="mt-4 flex flex-col gap-3">
-                  {products.map((p) => (
-                    <li key={p.id} className="rounded-2xl border border-black/10 p-3.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-start gap-3">
-                          {p.image_url && (
-                            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
-                              {/* eslint-disable-next-line @next/next/no-img-element -- small preview only, a live Storage URL */}
-                              <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                <div className="mt-4 rounded-2xl border border-black/10 p-4">
+                  <p className="text-sm font-bold text-ink">Add Product</p>
+                  <div className="mt-3">
+                    <ProductFieldsForm
+                      businessId={id}
+                      action={addProduct}
+                      categories={productCategories}
+                      defaultValues={{
+                        name: addProductName ?? "",
+                        description: addProductDescription ?? "",
+                        image_url: addProductImageUrl ?? null,
+                        price: addProductPrice ?? "",
+                        price_label: addProductPriceLabel ?? "",
+                        product_type: addProductType === "service" ? "service" : "product",
+                        external_purchase_url: addProductExternalUrl ?? "",
+                        category_id: addProductCategoryId ?? "",
+                      }}
+                      submitLabel="Add Product"
+                      showDistributionChoice
+                      distributionDefault={addProductDistribution === "marketplace" ? "marketplace" : "catalog_only"}
+                    />
+                  </div>
+                </div>
+              </details>
+
+              {products.length > 0 && (
+                <ul className="flex flex-col divide-y divide-black/[0.06]">
+                  {products.map((p) => {
+                    const status = productDisplayStatus(p);
+                    const priceLine = p.price != null ? `$${p.price}` : p.price_label || null;
+                    return (
+                      <li key={p.id} className="py-3 first:pt-0 last:pb-0">
+                        <details>
+                          <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                            <div className="flex min-w-0 items-center gap-3">
+                              {p.image_url && (
+                                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
+                                  {/* eslint-disable-next-line @next/next/no-img-element -- small preview only, a live Storage URL */}
+                                  <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
+                                <p className="mt-0.5 truncate text-xs text-ink/50">
+                                  {priceLine && (
+                                    <>
+                                      {priceLine}
+                                      {" · "}
+                                    </>
+                                  )}
+                                  <span className={PRODUCT_STATUS_TONE_CLASS[status.tone]}>{status.label}</span>
+                                </p>
+                              </div>
                             </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                            {/* Product Moderation pass — moderation state badge.
-                                Same priority order as displayState above:
-                                a product that's never been approved (or was
-                                rejected) says so regardless of is_active;
-                                only an approved/live product's own
-                                deactivation shows as "Inactive". */}
-                            <p
-                              className={`mt-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                                p.displayState === "Live"
-                                  ? "text-findmi-700"
-                                  : p.displayState === "Rejected"
-                                    ? "text-red-600"
-                                    : "text-amber-700"
-                              }`}
-                            >
-                              {p.displayState}
-                            </p>
-                            {/* Product Marketplace Distribution pass — a
-                                SECOND, separate badge from displayState
-                                above: distribution state, never merged with
-                                content moderation state. */}
-                            <p
-                              className={`mt-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                                p.marketplaceState === "Marketplace Approved"
-                                  ? "text-sky-700"
-                                  : p.marketplaceState === "Marketplace Not Approved"
-                                    ? "text-red-600"
-                                    : "text-ink/40"
-                              }`}
-                            >
-                              {p.marketplaceState}
-                            </p>
-                            {(p.price != null || p.price_label) && (
-                              <p className="mt-0.5 text-xs text-ink/60">{p.price_label || `$${p.price}`}</p>
-                            )}
-                          </div>
-                        </div>
-                        <MemberProductActiveButton
-                          action={setMemberProductActive.bind(null, id, p.id, !p.is_active)}
-                          isActive={p.is_active}
-                        />
-                      </div>
-
-                      {p.moderationStatus === "pending_review" && (
-                        <p className="mt-2 text-xs text-ink/50">
-                          This product will appear publicly after Findmi approves it.
-                        </p>
-                      )}
-                      {p.hasPendingChanges && (
-                        <p className="mt-2 text-xs text-ink/50">
-                          Your submitted changes are waiting on Findmi&rsquo;s approval — the version above stays
-                          publicly visible until then.
-                        </p>
-                      )}
-                      {p.moderationStatus === "rejected" && (
-                        <p className="mt-2 text-xs text-ink/50">
-                          Findmi didn&rsquo;t approve this product. Edit and resubmit it for another review.
-                        </p>
-                      )}
-
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
-                        <div className="mt-3 flex flex-col gap-3">
-                          {/* Product Management Completion pass — Marketplace
-                              Distribution now shown INSIDE Edit for every
-                              Product (new or existing, owner- or admin-
-                              created — there is no separate rendering path),
-                              not just at creation time. Owner-facing
-                              transitions only, separate from content
-                              moderation above: never offers "approved"/
-                              "paused" as something the owner can set
-                              directly — those only ever come from
-                              admin/products/actions.ts. */}
-                          <div className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
-                            <p className="text-xs font-semibold text-ink">Where This Product Appears</p>
-                            <p className="mt-1 text-xs text-ink/60">
-                              {p.marketplaceStatus === "catalog_only" &&
-                                "Catalog Only — shown on your Findmi business profile and storefront only."}
-                              {p.marketplaceStatus === "submitted" && "Marketplace Review Pending — awaiting Findmi's decision."}
-                              {p.marketplaceStatus === "approved" &&
-                                "Marketplace Approved — may also appear across Findmi Marketplace and discovery."}
-                              {p.marketplaceStatus === "rejected" &&
-                                "Marketplace Not Approved — still shown on your business profile and storefront."}
-                              {p.marketplaceStatus === "paused" &&
-                                "Marketplace Paused — temporarily out of Marketplace/discovery; still shown on your business profile."}
-                            </p>
-                            {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
-                              <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
-                                <button type="submit" className="text-xs font-semibold text-sky-700 hover:underline">
-                                  {p.marketplaceStatus === "rejected" ? "Resubmit To Marketplace" : "Submit To Marketplace"}
-                                </button>
-                              </form>
-                            )}
-                            {p.marketplaceStatus === "submitted" && (
-                              <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
-                                <button type="submit" className="text-xs font-semibold text-ink/60 hover:underline">
-                                  Cancel Submission
-                                </button>
-                              </form>
-                            )}
-                            {p.marketplaceStatus === "rejected" && (
-                              <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
-                                <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
-                                  Return To Catalog Only
-                                </button>
-                              </form>
-                            )}
-                            {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
-                              <p className="mt-1 text-xs text-ink/40">
-                                Marketplace placement is managed by Findmi and can&rsquo;t be changed here.
+                            <span className="shrink-0 text-xs font-semibold text-findmi-700">Edit</span>
+                          </summary>
+                          <div className="mt-3 flex flex-col gap-3">
+                            {p.moderationStatus === "pending_review" && (
+                              <p className="text-xs text-ink/50">
+                                This product will appear publicly after Findmi approves it.
                               </p>
                             )}
-                          </div>
+                            {p.hasPendingChanges && (
+                              <p className="text-xs text-ink/50">
+                                Your submitted changes are waiting on Findmi&rsquo;s approval — the version above
+                                stays publicly visible until then.
+                              </p>
+                            )}
+                            {p.moderationStatus === "rejected" && (
+                              <p className="text-xs text-ink/50">
+                                Findmi didn&rsquo;t approve this product. Edit and resubmit it for another review.
+                              </p>
+                            )}
 
-                          <ProductFieldsForm
-                            businessId={id}
-                            action={updateMemberProduct.bind(null, id, p.id)}
-                            categories={productCategories}
-                            defaultValues={p.editDefaults}
-                            submitLabel="Save"
+                            {/* Marketplace — Owner-facing transitions only,
+                                still fully separate from content moderation
+                                above: never offers "approved"/"paused" as
+                                something the owner can set directly — those
+                                only ever come from admin/products/actions.ts.
+                                Flattened from its own nested bordered box
+                                into a plain divider section — one composer
+                                boundary (the Edit form itself), not two. */}
+                            <div className="border-t border-black/10 pt-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">Marketplace</p>
+                              <p className="mt-1 text-xs text-ink/60">
+                                {p.marketplaceStatus === "catalog_only" && "Shown on your Findmi business profile only."}
+                                {p.marketplaceStatus === "submitted" && "Submitted — awaiting Findmi's decision."}
+                                {p.marketplaceStatus === "approved" &&
+                                  "Approved — may also appear across Findmi Marketplace and discovery."}
+                                {p.marketplaceStatus === "rejected" &&
+                                  "Not approved for Marketplace — still shown on your business profile."}
+                                {p.marketplaceStatus === "paused" &&
+                                  "Paused — temporarily out of Marketplace/discovery; still shown on your business profile."}
+                              </p>
+                              {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
+                                <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
+                                  <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                                    {p.marketplaceStatus === "rejected" ? "Resubmit to Marketplace" : "Submit to Marketplace"}
+                                  </button>
+                                </form>
+                              )}
+                              {p.marketplaceStatus === "submitted" && (
+                                <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
+                                  <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                                    Cancel Submission
+                                  </button>
+                                </form>
+                              )}
+                              {p.marketplaceStatus === "rejected" && (
+                                <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
+                                  <button type="submit" className="text-xs font-semibold text-ink/40 hover:underline">
+                                    Return to catalog only
+                                  </button>
+                                </form>
+                              )}
+                              {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
+                                <p className="mt-1 text-xs text-ink/40">
+                                  Marketplace placement is managed by Findmi and can&rsquo;t be changed here.
+                                </p>
+                              )}
+                            </div>
+
+                            <ProductFieldsForm
+                              businessId={id}
+                              action={updateMemberProduct.bind(null, id, p.id)}
+                              categories={productCategories}
+                              defaultValues={p.editDefaults}
+                              submitLabel="Save"
+                            />
+                          </div>
+                        </details>
+                        {/* Deactivate/Reactivate — a reversible lifecycle
+                            toggle, not a destructive delete (there is no
+                            owner-facing delete), so it stays at the row
+                            level rather than tucked inside Edit; kept
+                            visually secondary to Edit either way. */}
+                        <div className="mt-1.5">
+                          <MemberProductActiveButton
+                            action={setMemberProductActive.bind(null, id, p.id, !p.is_active)}
+                            isActive={p.is_active}
                           />
                         </div>
-                      </details>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
-              ) : (
-                <p className="mt-3 text-sm text-ink/50">No products yet.</p>
               )}
-
-              <div className="mt-5 border-t border-black/10 pt-4">
-                <p className="text-sm font-medium text-ink">Add Product</p>
-                <div className="mt-2">
-                  <ProductFieldsForm
-                    businessId={id}
-                    action={addProduct}
-                    categories={productCategories}
-                    defaultValues={{
-                      name: addProductName ?? "",
-                      description: addProductDescription ?? "",
-                      image_url: addProductImageUrl ?? null,
-                      price: addProductPrice ?? "",
-                      price_label: addProductPriceLabel ?? "",
-                      product_type: addProductType === "service" ? "service" : "product",
-                      external_purchase_url: addProductExternalUrl ?? "",
-                      category_id: addProductCategoryId ?? "",
-                    }}
-                    submitLabel="Add Product"
-                    showDistributionChoice
-                    distributionDefault={addProductDistribution === "marketplace" ? "marketplace" : "catalog_only"}
-                  />
-                </div>
-              </div>
             </div>
           ) : (
             <UpgradeLockedTab
@@ -1626,7 +1620,6 @@ export default async function ManageBusinessPage({
             />
           ))}
 
-        {/* ── FindMi Here ──────────────────────────────────────────── */}
         {/* ── Where I'll Be / Findmi Here ─────────────────────────────
             V3 — replaces the old giant enclosing card (+ two equally-
             weighted "OPTION 1 / OPTION 2" forms permanently occupying the
@@ -2544,6 +2537,45 @@ function OverviewSection({
     </div>
   );
 }
+
+/** Products V3 — presentation-only consolidation of the two genuinely
+ * independent status axes (content moderation vs. marketplace
+ * distribution — see OwnProduct above and ../actions.ts's own doc
+ * comments) into the ONE truthful word a product row needs. Nothing
+ * here reads or writes anything new: it's a pure function over the same
+ * moderationStatus/hasPendingChanges/marketplaceStatus/is_active fields
+ * already computed above. The underlying two-axis data model is
+ * completely unchanged — full marketplaceStatus detail remains available
+ * inside Edit (its own sentence + Submit/Cancel/Return actions); this
+ * only decides
+ * what ONE label the collapsed row shows, in the priority order an
+ * owner would actually want to act on: inactive first (nothing else
+ * matters if it's off), then anything content-moderation blocks public
+ * visibility at all, then a standing content edit, then marketplace
+ * distribution state, then the default healthy "Live". */
+function productDisplayStatus(p: {
+  is_active: boolean;
+  moderationStatus: "pending_review" | "live" | "rejected";
+  hasPendingChanges: boolean;
+  marketplaceStatus: "catalog_only" | "submitted" | "approved" | "rejected" | "paused";
+}): { label: string; tone: "quiet" | "positive" | "attention" | "negative" } {
+  if (!p.is_active) return { label: "Inactive", tone: "quiet" };
+  if (p.moderationStatus === "rejected") return { label: "Not approved", tone: "negative" };
+  if (p.moderationStatus === "pending_review") return { label: "Pending review", tone: "attention" };
+  if (p.hasPendingChanges) return { label: "Changes pending", tone: "attention" };
+  if (p.marketplaceStatus === "submitted") return { label: "Marketplace pending", tone: "attention" };
+  if (p.marketplaceStatus === "approved") return { label: "Marketplace approved", tone: "positive" };
+  if (p.marketplaceStatus === "paused") return { label: "Marketplace paused", tone: "attention" };
+  if (p.marketplaceStatus === "rejected") return { label: "Marketplace not approved", tone: "negative" };
+  return { label: "Live", tone: "quiet" };
+}
+
+const PRODUCT_STATUS_TONE_CLASS: Record<ReturnType<typeof productDisplayStatus>["tone"], string> = {
+  quiet: "text-ink/50",
+  positive: "text-findmi-700 font-semibold",
+  attention: "text-findmi-700 font-semibold",
+  negative: "text-red-700/80 font-semibold",
+};
 
 /** Command Center V1 — one shared row for both the Today and Upcoming
  * sections, rendering a DashboardAppearance (lib/business-dashboard.ts)
