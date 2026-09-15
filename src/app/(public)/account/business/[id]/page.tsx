@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -10,7 +11,6 @@ import { isBusinessPro } from "@/lib/entitlements";
 import { getCategories, getMarketAreaLabel, getProductCategories } from "@/lib/data";
 import {
   buildNeedsAttentionItems,
-  getCompletedAppearancesThisMonthCount,
   resolveDashboardAppearances,
   type DashboardAppearance,
   type DashboardAppearanceSource,
@@ -627,7 +627,6 @@ export default async function ManageBusinessPage({
   );
   const todayAppearances = dashboardAppearances.filter((a) => a.isToday);
   const upcomingAppearances = dashboardAppearances.filter((a) => !a.isToday).slice(0, 5);
-  const completedThisMonth = await getCompletedAppearancesThisMonthCount(admin, id);
   const unreadInquiryCount = inquiryList.filter((i) => i.unread).length;
   // "Materially affects discovery" — the same fields a visitor would
   // actually need to find/trust this business, not every optional field
@@ -970,8 +969,24 @@ export default async function ManageBusinessPage({
         )}
 
         {/* ── Overview ─────────────────────────────────────────────── */}
+        {/* Command Center V2 — the old Overview was six stacked
+            rounded/bordered/shadowed cards (Findmi URL, Today, Needs
+            Attention, Upcoming, At a Glance, Quick Actions) — the exact
+            "component library demo" reading Analytics' own Visual System
+            Pass 1 already moved away from (see PerformanceTab.tsx's
+            Section() doc comment). This reuses that same grammar: a
+            section title, its content, a thin top divider, the next
+            section — no enclosing box except where a boundary is doing
+            real work (DashboardAppearanceRow's own per-item border stays,
+            since each row is a genuinely distinct, interactive item).
+            Sections that would have nothing to say (no items happening
+            today, nothing needing attention) are omitted outright rather
+            than rendered as an empty card — silence is the successful
+            state. At a Glance and Quick Actions are retired entirely:
+            their numbers/links were redundant with sections below or with
+            the primary Business nav directly above this content. */}
         {activeTab === "overview" && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             {created && (
               <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
                 Business created! You can start building your profile below.
@@ -1024,24 +1039,93 @@ export default async function ManageBusinessPage({
               </div>
             )}
 
-            {/* FindMi Global Handle Registry — deliberately early on
-                Overview (this pass's own "not buried deep in settings"
-                requirement), never mandatory: a business with no username
-                keeps working at its existing /business/[slug] URL. This is
-                THE BUSINESS's public identity, never presented as the
-                account owner's own — never auto-suggested from the
-                business name either.
+            {/* TODAY — the highest-urgency operational information. Omitted
+                entirely (not a compact empty cue either) when nothing is
+                happening today: no action is required, and Coming Up right
+                below already answers "what's next." */}
+            {todayAppearances.length > 0 && (
+              <OverviewSection title="Today">
+                <ul className="flex flex-col gap-3">
+                  {todayAppearances.map((a) => (
+                    <DashboardAppearanceRow key={a.id} appearance={a} showDate={false} />
+                  ))}
+                </ul>
+              </OverviewSection>
+            )}
+
+            {/* NEEDS ATTENTION — every item is derived from data already on
+                this page (see buildNeedsAttentionItems); nothing here is a
+                fabricated alert, and an item simply stops appearing once
+                its underlying condition is resolved. A compact divided
+                list, not one bordered card per item — hidden completely
+                when there's nothing to surface (no "you're all caught up"
+                filler). */}
+            {needsAttention.length > 0 && (
+              <OverviewSection title="Needs Attention">
+                <ul className="flex flex-col divide-y divide-black/[0.06]">
+                  {needsAttention.map((item) => (
+                    <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <p className="min-w-0 text-sm text-ink/75">{item.message}</p>
+                      <Link
+                        href={item.actionHref}
+                        className="shrink-0 text-xs font-bold uppercase tracking-wide text-amber-800 underline underline-offset-2"
+                      >
+                        {item.actionLabel}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </OverviewSection>
+            )}
+
+            {/* COMING UP — a PREVIEW (next 3), not the full Schedule. Full
+                management still lives in the existing Where I'll Be tab —
+                no separate calendar UI built here. Unlike Today, this
+                section always renders (even a business with nothing
+                upcoming gets one compact line) since "where am I going
+                next" deserves a direct answer either way. */}
+            <OverviewSection title="Coming Up" action={{ href: `${basePath}?tab=findmi-here`, label: "Where I'll Be" }}>
+              {upcomingAppearances.length > 0 ? (
+                <ul className="flex flex-col gap-3">
+                  {upcomingAppearances.slice(0, 3).map((a) => (
+                    <DashboardAppearanceRow key={a.id} appearance={a} showDate />
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink/50">No upcoming appearances.</p>
+              )}
+            </OverviewSection>
+
+            {/* ANALYTICS SNAPSHOT — deferred to a contextual link rather
+                than real numbers. getOwnerBusinessPerformance computes the
+                FULL Analytics tab (multiple queries plus a current+
+                previous-period analytics_events scan, trend/discovery/
+                appearance/product/QR breakdowns) — calling it here merely
+                to read three headline numbers would add that entire cost
+                to Overview, the most-visited tab, on every request. Per
+                this pass's own performance rule, that's not a fair trade
+                for a snapshot, so no parallel lightweight analytics query
+                was built either — this stays a real, prominent link into
+                the one existing Analytics implementation instead. */}
+            <OverviewSection title="Analytics" action={{ href: `${basePath}?tab=performance`, label: "View Analytics" }}>
+              <p className="text-sm text-ink/50">
+                Impressions, Profile Views and Actions for {business.name}.
+              </p>
+            </OverviewSection>
+
+            {/* FindMi Global Handle Registry — the header above already
+                shows View Profile, so it isn't repeated here; this section
+                exists only for what the header can't do (claim/change the
+                handle, Copy Link) — see FindmiUrlCard/LockedFindmiUrl,
+                which already render their own "Findmi URL" label, so no
+                second OverviewSection title is added on top of it.
                 Free/Pro Entitlement pass — choosing/changing this handle
-                is Pro-only (updateBusinessHandle now enforces it
-                server-side via requireProBusinessMember). For Free this
-                renders a read-only variant instead of the editable
-                FindmiUrlCard (shared with Event/Location Managers,
-                untouched, since only Business's handle is plan-gated): an
-                existing handle keeps working and stays copyable, just not
-                editable, and the same /upgrade/pro?business={id} link
-                every other locked tab already uses is the only path to
-                unlock it — no new modal/paywall. */}
-            <div className={cardClass}>
+                is Pro-only (updateBusinessHandle enforces it server-side
+                via requireProBusinessMember); Free renders a read-only
+                variant instead, still copyable, with the same
+                /upgrade/pro?business={id} link every other locked tab
+                uses. */}
+            <div className="border-t border-black/[0.06] pt-5">
               {pro ? (
                 <FindmiUrlCard
                   entityType="business"
@@ -1053,148 +1137,6 @@ export default async function ManageBusinessPage({
               ) : (
                 <LockedFindmiUrl businessId={id} currentHandle={businessHandle} />
               )}
-            </div>
-
-            {/* Command Center V1 — Today is the most prominent operational
-                section: appearances (standalone or Event-linked, both
-                unified via lib/business-dashboard.ts) actually happening
-                today, with a "Live now" state when the current time falls
-                inside the window. */}
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Today</p>
-              {todayAppearances.length > 0 ? (
-                <ul className="mt-3 flex flex-col gap-3">
-                  {todayAppearances.map((a) => (
-                    <DashboardAppearanceRow key={a.id} appearance={a} showDate={false} />
-                  ))}
-                </ul>
-              ) : (
-                <div className="mt-2">
-                  <p className="text-sm text-ink/50">Nothing scheduled today.</p>
-                  {upcomingAppearances[0] && (
-                    <p className="mt-1 text-xs text-ink/40">
-                      Next: {formatDateShort(upcomingAppearances[0].startAt)}
-                      {upcomingAppearances[0].venueName || upcomingAppearances[0].city
-                        ? ` · ${[upcomingAppearances[0].venueName, upcomingAppearances[0].city].filter(Boolean).join(", ")}`
-                        : ""}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Needs Attention — every item is derived from data already
-                on this page (see buildNeedsAttentionItems); nothing here
-                is a fabricated alert, and an item simply stops appearing
-                once its underlying condition is resolved. */}
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Attention</p>
-              {needsAttention.length === 0 ? (
-                <p className="mt-2 text-sm text-ink/50">You&rsquo;re all caught up.</p>
-              ) : (
-                <ul className="mt-3 flex flex-col gap-2">
-                  {needsAttention.map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3"
-                    >
-                      <p className="text-sm text-amber-900/90">{item.message}</p>
-                      <Link
-                        href={item.actionHref}
-                        className="shrink-0 text-xs font-bold uppercase tracking-wide text-amber-800 underline underline-offset-2"
-                      >
-                        {item.actionLabel}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {/* Upcoming — next ~5 appearances chronologically, standalone
-                and Event-linked in one unified list. Full management
-                still lives in the existing FindMi Here tab — no separate
-                calendar UI built here. */}
-            <div className={cardClass}>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Upcoming</p>
-                <Link
-                  href={`${basePath}?tab=findmi-here`}
-                  className="text-xs font-semibold text-findmi-700 underline underline-offset-2"
-                >
-                  View Full Schedule
-                </Link>
-              </div>
-              {upcomingAppearances.length > 0 ? (
-                <ul className="mt-3 flex flex-col gap-3">
-                  {upcomingAppearances.map((a) => (
-                    <DashboardAppearanceRow key={a.id} appearance={a} showDate />
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-sm text-ink/50">You haven&rsquo;t added where you&rsquo;ll be yet.</p>
-              )}
-            </div>
-
-            {/* At a Glance — Owner Shell V3 (Section 9): retired the
-                "Performance Snapshot" name, which read as a second,
-                competing Analytics surface. These are plain operational
-                counts, never analytics — Followers dropped from this row
-                since it now lives in Analytics' own Audience section
-                (showing it here too would just be the same number twice). */}
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">At a Glance</p>
-              <div className="mt-3 grid grid-cols-3 gap-2.5">
-                <MetricTile label="Upcoming" value={dashboardAppearances.length} />
-                <MetricTile label="Completed This Month" value={completedThisMonth} />
-                <MetricTile label="Products" value={products.length} />
-              </div>
-            </div>
-
-            {/* Quick Actions — the most common workflows, every link a
-                real existing route/tab (no dead buttons). */}
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Quick Actions</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <Link
-                  href={`${basePath}?tab=performance`}
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
-                >
-                  View Analytics
-                </Link>
-                <Link
-                  href={`${basePath}?tab=findmi-here`}
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
-                >
-                  + Add Where You&rsquo;ll Be
-                </Link>
-                <Link
-                  href={`${basePath}?tab=profile`}
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
-                >
-                  Edit Profile
-                </Link>
-                <Link
-                  href={`${basePath}?tab=products`}
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
-                >
-                  Manage Products
-                </Link>
-                {business.slug && (
-                  <Link
-                    href={`/business/${business.slug}`}
-                    className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
-                  >
-                    View Public Profile
-                  </Link>
-                )}
-                <Link
-                  href="/events"
-                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
-                >
-                  Browse Events
-                </Link>
-              </div>
             </div>
           </div>
         )}
@@ -2523,6 +2465,36 @@ function AdminElevatedActionNotice({ businessId }: { businessId: string }) {
   );
 }
 
+/** Command Center V2 — the flat section grammar Analytics established
+ * (PerformanceTab.tsx's own private Section()): a title, an optional
+ * right-aligned link, content, and a thin top divider as the section
+ * boundary — no enclosing card. Reimplemented locally rather than
+ * imported/exported, since Analytics isn't otherwise touched this pass
+ * and its Section() is a small, private, single-file primitive. */
+function OverviewSection({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: { href: string; label: string };
+  children: ReactNode;
+}) {
+  return (
+    <div className="border-t border-black/[0.06] pt-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-base font-bold tracking-tight text-ink">{title}</h2>
+        {action && (
+          <Link href={action.href} className="shrink-0 text-xs font-semibold text-findmi-700 underline underline-offset-2">
+            {action.label}
+          </Link>
+        )}
+      </div>
+      <div className="mt-3">{children}</div>
+    </div>
+  );
+}
+
 /** Command Center V1 — one shared row for both the Today and Upcoming
  * sections, rendering a DashboardAppearance (lib/business-dashboard.ts)
  * without any standalone-vs-Event-linked branching of its own — that
@@ -2571,16 +2543,6 @@ function DashboardAppearanceRow({ appearance, showDate }: { appearance: Dashboar
         </Link>
       </div>
     </li>
-  );
-}
-
-/** Command Center V1 — one compact At a Glance number. */
-function MetricTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-black/5 bg-mist/30 p-3">
-      <p className="font-display text-xl font-bold text-ink">{value}</p>
-      <p className="mt-0.5 text-[11px] font-medium text-ink/50">{label}</p>
-    </div>
   );
 }
 
