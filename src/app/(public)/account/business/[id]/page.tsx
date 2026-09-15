@@ -238,9 +238,11 @@ export default async function ManageBusinessPage({
     add_category_id?: string;
     add_distribution?: string;
     location_id?: string;
+    schedule_limit?: string;
   }>;
 }) {
   const { id } = await params;
+  const rawSearchParams = await searchParams;
   const {
     tab: tabParam,
     range: rangeParam,
@@ -252,6 +254,7 @@ export default async function ManageBusinessPage({
     pro_payment: proPayment,
     editing,
     location_id: preselectedLocationId,
+    schedule_limit: scheduleLimitParam,
     add_title,
     add_date,
     add_start_time,
@@ -281,7 +284,7 @@ export default async function ManageBusinessPage({
     add_external_purchase_url: addProductExternalUrl,
     add_category_id: addProductCategoryId,
     add_distribution: addProductDistribution,
-  } = await searchParams;
+  } = rawSearchParams;
   const tab = tabParam && VALID_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   const supabase = await getServerSupabase();
@@ -534,10 +537,32 @@ export default async function ManageBusinessPage({
   // picker (EventSearchPicker.tsx) can filter/display each independently,
   // per that pass's own "Event Name / Date/time / Venue" requirement.
   let requestOptions: { value: string; name: string; dateLabel?: string; venueLabel?: string }[] = [];
+  // Where I'll Be Schedule Scale Bound pass — see below.
+  let scheduleHasMore = false;
+  const SCHEDULE_PAGE_SIZE = 25;
+  let scheduleLimitUsed = SCHEDULE_PAGE_SIZE;
 
   {
     const nowIso = new Date().toISOString();
-    const [{ data: appearanceRows }, { data: ebStatusRows }, { data: eobStatusRows }] = await Promise.all([
+    // Schedule Scale Bound pass — the Where I'll Be list itself is now
+    // bounded (a business with 100+ appearances was eagerly rendering a
+    // full AppearanceFieldsForm — incl. MemberImageField and
+    // AccountRelationField — per row, even collapsed; see the Schedule
+    // Scalability audit). Cumulative expansion, not offset paging: each
+    // "Load more" click re-requests a bigger schedule_limit from the very
+    // start of the list (soonest first, unchanged ordering) rather than a
+    // separate next page, so the owner never loses the rows already
+    // visible. `schedule_limit` is untrusted input — normalized to a
+    // positive multiple of SCHEDULE_PAGE_SIZE and capped well below
+    // anything that could recreate an effectively unbounded query.
+    const SCHEDULE_LIMIT_CEILING = SCHEDULE_PAGE_SIZE * 10;
+    const requestedScheduleLimit = Number.parseInt(scheduleLimitParam ?? "", 10);
+    const scheduleLimit =
+      Number.isFinite(requestedScheduleLimit) && requestedScheduleLimit > 0
+        ? Math.min(Math.ceil(requestedScheduleLimit / SCHEDULE_PAGE_SIZE) * SCHEDULE_PAGE_SIZE, SCHEDULE_LIMIT_CEILING)
+        : SCHEDULE_PAGE_SIZE;
+
+    const [{ data: appearanceRows }, { data: linkedIdRows }, { data: ebStatusRows }, { data: eobStatusRows }] = await Promise.all([
       admin
         .from("appearances")
         .select(
@@ -546,17 +571,34 @@ export default async function ManageBusinessPage({
         .eq("business_id", id)
         .neq("status", "canceled")
         .gt("end_at", nowIso)
-        .order("start_at", { ascending: true }),
+        .order("start_at", { ascending: true })
+        // Request one row past the page — its presence alone tells us
+        // whether "Load more" should show, with no separate count query.
+        .limit(scheduleLimit + 1),
+      // The Add picker's already-linked-event/occurrence exclusion (below)
+      // needs every linked id regardless of the display bound above, or an
+      // Event the business already appears at could wrongly reappear as
+      // available to add once the schedule list is capped. Two scalar
+      // columns only, never rendered — a different cost profile than the
+      // bounded row fetch above, so this stays unbounded on purpose (the
+      // Add flow itself, and its separate platform-wide Event/Occurrence
+      // queries below, are an explicitly out-of-scope concern this pass —
+      // see the Schedule Scalability audit).
+      admin.from("appearances").select("event_id, event_occurrence_id").eq("business_id", id).neq("status", "canceled"),
       admin.from("event_businesses").select("event_id, status").eq("business_id", id),
       admin.from("event_occurrence_businesses").select("occurrence_id, status").eq("business_id", id),
     ]);
+
+    scheduleHasMore = (appearanceRows ?? []).length > scheduleLimit;
+    scheduleLimitUsed = scheduleLimit;
+    const visibleAppearanceRows = (appearanceRows ?? []).slice(0, scheduleLimit);
 
     const statusByEvent = new Map((ebStatusRows ?? []).map((r) => [r.event_id, r.status as EventParticipationStatus]));
     const statusByOccurrence = new Map(
       (eobStatusRows ?? []).map((r) => [r.occurrence_id, r.status as EventParticipationStatus])
     );
 
-    appearances = (appearanceRows ?? []).map((a) => ({
+    appearances = visibleAppearanceRows.map((a) => ({
       ...a,
       location: Array.isArray(a.location) ? (a.location[0] ?? null) : a.location,
       participationStatus: a.event_occurrence_id
@@ -566,8 +608,8 @@ export default async function ManageBusinessPage({
           : null,
     }));
 
-    const linkedEventIds = new Set(appearances.filter((a) => !a.event_occurrence_id).map((a) => a.event_id));
-    const linkedOccurrenceIds = new Set(appearances.map((a) => a.event_occurrence_id).filter((x): x is string => Boolean(x)));
+    const linkedEventIds = new Set((linkedIdRows ?? []).filter((r) => !r.event_occurrence_id).map((r) => r.event_id));
+    const linkedOccurrenceIds = new Set((linkedIdRows ?? []).map((r) => r.event_occurrence_id).filter((x): x is string => Boolean(x)));
 
     // Picker: upcoming, non-demo events not already on this business's
     // own appearance calendar. An event with occurrences is only ever
@@ -820,6 +862,18 @@ export default async function ManageBusinessPage({
   );
 
   const basePath = `/account/business/${id}`;
+  // Schedule Scale Bound pass — "Load more" preserves every current query
+  // param (tab, editing, any in-flight add_*/edit_* draft round-trip,
+  // etc.) and only overrides schedule_limit, so it never drops owner
+  // page state the way a hand-built "?tab=findmi-here&schedule_limit=…"
+  // link would.
+  const scheduleLoadMoreParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(rawSearchParams)) {
+    if (typeof value === "string") scheduleLoadMoreParams.set(key, value);
+  }
+  scheduleLoadMoreParams.set("tab", "findmi-here");
+  scheduleLoadMoreParams.set("schedule_limit", String(scheduleLimitUsed + SCHEDULE_PAGE_SIZE));
+  const scheduleLoadMoreHref = `${basePath}?${scheduleLoadMoreParams.toString()}`;
   // Owner Shell V3 — the Business switcher only ever carries the current
   // tab over to another Business when that destination is universally
   // safe (exists, renders something meaningful, and needs no per-Business
@@ -1778,6 +1832,21 @@ export default async function ManageBusinessPage({
                   );
                 })}
               </ul>
+            )}
+
+            {/* Schedule Scale Bound pass — a quiet continuation control,
+                not a pagination bar: no page numbers, no result count,
+                just "there's more" for the businesses that actually have
+                more. Invisible for every business under the initial 25 —
+                exactly the "essentially zero visible change" this pass
+                requires for ordinary vendors. */}
+            {scheduleHasMore && (
+              <Link
+                href={scheduleLoadMoreHref}
+                className="text-center text-xs font-semibold text-findmi-700 hover:underline"
+              >
+                Load more
+              </Link>
             )}
           </div>
         )}
