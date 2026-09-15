@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { formatDateShort } from "@/lib/format";
 import {
   OWNER_PERFORMANCE_RANGES,
@@ -9,17 +10,18 @@ import {
 import type { BusinessFollowerSummary } from "@/lib/business-followers";
 import SupabaseImage from "@/components/SupabaseImage";
 
-// Findmi Owner Performance V1 (Phase 3.1 mobile/semantics correction) —
-// presentational-only. Every number here comes pre-aggregated from
-// lib/analytics/ownerPerformance.ts; this file never touches
-// analytics_events itself. Deliberately terse, mobile-first (max-w-md,
-// same as every other tab on this page — see page.tsx's own wrapper):
-// the owner should read the top of this tab in seconds, not scroll a
-// dashboard. No chart library — the one trend below is a plain inline
-// SVG bar row, with a compact single-point fallback (section 8).
-const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6";
-const sectionLabelClass = "text-xs font-bold uppercase tracking-wide text-ink/40";
-
+// Findmi Owner Analytics — presentational-only. Every number here comes
+// pre-aggregated from lib/analytics/ownerPerformance.ts; this file never
+// touches analytics_events itself, and Visual System Pass 1 changes
+// NOTHING about what's computed — only how it's presented.
+//
+// Visual System Pass 1 — this used to be seven stacked white
+// rounded/bordered/shadowed cards (a "component library demo" reading,
+// not a report). Replaced with ONE consistent grammar: a section title
+// (occasionally a short explanation), its content, a thin divider, the
+// next section — see Section() below. A card now appears only where a
+// boundary communicates something real: the sparse/empty state (an
+// exceptional state, not ordinary content).
 const RANGE_TABS: { value: OwnerPerformanceRange; label: string }[] = [
   { value: "7", label: "7 Days" },
   { value: "30", label: "30 Days" },
@@ -33,12 +35,27 @@ function plural(n: number, word: string): string {
 
 /** Only the nonzero metrics, joined into one compact line — "1
  * impression" alone when everything else is zero, never a noisy string
- * of zeros (task section 7). */
+ * of zeros. */
 function compactMetricLine(parts: { count: number; word: string }[]): string {
   return parts
     .filter((p) => p.count > 0)
     .map((p) => plural(p.count, p.word))
     .join(" · ");
+}
+
+/** The one repeated unit of the Analytics grammar — a title (font-display,
+ * dark, NOT the tiny-gray-uppercase treatment every metric label uses, so
+ * a section header actually reads as a header), an optional one-line
+ * explanation, then its content. A top divider is the section boundary —
+ * no enclosing box. */
+function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return (
+    <div className="border-t border-black/[0.06] pt-5">
+      <h2 className="font-display text-base font-bold tracking-tight text-ink">{title}</h2>
+      {description && <p className="mt-0.5 text-xs text-ink/45">{description}</p>}
+      <div className="mt-3">{children}</div>
+    </div>
+  );
 }
 
 export default function PerformanceTab({
@@ -52,47 +69,47 @@ export default function PerformanceTab({
   basePath: string;
   range: OwnerPerformanceRange;
   businessName: string;
-  /** Owner Shell V3, Section 7 — already fetched unconditionally by
-   * page.tsx (previously shown in Overview's own "Performance Snapshot"
-   * Followers tile); threaded through as a plain prop rather than
-   * expanding ownerPerformance.ts's own query/aggregation, since this
-   * pass's own instruction is "without adding queries or complexity." */
+  /** Already fetched unconditionally by page.tsx; threaded through as a
+   * plain prop for the Audience section rather than expanding
+   * ownerPerformance.ts's own query/aggregation. */
   followerSummary: BusinessFollowerSummary;
 }) {
+  const nonZeroTrendPoints = data.trend.points.filter((p) => p.value > 0);
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Section 10 — the tab strip above already establishes "you're on
-          Performance"; a second standalone "PERFORMANCE" label here was
-          redundant. The range selector is now the first thing shown. */}
-      <div className="flex gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {RANGE_TABS.map((r) => (
-          <Link
-            key={r.value}
-            href={`${basePath}?tab=performance&range=${r.value}`}
-            className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition ${
-              r.value === range ? "bg-findmi text-white" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
-            }`}
-          >
-            {r.label}
-          </Link>
-        ))}
+    <div className="flex flex-col gap-5">
+      {/* Range control — a quiet segmented text control, deliberately much
+          lighter than the primary Business navigation above it: no filled
+          capsules, just weight/tint on the selected value. */}
+      <div className="-mx-1 flex gap-1 overflow-x-auto text-xs font-semibold [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {RANGE_TABS.map((r) => {
+          const active = r.value === range;
+          return (
+            <Link
+              key={r.value}
+              href={`${basePath}?tab=performance&range=${r.value}`}
+              aria-current={active ? "true" : undefined}
+              className={`shrink-0 rounded-md px-2.5 py-1.5 transition ${
+                active ? "bg-findmi-50 text-findmi-700" : "text-ink/40 hover:bg-black/[0.03] hover:text-ink/70"
+              }`}
+            >
+              {r.label}
+            </Link>
+          );
+        })}
       </div>
 
-      {/* Headline always renders, even at zero, so Analytics never looks
-          like a dead/broken page. Owner Shell V3, Section 10 — no funnel-
-          stage eyebrows (Discovery/Interest/Action): just the plain
-          numbers a Business owner actually asked for. */}
-      <div className={cardClass}>
-        <p className={sectionLabelClass}>{data.rangeLabel}</p>
-        <div className="mt-3 flex flex-col gap-4">
-          <HeadlineRow label="Impressions" metric={data.headline.impressions} />
-          <HeadlineRow label="Profile Views" metric={data.headline.profileViews} />
-          <HeadlineRow label="Actions" metric={data.headline.actionsTaken} />
-        </div>
+      {/* Headline — three numbers directly on the canvas, no enclosing
+          card. The range control immediately above already shows the
+          selected period, so it isn't repeated as a heading here. */}
+      <div className="grid grid-cols-3 gap-3">
+        <HeadlineStat value={data.headline.impressions.value} unit="Impression" changeLabel={data.headline.impressions.changeLabel} />
+        <HeadlineStat value={data.headline.profileViews.value} unit="Profile View" changeLabel={data.headline.profileViews.changeLabel} />
+        <HeadlineStat value={data.headline.actionsTaken.value} unit="Action" changeLabel={data.headline.actionsTaken.changeLabel} />
       </div>
 
       {data.isEmpty ? (
-        <div className={cardClass}>
+        <div className="rounded-2xl bg-black/[0.02] p-4">
           <p className="text-sm font-semibold text-ink">Your performance starts here</p>
           <p className="mt-1.5 text-sm text-ink/60">
             Findmi is now measuring how people discover and interact with {businessName}. Activity will appear here
@@ -102,123 +119,125 @@ export default function PerformanceTab({
           <p className="mt-2 text-xs font-semibold text-ink/40">No activity recorded in this period yet.</p>
         </div>
       ) : (
-        <>
+        <div>
           {/* ── Trend ── */}
-          <ProfileViewsTrend data={data} />
+          {nonZeroTrendPoints.length > 0 && (
+            <Section title={`${data.trend.metricLabel} Over Time`}>
+              {nonZeroTrendPoints.length === 1 ? (
+                <div>
+                  <p className="font-display text-2xl font-bold tracking-tight text-ink">
+                    {plural(nonZeroTrendPoints[0].value, "profile view")}
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink/45">{nonZeroTrendPoints[0].label}</p>
+                </div>
+              ) : (
+                <TrendBars points={data.trend.points} />
+              )}
+            </Section>
+          )}
 
           {/* ── Actions — meaningful things a visitor DID (Save, Follow,
-              Directions, Share, RSVP, etc.) — compact grid, zero-value
-              items already filtered out server-side (progressive
-              disclosure). ── */}
+              Directions, Share, RSVP, etc.). Plain typography grid, not a
+              field of gray tiles — zero-value items already filtered out
+              server-side. ── */}
           {data.secondaryActions.length > 0 && (
-            <div className={cardClass}>
-              <p className={sectionLabelClass}>Actions</p>
-              <div className="mt-3 grid grid-cols-2 gap-2.5">
+            <Section title="Actions">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3.5 sm:grid-cols-3">
                 {data.secondaryActions.map((item) => (
-                  <MetricTile key={item.label} label={item.label} value={item.count} />
+                  <div key={item.label}>
+                    <p className="font-display text-xl font-bold tracking-tight text-ink">{item.count.toLocaleString()}</p>
+                    <p className="text-xs text-ink/50">{item.label}</p>
+                  </div>
                 ))}
               </div>
-            </div>
+            </Section>
           )}
 
-          {/* ── Link Clicks — OUTBOUND clicks to your own channels
-              (Website/Instagram/Facebook/TikTok/Phone/Email). Owner Shell
-              V3, Section 10: this is never "how people reached you" —
-              these are clicks AWAY from Findmi, after someone was already
-              looking at your Business here. ── */}
+          {/* ── Link Clicks — OUTBOUND clicks to the Business's own
+              channels (Website/Instagram/Facebook/TikTok/Phone/Email),
+              never "how people reached you". A ranked list, not
+              proportional bars: at small counts a near-full-width bar for
+              "1" implies a magnitude the number itself doesn't support. ── */}
           {data.contactChannels.length > 0 && (
-            <div className={cardClass}>
-              <p className={sectionLabelClass}>Link Clicks</p>
-              <div className="mt-3 flex flex-col gap-2">
+            <Section title="Link Clicks">
+              <div className="flex flex-col divide-y divide-black/[0.06]">
                 {data.contactChannels.map((c) => (
-                  <BarRow key={c.channel} label={c.label} value={c.count} max={data.contactChannels[0].count} />
+                  <div key={c.channel} className="flex items-center justify-between py-2 text-sm">
+                    <span className="font-medium text-ink">{c.label}</span>
+                    <span className="font-semibold text-ink/60">{c.count.toLocaleString()}</span>
+                  </div>
                 ))}
               </div>
-            </div>
+            </Section>
           )}
 
-          {/* ── Audience (Owner Shell V3, Section 7) — Followers folded
-              in as a compact secondary section, reusing the exact data
-              (and privacy rule: only named for the subset with a public
-              Findmi profile) the old standalone Followers tab already
-              showed. No new query — followerSummary is passed straight
-              through from page.tsx, which already fetched it for every
-              tab render. ── */}
+          {/* ── Audience — Followers folded in as a compact, deliberately
+              quieter secondary section (smaller numeral than the headline
+              stats above) — same data/privacy rule the old standalone
+              Followers tab used, no new query. "(legacy)" replaced with
+              plain "email-only": that's the actual, useful distinction
+              for an owner (no Findmi account behind it), not a label
+              about Findmi's own implementation history. ── */}
           {followerSummary.totalCount > 0 && (
-            <div className={cardClass}>
-              <p className={sectionLabelClass}>Audience</p>
-              <p className="mt-2 font-display text-2xl font-bold tracking-tight text-ink">
-                {plural(followerSummary.totalCount, "Follower")}
-              </p>
+            <Section title="Audience">
+              <p className="font-display text-xl font-bold tracking-tight text-ink">{plural(followerSummary.totalCount, "Follower")}</p>
               <p className="mt-0.5 text-xs text-ink/45">
                 {followerSummary.accountCount} with a Findmi account
-                {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount} email-only (legacy)`}
+                {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount} email-only`}
               </p>
               {followerSummary.profiles.length > 0 && (
                 <div className="mt-3 flex flex-col gap-2">
                   {followerSummary.profiles.map((p) => (
-                    <Link
-                      key={p.username}
-                      href={`/user/${p.username}`}
-                      className="flex items-center gap-2.5 rounded-xl border border-black/5 p-2 transition hover:bg-black/[0.02]"
-                    >
-                      <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-mist">
+                    <Link key={p.username} href={`/user/${p.username}`} className="flex items-center gap-2.5 transition hover:opacity-70">
+                      <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-mist">
                         {p.avatar_url && (
-                          <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="32px" className="object-cover" />
+                          <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="28px" className="object-cover" />
                         )}
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-ink">{p.display_name || `@${p.username}`}</p>
-                        {p.display_name && <p className="truncate text-xs text-ink/45">@{p.username}</p>}
                       </div>
                     </Link>
                   ))}
                 </div>
               )}
-            </div>
+            </Section>
           )}
 
           {/* ── Discovery Sources — WHERE Findmi displayed this Business/
-              content inside Findmi. See Appearance Analytics below for
-              WHICH Appearance (Section 14 — orthogonal questions about
-              the same raw event, never double-counted into each other). ── */}
+              content inside Findmi. Click rate is secondary metadata, not
+              a badge competing with the source name for attention. See
+              Appearance Analytics below for WHICH Appearance — orthogonal
+              questions about the same raw event, never double-counted. ── */}
           {data.discoverySources.length > 0 && (
-            <div className={cardClass}>
-              <p className={sectionLabelClass}>Discovery Sources</p>
-              <p className="mt-0.5 text-xs text-ink/45">Where you appeared across Findmi.</p>
-              <div className="mt-3 flex flex-col gap-3">
+            <Section title="Discovery Sources" description="Where you appeared across Findmi.">
+              <div className="flex flex-col divide-y divide-black/[0.06]">
                 {data.discoverySources.map((s) => (
-                  <div key={s.label} className="flex items-center justify-between gap-3 border-b border-black/5 pb-3 last:border-0 last:pb-0">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-ink">{s.label}</p>
-                      <p className="text-xs text-ink/45">
-                        {plural(s.impressions, "impression")}
-                        {s.clicks > 0 && ` · ${plural(s.clicks, "click")}`}
-                      </p>
-                    </div>
-                    {s.clickRate !== null && (
-                      <span className="shrink-0 rounded-full bg-findmi-50 px-2.5 py-1 text-[11px] font-bold text-findmi-700">
-                        {Math.round(s.clickRate * 100)}% Click Rate
-                      </span>
-                    )}
+                  <div key={s.label} className="py-2.5">
+                    <p className="text-sm font-semibold text-ink">{s.label}</p>
+                    <p className="mt-0.5 text-xs text-ink/45">
+                      {plural(s.impressions, "impression")}
+                      {s.clicks > 0 && ` · ${plural(s.clicks, "click")}`}
+                    </p>
+                    {s.clickRate !== null && <p className="mt-0.5 text-[11px] text-ink/35">{Math.round(s.clickRate * 100)}% click rate</p>}
                   </div>
                 ))}
               </div>
-            </div>
+            </Section>
           )}
 
           {/* ── Appearance Analytics — first-class, never folded into
-              Event reporting. An impression only means a consumer SAW
-              the Appearance on Findmi, never that they physically
-              attended (Phase 3.1's own known-limitation note: The Native
-              Rose's current Appearance impressions honestly resolve as
-              far as "Appearance Discovery" in Discovery Sources above —
-              see ownerPerformance.ts; not changed this pass). ── */}
+              Event reporting. Flattened from card-inside-card into a
+              plain divided list — each row is informational, not itself
+              a tappable object, so it doesn't need its own rounded
+              boundary. An impression only means a consumer SAW the
+              Appearance on Findmi, never that they physically attended
+              (known limitation, unchanged: some impressions still
+              honestly resolve only as far as "Appearance Discovery"
+              above — see ownerPerformance.ts). ── */}
           {data.appearances.length > 0 && (
-            <div className={cardClass}>
-              <p className={sectionLabelClass}>Appearance Analytics</p>
-              <p className="mt-0.5 text-xs text-ink/45">See which upcoming stops are getting attention.</p>
-              <div className="mt-3 flex flex-col gap-2.5">
+            <Section title="Appearance Analytics" description="See which upcoming stops are getting attention.">
+              <div className="flex flex-col divide-y divide-black/[0.06]">
                 {data.appearances.map((a) => {
                   const metricLine = compactMetricLine([
                     { count: a.impressions, word: "impression" },
@@ -228,26 +247,25 @@ export default function PerformanceTab({
                     { count: a.qrScans, word: "QR scan" },
                   ]);
                   return (
-                    <div key={a.id} className="rounded-2xl border border-black/5 p-3">
+                    <div key={a.id} className="py-2.5">
                       <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
-                      <p className="text-xs text-ink/45">
+                      <p className="mt-0.5 text-xs text-ink/45">
                         {formatDateShort(a.startAt)}
                         {a.eventName && ` · ${a.eventName}`}
                         {a.location && ` · ${a.location}`}
                       </p>
-                      {metricLine && <p className="mt-1 text-xs text-ink/60">{metricLine}</p>}
+                      {metricLine && <p className="mt-0.5 text-xs text-ink/60">{metricLine}</p>}
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </Section>
           )}
 
           {/* ── Product Analytics ── */}
           {data.products.length > 0 && (
-            <div className={cardClass}>
-              <p className={sectionLabelClass}>Product Analytics</p>
-              <div className="mt-3 flex flex-col gap-2.5">
+            <Section title="Product Analytics">
+              <div className="flex flex-col divide-y divide-black/[0.06]">
                 {data.products.map((p) => {
                   const metricLine = compactMetricLine([
                     { count: p.impressions, word: "impression" },
@@ -257,35 +275,43 @@ export default function PerformanceTab({
                     { count: p.saves, word: "save" },
                   ]);
                   return (
-                    <div key={p.id} className="rounded-2xl border border-black/5 p-3">
+                    <div key={p.id} className="py-2.5">
                       <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                      {metricLine && <p className="mt-1 text-xs text-ink/60">{metricLine}</p>}
+                      {metricLine && <p className="mt-0.5 text-xs text-ink/60">{metricLine}</p>}
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </Section>
           )}
 
           {/* ── QR Analytics — never a causal-conversion claim. ── */}
           {data.qr && (
-            <div className={cardClass}>
-              <p className={sectionLabelClass}>QR Analytics</p>
-              <div className="mt-3 grid grid-cols-3 gap-2.5">
-                <MetricTile label="QR Scans" value={data.qr.totalScans} />
-                <MetricTile label="Unique Visitors" value={data.qr.uniqueSessions} />
-                <MetricTile label="Actions From QR Visitors" value={data.qr.actionsFromQr} />
+            <Section title="QR Analytics">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="font-display text-xl font-bold tracking-tight text-ink">{data.qr.totalScans.toLocaleString()}</p>
+                  <p className="text-xs text-ink/50">Scans</p>
+                </div>
+                <div>
+                  <p className="font-display text-xl font-bold tracking-tight text-ink">{data.qr.uniqueSessions.toLocaleString()}</p>
+                  <p className="text-xs text-ink/50">Unique Visitors</p>
+                </div>
+                <div>
+                  <p className="font-display text-xl font-bold tracking-tight text-ink">{data.qr.actionsFromQr.toLocaleString()}</p>
+                  <p className="text-xs text-ink/50">Actions</p>
+                </div>
               </div>
 
               {data.qrCampaigns.length > 0 && (
-                <div className="mt-4 flex flex-col gap-2.5 border-t border-black/5 pt-4">
+                <div className="mt-4 flex flex-col divide-y divide-black/[0.06] border-t border-black/[0.06]">
                   {data.qrCampaigns.map((c) => (
-                    <div key={c.id} className="flex items-center justify-between gap-3">
+                    <div key={c.id} className="flex items-center justify-between gap-3 py-2.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-ink">{c.name}</p>
                         {c.placement && <p className="text-xs text-ink/45">{c.placement}</p>}
                       </div>
-                      <p className="shrink-0 text-right text-xs text-ink/60">
+                      <p className="shrink-0 text-right text-xs text-ink/55">
                         {c.scans.toLocaleString()} scans
                         <br />
                         {c.uniqueVisitors.toLocaleString()} visitors · {c.actions.toLocaleString()} actions
@@ -294,77 +320,35 @@ export default function PerformanceTab({
                   ))}
                 </div>
               )}
-            </div>
+            </Section>
           )}
-        </>
+        </div>
       )}
     </div>
   );
 }
 
-function HeadlineRow({ label, metric }: { label: string; metric: OwnerPerformanceMetric }) {
+/** One headline number — `unit` is the SINGULAR form ("Impression",
+ * "Profile View", "Action"); pluralized here from the real value so "1
+ * Profile View" reads correctly instead of a static, always-plural
+ * label. No funnel-stage eyebrow (Discovery/Interest/Action) — just the
+ * plain number an owner asked for. */
+function HeadlineStat({ value, unit, changeLabel }: { value: number; unit: string; changeLabel: string | null }) {
   return (
     <div>
-      <div className="flex items-baseline gap-2">
-        <p className="font-display text-3xl font-bold tracking-tight text-ink">{metric.value.toLocaleString()}</p>
-        <p className="text-sm text-ink/50">{label}</p>
-      </div>
-      {metric.changeLabel && (
+      <p className="font-display text-3xl font-bold tracking-tight text-ink">{value.toLocaleString()}</p>
+      <p className="mt-0.5 text-xs text-ink/50">
+        {unit}
+        {value === 1 ? "" : "s"}
+      </p>
+      {changeLabel && (
         <p
-          className={`mt-0.5 text-xs font-semibold ${
-            metric.changeLabel.startsWith("+") ? "text-findmi-700" : metric.changeLabel.startsWith("-") ? "text-ink/50" : "text-ink/40"
+          className={`mt-1 text-[11px] font-semibold ${
+            changeLabel.startsWith("+") ? "text-findmi-700" : changeLabel.startsWith("-") ? "text-ink/45" : "text-ink/35"
           }`}
         >
-          {metric.changeLabel}
+          {changeLabel}
         </p>
-      )}
-    </div>
-  );
-}
-
-function MetricTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl bg-black/[0.03] px-3 py-2.5">
-      <p className="font-display text-lg font-bold tracking-tight text-ink">{value.toLocaleString()}</p>
-      <p className="text-[11px] text-ink/50">{label}</p>
-    </div>
-  );
-}
-
-function BarRow({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = max > 0 ? Math.max(6, Math.round((value / max) * 100)) : 0;
-  return (
-    <div className="flex items-center gap-3">
-      <p className="w-20 shrink-0 truncate text-xs font-semibold text-ink/70">{label}</p>
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/[0.04]">
-        <div className="h-full rounded-full bg-findmi" style={{ width: `${pct}%` }} />
-      </div>
-      <p className="w-8 shrink-0 text-right text-xs font-semibold text-ink/60">{value}</p>
-    </div>
-  );
-}
-
-/** Section 8 — a bar-chart trend with only one non-zero bucket renders as
- * one bar filling the whole plot width (barWidth = 100 / points.length,
- * so a short/no-activity window looks like a rendering defect, not a
- * chart). Below two non-zero points, show a compact single-value state
- * instead; the normal bar row only renders once there's a real trend to
- * show. Zero non-zero points is handled upstream (the whole card is
- * omitted by its own caller when every bucket is zero). */
-function ProfileViewsTrend({ data }: { data: OwnerPerformanceData }) {
-  const nonZero = data.trend.points.filter((p) => p.value > 0);
-  if (nonZero.length === 0) return null;
-
-  return (
-    <div className={cardClass}>
-      <p className={sectionLabelClass}>{data.trend.metricLabel} Over Time</p>
-      {nonZero.length === 1 ? (
-        <div className="mt-2">
-          <p className="font-display text-2xl font-bold tracking-tight text-ink">{plural(nonZero[0].value, "profile view")}</p>
-          <p className="text-xs text-ink/45">{nonZero[0].label}</p>
-        </div>
-      ) : (
-        <TrendBars points={data.trend.points} />
       )}
     </div>
   );
@@ -372,16 +356,17 @@ function ProfileViewsTrend({ data }: { data: OwnerPerformanceData }) {
 
 /** No chart library — a plain, dependency-free inline SVG bar row.
  * Deliberately simple: readable at a glance on a ~390px screen, not a
- * zoomable/hoverable analytics widget. Only rendered by ProfileViewsTrend
- * once there are 2+ non-zero buckets to actually compare. */
+ * zoomable/hoverable analytics widget. Only rendered once there are 2+
+ * non-zero buckets to actually compare (a single-bucket trend renders
+ * as a compact value+date instead — see the caller). */
 function TrendBars({ points }: { points: { label: string; value: number }[] }) {
   const max = Math.max(1, ...points.map((p) => p.value));
   const width = 100;
   const height = 40;
   const barWidth = width / points.length;
   return (
-    <div className="mt-3">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-24 w-full" preserveAspectRatio="none" role="img" aria-label={`${points.length}-point trend`}>
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-20 w-full" preserveAspectRatio="none" role="img" aria-label={`${points.length}-point trend`}>
         {points.map((p, i) => {
           const barHeight = (p.value / max) * (height - 4);
           return (

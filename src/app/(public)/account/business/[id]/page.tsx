@@ -16,7 +16,16 @@ import {
   type DashboardAppearanceSource,
 } from "@/lib/business-dashboard";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
-import TabNav, { type TabNavItem } from "@/components/TabNav";
+// Visual System Pass 1 — the Business Manager renders its own lightweight
+// text-tab navigation directly below (Section 5 of this pass) rather than
+// the shared pill-styled TabNav component; TabNavItem's shape (key/label)
+// is small enough to define locally instead of importing an unused
+// component just for its type, and this way Event/Location Managers
+// (TabNav's other two callers) are left completely untouched.
+interface TabNavItem {
+  key: string;
+  label: string;
+}
 import AccountNav from "../../AccountNav";
 import {
   addAppearanceFromEvent,
@@ -833,57 +842,53 @@ export default async function ManageBusinessPage({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
 
-      {/* Admin Manage-As Foundation — persistent, unmissable on every tab.
-          Never impersonation: the founder's own admin session is the
-          actor throughout (see lib/permissions.ts's requireMembership) —
-          this banner exists precisely so that's never ambiguous. */}
+      {/* Admin Manage-As Foundation — persistent, unmissable on every tab,
+          but Visual System Pass 1 shrinks it to a single compact line: the
+          safety signal (founder can't forget they're elevated) doesn't
+          need a giant bordered alert card to do its job. Never
+          impersonation: the founder's own admin session is the actor
+          throughout (see lib/permissions.ts's requireMembership). */}
       {isAdminElevated && (
-        <div className="mx-auto mb-4 max-w-md rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-bold text-amber-800">
-            Admin mode — you are managing {business.name} with elevated access.
-          </p>
-          <Link
-            href={`/admin/businesses/${id}`}
-            className="mt-1.5 inline-block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
-          >
-            Exit Admin Mode
+        <div className="mx-auto mb-3 flex max-w-md items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-xs">
+          <span className="truncate font-semibold text-amber-800">Admin mode · Managing {business.name}</span>
+          <Link href={`/admin/businesses/${id}`} className="shrink-0 font-bold text-amber-800 underline underline-offset-2 hover:text-amber-900">
+            Exit
           </Link>
         </div>
       )}
 
-      {/* Command Center V1 — compact business context, shown above every
-          tab (not just Overview) so it always orients the owner to which
-          business they're managing. Logo/Area/Market are purely
-          presentational reads already fetched above; no new plan logic. */}
-      <div className="mx-auto flex max-w-md items-start gap-3">
+      {/* Business identity — a compact product header, not a dashboard
+          card: no enclosing box, no "Manage Business" eyebrow (redundant
+          with AccountNav's own active Business pill), Plan read as plain
+          emphasis text rather than a badge on every metadata item. */}
+      <div className="mx-auto flex max-w-md items-center gap-3">
         {business.logo_url ? (
           <SupabaseImage
             src={business.logo_url}
             alt=""
-            width={48}
-            height={48}
-            className="h-12 w-12 shrink-0 rounded-2xl border border-black/5 object-cover"
+            width={44}
+            height={44}
+            className="h-11 w-11 shrink-0 rounded-xl border border-black/5 object-cover"
           />
         ) : (
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-findmi-50 font-display text-lg font-bold text-findmi-700">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-findmi-50 font-display text-base font-bold text-findmi-700">
             {business.name.charAt(0).toUpperCase()}
           </div>
         )}
-        <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Manage Business</p>
-          <div className="mt-0.5 flex items-center gap-1">
-            <h1 className="truncate font-display text-2xl font-bold tracking-tight text-ink">{business.name}</h1>
-            {/* Owner Shell V3 — persistent Business switcher (Section 12).
-                Never shown for exactly one managed Business (the name
-                stays plain, non-interactive text) or for a pure admin-
-                elevated session (managedBusinesses is always empty
-                there — see its own fetch above). Native <details> —
-                keyboard-operable (Enter/Space) with zero client JS. */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <h1 className="truncate font-display text-xl font-bold tracking-tight text-ink">{business.name}</h1>
+            {/* Owner Shell V3 — persistent Business switcher. Never shown
+                for exactly one managed Business (the name stays plain,
+                non-interactive text) or for a pure admin-elevated session
+                (managedBusinesses is always empty there). Native
+                <details> — keyboard-operable (Enter/Space) with zero
+                client JS. */}
             {showSwitcher && (
               <details className="group relative shrink-0">
                 <summary
                   aria-label="Switch business"
-                  className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full text-ink/40 transition hover:bg-black/[0.05] hover:text-ink [&::-webkit-details-marker]:hidden"
+                  className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full text-ink/35 transition hover:bg-black/[0.05] hover:text-ink [&::-webkit-details-marker]:hidden"
                 >
                   <ChevronGlyph className="h-4 w-4 transition-transform group-open:rotate-180" />
                 </summary>
@@ -904,33 +909,48 @@ export default async function ManageBusinessPage({
               </details>
             )}
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span
-              className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                pro ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/60"
-              }`}
-            >
-              {pro ? "Pro" : "Free"} Plan
-            </span>
-            {businessGeographyLabel && <span className="text-xs text-ink/50">{businessGeographyLabel}</span>}
+          {/* One quiet metadata line — plan emphasis, location, and the
+              two secondary actions, separated by a plain middot rather
+              than each wrapped in its own badge/pill. The separator is
+              CSS-generated (`:not(:first-child)`) so it tracks whichever
+              items actually render (location/slug are conditional)
+              without any array-building in the JSX itself. */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-ink/45 [&>*:not(:first-child)]:before:mr-1.5 [&>*:not(:first-child)]:before:text-ink/25 [&>*:not(:first-child)]:before:content-['·']">
+            <span className={pro ? "font-semibold text-findmi-700" : ""}>{pro ? "Pro" : "Free"}</span>
+            {businessGeographyLabel && <span>{businessGeographyLabel}</span>}
             {business.slug && (
-              <Link href={`/business/${business.slug}`} className="text-xs font-semibold text-findmi-700 underline underline-offset-2">
-                View Public Profile →
+              <Link href={`/business/${business.slug}`} className="font-semibold text-ink/55 hover:text-ink">
+                View Profile
               </Link>
             )}
-            {/* Owner Shell V3 — Settings (Section 6): visually secondary,
-                never a primary pill, always discoverable from the one
-                header row shown on every tab. */}
-            <Link href={`${basePath}?tab=settings`} className="text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink">
+            <Link href={`${basePath}?tab=settings`} className="font-semibold text-ink/55 hover:text-ink">
               Settings
             </Link>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto mt-5 max-w-md">
-        <TabNav items={visibleTabs} activeKey={activeTab} basePath={basePath} />
-      </div>
+      {/* Primary Business navigation — plain text tabs with a restrained
+          selected indicator (a Findmi Aqua underline), not a row of filled
+          gray pills. Inactive destinations recede in color, not size, so
+          tap targets stay generous without visual weight. */}
+      <nav aria-label="Business sections" className="mx-auto mt-5 flex max-w-md gap-5 overflow-x-auto border-b border-black/[0.06] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {visibleTabs.map((t) => {
+          const active = t.key === activeTab;
+          return (
+            <Link
+              key={t.key}
+              href={`${basePath}?tab=${t.key}`}
+              aria-current={active ? "page" : undefined}
+              className={`shrink-0 whitespace-nowrap border-b-2 py-2.5 text-sm transition ${
+                active ? "border-findmi font-bold text-ink" : "border-transparent font-medium text-ink/40 hover:text-ink/70"
+              }`}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <div className="mx-auto mt-5 max-w-md">
         {error && (
@@ -1188,7 +1208,7 @@ export default async function ManageBusinessPage({
           <div className="flex flex-col gap-4">
           <div className={cardClass}>
             <form action={profileAction} className="flex flex-col gap-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Business Basics</p>
+              <p className="font-display text-base font-bold tracking-tight text-ink">Business Basics</p>
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
                 <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
@@ -1308,35 +1328,39 @@ export default async function ManageBusinessPage({
             </form>
           </div>
 
-          {/* ── Gallery (Owner Shell V3 — consolidated into Profile as
-              its own section; same MemberGalleryField/updateBusinessGallery
-              action, same Pro gate, unchanged) ──────────────────────── */}
-          {pro ? (
+          {/* ── Gallery + Links & Contact (Owner Shell V3 — consolidated
+              into Profile). Visual System Pass 1, Section 17: a Free
+              owner previously saw these as two back-to-back, near-
+              identical "Available with Findmi Pro" cards — now ONE
+              combined locked card covers both, described together;
+              nothing about entitlements/actions changed, only how the
+              locked state is presented. Same MemberGalleryField/
+              updateBusinessGallery and Pro gate for Gallery, same fields/
+              updateBusinessLinks/Announcement block for Links, both
+              unchanged. ──────────────────────────────────────────── */}
+          {!pro && (
+            <UpgradeLockedTab
+              businessId={id}
+              tabKey="profile"
+              description="Unlock a photo gallery, contact info, Facebook/TikTok, and a live announcement for your Business."
+              isAdminElevated={isAdminElevated}
+            />
+          )}
+          {pro && (
             <div className={cardClass}>
               <form action={galleryAction} className="flex flex-col gap-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
+                <p className="font-display text-base font-bold tracking-tight text-ink">Gallery</p>
                 <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
                 <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
                   Save Gallery
                 </button>
               </form>
             </div>
-          ) : (
-            <UpgradeLockedTab
-              businessId={id}
-              tabKey="profile"
-              description="Show off your business with additional photos."
-              isAdminElevated={isAdminElevated}
-            />
           )}
-
-          {/* ── Links & Contact (Owner Shell V3 — consolidated into
-              Profile as its own section; same fields/updateBusinessLinks
-              action/Pro gate/Announcement block, unchanged) ──────────── */}
-          {pro ? (
+          {pro && (
             <div className={cardClass}>
               <form action={linksAction} className="flex flex-col gap-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
+                <p className="font-display text-base font-bold tracking-tight text-ink">Contact &amp; Links</p>
                 {/* Free Basic Profile Editing pass — Website/Instagram
                     moved to the Business Basics section above (both tiers
                     edit them there now); this section keeps only what's
@@ -1428,13 +1452,6 @@ export default async function ManageBusinessPage({
                 </button>
               </form>
             </div>
-          ) : (
-            <UpgradeLockedTab
-              businessId={id}
-              tabKey="profile"
-              description="Add public contact info, Facebook/TikTok, and a live announcement."
-              isAdminElevated={isAdminElevated}
-            />
           )}
           </div>
         )}
@@ -1443,7 +1460,7 @@ export default async function ManageBusinessPage({
         {activeTab === "products" &&
           (pro ? (
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Products</p>
+              <p className="font-display text-base font-bold tracking-tight text-ink">Products</p>
               <p className="mt-1 text-sm text-ink/60">Show customers what you make, sell or offer.</p>
 
               {products.length > 0 ? (
@@ -1626,7 +1643,7 @@ export default async function ManageBusinessPage({
         {/* ── FindMi Here ──────────────────────────────────────────── */}
         {activeTab === "findmi-here" && (
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Here</p>
+            <p className="font-display text-base font-bold tracking-tight text-ink">Findmi Here</p>
             <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
 
             {appearances.length > 0 ? (
