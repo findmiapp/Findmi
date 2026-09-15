@@ -294,7 +294,7 @@ export async function updateMemberLocationHandle(locationId: string, formData: F
 }
 
 export async function updateMemberLocationDetails(locationId: string, formData: FormData) {
-  const redirectPath = `/account/location/${locationId}?tab=details`;
+  const redirectPath = `/account/location/${locationId}?tab=profile`;
   const admin = await requireLocationManager(locationId, redirectPath);
 
   const payload = {
@@ -318,7 +318,7 @@ export async function updateMemberLocationDetails(locationId: string, formData: 
 
 // ── CONTACT / LINKS ────────────────────────────────────────────────────
 export async function updateMemberLocationContact(locationId: string, formData: FormData) {
-  const redirectPath = `/account/location/${locationId}?tab=contact`;
+  const redirectPath = `/account/location/${locationId}?tab=profile`;
   const admin = await requireLocationManager(locationId, redirectPath);
 
   const websiteUrlRaw = str(formData, "website_url");
@@ -354,7 +354,7 @@ export async function updateMemberLocationContact(locationId: string, formData: 
  * Market Request" logic every other creation/update action in this pass
  * uses. */
 export async function updateMemberLocationMarket(locationId: string, formData: FormData) {
-  const redirectPath = `/account/location/${locationId}?tab=market`;
+  const redirectPath = `/account/location/${locationId}?tab=profile`;
   const admin = await requireLocationManager(locationId, redirectPath);
 
   const marketId = str(formData, "market_id");
@@ -419,7 +419,7 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
  * shape admin's own saveEvent()/business gallery actions use for their
  * own image child tables. */
 export async function updateMemberLocationPhotos(locationId: string, formData: FormData) {
-  const redirectPath = `/account/location/${locationId}?tab=photos`;
+  const redirectPath = `/account/location/${locationId}?tab=profile`;
   const admin = await requireLocationManager(locationId, redirectPath);
 
   const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
@@ -475,4 +475,55 @@ export async function assignExistingEventOccurrencesToLocation(locationId: strin
   const { data: location } = await admin.from("locations").select("slug, is_demo").eq("id", locationId).maybeSingle();
   if (location && !location.is_demo) revalidatePath(`/location/${location.slug}`);
   redirect(appendQuery(redirectPath, { event_added: "1" }));
+}
+
+// ── PROFILE — CATEGORY ───────────────────────────────────────────────────
+/** Location Manager V3 — the audit's confirmed gap: locations.category_id
+ * already exists and is publicly rendered (the category pill on the
+ * public page), but had no owner action at all, only Admin's own
+ * LocationForm. Same shape/kind='location' taxonomy CategorySubcategoryField
+ * already uses elsewhere; no new taxonomy, no schema change. */
+export async function updateMemberLocationCategory(locationId: string, formData: FormData) {
+  const redirectPath = `/account/location/${locationId}?tab=profile`;
+  const admin = await requireLocationManager(locationId, redirectPath);
+
+  const categoryId = str(formData, "category_id");
+
+  const { data: location, error } = await admin
+    .from("locations")
+    .update({ category_id: categoryId })
+    .eq("id", locationId)
+    .select("slug, is_demo")
+    .maybeSingle();
+  if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  revalidatePath(redirectPath);
+  if (location && !location.is_demo) revalidatePath(`/location/${location.slug}`);
+  redirect(appendQuery(redirectPath, { saved: "1" }));
+}
+
+// ── PROFILE — HOURS ────────────────────────────────────────────────────
+/** Location Manager V3 — the audit's other confirmed gap: locations.hours
+ * already drives the public Open Now badge and Hours accordion, but had no
+ * owner action at all, only Admin's own LocationHoursField. Same
+ * whole-week-JSON-blob parsing admin's own saveLocation already uses for
+ * this exact column — no new validation invented, no schema change. */
+export async function updateMemberLocationHours(locationId: string, formData: FormData) {
+  const redirectPath = `/account/location/${locationId}?tab=profile`;
+  const admin = await requireLocationManager(locationId, redirectPath);
+
+  const hoursRaw = str(formData, "hours");
+  const hours = hoursRaw ? JSON.parse(hoursRaw) : null;
+
+  const { data: location, error } = await admin
+    .from("locations")
+    .update({ hours })
+    .eq("id", locationId)
+    .select("slug, is_demo")
+    .maybeSingle();
+  if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  revalidatePath(redirectPath);
+  if (location && !location.is_demo) revalidatePath(`/location/${location.slug}`);
+  redirect(appendQuery(redirectPath, { saved: "1" }));
 }

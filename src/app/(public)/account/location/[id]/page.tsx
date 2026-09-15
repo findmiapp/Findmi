@@ -6,20 +6,26 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireLocationMember } from "@/lib/permissions";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
-import { getAdminLocationById } from "@/lib/admin/queries";
+import { getAdminLocationById, getAllCategories } from "@/lib/admin/queries";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import { getPendingMarketRequestForLocation } from "@/lib/market-requests";
-import { getLocationGalleryImages, getUpcomingAtLocation } from "@/lib/data";
+import { getLocationGalleryImages } from "@/lib/data";
+import { cityStateZip } from "@/lib/format";
+import { hasAnyHours } from "@/lib/locationHours";
 import AccountNav from "../../AccountNav";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import MarketAreaFields from "@/components/MarketAreaFields";
+import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
+import LocationHoursField from "@/components/admin/LocationHoursField";
 import MemberLocationImageField from "./MemberLocationImageField";
 import MemberLocationGalleryField from "./MemberLocationGalleryField";
 import {
   assignExistingEventOccurrencesToLocation,
+  updateMemberLocationCategory,
   updateMemberLocationContact,
   updateMemberLocationDetails,
   updateMemberLocationHandle,
+  updateMemberLocationHours,
   updateMemberLocationMarket,
   updateMemberLocationPhotos,
 } from "../actions";
@@ -27,7 +33,7 @@ import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
 
 export const metadata: Metadata = {
-  title: "Manage Venue",
+  title: "Manage Location",
   robots: { index: false },
 };
 export const dynamic = "force-dynamic";
@@ -36,18 +42,29 @@ const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
   "flex h-11 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
-const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6";
 
+// Location Manager V3 — replaces the old seven-tab inventory (Overview /
+// Venue Details / Gallery / Contact / Links / Findmi Area / What's
+// Happening Here / Status) with three destinations matching the owner's
+// actual jobs: is this Location live and what's next (Overview), what's
+// happening here operationally (What's Happening), and what customers see
+// (Profile — Venue Details + Gallery + Contact/Links + the newly-editable
+// Category/Hours + the secondary Findmi Area control all consolidated
+// into one surface). Every legacy tab key still resolves (see
+// LEGACY_TAB_REDIRECTS below) rather than silently stranding an old link.
 const OWNER_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
-  { key: "details", label: "Venue Details" },
-  { key: "photos", label: "Gallery" },
-  { key: "contact", label: "Contact / Links" },
-  { key: "market", label: "Findmi Area" },
-  { key: "happening", label: "What's Happening Here" },
-  { key: "status", label: "Status" },
+  { key: "happening", label: "What's Happening" },
+  { key: "profile", label: "Profile" },
 ];
-const OWNER_TAB_KEYS = new Set(OWNER_TABS.map((t) => t.key));
+const LEGACY_TAB_REDIRECTS: Record<string, string> = {
+  details: "profile",
+  photos: "profile",
+  contact: "profile",
+  market: "profile",
+  status: "overview",
+};
+const VALID_TAB_KEYS = new Set<string>([...OWNER_TABS.map((t) => t.key), ...Object.keys(LEGACY_TAB_REDIRECTS)]);
 
 /**
  * Multi-Entity Self-Service V1, Stage 3 — Location Manager. Reuses the
@@ -69,7 +86,15 @@ export default async function ManageLocationPage({
 }) {
   const { id } = await params;
   const { tab: tabParam, saved, error, created, event_added: eventAdded } = await searchParams;
-  const tab = tabParam && OWNER_TAB_KEYS.has(tabParam) ? tabParam : "overview";
+  const tab = tabParam && VALID_TAB_KEYS.has(tabParam) ? tabParam : "overview";
+
+  // Location Manager V3 — a bookmarked/typed legacy tab key (details/
+  // photos/contact/market/status) redirects straight to its new canonical
+  // destination, before any of the heavier data fetching below, rather
+  // than rendering a second, now-dead copy of content that's moved.
+  if (LEGACY_TAB_REDIRECTS[tab]) {
+    redirect(`/account/location/${id}?tab=${LEGACY_TAB_REDIRECTS[tab]}`);
+  }
 
   // Admin Manage-As — same shape as Business Manager/Event Manager:
   // requireLocationMember() is the complete authorization (real
@@ -80,7 +105,7 @@ export default async function ManageLocationPage({
     const membership = await requireLocationMember(id);
     isAdminElevated = Boolean(membership.viaAdmin);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "You don't have access to that venue.";
+    const message = err instanceof Error ? err.message : "You don't have access to that Location.";
     redirect(errorRedirectUrl("/account", message));
   }
 
@@ -88,14 +113,14 @@ export default async function ManageLocationPage({
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
   const location = await getAdminLocationById(id);
-  if (!location) redirect(errorRedirectUrl("/account", "Venue not found."));
+  if (!location) redirect(errorRedirectUrl("/account", "Location not found."));
 
-  const [marketsWithAreas, pendingMarketRequest, galleryImages, happenings, locationHandle] = await Promise.all([
+  const [marketsWithAreas, pendingMarketRequest, galleryImages, locationHandle, categories] = await Promise.all([
     getActiveMarketsWithAreaOptions(),
     getPendingMarketRequestForLocation(admin, id),
     getLocationGalleryImages(id),
-    getUpcomingAtLocation({ id, name: location.name }),
     getEntityHandle(admin, "location", id),
+    getAllCategories("location"),
   ]);
 
   // Venue owner -> Add Event access UX (Stage 4) — Location ownership
@@ -269,6 +294,26 @@ export default async function ManageLocationPage({
   const selectedMarket = marketsWithAreas.find((m) => m.id === location.market_id) ?? null;
   const selectedArea = selectedMarket?.areas.find((a) => a.id === location.market_area_id) ?? null;
 
+  // Overview V3 — the nearest item from the exact same upcomingHere feed
+  // What's Happening already computes (already sorted soonest-first) — no
+  // second query, no second schedule.
+  const nextUp = upcomingHere[0] ?? null;
+
+  // Overview V3, Section 9 — a small nudge only for genuinely missing
+  // public-facing information, never a completeness score/checklist. Both
+  // reads are fields already fetched above (getAdminLocationById's own
+  // select("*")) — no new query.
+  const missingCover = !location.cover_image_url;
+  const missingHours = !hasAnyHours(location.hours);
+  const profileAttentionMessage =
+    missingCover && missingHours
+      ? "Add a cover photo and your hours so customers know more before they visit."
+      : missingCover
+        ? "Add a cover photo so your page looks its best."
+        : missingHours
+          ? "Add your hours so customers know when to visit."
+          : null;
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
       <AccountNav />
@@ -297,7 +342,7 @@ export default async function ManageLocationPage({
             rel="noopener noreferrer"
             className="rounded-full border border-black/10 px-3.5 py-2 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
           >
-            View Public Venue ↗
+            View Public Page ↗
           </Link>
         ) : (
           <span className="rounded-full bg-black/[0.06] px-3.5 py-2 text-xs font-semibold text-ink/40" title="Pending Findmi review">
@@ -308,7 +353,7 @@ export default async function ManageLocationPage({
 
       {created === "1" && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          Venue created — Findmi will review it before it appears in discovery.
+          Location created — Findmi will review it before it appears in discovery.
         </p>
       )}
       {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
@@ -321,321 +366,384 @@ export default async function ManageLocationPage({
       </div>
 
       <div className="mt-5 flex flex-col gap-5">
+        {/* ── Overview — command center, not an edit form. Status lives
+            ONLY in the header pill above (never repeated here); this is
+            just "what's next" + the primary CTA + quiet public-page
+            access + a one-line profile nudge when genuinely useful. ── */}
         {tab === "overview" && (
-          <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Overview</p>
-            <dl className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Status</dt>
-                <dd className="mt-1 text-ink">{location.is_demo ? "Pending Review" : "Live"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Address</dt>
-                <dd className="mt-1 text-ink">{location.address || "Not set"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Happening Here</dt>
-                <dd className="mt-1 text-ink">{happenings.length} upcoming</dd>
-              </div>
-            </dl>
-            <p className="mt-4 text-sm text-ink/60">
-              Use the tabs above to edit your venue details, add gallery photos, set contact info, choose your Findmi
-              area, add an event here, and see what&rsquo;s coming up.
-            </p>
-            <Link href={`/account/event/new?location_id=${id}`} className={`mt-4 inline-flex w-fit ${primaryButtonClass}`}>
-              + Add an Event Here
-            </Link>
-            {!eventEligible && (
-              <p className="mt-2 text-xs text-ink/45">
-                Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
+          <div className="flex flex-col gap-5">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Next up</p>
+              {nextUp ? (
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">{nextUp.title}</p>
+                    <p className="truncate text-xs text-ink/50">
+                      {new Date(nextUp.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                      {nextUp.subtitle ? ` · ${nextUp.subtitle}` : ""}
+                    </p>
+                  </div>
+                  <Link href={`/account/location/${id}?tab=happening`} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+                    See all
+                  </Link>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-ink/50">
+                  Nothing coming up here yet.{" "}
+                  <Link href={`/account/location/${id}?tab=happening`} className="font-semibold text-findmi-700 hover:underline">
+                    Add something
+                  </Link>
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Link href={`/account/event/new?location_id=${id}`} className={`inline-flex w-fit ${primaryButtonClass}`}>
+                + Create Event Here
+              </Link>
+              {!eventEligible && (
+                <p className="mt-2 text-xs text-ink/45">
+                  Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
+                </p>
+              )}
+            </div>
+
+            {profileAttentionMessage && (
+              <p className="text-sm text-ink/50">
+                {profileAttentionMessage}{" "}
+                <Link href={`/account/location/${id}?tab=profile`} className="font-semibold text-findmi-700 hover:underline">
+                  Complete your profile
+                </Link>
               </p>
             )}
-          </div>
-        )}
 
-        {tab === "overview" && (
-          <div className={cardClass}>
-            <FindmiUrlCard
-              entityType="location"
-              entityId={id}
-              entityLabel={location.name}
-              currentHandle={locationHandle}
-              action={updateMemberLocationHandle.bind(null, id)}
-            />
-          </div>
-        )}
-
-        {tab === "details" && (
-          <div className={cardClass}>
-            <form action={updateMemberLocationDetails.bind(null, id)} className="flex flex-col gap-4">
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">Description</span>
-                <textarea name="description" rows={4} defaultValue={location.description ?? ""} className={inputClass} />
-              </label>
-              <MemberLocationImageField
-                locationId={id}
-                label="Cover / Hero Image"
-                name="cover_image_url"
-                defaultValue={location.cover_image_url}
+            <div className="border-t border-black/5 pt-4">
+              <FindmiUrlCard
+                entityType="location"
+                entityId={id}
+                entityLabel={location.name}
+                currentHandle={locationHandle}
+                action={updateMemberLocationHandle.bind(null, id)}
+                quiet
               />
-              <MemberLocationImageField
-                locationId={id}
-                label="Logo / Profile Image (square works best)"
-                name="logo_url"
-                defaultValue={location.logo_url}
-              />
-              <p className="text-xs text-ink/40">
-                Venue name and address are managed by Findmi. Need a correction? Contact Findmi support.
-              </p>
-              <button type="submit" className={`mt-1 w-fit ${primaryButtonClass}`}>
-                Save Venue Details
-              </button>
-            </form>
-          </div>
-        )}
-
-        {tab === "photos" && (
-          <form action={updateMemberLocationPhotos.bind(null, id)} className="flex flex-col gap-5">
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Venue Gallery</p>
-              <div className="mt-3">
-                <MemberLocationGalleryField locationId={id} name="gallery_image_url" initialUrls={galleryImages} />
-              </div>
             </div>
-            <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-              Save Gallery
-            </button>
-          </form>
-        )}
-
-        {tab === "contact" && (
-          <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Contact / Links</p>
-            <form action={updateMemberLocationContact.bind(null, id)} className="mt-3 flex flex-col gap-4">
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">
-                  Website <span className="font-normal text-ink/40">(optional)</span>
-                </span>
-                <input type="url" name="website_url" defaultValue={location.website_url ?? ""} placeholder="https://" className={inputClass} />
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
-                  <input type="email" name="email" defaultValue={location.email ?? ""} className={inputClass} />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
-                  <input type="tel" name="phone" defaultValue={location.phone ?? ""} className={inputClass} />
-                </label>
-              </div>
-              <button type="submit" className={`mt-1 w-fit ${primaryButtonClass}`}>
-                Save Contact / Links
-              </button>
-            </form>
           </div>
         )}
 
-        {tab === "market" && (
-          <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area</p>
-            <p className="mt-1 text-sm text-ink/60">
-              {selectedMarket
-                ? `Findmi area: ${selectedMarket.name}${selectedArea ? ` — ${selectedArea.name}` : ""}`
-                : pendingMarketRequest
-                  ? `Findmi area pending review — ${pendingMarketRequest.requestedText}`
-                  : "No Findmi area selected yet."}
-            </p>
-            <form action={updateMemberLocationMarket.bind(null, id)} className="mt-3 flex flex-col gap-3">
-              <MarketAreaFields
-                markets={marketsWithAreas}
-                defaultMarketId={location.market_id}
-                defaultAreaId={location.market_area_id}
-                marketLabel="Findmi area"
-                areaLabel="Specific area"
-                blankMarketOptionLabel="No Findmi area selected"
-                noAreasAvailableLabel="No specific area available here"
-                noSpecificAreaLabel="No specific area"
-              />
-              <details className="group -mt-1">
-                <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
-                  Don&rsquo;t see your Findmi area?
-                </summary>
-                <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink/70">Tell us where</span>
-                    <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
-                  </label>
-                  <p className="mt-1.5 text-xs text-ink/45">
-                    Findmi will review it. Leave the Findmi area above set to &ldquo;No Findmi area selected&rdquo; when
-                    using this.
-                  </p>
-                </div>
-              </details>
-              <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-                Save
-              </button>
-            </form>
-          </div>
-        )}
-
+        {/* ── What's Happening — the canonical operational schedule/
+            relationship surface: one compact "+ Add" composer (Create
+            Event Here / Add an Existing Event / Add a Business appearance
+            here, consolidated from three separate cards) above a flat,
+            divided "Upcoming Here" list. Relationship model unchanged —
+            Event Occurrences and standalone Appearances only; an
+            occurrence-derived official-participation Appearance is still
+            represented through its Event/Occurrence row, never a second,
+            duplicate happening row. ── */}
         {tab === "happening" && (
           <div className="flex flex-col gap-5">
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">What&rsquo;s Happening Here</p>
-              <p className="mt-1 text-sm text-ink/60">
-                Every Event date and Business appearance already connected to this venue, plus the tools to connect
-                more.
-              </p>
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                <div className="min-w-0">
+                  <p className="font-display text-base font-bold tracking-tight text-ink">What&rsquo;s Happening</p>
+                  <p className="mt-1 text-sm text-ink/60">Every Event date and Business appearance connected here.</p>
+                </div>
+                <span className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
+                  <span className="group-open:hidden">+ Add</span>
+                  <span className="hidden group-open:inline">Close</span>
+                </span>
+              </summary>
 
-              {eventAdded === "1" && !error && (
-                <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-                  Connected to this venue.
-                </p>
-              )}
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link href={`/account/event/new?location_id=${id}`} className={primaryButtonClass}>
-                  + Create Event Here
-                </Link>
-                {!eventEligible && (
-                  <p className="basis-full text-xs text-ink/45">
-                    Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
+              <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-black/10 p-4">
+                {eventAdded === "1" && !error && (
+                  <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                    Connected here.
                   </p>
                 )}
-              </div>
-            </div>
 
-            {sessionUser && manageableEvents.length > 0 && (
-              <div className={cardClass}>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Add an Existing Event Here</p>
-                <p className="mt-1 text-sm text-ink/60">
-                  Connect a date from an Event you already manage. Only Events you manage appear here — Findmi never
-                  lets a venue reassign someone else&rsquo;s Event.
-                </p>
-                <div className="mt-3 flex flex-col gap-2">
-                  {manageableEvents.map((e) => (
-                    <details key={e.id} className="group rounded-2xl border border-black/10 p-3.5">
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-                        <span className="text-sm font-semibold text-ink">{e.name}</span>
-                        <span className="text-xs text-ink/40">
-                          {e.occurrences.length === 0 ? "No dates yet" : `${e.occurrences.length} date${e.occurrences.length === 1 ? "" : "s"}`}
-                        </span>
-                      </summary>
-                      <div className="mt-3 border-t border-black/10 pt-3">
-                        {e.occurrences.length === 0 ? (
-                          <p className="text-xs text-ink/50">
-                            This Event has no additional dates yet.{" "}
-                            <Link href={`/account/event/${e.id}?tab=dates`} className="font-semibold text-findmi-700 hover:underline">
-                              Add one from its Dates tab
-                            </Link>{" "}
-                            first.
-                          </p>
-                        ) : (
-                          <form action={assignExistingEventOccurrencesToLocation.bind(null, id, e.id)} className="flex flex-col gap-2">
-                            {e.occurrences.map((o) => (
-                              <label key={o.id} className="flex items-center gap-2.5 text-sm text-ink">
-                                <input
-                                  type="checkbox"
-                                  name="occurrence_ids"
-                                  value={o.id}
-                                  defaultChecked={o.assignedHere}
-                                  className="h-4 w-4 shrink-0 accent-findmi"
-                                />
-                                {new Date(o.start_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
-                                {o.assignedHere && <span className="text-xs font-semibold text-findmi-700">Already here</span>}
-                              </label>
-                            ))}
-                            <button type="submit" className="mt-1 w-fit rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
-                              Save
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                    </details>
-                  ))}
+                <div>
+                  <p className="text-sm font-bold text-ink">Create an Event here</p>
+                  <p className="mt-1 text-xs text-ink/50">Start a brand-new Event with this Location already set.</p>
+                  <Link href={`/account/event/new?location_id=${id}`} className="mt-2 inline-flex h-9 items-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
+                    + Create Event
+                  </Link>
+                  {!eventEligible && (
+                    <p className="mt-2 text-xs text-ink/45">
+                      Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
+                    </p>
+                  )}
                 </div>
-              </div>
-            )}
 
-            {sessionUser && manageableBusinesses.length > 0 && (
-              <div className={cardClass}>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Add an Appearance Here</p>
-                <p className="mt-1 text-sm text-ink/60">
-                  Adds a standalone Findmi Here entry (no Event required) for a Business you manage, with{" "}
-                  {location.name} already selected as the Location.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {manageableBusinesses.map((b) => (
-                    <Link
-                      key={b.id}
-                      href={`/account/business/${b.id}?tab=findmi-here&location_id=${id}`}
-                      className="rounded-full border border-black/10 px-3.5 py-2 text-xs font-semibold text-ink/70 transition hover:border-black/20"
-                    >
-                      + Add for {b.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Upcoming Here</p>
-              {upcomingHere.length === 0 ? (
-                <p className="mt-3 text-sm text-ink/50">Nothing scheduled here yet.</p>
-              ) : (
-                <div className="mt-3 flex flex-col gap-2">
-                  {upcomingHere.map((item) => (
-                    <div key={`${item.kind}-${item.id}`} className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 p-3.5">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
-                          <span className="shrink-0 rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
-                            {item.kind === "occurrence" ? "Event" : "Appearance"}
-                          </span>
-                        </div>
-                        <p className="truncate text-xs text-ink/50">
-                          {new Date(item.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
-                          {item.subtitle ? ` · ${item.subtitle}` : ""}
-                        </p>
-                        {item.confirmedCount !== null && (
-                          <p className="mt-0.5 text-xs font-semibold text-findmi-700">
-                            {item.confirmedCount} business{item.confirmedCount === 1 ? "" : "es"} confirmed
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-3">
-                        <Link href={item.publicHref} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-ink/50 hover:text-ink">
-                          View ↗
-                        </Link>
-                        {item.manageHref && (
-                          <Link href={item.manageHref} className="text-xs font-semibold text-findmi-700 hover:underline">
-                            Manage
-                          </Link>
-                        )}
-                      </div>
+                {sessionUser && manageableEvents.length > 0 && (
+                  <div className="border-t border-black/10 pt-4">
+                    <p className="text-sm font-bold text-ink">Add an existing Event</p>
+                    <p className="mt-1 text-xs text-ink/50">
+                      Connect a date from an Event you already manage. Only Events you manage appear here.
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2">
+                      {manageableEvents.map((e) => (
+                        <details key={e.id} className="group/event rounded-xl border border-black/10 p-3">
+                          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                            <span className="text-sm font-semibold text-ink">{e.name}</span>
+                            <span className="text-xs text-ink/40">
+                              {e.occurrences.length === 0 ? "No dates yet" : `${e.occurrences.length} date${e.occurrences.length === 1 ? "" : "s"}`}
+                            </span>
+                          </summary>
+                          <div className="mt-3 border-t border-black/10 pt-3">
+                            {e.occurrences.length === 0 ? (
+                              <p className="text-xs text-ink/50">
+                                This Event has no additional dates yet.{" "}
+                                <Link href={`/account/event/${e.id}?tab=dates`} className="font-semibold text-findmi-700 hover:underline">
+                                  Add one from its Dates tab
+                                </Link>{" "}
+                                first.
+                              </p>
+                            ) : (
+                              <form action={assignExistingEventOccurrencesToLocation.bind(null, id, e.id)} className="flex flex-col gap-2">
+                                {e.occurrences.map((o) => (
+                                  <label key={o.id} className="flex items-center gap-2.5 text-sm text-ink">
+                                    <input
+                                      type="checkbox"
+                                      name="occurrence_ids"
+                                      value={o.id}
+                                      defaultChecked={o.assignedHere}
+                                      className="h-4 w-4 shrink-0 accent-findmi"
+                                    />
+                                    {new Date(o.start_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                                    {o.assignedHere && <span className="text-xs font-semibold text-findmi-700">Already here</span>}
+                                  </label>
+                                ))}
+                                <button type="submit" className="mt-1 w-fit rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
+                                  Save
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        </details>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+
+                {sessionUser && manageableBusinesses.length > 0 && (
+                  <div className="border-t border-black/10 pt-4">
+                    <p className="text-sm font-bold text-ink">Add a Business appearance here</p>
+                    <p className="mt-1 text-xs text-ink/50">
+                      Adds a Findmi Here entry for a Business you manage, with {location.name} already selected.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {manageableBusinesses.map((b) => (
+                        <Link
+                          key={b.id}
+                          href={`/account/business/${b.id}?tab=findmi-here&location_id=${id}`}
+                          className="rounded-full border border-black/10 px-3.5 py-2 text-xs font-semibold text-ink/70 transition hover:border-black/20"
+                        >
+                          + Add for {b.name}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
+
+            {upcomingHere.length === 0 ? (
+              <p className="text-sm text-ink/50">Nothing coming up here yet.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-black/[0.06]">
+                {upcomingHere.map((item) => (
+                  <li key={`${item.kind}-${item.id}`} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
+                      <p className="truncate text-xs text-ink/50">
+                        {item.kind === "occurrence" ? "Event" : "Appearance"} ·{" "}
+                        {new Date(item.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                        {item.subtitle ? ` · ${item.subtitle}` : ""}
+                      </p>
+                      {item.confirmedCount !== null && (
+                        <p className="mt-0.5 text-xs font-semibold text-findmi-700">
+                          {item.confirmedCount} business{item.confirmedCount === 1 ? "" : "es"} confirmed
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <Link href={item.publicHref} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-ink/50 hover:text-ink">
+                        View ↗
+                      </Link>
+                      {item.manageHref && (
+                        <Link href={item.manageHref} className="text-xs font-semibold text-findmi-700 hover:underline">
+                          Manage
+                        </Link>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
-        {tab === "status" && (
-          <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Status</p>
-            <span
-              className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                location.is_demo ? "bg-black/[0.06] text-ink/60" : "bg-findmi text-white"
-              }`}
-            >
-              {location.is_demo ? "Pending Review" : "Live"}
-            </span>
-            <p className="mt-3 text-sm text-ink/60">
-              {location.is_demo
-                ? "Findmi reviews every new venue before it appears in public discovery. You can keep editing details, your gallery, and contact info in the meantime."
-                : "This venue is live and visible in Findmi discovery."}
-            </p>
+        {/* ── Profile — "Control what customers see about this Location."
+            Consolidates the old Venue Details / Gallery / Contact-Links
+            tabs plus the newly owner-editable Category/Hours, with the
+            secondary Findmi Area control tucked into a closed-by-default
+            disclosure at the bottom. Each section keeps its own existing
+            (or, for Category/Hours, newly added) Server Action rather than
+            one rewritten giant "Save Profile" form. ── */}
+        {tab === "profile" && (
+          <div className="flex flex-col gap-6">
+            {/* Identity — name is a plain fact (Findmi-managed), Category
+                is the one newly owner-editable identity field. */}
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Identity</p>
+              <p className="mt-2 text-sm font-semibold text-ink">{location.name}</p>
+              <p className="mt-0.5 text-xs text-ink/40">Managed by Findmi — contact support for a correction.</p>
+              <form action={updateMemberLocationCategory.bind(null, id)} className="mt-3 flex flex-col items-start gap-3">
+                <CategorySubcategoryField categories={categories} defaultCategoryId={location.category_id} />
+                <button type="submit" className={`w-fit ${primaryButtonClass}`}>
+                  Save Category
+                </button>
+              </form>
+            </div>
+
+            {/* About + Photos — one form, same as the existing
+                updateMemberLocationDetails action/payload (description +
+                cover + logo together); Gallery keeps its own separate
+                action/table, presented right below under the same
+                conceptual Photos heading. */}
+            <div className="border-t border-black/5 pt-6">
+              <form action={updateMemberLocationDetails.bind(null, id)} className="flex flex-col gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
+                  <label className="mt-2 block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Description</span>
+                    <textarea name="description" rows={4} defaultValue={location.description ?? ""} className={inputClass} />
+                  </label>
+                </div>
+                <div className="border-t border-black/5 pt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Photos</p>
+                  <div className="mt-2 flex flex-col gap-4">
+                    <MemberLocationImageField
+                      locationId={id}
+                      label="Cover / Hero Image"
+                      name="cover_image_url"
+                      defaultValue={location.cover_image_url}
+                    />
+                    <MemberLocationImageField
+                      locationId={id}
+                      label="Logo / Profile Image (square works best)"
+                      name="logo_url"
+                      defaultValue={location.logo_url}
+                    />
+                  </div>
+                </div>
+                <button type="submit" className={`mt-1 w-fit ${primaryButtonClass}`}>
+                  Save
+                </button>
+              </form>
+
+              <form action={updateMemberLocationPhotos.bind(null, id)} className="mt-5 flex flex-col gap-3 border-t border-black/5 pt-5">
+                <MemberLocationGalleryField locationId={id} name="gallery_image_url" initialUrls={galleryImages} />
+                <button type="submit" className={`w-fit ${primaryButtonClass}`}>
+                  Save Gallery
+                </button>
+              </form>
+            </div>
+
+            {/* Hours — new owner capability; the audit's confirmed gap
+                between what the public page already renders (Open Now
+                badge + Hours accordion) and what an owner could control. */}
+            <div className="border-t border-black/5 pt-6">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Hours</p>
+              <form action={updateMemberLocationHours.bind(null, id)} className="mt-2 flex flex-col items-start gap-3">
+                <LocationHoursField name="hours" defaultValue={location.hours} />
+                <button type="submit" className={`w-fit ${primaryButtonClass}`}>
+                  Save Hours
+                </button>
+              </form>
+            </div>
+
+            {/* Contact & Links */}
+            <div className="border-t border-black/5 pt-6">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
+              <form action={updateMemberLocationContact.bind(null, id)} className="mt-3 flex flex-col gap-4">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">
+                    Website <span className="font-normal text-ink/40">(optional)</span>
+                  </span>
+                  <input type="url" name="website_url" defaultValue={location.website_url ?? ""} placeholder="https://" className={inputClass} />
+                </label>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
+                    <input type="email" name="email" defaultValue={location.email ?? ""} className={inputClass} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
+                    <input type="tel" name="phone" defaultValue={location.phone ?? ""} className={inputClass} />
+                  </label>
+                </div>
+                <button type="submit" className={`mt-1 w-fit ${primaryButtonClass}`}>
+                  Save Contact &amp; Links
+                </button>
+              </form>
+            </div>
+
+            {/* Location / Address — read-only, same "managed by Findmi"
+                boundary as name; no lat/long ever exposed. */}
+            <div className="border-t border-black/5 pt-6">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
+              <p className="mt-2 text-sm text-ink">
+                {[location.address, cityStateZip(location.city, location.state, location.postal_code)].filter(Boolean).join(", ") || "Not set"}
+              </p>
+              <p className="mt-0.5 text-xs text-ink/40">Managed by Findmi — contact support for a correction.</p>
+            </div>
+
+            {/* Discovery settings (Findmi Area) — visually secondary,
+                closed by default. Unchanged geography architecture. */}
+            <details className="border-t border-black/5 pt-6">
+              <summary className="cursor-pointer text-xs font-bold uppercase tracking-wide text-ink/40 [&::-webkit-details-marker]:hidden">
+                Discovery settings
+              </summary>
+              <div className="mt-3">
+                <p className="text-sm text-ink/60">
+                  {selectedMarket
+                    ? `Findmi area: ${selectedMarket.name}${selectedArea ? ` — ${selectedArea.name}` : ""}`
+                    : pendingMarketRequest
+                      ? `Findmi area pending review — ${pendingMarketRequest.requestedText}`
+                      : "No Findmi area selected yet."}
+                </p>
+                <form action={updateMemberLocationMarket.bind(null, id)} className="mt-3 flex flex-col gap-3">
+                  <MarketAreaFields
+                    markets={marketsWithAreas}
+                    defaultMarketId={location.market_id}
+                    defaultAreaId={location.market_area_id}
+                    marketLabel="Findmi area"
+                    areaLabel="Specific area"
+                    blankMarketOptionLabel="No Findmi area selected"
+                    noAreasAvailableLabel="No specific area available here"
+                    noSpecificAreaLabel="No specific area"
+                  />
+                  <details className="group -mt-1">
+                    <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+                      Don&rsquo;t see your Findmi area?
+                    </summary>
+                    <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-medium text-ink/70">Tell us where</span>
+                        <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
+                      </label>
+                      <p className="mt-1.5 text-xs text-ink/45">
+                        Findmi will review it. Leave the Findmi area above set to &ldquo;No Findmi area selected&rdquo;
+                        when using this.
+                      </p>
+                    </div>
+                  </details>
+                  <button type="submit" className={`w-fit ${primaryButtonClass}`}>
+                    Save
+                  </button>
+                </form>
+              </div>
+            </details>
           </div>
         )}
       </div>
