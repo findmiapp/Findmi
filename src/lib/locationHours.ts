@@ -20,17 +20,23 @@ export function hasAnyHours(hours: LocationHours | null | undefined): boolean {
   return Boolean(hours && Object.keys(hours).length > 0);
 }
 
+/** "9:00 AM" / "5:30 PM" / "12:00 PM" — always includes minutes and a
+ * space before AM/PM, per the Live QA correction pass (was previously
+ * "9AM"/"5:30PM", dropping :00 and the space). Never rounds or otherwise
+ * alters the stored h:mm value — purely a display format. */
 export function formatClock(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
   const period = h >= 12 ? "PM" : "AM";
   const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return m === 0 ? `${hour12}${period}` : `${hour12}:${String(m).padStart(2, "0")}${period}`;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 export function formatDayHours(day: LocationDayHours | undefined): string {
   if (!day || day.closed || !day.open || !day.close) return "Closed";
-  return `${formatClock(day.open)} – ${formatClock(day.close)}`;
+  // Standard hyphen with surrounding spaces (not an en dash) — the exact
+  // public presentation standard: "9:00 AM - 6:00 PM".
+  return `${formatClock(day.open)} - ${formatClock(day.close)}`;
 }
 
 /** JS's own Date.getDay()/toLocaleDateString weekday index (0=Sun..6=Sat)
@@ -53,15 +59,16 @@ export function isOpenNow(hours: LocationHours | null | undefined): boolean | nu
   return minutesNow >= openH * 60 + openM && minutesNow < closeH * 60 + closeM;
 }
 
-/** Compact collapsed-accordion summary — "Open until 6PM" / "Closed now" —
- * only ever built from today's own real open/close window (isOpenNow's
- * same reliability rule), never a guess about tomorrow's hours or any
- * other day. Returns null when there's nothing reliable to say (no hours
- * entered at all), so the caller can fall back to just "Hours". */
+/** Compact collapsed-accordion summary — "Open Until 6:00 PM" / "Closed
+ * now" — only ever built from today's own real open/close window
+ * (isOpenNow's same reliability rule), never a guess about tomorrow's
+ * hours or any other day. Returns null when there's nothing reliable to
+ * say (no hours entered at all), so the caller can fall back to just
+ * "Hours". */
 export function getHoursSummaryLabel(hours: LocationHours | null | undefined): string | null {
   const open = isOpenNow(hours);
   if (open === null) return null;
   if (!open) return "Closed now";
   const today = hours![JS_DAY_TO_KEY[new Date().getDay()]];
-  return today?.close ? `Open until ${formatClock(today.close)}` : "Open now";
+  return today?.close ? `Open Until ${formatClock(today.close)}` : "Open now";
 }

@@ -306,7 +306,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             Coming Up Here (never a big permanently-open block ahead of
             the discovery content). Native <details>/<summary> gives real
             disclosure semantics for free, no dependency. The summary
-            line reuses the same reliable "Open until X" / "Closed now"
+            line reuses the same reliable "Open Until X" / "Closed now"
             computation as the identity badge above — never shown when
             isOpenNow can't say for sure. No holiday exceptions/split
             shifts/timezone overhaul. */}
