@@ -31,7 +31,13 @@ type TimelineItem =
  * that the two "coexist in the same Conversation" — never a separate tab
  * for one or the other). Authorization is entirely getConversationThread's
  * own live re-derivation (Section 14) — a null result here means "not
- * found," same as a missing row, never a partial/redacted render. */
+ * found," same as a missing row, never a partial/redacted render.
+ *
+ * Unified Inbox V3 — visual-only pass: reduced the Opportunity card's
+ * status pill to quiet inline text and its Accept/Decline buttons to the
+ * same text-link idiom used by the Inbox list, so a workflow object reads
+ * lighter next to an ordinary message bubble. No change to the timeline
+ * merge, authorization, or resolution logic above. */
 export default async function ConversationPage({
   params,
   searchParams,
@@ -87,7 +93,7 @@ export default async function ConversationPage({
       <AccountNav />
 
       <Link href="/account/messages" className="text-xs font-semibold text-ink/40 hover:text-ink/70">
-        ← Messages
+        ← Inbox
       </Link>
       <h1 className="mt-1.5 font-display text-2xl font-bold tracking-tight text-ink">{title}</h1>
       {/* Unify Site-Wide Communications pass — a guest inquiry has no
@@ -178,28 +184,34 @@ function OpportunityCardView({
 
   return (
     <div className="rounded-2xl border border-findmi/20 bg-findmi-50/50 p-3.5">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">
-        {isInvitation ? "Event Invitation" : "Event Application"}
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">
+          {isInvitation ? "Event Invitation" : "Event Application"}
+        </p>
+        <span
+          className={`shrink-0 text-[10px] font-bold uppercase tracking-wide ${
+            opportunity.status === "pending" ? "text-findmi-700" : "text-ink/40"
+          }`}
+        >
+          {OPPORTUNITY_STATUS_LABEL[opportunity.status] ?? opportunity.status}
+        </span>
+      </div>
       <p className="mt-1 text-sm font-semibold text-ink">
         {opportunity.businessName} {isInvitation ? "invited to" : "applied to"} {opportunity.eventName}
       </p>
       {opportunity.occurrenceStartAt && <p className="mt-0.5 text-xs text-ink/50">{formatDateShort(opportunity.occurrenceStartAt)}</p>}
-      <p className="mt-1.5 inline-block rounded-full bg-white px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/55">
-        {OPPORTUNITY_STATUS_LABEL[opportunity.status] ?? opportunity.status}
-      </p>
 
       {canRespond && (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-2.5 flex items-center gap-4">
           {isInvitation ? (
             <>
               <form action={respondToInvitationInThread.bind(null, conversationId, opportunity.id, opportunity.businessId, "accepted")}>
-                <button type="submit" className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
+                <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
                   Accept
                 </button>
               </form>
               <form action={respondToInvitationInThread.bind(null, conversationId, opportunity.id, opportunity.businessId, "declined")}>
-                <button type="submit" className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/60 transition hover:border-black/20">
+                <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
                   Decline
                 </button>
               </form>
@@ -207,12 +219,12 @@ function OpportunityCardView({
           ) : (
             <>
               <form action={respondToApplicationInThread.bind(null, conversationId, opportunity.eventId, opportunity.businessId, "approved")}>
-                <button type="submit" className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
+                <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
                   Approve
                 </button>
               </form>
               <form action={respondToApplicationInThread.bind(null, conversationId, opportunity.eventId, opportunity.businessId, "declined")}>
-                <button type="submit" className="rounded-full border border-black/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/60 transition hover:border-black/20">
+                <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
                   Decline
                 </button>
               </form>

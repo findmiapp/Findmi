@@ -42,7 +42,6 @@ import {
   updateMemberProduct,
   updateBusinessHandle,
   updateOwnerAppearance,
-  respondToEventInvitation,
 } from "../actions";
 import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
@@ -57,10 +56,8 @@ import { getPublicOrigin } from "@/lib/site-url";
 import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
 import { getBusinessFollowerSummary } from "@/lib/business-followers";
-import { getBusinessInquiryList } from "@/lib/inquiries";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import CustomerInquiriesForm from "./CustomerInquiriesForm";
-import { getApplicationsForBusiness, getPendingInvitationsForBusiness } from "@/lib/opportunities";
 import {
   getBusinessOrderDetail,
   getBusinessOrderList,
@@ -124,11 +121,14 @@ const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p
 // Analytics as a compact Audience section. Legacy tab keys
 // (gallery/links/plan/market/followers) redirect to their new canonical
 // destination (LEGACY_TAB_REDIRECTS below) rather than rendering a
-// second, competing copy of the same UI. Opportunities and Customer
-// Inquiries keep rendering at their existing keys unchanged — real,
-// live workflows that aren't being consolidated this pass — just no
-// longer listed as primary pills; Settings links to both so neither is
-// orphaned.
+// second, competing copy of the same UI. Customer Inquiries keeps
+// rendering at its existing key unchanged — real, live configuration
+// that isn't being consolidated this pass — just no longer listed as a
+// primary pill; Settings links to it so it isn't orphaned. Opportunities
+// (Unified Inbox V3) no longer renders its own copy here at all — that
+// key now redirects straight to the canonical Inbox's Opportunities
+// filter (see the redirect below), since it was a genuine duplicate of
+// what Inbox already shows.
 const PRIMARY_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
   { key: "findmi-here", label: "Where I'll Be" },
@@ -154,11 +154,12 @@ const LEGACY_TAB_REDIRECTS: Record<string, string> = {
   followers: "performance",
 };
 
-// Every reachable tab key — primary, secondary (settings), Orders,
-// still-independent legacy workflows (opportunities/inquiries), the
-// referral-partner-only tab, and every redirect-only legacy key (so the
+// Every reachable tab key — primary, secondary (settings), Orders, the
+// still-independent Customer Inquiries configuration workflow, the
+// referral-partner-only tab, and every redirect-only legacy key
+// (including "opportunities" itself now — Unified Inbox V3) so the
 // param is recognized long enough to redirect rather than silently
-// falling back to Overview).
+// falling back to Overview.
 const VALID_TAB_KEYS = new Set<string>([
   ...PRIMARY_TABS.map((t) => t.key),
   "orders",
@@ -326,6 +327,17 @@ export default async function ManageBusinessPage({
   if (LEGACY_TAB_REDIRECTS[tab]) {
     redirect(`/account/business/${id}?tab=${LEGACY_TAB_REDIRECTS[tab]}`);
   }
+  // Unified Inbox V3 — this tab's own "Event Invitations"/"My Applications"
+  // lists were a genuine duplicate of the canonical Inbox's Opportunities
+  // filter (same getPendingInvitationsForBusiness/getApplicationsForBusiness,
+  // same respondToEventInvitation action, just business-scoped instead of
+  // aggregated). The owner now manages those there instead — this key
+  // redirects off-page (not to another tab on this page) so a bookmarked
+  // link, the Settings "More" link, and every existing email deep link
+  // that still points at ?tab=opportunities all land on the real thing.
+  if (tab === "opportunities") {
+    redirect("/account/messages?filter=opportunities");
+  }
 
   // Owner Shell V3 — persistent Business switcher (Section 12 of this
   // pass). Only queried for a real authenticated owner: a pure admin-
@@ -435,19 +447,7 @@ export default async function ManageBusinessPage({
   // Launch V2 Pass 1 — this tab no longer renders the legacy thread/reply
   // UI (see Section 13 of that pass's own report: the real, live
   // customer-inquiry inbox is now the canonical Inbox at
-  // /account/messages). inquiryList is still fetched — Overview's own
-  // Needs Attention card (buildNeedsAttentionItems, untouched this pass)
-  // still reads unreadInquiryCount from it — but nothing here fetches or
-  // renders a single legacy inquiry's thread anymore.
-  const inquiryList = await getBusinessInquiryList(admin, id);
-  // Opportunities + Conversation Foundation V1 — the previously-missing
-  // Business-side "Event Invitations"/"My Applications" surfaces. Same
-  // authorize-then-elevate admin client, always fetched (cheap, same
-  // reasoning as inquiryList above).
-  const [pendingInvitations, applications] = await Promise.all([
-    getPendingInvitationsForBusiness(admin, id),
-    getApplicationsForBusiness(admin, id),
-  ]);
+  // /account/messages).
   // Business Order Management Overhaul V1 — same authorize-then-elevate
   // admin client; every query inside these helpers is itself filtered by
   // business_id, so this business can never see another business's order
@@ -627,7 +627,6 @@ export default async function ManageBusinessPage({
   );
   const todayAppearances = dashboardAppearances.filter((a) => a.isToday);
   const upcomingAppearances = dashboardAppearances.filter((a) => !a.isToday).slice(0, 5);
-  const unreadInquiryCount = inquiryList.filter((i) => i.unread).length;
   // "Materially affects discovery" — the same fields a visitor would
   // actually need to find/trust this business, not every optional field
   // on the Profile tab (e.g. website/social links are never required here).
@@ -637,8 +636,6 @@ export default async function ManageBusinessPage({
     hasPrimaryMarket: Boolean(primaryMarket),
     pendingMarketRequestText: pendingMarketRequest?.requestedText ?? null,
     upcomingAppearances: dashboardAppearances,
-    unreadInquiryCount,
-    nativeInquiriesEnabled: business.native_inquiries_enabled,
     newOrderCount: orderSummary.newCount,
     profileIncomplete,
   });
@@ -2045,9 +2042,12 @@ export default async function ManageBusinessPage({
             </div>
           )}
 
-          {/* ── More — discoverability links to the two workflows still
-              living at their own existing keys (Section 8: preserved
-              exactly, not consolidated, just no longer primary pills). ── */}
+          {/* ── More — Customer Inquiries still lives at its own existing
+              key (Section 8: preserved exactly, just no longer a primary
+              pill); Event Invitations & Applications now links straight to
+              the canonical Inbox's Opportunities filter (Unified Inbox
+              V3 — the old in-tab copy was a duplicate, see the redirect
+              above). ── */}
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">More</p>
             <div className="mt-3 flex flex-col gap-2">
@@ -2059,7 +2059,7 @@ export default async function ManageBusinessPage({
                 <span className="shrink-0 text-ink/30">→</span>
               </Link>
               <Link
-                href={`${basePath}?tab=opportunities`}
+                href="/account/messages?filter=opportunities"
                 className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-sm font-semibold text-ink transition hover:border-black/20"
               >
                 Event Invitations &amp; Applications
@@ -2067,83 +2067,6 @@ export default async function ManageBusinessPage({
               </Link>
             </div>
           </div>
-          </div>
-        )}
-
-        {/* ── Opportunities (Opportunities + Conversation Foundation V1) ──
-            The previously-missing Business-side surface: an organizer-
-            invited business had no way to even discover the invitation
-            before this pass (see the Communication Foundation Audit).
-            Deliberately compact — no chat, no messages list, just the
-            structured invite/apply workflow and its optional note. */}
-        {activeTab === "opportunities" && (
-          <div className="flex flex-col gap-5">
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Event Invitations</p>
-              <p className="mt-1 text-sm text-ink/60">Organizers who&rsquo;ve invited this business to an event.</p>
-              {pendingInvitations.length === 0 ? (
-                <p className="mt-4 text-sm text-ink/50">No pending invitations.</p>
-              ) : (
-                <div className="mt-4 flex flex-col gap-2">
-                  {pendingInvitations.map((inv) => (
-                    <div key={inv.id} className="rounded-2xl border border-black/10 p-3.5">
-                      <p className="text-sm font-semibold text-ink">{inv.eventName}</p>
-                      {inv.occurrenceStartAt && (
-                        <p className="text-xs text-ink/50">{formatDateShort(inv.occurrenceStartAt)} · {formatTime(inv.occurrenceStartAt)}</p>
-                      )}
-                      {inv.occurrenceLocationName && <p className="text-xs text-ink/50">{inv.occurrenceLocationName}</p>}
-                      {inv.note && (
-                        <p className="mt-1.5 rounded-xl bg-mist/40 px-3 py-2 text-xs text-ink/70">&ldquo;{inv.note}&rdquo;</p>
-                      )}
-                      <div className="mt-2.5 flex items-center gap-2">
-                        <form action={respondToEventInvitation.bind(null, id, inv.id, "accepted")}>
-                          <button type="submit" className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
-                            Accept
-                          </button>
-                        </form>
-                        <form action={respondToEventInvitation.bind(null, id, inv.id, "declined")}>
-                          <button type="submit" className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/60">
-                            Decline
-                          </button>
-                        </form>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">My Applications</p>
-              <p className="mt-1 text-sm text-ink/60">Events this business has applied to participate in.</p>
-              {applications.length === 0 ? (
-                <p className="mt-4 text-sm text-ink/50">No applications yet — apply to an event from Findmi Here.</p>
-              ) : (
-                <div className="mt-4 flex flex-col gap-2">
-                  {applications.map((app) => (
-                    <div key={app.id} className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 p-3.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">{app.eventName}</p>
-                        {app.occurrenceStartAt && (
-                          <p className="text-xs text-ink/50">{formatDateShort(app.occurrenceStartAt)} · {formatTime(app.occurrenceStartAt)}</p>
-                        )}
-                      </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                          app.status === "accepted"
-                            ? "bg-findmi-50 text-findmi-700"
-                            : app.status === "declined"
-                              ? "bg-red-50 text-red-700"
-                              : "bg-black/[0.06] text-ink/50"
-                        }`}
-                      >
-                        {app.status === "pending" ? "Pending" : app.status === "accepted" ? "Approved" : app.status === "declined" ? "Declined" : "Withdrawn"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         )}
 

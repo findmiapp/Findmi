@@ -27,7 +27,14 @@ type InboxFilter = "all" | "customers" | "opportunities";
  * already calls, just looped across every managed business here instead
  * of one). Route/table names are unchanged (still /account/messages,
  * still `conversations`); only the user-facing heading and terminology
- * become "Inbox." */
+ * become "Inbox."
+ *
+ * Unified Inbox V3 — visual-only pass on top of the same architecture:
+ * flat divided rows instead of a card per conversation/opportunity, and
+ * the "Customers" filter is relabeled "Messages" (its underlying set —
+ * CUSTOMER_SUBJECT_TYPES — already includes non-inquiry direct messages
+ * too, so "Messages" is the more truthful label; the filter's query value
+ * and membership are unchanged, this is presentation only). */
 export default async function InboxPage({
   searchParams,
 }: {
@@ -83,9 +90,9 @@ export default async function InboxPage({
       <AccountNav />
 
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Inbox</h1>
-      <p className="mt-1.5 text-sm text-ink/50">Who needs you — customers, messages, and event opportunities.</p>
+      <p className="mt-1.5 text-sm text-ink/50">Customers, organizers and opportunities that need your attention.</p>
 
-      <div className="mt-4 flex gap-1.5">
+      <div className="mt-5 flex gap-1.5">
         {(["all", "customers", "opportunities"] as const).map((f) => (
           <Link
             key={f}
@@ -94,92 +101,74 @@ export default async function InboxPage({
               filter === f ? "bg-ink text-white" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
             }`}
           >
-            {f === "all" ? "All" : f === "customers" ? "Customers" : "Opportunities"}
+            {/* Query value stays "customers" (no filter/route contract
+                change) — only the visible label becomes "Messages", since
+                CUSTOMER_SUBJECT_TYPES already covers direct messages too,
+                not just inquiries. */}
+            {f === "all" ? "All" : f === "customers" ? "Messages" : "Opportunities"}
           </Link>
         ))}
       </div>
 
-      <div className="mt-6 flex flex-col gap-2">
-        {showConversations &&
-          conversationRows.map((c) => (
-            <Link
-              key={c.id}
-              href={`/account/messages/${c.id}`}
-              className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
-            >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
-                {c.otherPartyLabel.slice(0, 1)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
-                  <span className="shrink-0 rounded-full bg-black/[0.05] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
-                    {conversationContextLabel(c.subjectType)}
-                  </span>
-                </div>
-                <p className="mt-0.5 truncate text-xs text-ink/50">
-                  {[c.myEntityLabel, c.productName].filter(Boolean).join(" · ") || null}
-                </p>
-                <p className="mt-0.5 truncate text-xs text-ink/55">{c.lastMessageBody || "No messages yet"}</p>
-              </div>
-              <p className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</p>
-            </Link>
-          ))}
+      <div className="mt-6">
+        {totalCount === 0 ? (
+          <p className="text-sm text-ink/50">
+            {filter === "opportunities" ? "No opportunities right now." : filter === "customers" ? "No messages yet." : "Nothing here yet."}
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-black/[0.06]">
+            {showConversations &&
+              conversationRows.map((c) => (
+                <li key={c.id} className="py-3 first:pt-0 last:pb-0">
+                  <Link href={`/account/messages/${c.id}`} className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
+                      <p className="mt-0.5 truncate text-xs text-ink/50">
+                        {[conversationContextLabel(c.subjectType), c.myEntityLabel, c.productName].filter(Boolean).join(" · ")}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-ink/60">{c.lastMessageBody || "No messages yet"}</p>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</span>
+                  </Link>
+                </li>
+              ))}
 
-        {showOpportunities &&
-          opportunities.map((o) => (
-            <div key={o.id} className="rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="truncate text-sm font-semibold text-ink">{o.eventName}</p>
-                    <span className="shrink-0 rounded-full bg-black/[0.05] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
-                      {o.type === "event_invitation" ? "Event Invitation" : "Application"}
+            {showOpportunities &&
+              opportunities.map((o) => (
+                <li key={o.id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">{o.eventName}</p>
+                      <p className="mt-0.5 truncate text-xs text-ink/50">
+                        {o.type === "event_invitation" ? "Event invitation" : "Event application"} · {o.businessName}
+                      </p>
+                      {o.occurrenceStartAt && <p className="mt-0.5 text-xs text-ink/60">{formatDateShort(o.occurrenceStartAt)}</p>}
+                    </div>
+                    <span
+                      className={`shrink-0 text-[11px] font-semibold uppercase tracking-wide ${
+                        o.status === "pending" ? "text-findmi-700" : "text-ink/40"
+                      }`}
+                    >
+                      {o.status === "pending" ? "Pending" : o.status === "accepted" ? "Approved" : o.status === "declined" ? "Declined" : "Withdrawn"}
                     </span>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-ink/50">{o.businessName}</p>
-                  {o.occurrenceStartAt && <p className="mt-0.5 text-xs text-ink/45">{formatDateShort(o.occurrenceStartAt)}</p>}
-                </div>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                    o.status === "accepted"
-                      ? "bg-findmi-50 text-findmi-700"
-                      : o.status === "declined"
-                        ? "bg-red-50 text-red-700"
-                        : "bg-black/[0.06] text-ink/50"
-                  }`}
-                >
-                  {o.status === "pending" ? "Pending" : o.status === "accepted" ? "Approved" : o.status === "declined" ? "Declined" : "Withdrawn"}
-                </span>
-              </div>
-              {o.type === "event_invitation" && o.status === "pending" && (
-                <div className="mt-2.5 flex items-center gap-2">
-                  <form action={respondToEventInvitation.bind(null, o.businessId, o.id, "accepted")}>
-                    <button type="submit" className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
-                      Accept
-                    </button>
-                  </form>
-                  <form action={respondToEventInvitation.bind(null, o.businessId, o.id, "declined")}>
-                    <button type="submit" className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/60">
-                      Decline
-                    </button>
-                  </form>
-                </div>
-              )}
-            </div>
-          ))}
-
-        {totalCount === 0 && (
-          <div className="mt-2 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm sm:p-8">
-            <p className="text-sm font-semibold text-ink">
-              {filter === "opportunities" ? "No opportunities yet" : filter === "customers" ? "No customer conversations yet" : "Your Findmi Inbox is empty"}
-            </p>
-            <p className="mx-auto mt-1.5 max-w-xs text-sm text-ink/50">
-              {filter === "opportunities"
-                ? "Event invitations and your applications will appear here."
-                : "Messages, inquiries, and event opportunities will appear here."}
-            </p>
-          </div>
+                  {o.type === "event_invitation" && o.status === "pending" && (
+                    <div className="mt-2 flex items-center gap-4">
+                      <form action={respondToEventInvitation.bind(null, o.businessId, o.id, "accepted")}>
+                        <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                          Accept
+                        </button>
+                      </form>
+                      <form action={respondToEventInvitation.bind(null, o.businessId, o.id, "declined")}>
+                        <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                          Decline
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </li>
+              ))}
+          </ul>
         )}
       </div>
     </div>

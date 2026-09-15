@@ -239,8 +239,6 @@ export interface NeedsAttentionInput {
   hasPrimaryMarket: boolean;
   pendingMarketRequestText: string | null;
   upcomingAppearances: DashboardAppearance[];
-  unreadInquiryCount: number;
-  nativeInquiriesEnabled: boolean;
   newOrderCount: number;
   profileIncomplete: boolean;
 }
@@ -313,14 +311,16 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
     });
   }
 
-  if (input.nativeInquiriesEnabled && input.unreadInquiryCount > 0) {
-    items.push({
-      id: "unread-inquiries",
-      message: `You have ${input.unreadInquiryCount} unread inquir${input.unreadInquiryCount === 1 ? "y" : "ies"}.`,
-      actionLabel: "View Inquiries",
-      actionHref: `${base}?tab=inquiries`,
-    });
-  }
+  // Unified Inbox V3 — the "You have N unread inquiries" item that used
+  // to live here is REMOVED: it read unreadInquiryCount from the legacy
+  // `inquiries` table (lib/inquiries.ts), which has had zero live rows
+  // since the canonical Conversations system took over every inquiry
+  // entry point (see the Unified Inbox V3 audit) and whose count was
+  // therefore always 0 here — a permanently inert attention item. Real
+  // customer-conversation visibility already lives entirely in the
+  // Inbox preview/page (see account/page.tsx and account/messages/
+  // page.tsx); the canonical system has no unread state, and none is
+  // being added here to replace this.
 
   if (input.profileIncomplete) {
     items.push({
