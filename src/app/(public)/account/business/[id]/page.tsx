@@ -1049,7 +1049,7 @@ export default async function ManageBusinessPage({
 
         {/* ── Performance ──────────────────────────────────────────── */}
         {activeTab === "performance" && performanceData && (
-          <PerformanceTab data={performanceData} basePath={basePath} range={perfRange} />
+          <PerformanceTab data={performanceData} basePath={basePath} range={perfRange} businessName={business.name} />
         )}
 
         {/* ── Profile ──────────────────────────────────────────────── */}

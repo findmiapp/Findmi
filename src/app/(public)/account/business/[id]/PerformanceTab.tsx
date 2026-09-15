@@ -7,13 +7,14 @@ import {
   type OwnerPerformanceRange,
 } from "@/lib/analytics/ownerPerformance";
 
-// Findmi Owner Performance V1 — presentational-only. Every number here
-// comes pre-aggregated from lib/analytics/ownerPerformance.ts; this file
-// never touches analytics_events itself. Deliberately terse, mobile-first
-// (max-w-md, same as every other tab on this page — see page.tsx's own
-// wrapper): the owner should read the top of this tab in seconds, not
-// scroll a dashboard. No chart library — the one trend below is a plain
-// inline SVG bar row.
+// Findmi Owner Performance V1 (Phase 3.1 mobile/semantics correction) —
+// presentational-only. Every number here comes pre-aggregated from
+// lib/analytics/ownerPerformance.ts; this file never touches
+// analytics_events itself. Deliberately terse, mobile-first (max-w-md,
+// same as every other tab on this page — see page.tsx's own wrapper):
+// the owner should read the top of this tab in seconds, not scroll a
+// dashboard. No chart library — the one trend below is a plain inline
+// SVG bar row, with a compact single-point fallback (section 8).
 const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6";
 const sectionLabelClass = "text-xs font-bold uppercase tracking-wide text-ink/40";
 
@@ -24,62 +25,75 @@ const RANGE_TABS: { value: OwnerPerformanceRange; label: string }[] = [
   { value: "all", label: "All Time" },
 ];
 
+function plural(n: number, word: string): string {
+  return `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** Only the nonzero metrics, joined into one compact line — "1
+ * impression" alone when everything else is zero, never a noisy string
+ * of zeros (task section 7). */
+function compactMetricLine(parts: { count: number; word: string }[]): string {
+  return parts
+    .filter((p) => p.count > 0)
+    .map((p) => plural(p.count, p.word))
+    .join(" · ");
+}
+
 export default function PerformanceTab({
   data,
   basePath,
   range,
+  businessName,
 }: {
   data: OwnerPerformanceData;
   basePath: string;
   range: OwnerPerformanceRange;
+  businessName: string;
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <p className={sectionLabelClass}>Performance</p>
-        <div className="mt-2 flex gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {RANGE_TABS.map((r) => (
-            <Link
-              key={r.value}
-              href={`${basePath}?tab=performance&range=${r.value}`}
-              className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition ${
-                r.value === range ? "bg-findmi text-white" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
-              }`}
-            >
-              {r.label}
-            </Link>
-          ))}
+      {/* Section 10 — the tab strip above already establishes "you're on
+          Performance"; a second standalone "PERFORMANCE" label here was
+          redundant. The range selector is now the first thing shown. */}
+      <div className="flex gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {RANGE_TABS.map((r) => (
+          <Link
+            key={r.value}
+            href={`${basePath}?tab=performance&range=${r.value}`}
+            className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition ${
+              r.value === range ? "bg-findmi text-white" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
+            }`}
+          >
+            {r.label}
+          </Link>
+        ))}
+      </div>
+
+      {/* Section 9 — headline always renders, even at zero, so
+          Performance never looks like a dead/broken page. */}
+      <div className={cardClass}>
+        <p className={sectionLabelClass}>{data.rangeLabel}</p>
+        <div className="mt-3 flex flex-col gap-4">
+          <HeadlineRow eyebrow="Discovery" label="Impressions" metric={data.headline.impressions} />
+          <HeadlineRow eyebrow="Interest" label="Profile Views" metric={data.headline.profileViews} />
+          <HeadlineRow eyebrow="Action" label="Actions Taken" metric={data.headline.actionsTaken} />
         </div>
       </div>
 
       {data.isEmpty ? (
         <div className={cardClass}>
-          <p className="text-sm font-semibold text-ink">No activity recorded yet.</p>
-          <p className="mt-1.5 text-sm text-ink/50">
-            Findmi Performance began recording activity when this feature launched — it can&rsquo;t show anything
-            from before that. Check back after your Business has had some real visits, or try a longer date range
-            above.
+          <p className="text-sm font-semibold text-ink">Your performance starts here</p>
+          <p className="mt-1.5 text-sm text-ink/60">
+            Findmi is now measuring how people discover and interact with {businessName}. Activity will appear here
+            as people find your Business, view your profile and take actions — directions, website/social clicks,
+            saves, follows, products and QR activity.
           </p>
+          <p className="mt-2 text-xs font-semibold text-ink/40">No activity recorded in this period yet.</p>
         </div>
       ) : (
         <>
-          {/* ── Headline — three primary stages, never twelve tiles. ── */}
-          <div className={cardClass}>
-            <p className={sectionLabelClass}>{data.rangeLabel}</p>
-            <div className="mt-3 flex flex-col gap-4">
-              <HeadlineRow eyebrow="Discovery" label="Impressions" metric={data.headline.impressions} />
-              <HeadlineRow eyebrow="Interest" label="Profile Views" metric={data.headline.profileViews} />
-              <HeadlineRow eyebrow="Action" label="Actions Taken" metric={data.headline.actionsTaken} />
-            </div>
-          </div>
-
           {/* ── Trend ── */}
-          {data.trend.points.some((p) => p.value > 0) && (
-            <div className={cardClass}>
-              <p className={sectionLabelClass}>{data.trend.metricLabel} Over Time</p>
-              <TrendBars points={data.trend.points} />
-            </div>
-          )}
+          <ProfileViewsTrend data={data} />
 
           {/* ── Secondary actions — compact grid, zero-value items already
               filtered out server-side (progressive disclosure). ── */}
@@ -106,7 +120,9 @@ export default function PerformanceTab({
             </div>
           )}
 
-          {/* ── Discovery performance ── */}
+          {/* ── Discovery performance — WHERE exposure happened; see
+              Appearance Performance below for WHICH Appearance (task
+              section 14 — orthogonal, not double-counting). ── */}
           {data.discoverySources.length > 0 && (
             <div className={cardClass}>
               <p className={sectionLabelClass}>Where People Found You</p>
@@ -116,8 +132,8 @@ export default function PerformanceTab({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-ink">{s.label}</p>
                       <p className="text-xs text-ink/45">
-                        {s.impressions.toLocaleString()} impression{s.impressions === 1 ? "" : "s"}
-                        {s.clicks > 0 && ` · ${s.clicks.toLocaleString()} click${s.clicks === 1 ? "" : "s"}`}
+                        {plural(s.impressions, "impression")}
+                        {s.clicks > 0 && ` · ${plural(s.clicks, "click")}`}
                       </p>
                     </div>
                     {s.clickRate !== null && (
@@ -131,29 +147,36 @@ export default function PerformanceTab({
             </div>
           )}
 
-          {/* ── Appearance performance — first-class, never folded into
-              Event reporting. ── */}
+          {/* ── Appearance performance (section 6) — first-class, never
+              folded into Event reporting. Renamed from "Where People
+              Found You In Person": an impression only means a consumer
+              SAW the Appearance on Findmi, never that they physically
+              attended. ── */}
           {data.appearances.length > 0 && (
             <div className={cardClass}>
-              <p className={sectionLabelClass}>Where People Found You In Person</p>
-              <div className="mt-3 flex flex-col gap-3">
-                {data.appearances.map((a) => (
-                  <div key={a.id} className="rounded-2xl border border-black/5 p-3.5">
-                    <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
-                    <p className="text-xs text-ink/45">
-                      {formatDateShort(a.startAt)}
-                      {a.eventName && ` · ${a.eventName}`}
-                      {a.location && ` · ${a.location}`}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink/60">
-                      {a.impressions > 0 && <span>{a.impressions.toLocaleString()} impressions</span>}
-                      {a.clicks > 0 && <span>{a.clicks.toLocaleString()} clicks</span>}
-                      {a.directions > 0 && <span>{a.directions.toLocaleString()} directions</span>}
-                      {a.saves > 0 && <span>{a.saves.toLocaleString()} saves</span>}
-                      {a.qrScans > 0 && <span>{a.qrScans.toLocaleString()} QR scans</span>}
+              <p className={sectionLabelClass}>Appearance Performance</p>
+              <p className="mt-0.5 text-xs text-ink/45">See which upcoming stops are getting attention.</p>
+              <div className="mt-3 flex flex-col gap-2.5">
+                {data.appearances.map((a) => {
+                  const metricLine = compactMetricLine([
+                    { count: a.impressions, word: "impression" },
+                    { count: a.clicks, word: "click" },
+                    { count: a.directions, word: "direction" },
+                    { count: a.saves, word: "save" },
+                    { count: a.qrScans, word: "QR scan" },
+                  ]);
+                  return (
+                    <div key={a.id} className="rounded-2xl border border-black/5 p-3">
+                      <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
+                      <p className="text-xs text-ink/45">
+                        {formatDateShort(a.startAt)}
+                        {a.eventName && ` · ${a.eventName}`}
+                        {a.location && ` · ${a.location}`}
+                      </p>
+                      {metricLine && <p className="mt-1 text-xs text-ink/60">{metricLine}</p>}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -162,19 +185,22 @@ export default function PerformanceTab({
           {data.products.length > 0 && (
             <div className={cardClass}>
               <p className={sectionLabelClass}>Product Interest</p>
-              <div className="mt-3 flex flex-col gap-3">
-                {data.products.map((p) => (
-                  <div key={p.id} className="rounded-2xl border border-black/5 p-3.5">
-                    <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink/60">
-                      {p.impressions > 0 && <span>{p.impressions.toLocaleString()} impressions</span>}
-                      {p.views > 0 && <span>{p.views.toLocaleString()} views</span>}
-                      {p.cardClicks > 0 && <span>{p.cardClicks.toLocaleString()} card clicks</span>}
-                      {p.externalClicks > 0 && <span>{p.externalClicks.toLocaleString()} shop clicks</span>}
-                      {p.saves > 0 && <span>{p.saves.toLocaleString()} saves</span>}
+              <div className="mt-3 flex flex-col gap-2.5">
+                {data.products.map((p) => {
+                  const metricLine = compactMetricLine([
+                    { count: p.impressions, word: "impression" },
+                    { count: p.views, word: "view" },
+                    { count: p.cardClicks, word: "card click" },
+                    { count: p.externalClicks, word: "shop click" },
+                    { count: p.saves, word: "save" },
+                  ]);
+                  return (
+                    <div key={p.id} className="rounded-2xl border border-black/5 p-3">
+                      <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
+                      {metricLine && <p className="mt-1 text-xs text-ink/60">{metricLine}</p>}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -257,9 +283,36 @@ function BarRow({ label, value, max }: { label: string; value: number; max: numb
   );
 }
 
+/** Section 8 — a bar-chart trend with only one non-zero bucket renders as
+ * one bar filling the whole plot width (barWidth = 100 / points.length,
+ * so a short/no-activity window looks like a rendering defect, not a
+ * chart). Below two non-zero points, show a compact single-value state
+ * instead; the normal bar row only renders once there's a real trend to
+ * show. Zero non-zero points is handled upstream (the whole card is
+ * omitted by its own caller when every bucket is zero). */
+function ProfileViewsTrend({ data }: { data: OwnerPerformanceData }) {
+  const nonZero = data.trend.points.filter((p) => p.value > 0);
+  if (nonZero.length === 0) return null;
+
+  return (
+    <div className={cardClass}>
+      <p className={sectionLabelClass}>{data.trend.metricLabel} Over Time</p>
+      {nonZero.length === 1 ? (
+        <div className="mt-2">
+          <p className="font-display text-2xl font-bold tracking-tight text-ink">{plural(nonZero[0].value, "profile view")}</p>
+          <p className="text-xs text-ink/45">{nonZero[0].label}</p>
+        </div>
+      ) : (
+        <TrendBars points={data.trend.points} />
+      )}
+    </div>
+  );
+}
+
 /** No chart library — a plain, dependency-free inline SVG bar row.
  * Deliberately simple: readable at a glance on a ~390px screen, not a
- * zoomable/hoverable analytics widget. */
+ * zoomable/hoverable analytics widget. Only rendered by ProfileViewsTrend
+ * once there are 2+ non-zero buckets to actually compare. */
 function TrendBars({ points }: { points: { label: string; value: number }[] }) {
   const max = Math.max(1, ...points.map((p) => p.value));
   const width = 100;

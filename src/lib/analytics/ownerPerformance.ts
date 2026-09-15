@@ -143,6 +143,93 @@ const PAGE_TYPE_LABELS: Record<string, string> = {
   product: "Product Page",
 };
 
+// Path prefix -> label, for the rare row that carries a page_path but no
+// recognized page_type (Tier 4 of resolveDiscoverySourceLabel below).
+// Kept intentionally small — real call sites always pair page_path with
+// page_type today (see the taxonomy), so this is a defensive fallback,
+// not the common path.
+const PAGE_PATH_PREFIX_LABELS: [string, string][] = [
+  ["/business/", "Business Profile"],
+  ["/event/", "Event Page"],
+  ["/location/", "Location Page"],
+  ["/product/", "Product Page"],
+  ["/find", "Findmi Here"],
+  ["/discover", "Discover"],
+  ["/businesses", "Businesses"],
+  ["/events", "Events"],
+  ["/locations", "Locations"],
+  ["/marketplace", "Marketplace"],
+];
+
+// A handful of real, curated placement strings (grepped from actual call
+// sites — never invented) that name a more specific consumer surface than
+// their page_type alone would. Parameterized placements (e.g.
+// "category_rail:west-village") are matched on their prefix before the
+// colon. Deliberately small: only placements confirmed in real components,
+// not a mapping for every string that could theoretically exist.
+const PLACEMENT_LABELS: Record<string, string> = {
+  featured_rail: "Featured",
+  featured_brands: "Featured Brands",
+  featured_products: "Featured Products",
+  category_rail: "Featured Category",
+  happening_soon: "Upcoming Events",
+  events_section: "Events",
+  results_grid: "Search Results",
+  all_products_grid: "All Products",
+  grid: "Browse Grid",
+  homepage_row: "Homepage",
+};
+
+// Last-resort fallback (Tier 5, just above "Other") — reads only the
+// event's own real subject_type, never invents a page/section. "Appearance
+// Discovery" is the real-world case this exists for: AppearanceCard
+// rendered on a Business's own public profile (BusinessPublicView.tsx)
+// with no analyticsContext prop, so page_type/page_path/placement/
+// discovery_section_id are genuinely all null on that row — this still
+// honestly says WHAT was seen, just not precisely WHERE.
+const SUBJECT_TYPE_FALLBACK_LABELS: Record<string, string> = {
+  business: "Business Discovery",
+  appearance: "Appearance Discovery",
+  product: "Product Discovery",
+  event: "Event Discovery",
+  event_occurrence: "Event Discovery",
+  location: "Location Discovery",
+};
+
+/** Discovery-source resolution precedence (task's own order): (1) a named
+ * Discovery Page Builder section, (2) a recognizable curated placement,
+ * (3) a human page_type, (4) a humanized page_path prefix, (5) the raw
+ * subject_type as a last, still-honest resort, (6) "Other" only when
+ * truly nothing on the row classifies it. Never fabricates a source the
+ * row doesn't actually support. */
+function resolveDiscoverySourceLabel(
+  row: Pick<EcosystemRow, "discovery_section_id" | "placement" | "page_type" | "page_path" | "subject_type">,
+  sectionTitleById: Map<string, string>
+): string {
+  if (row.discovery_section_id) {
+    const title = sectionTitleById.get(row.discovery_section_id);
+    if (title) return title;
+  }
+  if (row.placement) {
+    const base = row.placement.split(":")[0];
+    const label = PLACEMENT_LABELS[base];
+    if (label) return label;
+  }
+  if (row.page_type) {
+    const label = PAGE_TYPE_LABELS[row.page_type];
+    if (label) return label;
+  }
+  if (row.page_path) {
+    const match = PAGE_PATH_PREFIX_LABELS.find(([prefix]) => row.page_path!.startsWith(prefix));
+    if (match) return match[1];
+  }
+  if (row.subject_type) {
+    const label = SUBJECT_TYPE_FALLBACK_LABELS[row.subject_type];
+    if (label) return label;
+  }
+  return "Other";
+}
+
 // ── Public shapes ────────────────────────────────────────────────────
 export interface OwnerPerformanceMetric {
   value: number;
@@ -239,6 +326,8 @@ interface EcosystemRow {
   product_id: string | null;
   discovery_section_id: string | null;
   page_type: string | null;
+  page_path: string | null;
+  placement: string | null;
   metadata: Record<string, unknown> | null;
   occurred_at: string;
 }
@@ -406,7 +495,7 @@ export async function getOwnerBusinessPerformance(
 
   let ecosystemQuery = admin
     .from("analytics_events")
-    .select("event_name, subject_type, business_id, appearance_id, product_id, discovery_section_id, page_type, metadata, occurred_at")
+    .select("event_name, subject_type, business_id, appearance_id, product_id, discovery_section_id, page_type, page_path, placement, metadata, occurred_at")
     .or(orParts.join(","));
   if (bounds.currentStartIso !== null) {
     // Non-"all" ranges: fetch from the START of the PREVIOUS period so one
@@ -462,8 +551,20 @@ export async function getOwnerBusinessPerformance(
   const count = (list: EcosystemRow[], pred: (r: EcosystemRow) => boolean) => list.reduce((n, r) => n + (pred(r) ? 1 : 0), 0);
 
   // ── Headline ──
-  const impressionsNow = count(currentRows, (r) => r.event_name === "entity_impression" && r.subject_type === "business");
-  const impressionsPrev = count(previousRows, (r) => r.event_name === "entity_impression" && r.subject_type === "business");
+  // Impressions (Phase 3.1 correction) — TOTAL Business-attributable
+  // discovery exposure, not just impressions of the Business's own card.
+  // currentRows/previousRows are already the ecosystem-scoped row set
+  // (business_id = X, OR product_id/appearance_id belonging to this
+  // Business's own Products/Appearances — see the module doc comment), so
+  // a single event_name check here is sufficient: every currentRows row
+  // is already guaranteed unique (one query, one result set — Postgres
+  // never returns a row twice for matching more than one OR clause) and
+  // already guaranteed attributable, so this can never double-count or
+  // pull in an unrelated Business's or bare Event's impression. Excludes
+  // discovery_section_impression on purpose — that measures a SECTION,
+  // not exposure to this Business.
+  const impressionsNow = count(currentRows, (r) => r.event_name === "entity_impression");
+  const impressionsPrev = count(previousRows, (r) => r.event_name === "entity_impression");
   const profileViewsNow = count(currentRows, (r) => r.event_name === "page_view" && r.subject_type === "business");
   const profileViewsPrev = count(previousRows, (r) => r.event_name === "page_view" && r.subject_type === "business");
   const actionsNow = count(currentRows, (r) => ACTION_SET.has(r.event_name));
@@ -488,13 +589,20 @@ export async function getOwnerBusinessPerformance(
     .map(([channel, cnt]) => ({ channel, label: CONTACT_CHANNEL_LABELS[channel] ?? "Other", count: cnt }))
     .sort((a, b) => b.count - a.count);
 
-  // ── Discovery sources ──
+  // ── Discovery sources (Phase 3.1 — precedence rewritten; see
+  // resolveDiscoverySourceLabel). Semantics (task section 14, documented
+  // per its own "document the chosen semantics" instruction): this
+  // breakdown answers WHERE a Business-attributable impression/click
+  // happened; Appearance Performance below separately answers WHICH
+  // Appearance it was about. Both read the very same raw rows and are
+  // never summed into each other, so an Appearance's impression counted
+  // once here (by source) and once there (by Appearance) is NOT double-
+  // counting — it's two different, non-additive questions about the same
+  // event. ──
   const sourceStats = new Map<string, { impressions: number; clicks: number }>();
   for (const r of currentRows) {
     if (r.event_name !== "entity_impression" && r.event_name !== "entity_click") continue;
-    const label = r.discovery_section_id
-      ? (sectionTitleById.get(r.discovery_section_id) ?? "Findmi Discovery Section")
-      : (PAGE_TYPE_LABELS[r.page_type ?? ""] ?? "Other");
+    const label = resolveDiscoverySourceLabel(r, sectionTitleById);
     const entry = sourceStats.get(label) ?? { impressions: 0, clicks: 0 };
     if (r.event_name === "entity_impression") entry.impressions++;
     else entry.clicks++;
