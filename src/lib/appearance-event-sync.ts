@@ -154,6 +154,121 @@ export async function reverseSyncEventParticipation(
 // source='manual' by migration default and are therefore never touched by
 // any of this — a deliberate, conservative exclusion, not an oversight.
 
+// ── Schedule Integrity pass — canonical Event-authoritative field
+// derivation ───────────────────────────────────────────────────────────
+// Event → Appearance Schedule Integrity pass. ONE derivation per source
+// (non-recurring Event / Occurrence), reused by both creation/reactivation
+// (ensureEventAppearance/ensureOccurrenceAppearance, which also need
+// title) and the new confirmed-row sync below (syncOfficialEventAppearances/
+// syncOfficialOccurrenceAppearances, which never write title — see each
+// function's own doc comment). No second, independently-typed copy of this
+// mapping exists anywhere else.
+//
+// LOCKED field-ownership rule for source='official_participation':
+// Event/Occurrence own WHEN (start_at/end_at) and WHERE (location_id where
+// a real Location relationship exists, venue_name/address/city/state/
+// latitude/longitude). The Business owns everything else (title once the
+// Appearance is confirmed, description, external_url, flyer_image_url,
+// bulletin_text, is_featured, show_on_home, home_sort_order) — none of
+// that is ever read or written by anything in this section.
+
+interface EventWhereWhen {
+  start_at: string;
+  end_at: string;
+  venue_name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+async function deriveEventFields(
+  supabase: SupabaseClient,
+  eventId: string
+): Promise<(EventWhereWhen & { title: string }) | null> {
+  const { data: event } = await supabase
+    .from("events")
+    .select("name, start_at, end_at, venue_name, address, city, state, latitude, longitude")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (!event) return null;
+  return {
+    title: event.name,
+    start_at: event.start_at,
+    end_at: event.end_at,
+    venue_name: event.venue_name,
+    address: event.address,
+    city: event.city,
+    state: event.state,
+    latitude: event.latitude,
+    longitude: event.longitude,
+  };
+}
+
+// events has no location_id column of its own (only event_occurrences
+// does — see updateMemberEventLocation's own comment in account/event/
+// actions.ts), so a non-recurring Event-derived Appearance never had, and
+// still never gets, a location_id — only the occurrence path below does.
+
+interface OccurrenceWhereWhen extends EventWhereWhen {
+  location_id: string | null;
+}
+
+async function deriveOccurrenceFields(
+  supabase: SupabaseClient,
+  occurrenceId: string
+): Promise<(OccurrenceWhereWhen & { event_id: string; title: string }) | null> {
+  const { data: occurrence } = await supabase
+    .from("event_occurrences")
+    .select("event_id, start_at, end_at, location_id, events(name, venue_name, address, city, state, latitude, longitude)")
+    .eq("id", occurrenceId)
+    .maybeSingle();
+  if (!occurrence) return null;
+  const event = Array.isArray(occurrence.events) ? occurrence.events[0] : occurrence.events;
+  if (!event) return null;
+
+  // Venue/address prefers the occurrence's own linked Location; falls back
+  // to the parent Event's venue fields when the occurrence has no
+  // location_id — same precedence ensureOccurrenceAppearance always used.
+  // location_id itself starts (and, on a fallback, stays) null so a
+  // Location A -> no-Location-FK switch correctly clears the Appearance's
+  // own location_id rather than leaving it pointed at the old Location.
+  let venue: OccurrenceWhereWhen = {
+    location_id: null,
+    venue_name: event.venue_name as string | null,
+    address: event.address as string | null,
+    city: event.city as string | null,
+    state: event.state as string | null,
+    latitude: event.latitude as number | null,
+    longitude: event.longitude as number | null,
+    start_at: occurrence.start_at,
+    end_at: occurrence.end_at,
+  };
+  if (occurrence.location_id) {
+    const { data: location } = await supabase
+      .from("locations")
+      .select("name, address, city, state, latitude, longitude")
+      .eq("id", occurrence.location_id)
+      .maybeSingle();
+    if (location) {
+      venue = {
+        location_id: occurrence.location_id,
+        venue_name: location.name,
+        address: location.address,
+        city: location.city,
+        state: location.state,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        start_at: occurrence.start_at,
+        end_at: occurrence.end_at,
+      };
+    }
+  }
+
+  return { event_id: occurrence.event_id, title: event.name, ...venue };
+}
+
 /** Non-recurring event -> one appearances row (event_occurrence_id left
  * null). Inherits title/start/end/venue straight from the event row —
  * no title/date fuzzy matching. If a CANCELED appearance already exists
@@ -174,24 +289,8 @@ export async function ensureEventAppearance(supabase: SupabaseClient, eventId: s
     .maybeSingle();
   if (existing) return;
 
-  const { data: event } = await supabase
-    .from("events")
-    .select("name, start_at, end_at, venue_name, address, city, state, latitude, longitude")
-    .eq("id", eventId)
-    .maybeSingle();
-  if (!event) return;
-
-  const fields = {
-    title: event.name,
-    start_at: event.start_at,
-    end_at: event.end_at,
-    venue_name: event.venue_name,
-    address: event.address,
-    city: event.city,
-    state: event.state,
-    latitude: event.latitude,
-    longitude: event.longitude,
-  };
+  const fields = await deriveEventFields(supabase, eventId);
+  if (!fields) return;
 
   const { data: canceled } = await supabase
     .from("appearances")
@@ -250,7 +349,15 @@ export async function cancelEventAppearance(supabase: SupabaseClient, eventId: s
  * same reasoning as ensureEventAppearance above. Exported (moved from
  * admin/events/actions.ts, where it was module-private) so
  * lib/opportunities.ts's occurrence-aware application resolver can call it
- * directly. */
+ * directly.
+ *
+ * Schedule Integrity pass — now also writes location_id (previously left
+ * null even when the occurrence had a real Location FK — the Appearance
+ * only ever got that Location's TEXT snapshot). Applies uniformly to both
+ * a brand-new insert and a reactivated row, via the shared
+ * deriveOccurrenceFields derivation every other function in this section
+ * also uses. No backfill of existing confirmed rows here — only creation/
+ * reactivation and the two sync functions below ever write it. */
 export async function ensureOccurrenceAppearance(supabase: SupabaseClient, occurrenceId: string, businessId: string) {
   const { data: existing } = await supabase
     .from("appearances")
@@ -261,48 +368,10 @@ export async function ensureOccurrenceAppearance(supabase: SupabaseClient, occur
     .maybeSingle();
   if (existing) return;
 
-  const { data: occurrence } = await supabase
-    .from("event_occurrences")
-    .select("event_id, start_at, end_at, location_id, events(name, venue_name, address, city, state, latitude, longitude)")
-    .eq("id", occurrenceId)
-    .maybeSingle();
-  if (!occurrence) return;
-  const event = Array.isArray(occurrence.events) ? occurrence.events[0] : occurrence.events;
-  if (!event) return;
-
-  let venue = {
-    venue_name: event.venue_name as string | null,
-    address: event.address as string | null,
-    city: event.city as string | null,
-    state: event.state as string | null,
-    latitude: event.latitude as number | null,
-    longitude: event.longitude as number | null,
-  };
-  if (occurrence.location_id) {
-    const { data: location } = await supabase
-      .from("locations")
-      .select("name, address, city, state, latitude, longitude")
-      .eq("id", occurrence.location_id)
-      .maybeSingle();
-    if (location) {
-      venue = {
-        venue_name: location.name,
-        address: location.address,
-        city: location.city,
-        state: location.state,
-        latitude: location.latitude,
-        longitude: location.longitude,
-      };
-    }
-  }
-
-  const fields = {
-    event_id: occurrence.event_id,
-    title: event.name,
-    start_at: occurrence.start_at,
-    end_at: occurrence.end_at,
-    ...venue,
-  };
+  const derived = await deriveOccurrenceFields(supabase, occurrenceId);
+  if (!derived) return;
+  const { event_id, title, start_at, end_at, location_id, venue_name, address, city, state, latitude, longitude } = derived;
+  const fields = { event_id, title, start_at, end_at, location_id, venue_name, address, city, state, latitude, longitude };
 
   const { data: canceled } = await supabase
     .from("appearances")
@@ -355,4 +424,119 @@ export async function cancelOccurrenceAppearance(supabase: SupabaseClient, occur
     .eq("event_occurrence_id", occurrenceId)
     .eq("source", "official_participation")
     .neq("status", "canceled");
+}
+
+// ── Event → Appearance Schedule Integrity pass — WHERE/WHEN sync for
+// confirmed rows ─────────────────────────────────────────────────────────
+// ensureEventAppearance/ensureOccurrenceAppearance above only ever touch a
+// MISSING or CANCELED appearance (create, or reactivate-with-fresh-fields).
+// An already-CONFIRMED official-participation appearance was never revisited
+// after that — a later Event/Occurrence date/venue/Location edit left it
+// showing stale schedule information indefinitely (the Schedule Integrity
+// audit's core finding). These two functions close that gap: ONE bounded
+// UPDATE per Event/Occurrence (never a per-business loop — every approved
+// business's row for that Event/Occurrence is refreshed in the same
+// statement), called by the organizer/admin actions that change a
+// non-recurring Event's or an Occurrence's own WHERE/WHEN fields. Both
+// reuse the exact same deriveEventFields/deriveOccurrenceFields this file's
+// creation path already uses — one canonical field-derivation rule, never a
+// second copy that could drift.
+//
+// Deliberately narrow: only start_at/end_at/venue_name/address/city/state/
+// latitude/longitude(/location_id for the occurrence path) are ever
+// written. title is never touched here (Business-customizable once the
+// Appearance is confirmed — LOCKED product rule, see this file's own
+// header) and no Business-owned presentation field (description/
+// external_url/flyer_image_url/bulletin_text/is_featured/show_on_home/
+// home_sort_order) is read or written. status='confirmed' is part of the
+// WHERE clause, not something this ever sets — a canceled/withdrawn row is
+// never touched, so an ordinary Event edit can never resurrect it.
+// Best-effort/non-blocking, same posture as every other function here: a
+// sync failure is logged and never rolls back or blocks the Event edit
+// that already succeeded.
+
+/** Refreshes WHERE/WHEN on every confirmed official-participation
+ * Appearance linked to this non-recurring Event (event_occurrence_id is
+ * null). Call after any organizer/admin edit that changes a non-recurring
+ * Event's own start_at/end_at/venue fields. */
+export async function syncOfficialEventAppearances(supabase: SupabaseClient, eventId: string): Promise<void> {
+  const fields = await deriveEventFields(supabase, eventId);
+  if (!fields) return;
+
+  const { error } = await supabase
+    .from("appearances")
+    .update({
+      start_at: fields.start_at,
+      end_at: fields.end_at,
+      venue_name: fields.venue_name,
+      address: fields.address,
+      city: fields.city,
+      state: fields.state,
+      latitude: fields.latitude,
+      longitude: fields.longitude,
+    })
+    .eq("event_id", eventId)
+    .is("event_occurrence_id", null)
+    .eq("source", "official_participation")
+    .eq("status", "confirmed");
+  if (error) {
+    console.error(`[appearance-event-sync] failed to sync official-participation appearances for event ${eventId}:`, error);
+  }
+}
+
+/** Refreshes WHERE/WHEN on every confirmed official-participation
+ * Appearance linked to this one Occurrence — never a sibling occurrence of
+ * the same Event. Call after any organizer/admin edit that changes an
+ * Occurrence's own start_at/end_at/location_id. Writes location_id
+ * directly from the Occurrence (null when it falls back to the parent
+ * Event's venue text), so a Location A -> Location B change moves the
+ * Appearance to Location B, and a Location -> no-Location-FK change
+ * correctly clears it rather than leaving it pointed at the old Location. */
+export async function syncOfficialOccurrenceAppearances(supabase: SupabaseClient, occurrenceId: string): Promise<void> {
+  const fields = await deriveOccurrenceFields(supabase, occurrenceId);
+  if (!fields) return;
+
+  const { error } = await supabase
+    .from("appearances")
+    .update({
+      start_at: fields.start_at,
+      end_at: fields.end_at,
+      location_id: fields.location_id,
+      venue_name: fields.venue_name,
+      address: fields.address,
+      city: fields.city,
+      state: fields.state,
+      latitude: fields.latitude,
+      longitude: fields.longitude,
+    })
+    .eq("event_occurrence_id", occurrenceId)
+    .eq("source", "official_participation")
+    .eq("status", "confirmed");
+  if (error) {
+    console.error(`[appearance-event-sync] failed to sync official-participation appearances for occurrence ${occurrenceId}:`, error);
+  }
+}
+
+/** Cancels (never deletes) every ACTIVE official-participation Appearance
+ * linked to this one Occurrence, regardless of which business — the bulk
+ * counterpart to cancelOccurrenceAppearance above (single-business,
+ * participation-status driven). Use this when the OCCURRENCE ITSELF is
+ * cancelled or removed, not when one business individually withdraws.
+ * Scoped entirely by event_occurrence_id, so a sibling occurrence of the
+ * same Event is never touched, and by source='official_participation', so
+ * a manual/event_self_added Appearance is never touched. Call this BEFORE
+ * deleting an event_occurrences row, not after — the FK
+ * (appearances.event_occurrence_id -> event_occurrences.id) is
+ * ON DELETE SET NULL, so once the occurrence row is gone this function can
+ * no longer find the Appearances it needs to cancel by occurrence id. */
+export async function cancelOfficialOccurrenceAppearances(supabase: SupabaseClient, occurrenceId: string): Promise<void> {
+  const { error } = await supabase
+    .from("appearances")
+    .update({ status: "canceled" })
+    .eq("event_occurrence_id", occurrenceId)
+    .eq("source", "official_participation")
+    .neq("status", "canceled");
+  if (error) {
+    console.error(`[appearance-event-sync] failed to cancel official-participation appearances for occurrence ${occurrenceId}:`, error);
+  }
 }

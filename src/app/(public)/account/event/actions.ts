@@ -16,7 +16,13 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/market-requests";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
-import { cancelEventAppearance, ensureEventAppearance } from "@/lib/appearance-event-sync";
+import {
+  cancelEventAppearance,
+  cancelOfficialOccurrenceAppearances,
+  ensureEventAppearance,
+  syncOfficialEventAppearances,
+  syncOfficialOccurrenceAppearances,
+} from "@/lib/appearance-event-sync";
 import type { EventParticipationStatus } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
@@ -526,6 +532,12 @@ export async function updateMemberEventPrimaryDate(eventId: string, formData: Fo
   const { error } = await admin.from("events").update({ start_at: startIso, end_at: endIso }).eq("id", eventId);
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
 
+  // Schedule Integrity pass — this Event's own date/time just changed;
+  // refresh WHERE/WHEN on every already-confirmed official-participation
+  // Appearance linked to it (non-recurring only — event_occurrence_id is
+  // null). Best-effort, never blocks this save.
+  await syncOfficialEventAppearances(admin, eventId);
+
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { saved: "1" }));
 }
@@ -616,6 +628,12 @@ export async function updateMemberEventDate(eventId: string, occurrenceId: strin
     .eq("event_id", eventId);
   if (error) redirect(appendQuery(redirectPath, { error: "Couldn't update that date. Please try again." }));
 
+  // Schedule Integrity pass — this one Occurrence's own date/time/Location
+  // just changed; refresh WHERE/WHEN (including location_id) on every
+  // already-confirmed official-participation Appearance linked to THIS
+  // occurrence only — never a sibling occurrence of the same Event.
+  await syncOfficialOccurrenceAppearances(admin, occurrenceId);
+
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { date_updated: "1" }));
 }
@@ -625,6 +643,14 @@ export async function updateMemberEventDate(eventId: string, occurrenceId: strin
 export async function removeMemberEventDate(eventId: string, occurrenceId: string) {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
   const admin = await requireEventManager(eventId, redirectPath);
+
+  // Schedule Integrity pass — cancel this occurrence's official-participation
+  // Appearances BEFORE deleting the occurrence row: appearances.event_occurrence_id
+  // is ON DELETE SET NULL, so once the occurrence is gone this can no
+  // longer find them by occurrence id, and they'd otherwise survive as a
+  // stale 'confirmed' row telling customers the (now-removed) date is
+  // still happening.
+  await cancelOfficialOccurrenceAppearances(admin, occurrenceId);
 
   await admin.from("event_occurrences").delete().eq("id", occurrenceId).eq("event_id", eventId);
 
@@ -704,6 +730,13 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
     .select("start_at, end_at")
     .maybeSingle();
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  // Schedule Integrity pass — this Event's own venue text just changed;
+  // refresh WHERE on every already-confirmed non-recurring
+  // official-participation Appearance linked to it. The new-occurrence
+  // insert below (when this Event had none yet) has no participation to
+  // sync — nothing is approved against a brand-new occurrence.
+  await syncOfficialEventAppearances(admin, eventId);
 
   if (matchedLocation && event) {
     const { count } = await admin

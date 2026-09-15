@@ -17,6 +17,9 @@ import {
   cancelEventAppearance,
   ensureOccurrenceAppearance,
   cancelOccurrenceAppearance,
+  cancelOfficialOccurrenceAppearances,
+  syncOfficialEventAppearances,
+  syncOfficialOccurrenceAppearances,
 } from "@/lib/appearance-event-sync";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
 
@@ -185,6 +188,14 @@ export async function saveEvent(id: string | null, formData: FormData) {
   if (eventId) {
     const { error } = await supabase.from("events").update(payload).eq("id", eventId);
     if (error) redirect(errorRedirectUrl(editPath, error.message));
+
+    // Schedule Integrity pass — this Event's own WHERE/WHEN fields may
+    // have just changed; refresh every already-confirmed non-recurring
+    // (event_occurrence_id null) official-participation Appearance linked
+    // to it. Occurrence-linked Appearances are synced separately below,
+    // scoped to whichever occurrence actually changed. A brand-new Event
+    // (the insert branch below) has no prior participation to sync.
+    await syncOfficialEventAppearances(supabase, eventId);
   } else {
     const { data, error } = await supabase.from("events").insert(payload).select("id").single();
     if (error || !data) redirect(errorRedirectUrl(editPath, error?.message ?? "Could not create event."));
@@ -222,6 +233,23 @@ export async function saveEvent(id: string | null, formData: FormData) {
   // rows client-side before they ever reach here.
   const occurrenceIds = formData.getAll("occurrence_id").map(String);
   const removedOccurrenceIds = formData.getAll("removed_occurrence_id").map(String);
+
+  // Schedule Integrity pass — read each submitted occurrence's PRIOR
+  // status before the upsert overwrites it, so a genuine cancelled ->
+  // scheduled transition (below) can be told apart from an occurrence
+  // that was already scheduled and simply had its date/venue edited. A
+  // brand-new occurrence id (client-generated, never saved before) simply
+  // has no prior row here — never treated as a restoration.
+  const priorOccurrenceStatusById = new Map<string, string>();
+  if (occurrenceIds.length > 0) {
+    const { data: priorOccurrenceRows } = await supabase
+      .from("event_occurrences")
+      .select("id, status")
+      .in("id", occurrenceIds);
+    for (const row of priorOccurrenceRows ?? []) {
+      priorOccurrenceStatusById.set(row.id, row.status);
+    }
+  }
 
   const occurrencesToUpsert = occurrenceIds.map((occId) => {
     const occStartLocal = str(formData, `start_at_${occId}`);
@@ -267,8 +295,46 @@ export async function saveEvent(id: string | null, formData: FormData) {
       .from("event_occurrences")
       .upsert(occurrencesToUpsert, { onConflict: "id" });
     if (occError) redirect(errorRedirectUrl(editPath, `Occurrences: ${occError.message}`));
+
+    // Schedule Integrity pass — one bounded step per submitted occurrence,
+    // never platform-wide and never touching a sibling occurrence.
+    //   - saved as cancelled -> cancel its active official-participation
+    //     Appearances (the confirmed bug this pass fixes: a cancelled
+    //     occurrence previously left them showing as still happening).
+    //   - saved as scheduled -> refresh WHERE/WHEN on whichever official-
+    //     participation Appearances are already confirmed for it.
+    //   - AND, only when it was cancelled before this exact save and is
+    //     now scheduled again, reactivate — but only for businesses whose
+    //     own participation (event_occurrence_businesses) is still
+    //     genuinely 'approved'. ensureOccurrenceAppearance is the existing,
+    //     already-correct per-business truth for that; never invents
+    //     approval on its own.
+    for (const occ of occurrencesToUpsert) {
+      if (occ.status === "cancelled") {
+        await cancelOfficialOccurrenceAppearances(supabase, occ.id);
+        continue;
+      }
+      await syncOfficialOccurrenceAppearances(supabase, occ.id);
+      if (priorOccurrenceStatusById.get(occ.id) === "cancelled") {
+        const { data: approvedRows } = await supabase
+          .from("event_occurrence_businesses")
+          .select("business_id")
+          .eq("occurrence_id", occ.id)
+          .eq("status", "approved");
+        for (const row of approvedRows ?? []) {
+          await ensureOccurrenceAppearance(supabase, occ.id, row.business_id);
+        }
+      }
+    }
   }
   if (removedOccurrenceIds.length > 0) {
+    // Schedule Integrity pass — cancel each removed occurrence's official-
+    // participation Appearances BEFORE deleting it: appearances.event_occurrence_id
+    // is ON DELETE SET NULL, so once the occurrence row is gone this can
+    // no longer find them by occurrence id.
+    for (const occId of removedOccurrenceIds) {
+      await cancelOfficialOccurrenceAppearances(supabase, occId);
+    }
     const { error: occDeleteError } = await supabase
       .from("event_occurrences")
       .delete()
