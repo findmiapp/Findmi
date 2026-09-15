@@ -61,6 +61,12 @@ import {
 import { updateOrderItemFulfillment } from "../orders-actions";
 import { FULFILLMENT_LABELS } from "@/lib/commerce/quote";
 import { getBusinessMarketAssignments } from "@/lib/admin/business-markets";
+import {
+  DEFAULT_OWNER_PERFORMANCE_RANGE,
+  getOwnerBusinessPerformance,
+  isOwnerPerformanceRange,
+} from "@/lib/analytics/ownerPerformance";
+import PerformanceTab from "./PerformanceTab";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -110,6 +116,11 @@ const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p
 // pass, so they just move into their own tabs unchanged.
 const OWNER_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
+  // Owner Performance V1 — placed right after Overview (not appended
+  // after the other ~11 settings-style tabs) so it's actually findable,
+  // per the pass's own "don't bury it" requirement, without adding a
+  // fifth item to the global HOME/SCHEDULE/BUSINESS/INBOX nav.
+  { key: "performance", label: "Performance" },
   { key: "profile", label: "Profile" },
   { key: "gallery", label: "Gallery" },
   { key: "products", label: "Products" },
@@ -159,6 +170,7 @@ export default async function ManageBusinessPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{
     tab?: string;
+    range?: string;
     saved?: string;
     error?: string;
     created?: string;
@@ -201,6 +213,7 @@ export default async function ManageBusinessPage({
   const { id } = await params;
   const {
     tab: tabParam,
+    range: rangeParam,
     saved,
     error,
     created,
@@ -384,6 +397,17 @@ export default async function ManageBusinessPage({
   const orderList = await getBusinessOrderList(admin, id, orderStatus);
   const openOrder = openOrderId ? await getBusinessOrderDetail(admin, openOrderId, id) : null;
   const activeTab = tab === "referral" && !referralPartner ? "overview" : tab;
+
+  // Owner Performance V1 — only queried when this tab is actually open
+  // (analytics aggregation is heavier than this page's other summary
+  // reads, several of which double as Overview data). Same
+  // requireBusinessMember(id) authorization above already gates this —
+  // getOwnerBusinessPerformance does no authorization of its own, same
+  // convention as every other lib/business-*.ts read helper on this page.
+  const perfRange = isOwnerPerformanceRange(rangeParam) ? rangeParam : DEFAULT_OWNER_PERFORMANCE_RANGE;
+  const performanceData =
+    activeTab === "performance" ? await getOwnerBusinessPerformance(admin, id, perfRange) : null;
+
   const requestPayoutAction = referralPartner
     ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
     : null;
@@ -981,6 +1005,12 @@ export default async function ManageBusinessPage({
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Quick Actions</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Link
+                  href={`${basePath}?tab=performance`}
+                  className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
+                >
+                  View Performance
+                </Link>
+                <Link
                   href={`${basePath}?tab=findmi-here`}
                   className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
                 >
@@ -1015,6 +1045,11 @@ export default async function ManageBusinessPage({
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── Performance ──────────────────────────────────────────── */}
+        {activeTab === "performance" && performanceData && (
+          <PerformanceTab data={performanceData} basePath={basePath} range={perfRange} />
         )}
 
         {/* ── Profile ──────────────────────────────────────────────── */}
