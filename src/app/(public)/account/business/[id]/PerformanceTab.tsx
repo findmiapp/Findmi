@@ -6,6 +6,8 @@ import {
   type OwnerPerformanceMetric,
   type OwnerPerformanceRange,
 } from "@/lib/analytics/ownerPerformance";
+import type { BusinessFollowerSummary } from "@/lib/business-followers";
+import SupabaseImage from "@/components/SupabaseImage";
 
 // Findmi Owner Performance V1 (Phase 3.1 mobile/semantics correction) —
 // presentational-only. Every number here comes pre-aggregated from
@@ -44,11 +46,18 @@ export default function PerformanceTab({
   basePath,
   range,
   businessName,
+  followerSummary,
 }: {
   data: OwnerPerformanceData;
   basePath: string;
   range: OwnerPerformanceRange;
   businessName: string;
+  /** Owner Shell V3, Section 7 — already fetched unconditionally by
+   * page.tsx (previously shown in Overview's own "Performance Snapshot"
+   * Followers tile); threaded through as a plain prop rather than
+   * expanding ownerPerformance.ts's own query/aggregation, since this
+   * pass's own instruction is "without adding queries or complexity." */
+  followerSummary: BusinessFollowerSummary;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -69,14 +78,16 @@ export default function PerformanceTab({
         ))}
       </div>
 
-      {/* Section 9 — headline always renders, even at zero, so
-          Performance never looks like a dead/broken page. */}
+      {/* Headline always renders, even at zero, so Analytics never looks
+          like a dead/broken page. Owner Shell V3, Section 10 — no funnel-
+          stage eyebrows (Discovery/Interest/Action): just the plain
+          numbers a Business owner actually asked for. */}
       <div className={cardClass}>
         <p className={sectionLabelClass}>{data.rangeLabel}</p>
         <div className="mt-3 flex flex-col gap-4">
-          <HeadlineRow eyebrow="Discovery" label="Impressions" metric={data.headline.impressions} />
-          <HeadlineRow eyebrow="Interest" label="Profile Views" metric={data.headline.profileViews} />
-          <HeadlineRow eyebrow="Action" label="Actions Taken" metric={data.headline.actionsTaken} />
+          <HeadlineRow label="Impressions" metric={data.headline.impressions} />
+          <HeadlineRow label="Profile Views" metric={data.headline.profileViews} />
+          <HeadlineRow label="Actions" metric={data.headline.actionsTaken} />
         </div>
       </div>
 
@@ -95,11 +106,13 @@ export default function PerformanceTab({
           {/* ── Trend ── */}
           <ProfileViewsTrend data={data} />
 
-          {/* ── Secondary actions — compact grid, zero-value items already
-              filtered out server-side (progressive disclosure). ── */}
+          {/* ── Actions — meaningful things a visitor DID (Save, Follow,
+              Directions, Share, RSVP, etc.) — compact grid, zero-value
+              items already filtered out server-side (progressive
+              disclosure). ── */}
           {data.secondaryActions.length > 0 && (
             <div className={cardClass}>
-              <p className={sectionLabelClass}>What People Did</p>
+              <p className={sectionLabelClass}>Actions</p>
               <div className="mt-3 grid grid-cols-2 gap-2.5">
                 {data.secondaryActions.map((item) => (
                   <MetricTile key={item.label} label={item.label} value={item.count} />
@@ -108,10 +121,14 @@ export default function PerformanceTab({
             </div>
           )}
 
-          {/* ── Contact channel breakdown ── */}
+          {/* ── Link Clicks — OUTBOUND clicks to your own channels
+              (Website/Instagram/Facebook/TikTok/Phone/Email). Owner Shell
+              V3, Section 10: this is never "how people reached you" —
+              these are clicks AWAY from Findmi, after someone was already
+              looking at your Business here. ── */}
           {data.contactChannels.length > 0 && (
             <div className={cardClass}>
-              <p className={sectionLabelClass}>How People Reached You</p>
+              <p className={sectionLabelClass}>Link Clicks</p>
               <div className="mt-3 flex flex-col gap-2">
                 {data.contactChannels.map((c) => (
                   <BarRow key={c.channel} label={c.label} value={c.count} max={data.contactChannels[0].count} />
@@ -120,12 +137,55 @@ export default function PerformanceTab({
             </div>
           )}
 
-          {/* ── Discovery performance — WHERE exposure happened; see
-              Appearance Performance below for WHICH Appearance (task
-              section 14 — orthogonal, not double-counting). ── */}
+          {/* ── Audience (Owner Shell V3, Section 7) — Followers folded
+              in as a compact secondary section, reusing the exact data
+              (and privacy rule: only named for the subset with a public
+              Findmi profile) the old standalone Followers tab already
+              showed. No new query — followerSummary is passed straight
+              through from page.tsx, which already fetched it for every
+              tab render. ── */}
+          {followerSummary.totalCount > 0 && (
+            <div className={cardClass}>
+              <p className={sectionLabelClass}>Audience</p>
+              <p className="mt-2 font-display text-2xl font-bold tracking-tight text-ink">
+                {plural(followerSummary.totalCount, "Follower")}
+              </p>
+              <p className="mt-0.5 text-xs text-ink/45">
+                {followerSummary.accountCount} with a Findmi account
+                {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount} email-only (legacy)`}
+              </p>
+              {followerSummary.profiles.length > 0 && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {followerSummary.profiles.map((p) => (
+                    <Link
+                      key={p.username}
+                      href={`/user/${p.username}`}
+                      className="flex items-center gap-2.5 rounded-xl border border-black/5 p-2 transition hover:bg-black/[0.02]"
+                    >
+                      <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-mist">
+                        {p.avatar_url && (
+                          <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="32px" className="object-cover" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink">{p.display_name || `@${p.username}`}</p>
+                        {p.display_name && <p className="truncate text-xs text-ink/45">@{p.username}</p>}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Discovery Sources — WHERE Findmi displayed this Business/
+              content inside Findmi. See Appearance Analytics below for
+              WHICH Appearance (Section 14 — orthogonal questions about
+              the same raw event, never double-counted into each other). ── */}
           {data.discoverySources.length > 0 && (
             <div className={cardClass}>
-              <p className={sectionLabelClass}>Where People Found You</p>
+              <p className={sectionLabelClass}>Discovery Sources</p>
+              <p className="mt-0.5 text-xs text-ink/45">Where you appeared across Findmi.</p>
               <div className="mt-3 flex flex-col gap-3">
                 {data.discoverySources.map((s) => (
                   <div key={s.label} className="flex items-center justify-between gap-3 border-b border-black/5 pb-3 last:border-0 last:pb-0">
@@ -147,14 +207,16 @@ export default function PerformanceTab({
             </div>
           )}
 
-          {/* ── Appearance performance (section 6) — first-class, never
-              folded into Event reporting. Renamed from "Where People
-              Found You In Person": an impression only means a consumer
-              SAW the Appearance on Findmi, never that they physically
-              attended. ── */}
+          {/* ── Appearance Analytics — first-class, never folded into
+              Event reporting. An impression only means a consumer SAW
+              the Appearance on Findmi, never that they physically
+              attended (Phase 3.1's own known-limitation note: The Native
+              Rose's current Appearance impressions honestly resolve as
+              far as "Appearance Discovery" in Discovery Sources above —
+              see ownerPerformance.ts; not changed this pass). ── */}
           {data.appearances.length > 0 && (
             <div className={cardClass}>
-              <p className={sectionLabelClass}>Appearance Performance</p>
+              <p className={sectionLabelClass}>Appearance Analytics</p>
               <p className="mt-0.5 text-xs text-ink/45">See which upcoming stops are getting attention.</p>
               <div className="mt-3 flex flex-col gap-2.5">
                 {data.appearances.map((a) => {
@@ -181,10 +243,10 @@ export default function PerformanceTab({
             </div>
           )}
 
-          {/* ── Product interest ── */}
+          {/* ── Product Analytics ── */}
           {data.products.length > 0 && (
             <div className={cardClass}>
-              <p className={sectionLabelClass}>Product Interest</p>
+              <p className={sectionLabelClass}>Product Analytics</p>
               <div className="mt-3 flex flex-col gap-2.5">
                 {data.products.map((p) => {
                   const metricLine = compactMetricLine([
@@ -205,10 +267,10 @@ export default function PerformanceTab({
             </div>
           )}
 
-          {/* ── QR performance — never a causal-conversion claim. ── */}
+          {/* ── QR Analytics — never a causal-conversion claim. ── */}
           {data.qr && (
             <div className={cardClass}>
-              <p className={sectionLabelClass}>QR Performance</p>
+              <p className={sectionLabelClass}>QR Analytics</p>
               <div className="mt-3 grid grid-cols-3 gap-2.5">
                 <MetricTile label="QR Scans" value={data.qr.totalScans} />
                 <MetricTile label="Unique Visitors" value={data.qr.uniqueSessions} />
@@ -240,10 +302,9 @@ export default function PerformanceTab({
   );
 }
 
-function HeadlineRow({ eyebrow, label, metric }: { eyebrow: string; label: string; metric: OwnerPerformanceMetric }) {
+function HeadlineRow({ label, metric }: { label: string; metric: OwnerPerformanceMetric }) {
   return (
     <div>
-      <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">{eyebrow}</p>
       <div className="flex items-baseline gap-2">
         <p className="font-display text-3xl font-bold tracking-tight text-ink">{metric.value.toLocaleString()}</p>
         <p className="text-sm text-ink/50">{label}</p>

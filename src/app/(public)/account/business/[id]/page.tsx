@@ -101,44 +101,64 @@ const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6";
 
-// Tabbed Business Manager pass — Manage Business used to be one long
-// scrolling page (Business Basics -> Gallery/About/Contact/Announcement
-// behind a single Pro gate -> FindMi Here -> Products). Reducing that
-// scroll without rebuilding any working CRUD means: keep every existing
-// field/component/action exactly as it was, just group them into
-// sections switched via ?tab=<key> (a real Link-based nav, see TabNav —
-// no client state/SPA framework) and split the one giant save into
-// per-tab saves (updateBusinessProfile/updateBusinessLinks/
-// updateBusinessGallery in ../actions.ts) so saving one section can
-// never resubmit or overwrite another. Products and FindMi Here keep
-// their own existing, independent actions untouched — they already
-// saved section-by-section (per-appearance, per-product) before this
-// pass, so they just move into their own tabs unchanged.
-const OWNER_TABS: TabNavItem[] = [
+// Owner Shell V3 — job-oriented primary navigation (replaces the old
+// 14-tab inventory-style rail from the Tabbed Business Manager pass).
+// Five disciplined destinations answer the owner's real questions
+// (Overview: what needs me / Where I'll Be: where can customers find me /
+// Analytics: is Findmi helping / Profile: what customers see / Products:
+// what I sell), plus Orders only when genuinely relevant (see
+// `ordersRelevant` below). Every OTHER previous tab still renders at its
+// existing key/route — Gallery and Links & Contact moved INTO Profile as
+// their own sections (same Server Actions, same Pro gating, just no
+// longer a separate destination); Plan, Findmi Area, and Referral moved
+// into the new secondary "settings" destination; Followers moved into
+// Analytics as a compact Audience section. Legacy tab keys
+// (gallery/links/plan/market/followers) redirect to their new canonical
+// destination (LEGACY_TAB_REDIRECTS below) rather than rendering a
+// second, competing copy of the same UI. Opportunities and Customer
+// Inquiries keep rendering at their existing keys unchanged — real,
+// live workflows that aren't being consolidated this pass — just no
+// longer listed as primary pills; Settings links to both so neither is
+// orphaned.
+const PRIMARY_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview" },
-  // Owner Performance V1 — placed right after Overview (not appended
-  // after the other ~11 settings-style tabs) so it's actually findable,
-  // per the pass's own "don't bury it" requirement, without adding a
-  // fifth item to the global HOME/SCHEDULE/BUSINESS/INBOX nav.
-  { key: "performance", label: "Performance" },
+  { key: "findmi-here", label: "Where I'll Be" },
+  // Performance -> Analytics (owner-facing rename only — see
+  // lib/analytics/ownerPerformance.ts's own doc comment; the tab KEY
+  // stays "performance" on purpose so every existing ?tab=performance
+  // link/bookmark keeps working).
+  { key: "performance", label: "Analytics" },
   { key: "profile", label: "Profile" },
-  { key: "gallery", label: "Gallery" },
   { key: "products", label: "Products" },
-  { key: "findmi-here", label: "Findmi Here" },
-  { key: "opportunities", label: "Opportunities" },
-  { key: "links", label: "Links & Contact" },
-  { key: "plan", label: "Plan & Status" },
-  { key: "market", label: "Findmi Area" },
-  { key: "followers", label: "Followers" },
-  { key: "inquiries", label: "Customer Inquiries" },
-  { key: "orders", label: "Orders" },
-  // Referral Partner + Discount Foundation — only ever shown/valid when
-  // this business actually has a referral_partners row (an admin set
-  // them up as a partner); see OWNER_TAB_KEYS/visibleTabs below, which
-  // filter this key out entirely otherwise.
-  { key: "referral", label: "Referral" },
 ];
-const OWNER_TAB_KEYS = new Set(OWNER_TABS.map((t) => t.key));
+const ORDERS_TAB: TabNavItem = { key: "orders", label: "Orders" };
+
+// Old tab key -> new canonical destination. A visit to any of these
+// keys redirects immediately (before any of this page's heavier data
+// fetching) rather than rendering a second, now-dead copy of content
+// that's been moved elsewhere.
+const LEGACY_TAB_REDIRECTS: Record<string, string> = {
+  gallery: "profile",
+  links: "profile",
+  plan: "settings",
+  market: "settings",
+  followers: "performance",
+};
+
+// Every reachable tab key — primary, secondary (settings), Orders,
+// still-independent legacy workflows (opportunities/inquiries), the
+// referral-partner-only tab, and every redirect-only legacy key (so the
+// param is recognized long enough to redirect rather than silently
+// falling back to Overview).
+const VALID_TAB_KEYS = new Set<string>([
+  ...PRIMARY_TABS.map((t) => t.key),
+  "orders",
+  "settings",
+  "opportunities",
+  "inquiries",
+  "referral",
+  ...Object.keys(LEGACY_TAB_REDIRECTS),
+]);
 
 const ORDER_STATUS_LABELS: Record<"new" | "confirmed" | "ready" | "fulfilled" | "cancelled", string> = {
   new: "New",
@@ -252,7 +272,7 @@ export default async function ManageBusinessPage({
     add_category_id: addProductCategoryId,
     add_distribution: addProductDistribution,
   } = await searchParams;
-  const tab = tabParam && OWNER_TAB_KEYS.has(tabParam) ? tabParam : "overview";
+  const tab = tabParam && VALID_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   const supabase = await getServerSupabase();
   const {
@@ -290,6 +310,41 @@ export default async function ManageBusinessPage({
   // every split action itself.
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
+
+  // Owner Shell V3 — redirect a legacy tab key BEFORE any of the heavier
+  // business data fetching below, straight to its new canonical
+  // destination (see LEGACY_TAB_REDIRECTS' own doc comment).
+  if (LEGACY_TAB_REDIRECTS[tab]) {
+    redirect(`/account/business/${id}?tab=${LEGACY_TAB_REDIRECTS[tab]}`);
+  }
+
+  // Owner Shell V3 — persistent Business switcher (Section 12 of this
+  // pass). Only queried for a real authenticated owner: a pure admin-
+  // elevated session (no personal Supabase Auth user) doesn't "manage"
+  // Businesses via business_members at all, so there is no list to
+  // switch between and the switcher simply never renders for it — admin
+  // authorization/access is otherwise completely untouched. Same RLS-
+  // scoped query shape /account and /account/business already use
+  // (`.eq("user_id", user.id)`, plain `supabase` client, never `admin`),
+  // so this can never surface a Business the visitor doesn't manage.
+  let managedBusinesses: { id: string; name: string }[] = [];
+  if (user) {
+    const { data: membershipRows } = await supabase
+      .from("business_members")
+      .select("business_id, businesses(id, name)")
+      .eq("user_id", user.id);
+    type MembershipRow = {
+      business_id: string;
+      businesses: { id: string; name: string } | { id: string; name: string }[] | null;
+    };
+    managedBusinesses = ((membershipRows ?? []) as MembershipRow[])
+      .map((m) => {
+        const b = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
+        return b ? { id: b.id, name: b.name } : null;
+      })
+      .filter((b): b is { id: string; name: string } => Boolean(b));
+  }
+  const showSwitcher = managedBusinesses.length > 1;
 
   const [{ data: business }, categories, { data: businessCategoryRows }, { data: galleryRows }, businessHandle] = await Promise.all([
     admin
@@ -343,7 +398,6 @@ export default async function ManageBusinessPage({
   // majority of businesses, in which case the whole Referral tab is
   // simply omitted below — never an empty/broken tab.
   const referralPartner = await getReferralPartnerByBusinessId(id);
-  const visibleTabs = referralPartner ? OWNER_TABS : OWNER_TABS.filter((t) => t.key !== "referral");
   // User Identity + Follow Foundation pass — same authorize-then-elevate
   // admin client already established above (requireBusinessMember(id)
   // ran before `admin` was ever created), never a new/looser access path.
@@ -396,7 +450,16 @@ export default async function ManageBusinessPage({
   const orderSummary = await getBusinessOrderSummary(admin, id);
   const orderList = await getBusinessOrderList(admin, id, orderStatus);
   const openOrder = openOrderId ? await getBusinessOrderDetail(admin, openOrderId, id) : null;
-  const activeTab = tab === "referral" && !referralPartner ? "overview" : tab;
+
+  // Owner Shell V3 — Referral moved into Settings; a Business that
+  // genuinely has a referral_partners row redirects there (so its old
+  // bookmark lands on the real content), while a Business that was never
+  // a referral partner keeps the pre-existing safe fallback (silently
+  // Overview — "referral" was never a valid destination for it either).
+  if (tab === "referral" && referralPartner) {
+    redirect(`/account/business/${id}?tab=settings`);
+  }
+  const activeTab = tab === "referral" ? "overview" : tab;
 
   // Owner Performance V1 — only queried when this tab is actually open
   // (analytics aggregation is heavier than this page's other summary
@@ -700,6 +763,19 @@ export default async function ManageBusinessPage({
   }
   const addProduct = createMemberProduct.bind(null, id);
 
+  // Owner Shell V3 — Orders only earns primary-nav visibility when it's
+  // genuinely relevant to this Business: capable of selling at all (Pro +
+  // at least one product) or already has real order history. Uses only
+  // data this page already fetched above — no new query, no new
+  // entitlement. ?tab=orders itself keeps working regardless (Section 13
+  // — existing deep links must remain functional); this only controls
+  // whether the primary pill row bothers showing it.
+  const ordersRelevant =
+    pro &&
+    (products.length > 0 ||
+      orderSummary.newCount + orderSummary.openCount + orderSummary.readyCount + orderSummary.fulfilledCount + orderSummary.cancelledCount > 0);
+  const visibleTabs: TabNavItem[] = ordersRelevant ? [...PRIMARY_TABS, ORDERS_TAB] : PRIMARY_TABS;
+
   const addFromEvent = addAppearanceFromEvent.bind(null, id);
   const addManual = addManualAppearance.bind(null, id);
 
@@ -744,6 +820,14 @@ export default async function ManageBusinessPage({
   };
 
   const basePath = `/account/business/${id}`;
+  // Owner Shell V3 — the Business switcher only ever carries the current
+  // tab over to another Business when that destination is universally
+  // safe (exists, renders something meaningful, and needs no per-Business
+  // eligibility check like Orders' own ordersRelevant). Anything else
+  // falls back to Overview rather than risking a dead/empty destination
+  // on the target Business.
+  const SWITCHABLE_TABS = new Set(["overview", "findmi-here", "performance", "profile", "products"]);
+  const switcherTab = SWITCHABLE_TABS.has(activeTab) ? activeTab : "overview";
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
@@ -787,7 +871,39 @@ export default async function ManageBusinessPage({
         )}
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Manage Business</p>
-          <h1 className="mt-0.5 truncate font-display text-2xl font-bold tracking-tight text-ink">{business.name}</h1>
+          <div className="mt-0.5 flex items-center gap-1">
+            <h1 className="truncate font-display text-2xl font-bold tracking-tight text-ink">{business.name}</h1>
+            {/* Owner Shell V3 — persistent Business switcher (Section 12).
+                Never shown for exactly one managed Business (the name
+                stays plain, non-interactive text) or for a pure admin-
+                elevated session (managedBusinesses is always empty
+                there — see its own fetch above). Native <details> —
+                keyboard-operable (Enter/Space) with zero client JS. */}
+            {showSwitcher && (
+              <details className="group relative shrink-0">
+                <summary
+                  aria-label="Switch business"
+                  className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full text-ink/40 transition hover:bg-black/[0.05] hover:text-ink [&::-webkit-details-marker]:hidden"
+                >
+                  <ChevronGlyph className="h-4 w-4 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-2xl border border-black/10 bg-white p-1.5 shadow-lg">
+                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Switch Business</p>
+                  {managedBusinesses.map((b) => (
+                    <Link
+                      key={b.id}
+                      href={`/account/business/${b.id}?tab=${switcherTab}`}
+                      className={`block truncate rounded-xl px-2.5 py-2 text-sm font-semibold transition hover:bg-black/[0.03] ${
+                        b.id === id ? "text-findmi-700" : "text-ink"
+                      }`}
+                    >
+                      {b.name}
+                    </Link>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
@@ -802,6 +918,12 @@ export default async function ManageBusinessPage({
                 View Public Profile →
               </Link>
             )}
+            {/* Owner Shell V3 — Settings (Section 6): visually secondary,
+                never a primary pill, always discoverable from the one
+                header row shown on every tab. */}
+            <Link href={`${basePath}?tab=settings`} className="text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink">
+              Settings
+            </Link>
           </div>
         </div>
       </div>
@@ -987,14 +1109,17 @@ export default async function ManageBusinessPage({
               )}
             </div>
 
-            {/* Performance Snapshot — reliable operational counts only;
-                no manufactured engagement metrics. */}
+            {/* At a Glance — Owner Shell V3 (Section 9): retired the
+                "Performance Snapshot" name, which read as a second,
+                competing Analytics surface. These are plain operational
+                counts, never analytics — Followers dropped from this row
+                since it now lives in Analytics' own Audience section
+                (showing it here too would just be the same number twice). */}
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Performance Snapshot</p>
-              <div className="mt-3 grid grid-cols-2 gap-2.5">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">At a Glance</p>
+              <div className="mt-3 grid grid-cols-3 gap-2.5">
                 <MetricTile label="Upcoming" value={dashboardAppearances.length} />
                 <MetricTile label="Completed This Month" value={completedThisMonth} />
-                <MetricTile label="Followers" value={followerSummary.totalCount} />
                 <MetricTile label="Products" value={products.length} />
               </div>
             </div>
@@ -1008,7 +1133,7 @@ export default async function ManageBusinessPage({
                   href={`${basePath}?tab=performance`}
                   className="rounded-xl border border-black/10 px-3.5 py-3 text-left text-sm font-semibold text-ink transition hover:border-black/20"
                 >
-                  View Performance
+                  View Analytics
                 </Link>
                 <Link
                   href={`${basePath}?tab=findmi-here`}
@@ -1049,11 +1174,18 @@ export default async function ManageBusinessPage({
 
         {/* ── Performance ──────────────────────────────────────────── */}
         {activeTab === "performance" && performanceData && (
-          <PerformanceTab data={performanceData} basePath={basePath} range={perfRange} businessName={business.name} />
+          <PerformanceTab
+            data={performanceData}
+            basePath={basePath}
+            range={perfRange}
+            businessName={business.name}
+            followerSummary={followerSummary}
+          />
         )}
 
         {/* ── Profile ──────────────────────────────────────────────── */}
         {activeTab === "profile" && (
+          <div className="flex flex-col gap-4">
           <div className={cardClass}>
             <form action={profileAction} className="flex flex-col gap-4">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Business Basics</p>
@@ -1175,11 +1307,11 @@ export default async function ManageBusinessPage({
               </button>
             </form>
           </div>
-        )}
 
-        {/* ── Gallery ──────────────────────────────────────────────── */}
-        {activeTab === "gallery" &&
-          (pro ? (
+          {/* ── Gallery (Owner Shell V3 — consolidated into Profile as
+              its own section; same MemberGalleryField/updateBusinessGallery
+              action, same Pro gate, unchanged) ──────────────────────── */}
+          {pro ? (
             <div className={cardClass}>
               <form action={galleryAction} className="flex flex-col gap-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Gallery</p>
@@ -1192,11 +1324,120 @@ export default async function ManageBusinessPage({
           ) : (
             <UpgradeLockedTab
               businessId={id}
-              tabKey="gallery"
+              tabKey="profile"
               description="Show off your business with additional photos."
               isAdminElevated={isAdminElevated}
             />
-          ))}
+          )}
+
+          {/* ── Links & Contact (Owner Shell V3 — consolidated into
+              Profile as its own section; same fields/updateBusinessLinks
+              action/Pro gate/Announcement block, unchanged) ──────────── */}
+          {pro ? (
+            <div className={cardClass}>
+              <form action={linksAction} className="flex flex-col gap-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
+                {/* Free Basic Profile Editing pass — Website/Instagram
+                    moved to the Business Basics section above (both tiers
+                    edit them there now); this section keeps only what's
+                    still entirely Pro-only: email/phone/Facebook/TikTok/
+                    Announcement. */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
+                    <input type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
+                    <input type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Facebook</span>
+                    <input
+                      type="url"
+                      name="facebook_url"
+                      defaultValue={business.facebook_url ?? ""}
+                      placeholder="https://facebook.com/…"
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">TikTok</span>
+                    <input
+                      type="url"
+                      name="tiktok_url"
+                      defaultValue={business.tiktok_url ?? ""}
+                      placeholder="https://tiktok.com/@…"
+                      className={inputClass}
+                    />
+                  </label>
+                </div>
+
+                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Announcement</p>
+                <div className="rounded-2xl border border-black/10 p-4">
+                  <label className="flex items-center gap-2 text-sm font-medium text-ink">
+                    <input type="checkbox" name="bulletin_enabled" defaultChecked={business.bulletin_enabled} />
+                    Show announcement
+                  </label>
+                  <div className="mt-3 flex flex-col gap-3">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement label</span>
+                      <input
+                        type="text"
+                        name="bulletin_label"
+                        defaultValue={business.bulletin_label ?? ""}
+                        placeholder="Announcement"
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement heading</span>
+                      <input
+                        type="text"
+                        name="bulletin_heading"
+                        defaultValue={business.bulletin_heading ?? ""}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement message</span>
+                      <textarea
+                        name="bulletin_body"
+                        rows={3}
+                        defaultValue={business.bulletin_body ?? ""}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement link (optional)</span>
+                      <input
+                        type="text"
+                        name="bulletin_url"
+                        defaultValue={business.bulletin_url ?? ""}
+                        placeholder="https://…"
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
+                  Save Links &amp; Contact
+                </button>
+              </form>
+            </div>
+          ) : (
+            <UpgradeLockedTab
+              businessId={id}
+              tabKey="profile"
+              description="Add public contact info, Facebook/TikTok, and a live announcement."
+              isAdminElevated={isAdminElevated}
+            />
+          )}
+          </div>
+        )}
 
         {/* ── Products ─────────────────────────────────────────────── */}
         {activeTab === "products" &&
@@ -1535,114 +1776,14 @@ export default async function ManageBusinessPage({
           </div>
         )}
 
-        {/* ── Links & Contact ──────────────────────────────────────── */}
-        {activeTab === "links" &&
-          (pro ? (
-            <div className={cardClass}>
-              <form action={linksAction} className="flex flex-col gap-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Contact &amp; Links</p>
-                {/* Free Basic Profile Editing pass — Website/Instagram
-                    moved to the Profile tab (both tiers edit them
-                    there now); this tab keeps only what's still
-                    entirely Pro-only: email/phone/Facebook/TikTok/
-                    Announcement. */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
-                    <input type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
-                    <input type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
-                  </label>
-                </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Facebook</span>
-                    <input
-                      type="url"
-                      name="facebook_url"
-                      defaultValue={business.facebook_url ?? ""}
-                      placeholder="https://facebook.com/…"
-                      className={inputClass}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">TikTok</span>
-                    <input
-                      type="url"
-                      name="tiktok_url"
-                      defaultValue={business.tiktok_url ?? ""}
-                      placeholder="https://tiktok.com/@…"
-                      className={inputClass}
-                    />
-                  </label>
-                </div>
-
-                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Announcement</p>
-                <div className="rounded-2xl border border-black/10 p-4">
-                  <label className="flex items-center gap-2 text-sm font-medium text-ink">
-                    <input type="checkbox" name="bulletin_enabled" defaultChecked={business.bulletin_enabled} />
-                    Show announcement
-                  </label>
-                  <div className="mt-3 flex flex-col gap-3">
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement label</span>
-                      <input
-                        type="text"
-                        name="bulletin_label"
-                        defaultValue={business.bulletin_label ?? ""}
-                        placeholder="Announcement"
-                        className={inputClass}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement heading</span>
-                      <input
-                        type="text"
-                        name="bulletin_heading"
-                        defaultValue={business.bulletin_heading ?? ""}
-                        className={inputClass}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement message</span>
-                      <textarea
-                        name="bulletin_body"
-                        rows={3}
-                        defaultValue={business.bulletin_body ?? ""}
-                        className={inputClass}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement link (optional)</span>
-                      <input
-                        type="text"
-                        name="bulletin_url"
-                        defaultValue={business.bulletin_url ?? ""}
-                        placeholder="https://…"
-                        className={inputClass}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
-                  Save Links &amp; Contact
-                </button>
-              </form>
-            </div>
-          ) : (
-            <UpgradeLockedTab
-              businessId={id}
-              tabKey="links"
-              description="Add public contact info, Facebook/TikTok, and a live announcement."
-              isAdminElevated={isAdminElevated}
-            />
-          ))}
-
-        {/* ── Plan & Status ────────────────────────────────────────── */}
-        {activeTab === "plan" && (
+        {/* ── Settings (Owner Shell V3, Section 6) — secondary, not a
+            primary pill: houses Plan & Status, Findmi Area, and Referral
+            (when applicable) inline, plus discoverability links to the
+            two still-standalone legacy workflows (Customer Inquiries'
+            settings, Event Invitations/Applications) so neither is
+            orphaned by their removal from the primary rail. ─────────── */}
+        {activeTab === "settings" && (
+          <div className="flex flex-col gap-4">
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Plan &amp; Status</p>
             <span
@@ -1732,7 +1873,7 @@ export default async function ManageBusinessPage({
                         instead of showing a business selector. */}
                     <div className="mt-3">
                       <ProInviteCodeEntry
-                        returnTo={`/account/business/${id}?tab=plan`}
+                        returnTo={`/account/business/${id}?tab=settings`}
                         businessId={id}
                         heading="Have a Pro Invite or Promo Code?"
                       />
@@ -1742,123 +1883,181 @@ export default async function ManageBusinessPage({
               </div>
             )}
           </div>
-        )}
 
-        {/* ── Market (Owner-Facing Market Display V1) ──────────────────
-            READ-ONLY for owners in this pass — no insert/update/delete
-            path onto business_markets exists anywhere in this file or in
-            ../actions.ts. Deliberately three visually separate blocks so
-            Based In (home address), Primary Market (general discovery
-            entitlement), and FindMi Here (actual appearance geography,
-            covered in its own tab) are never conflated — an appearance
-            outside this business's Primary Market has no bearing on
-            anything shown here, because nothing here reads appearances
-            at all. */}
-        {activeTab === "market" && (
-          <div className="flex flex-col gap-4">
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Based In</p>
-              <p className="mt-1.5 text-sm text-ink">{[business.city, business.state].filter(Boolean).join(", ") || "Not set"}</p>
-              <p className="mt-2 text-xs text-ink/45">Your business&rsquo;s home address — separate from your Findmi area below.</p>
-            </div>
+          {/* ── Findmi Area (Owner-Facing Market Display V1, consolidated
+              into Settings) ── READ-ONLY for owners — no insert/update/
+              delete path onto business_markets exists anywhere in this
+              file or in ../actions.ts. Deliberately separate cards so
+              Based In (home address), Primary Market (general discovery
+              entitlement), and Where I'll Be (actual appearance geography,
+              covered in its own destination) are never conflated. */}
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Based In</p>
+            <p className="mt-1.5 text-sm text-ink">{[business.city, business.state].filter(Boolean).join(", ") || "Not set"}</p>
+            <p className="mt-2 text-xs text-ink/45">Your business&rsquo;s home address — separate from your Findmi area below.</p>
+          </div>
 
-            <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area</p>
-              {primaryMarket ? (
-                <p className="mt-1.5 text-sm font-semibold text-ink">{primaryMarket.marketName}</p>
-              ) : pendingMarketRequest ? (
-                <>
-                  <p className="mt-1.5 text-sm font-semibold text-amber-700">
-                    Findmi area pending review — {pendingMarketRequest.requestedText}
-                  </p>
-                  <p className="mt-2 text-xs text-ink/45">
-                    Findmi is reviewing your requested area. Your business is live in the meantime, but won&rsquo;t
-                    appear in general area-based discovery until this is approved.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="mt-1.5 text-sm font-semibold text-ink/60">No Findmi area selected yet</p>
-                  <p className="mt-2 text-xs text-ink/45">
-                    Your Findmi area determines where your business receives general discovery. Where you&rsquo;ll be
-                    — events and pop-ups — can still happen anywhere.
-                  </p>
-                  <p className="mt-2 text-xs text-ink/40">Contact Findmi to update this.</p>
-                </>
-              )}
-            </div>
-
-            {additionalMarkets.length > 0 && (
-              <div className={cardClass}>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Findmi Areas</p>
-                <ul className="mt-1.5 flex flex-col gap-1">
-                  {additionalMarkets.map((m) => (
-                    <li key={m.id} className="text-sm text-ink">
-                      {m.marketName}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area</p>
+            {primaryMarket ? (
+              <p className="mt-1.5 text-sm font-semibold text-ink">{primaryMarket.marketName}</p>
+            ) : pendingMarketRequest ? (
+              <>
+                <p className="mt-1.5 text-sm font-semibold text-amber-700">
+                  Findmi area pending review — {pendingMarketRequest.requestedText}
+                </p>
+                <p className="mt-2 text-xs text-ink/45">
+                  Findmi is reviewing your requested area. Your business is live in the meantime, but won&rsquo;t
+                  appear in general area-based discovery until this is approved.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-1.5 text-sm font-semibold text-ink/60">No Findmi area selected yet</p>
+                <p className="mt-2 text-xs text-ink/45">
+                  Your Findmi area determines where your business receives general discovery. Where you&rsquo;ll be
+                  — events and pop-ups — can still happen anywhere.
+                </p>
+                <p className="mt-2 text-xs text-ink/40">Contact Findmi to update this.</p>
+              </>
             )}
+          </div>
 
+          {additionalMarkets.length > 0 && (
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area Allowance</p>
-              <p className="mt-1.5 text-sm text-ink">
-                {marketLimit === null
-                  ? `${activeMarketCount} active area${activeMarketCount === 1 ? "" : "s"} / Unlimited`
-                  : `${activeMarketCount} active / ${marketLimit} allowed`}{" "}
-                on your current plan
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Findmi Areas</p>
+              <ul className="mt-1.5 flex flex-col gap-1">
+                {additionalMarkets.map((m) => (
+                  <li key={m.id} className="text-sm text-ink">
+                    {m.marketName}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area Allowance</p>
+            <p className="mt-1.5 text-sm text-ink">
+              {marketLimit === null
+                ? `${activeMarketCount} active area${activeMarketCount === 1 ? "" : "s"} / Unlimited`
+                : `${activeMarketCount} active / ${marketLimit} allowed`}{" "}
+              on your current plan
+            </p>
+            {overMarketAllowance && (
+              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-amber-700">Over allowance</p>
+            )}
+          </div>
+
+          {/* ── Referral (partner-facing, consolidated into Settings —
+              only ever shown when this Business actually has a
+              referral_partners row) ── */}
+          {referralPartner && (
+            <div className={cardClass}>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Referral Program</p>
+              <p className="mt-1 text-sm text-ink/60">
+                Share your code — you&rsquo;ll earn a commission when a business you refer upgrades to paid Findmi
+                Pro.
               </p>
-              {overMarketAllowance && (
-                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-amber-700">Over allowance</p>
+
+              {referralPartner.activeCodes.length > 0 ? (
+                <div className="mt-4 flex flex-col gap-3">
+                  {referralPartner.activeCodes.map((code) => {
+                    const referralLink = `${getPublicOrigin()}/join?ref=${code}`;
+                    return (
+                      <div key={code} className="rounded-2xl bg-findmi-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Referral Code</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <p className="font-mono text-sm font-semibold text-ink">{code}</p>
+                          <CopyButton
+                            value={code}
+                            label="Copy Code"
+                            className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                          />
+                        </div>
+                        <p className="mt-2 break-all font-mono text-xs text-ink/70">{referralLink}</p>
+                        <CopyButton
+                          value={referralLink}
+                          label="Copy Link"
+                          className="mt-2 shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-ink/50">No active referral code yet — check back soon.</p>
               )}
+
+              <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Referred</dt>
+                  <dd className="mt-1 text-ink">{referralPartner.referralCount}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Free / Paid Pro</dt>
+                  <dd className="mt-1 text-ink">
+                    {referralPartner.freeReferralCount} / {referralPartner.paidReferralCount}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Total Earned</dt>
+                  <dd className="mt-1 text-ink">${(referralPartner.earnedCommissionCents / 100).toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Total Paid</dt>
+                  <dd className="mt-1 text-ink">${(referralPartner.paidCommissionCents / 100).toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Available Balance</dt>
+                  <dd className="mt-1 font-semibold text-findmi-700">
+                    ${(referralPartner.availableCommissionCents / 100).toFixed(2)}
+                  </dd>
+                </div>
+              </dl>
+
+              {requestPayoutAction && (
+                <form action={requestPayoutAction} className="mt-4">
+                  <button
+                    type="submit"
+                    disabled={referralPartner.availableCommissionCents <= 0}
+                    className="flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Request Payout
+                    {referralPartner.availableCommissionCents > 0
+                      ? ` of $${(referralPartner.availableCommissionCents / 100).toFixed(2)}`
+                      : ""}
+                  </button>
+                </form>
+              )}
+              <p className="mt-2 text-xs text-ink/40">
+                Payouts are reviewed and paid out manually by Findmi — no automatic transfers.
+              </p>
+            </div>
+          )}
+
+          {/* ── More — discoverability links to the two workflows still
+              living at their own existing keys (Section 8: preserved
+              exactly, not consolidated, just no longer primary pills). ── */}
+          <div className={cardClass}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">More</p>
+            <div className="mt-3 flex flex-col gap-2">
+              <Link
+                href={`${basePath}?tab=inquiries`}
+                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-sm font-semibold text-ink transition hover:border-black/20"
+              >
+                Customer Inquiries
+                <span className="shrink-0 text-ink/30">→</span>
+              </Link>
+              <Link
+                href={`${basePath}?tab=opportunities`}
+                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-sm font-semibold text-ink transition hover:border-black/20"
+              >
+                Event Invitations &amp; Applications
+                <span className="shrink-0 text-ink/30">→</span>
+              </Link>
             </div>
           </div>
-        )}
-
-        {/* ── Followers (privacy-safe audience view) ──────────────────
-            User Identity + Follow Foundation pass. Total count always
-            shown; individual identity chips ONLY for the subset of
-            account followers who've completed a public FindMi profile
-            (username set) — never email, phone, auth id, or any other
-            private field, and a follower with no username is counted but
-            never named, per this pass's own privacy rule. */}
-        {activeTab === "followers" && (
-          <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Followers</p>
-            <p className="mt-2 font-display text-3xl font-bold tracking-tight text-ink">{followerSummary.totalCount}</p>
-            <p className="mt-1 text-sm text-ink/50">
-              {followerSummary.accountCount} with a Findmi account
-              {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount} email-only (legacy)`}
-            </p>
-
-            {followerSummary.profiles.length > 0 ? (
-              <div className="mt-4 flex flex-col gap-2">
-                {followerSummary.profiles.map((p) => (
-                  <Link
-                    key={p.username}
-                    href={`/user/${p.username}`}
-                    className="flex items-center gap-2.5 rounded-xl border border-black/5 p-2 transition hover:bg-black/[0.02]"
-                  >
-                    <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-mist">
-                      {p.avatar_url && (
-                        <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="32px" className="object-cover" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">{p.display_name || `@${p.username}`}</p>
-                      {p.display_name && <p className="truncate text-xs text-ink/45">@{p.username}</p>}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              followerSummary.accountCount > 0 && (
-                <p className="mt-4 text-xs text-ink/40">
-                  None of your account followers have a public Findmi profile yet.
-                </p>
-              )
-            )}
           </div>
         )}
 
@@ -2179,90 +2378,10 @@ export default async function ManageBusinessPage({
           </div>
         )}
 
-        {/* ── Referral (partner-facing) ────────────────────────────── */}
-        {activeTab === "referral" && referralPartner && (
-          <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Referral Program</p>
-            <p className="mt-1 text-sm text-ink/60">
-              Share your code — you&rsquo;ll earn a commission when a business you refer upgrades to paid Findmi
-              Pro.
-            </p>
-
-            {referralPartner.activeCodes.length > 0 ? (
-              <div className="mt-4 flex flex-col gap-3">
-                {referralPartner.activeCodes.map((code) => {
-                  const referralLink = `${getPublicOrigin()}/join?ref=${code}`;
-                  return (
-                    <div key={code} className="rounded-2xl bg-findmi-50 p-4">
-                      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Referral Code</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="font-mono text-sm font-semibold text-ink">{code}</p>
-                        <CopyButton
-                          value={code}
-                          label="Copy Code"
-                          className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
-                        />
-                      </div>
-                      <p className="mt-2 break-all font-mono text-xs text-ink/70">{referralLink}</p>
-                      <CopyButton
-                        value={referralLink}
-                        label="Copy Link"
-                        className="mt-2 shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-ink/50">No active referral code yet — check back soon.</p>
-            )}
-
-            <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Referred</dt>
-                <dd className="mt-1 text-ink">{referralPartner.referralCount}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Free / Paid Pro</dt>
-                <dd className="mt-1 text-ink">
-                  {referralPartner.freeReferralCount} / {referralPartner.paidReferralCount}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Total Earned</dt>
-                <dd className="mt-1 text-ink">${(referralPartner.earnedCommissionCents / 100).toFixed(2)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Total Paid</dt>
-                <dd className="mt-1 text-ink">${(referralPartner.paidCommissionCents / 100).toFixed(2)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Available Balance</dt>
-                <dd className="mt-1 font-semibold text-findmi-700">
-                  ${(referralPartner.availableCommissionCents / 100).toFixed(2)}
-                </dd>
-              </div>
-            </dl>
-
-            {requestPayoutAction && (
-              <form action={requestPayoutAction} className="mt-4">
-                <button
-                  type="submit"
-                  disabled={referralPartner.availableCommissionCents <= 0}
-                  className="flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Request Payout
-                  {referralPartner.availableCommissionCents > 0
-                    ? ` of $${(referralPartner.availableCommissionCents / 100).toFixed(2)}`
-                    : ""}
-                </button>
-              </form>
-            )}
-            <p className="mt-2 text-xs text-ink/40">
-              Payouts are reviewed and paid out manually by Findmi — no automatic transfers.
-            </p>
-          </div>
-        )}
+        {/* Referral now renders inside Settings (?tab=settings) —
+            ?tab=referral redirects there whenever referralPartner exists
+            (see the redirect logic above); activeTab can never equal
+            "referral" by the time rendering reaches here. */}
       </div>
     </div>
   );
@@ -2431,12 +2550,23 @@ function DashboardAppearanceRow({ appearance, showDate }: { appearance: Dashboar
   );
 }
 
-/** Command Center V1 — one compact Performance Snapshot number. */
+/** Command Center V1 — one compact At a Glance number. */
 function MetricTile({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl border border-black/5 bg-mist/30 p-3">
       <p className="font-display text-xl font-bold text-ink">{value}</p>
       <p className="mt-0.5 text-[11px] font-medium text-ink/50">{label}</p>
     </div>
+  );
+}
+
+/** Owner Shell V3 — the Business switcher's own disclosure indicator.
+ * Same 24x24/currentColor/rounded-stroke language as every other one-off
+ * chevron in this codebase (e.g. AccountNav.tsx's own ChevronGlyph). */
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
