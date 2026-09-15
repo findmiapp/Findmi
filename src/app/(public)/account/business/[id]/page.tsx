@@ -826,6 +826,14 @@ export default async function ManageBusinessPage({
     // Manager, above.
     location: preselectedLocation,
   };
+  // Where I'll Be V3 — whether a rejected manual-add submission just sent
+  // the visitor back here (see addDefaultValues above); used to
+  // auto-reopen the Add composer and its manual-path disclosure so a
+  // validation error never lands behind a closed <details> with the
+  // owner's typed input invisible.
+  const addHasDraft = Boolean(
+    add_title || add_date || add_start_time || add_end_time || add_venue_name || add_address || add_city || add_state || add_external_url || add_flyer_image_url
+  );
 
   const basePath = `/account/business/${id}`;
   // Owner Shell V3 — the Business switcher only ever carries the current
@@ -1619,13 +1627,99 @@ export default async function ManageBusinessPage({
           ))}
 
         {/* ── FindMi Here ──────────────────────────────────────────── */}
+        {/* ── Where I'll Be / Findmi Here ─────────────────────────────
+            V3 — replaces the old giant enclosing card (+ two equally-
+            weighted "OPTION 1 / OPTION 2" forms permanently occupying the
+            page below every existing appearance) with the flat visual
+            grammar established by Command Center's Coming Up and
+            Analytics' Appearance Analytics: no outer card, a flat divided
+            list per Appearance, and a single Add entry point pinned to
+            the very top — reachable without scrolling past any existing
+            record, at any list length. Business logic untouched:
+            addFromEvent/addManual/updateOwnerAppearance/
+            removeOwnerAppearance are the exact same actions as before. */}
         {activeTab === "findmi-here" && (
-          <div className={cardClass}>
-            <p className="font-display text-base font-bold tracking-tight text-ink">Findmi Here</p>
-            <p className="mt-1 text-sm text-ink/60">Manage where customers can find you next.</p>
+          <div className="flex flex-col gap-5">
+            <details className="group" open={addHasDraft}>
+              <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                <div className="min-w-0">
+                  <p className="font-display text-base font-bold tracking-tight text-ink">
+                    {appearances.length > 0 ? "Findmi Here" : "Where will customers find you next?"}
+                  </p>
+                  <p className="mt-1 text-sm text-ink/60">
+                    {appearances.length > 0
+                      ? "Manage where customers can find you next."
+                      : "Add your next market, pop-up, event or location."}
+                  </p>
+                </div>
+                <span className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
+                  <span className="group-open:hidden">{appearances.length > 0 ? "+ Add" : "+ Add Where I'll Be"}</span>
+                  <span className="hidden group-open:inline">Close</span>
+                </span>
+              </summary>
 
-            {appearances.length > 0 ? (
-              <ul className="mt-4 flex flex-col gap-3">
+              {/* ADD COMPOSER — one localized boundary only ("adding
+                  something" is a distinct temporary interaction state);
+                  search-first, with the manual/independent path tucked
+                  behind its own progressive disclosure so its full form
+                  doesn't permanently occupy the page. Neither path is
+                  framed as OPTION 1/2 or as inferior to the other. */}
+              <div className="mt-4 rounded-2xl border border-black/10 p-4">
+                <p className="text-sm font-bold text-ink">Add Where I&rsquo;ll Be</p>
+
+                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">Search Findmi first</p>
+                {requestOptions.length > 0 ? (
+                  <form action={addFromEvent} className="mt-2">
+                    <EventSearchPicker options={requestOptions} />
+                    <label className="mt-3 block">
+                      <span className="mb-1 block text-xs font-medium text-ink/60">
+                        Note to the organizer <span className="font-normal text-ink/40">(optional)</span>
+                      </span>
+                      <textarea
+                        name="note"
+                        rows={2}
+                        placeholder="e.g. We'd love to bring our food truck…"
+                        className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6"
+                    >
+                      Apply
+                    </button>
+                  </form>
+                ) : (
+                  <p className="mt-2 text-sm text-ink/50">No upcoming Findmi events available right now.</p>
+                )}
+
+                <details className="mt-4 border-t border-black/10 pt-3" open={addHasDraft}>
+                  <summary className="cursor-pointer text-xs font-semibold text-findmi-700 [&::-webkit-details-marker]:hidden">
+                    Can&rsquo;t find it? Add somewhere else →
+                  </summary>
+                  <div className="mt-3">
+                    <AppearanceFieldsForm
+                      businessId={id}
+                      action={addManual}
+                      defaultValues={addDefaultValues}
+                      submitLabel="Add to Findmi Here"
+                    />
+                  </div>
+                </details>
+              </div>
+            </details>
+
+            {/* EXISTING APPEARANCES — flat divided list, no outer card, no
+                per-row card. Edit is the row's primary/visible action;
+                Remove is demoted inside that same existing row-level
+                disclosure (still one tap away, never harder to find —
+                just no longer a bright red button floating on every row
+                by default). Source ("Findmi Event"/"Added by you") and
+                participation status are both preserved but quiet — status
+                gets restrained emphasis only when it isn't the
+                expected/approved state. */}
+            {appearances.length > 0 && (
+              <ul className="flex flex-col divide-y divide-black/[0.06]">
                 {appearances.map((a) => {
                   const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
                   const storedEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
@@ -1661,39 +1755,31 @@ export default async function ManageBusinessPage({
                         flyer_image_url: a.flyer_image_url,
                         location: a.location ? { value: a.location.id, label: a.location.name, sublabel: a.location.city ?? undefined } : null,
                       };
+                  const locationLine = [a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
                   return (
-                    <li key={a.id} className="rounded-2xl border border-black/10 p-3.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-1.5">
+                    <li key={a.id} className="py-3 first:pt-0 last:pb-0">
+                      <details open={isEditing}>
+                        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                          <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
-                            <span className="shrink-0 rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
-                              {a.event_id ? "Findmi Event" : "Added by you"}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 text-xs text-ink/60">
-                            {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
-                          </p>
-                          {(a.venue_name || a.city) && (
                             <p className="mt-0.5 text-xs text-ink/50">
-                              {[a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
+                              {a.event_id ? "Findmi Event" : "Added by you"}
+                              {a.participationStatus && (
+                                <>
+                                  {" · "}
+                                  <span className={a.participationStatus === "approved" ? "" : "font-semibold text-findmi-700"}>
+                                    {PARTICIPATION_LABEL[a.participationStatus]}
+                                  </span>
+                                </>
+                              )}
                             </p>
-                          )}
-                          {a.participationStatus && (
-                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-findmi-700">
-                              Official event participation: {PARTICIPATION_LABEL[a.participationStatus]}
+                            <p className="mt-0.5 text-xs text-ink/60">
+                              {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
                             </p>
-                          )}
-                        </div>
-                        <form action={removeOwnerAppearance.bind(null, id, a.id)}>
-                          <button type="submit" className="shrink-0 text-xs font-semibold text-red-600 hover:underline">
-                            Remove
-                          </button>
-                        </form>
-                      </div>
-
-                      <details className="mt-2" open={isEditing}>
-                        <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
+                            {locationLine && <p className="mt-0.5 truncate text-xs text-ink/50">{locationLine}</p>}
+                          </div>
+                          <span className="shrink-0 text-xs font-semibold text-findmi-700">Edit</span>
+                        </summary>
                         <div className="mt-3">
                           <AppearanceFieldsForm
                             businessId={id}
@@ -1701,73 +1787,21 @@ export default async function ManageBusinessPage({
                             defaultValues={editDefaultValues}
                             submitLabel="Save"
                           />
+                          <form action={removeOwnerAppearance.bind(null, id, a.id)} className="mt-3">
+                            <button
+                              type="submit"
+                              className="text-xs font-medium text-red-700/70 transition hover:text-red-700 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          </form>
                         </div>
                       </details>
                     </li>
                   );
                 })}
               </ul>
-            ) : (
-              <p className="mt-3 text-sm text-ink/50">You haven&rsquo;t added where you&rsquo;ll be yet.</p>
             )}
-
-            {/* Owner Action UX pass — the two ways to add to Findmi Here
-                are now presented as two unmistakable, equally-weighted
-                options (never "appearance" terminology, never implying
-                Option 2 creates/claims an Event — it's the exact same
-                standalone addManualAppearance behavior as before). */}
-            <div className="mt-5 border-t border-black/10 pt-4">
-              <p className="text-sm font-bold text-ink">Add to Findmi Here</p>
-
-              <div className="mt-3 rounded-2xl border border-black/10 p-4">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Option 1</p>
-                <p className="mt-1 text-sm font-bold text-ink">Find an Event on Findmi</p>
-                <p className="mt-0.5 text-xs text-ink/50">
-                  Apply to an existing Findmi Event. The organizer reviews every application — your Findmi Here entry
-                  becomes public once they approve it.
-                </p>
-                {requestOptions.length > 0 ? (
-                  <form action={addFromEvent} className="mt-3">
-                    <EventSearchPicker options={requestOptions} />
-                    <label className="mt-3 block">
-                      <span className="mb-1 block text-xs font-medium text-ink/60">
-                        Note to the organizer <span className="font-normal text-ink/40">(optional)</span>
-                      </span>
-                      <textarea
-                        name="note"
-                        rows={2}
-                        placeholder="e.g. We'd love to bring our food truck…"
-                        className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
-                      />
-                    </label>
-                    <button
-                      type="submit"
-                      className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6"
-                    >
-                      Apply
-                    </button>
-                  </form>
-                ) : (
-                  <p className="mt-3 text-sm text-ink/50">No upcoming Findmi events available right now.</p>
-                )}
-              </div>
-
-              <div className="mt-3 rounded-2xl border border-black/10 p-4">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Option 2</p>
-                <p className="mt-1 text-sm font-bold text-ink">Add It Yourself</p>
-                <p className="mt-0.5 text-xs text-ink/50">
-                  Can&rsquo;t find the Event or place on Findmi? Add where you&rsquo;ll be manually.
-                </p>
-                <div className="mt-3">
-                  <AppearanceFieldsForm
-                    businessId={id}
-                    action={addManual}
-                    defaultValues={addDefaultValues}
-                    submitLabel="Add to Findmi Here"
-                  />
-                </div>
-              </div>
-            </div>
           </div>
         )}
 

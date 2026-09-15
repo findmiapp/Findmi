@@ -83,7 +83,7 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
           ))
         ) : (
           <p className="px-3.5 py-3 text-sm text-ink/50">
-            No matching events{query ? ` for "${query}"` : ""}. Try Option 2 below.
+            No matching events{query ? ` for "${query}"` : ""}. You can add it below instead.
           </p>
         )}
       </div>
