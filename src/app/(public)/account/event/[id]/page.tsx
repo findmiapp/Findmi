@@ -17,14 +17,12 @@ import TabNav, { type TabNavItem } from "@/components/TabNav";
 import EventLocationField from "@/components/account/EventLocationField";
 import MemberEventImageField from "./MemberEventImageField";
 import MemberEventGalleryField from "./MemberEventGalleryField";
-import EventDateFieldsForm from "./EventDateFieldsForm";
+import BulkDatesComposer from "./BulkDatesComposer";
+import EventScheduleList, { type ScheduleOccurrence } from "./EventScheduleList";
 import AddParticipantSearch from "./AddParticipantSearch";
 import {
-  addMemberEventDate,
-  removeMemberEventDate,
   removeParticipatingBusiness,
   submitEventForReview,
-  updateMemberEventDate,
   updateMemberEventDetails,
   updateMemberEventHandle,
   updateMemberEventImages,
@@ -33,6 +31,7 @@ import {
   updateMemberEventPrimaryDate,
   updateParticipatingBusinessStatus,
 } from "../actions";
+import { weekdayIndexOf } from "@/lib/schedule-dates";
 import type { EventParticipationStatus } from "@/lib/types";
 
 export const metadata: Metadata = {
@@ -100,7 +99,6 @@ export default async function ManageEventPage({
     participant_added?: string;
     participant_updated?: string;
     participant_removed?: string;
-    editing_date?: string;
     add_date?: string;
     add_start_time?: string;
     add_end_time?: string;
@@ -112,7 +110,6 @@ export default async function ManageEventPage({
     tab: tabParam,
     saved,
     error,
-    editing_date: editingDateId,
     add_date: addDate,
     add_start_time: addStartTime,
     add_end_time: addEndTime,
@@ -268,11 +265,43 @@ export default async function ManageEventPage({
     (p) => p.status === "invited" || p.status === "applied" || p.status === "pending",
   );
 
-  // Event Manager V3, Dates & Locations — "Add a Date" reopens with its
-  // previously-submitted draft still visible whenever a validation error
+  // Schedule Authoring V4 — "Add Dates" reopens with its previously-
+  // submitted "One day" draft still visible whenever a validation error
   // sent the owner back here with preserved fields (see
   // addMemberEventDate's own errorRedirectUrlWithFields call).
   const addDateHasDraft = Boolean(addDate || addStartTime || addEndTime || addLocationHint);
+
+  // Schedule Authoring V4 — "ONE coherent schedule": the Primary Date and
+  // every Additional Date are formatted through the exact same
+  // timezone-consistent helper, and every local calendar date already on
+  // the schedule (Primary Date included) is collected once here so the
+  // bulk composer can mark a generated date as "already scheduled" for
+  // organizer clarity — the SERVER action re-derives this same set fresh
+  // before ever inserting anything, this is a preview convenience only.
+  const primarySchedule = formatScheduleDisplay(event.start_at, event.end_at ?? event.start_at);
+  const primaryLocationName = matchedEventLocation?.name ?? event.venue_name ?? null;
+  const scheduleOccurrences: ScheduleOccurrence[] = occurrences.map((occ) => {
+    const display = formatScheduleDisplay(occ.start_at, occ.end_at);
+    return {
+      id: occ.id,
+      location_id: occ.location_id,
+      location_name: occ.location_name,
+      location_slug: occ.location_slug,
+      location_category: occ.location_category,
+      location_address: occ.location_address,
+      location_city: occ.location_city,
+      location_state: occ.location_state,
+      location_postal_code: occ.location_postal_code,
+      venue_name: occ.venue_name,
+      address: occ.address,
+      city: occ.city,
+      state: occ.state,
+      postal_code: occ.postal_code,
+      ...display,
+      weekday: weekdayIndexOf(display.dateLocal),
+    };
+  });
+  const existingLocalDates = [primarySchedule.dateLocal, ...scheduleOccurrences.map((o) => o.dateLocal)];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
@@ -621,178 +650,124 @@ export default async function ManageEventPage({
           </div>
         )}
 
-        {/* ── Dates & Locations — Primary Date and its Location integrated
-            as one row (two separate existing actions, presented as one
-            section — events has no location_id column of its own; see the
-            Location Relational Workflow note above), Additional Dates as
-            flat rows with existing Edit-in-place/Remove, plus a compact
-            "+ Add a Date" composer. ── */}
+        {/* ── Dates & Locations — Schedule Authoring V4: ONE coherent
+            schedule. The organizer thinks in dates, never in "Primary
+            Date" vs. "Additional Dates" — the first row below is this
+            event's required core date (still, under the hood,
+            events.start_at/end_at; still without a Remove action, since
+            it can't be deleted independently of the Event), presented in
+            the exact same compact row shape as every other date. Bulk
+            generation (date range / recurring weekdays) and bulk actions
+            (Location / hours / remove) live in BulkDatesComposer /
+            EventScheduleList — see those files' own notes. events has no
+            location_id column of its own (only event_occurrences does),
+            so the core date's Location still saves through its own
+            existing updateMemberEventLocation action. ── */}
         {tab === "dates" && (
           <div className="flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Primary Date</p>
-                <span className="text-[10px] font-bold uppercase tracking-wide text-ink/30">Required</span>
-              </div>
-              <form action={updateMemberEventPrimaryDate.bind(null, id)} className="mt-3 flex flex-col gap-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink/70">Starts</span>
-                    <input
-                      type="datetime-local"
-                      name="start_at"
-                      required
-                      defaultValue={isoToLocalDateTime(event.start_at)}
-                      className={inputClass}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-ink/70">Ends</span>
-                    <input
-                      type="datetime-local"
-                      name="end_at"
-                      required
-                      defaultValue={isoToLocalDateTime(event.end_at)}
-                      className={inputClass}
-                    />
-                  </label>
-                </div>
-                <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-                  Save Date
-                </button>
-              </form>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Schedule</p>
+              <ul className="mt-3 flex flex-col divide-y divide-black/[0.06]">
+                <li className="py-3 first:pt-0">
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-ink">{primarySchedule.dateLabel}</p>
+                        <p className="truncate text-xs text-ink/50">
+                          {primarySchedule.timeLabel}
+                          {primaryLocationName ? ` · ${primaryLocationName}` : ""}
+                          <span className="ml-1.5 text-ink/30">· Core date</span>
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs font-semibold text-ink/50 group-hover:text-ink">Edit</span>
+                    </summary>
+                    <div className="mt-3 flex flex-col gap-4 rounded-2xl border border-black/10 p-4">
+                      <form action={updateMemberEventPrimaryDate.bind(null, id)} className="flex flex-col gap-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-medium text-ink/70">Starts</span>
+                            <input
+                              type="datetime-local"
+                              name="start_at"
+                              required
+                              defaultValue={isoToLocalDateTime(event.start_at)}
+                              className={inputClass}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-medium text-ink/70">Ends</span>
+                            <input
+                              type="datetime-local"
+                              name="end_at"
+                              required
+                              defaultValue={isoToLocalDateTime(event.end_at)}
+                              className={inputClass}
+                            />
+                          </label>
+                        </div>
+                        <button type="submit" className={`w-fit ${primaryButtonClass}`}>
+                          Save Date
+                        </button>
+                      </form>
 
-              <form action={updateMemberEventLocation.bind(null, id)} className="mt-4 flex flex-col gap-3 border-t border-black/5 pt-4">
-                <p className="text-xs font-medium text-ink/60">
-                  Location — search for an existing Findmi Location, or enter your venue manually if it isn&rsquo;t on Findmi yet.
-                </p>
-                <EventLocationField
-                  initialLocation={matchedEventLocation}
-                  initialManual={
-                    matchedEventLocation
-                      ? null
-                      : {
-                          venue_name: event.venue_name ?? "",
-                          address: event.address ?? "",
-                          city: event.city ?? "",
-                          state: event.state ?? "",
-                          postal_code: event.postal_code ?? "",
-                        }
-                  }
-                />
-                <button type="submit" className={`w-fit ${primaryButtonClass}`}>
-                  Save Location
-                </button>
-              </form>
+                      <form action={updateMemberEventLocation.bind(null, id)} className="flex flex-col gap-3 border-t border-black/10 pt-4">
+                        <p className="text-xs font-medium text-ink/60">
+                          Location — search for an existing Findmi Location, or enter your venue manually if it isn&rsquo;t on Findmi yet.
+                        </p>
+                        <EventLocationField
+                          initialLocation={matchedEventLocation}
+                          initialManual={
+                            matchedEventLocation
+                              ? null
+                              : {
+                                  venue_name: event.venue_name ?? "",
+                                  address: event.address ?? "",
+                                  city: event.city ?? "",
+                                  state: event.state ?? "",
+                                  postal_code: event.postal_code ?? "",
+                                }
+                          }
+                        />
+                        <button type="submit" className={`w-fit ${primaryButtonClass}`}>
+                          Save Location
+                        </button>
+                      </form>
+                    </div>
+                  </details>
+                </li>
+              </ul>
             </div>
 
             <div className="border-t border-black/5 pt-6">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Dates</p>
-              {occurrences.length === 0 ? (
-                <p className="mt-2 text-sm text-ink/50">No additional dates yet.</p>
-              ) : (
-                <ul className="mt-3 flex flex-col divide-y divide-black/[0.06]">
-                  {occurrences.map((occ) => {
-                    const isEditing = editingDateId === occ.id;
-                    if (isEditing) {
-                      return (
-                        <li key={occ.id} className="py-3 first:pt-0 last:pb-0">
-                          <EventDateFieldsForm
-                            action={updateMemberEventDate.bind(null, id, occ.id)}
-                            defaultValues={{
-                              date: isoToLocalDateTime(occ.start_at).slice(0, 10),
-                              start_time: isoToLocalDateTime(occ.start_at).slice(11),
-                              end_time: isoToLocalDateTime(occ.end_at).slice(11),
-                              location:
-                                occ.location_id && occ.location_name
-                                  ? {
-                                      id: occ.location_id,
-                                      name: occ.location_name,
-                                      slug: occ.location_slug ?? "",
-                                      category: occ.location_category,
-                                      address: occ.location_address,
-                                      city: occ.location_city,
-                                      state: occ.location_state,
-                                      postal_code: occ.location_postal_code,
-                                    }
-                                  : null,
-                              manualVenue: occ.location_id
-                                ? null
-                                : {
-                                    venue_name: occ.venue_name ?? "",
-                                    address: occ.address ?? "",
-                                    city: occ.city ?? "",
-                                    state: occ.state ?? "",
-                                    postal_code: occ.postal_code ?? "",
-                                  },
-                            }}
-                            submitLabel="Save Date"
-                          />
-                        </li>
-                      );
-                    }
-                    return (
-                      <li key={occ.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-ink">
-                            {new Date(occ.start_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
-                          </p>
-                          {occ.location_name && <p className="truncate text-xs text-ink/50">{occ.location_name}</p>}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <Link
-                            href={appendQuery(`/account/event/${id}`, { tab: "dates", editing_date: occ.id })}
-                            className="text-xs font-semibold text-ink/50 hover:text-ink"
-                          >
-                            Edit
-                          </Link>
-                          <form action={removeMemberEventDate.bind(null, id, occ.id)}>
-                            <button type="submit" className="text-xs font-semibold text-red-600 hover:text-red-700">
-                              Remove
-                            </button>
-                          </form>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+              <EventScheduleList eventId={id} occurrences={scheduleOccurrences} />
             </div>
 
-            <details className="group border-t border-black/5 pt-6" open={addDateHasDraft}>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Add a Date</p>
-                <span className="flex h-8 shrink-0 items-center gap-1 rounded-full bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
-                  <span className="group-open:hidden">+ Add</span>
-                  <span className="hidden group-open:inline">Close</span>
-                </span>
-              </summary>
-              <div className="mt-4 rounded-2xl border border-black/10 p-4">
-                <EventDateFieldsForm
-                  action={addMemberEventDate.bind(null, id)}
-                  defaultValues={{
-                    date: addDate ?? "",
-                    start_time: addStartTime ?? "",
-                    end_time: addEndTime ?? "",
-                    location: addLocationHint
-                      ? {
-                          id: addLocationHint.id,
-                          name: addLocationHint.name,
-                          slug: addLocationHint.slug ?? "",
-                          category:
-                            (Array.isArray(addLocationHint.category) ? addLocationHint.category[0] : addLocationHint.category)?.name ?? null,
-                          address: addLocationHint.address ?? null,
-                          city: addLocationHint.city ?? null,
-                          state: addLocationHint.state ?? null,
-                          postal_code: addLocationHint.postal_code ?? null,
-                        }
-                      : null,
-                    manualVenue: null,
-                  }}
-                  submitLabel="Add Date"
-                />
-              </div>
-            </details>
+            <BulkDatesComposer
+              eventId={id}
+              existingLocalDates={existingLocalDates}
+              initialOpen={addDateHasDraft}
+              hasParticipants={participants.length > 0}
+              addDateDefaults={{
+                date: addDate ?? "",
+                start_time: addStartTime ?? "",
+                end_time: addEndTime ?? "",
+                location: addLocationHint
+                  ? {
+                      id: addLocationHint.id,
+                      name: addLocationHint.name,
+                      slug: addLocationHint.slug ?? "",
+                      category:
+                        (Array.isArray(addLocationHint.category) ? addLocationHint.category[0] : addLocationHint.category)?.name ?? null,
+                      address: addLocationHint.address ?? null,
+                      city: addLocationHint.city ?? null,
+                      state: addLocationHint.state ?? null,
+                      postal_code: addLocationHint.postal_code ?? null,
+                    }
+                  : null,
+                manualVenue: null,
+              }}
+            />
           </div>
         )}
 
@@ -894,6 +869,35 @@ export default async function ManageEventPage({
 
 function appendQuery(base: string, params: Record<string, string>): string {
   return `${base}?${new URLSearchParams(params).toString()}`;
+}
+
+/** Schedule Authoring V4 — one shared, timezone-consistent display/edit-
+ * value derivation for any date/time pair on this page (the Primary Date
+ * and every Additional Date alike), always via isoToLocalDateTime (never a
+ * bare `new Date(iso)` read back in a client component, which would drift
+ * to the viewer's own browser timezone instead of Findmi's single-
+ * timezone convention). Computed server-side once per row. */
+function formatScheduleDisplay(startIso: string, endIso: string) {
+  const startLocal = isoToLocalDateTime(startIso);
+  const endLocal = isoToLocalDateTime(endIso);
+  const dateLocal = startLocal.slice(0, 10);
+  const startTimeLocal = startLocal.slice(11);
+  const endTimeLocal = endLocal.slice(11);
+  const [y, m, d] = dateLocal.split("-").map(Number);
+  const dateLabel = new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const fmtTime = (hhmm: string) => {
+    const [hh, mm] = hhmm.split(":").map(Number);
+    const period = hh >= 12 ? "PM" : "AM";
+    const hour12 = hh % 12 === 0 ? 12 : hh % 12;
+    return `${hour12}:${String(mm).padStart(2, "0")} ${period}`;
+  };
+  return {
+    dateLabel,
+    timeLabel: `${fmtTime(startTimeLocal)}–${fmtTime(endTimeLocal)}`,
+    dateLocal,
+    startTimeLocal,
+    endTimeLocal,
+  };
 }
 
 function CheckGlyph({ className }: { className?: string }) {

@@ -51,6 +51,17 @@ import { getSupabase } from "@/lib/supabase";
  * straight into generateEventMetadata/EventPublicView below — the exact
  * same getEventBySlug fetch either way. */
 
+// Schedule Authoring V4 — a bulk-generated Event can legitimately have
+// 30+ upcoming dates (a month-long pop-up). Bounded, not unbounded: this
+// still caps the query, it just raises the cap from the old default (12)
+// enough to cover a realistic single-month activation. The carousel below
+// only ever shows the first EVENT_PUBLIC_VISIBLE_OCCURRENCES up front;
+// anything beyond that sits behind an explicit "Show all" disclosure
+// (same zero-JS <details> pattern BusinessPublicView's own Findmi Here
+// "Show N More" already uses) rather than rendering everything at once.
+const EVENT_PUBLIC_OCCURRENCE_LIMIT = 40;
+const EVENT_PUBLIC_VISIBLE_OCCURRENCES = 10;
+
 async function resolveCanonicalUrl(eventId: string, slug: string): Promise<string> {
   const supabase = getSupabase();
   const handle = supabase ? await getPublicHandleForEntity(supabase, "event", eventId) : null;
@@ -86,7 +97,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
       attachEventCategories([event]),
       getEventProducts(event.id),
       getEventImages(event.id),
-      getUpcomingOccurrencesForEvent(event.id),
+      // Schedule Authoring V4 — bumped from the default 12 to a still-
+      // bounded 40 (never "hundreds") so a realistic month-long pop-up's
+      // full schedule is actually reachable here, not silently truncated.
+      // See the "Show all dates" disclosure below for how this stays
+      // readable rather than just rendering more cards up front.
+      getUpcomingOccurrencesForEvent(event.id, EVENT_PUBLIC_OCCURRENCE_LIMIT),
       eventHasAnyOccurrences(event.id),
       // Event Manager Location UX pass — events has no location_id column
       // of its own (only event_occurrences does), so a legacy (no-
@@ -471,10 +487,33 @@ export async function EventPublicView({ slug }: { slug: string }) {
               clipping. Local to this carousel only — every other
               HorizontalScroller on the site is unaffected. */}
           <HorizontalScroller className="pt-2">
-            {upcomingOccurrences.map((occ) => (
+            {upcomingOccurrences.slice(0, EVENT_PUBLIC_VISIBLE_OCCURRENCES).map((occ) => (
               <EventOccurrenceCard key={occ.id} occurrence={occ} />
             ))}
           </HorizontalScroller>
+          {/* Schedule Authoring V4 — bounded initial results + an explicit
+              "Show all" disclosure, never hundreds of cards rendered up
+              front. Every occurrence is still passed to
+              EventOccurrenceProvider above regardless (the date SELECTOR
+              context, and therefore Tier A CTAs/Location/roster switching,
+              is unaffected either way) — this only changes how many cards
+              are visible before the organizer's full schedule is asked
+              for. */}
+          {upcomingOccurrences.length > EVENT_PUBLIC_VISIBLE_OCCURRENCES && (
+            <details className="group mt-3 px-4 sm:px-0">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-findmi-700 [&::-webkit-details-marker]:hidden">
+                <span className="group-open:hidden">
+                  Show all {upcomingOccurrences.length} dates
+                </span>
+                <span className="hidden group-open:inline">Show fewer dates</span>
+              </summary>
+              <div className="mt-3 flex flex-col gap-2">
+                {upcomingOccurrences.slice(EVENT_PUBLIC_VISIBLE_OCCURRENCES).map((occ) => (
+                  <EventOccurrenceCard key={occ.id} occurrence={occ} />
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 

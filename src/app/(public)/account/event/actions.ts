@@ -8,7 +8,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireEventMember } from "@/lib/permissions";
 import { createOpportunity, resolveEventApplicationDecision, resolveOpportunityByContext } from "@/lib/opportunities";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
-import { errorRedirectUrl, errorRedirectUrlWithFields, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
+import { errorRedirectUrl, errorRedirectUrlWithFields, isoToLocalDateTime, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { validateImageFile } from "@/lib/imageUploadValidation";
@@ -23,6 +23,7 @@ import {
   syncOfficialEventAppearances,
   syncOfficialOccurrenceAppearances,
 } from "@/lib/appearance-event-sync";
+import { MAX_BULK_GENERATED_DATES, resolveEndDateForTimes } from "@/lib/schedule-dates";
 import type { EventParticipationStatus } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
@@ -480,15 +481,25 @@ type OccurrenceVenueFields = {
 
 /** Event Manager Location UX pass — same server-side-authoritative
  * pattern updateMemberEventLocation already used for the whole-event
- * legacy venue fields, now shared by both per-occurrence date actions
- * below: a submitted locationId always wins and is re-fetched fresh from
- * locations (never trusting whatever address text the client posted for
- * a selected Location), and manual venue text is only ever persisted when
- * there's no locationId at all — the no-Location fallback path. */
+ * legacy venue fields, now shared by every per-occurrence date action
+ * (single add/edit, and the Schedule Authoring V4 bulk actions below): a
+ * submitted locationId always wins and is re-fetched fresh from locations
+ * (never trusting whatever address text the client posted for a selected
+ * Location), and manual venue text is only ever persisted when there's no
+ * locationId at all — the no-Location fallback path.
+ *
+ * Schedule Authoring V4 — takes a plain manual-venue object rather than a
+ * FormData directly, so the bulk generation/bulk-Location actions (which
+ * have no FormData at all — they receive plain, already-parsed arguments)
+ * can call this exact same resolver instead of a second reimplementation.
+ * The two existing single-date callers (addMemberEventDate,
+ * updateMemberEventDate) now just extract their own manual fields from
+ * `formData` one call site earlier and pass the plain object in — no
+ * change to what's actually read or persisted. */
 async function resolveOccurrenceVenue(
   admin: SupabaseClient,
   locationId: string | null,
-  formData: FormData
+  manualVenue: OccurrenceVenueFields
 ): Promise<OccurrenceVenueFields> {
   if (locationId) {
     const { data: location } = await admin
@@ -507,6 +518,10 @@ async function resolveOccurrenceVenue(
     }
     return { venue_name: null, address: null, city: null, state: null, postal_code: null };
   }
+  return manualVenue;
+}
+
+function manualVenueFromFormData(formData: FormData): OccurrenceVenueFields {
   return {
     venue_name: str(formData, "venue_name"),
     address: str(formData, "address"),
@@ -570,8 +585,21 @@ export async function addMemberEventDate(eventId: string, formData: FormData) {
   if (!dateLocal || !startTime || !endTime) {
     fail("Date, start time, and end time are required.");
   }
+  if (startTime === endTime) {
+    fail("Start and end time can't be the same.");
+  }
+  // Cross-Midnight Fix — a closing time at or before the opening time means
+  // the session ends on the FOLLOWING calendar date (e.g. 11:30 AM start,
+  // 12:00 AM end), never a same-day validation failure. See
+  // lib/schedule-dates.ts's own doc comment for the exact rule.
+  // Non-null assertions here are safe, not a type-safety shortcut: the
+  // guards above already redirect (fail() is typed `never`) whenever any
+  // of these three is null — TS just can't statically prove that through
+  // a locally-scoped never-returning closure (verified: this codebase's
+  // fail() idiom never narrows this way, even before this pass).
+  const endDateLocal = resolveEndDateForTimes(dateLocal!, startTime!, endTime!);
   const start_at = localDateTimeToIso(`${dateLocal}T${startTime}`);
-  const end_at = localDateTimeToIso(`${dateLocal}T${endTime}`);
+  const end_at = localDateTimeToIso(`${endDateLocal}T${endTime}`);
   if (!start_at || !end_at || new Date(end_at) <= new Date(start_at)) {
     fail("End time must be after the start time.");
   }
@@ -581,7 +609,7 @@ export async function addMemberEventDate(eventId: string, formData: FormData) {
     start_at,
     end_at,
     location_id: locationId,
-    ...(await resolveOccurrenceVenue(admin, locationId, formData)),
+    ...(await resolveOccurrenceVenue(admin, locationId, manualVenueFromFormData(formData))),
   });
   if (error) fail("Couldn't add that date. Please try again.");
 
@@ -609,8 +637,13 @@ export async function updateMemberEventDate(eventId: string, occurrenceId: strin
   if (!dateLocal || !startTime || !endTime) {
     redirect(appendQuery(redirectPath, { error: "Date, start time, and end time are required." }));
   }
+  if (startTime === endTime) {
+    redirect(appendQuery(redirectPath, { error: "Start and end time can't be the same." }));
+  }
+  // Cross-Midnight Fix — see addMemberEventDate's own note above.
+  const endDateLocal = resolveEndDateForTimes(dateLocal, startTime, endTime);
   const start_at = localDateTimeToIso(`${dateLocal}T${startTime}`);
-  const end_at = localDateTimeToIso(`${dateLocal}T${endTime}`);
+  const end_at = localDateTimeToIso(`${endDateLocal}T${endTime}`);
   if (!start_at || !end_at || new Date(end_at) <= new Date(start_at)) {
     redirect(appendQuery(redirectPath, { error: "End time must be after the start time." }));
   }
@@ -622,7 +655,7 @@ export async function updateMemberEventDate(eventId: string, occurrenceId: strin
       start_at,
       end_at,
       location_id: locationId,
-      ...(await resolveOccurrenceVenue(admin, locationId, formData)),
+      ...(await resolveOccurrenceVenue(admin, locationId, manualVenueFromFormData(formData))),
     })
     .eq("id", occurrenceId)
     .eq("event_id", eventId);
@@ -656,6 +689,240 @@ export async function removeMemberEventDate(eventId: string, occurrenceId: strin
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { date_removed: "1" }));
+}
+
+// ── SCHEDULE AUTHORING V4 — BULK DATES ──────────────────────────────────
+// Called directly (not via a <form action>) from BulkDatesComposer.tsx /
+// EventScheduleList.tsx via startTransition, so each returns a plain
+// result object for the client to render feedback from, instead of
+// redirecting. Same requireEventManager authorization, same
+// appearance-sync primitives, same never-trust-the-client posture as
+// every other action in this file — client-supplied ids are always
+// re-verified as belonging to this exact event before anything is
+// written.
+
+export interface BulkGenerateDateInput {
+  /** "YYYY-MM-DD" local calendar date — see lib/schedule-dates.ts. */
+  date: string;
+  /** "HH:MM" (24-hour), the exact <input type="time"> format. */
+  start_time: string;
+  end_time: string;
+}
+
+export interface BulkDatesResult {
+  created?: number;
+  updated?: number;
+  removed?: number;
+  skippedExisting?: number;
+  error?: string;
+}
+
+/** Bulk date generation — the organizer-facing counterpart to admin's own
+ * EventOccurrencesEditor "repeat weekly" -> saveEvent() bulk upsert. Every
+ * mode (one day / date range / recurring weekdays) is resolved to this
+ * same flat list of concrete calendar dates client-side (lib/schedule-
+ * dates.ts) — no recurrence rule is ever stored here.
+ *
+ * LOCKED INVARIANT — a scheduled calendar instance must exist exactly
+ * once: this re-fetches the Event's OWN current Primary Date and every
+ * existing event_occurrences row fresh (never trusts the client's own
+ * view of the schedule), and silently skips any incoming date whose local
+ * calendar date already matches one of those — so generating a range that
+ * includes the Primary Date's own day never creates a duplicate occurrence
+ * for it, and regenerating/extending an overlapping range only inserts
+ * the genuinely new days. This is the real, authoritative duplicate
+ * check — client-generated ids are not relied on for it.
+ *
+ * The chosen Location/manual venue is the ONE default applied to every
+ * newly generated date in this batch — Location bulk changes are always
+ * this explicit; there is no inherited-vs-overridden marker in the schema
+ * to guess from (see the Schedule Authoring audit's own Location
+ * Inheritance finding). */
+export async function bulkGenerateEventDates(
+  eventId: string,
+  dates: BulkGenerateDateInput[],
+  locationId: string | null,
+  manualVenue: OccurrenceVenueFields
+): Promise<BulkDatesResult> {
+  const redirectPath = `/account/event/${eventId}?tab=dates`;
+  const admin = await requireEventManager(eventId, redirectPath);
+
+  if (dates.length === 0) return { created: 0, error: "No dates to generate." };
+  if (dates.length > MAX_BULK_GENERATED_DATES) {
+    return { error: `Can't generate more than ${MAX_BULK_GENERATED_DATES} dates in one batch.` };
+  }
+  for (const d of dates) {
+    if (!d.date || !d.start_time || !d.end_time) {
+      return { error: "Every generated date needs a date, start time, and end time." };
+    }
+    if (d.start_time === d.end_time) {
+      return { error: "Start and end time can't be the same." };
+    }
+  }
+
+  const { data: event } = await admin.from("events").select("start_at").eq("id", eventId).maybeSingle();
+  if (!event) return { error: "Event not found." };
+
+  const { data: existingOccurrences } = await admin
+    .from("event_occurrences")
+    .select("start_at")
+    .eq("event_id", eventId);
+
+  // Dedupe key is the local CALENDAR DATE only (never an exact-time match)
+  // — bulk generation's whole purpose is "cover this date range with one
+  // occurrence per day," so any existing row (Primary Date or occurrence)
+  // already on a given day means that day is already covered. This is
+  // deliberately narrower than the single "Add a Date" path, which still
+  // allows a genuine second session on an already-scheduled day when the
+  // organizer adds one explicitly.
+  const alreadyCoveredDates = new Set<string>([
+    isoToLocalDateTime(event.start_at).slice(0, 10),
+    ...((existingOccurrences ?? []) as { start_at: string }[]).map((o) => isoToLocalDateTime(o.start_at).slice(0, 10)),
+  ]);
+
+  const venueFields = await resolveOccurrenceVenue(admin, locationId, manualVenue);
+
+  const rowsToInsert = dates
+    .filter((d) => !alreadyCoveredDates.has(d.date))
+    .map((d) => {
+      const endDateLocal = resolveEndDateForTimes(d.date, d.start_time, d.end_time);
+      return {
+        event_id: eventId,
+        start_at: localDateTimeToIso(`${d.date}T${d.start_time}`) as string,
+        end_at: localDateTimeToIso(`${endDateLocal}T${d.end_time}`) as string,
+        location_id: locationId,
+        ...venueFields,
+      };
+    });
+
+  const skippedExisting = dates.length - rowsToInsert.length;
+  if (rowsToInsert.length === 0) return { created: 0, skippedExisting };
+
+  const { error } = await admin.from("event_occurrences").insert(rowsToInsert);
+  if (error) return { error: "Couldn't save the generated dates. Please try again." };
+
+  revalidatePath(redirectPath);
+  return { created: rowsToInsert.length, skippedExisting };
+}
+
+/** Bulk remove — same cancel-Appearances-before-delete invariant as
+ * removeMemberEventDate, looped over a bounded, server-verified id list
+ * (never a platform-wide operation, never trusts that every submitted id
+ * actually belongs to this event). */
+export async function bulkRemoveEventDates(eventId: string, occurrenceIds: string[]): Promise<BulkDatesResult> {
+  const redirectPath = `/account/event/${eventId}?tab=dates`;
+  const admin = await requireEventManager(eventId, redirectPath);
+  if (occurrenceIds.length === 0) return { removed: 0 };
+
+  const { data: owned } = await admin.from("event_occurrences").select("id").eq("event_id", eventId).in("id", occurrenceIds);
+  const ownedIds = ((owned ?? []) as { id: string }[]).map((o) => o.id);
+  if (ownedIds.length === 0) return { removed: 0 };
+
+  // Schedule Integrity pass invariant, preserved: cancel official-
+  // participation Appearances BEFORE deleting each occurrence row —
+  // appearances.event_occurrence_id is ON DELETE SET NULL, so this can't
+  // happen after the delete. Never touches a manual/event_self_added
+  // Appearance (cancelOfficialOccurrenceAppearances is already scoped to
+  // source='official_participation').
+  for (const id of ownedIds) {
+    await cancelOfficialOccurrenceAppearances(admin, id);
+  }
+
+  const { error } = await admin.from("event_occurrences").delete().eq("event_id", eventId).in("id", ownedIds);
+  if (error) return { error: "Couldn't remove those dates. Please try again." };
+
+  revalidatePath(redirectPath);
+  return { removed: ownedIds.length };
+}
+
+/** Bulk Location change for selected, already-saved Additional Dates —
+ * one Location/manual venue applied to every selected date, always an
+ * explicit organizer action (never inferred inheritance — see
+ * bulkGenerateEventDates' own note). One flat UPDATE (the new value is
+ * identical for every selected row), then the existing per-occurrence
+ * sync, bounded to the selected ids. */
+export async function bulkUpdateEventDatesLocation(
+  eventId: string,
+  occurrenceIds: string[],
+  locationId: string | null,
+  manualVenue: OccurrenceVenueFields
+): Promise<BulkDatesResult> {
+  const redirectPath = `/account/event/${eventId}?tab=dates`;
+  const admin = await requireEventManager(eventId, redirectPath);
+  if (occurrenceIds.length === 0) return { updated: 0 };
+
+  const { data: owned } = await admin.from("event_occurrences").select("id").eq("event_id", eventId).in("id", occurrenceIds);
+  const ownedIds = ((owned ?? []) as { id: string }[]).map((o) => o.id);
+  if (ownedIds.length === 0) return { updated: 0 };
+
+  const venueFields = await resolveOccurrenceVenue(admin, locationId, manualVenue);
+  const { error } = await admin
+    .from("event_occurrences")
+    .update({ location_id: locationId, ...venueFields })
+    .eq("event_id", eventId)
+    .in("id", ownedIds);
+  if (error) return { error: "Couldn't update the Location for those dates. Please try again." };
+
+  // Schedule Integrity pass — each affected occurrence's own confirmed
+  // official-participation Appearances need their WHERE refreshed.
+  // Bounded loop, one call per occurrence — never per business.
+  for (const id of ownedIds) {
+    await syncOfficialOccurrenceAppearances(admin, id);
+  }
+
+  revalidatePath(redirectPath);
+  return { updated: ownedIds.length };
+}
+
+/** Bulk hours change for selected, already-saved Additional Dates — the
+ * exact tool San Gennaro's own Friday/Saturday-until-midnight exception
+ * needs. Each selected date KEEPS its own calendar date; only the TIME
+ * changes, recomputed per row (never a flat single UPDATE, since each
+ * row's date differs) via the same id-keyed bounded upsert shape admin's
+ * own saveEvent() already uses for occurrence writes — Supabase's upsert
+ * only touches the columns listed here (start_at/end_at/event_id) and
+ * leaves location_id/timezone/status/etc. on each row untouched. Applies
+ * the same Cross-Midnight Fix as every other date write in this file. */
+export async function bulkUpdateEventDatesHours(
+  eventId: string,
+  occurrenceIds: string[],
+  startTime: string,
+  endTime: string
+): Promise<BulkDatesResult> {
+  const redirectPath = `/account/event/${eventId}?tab=dates`;
+  const admin = await requireEventManager(eventId, redirectPath);
+  if (occurrenceIds.length === 0) return { updated: 0 };
+  if (!startTime || !endTime) return { error: "Start and end time are required." };
+  if (startTime === endTime) return { error: "Start and end time can't be the same." };
+
+  const { data: owned } = await admin
+    .from("event_occurrences")
+    .select("id, start_at")
+    .eq("event_id", eventId)
+    .in("id", occurrenceIds);
+  const rows = (owned ?? []) as { id: string; start_at: string }[];
+  if (rows.length === 0) return { updated: 0 };
+
+  const updates = rows.map((row) => {
+    const dateLocal = isoToLocalDateTime(row.start_at).slice(0, 10);
+    const endDateLocal = resolveEndDateForTimes(dateLocal, startTime, endTime);
+    return {
+      id: row.id,
+      event_id: eventId,
+      start_at: localDateTimeToIso(`${dateLocal}T${startTime}`) as string,
+      end_at: localDateTimeToIso(`${endDateLocal}T${endTime}`) as string,
+    };
+  });
+
+  const { error } = await admin.from("event_occurrences").upsert(updates, { onConflict: "id" });
+  if (error) return { error: "Couldn't update hours for those dates. Please try again." };
+
+  for (const row of updates) {
+    await syncOfficialOccurrenceAppearances(admin, row.id);
+  }
+
+  revalidatePath(redirectPath);
+  return { updated: updates.length };
 }
 
 // ── LOCATION ───────────────────────────────────────────────────────────

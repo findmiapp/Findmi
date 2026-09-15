@@ -69,6 +69,7 @@ export default function EventLocationField({
   initialLocation,
   initialManual,
   onGeographyChange,
+  onLocationChange,
 }: {
   initialLocation: SelectedLocationDetail | null;
   initialManual: ManualVenueValues | null;
@@ -85,6 +86,16 @@ export default function EventLocationField({
    * the owner to wonder whether they still need to separately resolve
    * geography for a venue they already picked. */
   onGeographyChange?: (geography: { city: string; state: string; locationName: string | null }) => void;
+  /** Schedule Authoring V4 — purely additive, optional hook so a parent
+   * that has no <form> of its own to read hidden inputs from (the bulk
+   * date generation composer, which builds its own in-memory draft rows
+   * instead of submitting a form) can capture this field's full current
+   * selection — either a real Location or manual venue text, never both —
+   * as plain data. Every existing caller (Location tab, per-occurrence
+   * Dates forms) omits this and is completely unaffected; this never
+   * changes what the field itself renders or how its own hidden inputs
+   * post for a real <form> caller. */
+  onLocationChange?: (value: { location: SelectedLocationDetail | null; manualVenue: ManualVenueValues | null }) => void;
 }) {
   const hasManualSeed = Boolean(
     initialManual && (initialManual.venue_name || initialManual.address || initialManual.city || initialManual.state || initialManual.postal_code)
@@ -114,6 +125,12 @@ export default function EventLocationField({
     // derived-value effect in this codebase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveCity, effectiveState, selected]);
+
+  useEffect(() => {
+    onLocationChange?.({ location: selected, manualVenue: selected ? null : manual });
+    // Same stable-identity expectation as onGeographyChange above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, manual]);
 
   return (
     <div className="flex flex-col gap-2">
