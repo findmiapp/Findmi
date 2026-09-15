@@ -676,7 +676,7 @@ export async function removeMemberEventDate(eventId: string, occurrenceId: strin
 // occurrence — so this only ever touches the text snapshot in that case,
 // exactly as before.
 export async function updateMemberEventLocation(eventId: string, formData: FormData) {
-  const redirectPath = `/account/event/${eventId}?tab=location`;
+  const redirectPath = `/account/event/${eventId}?tab=dates`;
   const admin = await requireEventManager(eventId, redirectPath);
 
   const locationId = str(formData, "location_id");
@@ -770,7 +770,7 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
  * this — events and businesses each carry their own independent
  * market_id, this action only ever touches the event's. */
 export async function updateMemberEventMarket(eventId: string, formData: FormData) {
-  const redirectPath = `/account/event/${eventId}?tab=market`;
+  const redirectPath = `/account/event/${eventId}?tab=details`;
   const admin = await requireEventManager(eventId, redirectPath);
 
   const marketId = str(formData, "market_id");
@@ -834,7 +834,7 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
  * replace on every save" shape admin's own saveEvent() uses for
  * event_images. */
 export async function updateMemberEventImages(eventId: string, formData: FormData) {
-  const redirectPath = `/account/event/${eventId}?tab=images`;
+  const redirectPath = `/account/event/${eventId}?tab=details`;
   const admin = await requireEventManager(eventId, redirectPath);
 
   const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
