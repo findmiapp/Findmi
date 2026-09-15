@@ -26,6 +26,7 @@ export default function FindmiUrlCard({
   entityLabel,
   currentHandle,
   action,
+  quiet = false,
 }: {
   entityType: HandleEntityType;
   entityId: string;
@@ -34,9 +35,17 @@ export default function FindmiUrlCard({
   entityLabel: string;
   currentHandle: string | null;
   action: (formData: FormData) => void | Promise<void>;
+  /** Command Center V3.1 — Business Overview's own request for a quieter
+   * "utility, not a module" claimed-handle display (plain text actions
+   * instead of outlined capsules). Opt-in only, defaults to false, so
+   * Location/Event Managers (this component's other two callers) and
+   * Business's own claim/edit FORM below keep their existing, unchanged
+   * presentation — this never becomes a second global button style. */
+  quiet?: boolean;
 }) {
   const [editing, setEditing] = useState(!currentHandle);
   const url = currentHandle ? `findmi.app/${currentHandle}` : null;
+  const quietActionClass = "shrink-0 text-xs font-semibold text-ink/55 underline underline-offset-2 transition hover:text-ink";
 
   return (
     <div>
@@ -45,9 +54,13 @@ export default function FindmiUrlCard({
       {!editing && currentHandle ? (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2.5">
           <p className="min-w-0 break-all text-base font-bold text-findmi-700">{url}</p>
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <CopyButton value={`https://${url}`} label="Copy Link" className={secondaryButtonClass} />
-            <button type="button" onClick={() => setEditing(true)} className={secondaryButtonClass}>
+          <div className={`flex shrink-0 flex-wrap items-center ${quiet ? "gap-3" : "gap-2"}`}>
+            <CopyButton
+              value={`https://${url}`}
+              label="Copy Link"
+              className={quiet ? quietActionClass : secondaryButtonClass}
+            />
+            <button type="button" onClick={() => setEditing(true)} className={quiet ? quietActionClass : secondaryButtonClass}>
               Change
             </button>
           </div>

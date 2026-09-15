@@ -1083,12 +1083,20 @@ export default async function ManageBusinessPage({
                 no separate calendar UI built here. Unlike Today, this
                 section always renders (even a business with nothing
                 upcoming gets one compact line) since "where am I going
-                next" deserves a direct answer either way. */}
+                next" deserves a direct answer either way.
+                V3.1 live QA correction — the previous DashboardAppearanceRow
+                treatment (its own rounded/bordered card per item, shared
+                with Today) dominated the screen at three-up. Today keeps
+                that treatment unchanged (accepted, and it only ever shows
+                0-1 live items); Coming Up gets its own compact row —
+                same information, the flat divided-list grammar Appearance
+                Analytics already proved (PerformanceTab.tsx), no outer
+                card per Appearance. */}
             <OverviewSection title="Coming Up" action={{ href: `${basePath}?tab=findmi-here`, label: "Where I'll Be" }}>
               {upcomingAppearances.length > 0 ? (
-                <ul className="flex flex-col gap-3">
+                <ul className="flex flex-col divide-y divide-black/[0.06]">
                   {upcomingAppearances.slice(0, 3).map((a) => (
-                    <DashboardAppearanceRow key={a.id} appearance={a} showDate />
+                    <ComingUpRow key={a.id} appearance={a} />
                   ))}
                 </ul>
               ) : (
@@ -1106,11 +1114,23 @@ export default async function ManageBusinessPage({
                 this pass's own performance rule, that's not a fair trade
                 for a snapshot, so no parallel lightweight analytics query
                 was built either — this stays a real, prominent link into
-                the one existing Analytics implementation instead. */}
-            <OverviewSection title="Analytics" action={{ href: `${basePath}?tab=performance`, label: "View Analytics" }}>
-              <p className="text-sm text-ink/50">
-                Impressions, Profile Views and Actions for {business.name}.
-              </p>
+                the one existing Analytics implementation instead.
+                V3.1 live QA correction — compressed from a title+action
+                header plus a separate business-name-interpolated
+                description line into one tight destination row: title
+                alone, then description and the "View Analytics →" link
+                together on the same line, so it reads as a single CTA
+                rather than a mostly-empty section. */}
+            <OverviewSection title="Analytics">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-ink/50">See your reach and customer actions.</p>
+                <Link
+                  href={`${basePath}?tab=performance`}
+                  className="shrink-0 text-xs font-semibold text-findmi-700 underline underline-offset-2"
+                >
+                  View Analytics →
+                </Link>
+              </div>
             </OverviewSection>
 
             {/* FindMi Global Handle Registry — the header above already
@@ -1124,7 +1144,15 @@ export default async function ManageBusinessPage({
                 via requireProBusinessMember); Free renders a read-only
                 variant instead, still copyable, with the same
                 /upgrade/pro?business={id} link every other locked tab
-                uses. */}
+                uses.
+                V3.1 live QA correction — `quiet` on FindmiUrlCard swaps
+                its claimed-handle Copy Link/Change from outlined pill
+                capsules to plain underlined text actions; LockedFindmiUrl
+                (Business-only, not shared) gets the same treatment
+                directly. Opt-in only — Location/Event Managers, which
+                also render FindmiUrlCard, keep their existing capsule
+                presentation unchanged, and the claim/edit form itself
+                (Save/Claim/Cancel) is untouched. */}
             <div className="border-t border-black/[0.06] pt-5">
               {pro ? (
                 <FindmiUrlCard
@@ -1133,6 +1161,7 @@ export default async function ManageBusinessPage({
                   entityLabel={business.name}
                   currentHandle={businessHandle}
                   action={updateBusinessHandle.bind(null, id)}
+                  quiet
                 />
               ) : (
                 <LockedFindmiUrl businessId={id} currentHandle={businessHandle} />
@@ -2372,7 +2401,7 @@ function LockedFindmiUrl({ businessId, currentHandle }: { businessId: string; cu
           <CopyButton
             value={`https://${url}`}
             label="Copy Link"
-            className="shrink-0 rounded-full border border-black/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/70 transition hover:bg-black/5"
+            className="shrink-0 text-xs font-semibold text-ink/55 underline underline-offset-2 transition hover:text-ink"
           />
         </div>
       ) : (
@@ -2542,6 +2571,54 @@ function DashboardAppearanceRow({ appearance, showDate }: { appearance: Dashboar
           Manage
         </Link>
       </div>
+    </li>
+  );
+}
+
+/** Command Center V3.1 — the compact Coming Up row (live QA correction).
+ * Same DashboardAppearance fields DashboardAppearanceRow uses (date, time,
+ * location, geography, status, "Part of" event, Manage), condensed into
+ * the flat divided-list grammar Appearance Analytics already proved
+ * (PerformanceTab.tsx): a title line, one combined detail line, an
+ * optional status/event line — no outer rounded/bordered card, no
+ * separate temporal badge (these are never today's/live items — see
+ * upcomingAppearances' own isToday filter — so the plain date already
+ * shown in the detail line covers it without a second cue). Today keeps
+ * DashboardAppearanceRow unchanged; this is Coming Up's own row, not a
+ * shared component, since Today's visual treatment is explicitly accepted
+ * and out of scope for this correction. */
+function ComingUpRow({ appearance }: { appearance: DashboardAppearance }) {
+  const venueLine = [appearance.venueName, [appearance.city, appearance.state].filter(Boolean).join(", ")]
+    .filter(Boolean)
+    .join(", ");
+  const detailLine = [
+    formatDateShort(appearance.startAt),
+    `${formatTime(appearance.startAt)}–${formatTime(appearance.endAt)}`,
+    venueLine,
+    appearance.geographyLabel,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <li className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-ink">{appearance.title}</p>
+        <p className="mt-0.5 truncate text-xs text-ink/50">{detailLine}</p>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
+          <span className="font-semibold text-findmi-700">{appearance.statusLabel}</span>
+          {appearance.eventName &&
+            (appearance.eventHref ? (
+              <Link href={appearance.eventHref} className="text-ink/45 underline underline-offset-2">
+                Part of {appearance.eventName}
+              </Link>
+            ) : (
+              <span className="text-ink/45">Part of {appearance.eventName}</span>
+            ))}
+        </p>
+      </div>
+      <Link href={appearance.editHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+        Manage
+      </Link>
     </li>
   );
 }
