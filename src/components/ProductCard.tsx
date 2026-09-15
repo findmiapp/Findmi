@@ -1,11 +1,18 @@
+"use client";
+
 import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import type { Product } from "@/lib/types";
 import { formatCurrency, formatPrice } from "@/lib/format";
+import { trackEvent } from "@/lib/analytics/track";
+import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
+import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
 export default function ProductCard({
   product,
+  analyticsContext,
 }: {
+  analyticsContext?: AnalyticsPlacementContext;
   product: Product & {
     /** Selling brand — present on marketplace/homepage/featured product
      * fetches (see FeaturedProduct/MarketplaceProduct in lib/data.ts), not
@@ -63,6 +70,14 @@ export default function ProductCard({
   // hide a perfectly formattable number. Presentation only: nothing about
   // the stored price/price_label values changes.
   const price = (product.price != null ? formatCurrency(product.price) : formatPrice(product.price, product.price_label)) || null;
+
+  const analyticsFields = buildEntityEventFields(
+    "product",
+    product.id,
+    { productId: product.id, businessId: product.business_id },
+    analyticsContext
+  );
+  const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });
 
   // Deliberately NOT built on PostCard's photo-overlay treatment: that
   // layout stacks badge/title/price/CTA as absolutely-positioned text over
@@ -123,7 +138,12 @@ export default function ProductCard({
   );
 
   return (
-    <Link href={href} className="block h-full">
+    <Link
+      href={href}
+      className="block h-full"
+      ref={impressionRef}
+      onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
+    >
       {card}
     </Link>
   );

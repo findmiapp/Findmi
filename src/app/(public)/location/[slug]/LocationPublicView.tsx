@@ -7,6 +7,7 @@ import InquireButton from "@/components/InquireButton";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import LocationFollowButton from "@/components/LocationFollowButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
+import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import LocationSaveButton from "@/components/LocationSaveButton";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -180,14 +181,15 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       <div className="px-4 sm:px-0">
         <div className="mt-4 flex flex-wrap items-center gap-2.5">
           {directionsHref && (
-            <a
+            <AnalyticsLink
               href={directionsHref}
               target="_blank"
               rel="noreferrer"
               className="flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              trackPayload={{ event_name: "click_directions", subject_type: "location", subject_id: location.id, location_id: location.id }}
             >
               Get Directions
-            </a>
+            </AnalyticsLink>
           )}
           {showMessageButton && (
             <MessageButton size="default" targetType="location" targetId={location.id} targetName={location.name} />

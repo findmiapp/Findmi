@@ -7,6 +7,9 @@ import { cityState, formatAppearanceTime, getTemporalLabel } from "@/lib/format"
 import { validateCustomDestination } from "@/lib/navigation";
 import ImageLightbox from "./ImageLightbox";
 import LiveDot from "./LiveDot";
+import { trackEvent } from "@/lib/analytics/track";
+import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
+import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
 // Appearances — Click Behavior pass: one deterministic primary click per
 // card, in this exact order —
@@ -22,14 +25,45 @@ import LiveDot from "./LiveDot";
 export default function AppearanceCard({
   appearance,
   eventSlug,
+  analyticsContext,
 }: {
   appearance: Appearance;
   eventSlug?: string | null;
+  analyticsContext?: AnalyticsPlacementContext;
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const location = cityState(appearance.city, appearance.state);
   const mapsQuery = [appearance.venue_name, appearance.address, location].filter(Boolean).join(", ");
   const { live } = getTemporalLabel(appearance.start_at, appearance.end_at);
+
+  // Analytics Phase 2A — Appearance is a first-class analytical entity;
+  // every relationship column it actually carries (never manufactured —
+  // event_id/event_occurrence_id/location_id are all null on a standalone
+  // Appearance) rides along on both the impression and any click.
+  const analyticsFields = buildEntityEventFields(
+    "appearance",
+    appearance.id,
+    {
+      appearanceId: appearance.id,
+      businessId: appearance.business_id,
+      eventId: appearance.event_id,
+      eventOccurrenceId: appearance.event_occurrence_id,
+      locationId: appearance.location_id,
+    },
+    analyticsContext
+  );
+  const impressionRef = useViewportImpression<HTMLDivElement>({ event_name: "entity_impression", ...analyticsFields });
+  function trackClick() {
+    trackEvent({ event_name: "entity_click", ...analyticsFields });
+  }
+  // Tier 4 (GPS Directions) is both a card activation AND specifically a
+  // Directions action — two useful analytical dimensions of the same
+  // physical click, per the completed audit's own resolution (never a
+  // generic double-count: entity_click always fires; click_directions
+  // fires ADDITIONALLY only for this one tier).
+  function trackDirectionsClick() {
+    trackEvent({ event_name: "click_directions", ...analyticsFields });
+  }
 
   const hasEvent = Boolean(eventSlug);
   const externalUrl =
@@ -50,6 +84,7 @@ export default function AppearanceCard({
 
   const content = (
     <div
+      ref={impressionRef}
       className={`flex items-center gap-3 rounded-2xl border p-3 transition active:scale-[0.99] ${
         live
           ? "border-findmi/50 bg-findmi-50"
@@ -140,7 +175,7 @@ export default function AppearanceCard({
 
   if (hasEvent) {
     return (
-      <Link href={`/event/${eventSlug}`} className="group block" aria-label={ariaLabel}>
+      <Link href={`/event/${eventSlug}`} className="group block" aria-label={ariaLabel} onClick={trackClick}>
         {content}
       </Link>
     );
@@ -149,13 +184,13 @@ export default function AppearanceCard({
   if (externalUrl) {
     if (externalIsAbsolute) {
       return (
-        <a href={externalUrl} target="_blank" rel="noreferrer" className="group block" aria-label={ariaLabel}>
+        <a href={externalUrl} target="_blank" rel="noreferrer" className="group block" aria-label={ariaLabel} onClick={trackClick}>
           {content}
         </a>
       );
     }
     return (
-      <Link href={externalUrl} className="group block" aria-label={ariaLabel}>
+      <Link href={externalUrl} className="group block" aria-label={ariaLabel} onClick={trackClick}>
         {content}
       </Link>
     );
@@ -164,7 +199,15 @@ export default function AppearanceCard({
   if (flyerUrl) {
     return (
       <>
-        <button type="button" onClick={() => setLightboxOpen(true)} className="group block w-full text-left" aria-label={ariaLabel}>
+        <button
+          type="button"
+          onClick={() => {
+            setLightboxOpen(true);
+            trackClick();
+          }}
+          className="group block w-full text-left"
+          aria-label={ariaLabel}
+        >
           {content}
         </button>
         {lightboxOpen && (
@@ -179,9 +222,20 @@ export default function AppearanceCard({
     );
   }
 
-  // directionsHref
+  // directionsHref — records both dimensions of this one physical click
+  // (see the doc comment above trackDirectionsClick).
   return (
-    <a href={directionsHref!} target="_blank" rel="noreferrer" className="group block" aria-label={ariaLabel}>
+    <a
+      href={directionsHref!}
+      target="_blank"
+      rel="noreferrer"
+      className="group block"
+      aria-label={ariaLabel}
+      onClick={() => {
+        trackClick();
+        trackDirectionsClick();
+      }}
+    >
       {content}
     </a>
   );

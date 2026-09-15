@@ -29,6 +29,10 @@ import type { BusinessWithCategories, Category } from "@/lib/types";
  * one value already threaded down from the page's own query string. */
 export default function HomepageBusinessRow({
   rowId,
+  pageId,
+  contentType,
+  mode,
+  pinnedIds,
   initialItems,
   categories,
   appearanceHints,
@@ -43,6 +47,14 @@ export default function HomepageBusinessRow({
    * module correctly omits itself rather than fabricating anything. */
   appearanceHints: Record<string, NextAppearanceHint>;
   marketSlug?: string;
+  /** Analytics Phase 2A — Discovery Page Builder attribution. `pinnedIds`
+   * stays correct even after a client-side category re-fetch: origin is
+   * purely id-membership in the row's own founder-configured pin list,
+   * never dependent on which query produced the currently-shown items. */
+  pageId: string;
+  contentType: string;
+  mode: string;
+  pinnedIds: string[];
 }) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, BusinessWithCategories[]>>({});
@@ -131,9 +143,22 @@ export default function HomepageBusinessRow({
            clearly as swipeable without over-compressing this pattern —
            BusinessLogoCard itself is untouched. */
         <div className="flex gap-4 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {items.map((b) => (
+          {items.map((b, i) => (
             <div key={b.id} className="w-[76vw] max-w-[340px] shrink-0 sm:w-96">
-              <BusinessLogoCard business={b} nextAppearance={hints[b.id]} />
+              <BusinessLogoCard
+                business={b}
+                nextAppearance={hints[b.id]}
+                analyticsContext={{
+                  pageType: "home",
+                  placement: "homepage_row",
+                  discoveryPageId: pageId,
+                  discoverySectionId: rowId,
+                  sectionContentType: contentType,
+                  sectionMode: mode,
+                  origin: mode === "hybrid" ? (pinnedIds.includes(b.id) ? "pinned" : "auto") : undefined,
+                  position: i + 1,
+                }}
+              />
             </div>
           ))}
         </div>

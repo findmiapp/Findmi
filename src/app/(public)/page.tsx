@@ -449,6 +449,14 @@ async function HomepageRowSection({
         title={isBrandsRow ? row.title || BRANDS_ROW_HEADING_FALLBACK : row.title}
         subtitle={(isBrandsRow ? row.subtitle || BRANDS_ROW_SUBTITLE_FALLBACK : row.subtitle) ?? undefined}
         viewAllHref={viewAllHref}
+        impressionPayload={{
+          event_name: "discovery_section_impression",
+          discovery_page_id: row.page_id,
+          discovery_section_id: row.id,
+          page_type: "home",
+          page_path: "/",
+          metadata: { content_type: row.content_type, mode: row.mode },
+        }}
       >
         <HomepageBusinessRow
           // Remounts (resetting its internal category cache/selection)
@@ -458,6 +466,10 @@ async function HomepageRowSection({
           // component's cache is keyed only by category slug, not Market).
           key={`${row.id}-${marketSlug ?? "all"}`}
           rowId={row.id}
+          pageId={row.page_id}
+          contentType={row.content_type ?? "businesses"}
+          mode={row.mode}
+          pinnedIds={row.pinned_ids}
           initialItems={resolved.items}
           categories={rowCategories}
           appearanceHints={appearanceHints}
@@ -477,11 +489,35 @@ async function HomepageRowSection({
     const eventsViewAllHref =
       isDynamicEvents && marketSlug ? `/events?market=${encodeURIComponent(marketSlug)}` : "/events";
     return (
-      <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref={eventsViewAllHref}>
+      <Section
+        title={row.title}
+        subtitle={row.subtitle ?? undefined}
+        viewAllHref={eventsViewAllHref}
+        impressionPayload={{
+          event_name: "discovery_section_impression",
+          discovery_page_id: row.page_id,
+          discovery_section_id: row.id,
+          page_type: "home",
+          page_path: "/",
+          metadata: { content_type: row.content_type, mode: row.mode },
+        }}
+      >
         <HorizontalScroller>
-          {resolved.items.map((e) => (
+          {resolved.items.map((e, i) => (
             <div key={e.id} className="w-[74vw] max-w-[320px] shrink-0 sm:w-72">
-              <HomeEventCard event={e} />
+              <HomeEventCard
+                event={e}
+                analyticsContext={{
+                  pageType: "home",
+                  placement: "homepage_row",
+                  discoveryPageId: row.page_id,
+                  discoverySectionId: row.id,
+                  sectionContentType: row.content_type ?? undefined,
+                  sectionMode: row.mode,
+                  origin: row.mode === "hybrid" ? (row.pinned_ids.includes(e.id) ? "pinned" : "auto") : undefined,
+                  position: i + 1,
+                }}
+              />
             </div>
           ))}
         </HorizontalScroller>
@@ -491,11 +527,35 @@ async function HomepageRowSection({
 
   // products
   return (
-    <Section title={row.title} subtitle={row.subtitle ?? undefined} viewAllHref="/marketplace">
+    <Section
+      title={row.title}
+      subtitle={row.subtitle ?? undefined}
+      viewAllHref="/marketplace"
+      impressionPayload={{
+        event_name: "discovery_section_impression",
+        discovery_page_id: row.page_id,
+        discovery_section_id: row.id,
+        page_type: "home",
+        page_path: "/",
+        metadata: { content_type: row.content_type, mode: row.mode },
+      }}
+    >
       <HorizontalScroller>
-        {resolved.items.map((p) => (
+        {resolved.items.map((p, i) => (
           <div key={p.id} className="w-[42%] min-w-[150px] max-w-[176px] shrink-0 sm:w-44">
-            <ProductCard product={p} />
+            <ProductCard
+              product={p}
+              analyticsContext={{
+                pageType: "home",
+                placement: "homepage_row",
+                discoveryPageId: row.page_id,
+                discoverySectionId: row.id,
+                sectionContentType: row.content_type ?? undefined,
+                sectionMode: row.mode,
+                origin: row.mode === "hybrid" ? (row.pinned_ids.includes(p.id) ? "pinned" : "auto") : undefined,
+                position: i + 1,
+              }}
+            />
           </div>
         ))}
       </HorizontalScroller>

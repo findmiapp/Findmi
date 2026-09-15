@@ -1,8 +1,13 @@
+"use client";
+
 import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import type { BusinessWithCategories } from "@/lib/types";
 import type { NextAppearanceHint } from "@/lib/data";
 import { cityState, formatDateShort } from "@/lib/format";
+import { trackEvent } from "@/lib/analytics/track";
+import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
+import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
 // Homepage brand card — full landscape composition (live-QA redesign,
 // 2026 nav pass, Part 9/10): the earlier 1/3-logo | 2/3-cover split read
@@ -46,11 +51,13 @@ export default function BusinessLogoCard({
    * all (Discover More Like This / event roster don't wire this up this
    * pass — see the report). */
   nextAppearance,
+  analyticsContext,
 }: {
   business: BusinessWithCategories;
   ctaLabel?: string;
   ctaHref?: string;
   nextAppearance?: NextAppearanceHint | null;
+  analyticsContext?: AnalyticsPlacementContext;
 }) {
   // Only one category is ever shown — the schema has no subcategory field
   // (see the implementation report), so this never fabricates a second
@@ -60,6 +67,9 @@ export default function BusinessLogoCard({
   const hasCover = Boolean(business.cover_image_url);
   const overlap = hasLogo && hasCover;
   const href = ctaHref ?? `/business/${business.slug}`;
+
+  const analyticsFields = buildEntityEventFields("business", business.id, { businessId: business.id }, analyticsContext);
+  const impressionRef = useViewportImpression<HTMLDivElement>({ event_name: "entity_impression", ...analyticsFields });
 
   // Visual polish pass item 1: "Featured" dropped entirely from this
   // component's own badge logic — it's redundant the moment this card is
@@ -84,8 +94,13 @@ export default function BusinessLogoCard({
         : null;
 
   return (
-    <div className="group relative w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]">
-      <Link href={href} aria-label={`${business.name} — ${ctaLabel}`} className="absolute inset-0 z-10 rounded-3xl" />
+    <div ref={impressionRef} className="group relative w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]">
+      <Link
+        href={href}
+        aria-label={`${business.name} — ${ctaLabel}`}
+        className="absolute inset-0 z-10 rounded-3xl"
+        onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
+      />
 
       <div className="relative">
         <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-3xl bg-mist">

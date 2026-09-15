@@ -8,6 +8,7 @@ import BusinessFilters from "@/components/discover/BusinessFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
 import SortSelect from "@/components/discover/SortSelect";
 import Section, { HorizontalScroller } from "@/components/Section";
+import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import {
   getCategories,
   getCategoriesForDynamicBusinessRow,
@@ -201,6 +202,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
 
   return (
     <div className="py-8 sm:py-10">
+      <SearchFilterAnalytics pageType="businesses" filterParams={["category", "market", "area"]} />
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Businesses</h1>
         <p className="mt-1.5 text-sm text-ink/60 sm:text-base">
@@ -285,7 +287,11 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                   <HorizontalScroller>
                     {featuredBusinesses.map((b) => (
                       <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
-                        <BusinessLogoCard business={b} nextAppearance={browseAppearanceHints.get(b.id)} />
+                        <BusinessLogoCard
+                          business={b}
+                          nextAppearance={browseAppearanceHints.get(b.id)}
+                          analyticsContext={{ pageType: "businesses", placement: "featured_rail" }}
+                        />
                       </div>
                     ))}
                   </HorizontalScroller>
@@ -302,7 +308,11 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                   <HorizontalScroller>
                     {categoryBusinesses.map((b) => (
                       <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
-                        <BusinessLogoCard business={b} nextAppearance={browseAppearanceHints.get(b.id)} />
+                        <BusinessLogoCard
+                          business={b}
+                          nextAppearance={browseAppearanceHints.get(b.id)}
+                          analyticsContext={{ pageType: "businesses", placement: `category_rail:${category.slug}` }}
+                        />
                       </div>
                     ))}
                   </HorizontalScroller>
@@ -334,8 +344,13 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
           ) : (
             <>
               <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {businesses.map((b) => (
-                  <BusinessLogoCard key={b.id} business={b} nextAppearance={appearanceHints.get(b.id)} />
+                {businesses.map((b, i) => (
+                  <BusinessLogoCard
+                    key={b.id}
+                    business={b}
+                    nextAppearance={appearanceHints.get(b.id)}
+                    analyticsContext={{ pageType: "businesses", placement: "results_grid", position: i + 1 }}
+                  />
                 ))}
               </div>
               {hasMore && (

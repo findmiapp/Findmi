@@ -4,6 +4,8 @@ import { useState } from "react";
 import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
 import LiveDot from "./LiveDot";
+import { trackEvent } from "@/lib/analytics/track";
+import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 
 export type PostKind = "event" | "business" | "product" | "location" | "person";
 
@@ -62,6 +64,16 @@ export interface PostCardProps {
    * layout changes. Clamped to 2 lines — this is a card teaser, not a bio
    * section. */
   excerpt?: string | null;
+  /** Analytics Phase 2A — the shared subject/relationship/placement
+   * fields (see lib/analytics/context.ts's buildEntityEventFields), or
+   * null/omitted to skip tracking entirely (no existing caller is
+   * required to pass this). When present, PostCard fires
+   * entity_impression once this card is actually ~50% visible, and
+   * entity_click on real activation — the caller only supplies WHAT the
+   * entity is; PostCard owns WHEN/HOW those two events fire, so every
+   * PostCard-based card (Business/Event/Happening/Person) gets identical
+   * behavior from one integration point. */
+  analyticsFields?: Record<string, unknown> | null;
 }
 
 export default function PostCard({
@@ -79,6 +91,7 @@ export default function PostCard({
   aspect,
   logoUrl,
   excerpt,
+  analyticsFields,
 }: PostCardProps) {
   // A stored image URL can still fail to load (deleted from storage, a
   // dead external link, etc.) — next/image doesn't retry or fall back on
@@ -88,6 +101,13 @@ export default function PostCard({
   // broken-image glyph.
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = Boolean(image) && !imageFailed;
+
+  const impressionRef = useViewportImpression<HTMLAnchorElement>(
+    analyticsFields ? { event_name: "entity_impression", ...analyticsFields } : null
+  );
+  function handleClick() {
+    if (analyticsFields) trackEvent({ event_name: "entity_click", ...analyticsFields });
+  }
 
   const card = (
     <div
@@ -174,13 +194,17 @@ export default function PostCard({
 
   if (external) {
     return (
-      <a href={href} target="_blank" rel="noreferrer" className="block">
+      <a href={href} target="_blank" rel="noreferrer" className="block" ref={impressionRef} onClick={handleClick}>
         {card}
       </a>
     );
   }
 
-  return <Link href={href}>{card}</Link>;
+  return (
+    <Link href={href} ref={impressionRef} onClick={handleClick}>
+      {card}
+    </Link>
+  );
 }
 
 type IconName = "calendar" | "pin" | "tag" | "storefront" | "user";

@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
+import type { TrackEventPayload } from "@/lib/analytics/track";
 
 export default function Section({
   title,
@@ -6,6 +10,7 @@ export default function Section({
   viewAllHref,
   children,
   className = "py-6",
+  impressionPayload,
 }: {
   title: string;
   subtitle?: string;
@@ -19,9 +24,16 @@ export default function Section({
    * to pass a tighter value, scoped to /businesses' own Browse Mode
    * rails only. */
   className?: string;
+  /** Analytics Phase 2A — set only by a Discovery Page Builder-driven
+   * section (a homepage_rows row); every other Section caller (every
+   * plain discovery route's own rails) omits this and fires nothing.
+   * Fires discovery_section_impression once ~50% visible. */
+  impressionPayload?: TrackEventPayload | null;
 }) {
+  const impressionRef = useViewportImpression<HTMLElement>(impressionPayload ?? null);
+
   return (
-    <section className={className}>
+    <section ref={impressionRef} className={className}>
       {/* Launch-polish follow-up: View All used to sit inside the same
           items-end row as the title+subtitle stack, so with a subtitle
           present it bottom-aligned to the SUBTITLE line, not the title —

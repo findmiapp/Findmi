@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import Section, { HorizontalScroller } from "@/components/Section";
+import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import { getFeaturedProducts, getHomeCategories, getMarketplaceProducts, getProductCategoryTree, searchBusinesses } from "@/lib/data";
 import { groupByBusinessCategory } from "@/lib/curation";
 
@@ -58,6 +59,7 @@ export default async function MarketplacePage({
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
+      <SearchFilterAnalytics pageType="marketplace" filterParams={["category"]} />
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Shop Findmi</p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Marketplace</h1>
       <p className="mt-2 text-ink/60">Real products from real Findmi businesses.</p>
@@ -132,8 +134,12 @@ export default async function MarketplacePage({
             </p>
           ) : (
             <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-              {results.map((p) => (
-                <ProductCard key={p.id} product={p} />
+              {results.map((p, i) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  analyticsContext={{ pageType: "marketplace", placement: "results_grid", position: i + 1 }}
+                />
               ))}
             </div>
           )}
@@ -146,7 +152,10 @@ export default async function MarketplacePage({
                 <HorizontalScroller>
                   {featured.map((p) => (
                     <div key={p.id} className="w-44 shrink-0">
-                      <ProductCard product={p} />
+                      <ProductCard
+                        product={p}
+                        analyticsContext={{ pageType: "marketplace", placement: "featured_rail" }}
+                      />
                     </div>
                   ))}
                 </HorizontalScroller>
@@ -166,7 +175,10 @@ export default async function MarketplacePage({
                 <HorizontalScroller>
                   {items.map((p) => (
                     <div key={p.id} className="w-44 shrink-0">
-                      <ProductCard product={p} />
+                      <ProductCard
+                        product={p}
+                        analyticsContext={{ pageType: "marketplace", placement: `category_rail:${cat.slug}` }}
+                      />
                     </div>
                   ))}
                 </HorizontalScroller>
@@ -180,8 +192,12 @@ export default async function MarketplacePage({
               <p className="mt-6 text-sm text-ink/50">No products yet — check back soon.</p>
             ) : (
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-                {results.map((p) => (
-                  <ProductCard key={p.id} product={p} />
+                {results.map((p, i) => (
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    analyticsContext={{ pageType: "marketplace", placement: "all_products_grid", position: i + 1 }}
+                  />
                 ))}
               </div>
             )}

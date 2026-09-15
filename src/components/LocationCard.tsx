@@ -1,7 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
 import type { LocationWithCategory } from "@/lib/data";
 import { cityState } from "@/lib/format";
+import { trackEvent } from "@/lib/analytics/track";
+import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
+import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
 /** Location Public Profile UX pass — discovery-card structure, modeled
  * directly on BusinessLogoCard's proven "photo on top, logo overlaps its
@@ -12,7 +17,13 @@ import { cityState } from "@/lib/format";
  * logo-only fills the whole visual area; cover-only skips the overlap;
  * neither falls back to a plain dark placeholder — never a fabricated
  * image. No giant "LOCATION" badge anywhere on the card. */
-export default function LocationCard({ location }: { location: LocationWithCategory }) {
+export default function LocationCard({
+  location,
+  analyticsContext,
+}: {
+  location: LocationWithCategory;
+  analyticsContext?: AnalyticsPlacementContext;
+}) {
   const place = cityState(location.city, location.state);
   const meta = [location.category?.name, place].filter(Boolean).join(" · ");
   const upcoming = location.upcomingCount ?? 0;
@@ -20,9 +31,20 @@ export default function LocationCard({ location }: { location: LocationWithCateg
   const hasCover = Boolean(location.cover_image_url);
   const overlap = hasLogo && hasCover;
 
+  const analyticsFields = buildEntityEventFields("location", location.id, { locationId: location.id }, analyticsContext);
+  const impressionRef = useViewportImpression<HTMLDivElement>({ event_name: "entity_impression", ...analyticsFields });
+
   return (
-    <div className="group relative w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]">
-      <Link href={`/location/${location.slug}`} aria-label={`${location.name} — See What's Happening`} className="absolute inset-0 z-10 rounded-3xl" />
+    <div
+      ref={impressionRef}
+      className="group relative w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]"
+    >
+      <Link
+        href={`/location/${location.slug}`}
+        aria-label={`${location.name} — See What's Happening`}
+        className="absolute inset-0 z-10 rounded-3xl"
+        onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
+      />
 
       <div className="relative">
         <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-3xl bg-mist">

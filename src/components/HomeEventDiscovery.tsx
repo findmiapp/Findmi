@@ -205,7 +205,7 @@ export default function HomeEventDiscovery({
         <div className="mt-3 flex gap-3 overflow-x-auto px-4 pb-1 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:snap-center [scroll-snap-type:x_mandatory]">
           {items.map((event) => (
             <div key={event.id} className="w-[66vw] max-w-[270px] shrink-0 sm:w-72">
-              <HomeEventCard event={event} />
+              <HomeEventCard event={event} analyticsContext={{ pageType: "home", placement: "upcoming_events" }} />
             </div>
           ))}
         </div>

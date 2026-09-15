@@ -1,5 +1,9 @@
+"use client";
+
 import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
+import { trackEvent } from "@/lib/analytics/track";
+import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 
 // Small, normal-flow image+title+meta card — not the tall PostCard-based
 // "story" card (BusinessCard/EventCard), which is right for a signature
@@ -12,15 +16,32 @@ export default function CompactCard({
   title,
   meta,
   cta,
+  /** Analytics Phase 2A — CompactCard is generic (no entity type of its
+   * own knowledge), so the caller builds this via
+   * lib/analytics/context.ts's buildEntityEventFields and passes it
+   * straight through. Omitted entirely by most existing call sites. */
+  analyticsFields,
 }: {
   href: string;
   image: string | null;
   title: string;
   meta?: string;
   cta?: string;
+  analyticsFields?: Record<string, unknown> | null;
 }) {
+  const impressionRef = useViewportImpression<HTMLAnchorElement>(
+    analyticsFields ? { event_name: "entity_impression", ...analyticsFields } : null
+  );
+
   return (
-    <Link href={href} className="block">
+    <Link
+      href={href}
+      className="block"
+      ref={impressionRef}
+      onClick={() => {
+        if (analyticsFields) trackEvent({ event_name: "entity_click", ...analyticsFields });
+      }}
+    >
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-mist">
         {image && <SupabaseImage src={image} alt={title} fill sizes="160px" className="object-cover" />}
       </div>

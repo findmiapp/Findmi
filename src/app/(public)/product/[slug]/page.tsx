@@ -11,6 +11,7 @@ import ProductCard from "@/components/ProductCard";
 import ProductSaveButton from "@/components/ProductSaveButton";
 import ShareButton from "@/components/ShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
+import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import InquireButton from "@/components/InquireButton";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isBusinessPro } from "@/lib/entitlements";
@@ -226,14 +227,21 @@ export default async function ProductPage({
                 sourceChannel={`business:${product.business.slug}`}
               />
             ) : purchaseUrl ? (
-              <a
+              <AnalyticsLink
                 href={purchaseUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                trackPayload={{
+                  event_name: "product_external_click",
+                  subject_type: "product",
+                  subject_id: product.id,
+                  product_id: product.id,
+                  business_id: product.business_id,
+                }}
               >
                 Shop Now
-              </a>
+              </AnalyticsLink>
             ) : inquiryAction ? (
               <FormAction
                 href={inquiryAction.url}

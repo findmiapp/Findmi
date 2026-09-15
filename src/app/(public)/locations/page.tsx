@@ -22,8 +22,12 @@ export default async function LocationsPage() {
         <p className="mt-10 text-sm text-ink/50">No locations yet — check back soon.</p>
       ) : (
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {locations.map((l) => (
-            <LocationCard key={l.id} location={l} />
+          {locations.map((l, i) => (
+            <LocationCard
+              key={l.id}
+              location={l}
+              analyticsContext={{ pageType: "locations", placement: "grid", position: i + 1 }}
+            />
           ))}
         </div>
       )}

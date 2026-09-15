@@ -36,6 +36,7 @@ function resolveAction(override: string | null | undefined, parent: ResolvedActi
  * cancelled, or while there's no selection at all ("No upcoming dates
  * announced"). */
 export default function EventScheduleCtas({
+  eventId,
   ticketsEnabled,
   ticketsUrl,
   rsvpEnabled,
@@ -43,6 +44,8 @@ export default function EventScheduleCtas({
   vendorApplicationsEnabled,
   vendorApplication,
 }: {
+  /** Analytics attribution only. */
+  eventId: string;
   ticketsEnabled: boolean;
   ticketsUrl: string | null;
   rsvpEnabled: boolean;
@@ -61,16 +64,17 @@ export default function EventScheduleCtas({
     ? resolveAction(selected.vendor_apply_url_override, vendorApplication)
     : null;
 
-  const actions: { label: string; action: ResolvedAction; weight: "solid" | "outline" }[] = [];
-  if (ticket) actions.push({ label: "Get Tickets", action: ticket, weight: "solid" });
-  if (rsvpAction) actions.push({ label: "RSVP", action: rsvpAction, weight: "solid" });
-  if (vendorAction) actions.push({ label: "Apply to Vend", action: vendorAction, weight: "outline" });
+  const actions: { label: string; action: ResolvedAction; weight: "solid" | "outline"; eventName: "click_tickets" | "click_rsvp" | "click_apply_to_vend" }[] =
+    [];
+  if (ticket) actions.push({ label: "Get Tickets", action: ticket, weight: "solid", eventName: "click_tickets" });
+  if (rsvpAction) actions.push({ label: "RSVP", action: rsvpAction, weight: "solid", eventName: "click_rsvp" });
+  if (vendorAction) actions.push({ label: "Apply to Vend", action: vendorAction, weight: "outline", eventName: "click_apply_to_vend" });
 
   if (actions.length === 0) return null;
 
   return (
     <div className="mt-4 flex flex-wrap items-center gap-2.5">
-      {actions.map(({ label, action, weight }) => (
+      {actions.map(({ label, action, weight, eventName }) => (
         <FormAction
           key={label}
           href={action.url}
@@ -81,6 +85,14 @@ export default function EventScheduleCtas({
               ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
           }
+          track={{
+            event_name: eventName,
+            subject_type: "event_occurrence",
+            subject_id: selected.id,
+            event_id: eventId,
+            event_occurrence_id: selected.id,
+            location_id: selected.location?.id ?? undefined,
+          }}
         />
       ))}
     </div>

@@ -1,8 +1,13 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import type { EventWithCategories } from "@/lib/types";
 import { cityState, formatDateShort, formatTime, getTemporalLabel } from "@/lib/format";
 import LiveDot from "./LiveDot";
+import { trackEvent } from "@/lib/analytics/track";
+import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
+import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
 // Homepage discovery event card (2026 feed-builder pass, Part 2) —
 // deliberately NOT built on EventCard/PostCard (both kept untouched/safe
@@ -18,14 +23,25 @@ import LiveDot from "./LiveDot";
 // per-kind aspect ratios. No attendee/RSVP/popularity data is shown —
 // FindmiEvent has no such column (see CompactEventCard's same note) —
 // and no price, since events carry no price field in the schema today.
-export default function HomeEventCard({ event }: { event: EventWithCategories }) {
+export default function HomeEventCard({
+  event,
+  analyticsContext,
+}: {
+  event: EventWithCategories;
+  analyticsContext?: AnalyticsPlacementContext;
+}) {
   const category = event.categories[0]?.name ?? null;
   const location = [event.venue_name, cityState(event.city, event.state)].filter(Boolean).join(" · ");
   const { live } = getTemporalLabel(event.start_at, event.end_at);
 
+  const analyticsFields = buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext);
+  const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });
+
   return (
     <Link
       href={`/event/${event.slug}`}
+      ref={impressionRef}
+      onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
       className="group relative block aspect-[4/5] w-full overflow-hidden rounded-2xl bg-black/5 transition active:scale-[0.98]"
     >
       {event.cover_image_url ? (

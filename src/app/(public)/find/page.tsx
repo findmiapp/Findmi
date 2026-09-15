@@ -14,6 +14,8 @@ import {
 import AreaPicker from "@/components/discover/AreaPicker";
 import EventCard from "@/components/EventCard";
 import LiveDot from "@/components/LiveDot";
+import AnalyticsLink from "@/components/analytics/AnalyticsLink";
+import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 
 export const metadata: Metadata = {
   title: "Find",
@@ -214,6 +216,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
+      <SearchFilterAnalytics pageType="find" filterParams={["category", "market", "area", "when"]} />
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Explore</p>
       <h1 className="mt-0.5 font-display text-xl font-bold tracking-tight text-ink sm:text-3xl">
         Help me find something specific
@@ -415,7 +418,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
           <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Matching Events</p>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {dedupedMatchingEvents.map((e) => (
-              <EventCard key={e.id} event={e} />
+              <EventCard key={e.id} event={e} analyticsContext={{ pageType: "find" }} />
             ))}
           </div>
         </div>
@@ -434,6 +437,20 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
  * link, not a filled full-width band (Section 5). Destination is always
  * the business profile, same as FindAppearanceRow below, so the CTA never
  * claims "View Event." */
+function findAppearanceTrackPayload(item: AppearanceFeedItem) {
+  return {
+    event_name: "entity_click" as const,
+    subject_type: "appearance" as const,
+    subject_id: item.id,
+    appearance_id: item.id,
+    business_id: item.business_id ?? undefined,
+    event_id: item.event_id ?? undefined,
+    event_occurrence_id: item.event_occurrence_id ?? undefined,
+    location_id: item.location_id ?? undefined,
+    page_type: "find" as const,
+  };
+}
+
 function FindCarouselCard({ item }: { item: AppearanceFeedItem }) {
   const { label, live } = getTemporalLabel(item.start_at, item.end_at);
   const location = cityState(item.city, item.state);
@@ -442,8 +459,9 @@ function FindCarouselCard({ item }: { item: AppearanceFeedItem }) {
     .join(" · ");
 
   return (
-    <Link
+    <AnalyticsLink
       href={`/business/${item.business.slug}`}
+      trackPayload={{ ...findAppearanceTrackPayload(item), placement: "carousel" }}
       className="group relative block aspect-[4/3] w-full overflow-hidden rounded-2xl bg-black/5 transition active:scale-[0.98]"
     >
       {item.business.cover_image_url ? (
@@ -484,7 +502,7 @@ function FindCarouselCard({ item }: { item: AppearanceFeedItem }) {
           See where they&rsquo;ll be →
         </span>
       </div>
-    </Link>
+    </AnalyticsLink>
   );
 }
 
@@ -493,8 +511,9 @@ function FindAppearanceRow({ item }: { item: AppearanceFeedItem }) {
   const location = cityState(item.city, item.state);
 
   return (
-    <Link
+    <AnalyticsLink
       href={`/business/${item.business.slug}`}
+      trackPayload={{ ...findAppearanceTrackPayload(item), placement: "list_row" }}
       className={`flex items-center gap-2.5 rounded-2xl border p-2.5 transition active:scale-[0.99] ${
         live ? "border-findmi/40 bg-findmi-50" : "border-black/5 bg-white hover:border-black/10"
       }`}
@@ -516,6 +535,6 @@ function FindAppearanceRow({ item }: { item: AppearanceFeedItem }) {
         </p>
       </div>
       <span className="shrink-0 text-[11px] font-bold uppercase text-findmi-700">View Business →</span>
-    </Link>
+    </AnalyticsLink>
   );
 }

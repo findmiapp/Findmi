@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import HomeEventCard from "@/components/HomeEventCard";
+import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
 import AreaPicker from "@/components/discover/AreaPicker";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
@@ -134,6 +135,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      <SearchFilterAnalytics pageType="events" filterParams={["category", "market", "area", "when"]} />
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Events</h1>
       <p className="mt-1.5 text-sm text-ink/60 sm:text-base">
         Markets, pop-ups, and festivals — and who you&rsquo;ll find here.
@@ -195,8 +197,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
       ) : (
         <>
           <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {events.map((e) => (
-              <HomeEventCard key={e.id} event={e} />
+            {events.map((e, i) => (
+              <HomeEventCard
+                key={e.id}
+                event={e}
+                analyticsContext={{ pageType: "events", placement: "results_grid", position: i + 1 }}
+              />
             ))}
           </div>
           {hasMore && (

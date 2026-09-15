@@ -1,8 +1,15 @@
 import type { FindmiEvent } from "@/lib/types";
 import { cityState, formatDateRange, getTemporalLabel } from "@/lib/format";
 import PostCard from "./PostCard";
+import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
-export default function EventCard({ event }: { event: FindmiEvent }) {
+export default function EventCard({
+  event,
+  analyticsContext,
+}: {
+  event: FindmiEvent;
+  analyticsContext?: AnalyticsPlacementContext;
+}) {
   const location = [event.venue_name, cityState(event.city, event.state)]
     .filter(Boolean)
     .join(" · ");
@@ -21,6 +28,7 @@ export default function EventCard({ event }: { event: FindmiEvent }) {
         { icon: "calendar", text: formatDateRange(event.start_at, event.end_at) },
       ]}
       cta="Who's Going"
+      analyticsFields={buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext)}
     />
   );
 }

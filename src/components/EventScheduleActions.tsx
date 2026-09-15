@@ -3,6 +3,7 @@
 import AddToCalendarButton from "./AddToCalendarButton";
 import { cityState } from "@/lib/format";
 import { useEventOccurrence } from "./EventOccurrenceContext";
+import { trackEvent } from "@/lib/analytics/track";
 
 /** Directions + Add to Calendar for a recurring event — Recurring Events
  * V2. Both derive from the shared selectedOccurrence's own location/
@@ -19,10 +20,15 @@ import { useEventOccurrence } from "./EventOccurrenceContext";
  * behavior. */
 export default function EventScheduleActions({
   eventName,
+  eventId,
   description,
   directionsEnabled,
 }: {
   eventName: string;
+  /** Analytics attribution only — not used for any occurrence lookup
+   * (that stays entirely selectedOccurrence-driven, per this
+   * component's own rule above). */
+  eventId: string;
   description: string | null;
   directionsEnabled: boolean;
 }) {
@@ -48,6 +54,16 @@ export default function EventScheduleActions({
           target="_blank"
           rel="noreferrer"
           className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+          onClick={() =>
+            trackEvent({
+              event_name: "click_directions",
+              subject_type: "event_occurrence",
+              subject_id: selected.id,
+              event_id: eventId,
+              event_occurrence_id: selected.id,
+              location_id: location?.id,
+            })
+          }
         >
           <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
           Directions

@@ -1,6 +1,7 @@
 import type { BusinessWithCategories } from "@/lib/types";
 import { cityState, formatDateShort } from "@/lib/format";
 import PostCard from "./PostCard";
+import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
 export default function BusinessCard({
   business,
@@ -10,9 +11,15 @@ export default function BusinessCard({
    * one query per card; omitted entirely when nothing's scheduled rather
    * than fabricating activity. */
   appearanceHint,
+  /** Analytics Phase 2A — optional placement/discovery context from the
+   * parent surface (see lib/analytics/context.ts). Omitted entirely by
+   * most existing call sites; the card still fires baseline
+   * entity_impression/entity_click either way. */
+  analyticsContext,
 }: {
   business: BusinessWithCategories;
   appearanceHint?: { venue: string; startAt: string } | null;
+  analyticsContext?: AnalyticsPlacementContext;
 }) {
   const location = cityState(business.city, business.state);
 
@@ -31,6 +38,7 @@ export default function BusinessCard({
           : []),
       ]}
       cta="View Profile"
+      analyticsFields={buildEntityEventFields("business", business.id, { businessId: business.id }, analyticsContext)}
     />
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { isTallyUrl } from "@/lib/tally";
+import { trackEvent, type TrackEventPayload } from "@/lib/analytics/track";
 
 /**
  * Confirmed root cause of the /join/eyJ... 404 (see incident trace): the
@@ -53,11 +54,20 @@ export default function FormAction({
   displayMode,
   label,
   className,
+  track,
 }: {
   href: string;
   displayMode: "embed" | "external";
   label: string;
   className?: string;
+  /** Analytics Phase 2A — optional. Every current caller (RSVP/Tickets/
+   * Apply to Vend, both the legacy and occurrence-aware EventScheduleCtas
+   * paths) is one FormAction, so this one integration point covers all
+   * three CTA click events without touching each call site's own
+   * rendering. Fires on activation (external: the actual click; embed:
+   * opening the in-page form drawer) — never blocks navigation either
+   * way. Omitted entirely by any caller that doesn't pass it. */
+  track?: Omit<TrackEventPayload, "referrer" | "utm_source" | "utm_medium" | "utm_campaign">;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -71,7 +81,7 @@ export default function FormAction({
 
   if (displayMode === "external") {
     return (
-      <a href={href} target="_blank" rel="noreferrer" className={className}>
+      <a href={href} target="_blank" rel="noreferrer" className={className} onClick={() => track && trackEvent(track)}>
         {label}
       </a>
     );
@@ -79,7 +89,14 @@ export default function FormAction({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={className}>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+          if (track) trackEvent(track);
+        }}
+        className={className}
+      >
         {label}
       </button>
       {open && (

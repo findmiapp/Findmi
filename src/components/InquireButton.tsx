@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { submitEntityInquiry, submitProductInquiry } from "@/app/(public)/connect/actions";
 import { BUSINESS_INQUIRY_TOPIC_LABELS, type BusinessInquiryTopic } from "@/lib/business-inquiry-topics";
+import { trackEvent, type TrackEventPayload } from "@/lib/analytics/track";
 
 // Unify Site-Wide Communications pass — the ONE controlled public
 // inquiry entry point (Business Inquire / Event Contact Organizer /
@@ -35,6 +36,7 @@ export default function InquireButton({
   topics,
   productId,
   className,
+  track,
 }: {
   targetType: "business" | "event" | "location";
   targetId: string;
@@ -51,6 +53,14 @@ export default function InquireButton({
    * as a different kind of recipient). Business-only, same as `topics`. */
   productId?: string;
   className: string;
+  /** Analytics Phase 2A — optional. Fires on the CTA activation (opening
+   * this modal) only, never on the actual inquiry submission below — that
+   * stays exactly the canonical Conversation-creating transactional flow,
+   * untouched. Used today only by Event's "Contact Organizer" call site
+   * (click_contact_organizer); every other InquireButton call site
+   * (Business Inquire, Location Contact) keeps working unchanged without
+   * passing this. */
+  track?: Omit<TrackEventPayload, "referrer" | "utm_source" | "utm_medium" | "utm_campaign">;
 }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -86,6 +96,7 @@ export default function InquireButton({
     setError(null);
     setSent(false);
     setOpen(true);
+    if (track) trackEvent(track);
   }
 
   function close() {

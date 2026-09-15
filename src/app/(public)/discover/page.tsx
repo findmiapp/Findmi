@@ -6,6 +6,7 @@ import EventCard from "@/components/EventCard";
 import ProductCard from "@/components/ProductCard";
 import AppearanceFeedCard from "@/components/AppearanceFeedCard";
 import Section, { HorizontalScroller } from "@/components/Section";
+import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import AreaPicker from "@/components/discover/AreaPicker";
 import {
   getConsumerVisibleMarketsWithAreas,
@@ -140,6 +141,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      <SearchFilterAnalytics pageType="discover" filterParams={["category", "market", "area", "when"]} />
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Discover</h1>
       <p className="mt-1.5 text-sm text-ink/60 sm:text-base">Find what&rsquo;s happening around you.</p>
 
@@ -251,7 +253,10 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
                 <DiscoveryRow>
                   {happeningSoon.map((item) => (
                     <div key={item.id} className="w-72 shrink-0">
-                      <AppearanceFeedCard item={item} />
+                      <AppearanceFeedCard
+                        item={item}
+                        analyticsContext={{ pageType: "discover", placement: "happening_soon" }}
+                      />
                     </div>
                   ))}
                 </DiscoveryRow>
@@ -268,7 +273,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
                 <DiscoveryRow>
                   {eventsSection.map((e) => (
                     <div key={e.id} className="w-64 shrink-0">
-                      <EventCard event={e} />
+                      <EventCard event={e} analyticsContext={{ pageType: "discover", placement: "events_section" }} />
                     </div>
                   ))}
                 </DiscoveryRow>
@@ -282,7 +287,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
                 <DiscoveryRow>
                   {featuredBrands.map((b) => (
                     <div key={b.id} className="w-44 shrink-0">
-                      <BusinessCard business={b} />
+                      <BusinessCard business={b} analyticsContext={{ pageType: "discover", placement: "featured_brands" }} />
                     </div>
                   ))}
                 </DiscoveryRow>
@@ -296,7 +301,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
                 <DiscoveryRow>
                   {featuredProducts.map((p) => (
                     <div key={p.id} className="w-44 shrink-0">
-                      <ProductCard product={p} />
+                      <ProductCard product={p} analyticsContext={{ pageType: "discover", placement: "featured_products" }} />
                     </div>
                   ))}
                 </DiscoveryRow>

@@ -1,15 +1,40 @@
-// Findmi Analytics — Phase 1 canonical taxonomy + payload validation.
+// Findmi Analytics — canonical taxonomy + payload validation.
 // This is the ONE place that decides which event names/metadata values
 // the ingestion endpoint (src/app/api/analytics/track/route.ts) will
-// accept. Deliberately narrow — Phase 1 covers page views, Save/Follow,
-// Business contact/social clicks, and Share only. Every other event name
-// mentioned in the architecture audit (impressions, discovery section
-// clicks, QR, search, etc.) is Phase 2+ and must NOT be accepted here yet.
+// accept.
 //
-// No dependency added for this — the validation Phase 1 needs (a fixed
+// Phase 1 covered page views, Save/Follow, Business contact/social
+// clicks, and Share. Phase 2A (this pass) adds viewport impressions,
+// entity clicks, Directions, Event CTA clicks, Product outbound clicks,
+// discovery-section attribution, and search/filter interactions — still
+// no generic "button_click": every name below represents one meaningful,
+// semantically distinct action. QR/experiential-reporting event names
+// remain out of scope for a future pass.
+//
+// No dependency added for this — the validation this file needs (a fixed
 // set of strings, uuid shape, length caps) doesn't warrant one.
 
-export const ANALYTICS_EVENT_NAMES = ["page_view", "save", "unsave", "follow", "unfollow", "click_contact_channel", "share"] as const;
+export const ANALYTICS_EVENT_NAMES = [
+  "page_view",
+  "save",
+  "unsave",
+  "follow",
+  "unfollow",
+  "click_contact_channel",
+  "share",
+  // Phase 2A additions:
+  "entity_impression",
+  "entity_click",
+  "click_directions",
+  "click_rsvp",
+  "click_tickets",
+  "click_apply_to_vend",
+  "click_contact_organizer",
+  "product_external_click",
+  "search",
+  "filter_change",
+  "discovery_section_impression",
+] as const;
 export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];
 
 export function isAnalyticsEventName(value: unknown): value is AnalyticsEventName {
@@ -51,14 +76,39 @@ export function isAnalyticsShareMethod(value: unknown): value is AnalyticsShareM
 
 // page_type — one per actual current public surface this pass
 // instruments. Deliberately not a DB enum (per the task's own guidance):
-// plain application-code validation is enough for Phase 1's fixed, small
-// set. Extend this array, never invent a stray string at a call site.
-export const ANALYTICS_PAGE_TYPES = ["business", "event", "location", "product"] as const;
+// plain application-code validation is enough for this fixed, small set.
+// Extend this array, never invent a stray string at a call site. The
+// first four are entity DETAIL pages (Phase 1); the rest are DISCOVERY
+// surfaces (Phase 2A) — home is the reserved Discovery Page Builder
+// system page rendered at "/", discover/find/events/businesses/
+// locations/marketplace are today's specialized, non-builder-driven
+// discovery routes (see the completed audit — none of them are forced
+// into the Page Builder for this pass).
+export const ANALYTICS_PAGE_TYPES = [
+  "business",
+  "event",
+  "location",
+  "product",
+  "home",
+  "discover",
+  "find",
+  "events",
+  "businesses",
+  "locations",
+  "marketplace",
+] as const;
 export type AnalyticsPageType = (typeof ANALYTICS_PAGE_TYPES)[number];
 
 export function isAnalyticsPageType(value: unknown): value is AnalyticsPageType {
   return typeof value === "string" && (ANALYTICS_PAGE_TYPES as readonly string[]).includes(value);
 }
+
+// discovery_section_impression / entity_impression's metadata.origin
+// (hybrid mode only) — see lib/homepage-rows.ts's resolveHomepageRowItems,
+// which already computes this distinction internally; Phase 2A threads it
+// through to the renderer rather than re-deriving it.
+export const ANALYTICS_ENTITY_ORIGINS = ["pinned", "auto"] as const;
+export type AnalyticsEntityOrigin = (typeof ANALYTICS_ENTITY_ORIGINS)[number];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

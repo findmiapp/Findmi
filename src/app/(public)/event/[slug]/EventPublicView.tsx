@@ -21,6 +21,7 @@ import EventScheduleCtas from "@/components/EventScheduleCtas";
 import EventScheduleSummary from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
+import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import FormAction from "@/components/FormAction";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ProductCard from "@/components/ProductCard";
@@ -312,6 +313,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
             displayMode={legacyVendorApplyCta.displayMode}
             label="Apply to Vend"
             className="flex h-11 items-center justify-center rounded-lg border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+            track={{ event_name: "click_apply_to_vend", subject_type: "event", subject_id: event.id, event_id: event.id }}
           />
         )}
       </div>
@@ -325,6 +327,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           legacyTierACtas). */}
       {hasOccurrences ? (
         <EventScheduleCtas
+          eventId={event.id}
           ticketsEnabled={event.tickets_enabled}
           ticketsUrl={event.tickets_url}
           rsvpEnabled={event.rsvp_enabled}
@@ -346,6 +349,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
                     ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                     : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
                 }
+                track={{
+                  event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
+                  subject_type: "event",
+                  subject_id: event.id,
+                  event_id: event.id,
+                }}
               />
             ))}
           </div>
@@ -370,21 +379,23 @@ export async function EventPublicView({ slug }: { slug: string }) {
           {hasOccurrences ? (
             <EventScheduleActions
               eventName={event.name}
+              eventId={event.id}
               description={event.description}
               directionsEnabled={event.directions_enabled}
             />
           ) : (
             <>
               {showDirections && (
-                <a
+                <AnalyticsLink
                   href={directionsHref!}
                   target="_blank"
                   rel="noreferrer"
                   className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+                  trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
                 >
                   <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
                   Directions
-                </a>
+                </AnalyticsLink>
               )}
               <div className="shrink-0">
                 <AddToCalendarButton
@@ -417,6 +428,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
               targetName={event.name}
               label="Contact Organizer"
               className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
             />
           )}
           {event.external_url && (
