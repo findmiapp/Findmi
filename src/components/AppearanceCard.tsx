@@ -27,7 +27,12 @@ export default function AppearanceCard({
   eventSlug,
   analyticsContext,
 }: {
-  appearance: Appearance;
+  // Public Graph Integrity Pass 1 — an optional, bounded join to the
+  // appearance's own first-class Location (id/name/slug only — see
+  // getUpcomingAppearancesForBusiness/getFindMiHereFeed), null/absent
+  // whenever appearance.location_id doesn't resolve to one. Additive only:
+  // every existing caller passing a plain Appearance keeps working.
+  appearance: Appearance & { location?: { id: string; name: string; slug: string } | null };
   eventSlug?: string | null;
   analyticsContext?: AnalyticsPlacementContext;
 }) {
@@ -35,6 +40,10 @@ export default function AppearanceCard({
   const location = cityState(appearance.city, appearance.state);
   const mapsQuery = [appearance.venue_name, appearance.address, location].filter(Boolean).join(", ");
   const { live } = getTemporalLabel(appearance.start_at, appearance.end_at);
+  // The real Location's own name outranks the possibly-stale venue_name
+  // text snapshot for DISPLAY purposes only — never changes which text
+  // fields are stored/edited elsewhere.
+  const venueLabel = appearance.location?.name ?? appearance.venue_name;
 
   // Analytics Phase 2A — Appearance is a first-class analytical entity;
   // every relationship column it actually carries (never manufactured —
@@ -75,12 +84,26 @@ export default function AppearanceCard({
   // URL opens in a new tab, anything else ("/a-page") is an internal Link.
   const externalIsAbsolute = externalUrl ? /^https:\/\//i.test(externalUrl) : false;
   const flyerUrl = !hasEvent && !externalUrl ? appearance.flyer_image_url : null;
+  // Public Graph Integrity Pass 1 — a standalone appearance (no Event) with
+  // no higher-tier destination (external_url/flyer) but a genuine
+  // first-class Location relationship gets that Location as its
+  // destination, inserted between flyer and the raw-text Directions
+  // fallback. This never reorders Event/external_url/flyer precedence —
+  // it only replaces the weakest tier (a bare Google Maps search built
+  // from possibly-stale text fields) with the real Findmi Location page
+  // when one genuinely exists, so "Business -> Findmi Here -> Location"
+  // stays inside Findmi instead of exiting to Maps. A first-class Location
+  // is never surfaced here when a stronger tier already wins (Event/
+  // external_url/flyer) — see venueLabel above for how it still appears as
+  // plain display text in those cases instead.
+  const locationHref =
+    !hasEvent && !externalUrl && !flyerUrl && appearance.location ? `/location/${appearance.location.slug}` : null;
   const directionsHref =
-    !hasEvent && !externalUrl && !flyerUrl && mapsQuery
+    !hasEvent && !externalUrl && !flyerUrl && !locationHref && mapsQuery
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`
       : null;
 
-  const clickable = hasEvent || Boolean(externalUrl) || Boolean(flyerUrl) || Boolean(directionsHref);
+  const clickable = hasEvent || Boolean(externalUrl) || Boolean(flyerUrl) || Boolean(locationHref) || Boolean(directionsHref);
 
   const content = (
     <div
@@ -134,9 +157,9 @@ export default function AppearanceCard({
         <p className="mt-0.5 truncate text-xs text-ink/55">
           {formatAppearanceTime(appearance.start_at, appearance.end_at, appearance.description)}
         </p>
-        {(appearance.venue_name || location) && (
+        {(venueLabel || location) && (
           <p className="mt-0.5 truncate text-xs text-ink/45">
-            {[appearance.venue_name, location].filter(Boolean).join(" · ")}
+            {[venueLabel, location].filter(Boolean).join(" · ")}
           </p>
         )}
       </div>
@@ -170,7 +193,9 @@ export default function AppearanceCard({
       ? "Open link"
       : flyerUrl
         ? "View flyer"
-        : "Get directions";
+        : locationHref
+          ? "View location"
+          : "Get directions";
   const ariaLabel = `${appearance.title} — ${ctaLabel}`;
 
   if (hasEvent) {
@@ -219,6 +244,14 @@ export default function AppearanceCard({
           />
         )}
       </>
+    );
+  }
+
+  if (locationHref) {
+    return (
+      <Link href={locationHref} className="group block" aria-label={ariaLabel} onClick={trackClick}>
+        {content}
+      </Link>
     );
   }
 

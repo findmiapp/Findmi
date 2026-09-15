@@ -1085,6 +1085,16 @@ export async function getProductsForBusiness(businessId: string): Promise<Produc
 
 export interface AppearanceWithEventSlug extends Appearance {
   event: { slug: string } | null;
+  // Public Graph Integrity Pass 1 — the linked first-class Location, when
+  // appearance.location_id points at one. Bounded FK join on the same
+  // appearances query (no second query, no N+1) — null whenever the
+  // appearance has no first-class Location, in which case the existing
+  // venue_name/address/city/state text fields remain the only source.
+  // Optional: only getUpcomingAppearancesForBusiness (the public-facing
+  // Findmi Here query) selects it; getPastAppearancesForBusiness (the
+  // owner-side Where I'll Be past list, out of this pass's scope) doesn't
+  // carry it.
+  location?: { id: string; name: string; slug: string } | null;
 }
 
 // FindMi Here duplicate-appearance fix — a business can legitimately have
@@ -1187,19 +1197,24 @@ export async function getUpcomingAppearancesForBusiness(
   // distinct appearances exist just past that raw cutoff.
   const { data } = await supabase
     .from("appearances")
-    .select("*, event:events(slug)")
+    .select("*, event:events(slug), location:locations(id, name, slug)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .gt("end_at", nowIso)
     .order("start_at", { ascending: true })
     .limit(limit * 2);
 
+  type JoinedLocation = { id: string; name: string; slug: string };
   type RawRow = Appearance &
-    DedupableAppearance & { event: { slug: string } | { slug: string }[] | null };
+    DedupableAppearance & {
+      event: { slug: string } | { slug: string }[] | null;
+      location: JoinedLocation | JoinedLocation[] | null;
+    };
   const rows = ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as RawRow;
     const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
-    return { ...r, event };
+    const location = Array.isArray(r.location) ? (r.location[0] ?? null) : r.location;
+    return { ...r, event, location };
   });
 
   return dedupeAppearances(rows).slice(0, limit);
@@ -1894,6 +1909,11 @@ export interface AppearanceFeedItem extends Appearance {
     logo_url: string | null;
     cover_image_url?: string | null;
   };
+  // Public Graph Integrity Pass 1 — the linked first-class Location, when
+  // appearance.location_id points at one. Same bounded-join approach as
+  // AppearanceWithEventSlug above; null when there is no first-class
+  // Location relationship.
+  location?: { id: string; name: string; slug: string } | null;
 }
 
 /** Upcoming appearances across all businesses, newest-first by date — powers
@@ -2046,7 +2066,7 @@ export async function getFindMiHereFeed(
   let query = supabase
     .from("appearances")
     .select(
-      "*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id)"
+      "*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id), location:locations(id, name, slug)"
     )
     .neq("status", "canceled");
 
@@ -2092,11 +2112,17 @@ export async function getFindMiHereFeed(
 
   type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean; publication_status: string };
   type JoinedEvent = { market_id: string | null; market_area_id: string | null };
+  type JoinedLocation = { id: string; name: string; slug: string };
   let items = ((data ?? []) as never[]).map((row: unknown) => {
-    const r = row as Appearance & { business: JoinedBusiness | JoinedBusiness[]; event: JoinedEvent | JoinedEvent[] | null };
+    const r = row as Appearance & {
+      business: JoinedBusiness | JoinedBusiness[];
+      event: JoinedEvent | JoinedEvent[] | null;
+      location: JoinedLocation | JoinedLocation[] | null;
+    };
     const business = Array.isArray(r.business) ? r.business[0] : r.business;
     const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
-    return { ...r, business, event };
+    const location = Array.isArray(r.location) ? (r.location[0] ?? null) : r.location;
+    return { ...r, business, event, location };
   });
 
   // Geography Completion pass — an event-linked appearance ALWAYS uses

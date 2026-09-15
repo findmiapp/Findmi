@@ -11,6 +11,7 @@ import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
+import ShareButton from "@/components/ShareButton";
 import ClaimButton from "@/components/ClaimButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
@@ -446,7 +447,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               </div>
             )}
             <div
-              className={`ml-auto flex shrink-0 items-center gap-1.5 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
+              className={`ml-auto flex flex-wrap shrink-0 items-center justify-end gap-1.5 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
             >
               {/* Public Message Action pass — MESSAGE sits directly left
                   of Follow, same row, never a standalone row of its own
@@ -472,6 +473,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               )}
               <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
               <SaveButton slug={business.slug} id={business.id} />
+              {/* Public Graph Integrity Pass 1 — Share as a compact,
+                  icon-only utility action alongside Message/Follow/Save,
+                  same footprint as Save (h-9/w-9). flex-wrap on this row
+                  (added this pass) is the safety net if this four-item
+                  row ever gets tight at ~390px — it wraps to a second
+                  line rather than overflowing the page horizontally. */}
+              <ShareButton
+                url={canonicalUrl}
+                title={business.name}
+                variant="icon"
+                track={{ subject_type: "business", subject_id: business.id, business_id: business.id }}
+              />
             </div>
           </div>
 
@@ -572,38 +585,28 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         </div>
 
         <div className="lg:order-1">
-          {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin
-              now open the main content column (right after Inquire on
-              mobile), well before FindMi Here/Shop/About, instead of
-              appearing far down the page after About. Both are
-              promotional profile content — Pro-only. */}
-          {pro && <BusinessCtaRow business={business} />}
-          {pro && (
-            <div className="mt-8">
-              <Bulletin
-                label={business.bulletin_label?.trim() || "Announcement"}
-                heading={business.bulletin_heading}
-                body={business.bulletin_enabled ? business.bulletin_body : null}
-                url={business.bulletin_url && validateCustomDestination(business.bulletin_url).ok ? business.bulletin_url : null}
-              />
-            </div>
-          )}
-          {/* FindMi Here — the signature feature. Hidden entirely (not an
-              empty placeholder) when nothing's scheduled, per Business
+          {/* FindMi Here — Public Graph Integrity Pass 1: moved ahead of
+              the CTA row/Bulletin below. Findmi's differentiator (telling
+              consumers where a moving Business can be found next) now
+              gets first position in this column, before promotional
+              profile content, rather than after it. Hidden entirely (not
+              an empty placeholder) when nothing's scheduled, per Business
               Profile V2 Part 9/32. Free Appearances Pass 2 — `appearances`
               is now fetched for every business (see above), just limited
-              to 1 for Free vs. 20 for Pro at the data layer; this render
-              block itself needed no change — with a single item,
-              `.slice(0, 3)` naturally renders just that one card and the
-              "Show N More" disclosure below never appears (length > 3 is
-              false), so Free's display stays to that one card while the
-              richer/full-list behavior stays exactly Pro's, with no new
-              UI added for this pass. */}
+              to 1 for Free vs. 20 for Pro at the data layer (UNCHANGED by
+              this pass) — this render block itself needed no change for
+              that; with a single item, `.slice(0, 3)` naturally renders
+              just that one card and the "Show N More" disclosure below
+              never appears (length > 3 is false), so Free's display stays
+              to that one card while the richer/full-list behavior stays
+              exactly Pro's. */}
           {appearances.length > 0 && (
-            // mt-6 keeps a clear break from whatever renders above it
-            // (CTA row/Bulletin when present, otherwise Inquire itself on
-            // mobile); desktop is unaffected (lg:mt-0, separated by the
-            // column layout instead).
+            // mt-6 keeps a clear break from whatever renders above it (on
+            // mobile, Inquire itself, above this column — see the rail
+            // div's own note); desktop is unaffected (lg:mt-0, separated
+            // by the column layout instead). This is now the first
+            // section in this column, so it carries the "first item"
+            // spacing CTA row/Bulletin used to.
             <section className="mt-6 lg:mt-0">
               <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Here</p>
               <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Find {business.name} Here</h2>
@@ -644,6 +647,29 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 )}
               </div>
             </section>
+          )}
+
+          {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin,
+              now second (after Findmi Here — see above), before Shop/
+              About. Both are promotional profile content — Pro-only.
+              BusinessCtaRow's own top margin only applies when Findmi
+              Here actually rendered above it; otherwise (no upcoming
+              appearances) it reverts to being this column's own first
+              item, exactly as before this pass. */}
+          {pro && (
+            <div className={appearances.length > 0 ? "mt-8" : ""}>
+              <BusinessCtaRow business={business} />
+            </div>
+          )}
+          {pro && (
+            <div className="mt-8">
+              <Bulletin
+                label={business.bulletin_label?.trim() || "Announcement"}
+                heading={business.bulletin_heading}
+                body={business.bulletin_enabled ? business.bulletin_body : null}
+                url={business.bulletin_url && validateCustomDestination(business.bulletin_url).ok ? business.bulletin_url : null}
+              />
+            </div>
           )}
 
           {/* Products — hidden entirely with none, same rule as every other

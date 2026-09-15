@@ -39,6 +39,16 @@ export default function AppearanceFeedCard({
 
   if (!item.business) return null;
 
+  // Public Graph Integrity Pass 1 — this whole card is already one
+  // full-surface <Link> to the Business (its actual purpose here: Business
+  // discovery). A first-class Location's own name is shown as quiet
+  // secondary context in place of the bare city/state text whenever one
+  // exists, rather than adding a second, nested clickable target inside
+  // an element that's already an <a> — see AppearanceCard's own note on
+  // the same constraint. Business attribution/discovery stays the card's
+  // one and only click.
+  const secondaryLabel = item.location?.name ?? (item.city ? cityState(item.city, item.state) : null);
+
   return (
     <Link
       href={`/business/${item.business.slug}`}
@@ -74,9 +84,7 @@ export default function AppearanceFeedCard({
       </div>
       <p className="text-sm text-ink/70">
         {item.title}
-        {item.city && (
-          <span className="text-ink/45"> · {cityState(item.city, item.state)}</span>
-        )}
+        {secondaryLabel && <span className="text-ink/45"> · {secondaryLabel}</span>}
       </p>
     </Link>
   );

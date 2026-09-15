@@ -9,6 +9,7 @@ import LocationFollowButton from "@/components/LocationFollowButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import LocationSaveButton from "@/components/LocationSaveButton";
+import ShareButton from "@/components/ShareButton";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
@@ -72,6 +73,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const openNow = showHours ? isOpenNow(location.hours) : null;
   const hoursSummary = showHours ? getHoursSummaryLabel(location.hours) : null;
   const website = isSafeExternalUrl(location.website_url) ? location.website_url : null;
+  // Public Graph Integrity Pass 1 — same canonical-URL resolution
+  // generateLocationMetadata already uses (handle-first, /location/slug
+  // fallback), so a shared link always matches this page's own canonical
+  // identity.
+  const canonicalUrl = await resolveCanonicalUrl(location.id, location.slug);
 
   return (
     <div className="relative mx-auto max-w-4xl px-0 pb-10 sm:px-6">
@@ -201,6 +207,18 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             <div className="flex w-max items-center gap-2">
               <div className="shrink-0">
                 <LocationSaveButton slug={location.slug} id={location.id} />
+              </div>
+              {/* Public Graph Integrity Pass 1 — Share as a compact,
+                  icon-only utility alongside Save, same rail Website/
+                  Call/Contact already use. Directions stays the sole
+                  primary CTA above; this never competes with it. */}
+              <div className="shrink-0">
+                <ShareButton
+                  url={canonicalUrl}
+                  title={location.name}
+                  variant="icon"
+                  track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
+                />
               </div>
               {website && (
                 <a

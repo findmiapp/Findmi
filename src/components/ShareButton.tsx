@@ -22,10 +22,20 @@ export default function ShareButton({
   url,
   title,
   track,
+  variant = "default",
 }: {
   url: string;
   title: string;
   track?: Omit<TrackEventPayload, "event_name" | "referrer" | "utm_source" | "utm_medium" | "utm_campaign" | "metadata">;
+  /** Public Graph Integrity Pass 1 — "icon" is a compact, icon-only
+   * circular button (same h-9/w-9/rounded-full/border footprint as
+   * SaveButton) for a tight action row that has no room for the default
+   * full-width labeled pill (e.g. Business's identity row, alongside
+   * Message/Follow/Save). Same share logic either way — Web Share API
+   * with a clipboard-copy fallback — only the resting button markup
+   * differs. Default unchanged, so every existing caller (Product,
+   * Event's own EventShareButton) keeps its exact current appearance. */
+  variant?: "default" | "icon";
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -51,18 +61,36 @@ export default function ShareButton({
     }
   }
 
+  const shareGlyph = (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0">
+      <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8.2 10.7l7.6-4.4M8.2 13.3l7.6 4.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+
+  if (variant === "icon") {
+    return (
+      <button
+        type="button"
+        onClick={handleShare}
+        aria-label={copied ? "Link copied" : "Share"}
+        title={copied ? "Link copied" : "Share"}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink transition active:scale-90"
+      >
+        {shareGlyph}
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
       onClick={handleShare}
       className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-black/10 text-sm font-semibold text-ink transition active:scale-[0.98]"
     >
-      <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0">
-        <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M8.2 10.7l7.6-4.4M8.2 13.3l7.6 4.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
+      {shareGlyph}
       {copied ? "Link copied" : "Share"}
     </button>
   );
