@@ -171,6 +171,37 @@ export async function getUserEventAccess(userId: string): Promise<UserEventAcces
     .sort((a, b) => ROLE_SORT_ORDER[a.role] - ROLE_SORT_ORDER[b.role]);
 }
 
+export interface UserLocationAccessRow {
+  memberId: string;
+  role: MemberRole;
+  locationId: string;
+  name: string;
+  slug: string;
+}
+
+/** Core Entity Management pass — same read-the-other-side shape as
+ * getUserBusinessAccess/getUserEventAccess, just against location_members
+ * (already exists — see lib/permissions.ts's requireLocationMember —
+ * Location ownership/management is deliberately its own independent
+ * membership table, never derived from business_members). Never a new
+ * table, never a new column. */
+export async function getUserLocationAccess(userId: string): Promise<UserLocationAccessRow[]> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("location_members")
+    .select("id, role, location:locations(id, name, slug)")
+    .eq("user_id", userId);
+
+  return ((data ?? []) as never[])
+    .map((row: unknown) => {
+      const r = row as { id: string; role: MemberRole; location: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null };
+      const l = Array.isArray(r.location) ? r.location[0] : r.location;
+      return { memberId: r.id, role: r.role, locationId: l?.id ?? "", name: l?.name ?? "Unknown location", slug: l?.slug ?? "" };
+    })
+    .sort((a, b) => ROLE_SORT_ORDER[a.role] - ROLE_SORT_ORDER[b.role]);
+}
+
 export interface UserInheritedProductGroup {
   businessId: string;
   businessName: string;

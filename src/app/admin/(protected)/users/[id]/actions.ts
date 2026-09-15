@@ -179,3 +179,60 @@ export async function removeUserEventAccess(userId: string, memberId: string) {
   revalidatePath(path);
   redirect(`${path}?access_updated=1`);
 }
+
+// ── Location access (identical pattern, location_members) ───────────────
+// Core Entity Management pass — Location already has its own independent
+// membership table (location_members, checked by requireLocationMember)
+// exactly like business_members/event_members; this only wires the same
+// existing admin/users assign-and-remove shape to it. No new table.
+
+export async function assignUserToLocation(userId: string, formData: FormData) {
+  const path = userPath(userId);
+  const supabase = await requireAdminSupabase();
+
+  const locationId = str(formData, "location_id");
+  if (!locationId) {
+    redirect(errorRedirectUrl(path, "Choose a location to assign."));
+  }
+
+  const { data: existing } = await supabase
+    .from("location_members")
+    .select("id")
+    .eq("location_id", locationId as string)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (existing) {
+    redirect(errorRedirectUrl(path, "That user already has access to this location."));
+  }
+
+  const { error } = await supabase
+    .from("location_members")
+    .insert({ location_id: locationId, user_id: userId, role: "manager" });
+  if (error) {
+    redirect(errorRedirectUrl(path, "Couldn't assign that location. Please try again."));
+  }
+
+  revalidatePath(path);
+  redirect(`${path}?access_updated=1`);
+}
+
+export async function removeUserLocationAccess(userId: string, memberId: string) {
+  const path = userPath(userId);
+  const supabase = await requireAdminSupabase();
+
+  const { data, error } = await supabase
+    .from("location_members")
+    .delete()
+    .eq("id", memberId)
+    .eq("user_id", userId)
+    .neq("role", "owner")
+    .select()
+    .maybeSingle();
+
+  if (error || !data) {
+    redirect(errorRedirectUrl(path, "Couldn't remove that access — it may already be gone, or it's an owner row."));
+  }
+
+  revalidatePath(path);
+  redirect(`${path}?access_updated=1`);
+}

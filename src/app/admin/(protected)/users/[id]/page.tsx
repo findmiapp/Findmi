@@ -4,6 +4,7 @@ import {
   getAdminUserAccount,
   getUserBusinessAccess,
   getUserEventAccess,
+  getUserLocationAccess,
   getUserInheritedProducts,
 } from "@/lib/admin/user-queries";
 import { formatDateShort } from "@/lib/format";
@@ -13,8 +14,10 @@ import SetPasswordForm from "./SetPasswordForm";
 import {
   assignUserToBusiness,
   assignUserToEvent,
+  assignUserToLocation,
   removeUserBusinessAccess,
   removeUserEventAccess,
+  removeUserLocationAccess,
   sendPasswordResetEmail,
   setUserPassword,
 } from "./actions";
@@ -41,10 +44,11 @@ export default async function AdminUserDetailPage({
   const { id } = await params;
   const { error, created, password_action } = await searchParams;
 
-  const [account, businesses, events, productGroups] = await Promise.all([
+  const [account, businesses, events, locations, productGroups] = await Promise.all([
     getAdminUserAccount(id),
     getUserBusinessAccess(id),
     getUserEventAccess(id),
+    getUserLocationAccess(id),
     getUserInheritedProducts(id),
   ]);
   if (!account) notFound();
@@ -52,6 +56,7 @@ export default async function AdminUserDetailPage({
   const confirmed = Boolean(account.emailConfirmedAt);
   const assignBusiness = assignUserToBusiness.bind(null, id);
   const assignEvent = assignUserToEvent.bind(null, id);
+  const assignLocation = assignUserToLocation.bind(null, id);
   const sendReset = sendPasswordResetEmail.bind(null, id);
   const setPassword = setUserPassword.bind(null, id);
 
@@ -236,6 +241,64 @@ export default async function AdminUserDetailPage({
             initial={null}
             clearLabel={null}
             placeholder="Search events…"
+          />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          >
+            Assign as Manager
+          </button>
+        </form>
+      </section>
+
+      {/* ACCESS → Locations — Core Entity Management pass. Same shape as
+          Business/Event Access above (location_members already exists,
+          checked by requireLocationMember, and was already a fully
+          independent membership table — just missing from this admin
+          screen). Location has no ownership/Claims concept of its own
+          (native self-service create, no claim flow), so this section
+          omits the "Doesn't change ownership — see Claims" line the
+          Business/Event sections carry, rather than implying a Claims
+          surface that doesn't exist for Location. */}
+      <section className="mt-4 rounded-2xl border border-black/10 bg-white p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Location Access</p>
+        <p className="mt-1 text-xs text-ink/45">Grants management access to an existing Findmi location.</p>
+
+        {locations.length > 0 ? (
+          <ul className="mt-3 flex flex-col gap-2">
+            {locations.map((l) => (
+              <li
+                key={l.memberId}
+                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 bg-white px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <Link href={`/admin/locations/${l.locationId}`} className="truncate text-sm font-medium text-ink hover:underline">
+                    {l.name}
+                  </Link>
+                  <p className="text-xs uppercase tracking-wide text-ink/45">{l.role}</p>
+                </div>
+                {l.role !== "owner" && (
+                  <form action={removeUserLocationAccess.bind(null, id, l.memberId)}>
+                    <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                      Remove
+                    </button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-ink/50">No location access yet.</p>
+        )}
+
+        <form action={assignLocation} className="mt-3 flex flex-col gap-2">
+          <RelationField
+            label="Add location access"
+            name="location_id"
+            entity="locations"
+            initial={null}
+            clearLabel={null}
+            placeholder="Search locations…"
           />
           <button
             type="submit"
