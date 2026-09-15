@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isFollowed, markFollowed } from "@/lib/followed";
 import { getAccountSession } from "@/lib/accountSession";
+import { trackEvent } from "@/lib/analytics/track";
 
 // The single Follow action for a business profile — Follow / Following.
 // Guest write path is unchanged from before this pass: POST /api/follow
@@ -118,6 +119,7 @@ export default function FollowButton({
         setOpen(false);
         setEmail("");
         setStatus("idle");
+        trackEvent({ event_name: "follow", subject_type: "business", subject_id: businessId, business_id: businessId });
       } else {
         setStatus("error");
       }
@@ -138,7 +140,14 @@ export default function FollowButton({
       });
       if (res.ok) {
         const data = (await res.json()) as { following?: boolean };
-        setFollowing(Boolean(data.following));
+        const nowFollowing = Boolean(data.following);
+        setFollowing(nowFollowing);
+        trackEvent({
+          event_name: nowFollowing ? "follow" : "unfollow",
+          subject_type: "business",
+          subject_id: businessId,
+          business_id: businessId,
+        });
       }
     } catch {
       // Best-effort — button just stays in its current state on failure.

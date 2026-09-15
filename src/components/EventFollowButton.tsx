@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isEventFollowed, markEventFollowed } from "@/lib/followedEvents";
 import { getAccountSession } from "@/lib/accountSession";
+import { trackEvent } from "@/lib/analytics/track";
 
 // Restore Event Follow pass — exact event-side mirror of
 // components/FollowButton.tsx's Follow/Following toggle. Guest path:
@@ -101,6 +102,7 @@ export default function EventFollowButton({
         setOpen(false);
         setEmail("");
         setStatus("idle");
+        trackEvent({ event_name: "follow", subject_type: "event", subject_id: eventId, event_id: eventId });
       } else {
         setStatus("error");
       }
@@ -118,7 +120,14 @@ export default function EventFollowButton({
       });
       if (res.ok) {
         const data = (await res.json()) as { following?: boolean };
-        setFollowing(Boolean(data.following));
+        const nowFollowing = Boolean(data.following);
+        setFollowing(nowFollowing);
+        trackEvent({
+          event_name: nowFollowing ? "follow" : "unfollow",
+          subject_type: "event",
+          subject_id: eventId,
+          event_id: eventId,
+        });
       }
     } catch {
       // Best-effort — button just stays in its current state on failure.

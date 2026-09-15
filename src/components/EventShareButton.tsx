@@ -1,12 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import { trackEvent, type TrackEventPayload } from "@/lib/analytics/track";
 
 // Event Detail V2 polish pass, item 10 — native Web Share API when the
 // browser supports it (mobile Safari/Chrome), falling back to copying the
 // real canonical event URL to the clipboard otherwise. No third-party
 // share dependency.
-export default function EventShareButton({ title, url }: { title: string; url: string }) {
+//
+// Analytics attribution pass — same optional `track` shape as
+// ShareButton.tsx (its own separate implementation, deliberately not
+// consolidated in this pass — see the audit). Only emits after a real
+// completed share, same cancel-safe reasoning as ShareButton.
+export default function EventShareButton({
+  title,
+  url,
+  track,
+}: {
+  title: string;
+  url: string;
+  track?: Omit<TrackEventPayload, "event_name" | "referrer" | "utm_source" | "utm_medium" | "utm_campaign" | "metadata">;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function handleShare() {
@@ -14,6 +28,7 @@ export default function EventShareButton({ title, url }: { title: string; url: s
     if (typeof nav.share === "function") {
       try {
         await nav.share({ title, url });
+        if (track) trackEvent({ ...track, event_name: "share", metadata: { method: "web_share_api" } });
       } catch {
         // User canceled the native share sheet — not an error.
       }
@@ -22,6 +37,7 @@ export default function EventShareButton({ title, url }: { title: string; url: s
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
+      if (track) trackEvent({ ...track, event_name: "share", metadata: { method: "clipboard" } });
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard unavailable (older browser/permissions) — nothing more

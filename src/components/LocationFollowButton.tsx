@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isLocationFollowed, markLocationFollowed } from "@/lib/followedLocations";
 import { getAccountSession } from "@/lib/accountSession";
+import { trackEvent } from "@/lib/analytics/track";
 
 // Location Public Profile UX pass — exact location-side mirror of
 // components/FollowButton.tsx's Follow/Following toggle (the Business
@@ -102,6 +103,7 @@ export default function LocationFollowButton({
         setOpen(false);
         setEmail("");
         setStatus("idle");
+        trackEvent({ event_name: "follow", subject_type: "location", subject_id: locationId, location_id: locationId });
       } else {
         setStatus("error");
       }
@@ -119,7 +121,14 @@ export default function LocationFollowButton({
       });
       if (res.ok) {
         const data = (await res.json()) as { following?: boolean };
-        setFollowing(Boolean(data.following));
+        const nowFollowing = Boolean(data.following);
+        setFollowing(nowFollowing);
+        trackEvent({
+          event_name: nowFollowing ? "follow" : "unfollow",
+          subject_type: "location",
+          subject_id: locationId,
+          location_id: locationId,
+        });
       }
     } catch {
       // Best-effort — button just stays in its current state on failure.

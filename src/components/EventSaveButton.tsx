@@ -2,8 +2,8 @@
 
 import { useAccountSaved } from "@/lib/useAccountSaved";
 
-export default function EventSaveButton({ slug }: { slug: string }) {
-  const { saved, toggle } = useAccountSaved("event", slug);
+export default function EventSaveButton({ slug, id }: { slug: string; id?: string }) {
+  const { saved, toggle } = useAccountSaved("event", slug, id);
 
   // Final refinement pass, item 6 — matches the exact pill treatment
   // (border, height, text size) every other Tier B utility action already

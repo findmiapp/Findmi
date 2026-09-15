@@ -5,8 +5,8 @@ import { useAccountSaved } from "@/lib/useAccountSaved";
 // Same shared save/bookmark hook as SaveButton (businesses) and
 // EventSaveButton — Product Detail V2 extends the same mechanism to
 // products rather than inventing a new one.
-export default function ProductSaveButton({ slug }: { slug: string }) {
-  const { saved, toggle } = useAccountSaved("product", slug);
+export default function ProductSaveButton({ slug, id }: { slug: string; id?: string }) {
+  const { saved, toggle } = useAccountSaved("product", slug, id);
 
   return (
     <button

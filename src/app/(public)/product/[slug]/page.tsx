@@ -10,6 +10,7 @@ import FormAction from "@/components/FormAction";
 import ProductCard from "@/components/ProductCard";
 import ProductSaveButton from "@/components/ProductSaveButton";
 import ShareButton from "@/components/ShareButton";
+import PageViewTracker from "@/components/analytics/PageViewTracker";
 import InquireButton from "@/components/InquireButton";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isBusinessPro } from "@/lib/entitlements";
@@ -142,6 +143,14 @@ export default async function ProductPage({
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
       {/* eslint-disable-next-line react/no-danger */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toJsonLdScript(jsonLd) }} />
+      <PageViewTracker
+        subject_type="product"
+        subject_id={product.id}
+        product_id={product.id}
+        business_id={product.business_id}
+        page_type="product"
+        page_path={`/product/${product.slug}`}
+      />
 
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-10">
         {/* MEDIA — single-image hero, styled like ProductCard's own
@@ -259,8 +268,12 @@ export default async function ProductPage({
           )}
 
           <div className="mt-4 flex gap-2">
-            <ProductSaveButton slug={product.slug} />
-            <ShareButton url={canonicalUrl} title={product.name} />
+            <ProductSaveButton slug={product.slug} id={product.id} />
+            <ShareButton
+              url={canonicalUrl}
+              title={product.name}
+              track={{ subject_type: "product", subject_id: product.id, product_id: product.id, business_id: product.business_id }}
+            />
           </div>
 
           {/* Inquiry stays available as a secondary action even when Add

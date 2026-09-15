@@ -6,6 +6,7 @@ import MessageButton from "@/components/MessageButton";
 import InquireButton from "@/components/InquireButton";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import LocationFollowButton from "@/components/LocationFollowButton";
+import PageViewTracker from "@/components/analytics/PageViewTracker";
 import LocationSaveButton from "@/components/LocationSaveButton";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -73,6 +74,13 @@ export async function LocationPublicView({ slug }: { slug: string }) {
 
   return (
     <div className="relative mx-auto max-w-4xl px-0 pb-10 sm:px-6">
+      <PageViewTracker
+        subject_type="location"
+        subject_id={location.id}
+        location_id={location.id}
+        page_type="location"
+        page_path={`/location/${location.slug}`}
+      />
       {/* 1. Cover / hero — same contained, rounded landscape treatment
           Business/Product use, so a Location profile reads like one app
           with the rest of Findmi rather than a bare address record. No
@@ -190,7 +198,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           <div className="mt-2.5 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="flex w-max items-center gap-2">
               <div className="shrink-0">
-                <LocationSaveButton slug={location.slug} />
+                <LocationSaveButton slug={location.slug} id={location.id} />
               </div>
               {website && (
                 <a

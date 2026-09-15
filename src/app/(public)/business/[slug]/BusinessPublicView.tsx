@@ -12,6 +12,8 @@ import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ClaimButton from "@/components/ClaimButton";
+import PageViewTracker from "@/components/analytics/PageViewTracker";
+import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import MessageButton from "@/components/MessageButton";
 import InquireButton from "@/components/InquireButton";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
@@ -348,6 +350,13 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   return (
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: toJsonLdScript(jsonLd) }} />
+      <PageViewTracker
+        subject_type="business"
+        subject_id={business.id}
+        business_id={business.id}
+        page_type="business"
+        page_path={`/business/${business.slug}`}
+      />
 
       {/* Owner-preview banner — Native Business Onboarding Pass 2. Only
           renders for the real owner/manager/staff of a not-yet-approved
@@ -462,7 +471,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 <MessageButton targetType="business" targetId={business.id} targetName={business.name} />
               )}
               <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
-              <SaveButton slug={business.slug} />
+              <SaveButton slug={business.slug} id={business.id} />
             </div>
           </div>
 
@@ -556,6 +565,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             <BusinessLinksRow
               business={{ phone: contact.phone, email: contact.email }}
               socialLinks={detailsSocialLinks}
+              businessId={business.id}
               className="mt-6 hidden lg:block"
             />
           )}
@@ -713,6 +723,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             <BusinessLinksRow
               business={{ phone: contact.phone, email: contact.email }}
               socialLinks={detailsSocialLinks}
+              businessId={business.id}
               className="mt-8 lg:hidden"
             />
           )}
@@ -813,13 +824,28 @@ function BusinessCtaRow({ business }: { business: Business }) {
  * responsive technique as before. The caller (`hasContactActions`) skips
  * this entirely when there's nothing real to show — no empty container
  * ever renders, so page flow closes the gap naturally. */
+// Analytics attribution pass — maps this row's own icon vocabulary onto
+// the canonical click_contact_channel taxonomy (see lib/analytics/
+// taxonomy.ts): "mail" -> "email", "globe" -> "website", the rest already
+// match 1:1.
+const CONTACT_ICON_TO_CHANNEL: Record<ContactIcon, "phone" | "email" | "website" | "instagram" | "facebook" | "tiktok"> = {
+  phone: "phone",
+  mail: "email",
+  globe: "website",
+  instagram: "instagram",
+  facebook: "facebook",
+  tiktok: "tiktok",
+};
+
 function BusinessLinksRow({
   business,
   socialLinks,
+  businessId,
   className,
 }: {
   business: { phone: string | null; email: string | null };
   socialLinks: { href: string; label: string; icon: "instagram" | "globe" | "facebook" | "tiktok" }[];
+  businessId: string;
   className: string;
 }) {
   // Phone/email join the social links as the same compact pill, in one
@@ -841,19 +867,26 @@ function BusinessLinksRow({
   return (
     <div className={`flex flex-wrap gap-2 ${className}`}>
       {actions.map((action) => (
-        <a
+        <AnalyticsLink
           key={action.label}
           href={action.href}
           {...(action.external ? { target: "_blank", rel: "noreferrer" } : {})}
           title={action.title}
           aria-label={action.title}
           className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-white px-3.5 text-xs font-bold text-ink transition hover:border-findmi/40 hover:bg-findmi-50"
+          trackPayload={{
+            event_name: "click_contact_channel",
+            subject_type: "business",
+            subject_id: businessId,
+            business_id: businessId,
+            metadata: { channel: CONTACT_ICON_TO_CHANNEL[action.icon] },
+          }}
         >
           <span className="text-findmi-700">
             <ContactGlyph icon={action.icon} />
           </span>
           {action.label}
-        </a>
+        </AnalyticsLink>
       ))}
     </div>
   );

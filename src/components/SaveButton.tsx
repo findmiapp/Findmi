@@ -2,8 +2,8 @@
 
 import { useAccountSaved } from "@/lib/useAccountSaved";
 
-export default function SaveButton({ slug }: { slug: string }) {
-  const { saved, toggle } = useAccountSaved("business", slug);
+export default function SaveButton({ slug, id }: { slug: string; id?: string }) {
+  const { saved, toggle } = useAccountSaved("business", slug, id);
 
   return (
     <button

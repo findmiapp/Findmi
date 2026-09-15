@@ -2,8 +2,8 @@
 
 import { useAccountSaved } from "@/lib/useAccountSaved";
 
-export default function LocationSaveButton({ slug }: { slug: string }) {
-  const { saved, toggle } = useAccountSaved("location", slug);
+export default function LocationSaveButton({ slug, id }: { slug: string; id?: string }) {
+  const { saved, toggle } = useAccountSaved("location", slug, id);
 
   return (
     <button

@@ -432,7 +432,11 @@ export default async function AccountHomePage({
             >
               View Public Page
             </Link>
-            <ShareButton url={`${getPublicOrigin()}/business/${myBusinesses[0].slug}`} title={myBusinesses[0].name} />
+            <ShareButton
+              url={`${getPublicOrigin()}/business/${myBusinesses[0].slug}`}
+              title={myBusinesses[0].name}
+              track={{ subject_type: "business", subject_id: myBusinesses[0].id, business_id: myBusinesses[0].id }}
+            />
           </div>
         </section>
       )}

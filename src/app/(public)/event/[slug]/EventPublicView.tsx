@@ -20,6 +20,7 @@ import EventScheduleActions from "@/components/EventScheduleActions";
 import EventScheduleCtas from "@/components/EventScheduleCtas";
 import EventScheduleSummary from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
+import PageViewTracker from "@/components/analytics/PageViewTracker";
 import FormAction from "@/components/FormAction";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ProductCard from "@/components/ProductCard";
@@ -364,7 +365,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
       <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex w-max items-center gap-2">
           <div className="shrink-0">
-            <EventSaveButton slug={event.slug} />
+            <EventSaveButton slug={event.slug} id={event.id} />
           </div>
           {hasOccurrences ? (
             <EventScheduleActions
@@ -397,7 +398,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
             </>
           )}
           <div className="shrink-0">
-            <EventShareButton title={event.name} url={canonicalUrl} />
+            <EventShareButton
+              title={event.name}
+              url={canonicalUrl}
+              track={{ subject_type: "event", subject_id: event.id, event_id: event.id }}
+            />
           </div>
           {/* Public Message Action pass — MESSAGE moved OUT of this
               horizontally-scrollable rail into a fixed primary row right
@@ -503,6 +508,13 @@ export async function EventPublicView({ slug }: { slug: string }) {
 
   return (
     <div>
+      <PageViewTracker
+        subject_type="event"
+        subject_id={event.id}
+        event_id={event.id}
+        page_type="event"
+        page_path={`/event/${event.slug}`}
+      />
       {/* Item 9: the cover becomes a lightbox/slider trigger through every
           real image (cover + gallery) when at least one exists — see
           EventCoverLightbox's own note. */}
