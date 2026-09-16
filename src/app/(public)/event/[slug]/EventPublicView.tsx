@@ -16,7 +16,7 @@ import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
-import EventScheduleActions from "@/components/EventScheduleActions";
+import EventScheduleActions, { EventScheduleDirections } from "@/components/EventScheduleActions";
 import EventScheduleCtas from "@/components/EventScheduleCtas";
 import EventScheduleSummary from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
@@ -329,7 +329,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
           per whichever date is selected) and isn't knowable at this
           server-render point, so it stays exactly where it already was;
           MESSAGE still renders alone in this same fixed row for that
-          case, so it's never buried in the scroller either way. */}
+          case, so it's never buried in the scroller either way.
+
+          Directions/Location IA pass (Public Experience V4) — Directions
+          now sits in this same fixed row too, same h-11 geometry as
+          Apply to Vend, instead of the horizontally-scrollable Tier B
+          rail it used to share with Save/Add to Calendar/Share/Contact.
+          It stays a quiet outline pill (never Tier A weight — Tickets/
+          RSVP/Apply to Vend keep the strongest visual treatment when an
+          organizer has configured them), but a visitor no longer has to
+          discover it by swiping. Location's own NAME link (a different
+          intent — "what/where is this place" vs. "get me there") is
+          unaffected, still rendered separately in the details card above
+          and "About the Venue" below. */}
       <div className="mt-4 flex flex-wrap items-center gap-2.5">
         {showMessageButton && (
           <MessageButton
@@ -339,6 +351,22 @@ export async function EventPublicView({ slug }: { slug: string }) {
             targetName={event.name}
             eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
           />
+        )}
+        {hasOccurrences ? (
+          <EventScheduleDirections eventId={event.id} directionsEnabled={event.directions_enabled} />
+        ) : (
+          showDirections && (
+            <AnalyticsLink
+              href={directionsHref!}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-11 items-center justify-center gap-1.5 rounded-lg border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+              trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
+            >
+              <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
+              Directions
+            </AnalyticsLink>
+          )
         )}
         {legacyVendorApplyCta && (
           <FormAction
@@ -396,50 +424,33 @@ export async function EventPublicView({ slug }: { slug: string }) {
 
       {/* Tier B — supporting utility actions, visually quiet, grouped
           together and separate from Tier A above. Mobile layout pass: a
-          single non-wrapping, horizontally scrollable row (Save →
-          Directions → Add to Calendar → Share → Contact Organizer, then
-          Follow/Event Details when present) instead of flex-wrap — every
-          action/icon/link/behavior is unchanged, only the row's own
-          layout. -mx-4/px-4 (sm:-mx-6/sm:px-6) bleeds the scroll track to
-          the same edges as the padded content around it, and
-          overflow-x-auto contains all overflow within this one element —
-          it can't cause page-level horizontal scroll. */}
+          single non-wrapping, horizontally scrollable row (Save → Add to
+          Calendar → Share → Contact Organizer, then Event Details when
+          present) instead of flex-wrap. -mx-4/px-4 (sm:-mx-6/sm:px-6)
+          bleeds the scroll track to the same edges as the padded content
+          around it, and overflow-x-auto contains all overflow within this
+          one element — it can't cause page-level horizontal scroll.
+          Directions/Location IA pass — Directions no longer lives in this
+          rail; it moved to the fixed primary row above (see
+          EventScheduleDirections) since it's a high-intent physical
+          action, not a low-intent utility. */}
       <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex w-max items-center gap-2">
           <div className="shrink-0">
             <EventSaveButton slug={event.slug} id={event.id} />
           </div>
           {hasOccurrences ? (
-            <EventScheduleActions
-              eventName={event.name}
-              eventId={event.id}
-              description={event.description}
-              directionsEnabled={event.directions_enabled}
-            />
+            <EventScheduleActions eventName={event.name} description={event.description} />
           ) : (
-            <>
-              {showDirections && (
-                <AnalyticsLink
-                  href={directionsHref!}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-                  trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
-                >
-                  <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
-                  Directions
-                </AnalyticsLink>
-              )}
-              <div className="shrink-0">
-                <AddToCalendarButton
-                  title={event.name}
-                  description={event.description}
-                  location={venueLine || null}
-                  startAt={event.start_at}
-                  endAt={event.end_at}
-                />
-              </div>
-            </>
+            <div className="shrink-0">
+              <AddToCalendarButton
+                title={event.name}
+                description={event.description}
+                location={venueLine || null}
+                startAt={event.start_at}
+                endAt={event.end_at}
+              />
+            </div>
           )}
           <div className="shrink-0">
             <EventShareButton

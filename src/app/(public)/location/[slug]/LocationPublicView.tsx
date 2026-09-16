@@ -14,7 +14,6 @@ import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
 import { HappeningCard, HappeningRow } from "@/components/HappeningCard";
-import { HorizontalScroller } from "@/components/Section";
 import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
 import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, isOpenNow } from "@/lib/locationHours";
@@ -268,7 +267,22 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             aware query (getUpcomingAtLocation) is untouched. Exactly one
             empty-state message, never both a "0 upcoming" line and a
             separate block. Stays right here even when About/Gallery are
-            both empty. */}
+            both empty.
+
+            Duplicate-render fix (Public Experience V4) — the previous
+            version mapped the exact same `happenings` array twice: once
+            as photo cards in a carousel, once as compact rows right below
+            it, so every single happening (e.g. Piccola Pasta Shop's Sep
+            20 "Native Rose" Event) rendered on screen twice with 100%
+            overlap between the two sections. Fixed here with a
+            cardinality-aware split instead, per the density rule this
+            pass establishes for Business/Event/Location relationship
+            presentations: a SMALL set (<=3) is rendered once, as cards —
+            rich enough to browse directly, no separate list needed. A
+            LARGER set gets exactly ONE featured card for the very next
+            happening, then the genuine remainder (never re-including that
+            first item) as a compact chronological schedule below it.
+            Either branch enumerates every happening exactly once. */}
         <section className="mt-8">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">Coming Up Here</h2>
 
@@ -277,21 +291,24 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           ) : (
             <>
               <p className="mt-1 text-sm text-ink/55">{happenings.length} upcoming</p>
-              <div className="-mx-4 mt-4 sm:-mx-0">
-                <HorizontalScroller>
+              {happenings.length <= 3 ? (
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {happenings.map((h) => (
-                    <div key={h.id} className="w-64 shrink-0">
-                      <HappeningCard item={h} />
-                    </div>
+                    <HappeningCard key={h.id} item={h} />
                   ))}
-                </HorizontalScroller>
-              </div>
-
-              <div className="mt-6 flex flex-col gap-3">
-                {happenings.map((h) => (
-                  <HappeningRow key={h.id} item={h} />
-                ))}
-              </div>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-4 max-w-sm">
+                    <HappeningCard item={happenings[0]} />
+                  </div>
+                  <div className="mt-4 flex flex-col gap-3">
+                    {happenings.slice(1).map((h) => (
+                      <HappeningRow key={h.id} item={h} />
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
         </section>

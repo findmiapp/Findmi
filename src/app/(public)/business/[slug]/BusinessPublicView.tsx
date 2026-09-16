@@ -32,7 +32,7 @@ import {
   getUpcomingAppearancesForBusiness,
   PUBLIC_BUSINESS_COLUMNS,
 } from "@/lib/data";
-import { cityStateZip } from "@/lib/format";
+import { cityStateZip, formatAppearanceTime, getTemporalLabel } from "@/lib/format";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { validateCustomDestination } from "@/lib/navigation";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -237,6 +237,28 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   } else {
     appearances = await getUpcomingAppearancesForBusiness(business.id, 3);
   }
+
+  // Action Hierarchy pass — Business's strongest CTA should be "find this
+  // business" when it has somewhere upcoming to be, not Inquire (a
+  // business that moves is the whole point of Findmi; Inquire is contact
+  // functionality, a lower-intent action for a visitor who already knows
+  // what they want). appearances is already sorted nearest-first by its
+  // own query (getUpcomingAppearancesForBusiness), so [0] is genuinely
+  // "next up" for both Free (3-item) and Pro (20-item) callers. Same
+  // event > location > in-page-anchor destination precedence
+  // AppearanceCard itself already uses for its own click target, kept
+  // deliberately simple here (no external_url/flyer tiers — this is a
+  // page-level CTA, not a full per-card click resolution).
+  const nextAppearance = appearances[0] ?? null;
+  const nextTemporal = nextAppearance ? getTemporalLabel(nextAppearance.start_at, nextAppearance.end_at) : null;
+  const nextVenueLabel = nextAppearance?.location?.name ?? nextAppearance?.venue_name ?? null;
+  const nextAppearanceHref = nextAppearance
+    ? nextAppearance.event?.slug
+      ? `/event/${nextAppearance.event.slug}`
+      : nextAppearance.location?.slug
+        ? `/location/${nextAppearance.location.slug}`
+        : "#findmi-here"
+    : null;
 
   // "Meet the Owners" only when every configured role genuinely says so —
   // never assumed. Any broader/mixed set of roles gets the honest generic
@@ -526,6 +548,25 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 so it now shows for both tiers; everything else in this
                 identity block stays pro-gated as before. */}
             {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
+            {/* Live context (Public Experience V4, Section 3) — a compact
+                "NEXT UP" line using the exact same deterministic temporal
+                labeling (getTemporalLabel) AppearanceCard/HappeningCard
+                already use elsewhere, so "HERE NOW"/"TODAY"/"TOMORROW" is
+                never guessed or duplicated with different wording. Jumps
+                straight to the actual destination (Event/Location) when
+                one resolves, or down to the Findmi Here list otherwise —
+                no new data, no new query. */}
+            {nextAppearance && nextTemporal && nextAppearanceHref && (
+              <Link
+                href={nextAppearanceHref}
+                className={`mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                  nextTemporal.live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-findmi-50 text-findmi-700"
+                }`}
+              >
+                {nextTemporal.live ? "Here Now" : `Next Up · ${nextTemporal.label}`}
+                {nextVenueLabel && <span className="font-semibold normal-case tracking-normal">· {nextVenueLabel}</span>}
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -535,21 +576,49 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             only) the details/contact block — written first in the DOM so
             it naturally lands right after identity on mobile too. */}
         <div className="mt-6 lg:order-2 lg:sticky lg:top-20 lg:mt-0">
-          {/* Item 1: Follow + Save both now live in the identity block
-              above — this row is purely Inquire, the single most-
-              configurable primary action (item 4's custom URL/label).
-              Inquire is contact functionality — Free-tier hidden. */}
-          {canInquire && (
-            <div className="min-w-0">
-              <InquireButton
-                targetType="business"
-                targetId={business.id}
-                targetName={business.name}
-                label={inquiryLabel}
-                topics={enabledInquiryTopics}
+          {/* Action Hierarchy pass — Follow + Save both live in the identity
+              block above. This slot holds the single strongest action for
+              THIS business's current state: a business with somewhere
+              upcoming to be shows "Find Them Here" as the solid primary
+              CTA (schedule/discovery intent, Findmi's actual
+              differentiator), with Inquire — if the owner enabled it —
+              demoted to a secondary outline button right below it, never
+              competing for the same visual weight. A business with
+              nothing upcoming has no "find them" moment to elevate, so
+              Inquire (when enabled) simply keeps the primary slot exactly
+              as before. */}
+          {appearances.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <Link
+                href={nextAppearanceHref ?? "#findmi-here"}
                 className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              />
+              >
+                Find {business.name} Here
+              </Link>
+              {canInquire && (
+                <InquireButton
+                  targetType="business"
+                  targetId={business.id}
+                  targetName={business.name}
+                  label={inquiryLabel}
+                  topics={enabledInquiryTopics}
+                  className="flex h-12 w-full items-center justify-center rounded-full border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                />
+              )}
             </div>
+          ) : (
+            canInquire && (
+              <div className="min-w-0">
+                <InquireButton
+                  targetType="business"
+                  targetId={business.id}
+                  targetName={business.name}
+                  label={inquiryLabel}
+                  topics={enabledInquiryTopics}
+                  className="flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                />
+              </div>
+            )
           )}
 
           {/* Messaging UX Unification pass — the old "Message on Findmi"
@@ -607,7 +676,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             // by the column layout instead). This is now the first
             // section in this column, so it carries the "first item"
             // spacing CTA row/Bulletin used to.
-            <section className="mt-6 lg:mt-0">
+            <section id="findmi-here" className="mt-6 scroll-mt-24 lg:mt-0">
               <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Here</p>
               <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Find {business.name} Here</h2>
               <div className="mt-3 flex flex-col gap-2">
