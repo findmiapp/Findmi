@@ -31,6 +31,7 @@ import AccountNav from "../../AccountNav";
 import NavIcon from "@/components/NavIcon";
 import type { NavIconKey } from "@/lib/navigation";
 import { Panel, Row, RowList, Stat, StatusDot, Chip, EmptyLine, SectionEyebrow, secondaryButtonClass } from "../../owner-ui";
+import BusinessMobileNav from "./BusinessMobileNav";
 import {
   addAppearanceFromEvent,
   addManualAppearance,
@@ -877,6 +878,26 @@ export default async function ManageBusinessPage({
       orderSummary.newCount + orderSummary.openCount + orderSummary.readyCount + orderSummary.fulfilledCount + orderSummary.cancelledCount > 0);
   const visibleTabs: TabNavItem[] = ordersRelevant ? [...PRIMARY_TABS, ORDERS_TAB] : PRIMARY_TABS;
 
+  // Mobile Navigation Fix — a horizontally-scrolling tab strip has no
+  // affordance that more destinations exist off-screen (live QA: "Couldn't
+  // even tell I had to scroll to get to products"). Mobile now gets a
+  // deliberately finite 3-control row instead: Overview and Where I'll Be
+  // stay directly tappable (the two destinations an owner returns to
+  // constantly); everything else collapses into one "More" control whose
+  // own label becomes the current destination's name when inside it (e.g.
+  // "Products ▾") so the active location is never ambiguous. Desktop's
+  // sidebar is untouched — it already has room for the full list. Same
+  // routes/keys as visibleTabs above, just split into two mobile groups;
+  // Settings (never part of visibleTabs/the primary rail) is added here
+  // since mobile has no other entry point for it once the old strip's
+  // horizontal scroll is gone.
+  const mobilePrimaryTabs = PRIMARY_TABS.slice(0, 2);
+  const mobileMoreTabs: { key: string; label: string }[] = [
+    ...PRIMARY_TABS.slice(2).map((t) => ({ key: t.key, label: t.label })),
+    ...(ordersRelevant ? [{ key: ORDERS_TAB.key, label: ORDERS_TAB.label }] : []),
+    { key: "settings", label: "Settings" },
+  ];
+
   const addFromEvent = addAppearanceFromEvent.bind(null, id);
   const addManual = addManualAppearance.bind(null, id);
 
@@ -1062,33 +1083,10 @@ export default async function ManageBusinessPage({
         </div>
       </div>
 
-      {/* MOBILE TAB STRIP — filled-Aqua active chip in a horizontally
-          scrolling row, same visual language AccountNav's own primary
-          row now uses (family resemblance, Owner-level nav vs Business-
-          level nav still distinguishable by position/context, not by
-          looking like two different products). Desktop hides this in
-          favor of the sidebar below. */}
-      <nav
-        aria-label="Business sections"
-        className="mt-4 flex gap-1.5 overflow-x-auto rounded-xl bg-black/[0.03] p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden"
-      >
-        {visibleTabs.map((t) => {
-          const active = t.key === activeTab;
-          return (
-            <Link
-              key={t.key}
-              href={`${basePath}?tab=${t.key}`}
-              aria-current={active ? "page" : undefined}
-              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-bold transition ${
-                active ? "bg-findmi text-white shadow-sm" : "text-ink/45 hover:text-ink/70"
-              }`}
-            >
-              <NavIcon name={t.icon} className="h-3.5 w-3.5" />
-              {t.label}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* MOBILE NAVIGATION — Mobile Navigation Fix (see mobileMoreTabs' own
+          doc comment above and BusinessMobileNav.tsx). Desktop hides this
+          in favor of the sidebar below — completely unchanged. */}
+      <BusinessMobileNav basePath={basePath} primaryTabs={mobilePrimaryTabs} moreTabs={mobileMoreTabs} activeTab={activeTab} />
 
       {/* DESKTOP — a real sidebar workspace: Business-section navigation
           in a fixed left rail, content in the wide column beside it.
