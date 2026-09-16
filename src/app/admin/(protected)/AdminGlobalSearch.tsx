@@ -74,7 +74,7 @@ export default function AdminGlobalSearch() {
   );
 
   return (
-    <div className="relative mt-4">
+    <div className="relative">
       <input
         type="search"
         value={query}

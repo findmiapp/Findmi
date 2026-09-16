@@ -8,7 +8,7 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
   return (
     <div>
       <header className="sticky top-0 z-10 border-b border-black/5 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
           <div className="flex items-center gap-1">
             {/* Admin Header — Home + Back Controls pass: replaces the old
                 "View Homepage" link (which opened in a new tab) — Home
@@ -34,7 +34,16 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
             + a "More" dropdown for everything else, see AdminNav.tsx. */}
         <AdminNav />
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">{children}</main>
+      {/* Findmi 2026 Visual System pass — max-w-5xl -> max-w-6xl: desktop
+          Admin was noticeably narrower than the 1440px viewport it's
+          actually used at, leaving the Command Center (and every other
+          admin page) with unused width either side. A wider, still-bounded
+          container, not full-bleed — text/lists stay a readable width, the
+          Command Center's own two-column lower section just gets the room
+          it needs. Applies to every admin page (a shell-level container,
+          not a Command-Center-only one), which only ever means more
+          breathing room elsewhere, never a narrower or broken layout. */}
+      <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6">{children}</main>
     </div>
   );
 }

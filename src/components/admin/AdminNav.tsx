@@ -91,7 +91,7 @@ export default function AdminNav() {
   const moreActive = MORE_GROUPS.some((g) => g.items.some((item) => isActive(pathname, item.href)));
 
   return (
-    <nav className="relative mx-auto max-w-5xl px-4 pb-2 sm:px-6">
+    <nav className="relative mx-auto max-w-6xl px-4 pb-2 sm:px-6">
       {/* Desktop/tablet — unchanged pill row + More. */}
       <div className="hidden gap-1 sm:flex">
         {PRIMARY.map((item) => (
