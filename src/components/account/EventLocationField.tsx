@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useAccountSearch, type AccountSearchResult } from "./useAccountSearch";
+import { createInlineLocation } from "@/app/(public)/account/location/actions";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -64,7 +65,18 @@ function resultToSelected(r: AccountSearchResult): SelectedLocationDetail {
  * addMemberEventDate, updateMemberEventDate, createMemberEvent)
  * re-fetches that Location's own columns server-side and overwrites
  * whatever this form submitted — these manual-field hidden inputs are the
- * true source of truth only on the no-Location fallback path. */
+ * true source of truth only on the no-Location fallback path.
+ *
+ * Inline Event Location Creation pass — adds a third path alongside
+ * "search existing" and "enter venue manually": "Add New Location", an
+ * inline panel (never a navigation away from the Event form) that collects
+ * the minimum venue details, runs the same non-fuzzy duplicate check
+ * createMemberLocation's own standalone page uses, and on confirmation
+ * creates a genuine locations row (createInlineLocation, in
+ * account/location/actions.ts) that's then selected here exactly as if it
+ * had come back from search — same `selected` state, same hidden inputs,
+ * same "Change Location"/"Remove Location" behavior. Manual venue entry is
+ * untouched and remains fully available. */
 export default function EventLocationField({
   initialLocation,
   initialManual,
@@ -107,10 +119,62 @@ export default function EventLocationField({
   const [open, setOpen] = useState(false);
   const { results, loading } = useAccountSearch("locations", query, { browseEmpty: true });
 
+  // Inline Event Location Creation pass — the "Add New Location" panel's
+  // own, entirely separate draft state. Deliberately never shares state
+  // with `manual` above: switching between "enter venue manually" and "add
+  // a new Location" is a real choice between two different outcomes (no
+  // Findmi entity vs. a genuine one), not the same fields relabeled.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState<ManualVenueValues>(EMPTY_MANUAL);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addDuplicates, setAddDuplicates] = useState<SelectedLocationDetail[] | null>(null);
+  const [isCreating, startCreating] = useTransition();
+
   function pick(r: AccountSearchResult) {
     setSelected(resultToSelected(r));
     setQuery("");
     setOpen(false);
+  }
+
+  function closeAddPanel() {
+    setAddOpen(false);
+    setAddError(null);
+    setAddDuplicates(null);
+  }
+
+  function selectDuplicate(candidate: SelectedLocationDetail) {
+    setSelected(candidate);
+    setAddForm(EMPTY_MANUAL);
+    closeAddPanel();
+  }
+
+  function submitNewLocation(force: boolean) {
+    if (!addForm.venue_name.trim() || !addForm.address.trim() || !addForm.city.trim() || !addForm.state.trim() || !addForm.postal_code.trim()) {
+      setAddError("Fill in all fields to add this venue.");
+      return;
+    }
+    setAddError(null);
+    const fd = new FormData();
+    fd.set("name", addForm.venue_name);
+    fd.set("address", addForm.address);
+    fd.set("city", addForm.city);
+    fd.set("state", addForm.state);
+    fd.set("postal_code", addForm.postal_code);
+    if (force) fd.set("force", "1");
+    startCreating(async () => {
+      const result = await createInlineLocation(fd);
+      if (result.status === "error") {
+        setAddError(result.error);
+        return;
+      }
+      if (result.status === "duplicates") {
+        setAddDuplicates(result.duplicates);
+        return;
+      }
+      setSelected(result.location);
+      setAddForm(EMPTY_MANUAL);
+      closeAddPanel();
+    });
   }
 
   const address = selected ? fullAddress(selected) : "";
@@ -221,15 +285,136 @@ export default function EventLocationField({
             )}
           </div>
 
-          {!manualOpen ? (
-            <button
-              type="button"
-              onClick={() => setManualOpen(true)}
-              className="w-fit text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink"
-            >
-              Can&rsquo;t find it? Enter venue details
-            </button>
-          ) : (
+          {!manualOpen && !addOpen && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                className="w-fit text-xs font-semibold text-findmi-700 underline underline-offset-2 hover:text-findmi-800"
+              >
+                Can&rsquo;t find it? Add New Location
+              </button>
+              <button
+                type="button"
+                onClick={() => setManualOpen(true)}
+                className="w-fit text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink"
+              >
+                Enter venue manually
+              </button>
+            </div>
+          )}
+
+          {addOpen && (
+            <div className="flex flex-col gap-2 rounded-xl border border-findmi/25 bg-findmi-50/40 p-3.5">
+              <p className="text-xs font-medium text-ink/60">
+                Add this venue to Findmi so it can be found here and reused for future events.
+              </p>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-ink/70">Location name</span>
+                <input
+                  type="text"
+                  value={addForm.venue_name}
+                  onChange={(e) => setAddForm((m) => ({ ...m, venue_name: e.target.value }))}
+                  className={inputClass}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-ink/70">Street address</span>
+                <input
+                  type="text"
+                  value={addForm.address}
+                  onChange={(e) => setAddForm((m) => ({ ...m, address: e.target.value }))}
+                  className={inputClass}
+                />
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink/70">City</span>
+                  <input
+                    type="text"
+                    value={addForm.city}
+                    onChange={(e) => setAddForm((m) => ({ ...m, city: e.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink/70">State</span>
+                  <input
+                    type="text"
+                    value={addForm.state}
+                    onChange={(e) => setAddForm((m) => ({ ...m, state: e.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink/70">ZIP</span>
+                  <input
+                    type="text"
+                    value={addForm.postal_code}
+                    onChange={(e) => setAddForm((m) => ({ ...m, postal_code: e.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+              </div>
+
+              {addError && <p className="text-xs text-red-600">{addError}</p>}
+
+              {addDuplicates && addDuplicates.length > 0 ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold text-ink">This location may already be on Findmi</p>
+                  {addDuplicates.map((d) => (
+                    <div key={d.id} className="rounded-lg border border-black/10 bg-white p-2.5">
+                      <p className="break-words text-sm font-semibold text-ink">{d.name}</p>
+                      {(d.city || d.state) && (
+                        <p className="text-xs text-ink/55">{[d.city, d.state].filter(Boolean).join(", ")}</p>
+                      )}
+                      {d.address && <p className="break-words text-xs text-ink/45">{d.address}</p>}
+                      <button
+                        type="button"
+                        onClick={() => selectDuplicate(d)}
+                        className="mt-1.5 text-xs font-semibold text-findmi-700 underline underline-offset-2"
+                      >
+                        Use This Location
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => submitNewLocation(true)}
+                      disabled={isCreating}
+                      className="text-xs font-semibold text-ink/60 underline underline-offset-2 hover:text-ink disabled:opacity-50"
+                    >
+                      {isCreating ? "Creating…" : "Create New Anyway"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddDuplicates(null)}
+                      className="text-xs font-semibold text-ink/40 hover:text-ink"
+                    >
+                      Edit Details
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => submitNewLocation(false)}
+                    disabled={isCreating}
+                    className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50"
+                  >
+                    {isCreating ? "Adding…" : "Add This Location"}
+                  </button>
+                  <button type="button" onClick={closeAddPanel} className="text-xs font-semibold text-ink/50 hover:text-ink">
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {manualOpen && (
             <div className="flex flex-col gap-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Venue / location name</span>

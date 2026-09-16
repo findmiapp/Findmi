@@ -15,6 +15,7 @@ import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/mar
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
+import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -111,18 +112,58 @@ function normalizeForMatch(value: string): string {
  * regardless of is_demo — the goal is catching a genuine duplicate venue,
  * not filtering by moderation state. A match never auto-creates a second
  * Location; the visitor is directed to the existing Claim Location flow
- * instead. */
-async function findLikelyDuplicateLocation(
+ * (createMemberLocation) or the "Use This Location" choice (inline Event
+ * Location creation, createInlineLocation) instead.
+ *
+ * Inline Event Location Creation pass — widened from a single `{slug,
+ * name}` match to a small, ranked list of full SelectedLocationDetail-
+ * shaped candidates (address match(es) first, then name+city/state
+ * matches, deduped, capped at 3) so callers that need to render a real
+ * "this may already exist" picker (createInlineLocation) have everything
+ * they need without a second query. createMemberLocation's own existing
+ * single-match redirect behavior is unchanged — it just reads the first
+ * candidate off this same list. */
+async function findLikelyDuplicateLocations(
   admin: SupabaseClient,
   input: { name: string; address: string | null; city: string | null; state: string | null }
-): Promise<{ slug: string; name: string } | null> {
-  const { data } = await admin.from("locations").select("slug, name, address, city, state");
-  const rows = (data ?? []) as { slug: string; name: string; address: string | null; city: string | null; state: string | null }[];
+): Promise<SelectedLocationDetail[]> {
+  const { data } = await admin
+    .from("locations")
+    .select("id, slug, name, address, city, state, postal_code, category:categories(name)");
+  const rows = (data ?? []) as {
+    id: string;
+    slug: string;
+    name: string;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    category: { name: string } | { name: string }[] | null;
+  }[];
+
+  const toCandidate = (row: (typeof rows)[number]): SelectedLocationDetail => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    address: row.address,
+    city: row.city,
+    state: row.state,
+    postal_code: row.postal_code,
+    category: (Array.isArray(row.category) ? row.category[0] : row.category)?.name ?? null,
+  });
+
+  const matches: SelectedLocationDetail[] = [];
+  const seen = new Set<string>();
+  const addMatch = (row: (typeof rows)[number]) => {
+    if (seen.has(row.id)) return;
+    seen.add(row.id);
+    matches.push(toCandidate(row));
+  };
 
   const inputAddress = input.address ? normalizeForMatch(input.address) : null;
   if (inputAddress) {
     for (const row of rows) {
-      if (row.address && normalizeForMatch(row.address) === inputAddress) return row;
+      if (row.address && normalizeForMatch(row.address) === inputAddress) addMatch(row);
     }
   }
 
@@ -131,10 +172,10 @@ async function findLikelyDuplicateLocation(
     if (normalizeForMatch(row.name) !== normalizedName) continue;
     const cityMatches = !input.city || !row.city || normalizeForMatch(input.city) === normalizeForMatch(row.city);
     const stateMatches = !input.state || !row.state || normalizeForMatch(input.state) === normalizeForMatch(row.state);
-    if (cityMatches && stateMatches) return row;
+    if (cityMatches && stateMatches) addMatch(row);
   }
 
-  return null;
+  return matches.slice(0, 3);
 }
 
 const CREATE_LOCATION_FRIENDLY_ERROR: Record<string, string> = {
@@ -198,7 +239,7 @@ export async function createMemberLocation(formData: FormData) {
     fail("Choose an existing Market OR request one — not both.");
   }
 
-  const duplicate = await findLikelyDuplicateLocation(admin, { name: name!, address, city, state });
+  const duplicate = (await findLikelyDuplicateLocations(admin, { name: name!, address, city, state }))[0] ?? null;
   if (duplicate) {
     redirect(
       errorRedirectUrlWithFields(
@@ -261,6 +302,116 @@ export async function createMemberLocation(formData: FormData) {
   }
   revalidatePath("/account");
   redirect(`/account/location/${locationId}?created=1`);
+}
+
+// ── INLINE EVENT LOCATION CREATION ──────────────────────────────────────
+export type CreateInlineLocationResult =
+  | { status: "created"; location: SelectedLocationDetail }
+  | { status: "duplicates"; duplicates: SelectedLocationDetail[] }
+  | { status: "error"; error: string };
+
+/** "Add New Location" from inside the Event workflow (EventLocationField) —
+ * a non-redirecting counterpart to createMemberLocation above, for a caller
+ * that's a client component embedded in someone else's <form> (the Event's
+ * own) rather than a page of its own, and needs the result back as data
+ * (same "return {url?, error?} instead of redirecting" shape
+ * uploadMemberLocationImage already established for exactly this reason).
+ * Deliberately reuses createMemberLocation's own building blocks — the
+ * same findLikelyDuplicateLocations check, the same create_owned_location
+ * RPC (so the organizer becomes this Location's owner/manager, identical to
+ * the standalone /account/location/new flow — see this action's own
+ * OWNERSHIP note below), the same slug generation, the same friendly error
+ * map — never a second, competing creation path. Intentionally does NOT
+ * expose Market/Area here: the inline panel is a deliberately minimal
+ * "establish the venue" form (see this pass's own spec), and
+ * create_owned_location already treats Market as optional — the organizer
+ * (or whoever ends up managing this Location) can set it later from
+ * Location Manager, exactly like an event with no Market yet.
+ *
+ * OWNERSHIP — create_owned_location grants the creator 'owner' in
+ * location_members atomically with the Location itself; there is no
+ * "created-by-but-not-owner" variant in the current schema, and this
+ * action deliberately does not invent one — it reuses the RPC exactly as
+ * the standalone Location creation flow already does, so an organizer who
+ * adds a venue inline gets the same free ownership/management rights
+ * they'd get from /account/location/new. This is unchanged, existing
+ * product behavior, not a new permission grant introduced by this pass.
+ *
+ * PUBLICATION — create_owned_location hardcodes is_demo=true (never
+ * accepted as input), so a newly created Location starts exactly as
+ * unpublished/hidden from public discovery as any other native Location —
+ * this action does not, and could not, bypass that. The Event's own
+ * relational reference (event_occurrences.location_id) is unaffected by
+ * is_demo — see updateMemberEventLocation/createMemberEvent, which write
+ * that relationship regardless of the target Location's publication
+ * state — but public Event/Location rendering's own existing is_demo
+ * checks continue to gate what's shown publicly, exactly as before. */
+export async function createInlineLocation(formData: FormData): Promise<CreateInlineLocationResult> {
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  if (!user) return { status: "error", error: "You need to be signed in to add a venue." };
+
+  const admin = getAdminSupabase();
+  if (!admin) return { status: "error", error: "Server isn't configured." };
+
+  const name = str(formData, "name");
+  const address = str(formData, "address");
+  const city = str(formData, "city");
+  const state = str(formData, "state");
+  const postalCode = str(formData, "postal_code");
+  const force = str(formData, "force") === "1";
+
+  if (!name) return { status: "error", error: "Venue name is required." };
+
+  if (!force) {
+    const duplicates = await findLikelyDuplicateLocations(admin, { name, address, city, state });
+    if (duplicates.length > 0) return { status: "duplicates", duplicates };
+  }
+
+  const baseSlug = resolveSlugInput(null, name);
+  if (!baseSlug) return { status: "error", error: "Venue name is required to generate a URL." };
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("locations", candidate));
+
+  const { data: created, error } = await admin.rpc("create_owned_location", {
+    p_user_id: user.id,
+    p_name: name,
+    p_slug: slug,
+    p_address: address,
+    p_city: city,
+    p_state: state,
+  });
+  if (error || !created) {
+    const message = CREATE_LOCATION_FRIENDLY_ERROR[error?.message ?? ""] ?? "Couldn't create your venue. Please try again.";
+    return { status: "error", error: message };
+  }
+
+  const locationRow = created as { id: string; slug: string; name: string; address: string | null; city: string | null; state: string | null };
+  // Best-effort follow-up, same non-rolling-back posture as
+  // createMemberLocation's own market_area_id follow-up above —
+  // create_owned_location has no p_postal_code parameter (the standalone
+  // /account/location/new form doesn't collect one either), so this is a
+  // plain, ordinary update to an already-nullable column, not a new RPC
+  // parameter or schema change.
+  if (postalCode) {
+    await admin.from("locations").update({ postal_code: postalCode }).eq("id", locationRow.id);
+  }
+
+  revalidatePath("/account");
+  return {
+    status: "created",
+    location: {
+      id: locationRow.id,
+      name: locationRow.name,
+      slug: locationRow.slug,
+      category: null,
+      address: locationRow.address,
+      city: locationRow.city,
+      state: locationRow.state,
+      postal_code: postalCode || null,
+    },
+  };
 }
 
 // ── VENUE DETAILS ──────────────────────────────────────────────────────
