@@ -5,7 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { listConversationsForUser } from "@/lib/opportunities";
 import { conversationContextLabel } from "@/lib/admin/conversations";
-import { getAccountCommandCenter } from "@/lib/dashboard";
+import { getAccountCommandCenter, type ScheduleItem } from "@/lib/dashboard";
 import { getTemporalLabel, formatDateShort } from "@/lib/format";
 import { getPublicOrigin } from "@/lib/site-url";
 import LiveDot from "@/components/LiveDot";
@@ -15,6 +15,7 @@ import AccountSync from "./AccountSync";
 import AccountNav from "./AccountNav";
 import BusinessScopedAction, { PlusGlyph } from "./BusinessScopedAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
+import { CompactStatus, OwnerModule } from "./dashboard-ui";
 
 export const metadata: Metadata = {
   title: "My Findmi",
@@ -37,22 +38,25 @@ async function getProBusinessIdSet(
   return new Set((data ?? []).filter((r) => r.plan_tier === "pro" || r.plan_tier === "pro_seller").map((r) => r.id));
 }
 
-/** Launch V2 Pass 1 — refocuses Home around the Launch UX audit's own
- * three questions (Where am I going? What needs me? What do customers
- * see?), in that order, ahead of anything else. Same account model, same
- * tables, same routes as before (nothing here is a new query beyond the
- * existing getAccountCommandCenter/listConversationsForUser calls this
- * page already made) — what changed is which of the OLD page's 13
- * sections survive, and in what order. Removed entirely: the standalone
- * Messages shortcut (superseded by the Inbox preview below), the full
- * Coming Up list (consolidated into one NEXT UP item — the complete
- * schedule now lives at /account/schedule), the duplicate large Findmi
- * Here CTA card, the "What's the difference?" explainer, and the Your
- * Activity utility-tile row (Saved/Following/Orders/Profile now live in
- * AccountNav's own "More" menu; Messages is now Inbox). Demoted (kept,
- * moved lower, made visually secondary): Manage on Findmi, Pending
- * Claims, Discover, Redeem invite code. See this pass's own report for
- * the full before/after list. */
+/** Owner Command Center V4 — a genuine recomposition, not a restyle. Same
+ * account model, same tables, same routes/actions as before (nothing
+ * here is a new query beyond the existing getAccountCommandCenter/
+ * listConversationsForUser calls this page already made) — what changed
+ * is the INFORMATION ARCHITECTURE: "Your Findmi" (View Public Page/Share)
+ * is no longer a separate section further down the page — it's folded
+ * directly into the identity header for the common single-business case,
+ * since repeating "here's your one business" twice on one screen served
+ * no one. Desktop now uses real width (a 2-column operational grid —
+ * Where I'll Be + Inbox as the wider main column, Needs Attention + What
+ * You're Managing as a self-sized rail) instead of one centered
+ * max-w-2xl document; mobile keeps the exact same DOM order as the
+ * priority sequence (identity -> primary action -> Where I'll Be -> Inbox
+ * -> Needs Attention -> Managing), with the rail repositioned purely via
+ * CSS grid placement at lg: — the same "DOM order = mobile priority,
+ * explicit grid placement repositions for desktop" technique Admin's own
+ * Command Center proved, reused here as an engineering pattern, not a
+ * visual copy: Owner keeps its own warmer rounded-2xl/shadow-sm module
+ * language (see dashboard-ui.tsx) rather than Admin's flatter surfaces. */
 export default async function AccountHomePage({
   searchParams,
 }: {
@@ -164,9 +168,17 @@ export default async function AccountHomePage({
         pendingClaimsCount: myPendingClaims.length,
       })
     : { attention: [], schedule: [] };
-  const nextUp = scheduleItems[0] ?? null;
+  // Owner Command Center V4 — the existing getAccountCommandCenter/
+  // getUnifiedSchedule call already returns up to SCHEDULE_DISPLAY_LIMIT
+  // (8) deduplicated upcoming items; V1-V3 only ever showed
+  // scheduleItems[0] as "Next Up," discarding the rest even though the
+  // data was already in hand. "Where I'll Be" is Findmi's strongest
+  // product concept, so it now shows the next few (not just one), same
+  // zero-new-query data, with the full list still one tap away.
+  const upcomingSchedule = scheduleItems.slice(0, 3);
 
   const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
+  const attentionCount = attentionItems.length;
 
   const managedEntities: ManagedEntity[] = [
     ...myBusinesses.map(
@@ -199,22 +211,71 @@ export default async function AccountHomePage({
         name: l.name,
         pills: [l.isDemo ? { label: "Pending Review", tone: "warning" as const } : null],
         href: `/account/location/${l.id}`,
-        cta: "Manage Venue",
+        cta: "Manage",
       })
     ),
   ];
 
+  const singleBusiness = myBusinesses.length === 1 ? myBusinesses[0] : null;
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
       <AccountSync />
       <AccountNav />
 
-      <header>
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
-        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">
-          Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
-        </h1>
-      </header>
+      {/* IDENTITY — compact on mobile (no giant hero), and on desktop sits
+          beside direct access to whatever the owner actually needs next:
+          the multi-business switcher chips, or (the common case) a single
+          business's own View Public Page/Share — folded in here instead
+          of a separate "Your Findmi" section further down the page that
+          just repeated the same one business a second time. */}
+      <div className="lg:flex lg:items-start lg:justify-between lg:gap-6">
+        <header className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
+          <h1 className="mt-0.5 font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">
+            Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
+          </h1>
+          {singleBusiness && (
+            <p className="mt-1 flex items-center gap-2 text-sm text-ink/60">
+              <span className="truncate font-semibold text-ink/80">{singleBusiness.name}</span>
+              {singleBusiness.pendingReview && (
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                  Pending Review
+                </span>
+              )}
+            </p>
+          )}
+        </header>
+
+        {myBusinesses.length > 1 && (
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:mt-0 lg:max-w-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {myBusinesses.map((b) => (
+              <Link
+                key={b.id}
+                href={`/account/business/${b.id}`}
+                className="shrink-0 rounded-full border border-black/10 bg-white px-3.5 py-1.5 text-xs font-bold text-ink transition hover:border-findmi/40"
+              >
+                {b.name}
+              </Link>
+            ))}
+          </div>
+        )}
+        {singleBusiness && !singleBusiness.pendingReview && (
+          <div className="mt-3 flex shrink-0 gap-2 lg:mt-0">
+            <Link
+              href={`/business/${singleBusiness.slug}`}
+              className="flex h-9 items-center justify-center rounded-full border border-black/10 px-3.5 text-xs font-bold text-ink transition hover:border-black/20"
+            >
+              View Public Page
+            </Link>
+            <ShareButton
+              url={`${getPublicOrigin()}/business/${singleBusiness.slug}`}
+              title={singleBusiness.name}
+              track={{ subject_type: "business", subject_id: singleBusiness.id, business_id: singleBusiness.id }}
+            />
+          </div>
+        )}
+      </div>
 
       {error && (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
@@ -240,101 +301,11 @@ export default async function AccountHomePage({
         </div>
       )}
 
-      {/* A. BUSINESS CONTEXT — only rendered when there's an actual choice
-          to orient the owner to (2+ managed businesses). One business
-          doesn't need a card just to name itself. */}
-      {myBusinesses.length > 1 && (
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {myBusinesses.map((b) => (
-            <Link
-              key={b.id}
-              href={`/account/business/${b.id}`}
-              className="shrink-0 rounded-full border border-black/10 bg-white px-3.5 py-1.5 text-xs font-bold text-ink transition hover:border-findmi/40"
-            >
-              {b.name}
-            </Link>
-          ))}
-        </div>
-      )}
-
-      {/* B. NEXT UP — the single most relevant upcoming happening, from
-          the SAME deduplicated Command Center schedule data as before;
-          the full chronological list now lives at /account/schedule. */}
-      {nextUp ? (
-        <section className="mt-4">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Next Up</h2>
-          {(() => {
-            const { label, live } = getTemporalLabel(nextUp.startAt, nextUp.endAt);
-            return (
-              <div className="mt-2 flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm">
-                <span
-                  className={`flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl py-2 ${
-                    live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/[0.04] text-ink"
-                  }`}
-                >
-                  {live ? (
-                    <>
-                      <LiveDot className="text-white" />
-                      <span className="flex flex-col items-center leading-[1.15]">
-                        <span className="text-[7px] font-bold uppercase tracking-normal">Happening</span>
-                        <span className="text-xs font-extrabold uppercase tracking-wide">Now</span>
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-ink/50">
-                        {new Date(nextUp.startAt).toLocaleDateString("en-US", { month: "short" })}
-                      </span>
-                      <span className="text-lg font-bold leading-none">{new Date(nextUp.startAt).getDate()}</span>
-                    </>
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">{nextUp.title}</p>
-                  {nextUp.where && <p className="truncate text-xs text-ink/50">{nextUp.where}</p>}
-                  <p className="truncate text-[11px] text-ink/40">
-                    {!live && `${label} · `}
-                    {nextUp.relatedTo.join(" · ")}
-                  </p>
-                </div>
-                <Link
-                  href={nextUp.href}
-                  className="shrink-0 rounded-full border border-black/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
-                >
-                  {/* Launch V2 Pass 1.1 — context-correct action label:
-                      only a real owner Appearance is ever "edited" here;
-                      an organized Event or a Location happening you don't
-                      otherwise own gets its own real Manage/View
-                      destination instead (same href precedence as
-                      display fields — see ScheduleItem's own doc
-                      comment). */}
-                  {nextUp.actionKind === "business_appearance" ? "Edit" : nextUp.actionKind === "event" ? "Manage Event" : "View"}
-                </Link>
-              </div>
-            );
-          })()}
-          <Link href="/account/schedule" className="mt-1.5 inline-block text-xs font-semibold text-findmi-700 underline underline-offset-2">
-            View Schedule →
-          </Link>
-        </section>
-      ) : (
-        hasAnyManaged && (
-          <section className="mt-4 rounded-2xl border border-black/10 bg-mist/30 p-4">
-            <p className="text-sm font-bold text-ink">Nothing on your schedule yet.</p>
-            <p className="mt-1 text-xs text-ink/60">Add where you&rsquo;ll be next so people can find you.</p>
-          </section>
-        )
-      )}
-
-      {/* C. PRIMARY CTA — the ONE dominant + Add Where I'll Be entry
-          point on Home. Launch V2 Pass 1.1 — the small creation strip
-          that used to sit directly beneath this (Business/Venue/Product/
-          Event) is REMOVED per live QA: it competed with this action and
-          added a second horizontal-scroll row. Those routes are still
-          reachable, unchanged, from the site header's own global "+"
-          (QuickCreateMenu) — nothing here deletes them, this just stops
-          duplicating that entry point on Home. */}
-      <div className="mt-3">
+      {/* PRIMARY ACTION — the one dominant, entitlement-safe Add Where
+          I'll Be entry point (BusinessScopedAction's own zero/one/many
+          routing — completely untouched). Findmi's core wedge: a
+          business that moves needs customers to know where. */}
+      <div className="mt-4">
         <BusinessScopedAction
           variant="full"
           businesses={myBusinesses}
@@ -344,131 +315,150 @@ export default async function AccountHomePage({
         />
       </div>
 
-      {/* D. INBOX PREVIEW — Launch V2 Pass 1.1: moved ABOVE Needs Your
-          Attention (live QA — "who contacted me" is more immediate than a
-          generic count of the same conversations). 2–3 latest canonical
-          Conversations, no full history load (listConversationsForUser
-          already caps each conversation to its single latest message). */}
-      <section className="mt-6">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Inbox</h2>
-          <Link href="/account/messages" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
-            View Inbox →
-          </Link>
-        </div>
-        {inboxPreview.length > 0 ? (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {inboxPreview.map((c) => (
-              <Link
-                key={c.id}
-                href={`/account/messages/${c.id}`}
-                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm transition hover:border-black/10"
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
-                  {c.otherPartyLabel.slice(0, 1)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
-                  <p className="truncate text-xs text-ink/50">
-                    {conversationContextLabel(c.subjectType)}
-                    {c.lastMessageBody ? ` · ${c.lastMessageBody}` : ""}
-                  </p>
-                </div>
-                <p className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</p>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">
-            Your Findmi conversations will appear here.
-          </p>
-        )}
-      </section>
-
-      {/* E. NEEDS YOUR ATTENTION — Launch V2 Pass 1.1: the generic "N
-          recent customer conversations" item is gone (see
-          lib/dashboard.ts — getAccountCommandCenter no longer pushes it);
-          the Inbox preview above already represents those conversations
-          truthfully, without pretending a count implies "unread." Only
-          genuinely operational/status items remain: pending invitations,
-          pending Business/Event/Location review, pending claims, expired
-          Pro. */}
-      {attentionItems.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs Your Attention</h2>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {attentionItems.map((item) => (
-              <Link
-                key={item.key}
-                href={item.href}
-                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-3 shadow-sm transition hover:border-black/10"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50">
-                  <span className="h-2 w-2 rounded-full bg-findmi" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
-                  {item.subtitle && <span className="block truncate text-xs text-ink/50">{item.subtitle}</span>}
-                </span>
-                <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* F. YOUR FINDMI — kept compact, only for the common single-
-          business case (multi-business owners reach each business's own
-          public page from that Business Manager instead — no new
-          switcher invented for this). */}
-      {myBusinesses.length === 1 && (
-        <section className="mt-6 rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Your Findmi</h2>
-          <p className="mt-1 text-sm font-semibold text-ink">{myBusinesses[0].name}</p>
-          <div className="mt-2.5 flex gap-2">
-            <Link
-              href={`/business/${myBusinesses[0].slug}`}
-              className="flex h-9 flex-1 items-center justify-center rounded-full border border-black/10 text-xs font-bold text-ink transition hover:border-black/20"
+      {/* OPERATIONAL GRID — mobile stacks in priority order (where am I
+          going -> what's in my inbox -> what needs me -> what am I
+          managing); desktop places Where I'll Be + Inbox as the wider
+          main column and Needs Attention + What You're Managing as a
+          self-sized rail, so all four are visible together instead of one
+          long scroll. DOM order stays the mobile order; only CSS grid
+          placement repositions the rail at lg:. */}
+      <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
+        {/* WHERE I'LL BE — the next few upcoming happenings from the
+            existing unified schedule (Business appearances, organized
+            Events, managed-Location happenings — already deduplicated by
+            getUnifiedSchedule). Only rendered once there's SOMETHING
+            managed; a brand-new owner with nothing yet sees the primary
+            CTA and the Create-Your-Business module instead of an empty
+            schedule box. */}
+        {hasAnyManaged && (
+          <div className="lg:col-start-1 lg:col-span-2 lg:row-start-1">
+            <OwnerModule
+              title="Where I'll Be"
+              meta={
+                <Link href="/account/schedule" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+                  Full Schedule →
+                </Link>
+              }
             >
-              View Public Page
-            </Link>
-            <ShareButton
-              url={`${getPublicOrigin()}/business/${myBusinesses[0].slug}`}
-              title={myBusinesses[0].name}
-              track={{ subject_type: "business", subject_id: myBusinesses[0].id, business_id: myBusinesses[0].id }}
-            />
+              {upcomingSchedule.length === 0 ? (
+                <CompactStatus label="No upcoming schedule — add where you'll be next so people can find you." />
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {upcomingSchedule.map((item) => (
+                    <ScheduleRow key={item.key} item={item} />
+                  ))}
+                </div>
+              )}
+            </OwnerModule>
           </div>
-        </section>
-      )}
+        )}
 
-      {/* Manage on Findmi — demoted: smaller heading, lower on the page,
-          same list/component as before. */}
-      {hasAnyManaged ? (
-        <section className="mt-6">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Manage on Findmi</h2>
-          <ManageOnFindmiList entities={managedEntities} />
-        </section>
-      ) : (
-        <section className="mt-6 rounded-3xl border border-black/10 bg-mist/30 p-4 sm:p-5">
-          <p className="text-sm font-bold text-ink">Have something people should discover?</p>
-          <p className="mt-1 text-xs text-ink/60">List your business, event, or venue on Findmi.</p>
-          <Link
-            href="/join"
-            className="mt-3 flex h-11 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        {/* INBOX — enough context to answer "is there something I need to
+            respond to," never messaging itself. Same canonical
+            listConversationsForUser this page already called. */}
+        <div className={`lg:col-start-1 lg:col-span-2 ${hasAnyManaged ? "lg:row-start-2" : "lg:row-start-1"}`}>
+          <OwnerModule
+            title="Inbox"
+            meta={
+              <Link href="/account/messages" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+                View Inbox →
+              </Link>
+            }
           >
-            Get discovered
-          </Link>
-        </section>
-      )}
+            {inboxPreview.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {inboxPreview.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={`/account/messages/${c.id}`}
+                    className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
+                      {c.otherPartyLabel.slice(0, 1)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
+                      <p className="truncate text-xs text-ink/50">
+                        {conversationContextLabel(c.subjectType)}
+                        {c.lastMessageBody ? ` · ${c.lastMessageBody}` : ""}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</p>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <CompactStatus label="Your Findmi conversations will appear here." />
+            )}
+          </OwnerModule>
+        </div>
+
+        {/* NEEDS ATTENTION — genuinely operational/status items only
+            (pending invitations, pending review, pending claims, expired
+            Pro) — same getAccountCommandCenter data as before. Clear ->
+            one compact line, never a reserved card. Active -> a real
+            module, full prominence. */}
+        <div className="flex flex-col gap-5 lg:col-start-3 lg:row-start-1 lg:row-span-2">
+          {attentionCount === 0 ? (
+            <CompactStatus tone="positive" label="Needs Attention · All caught up ✓" />
+          ) : (
+            <OwnerModule
+              title="Needs Attention"
+              meta={<span className="rounded-full bg-findmi-50 px-2 py-0.5 text-xs font-bold text-findmi-700">{attentionCount}</span>}
+            >
+              <div className="flex flex-col gap-1.5">
+                {attentionItems.map((item) => (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50">
+                      <span className="h-2 w-2 rounded-full bg-findmi" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
+                      {item.subtitle && <span className="block truncate text-xs text-ink/50">{item.subtitle}</span>}
+                    </span>
+                    <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
+                  </Link>
+                ))}
+              </div>
+            </OwnerModule>
+          )}
+
+          {/* WHAT YOU'RE MANAGING — one unified, filterable list
+              (ManageOnFindmiList, unchanged component) rather than
+              separate Business/Event/Location cards. Zero managed ->
+              the real prerequisite (Create your Business), never a faked
+              destination. */}
+          {hasAnyManaged ? (
+            <OwnerModule title="What You're Managing">
+              <ManageOnFindmiList entities={managedEntities} />
+            </OwnerModule>
+          ) : (
+            <OwnerModule title="Get Started">
+              <p className="text-sm font-bold text-ink">Have something people should discover?</p>
+              <p className="mt-1 text-xs text-ink/60">List your business, event, or location on Findmi.</p>
+              <Link
+                href="/join"
+                className="mt-3 flex h-11 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              >
+                Get discovered
+              </Link>
+            </OwnerModule>
+          )}
+        </div>
+      </div>
 
       {myPendingClaims.length > 0 && (
         <section id="pending-claims" className="mt-6">
           <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Pending Claims</h2>
-          <div className="mt-2 flex flex-col gap-3">
+          <div className="mt-2 flex flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0 lg:grid-cols-3">
             {myPendingClaims.map((c) => (
               <div
                 key={c.id}
-                className="flex flex-col gap-3 rounded-3xl border border-findmi/20 bg-findmi-50/50 p-4 shadow-sm sm:p-5"
+                className="flex flex-col gap-3 rounded-2xl border border-findmi/20 bg-findmi-50/50 p-4 shadow-sm"
               >
                 <Link href={`/business/${c.slug}`} className="flex flex-col gap-1">
                   <p className="text-sm font-bold text-ink">{c.name}</p>
@@ -487,16 +477,11 @@ export default async function AccountHomePage({
         </section>
       )}
 
-      {/* Discover — demoted to one compact link (was a full white card +
-          filled CTA + chip row). Still reaches the same /find surface. */}
-      <div className="mt-6">
+      {/* Footer utility links — demoted, unchanged destinations. */}
+      <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-black/5 pt-4">
         <Link href="/find" className="text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink">
           Explore what&rsquo;s happening on Findmi →
         </Link>
-      </div>
-
-      {/* Redeem invite code — unchanged, kept last/secondary. */}
-      <section className="mt-6">
         <details className="group">
           <summary className="w-fit cursor-pointer text-xs font-semibold text-ink/45 underline underline-offset-2 transition hover:text-ink/70 [&::-webkit-details-marker]:hidden">
             Redeem invite code
@@ -518,7 +503,50 @@ export default async function AccountHomePage({
             </button>
           </form>
         </details>
-      </section>
+      </div>
+    </div>
+  );
+}
+
+/** One compact row in the Where I'll Be module — the exact same live/
+ * upcoming-date badge language the old single "Next Up" card used,
+ * generalized to render 1-of-N instead of only ever the first item. */
+function ScheduleRow({ item }: { item: ScheduleItem }) {
+  const { label, live } = getTemporalLabel(item.startAt, item.endAt);
+  return (
+    <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
+      <span
+        className={`flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 ${
+          live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/[0.04] text-ink"
+        }`}
+      >
+        {live ? (
+          <>
+            <LiveDot className="text-white" />
+            <span className="text-[6px] font-extrabold uppercase tracking-wide">Now</span>
+          </>
+        ) : (
+          <>
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-ink/50">
+              {new Date(item.startAt).toLocaleDateString("en-US", { month: "short" })}
+            </span>
+            <span className="text-sm font-bold leading-none">{new Date(item.startAt).getDate()}</span>
+          </>
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
+        <p className="truncate text-xs text-ink/45">
+          {!live && `${label} · `}
+          {item.relatedTo.join(" · ")}
+        </p>
+      </div>
+      <Link
+        href={item.href}
+        className="shrink-0 rounded-full border border-black/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+      >
+        {item.actionKind === "business_appearance" ? "Edit" : item.actionKind === "event" ? "Manage" : "View"}
+      </Link>
     </div>
   );
 }

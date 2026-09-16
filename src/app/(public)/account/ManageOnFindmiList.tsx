@@ -21,7 +21,7 @@ const FILTERS: { key: "all" | ManagedEntityKind; label: string }[] = [
   { key: "all", label: "All" },
   { key: "business", label: "Businesses" },
   { key: "event", label: "Events" },
-  { key: "location", label: "Venues" },
+  { key: "location", label: "Locations" },
 ];
 
 const ICON_BY_KIND: Record<ManagedEntityKind, NavIconKey> = {
@@ -33,7 +33,7 @@ const ICON_BY_KIND: Record<ManagedEntityKind, NavIconKey> = {
 const TYPE_LABEL_BY_KIND: Record<ManagedEntityKind, string> = {
   business: "Business",
   event: "Event",
-  location: "Venue",
+  location: "Location",
 };
 
 /**
