@@ -5,7 +5,7 @@ import Link from "next/link";
 import { searchAdminGlobal, type AdminGlobalSearchEntityType, type AdminGlobalSearchResult } from "./search-actions";
 
 const inputClass =
-  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
+  "h-11 w-full rounded-xl border border-transparent bg-black/[0.04] pl-10 pr-3.5 text-sm text-ink placeholder:text-ink/40 transition focus:border-findmi/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-findmi/20";
 
 const TYPE_LABELS: Record<AdminGlobalSearchEntityType, string> = {
   business: "Businesses",
@@ -26,14 +26,21 @@ const MIN_QUERY_LENGTH = 2;
 // codebase — one consistent convention, not a new one invented here.
 const DEBOUNCE_MS = 250;
 
-/** Admin Global Search — one navigation entry point on the Command Center
- * (placed between the intro copy and Needs Attention) so an admin can find
- * any Business/Event/Location/Product/Appearance/Account without first
- * picking a section. Calls searchAdminGlobal (search-actions.ts) directly
- * — a plain admin-authorized Server Action, not a new API route — the same
- * "call a server action from a client component via useTransition" shape
+/** Admin Global Search — Findmi Admin's universal command/navigation
+ * tool, so an admin can find any Business/Event/Location/Product/
+ * Appearance/Account without first picking a section. Calls
+ * searchAdminGlobal (search-actions.ts) directly — a plain admin-
+ * authorized Server Action, not a new API route — the same "call a
+ * server action from a client component via useTransition" shape
  * MemberLocationImageField/EventLocationField's own inline-creation panel
  * already use elsewhere in this codebase.
+ *
+ * Command Center V5 pass — visual treatment only (a muted "command
+ * surface" that lifts to a focused Aqua-ringed field, plus a leading
+ * search glyph) so it reads as Admin's primary instrument rather than a
+ * generic form field; every state/query/debounce/routing behavior below
+ * is byte-for-byte what shipped and was already live-verified in
+ * production.
  *
  * Dismiss pattern mirrors EventLocationField's own search dropdown: a
  * blur-with-short-timeout close on the input, plus onMouseDown
@@ -75,6 +82,15 @@ export default function AdminGlobalSearch() {
 
   return (
     <div className="relative">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden
+        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/35"
+      >
+        <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
       <input
         type="search"
         value={query}

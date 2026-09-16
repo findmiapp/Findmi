@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { isActive, MORE_GROUPS, PRIMARY } from "./adminNavItems";
 
 // Admin Navigation Simplify + Organize pass — replaces the old flat,
 // 16-item horizontally-scrolling nav (every route at equal visual
@@ -10,65 +11,12 @@ import { usePathname } from "next/navigation";
 // compact "More" dropdown for everything else. No routes removed,
 // renamed, or behavior-changed — this is purely the nav's own
 // presentation/organization.
-
-interface NavItem {
-  href: string;
-  label: string;
-  /** More menu only — short secondary line under the label. */
-  hint?: string;
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-// Exact conceptual priority order the pass specified.
-const PRIMARY: NavItem[] = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/businesses", label: "Businesses" },
-  { href: "/admin/events", label: "Events" },
-  { href: "/admin/appearances", label: "Appearances" },
-  { href: "/admin/claims", label: "Claims" },
-  { href: "/admin/users", label: "Users" },
-];
-
-const MORE_GROUPS: NavGroup[] = [
-  {
-    label: "Manage",
-    items: [
-      { href: "/admin/people", label: "People", hint: "Directory people" },
-      { href: "/admin/locations", label: "Venues", hint: "Venues & places" },
-      { href: "/admin/markets", label: "Markets", hint: "Findmi Markets & Area presentation" },
-      { href: "/admin/market-requests", label: "Market Requests", hint: "Geography requested but not yet a Market" },
-      { href: "/admin/products", label: "Products", hint: "Business products" },
-      { href: "/admin/categories", label: "Categories", hint: "Discovery taxonomy" },
-      { href: "/admin/pro-invites", label: "Pro Invites", hint: "Complimentary Pro access codes" },
-      { href: "/admin/referrals", label: "Referrals", hint: "Referral partners & commissions" },
-      { href: "/admin/qr-campaigns", label: "QR Campaigns", hint: "Physical QR scan attribution" },
-      { href: "/admin/inquiries", label: "Inquiries", hint: "Native Findmi inquiry threads" },
-      { href: "/admin/site", label: "Site Editor", hint: "Site content & settings" },
-    ],
-  },
-  {
-    label: "Legacy & Operations",
-    items: [
-      { href: "/admin/onboarding", label: "Onboarding", hint: "Legacy onboarding" },
-      { href: "/admin/plans", label: "Plans", hint: "Legacy plan configuration" },
-      { href: "/admin/forms", label: "Forms", hint: "Legacy form system" },
-      { href: "/admin/orders", label: "Orders", hint: "Commerce orders" },
-      { href: "/admin/settlements", label: "Settlements", hint: "Seller payouts" },
-    ],
-  },
-];
-
-/** Dashboard (/admin) only matches itself — every other admin route also
- * starts with "/admin", so an exact match there is required; every other
- * item matches its own sub-routes too (e.g. /admin/businesses/[id]). */
-function isActive(pathname: string, href: string): boolean {
-  if (href === "/admin") return pathname === "/admin";
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
+//
+// Command Center V5 pass — this component is now mobile/tablet-only
+// (rendered inside a `lg:hidden` wrapper by layout.tsx); true desktop
+// uses the new AdminSidebar instead. PRIMARY/MORE_GROUPS moved to
+// adminNavItems.ts so both share one route list. Nothing in this
+// component's own behavior changed.
 
 const pillBase = "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition";
 const pillInactive = "text-ink/60 hover:bg-black/[0.04] hover:text-ink";
