@@ -82,6 +82,34 @@ async function requireEventManager(eventId: string, redirectPath: string): Promi
   return admin;
 }
 
+/** Production Bugfix — Schedule Authoring V4 "Save 10 Dates" crash. The
+ * Schedule Authoring V4 bulk actions below (bulkGenerateEventDates,
+ * bulkRemoveEventDates, bulkUpdateEventDatesLocation,
+ * bulkUpdateEventDatesHours) are called DIRECTLY from a client transition
+ * (never via a <form action>) and their own contract — see their own
+ * header comment — is to ALWAYS return a plain result object for the
+ * client to render feedback from, NEVER to redirect. requireEventManager
+ * above is correct for every OTHER action in this file (all <form>-
+ * submitted, all expecting a possible redirect on auth failure) but is the
+ * wrong tool here: a redirect() thrown from deep inside one of these bulk
+ * actions, reached via a bare `await` inside an async transition with no
+ * redirect handling on the calling side, surfaces as an uncaught
+ * client-side exception (a full "Application error" crash) instead of the
+ * graceful, inline `{ error }` these actions' own callers already know
+ * how to render. This variant never redirects — an auth failure becomes
+ * a normal returned error, exactly like every other failure mode these
+ * actions already handle. */
+async function requireEventManagerResult(eventId: string): Promise<{ admin: SupabaseClient } | { error: string }> {
+  try {
+    await requireEventMember(eventId);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "You don't have access to this event." };
+  }
+  const admin = getAdminSupabase();
+  if (!admin) return { error: "Server isn't configured." };
+  return { admin };
+}
+
 // ── Member image upload — same shape as account/business/actions.ts's
 // uploadMemberBusinessImage, gated by requireEventMember instead of
 // requireBusinessMember. ───────────────────────────────────────────────
@@ -768,7 +796,9 @@ export async function bulkGenerateEventDates(
   manualVenue: OccurrenceVenueFields
 ): Promise<BulkDatesResult> {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
-  const admin = await requireEventManager(eventId, redirectPath);
+  const auth = await requireEventManagerResult(eventId);
+  if ("error" in auth) return { error: auth.error };
+  const { admin } = auth;
 
   if (dates.length === 0) return { created: 0, error: "No dates to generate." };
   if (dates.length > MAX_BULK_GENERATED_DATES) {
@@ -839,7 +869,9 @@ export async function bulkGenerateEventDates(
  * actually belongs to this event). */
 export async function bulkRemoveEventDates(eventId: string, occurrenceIds: string[]): Promise<BulkDatesResult> {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
-  const admin = await requireEventManager(eventId, redirectPath);
+  const auth = await requireEventManagerResult(eventId);
+  if ("error" in auth) return { error: auth.error };
+  const { admin } = auth;
   if (occurrenceIds.length === 0) return { removed: 0 };
 
   const { data: owned } = await admin.from("event_occurrences").select("id").eq("event_id", eventId).in("id", occurrenceIds);
@@ -876,7 +908,9 @@ export async function bulkUpdateEventDatesLocation(
   manualVenue: OccurrenceVenueFields
 ): Promise<BulkDatesResult> {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
-  const admin = await requireEventManager(eventId, redirectPath);
+  const auth = await requireEventManagerResult(eventId);
+  if ("error" in auth) return { error: auth.error };
+  const { admin } = auth;
   if (occurrenceIds.length === 0) return { updated: 0 };
 
   const { data: owned } = await admin.from("event_occurrences").select("id").eq("event_id", eventId).in("id", occurrenceIds);
@@ -918,7 +952,9 @@ export async function bulkUpdateEventDatesHours(
   endTime: string
 ): Promise<BulkDatesResult> {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
-  const admin = await requireEventManager(eventId, redirectPath);
+  const auth = await requireEventManagerResult(eventId);
+  if ("error" in auth) return { error: auth.error };
+  const { admin } = auth;
   if (occurrenceIds.length === 0) return { updated: 0 };
   if (!startTime || !endTime) return { error: "Start and end time are required." };
   if (startTime === endTime) return { error: "Start and end time can't be the same." };

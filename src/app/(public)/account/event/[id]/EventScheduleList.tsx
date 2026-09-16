@@ -95,22 +95,33 @@ export default function EventScheduleList({ eventId, occurrences }: { eventId: s
     setBulkPanel("none");
   }
 
+  // Production Bugfix — Schedule Authoring V4 "Save 10 Dates" crash. Same
+  // reasoning as BulkDatesComposer's own fix: every bulk action below
+  // always returns a plain result object by contract, but the network
+  // call crossing the Server Action boundary can still fail for reasons
+  // outside that contract — a try/catch here converts that into the same
+  // recoverable inline error every other failure path already shows,
+  // instead of an uncaught exception crashing the whole page.
   function applyBulkLocation() {
     setError(null);
     startTransition(async () => {
-      const result = await bulkUpdateEventDatesLocation(eventId, Array.from(selectedIds), bulkLocation?.id ?? null, {
-        venue_name: bulkLocation ? bulkLocation.name : emptyToNull(bulkManualVenue?.venue_name),
-        address: bulkLocation ? bulkLocation.address : emptyToNull(bulkManualVenue?.address),
-        city: bulkLocation ? bulkLocation.city : emptyToNull(bulkManualVenue?.city),
-        state: bulkLocation ? bulkLocation.state : emptyToNull(bulkManualVenue?.state),
-        postal_code: bulkLocation ? bulkLocation.postal_code : emptyToNull(bulkManualVenue?.postal_code),
-      });
-      if (result.error) {
-        setError(result.error);
-        return;
+      try {
+        const result = await bulkUpdateEventDatesLocation(eventId, Array.from(selectedIds), bulkLocation?.id ?? null, {
+          venue_name: bulkLocation ? bulkLocation.name : emptyToNull(bulkManualVenue?.venue_name),
+          address: bulkLocation ? bulkLocation.address : emptyToNull(bulkManualVenue?.address),
+          city: bulkLocation ? bulkLocation.city : emptyToNull(bulkManualVenue?.city),
+          state: bulkLocation ? bulkLocation.state : emptyToNull(bulkManualVenue?.state),
+          postal_code: bulkLocation ? bulkLocation.postal_code : emptyToNull(bulkManualVenue?.postal_code),
+        });
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        setNotice(`Updated Location for ${result.updated ?? 0} date${(result.updated ?? 0) === 1 ? "" : "s"}.`);
+        clearSelection();
+      } catch {
+        setError("Couldn't update the Location for those dates — please try again.");
       }
-      setNotice(`Updated Location for ${result.updated ?? 0} date${(result.updated ?? 0) === 1 ? "" : "s"}.`);
-      clearSelection();
     });
   }
 
@@ -125,13 +136,17 @@ export default function EventScheduleList({ eventId, occurrences }: { eventId: s
     }
     setError(null);
     startTransition(async () => {
-      const result = await bulkUpdateEventDatesHours(eventId, Array.from(selectedIds), bulkStartTime, bulkEndTime);
-      if (result.error) {
-        setError(result.error);
-        return;
+      try {
+        const result = await bulkUpdateEventDatesHours(eventId, Array.from(selectedIds), bulkStartTime, bulkEndTime);
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        setNotice(`Updated hours for ${result.updated ?? 0} date${(result.updated ?? 0) === 1 ? "" : "s"}.`);
+        clearSelection();
+      } catch {
+        setError("Couldn't update hours for those dates — please try again.");
       }
-      setNotice(`Updated hours for ${result.updated ?? 0} date${(result.updated ?? 0) === 1 ? "" : "s"}.`);
-      clearSelection();
     });
   }
 
@@ -139,13 +154,17 @@ export default function EventScheduleList({ eventId, occurrences }: { eventId: s
     if (!window.confirm(`Remove ${selectedIds.size} date${selectedIds.size === 1 ? "" : "s"}? This can't be undone.`)) return;
     setError(null);
     startTransition(async () => {
-      const result = await bulkRemoveEventDates(eventId, Array.from(selectedIds));
-      if (result.error) {
-        setError(result.error);
-        return;
+      try {
+        const result = await bulkRemoveEventDates(eventId, Array.from(selectedIds));
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        setNotice(`Removed ${result.removed ?? 0} date${(result.removed ?? 0) === 1 ? "" : "s"}.`);
+        clearSelection();
+      } catch {
+        setError("Couldn't remove those dates — please try again.");
       }
-      setNotice(`Removed ${result.removed ?? 0} date${(result.removed ?? 0) === 1 ? "" : "s"}.`);
-      clearSelection();
     });
   }
 

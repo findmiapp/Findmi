@@ -691,7 +691,6 @@ export default async function ManageEventPage({
                         <p className="truncate text-xs text-ink/50">
                           {primarySchedule.timeLabel}
                           {primaryLocationName ? ` · ${primaryLocationName}` : ""}
-                          <span className="ml-1.5 text-ink/30">· Core date</span>
                         </p>
                       </div>
                       <span className="shrink-0 text-xs font-semibold text-ink/50 group-hover:text-ink">Edit</span>
@@ -754,7 +753,6 @@ export default async function ManageEventPage({
             </div>
 
             <div className="border-t border-black/5 pt-6">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Dates</p>
               <EventScheduleList eventId={id} occurrences={scheduleOccurrences} />
             </div>
 

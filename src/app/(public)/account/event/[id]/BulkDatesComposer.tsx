@@ -282,35 +282,49 @@ export default function BulkDatesComposer({
     }));
     setError(null);
     startTransition(async () => {
-      const result = await bulkGenerateEventDates(eventId, rows, location?.id ?? null, {
-        venue_name: location ? location.name : emptyToNull(manualVenue?.venue_name),
-        address: location ? location.address : emptyToNull(manualVenue?.address),
-        city: location ? location.city : emptyToNull(manualVenue?.city),
-        state: location ? location.state : emptyToNull(manualVenue?.state),
-        postal_code: location ? location.postal_code : emptyToNull(manualVenue?.postal_code),
-      });
-      if (result.error) {
-        setError(result.error);
-        return;
+      // Production Bugfix — Schedule Authoring V4 "Save 10 Dates" crash.
+      // bulkGenerateEventDates' own contract is to always return a plain
+      // result object, never throw/redirect — but this call crosses a
+      // Server Action network boundary, which can still fail for reasons
+      // outside that contract (a dropped connection, a session that
+      // expired mid-request, an unexpected server error). Previously an
+      // unhandled rejection here propagated as an uncaught exception,
+      // crashing the whole page with a generic "Application error"
+      // instead of the recoverable inline message every other failure
+      // path already shows.
+      try {
+        const result = await bulkGenerateEventDates(eventId, rows, location?.id ?? null, {
+          venue_name: location ? location.name : emptyToNull(manualVenue?.venue_name),
+          address: location ? location.address : emptyToNull(manualVenue?.address),
+          city: location ? location.city : emptyToNull(manualVenue?.city),
+          state: location ? location.state : emptyToNull(manualVenue?.state),
+          postal_code: location ? location.postal_code : emptyToNull(manualVenue?.postal_code),
+        });
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        const created = result.created ?? 0;
+        const skipped = result.skippedExisting ?? 0;
+        const base =
+          skipped > 0
+            ? `Added ${created} date${created === 1 ? "" : "s"} — ${skipped} day${skipped === 1 ? "" : "s"} in that range ${skipped === 1 ? "was" : "were"} already on the schedule.`
+            : `Added ${created} date${created === 1 ? "" : "s"}.`;
+        // Range Extension nudge — quiet, informational only. No participation
+        // is read or changed here; this pass never propagates existing
+        // Businesses onto newly generated dates (that's Pass 2's job).
+        setMessage(
+          created > 0 && hasParticipants ? `${base} Review participating businesses for these dates.` : base
+        );
+        setDraftRows([]);
+        setSelectedIds(new Set());
+        setRangeStart("");
+        setRangeEnd("");
+        setRecurStart("");
+        setRecurEnd("");
+      } catch {
+        setError("Couldn't save those dates — please try again.");
       }
-      const created = result.created ?? 0;
-      const skipped = result.skippedExisting ?? 0;
-      const base =
-        skipped > 0
-          ? `Added ${created} date${created === 1 ? "" : "s"} — ${skipped} day${skipped === 1 ? "" : "s"} in that range ${skipped === 1 ? "was" : "were"} already on the schedule.`
-          : `Added ${created} date${created === 1 ? "" : "s"}.`;
-      // Range Extension nudge — quiet, informational only. No participation
-      // is read or changed here; this pass never propagates existing
-      // Businesses onto newly generated dates (that's Pass 2's job).
-      setMessage(
-        created > 0 && hasParticipants ? `${base} Review participating businesses for these dates.` : base
-      );
-      setDraftRows([]);
-      setSelectedIds(new Set());
-      setRangeStart("");
-      setRangeEnd("");
-      setRecurStart("");
-      setRecurEnd("");
     });
   }
 
