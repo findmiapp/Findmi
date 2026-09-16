@@ -85,7 +85,7 @@ export function EventScheduleDirections({
       href={directionsHref}
       target="_blank"
       rel="noreferrer"
-      className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+      className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
       onClick={() =>
         trackEvent({
           event_name: "click_directions",

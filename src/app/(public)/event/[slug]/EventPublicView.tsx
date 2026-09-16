@@ -61,6 +61,10 @@ import { getSupabase } from "@/lib/supabase";
 // never rendering everything at once.
 const EVENT_PUBLIC_OCCURRENCE_LIMIT = 40;
 
+function isSafeExternalUrl(url: string | null | undefined): url is string {
+  return typeof url === "string" && /^https?:\/\//i.test(url);
+}
+
 async function resolveCanonicalUrl(eventId: string, slug: string): Promise<string> {
   const supabase = getSupabase();
   const handle = supabase ? await getPublicHandleForEntity(supabase, "event", eventId) : null;
@@ -159,6 +163,16 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const directionsHref = mapQuery
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
     : null;
+  // Action Row Consistency pass — Website/Call use the Event's already-
+  // resolved canonicalLocation (computed above from the real occurrence-
+  // linked Location, or the legacy exact-venue-match fallback — see that
+  // variable's own note). No new query: canonicalLocation already carries
+  // the Location's full row (same `select("*")` LocationPublicView's own
+  // getLocationBySlug uses), just not read for these two fields until
+  // now. Renders nothing when the Event has no resolvable Location, or
+  // when that Location has no website/phone on file.
+  const canonicalWebsite = isSafeExternalUrl(canonicalLocation?.website_url) ? canonicalLocation.website_url : null;
+  const canonicalPhone = canonicalLocation?.phone ?? null;
   const canonicalUrl = await resolveCanonicalUrl(event.id, event.slug);
 
   // Item 9 — cover first (when it exists), then the real gallery images.
@@ -362,42 +376,24 @@ export async function EventPublicView({ slug }: { slug: string }) {
         )
       )}
 
-      {/* Secondary actions — Message/Directions/Apply-to-Vend, one shared
-          h-11/rounded-lg/outline geometry so they read as one visual tier
-          BELOW Tier A's stronger treatment, never competing with it for
-          attention. MESSAGE lives here rather than the horizontally-
-          scrollable utility rail further down (a visitor previously had
-          to swipe to even discover it). When the organizer has a legacy
-          (non-recurring) event's own external "Apply to Vend" CTA
-          configured, it's paired right here; it keeps its exact existing
-          href/displayMode (see legacyVendorApplyCta above), only its
-          position/radius changed. A recurring event's own Apply to Vend
-          is occurrence-dependent (resolved client-side inside
-          EventScheduleCtas above, per whichever date is selected) and
-          isn't knowable at this server-render point, so it stays exactly
-          where it already was; MESSAGE still renders alone in this row
-          for that case.
-
-          Directions/Location IA pass (Public Experience V4) — Directions
-          sits in this same row, same h-11 geometry, instead of the
-          horizontally-scrollable Tier B rail it used to share with Save/
-          Add to Calendar/Share/Contact. It stays a quiet outline pill
-          (Tickets/RSVP/Apply to Vend above keep the strongest visual
-          treatment when an organizer has configured them), but a visitor
-          no longer has to discover it by swiping. Location's own NAME
-          link (a different intent — "what/where is this place" vs. "get
-          me there") is unaffected, still rendered separately in the
-          details card above and "About the Venue" below. */}
-      <div className="mt-4 flex flex-wrap items-center gap-2.5">
-        {showMessageButton && (
-          <MessageButton
-            size="default"
-            targetType="event"
-            targetId={event.id}
-            targetName={event.name}
-            eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
-          />
-        )}
+      {/* Secondary/contextual actions (Event + Location Action Row
+          Consistency pass) — Directions/Website/Call now use the exact
+          same compact h-9/rounded-lg/px-3/text-xs button geometry as the
+          Location page's own primary action row, instead of the taller
+          h-11/px-5/text-sm treatment this row used since Public
+          Experience V4/V5. Directions leads (still Aqua-accented, same
+          size as its neighbors — never larger just for being Directions);
+          Website/Call render only when the Event's already-resolved
+          canonicalLocation actually has them on file (see
+          canonicalWebsite/canonicalPhone above) — no new query, and
+          nothing renders when a Location isn't linked or has no
+          website/phone. Message and a legacy event's own Apply to Vend
+          join the same row at the same size, so every action here reads
+          as one coherent tier below Tier A, matching Location's own
+          [Directions][Website][Call] + Message/Contact pattern. flex-wrap
+          (never horizontal scroll) keeps every action reachable at 360px
+          by wrapping to a second line rather than requiring a swipe. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         {hasOccurrences ? (
           <EventScheduleDirections eventId={event.id} directionsEnabled={event.directions_enabled} />
         ) : (
@@ -406,7 +402,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
               href={directionsHref!}
               target="_blank"
               rel="noreferrer"
-              className="flex h-11 items-center justify-center gap-1.5 rounded-lg border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
               trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
             >
               <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
@@ -414,12 +410,41 @@ export async function EventPublicView({ slug }: { slug: string }) {
             </AnalyticsLink>
           )
         )}
+        {canonicalWebsite && (
+          <a
+            href={canonicalWebsite}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+          >
+            <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
+            Website
+          </a>
+        )}
+        {canonicalPhone && (
+          <a
+            href={`tel:${canonicalPhone}`}
+            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+          >
+            <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
+            Call
+          </a>
+        )}
+        {showMessageButton && (
+          <MessageButton
+            size="compact"
+            targetType="event"
+            targetId={event.id}
+            targetName={event.name}
+            eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
+          />
+        )}
         {legacyVendorApplyCta && (
           <FormAction
             href={legacyVendorApplyCta.href}
             displayMode={legacyVendorApplyCta.displayMode}
             label="Apply to Vend"
-            className="flex h-11 items-center justify-center rounded-lg border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+            className="flex h-9 items-center justify-center rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
             track={{ event_name: "click_apply_to_vend", subject_type: "event", subject_id: event.id, event_id: event.id }}
           />
         )}
@@ -713,6 +738,31 @@ function DirectionsGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path d="M12 2L4.5 20.5l.9.9L12 18l6.6 3.4.9-.9L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Same glyphs/sizing as the Location page's own Website/Call pills (Event
+// + Location Action Row Consistency pass).
+function GlobeGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.6" />
+      <ellipse cx="12" cy="12" rx="3.4" ry="8.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M3.5 12h17" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function PhoneGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M6.5 4h3l1.5 4-2 1.5a11 11 0 005.5 5.5L16 13l4 1.5v3a2 2 0 01-2.2 2A16 16 0 014.5 6.2 2 2 0 016.5 4z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
