@@ -73,18 +73,16 @@ export default function AccountNav() {
   }, [moreOpen]);
 
   return (
-    <nav aria-label="Account" className="mb-4">
-      {/* Visual System Pass 2 — chrome, not page content. Four equal
+    <nav aria-label="Account" className="mb-5">
+      {/* Findmi Owner Product visual system (Sept 2026) — four equal
           columns (grid, never overflow-x-auto — see the Pass 1.1 note
-          above) but each cell is now a compact icon+label PAIR, not a
-          tall icon-above-label tile: no background fill, no filled Aqua
-          block. Selection reads through color+weight (and a quiet Aqua
-          tint) alone — deliberately NOT the same underline mechanism
-          Business Manager's own tabs use (page.tsx's "Business sections"
-          nav), so an owner can tell OWNER NAV and BUSINESS NAV apart at a
-          glance even though both borrow the same restrained Aqua/
-          typography language. */}
-      <div className="grid grid-cols-4 gap-1">
+          above), now a genuinely filled Aqua active state (solid bg,
+          white icon+label) instead of a pale tint: the same confident
+          "selected = filled" language the redesigned Business Manager
+          sidebar uses, so Owner-level nav and Business-level nav now
+          read as ONE visual system instead of two different eras of
+          Findmi UI. */}
+      <div className="grid grid-cols-4 gap-1.5 rounded-xl bg-black/[0.03] p-1">
         {PRIMARY_TABS.map((tab) => {
           const active = tab.match(pathname);
           return (
@@ -92,42 +90,41 @@ export default function AccountNav() {
               key={tab.href}
               href={tab.href}
               aria-current={active ? "page" : undefined}
-              className={`flex items-center justify-center gap-1 rounded-lg px-1 py-2 text-center transition ${
-                active ? "bg-findmi-50 text-findmi-700" : "text-ink/45 hover:text-ink/70"
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-1 py-2 text-center transition ${
+                active ? "bg-findmi text-white shadow-sm" : "text-ink/45 hover:text-ink/70"
               }`}
             >
               {tab.icon}
-              <span className={`whitespace-nowrap text-xs ${active ? "font-bold" : "font-semibold"}`}>{tab.label}</span>
+              <span className="whitespace-nowrap text-[12px] font-bold">{tab.label}</span>
             </Link>
           );
         })}
       </div>
 
-      {/* More/Sign Out demoted to plain quiet text links (no pill
-          backgrounds) — same restrained style as the Business Manager's
-          own "Settings" link — with a hairline divider marking them as a
-          secondary row beneath the four primary destinations. */}
-      <div className="mt-2 flex items-center justify-between border-t border-black/5 pt-2">
+      {/* More/Sign Out — plain quiet text links, no hairline divider
+          needed now that the primary row above has its own bounded
+          background to separate from. */}
+      <div className="mt-2 flex items-center justify-between px-1">
         <div ref={moreRef} className="relative">
           <button
             type="button"
             onClick={() => setMoreOpen((o) => !o)}
             aria-haspopup="menu"
             aria-expanded={moreOpen}
-            className="flex items-center gap-1 text-xs font-semibold text-ink/50 transition hover:text-ink"
+            className="flex items-center gap-1 text-[12px] font-semibold text-ink/45 transition hover:text-ink"
           >
             More
             <ChevronGlyph className={`h-3 w-3 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
           </button>
           {moreOpen && (
-            <div role="menu" className="absolute left-0 top-full z-20 mt-2 w-44 rounded-2xl border border-black/10 bg-white p-1.5 shadow-lg">
+            <div role="menu" className="absolute left-0 top-full z-20 mt-2 w-44 rounded-xl border border-black/[0.07] bg-white p-1.5 shadow-lg">
               {SECONDARY_LINKS.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
                   role="menuitem"
                   onClick={() => setMoreOpen(false)}
-                  className="block rounded-xl px-2.5 py-2 text-sm font-semibold text-ink transition hover:bg-black/[0.04]"
+                  className="block rounded-lg px-2.5 py-2 text-sm font-semibold text-ink transition hover:bg-black/[0.04]"
                 >
                   {l.label}
                 </Link>
@@ -142,7 +139,7 @@ export default function AccountNav() {
             opacity) so it stays visually secondary to core navigation. */}
         <SignOutConfirm
           action={signOut}
-          className="shrink-0 text-xs font-semibold text-ink/35 transition hover:text-ink/60"
+          className="shrink-0 text-[12px] font-semibold text-ink/30 transition hover:text-ink/60"
         >
           Sign Out
         </SignOutConfirm>

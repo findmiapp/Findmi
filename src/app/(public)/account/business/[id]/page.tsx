@@ -25,9 +25,12 @@ import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 interface TabNavItem {
   key: string;
   label: string;
+  icon: NavIconKey;
 }
 import AccountNav from "../../AccountNav";
-import { OwnerModule } from "../../dashboard-ui";
+import NavIcon from "@/components/NavIcon";
+import type { NavIconKey } from "@/lib/navigation";
+import { Panel, Row, RowList, Stat, StatusDot, Chip, EmptyLine, SectionEyebrow, secondaryButtonClass } from "../../owner-ui";
 import {
   addAppearanceFromEvent,
   addManualAppearance,
@@ -103,10 +106,10 @@ export const dynamic = "force-dynamic";
 const LEGACY_BUSINESS_CATEGORY_SLUGS = new Set(["markets-pop-ups", "packaged-goods"]);
 
 const inputClass =
-  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
+  "w-full rounded-lg border border-black/10 bg-white px-3 py-2.5 text-[14px] text-ink placeholder:text-ink/35 focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/15";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
-const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6";
+  "flex h-10 w-full items-center justify-center rounded-lg bg-findmi text-[13px] font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]";
+const cardClass = "rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5";
 
 // Owner Shell V3 — job-oriented primary navigation (replaces the old
 // 14-tab inventory-style rail from the Tabbed Business Manager pass).
@@ -131,17 +134,17 @@ const cardClass = "rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p
 // filter (see the redirect below), since it was a genuine duplicate of
 // what Inbox already shows.
 const PRIMARY_TABS: TabNavItem[] = [
-  { key: "overview", label: "Overview" },
-  { key: "findmi-here", label: "Where I'll Be" },
+  { key: "overview", label: "Overview", icon: "home" },
+  { key: "findmi-here", label: "Where I'll Be", icon: "calendar" },
   // Performance -> Analytics (owner-facing rename only — see
   // lib/analytics/ownerPerformance.ts's own doc comment; the tab KEY
   // stays "performance" on purpose so every existing ?tab=performance
   // link/bookmark keeps working).
-  { key: "performance", label: "Analytics" },
-  { key: "profile", label: "Profile" },
-  { key: "products", label: "Products" },
+  { key: "performance", label: "Analytics", icon: "target" },
+  { key: "profile", label: "Profile", icon: "person" },
+  { key: "products", label: "Products", icon: "tag" },
 ];
-const ORDERS_TAB: TabNavItem = { key: "orders", label: "Orders" };
+const ORDERS_TAB: TabNavItem = { key: "orders", label: "Orders", icon: "cart" };
 
 // Old tab key -> new canonical destination. A visit to any of these
 // keys redirects immediately (before any of this page's heavier data
@@ -972,98 +975,103 @@ export default async function ManageBusinessPage({
         </div>
       )}
 
-      {/* Business identity — a compact product header, not a dashboard
-          card: no enclosing box, no "Manage Business" eyebrow (redundant
-          with AccountNav's own active Business pill), Plan read as plain
-          emphasis text rather than a badge on every metadata item.
-          Business Manager V4 — no longer centered/width-capped: the
-          identity band now establishes context at the true top of a wide
-          operating surface, the same role Owner Command Center's own
-          identity header plays one level up. */}
-      <div className="flex items-center gap-3">
-        {business.logo_url ? (
-          <SupabaseImage
-            src={business.logo_url}
-            alt=""
-            width={44}
-            height={44}
-            className="h-11 w-11 shrink-0 rounded-xl border border-black/5 object-cover"
-          />
-        ) : (
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-findmi-50 font-display text-base font-bold text-findmi-700">
-            {business.name.charAt(0).toUpperCase()}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1">
-            <h1 className="truncate font-display text-xl font-bold tracking-tight text-ink">{business.name}</h1>
-            {/* Owner Shell V3 — persistent Business switcher. Never shown
-                for exactly one managed Business (the name stays plain,
-                non-interactive text) or for a pure admin-elevated session
-                (managedBusinesses is always empty there). Native
-                <details> — keyboard-operable (Enter/Space) with zero
-                client JS. */}
-            {showSwitcher && (
-              <details className="group relative shrink-0">
-                <summary
-                  aria-label="Switch business"
-                  className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full text-ink/35 transition hover:bg-black/[0.05] hover:text-ink [&::-webkit-details-marker]:hidden"
-                >
-                  <ChevronGlyph className="h-4 w-4 transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-2xl border border-black/10 bg-white p-1.5 shadow-lg">
-                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Switch Business</p>
-                  {managedBusinesses.map((b) => (
-                    <Link
-                      key={b.id}
-                      href={`/account/business/${b.id}?tab=${switcherTab}`}
-                      className={`block truncate rounded-xl px-2.5 py-2 text-sm font-semibold transition hover:bg-black/[0.03] ${
-                        b.id === id ? "text-findmi-700" : "text-ink"
-                      }`}
-                    >
-                      {b.name}
-                    </Link>
-                  ))}
-                </div>
-              </details>
-            )}
-          </div>
-          {/* One quiet metadata line — plan emphasis, location, and the
-              two secondary actions, separated by a plain middot rather
-              than each wrapped in its own badge/pill. The separator is
-              CSS-generated (`:not(:last-child)`) so it tracks whichever
-              items actually render (location/slug are conditional)
-              without any array-building in the JSX itself. Attached via
-              `:after` on the PRECEDING item (not `:before` on the
-              following one) deliberately — a flex item's own
-              pseudo-element is part of that same atomic item, so
-              flex-wrap can only ever break BETWEEN items, never inside
-              one; gluing the dot to the end of the item before it makes
-              an orphaned leading "·" at the start of a wrapped line
-              structurally impossible. */}
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-ink/45 [&>*:not(:last-child)]:after:ml-1.5 [&>*:not(:last-child)]:after:text-ink/25 [&>*:not(:last-child)]:after:content-['·']">
-            <span className={pro ? "font-semibold text-findmi-700" : ""}>{pro ? "Pro" : "Free"}</span>
-            {businessGeographyLabel && <span>{businessGeographyLabel}</span>}
-            {business.slug && (
-              <Link href={`/business/${business.slug}`} className="font-semibold text-ink/55 hover:text-ink">
-                View Profile
+      {/* Findmi Owner Product visual system (Sept 2026) — a compact
+          workspace identity band, not a mobile page header stretched
+          wide: 36px mark, tight name+Plan chip on one line, a single
+          quiet meta line below. This is the LAST time Plan/Settings/View
+          Profile need saying on this page — the sidebar/tab-strip below
+          is pure navigation, and Overview's own Public Presence row says
+          publication status once, not twice. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {business.logo_url ? (
+            <SupabaseImage
+              src={business.logo_url}
+              alt=""
+              width={36}
+              height={36}
+              className="h-9 w-9 shrink-0 rounded-lg border border-black/[0.06] object-cover"
+            />
+          ) : (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-findmi-50 font-display text-sm font-bold text-findmi-700">
+              {business.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h1 className="truncate font-display text-[17px] font-bold leading-tight tracking-tight text-ink">{business.name}</h1>
+              <Chip tone={pro ? "aqua" : "neutral"}>{pro ? "Pro" : "Free"}</Chip>
+              {/* Owner Shell V3 — persistent Business switcher. Never shown
+                  for exactly one managed Business, or for a pure admin-
+                  elevated session (managedBusinesses is always empty
+                  there). Native <details> — keyboard-operable with zero
+                  client JS. */}
+              {showSwitcher && (
+                <details className="group relative shrink-0">
+                  <summary
+                    aria-label="Switch business"
+                    className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full text-ink/35 transition hover:bg-black/[0.05] hover:text-ink [&::-webkit-details-marker]:hidden"
+                  >
+                    <ChevronGlyph className="h-4 w-4 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-black/[0.07] bg-white p-1.5 shadow-lg">
+                    <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Switch Business</p>
+                    {managedBusinesses.map((b) => (
+                      <Link
+                        key={b.id}
+                        href={`/account/business/${b.id}?tab=${switcherTab}`}
+                        className={`block truncate rounded-lg px-2.5 py-2 text-sm font-semibold transition hover:bg-black/[0.03] ${
+                          b.id === id ? "text-findmi-700" : "text-ink"
+                        }`}
+                      >
+                        {b.name}
+                      </Link>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+            {/* Mobile: a compact text-link fallback for the two secondary
+                actions the sm:+ button pair below covers — at 390px there
+                isn't room for a long Business name AND two real buttons
+                on one row, so mobile gets plain links on their own quiet
+                line instead of a squeezed/truncated header. */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-ink/40 sm:hidden">
+              {businessGeographyLabel && <span className="truncate">{businessGeographyLabel}</span>}
+              {business.slug && (
+                <Link href={`/business/${business.slug}`} className="font-semibold text-ink/55">
+                  View Profile
+                </Link>
+              )}
+              <Link href={`${basePath}?tab=settings`} className="font-semibold text-ink/55">
+                Settings
               </Link>
-            )}
-            <Link href={`${basePath}?tab=settings`} className="font-semibold text-ink/55 hover:text-ink">
-              Settings
-            </Link>
+            </div>
+            {businessGeographyLabel && <p className="hidden truncate text-[12px] text-ink/40 sm:block">{businessGeographyLabel}</p>}
           </div>
+        </div>
+        <div className="hidden shrink-0 items-center gap-2 sm:flex">
+          {business.slug && (
+            <Link href={`/business/${business.slug}`} className={secondaryButtonClass("sm")}>
+              View Public Page
+            </Link>
+          )}
+          <Link href={`${basePath}?tab=settings`} className={secondaryButtonClass("sm")}>
+            Settings
+          </Link>
         </div>
       </div>
 
-      {/* Primary Business navigation — plain text tabs with a restrained
-          selected indicator (a Findmi Aqua underline), not a row of filled
-          gray pills. Inactive destinations recede in color, not size, so
-          tap targets stay generous without visual weight. Business
-          Manager V4 — spans the real available width now instead of a
-          centered max-w-md strip; still a plain horizontally-scrolling
-          row at any width a founder-editable tab count could reach. */}
-      <nav aria-label="Business sections" className="mt-5 flex gap-5 overflow-x-auto border-b border-black/[0.06] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* MOBILE TAB STRIP — filled-Aqua active chip in a horizontally
+          scrolling row, same visual language AccountNav's own primary
+          row now uses (family resemblance, Owner-level nav vs Business-
+          level nav still distinguishable by position/context, not by
+          looking like two different products). Desktop hides this in
+          favor of the sidebar below. */}
+      <nav
+        aria-label="Business sections"
+        className="mt-4 flex gap-1.5 overflow-x-auto rounded-xl bg-black/[0.03] p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden"
+      >
         {visibleTabs.map((t) => {
           const active = t.key === activeTab;
           return (
@@ -1071,24 +1079,53 @@ export default async function ManageBusinessPage({
               key={t.key}
               href={`${basePath}?tab=${t.key}`}
               aria-current={active ? "page" : undefined}
-              className={`shrink-0 whitespace-nowrap border-b-2 py-2.5 text-sm transition ${
-                active ? "border-findmi font-bold text-ink" : "border-transparent font-medium text-ink/40 hover:text-ink/70"
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-bold transition ${
+                active ? "bg-findmi text-white shadow-sm" : "text-ink/45 hover:text-ink/70"
               }`}
             >
+              <NavIcon name={t.icon} className="h-3.5 w-3.5" />
               {t.label}
             </Link>
           );
         })}
       </nav>
 
-      {/* Business Manager V4 — the shared max-w-md cap that forced every
-          tab into one centered mobile-width column is gone; each tab's
-          own root element below now owns its width (a wide multi-region
-          composition for Overview/Where I'll Be/Analytics/Products, a
-          2-column card grid for Profile, and a deliberately narrower
-          centered column for the secondary Settings/Inquiries/Orders
-          tabs — see each tab's own root className). */}
-      <div className="mt-5">
+      {/* DESKTOP — a real sidebar workspace: Business-section navigation
+          in a fixed left rail, content in the wide column beside it.
+          This is the actual structural difference from a "webpage with
+          tabs": at 1440px an owner sees where they are AND has the rest
+          of the canvas for content simultaneously, the same spatial
+          language the Loom Spaces/Build A Dream references use for
+          their own left-nav workspace — Findmi's own module language
+          inside it, never their layout copied wholesale. */}
+      <div className="mt-5 lg:grid lg:grid-cols-[208px_1fr] lg:items-start lg:gap-8">
+        <aside className="hidden lg:sticky lg:top-[4.5rem] lg:block">
+          <nav aria-label="Business sections" className="flex flex-col gap-0.5">
+            {visibleTabs.map((t) => {
+              const active = t.key === activeTab;
+              return (
+                <Link
+                  key={t.key}
+                  href={`${basePath}?tab=${t.key}`}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-bold transition ${
+                    active ? "bg-findmi text-white shadow-sm" : "text-ink/55 hover:bg-black/[0.03] hover:text-ink"
+                  }`}
+                >
+                  <NavIcon name={t.icon} className="h-4 w-4 shrink-0" />
+                  {t.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </aside>
+
+        {/* Business Manager V4 — each tab's own root element below owns
+            its width/composition within this main column (a wide multi-
+            region layout for Overview/Where I'll Be/Analytics/Products,
+            a 2-column card grid for Profile, a narrower column for the
+            secondary Settings/Inquiries/Orders tabs). */}
+        <div className="min-w-0">
         {error && (
           <p className="mb-4 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
         )}
@@ -1147,179 +1184,131 @@ export default async function ManageBusinessPage({
             )}
 
             {business.publication_status === "pending_review" && (
-              <div className="max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm font-bold text-amber-800">Pending Review</p>
-                <p className="mt-1 text-sm text-amber-900/80">
-                  Your business is saved and you can continue building your profile. It will appear in Findmi
-                  discovery after review.
+              <div className="flex max-w-2xl items-center justify-between gap-3 rounded-lg bg-amber-50 px-3.5 py-2.5">
+                <p className="text-[13px] text-amber-900">
+                  <span className="font-bold">Pending Review</span> — visible to you now, live in discovery after Findmi reviews it.
                 </p>
-                {/* Onboarding UX Polish pass — explicit action into the
-                    existing authenticated owner-preview fallback
-                    (resolveOwnerPreviewBusiness, business/[slug]/page.tsx) —
-                    same page, just a clearer entry point than only finding it
-                    from /account's own business list. */}
                 {business.slug && (
-                  <Link
-                    href={`/business/${business.slug}`}
-                    className="mt-3 inline-flex text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
-                  >
-                    Preview Your Page →
+                  <Link href={`/business/${business.slug}`} className="shrink-0 text-[12px] font-bold text-amber-800 underline underline-offset-2">
+                    Preview →
                   </Link>
                 )}
               </div>
             )}
 
-            {/* Business Manager V4 — Overview becomes a real operating
-                surface at desktop width: mobile stacks in the same
-                priority order as before (Today -> Needs Attention ->
-                Coming Up -> a compact rail), DOM order unchanged; lg:
-                repositions a self-sized rail (Public Presence, What
-                You're Offering, Analytics, Findmi URL) alongside the main
-                column via CSS grid placement — the same technique Owner
-                Command Center's own grid already uses, not a copy of
-                Admin's. */}
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start lg:gap-6">
-              <div className="flex flex-col gap-5 lg:col-start-1 lg:col-span-2 lg:row-start-1">
+            {/* Findmi Owner Product visual system (Sept 2026) — a real
+                2-region workspace, not stacked cards. Main column: the
+                two things that change day to day (what needs a response,
+                what's coming up). Rail: ONE Panel of compact Rows for
+                everything else that's a single fact, not its own module
+                — Public Presence/Products/Analytics/Findmi URL used to be
+                four separate white cards; a business with "0 active
+                products" doesn't need 140px to say so. Mobile: same DOM
+                order, rail becomes the second stack. */}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_272px] lg:items-start lg:gap-6">
+              <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1">
                 {/* TODAY — the highest-urgency operational information.
-                    Omitted entirely (not a compact empty cue either) when
-                    nothing is happening today: no action is required, and
-                    Coming Up right below already answers "what's next." */}
+                    Omitted entirely when nothing is happening today. */}
                 {todayAppearances.length > 0 && (
-                  <OverviewSection title="Today">
+                  <Panel title="Today">
                     <ul className="flex flex-col gap-3">
                       {todayAppearances.map((a) => (
                         <DashboardAppearanceRow key={a.id} appearance={a} showDate={false} />
                       ))}
                     </ul>
-                  </OverviewSection>
+                  </Panel>
                 )}
 
                 {/* NEEDS ATTENTION — every item is derived from data
-                    already on this page (see buildNeedsAttentionItems);
-                    nothing here is a fabricated alert, and an item simply
-                    stops appearing once its underlying condition is
-                    resolved. A compact divided list, not one bordered card
-                    per item — hidden completely when there's nothing to
-                    surface (no "you're all caught up" filler). */}
+                    already on this page (buildNeedsAttentionItems);
+                    nothing here is a fabricated alert. ONE purposeful
+                    state: when there's nothing upcoming, its own
+                    "no-appearances" item already says so here — Coming Up
+                    below then omits its own empty-state line rather than
+                    repeating the same fact a second way. */}
                 {needsAttention.length > 0 && (
-                  <OverviewSection title="Needs Attention">
-                    <ul className="flex flex-col divide-y divide-black/[0.06]">
+                  <Panel title="Needs Attention" meta={<Chip tone="amber">{needsAttention.length}</Chip>}>
+                    <ul className="flex flex-col divide-y divide-black/[0.05]">
                       {needsAttention.map((item) => (
-                        <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                          <p className="min-w-0 text-sm text-ink/75">{item.message}</p>
-                          <Link
-                            href={item.actionHref}
-                            className="shrink-0 text-xs font-bold uppercase tracking-wide text-amber-800 underline underline-offset-2"
-                          >
+                        <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                          <p className="min-w-0 text-[13px] text-ink/70">{item.message}</p>
+                          <Link href={item.actionHref} className="shrink-0 text-[12px] font-bold text-findmi-700">
                             {item.actionLabel}
                           </Link>
                         </li>
                       ))}
                     </ul>
-                  </OverviewSection>
+                  </Panel>
                 )}
 
-                {/* COMING UP — a PREVIEW (next 3), not the full Schedule.
-                    Full management still lives in the existing Where I'll
-                    Be tab — no separate calendar UI built here. Unlike
-                    Today, this section always renders (even a business
-                    with nothing upcoming gets one compact line) since
-                    "where am I going next" deserves a direct answer either
-                    way. */}
-                <OverviewSection title="Coming Up" action={{ href: `${basePath}?tab=findmi-here`, label: "Where I'll Be" }}>
-                  {upcomingAppearances.length > 0 ? (
-                    <ul className="flex flex-col divide-y divide-black/[0.06]">
-                      {upcomingAppearances.slice(0, 3).map((a) => (
-                        <ComingUpRow key={a.id} appearance={a} />
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-ink/50">No upcoming appearances.</p>
-                  )}
-                </OverviewSection>
+                {/* WHERE I'LL BE — Findmi's own strongest operating
+                    concept, so it's the one entity-list section Overview
+                    still gives a real Panel: up to 3 upcoming, or (when
+                    Needs Attention doesn't already cover the empty case)
+                    a single compact next-action line. */}
+                {(upcomingAppearances.length > 0 || needsAttention.length === 0) && (
+                  <Panel
+                    title="Where I'll Be"
+                    padded={false}
+                    meta={<Link href={`${basePath}?tab=findmi-here`} className="text-[12px] font-bold text-findmi-700">Manage →</Link>}
+                  >
+                    {upcomingAppearances.length > 0 ? (
+                      <ul className="flex flex-col divide-y divide-black/[0.05]">
+                        {upcomingAppearances.slice(0, 3).map((a) => (
+                          <ComingUpRow key={a.id} appearance={a} />
+                        ))}
+                      </ul>
+                    ) : (
+                      <EmptyLine action={{ href: `${basePath}?tab=findmi-here`, label: "Add" }}>Nothing scheduled yet.</EmptyLine>
+                    )}
+                  </Panel>
+                )}
               </div>
 
-              <div className="flex flex-col gap-5 lg:col-start-3 lg:row-start-1">
-                {/* PUBLIC PRESENCE — "what does this Business currently
-                    look like to customers": plan, publication status, and
-                    the direct link the header's own View Profile already
-                    offers, reinforced here as its own compact rail module
-                    so it's visible alongside the rest of the workspace at
-                    desktop rather than scrolled past. Existing data only
-                    (pro/business.publication_status/business.slug). */}
-                <OwnerModule title="Public Presence">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className={`text-sm font-semibold ${pro ? "text-findmi-700" : "text-ink/60"}`}>{pro ? "Pro" : "Free"}</span>
-                    {business.publication_status === "pending_review" ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
-                        Pending Review
-                      </span>
+              <div className="lg:col-start-2 lg:row-start-1">
+                <Panel title="Business" padded={false}>
+                  <RowList>
+                    <Row
+                      label="Public status"
+                      value={
+                        business.publication_status === "pending_review" ? (
+                          <StatusDot tone="attention" label="Pending" />
+                        ) : (
+                          <StatusDot tone="positive" label="Published" />
+                        )
+                      }
+                    />
+                    {business.slug && <Row label="Public page" value="View →" href={`/business/${business.slug}`} />}
+                    {pro && (
+                      <Row
+                        label="Products"
+                        value={products.filter((p) => p.is_active).length > 0 ? `${products.filter((p) => p.is_active).length} active` : "Add first →"}
+                        href={`${basePath}?tab=products`}
+                      />
+                    )}
+                    <Row label="Analytics" value="View →" href={`${basePath}?tab=performance`} />
+                  </RowList>
+                  {/* FindMi Global Handle Registry — the Row grammar above
+                      is label/value-on-one-line; the URL itself (plus its
+                      Copy/Claim action) needs more room than that, so it
+                      gets the last slot in this same Panel instead of a
+                      Row, still inside the ONE consolidated "Business"
+                      module rather than a fifth separate card. */}
+                  <div className="border-t border-black/[0.05] px-4 py-3">
+                    {pro ? (
+                      <FindmiUrlCard
+                        entityType="business"
+                        entityId={id}
+                        entityLabel={business.name}
+                        currentHandle={businessHandle}
+                        action={updateBusinessHandle.bind(null, id)}
+                        quiet
+                      />
                     ) : (
-                      <span className="rounded-full bg-black/[0.05] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
-                        Published
-                      </span>
+                      <LockedFindmiUrl businessId={id} currentHandle={businessHandle} />
                     )}
                   </div>
-                  {business.slug && (
-                    <Link href={`/business/${business.slug}`} className="mt-2 inline-flex text-xs font-semibold text-findmi-700 underline underline-offset-2">
-                      View Public Page →
-                    </Link>
-                  )}
-                </OwnerModule>
-
-                {/* WHAT YOU'RE OFFERING — "what is this Business
-                    offering," using the SAME `products` array Products
-                    already fetched above (no new query). Only rendered
-                    when there's something real to show. */}
-                {pro && products.length > 0 && (
-                  <OwnerModule title="What You're Offering" meta={<Link href={`${basePath}?tab=products`} className="text-xs font-bold text-findmi-700 underline underline-offset-2">Products →</Link>}>
-                    <p className="text-sm text-ink/70">
-                      {products.filter((p) => p.is_active).length} active {products.filter((p) => p.is_active).length === 1 ? "product" : "products"}
-                    </p>
-                  </OwnerModule>
-                )}
-
-                {/* ANALYTICS SNAPSHOT — deferred to a contextual link
-                    rather than real numbers. getOwnerBusinessPerformance
-                    computes the FULL Analytics tab (multiple queries plus
-                    a current+previous-period analytics_events scan) —
-                    calling it here merely to read three headline numbers
-                    would add that entire cost to Overview, the
-                    most-visited tab, on every request. This stays a real,
-                    prominent link into the one existing Analytics
-                    implementation instead. */}
-                <OwnerModule title="Analytics">
-                  <p className="text-sm text-ink/50">See your reach and customer actions.</p>
-                  <Link href={`${basePath}?tab=performance`} className="mt-2 inline-flex text-xs font-semibold text-findmi-700 underline underline-offset-2">
-                    View Analytics →
-                  </Link>
-                </OwnerModule>
-
-                {/* FindMi Global Handle Registry — Free/Pro Entitlement
-                    pass — choosing/changing this handle is Pro-only
-                    (updateBusinessHandle enforces it server-side via
-                    requireProBusinessMember); Free renders a read-only
-                    variant instead, still copyable, with the same
-                    /upgrade/pro?business={id} link every other locked tab
-                    uses. */}
-                {/* No OwnerModule title here — FindmiUrlCard/LockedFindmiUrl
-                    already render their own "Findmi URL" label internally
-                    (see either component), so wrapping with a second title
-                    would just duplicate it. */}
-                <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
-                  {pro ? (
-                    <FindmiUrlCard
-                      entityType="business"
-                      entityId={id}
-                      entityLabel={business.name}
-                      currentHandle={businessHandle}
-                      action={updateBusinessHandle.bind(null, id)}
-                      quiet
-                    />
-                  ) : (
-                    <LockedFindmiUrl businessId={id} currentHandle={businessHandle} />
-                  )}
-                </div>
+                </Panel>
               </div>
             </div>
           </div>
@@ -1339,10 +1328,8 @@ export default async function ManageBusinessPage({
         {/* ── Profile ──────────────────────────────────────────────── */}
         {activeTab === "profile" && (
           <div className="flex flex-col gap-4 lg:max-w-5xl">
-          <div className={cardClass}>
+          <Panel title="Business Identity" meta={<span className="text-[11px] text-ink/40">What customers see</span>}>
             <form action={profileAction} className="flex flex-col gap-4">
-              <p className="font-display text-base font-bold tracking-tight text-ink">Business Basics</p>
-              <p className="-mt-2 text-xs text-ink/45">Control what customers see on your public Findmi profile.</p>
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
                 <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
@@ -1460,7 +1447,7 @@ export default async function ManageBusinessPage({
                 Save Profile
               </button>
             </form>
-          </div>
+          </Panel>
 
           {/* ── Gallery + Links & Contact (Owner Shell V3 — consolidated
               into Profile). Visual System Pass 1, Section 17: a Free
@@ -1487,18 +1474,16 @@ export default async function ManageBusinessPage({
               scroll — no change to either form's fields or action. */}
           {pro && (
           <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
-            <div className={cardClass}>
+            <Panel title="Gallery">
               <form action={galleryAction} className="flex flex-col gap-4">
-                <p className="font-display text-base font-bold tracking-tight text-ink">Gallery</p>
                 <MemberGalleryField businessId={id} name="gallery_image_url" initialUrls={galleryImages} />
                 <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
                   Save Gallery
                 </button>
               </form>
-            </div>
-            <div className={cardClass}>
+            </Panel>
+            <Panel title="Contact & Links">
               <form action={linksAction} className="flex flex-col gap-4">
-                <p className="font-display text-base font-bold tracking-tight text-ink">Contact &amp; Links</p>
                 {/* Free Basic Profile Editing pass — Website/Instagram
                     moved to the Business Basics section above (both tiers
                     edit them there now); this section keeps only what's
@@ -1589,7 +1574,7 @@ export default async function ManageBusinessPage({
                   Save Links &amp; Contact
                 </button>
               </form>
-            </div>
+            </Panel>
           </div>
           )}
           </div>
@@ -1610,27 +1595,20 @@ export default async function ManageBusinessPage({
             exact same actions as before. */}
         {activeTab === "products" &&
           (pro ? (
-            <div className="flex flex-col gap-5 lg:max-w-5xl">
+            <div className="flex flex-col gap-4 lg:max-w-5xl">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[13px] text-ink/50">
+                  {products.length > 0 ? `${products.length} in your catalog` : "Show customers what you make, sell or offer."}
+                </p>
+              </div>
               <details className="group" open={addProductHasDraft}>
-                <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                  <div className="min-w-0">
-                    <p className="font-display text-base font-bold tracking-tight text-ink">
-                      {products.length > 0 ? "Products" : "What do you offer?"}
-                    </p>
-                    <p className="mt-1 text-sm text-ink/60">
-                      {products.length > 0
-                        ? "Manage what customers can discover from your business."
-                        : "Add what you sell, make or offer."}
-                    </p>
-                  </div>
-                  <span className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
-                    <span className="group-open:hidden">{products.length > 0 ? "+ Add" : "+ Add Product"}</span>
-                    <span className="hidden group-open:inline">Close</span>
-                  </span>
+                <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-[13px] font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">{products.length > 0 ? "+ Add Product" : "+ Add Your First Product"}</span>
+                  <span className="hidden group-open:inline">Close</span>
                 </summary>
 
-                <div className="mt-4 rounded-2xl border border-black/10 p-4">
-                  <p className="text-sm font-bold text-ink">Add Product</p>
+                <div className={`mt-3 ${cardClass}`}>
+                  <p className="text-[13px] font-bold text-ink">Add Product</p>
                   <div className="mt-3">
                     <ProductFieldsForm
                       businessId={id}
@@ -1655,13 +1633,13 @@ export default async function ManageBusinessPage({
               </details>
 
               {products.length > 0 && (
-                <OwnerModule title="Catalog" meta={<span className="text-xs text-ink/40">{products.length} {products.length === 1 ? "product" : "products"}</span>}>
+                <Panel title="Catalog" padded={false}>
                 <ul className="flex flex-col divide-y divide-black/[0.06]">
                   {products.map((p) => {
                     const status = productDisplayStatus(p);
                     const priceLine = p.price != null ? `$${p.price}` : p.price_label || null;
                     return (
-                      <li key={p.id} className="py-3 first:pt-0 last:pb-0">
+                      <li key={p.id} className="px-4 py-3 first:pt-0 last:pb-0">
                         <details>
                           {/* Business Manager V4 — a real table-like row at
                               desktop (image, name, price, status, Edit as
@@ -1785,7 +1763,7 @@ export default async function ManageBusinessPage({
                     );
                   })}
                 </ul>
-                </OwnerModule>
+                </Panel>
               )}
             </div>
           ) : (
@@ -1817,22 +1795,15 @@ export default async function ManageBusinessPage({
                 eventOnlySchedule — an approved Event participation that
                 genuinely has upcoming activity but happens to have no
                 `appearances` row shouldn't read as "nothing scheduled." */}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[13px] text-ink/50">This is what customers see on your public Findmi profile.</p>
+            </div>
             <details className="group" open={addHasDraft}>
-              <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                <div className="min-w-0">
-                  <p className="font-display text-base font-bold tracking-tight text-ink">
-                    {appearances.length + eventOnlySchedule.length > 0 ? "Where I'll Be" : "Where will customers find you next?"}
-                  </p>
-                  <p className="mt-1 text-sm text-ink/60">
-                    {appearances.length + eventOnlySchedule.length > 0
-                      ? "This is what customers see on your public Findmi profile."
-                      : "Add your next market, pop-up, event or location."}
-                  </p>
-                </div>
-                <span className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
-                  <span className="group-open:hidden">{appearances.length + eventOnlySchedule.length > 0 ? "+ Add" : "+ Add Where I'll Be"}</span>
-                  <span className="hidden group-open:inline">Close</span>
+              <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-[13px] font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
+                <span className="group-open:hidden">
+                  {appearances.length + eventOnlySchedule.length > 0 ? "+ Add Where I'll Be" : "+ Add Your First Stop"}
                 </span>
+                <span className="hidden group-open:inline">Close</span>
               </summary>
 
               {/* ADD COMPOSER — one localized boundary only ("adding
@@ -1840,14 +1811,9 @@ export default async function ManageBusinessPage({
                   search-first, with the manual/independent path tucked
                   behind its own progressive disclosure so its full form
                   doesn't permanently occupy the page. Neither path is
-                  framed as OPTION 1/2 or as inferior to the other.
-                  V3.1 — EventSearchPicker now owns its own "Search Findmi"
-                  label plus the Note/Apply controls that used to render
-                  here unconditionally (see that file's own note): they
-                  only exist once an Event is actually selected, so this
-                  wrapper is just the <form> and the empty-state message. */}
-              <div className="mt-4 rounded-2xl border border-black/10 p-4">
-                <p className="text-sm font-bold text-ink">Add Where I&rsquo;ll Be</p>
+                  framed as OPTION 1/2 or as inferior to the other. */}
+              <div className={`mt-3 ${cardClass}`}>
+                <p className="text-[13px] font-bold text-ink">Add Where I&rsquo;ll Be</p>
 
                 {requestOptions.length > 0 ? (
                   <form action={addFromEvent} className="mt-3">
@@ -1857,7 +1823,7 @@ export default async function ManageBusinessPage({
                   <p className="mt-3 text-sm text-ink/50">No upcoming Findmi events available right now.</p>
                 )}
 
-                <details className="mt-4 border-t border-black/10 pt-3" open={addHasDraft}>
+                <details className="mt-4 border-t border-black/[0.07] pt-3" open={addHasDraft}>
                   <summary className="cursor-pointer text-xs font-semibold text-findmi-700 [&::-webkit-details-marker]:hidden">
                     Can&rsquo;t find it? Add somewhere else
                   </summary>
@@ -1873,6 +1839,12 @@ export default async function ManageBusinessPage({
               </div>
             </details>
 
+            {appearances.length + eventOnlySchedule.length === 0 && (
+              <Panel padded={false}>
+                <EmptyLine>No upcoming stops yet — add where you&rsquo;ll be to appear on your public profile.</EmptyLine>
+              </Panel>
+            )}
+
             {/* EXISTING APPEARANCES — a bounded module (a real, coherent
                 operating concept — Findmi's own approved rule for when a
                 boundary earns its place), flat divided rows inside it. Edit
@@ -1884,8 +1856,8 @@ export default async function ManageBusinessPage({
                 both preserved but quiet — status gets restrained emphasis
                 only when it isn't the expected/approved state. */}
             {(appearances.length > 0 || eventOnlySchedule.length > 0) && (
-              <OwnerModule title="Upcoming">
-              <ul className="flex flex-col divide-y divide-black/[0.06]">
+              <Panel title="Upcoming" padded={false}>
+              <ul className="flex flex-col divide-y divide-black/[0.05]">
                 {appearances.map((a) => {
                   const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
                   const storedEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
@@ -1923,12 +1895,17 @@ export default async function ManageBusinessPage({
                       };
                   const locationLine = [a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
                   return (
-                    <li key={a.id} className="py-3 first:pt-0 last:pb-0">
+                    <li key={a.id} className="px-4 py-3 first:pt-0 last:pb-0">
                       <details open={isEditing}>
-                        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                          <div className="min-w-0">
+                        <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
+                          <ScheduleDateBadge iso={a.start_at} />
+                          <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
-                            <p className="mt-0.5 text-xs text-ink/50">
+                            <p className="mt-0.5 truncate text-xs text-ink/50">
+                              {formatTime(a.start_at)}–{formatTime(a.end_at)}
+                              {locationLine && ` · ${locationLine}`}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-ink/40">
                               {a.event_id ? "Findmi Event" : "Added by you"}
                               {a.participationStatus && (
                                 <>
@@ -1939,10 +1916,6 @@ export default async function ManageBusinessPage({
                                 </>
                               )}
                             </p>
-                            <p className="mt-0.5 text-xs text-ink/60">
-                              {formatDateShort(a.start_at)} · {formatTime(a.start_at)}–{formatTime(a.end_at)}
-                            </p>
-                            {locationLine && <p className="mt-0.5 truncate text-xs text-ink/50">{locationLine}</p>}
                           </div>
                           <span className="shrink-0 text-xs font-semibold text-findmi-700">Edit</span>
                         </summary>
@@ -1973,27 +1946,26 @@ export default async function ManageBusinessPage({
                     source). Same row grammar, "View Event" instead of
                     Edit. */}
                 {eventOnlySchedule.map((e) => (
-                  <li key={e.key} className="py-3 first:pt-0 last:pb-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">{e.title}</p>
-                        <p className="mt-0.5 text-xs text-ink/50">Findmi Event · Confirmed</p>
-                        <p className="mt-0.5 text-xs text-ink/60">
-                          {formatDateShort(e.startAt)} · {formatTime(e.startAt)}
-                          {e.endAt && `–${formatTime(e.endAt)}`}
-                        </p>
-                        {e.where && <p className="mt-0.5 truncate text-xs text-ink/50">{e.where}</p>}
-                      </div>
-                      {e.href && (
-                        <Link href={e.href} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
-                          View Event
-                        </Link>
-                      )}
+                  <li key={e.key} className="flex items-center gap-3 px-4 py-3 first:pt-0 last:pb-0">
+                    <ScheduleDateBadge iso={e.startAt} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink">{e.title}</p>
+                      <p className="mt-0.5 truncate text-xs text-ink/50">
+                        {formatTime(e.startAt)}
+                        {e.endAt && `–${formatTime(e.endAt)}`}
+                        {e.where && ` · ${e.where}`}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-ink/40">Findmi Event · Confirmed</p>
                     </div>
+                    {e.href && (
+                      <Link href={e.href} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+                        View Event
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>
-              </OwnerModule>
+              </Panel>
             )}
 
             {/* Schedule Scale Bound pass — a quiet continuation control,
@@ -2545,6 +2517,7 @@ export default async function ManageBusinessPage({
             ?tab=referral redirects there whenever referralPartner exists
             (see the redirect logic above); activeTab can never equal
             "referral" by the time rendering reaches here. */}
+        </div>
       </div>
     </div>
   );
@@ -2623,10 +2596,7 @@ function UpgradeLockedTab({
         <AdminElevatedActionNotice businessId={businessId} />
       ) : (
         <>
-          <Link
-            href={`/upgrade/pro?business=${businessId}`}
-            className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-          >
+          <Link href={`/upgrade/pro?business=${businessId}`} className={`mt-3 ${primaryButtonClass}`}>
             Upgrade to Pro
           </Link>
           <div className="mt-3">
@@ -2658,36 +2628,6 @@ function AdminElevatedActionNotice({ businessId }: { businessId: string }) {
       >
         Exit Admin Mode
       </Link>
-    </div>
-  );
-}
-
-/** Command Center V2 — the flat section grammar Analytics established
- * (PerformanceTab.tsx's own private Section()): a title, an optional
- * right-aligned link, content, and a thin top divider as the section
- * boundary — no enclosing card. Reimplemented locally rather than
- * imported/exported, since Analytics isn't otherwise touched this pass
- * and its Section() is a small, private, single-file primitive. */
-function OverviewSection({
-  title,
-  action,
-  children,
-}: {
-  title: string;
-  action?: { href: string; label: string };
-  children: ReactNode;
-}) {
-  return (
-    <div className="border-t border-black/[0.06] pt-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-base font-bold tracking-tight text-ink">{title}</h2>
-        {action && (
-          <Link href={action.href} className="shrink-0 text-xs font-semibold text-findmi-700 underline underline-offset-2">
-            {action.label}
-          </Link>
-        )}
-      </div>
-      <div className="mt-3">{children}</div>
     </div>
   );
 }
@@ -2741,45 +2681,44 @@ function DashboardAppearanceRow({ appearance, showDate }: { appearance: Dashboar
     .filter(Boolean)
     .join(" · ");
   return (
-    <li className="rounded-2xl border border-black/10 p-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                appearance.temporal.live ? "bg-findmi text-white" : "bg-black/[0.06] text-ink/50"
-              }`}
-            >
-              {appearance.temporal.label}
-            </span>
-            <p className="truncate text-sm font-semibold text-ink">{appearance.title}</p>
-          </div>
-          <p className="mt-1 text-xs text-ink/60">
-            {showDate ? `${formatDateShort(appearance.startAt)} · ` : ""}
-            {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
+    <li className="flex items-center gap-3 rounded-lg bg-findmi-50/60 px-3 py-2.5">
+      {appearance.temporal.live ? (
+        <span className="flex w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-findmi py-1.5 text-white">
+          <LiveDotSmall />
+          <span className="text-[7px] font-extrabold uppercase tracking-wide">Now</span>
+        </span>
+      ) : (
+        <ScheduleDateBadge iso={appearance.startAt} />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-ink">{appearance.title}</p>
+        <p className="mt-0.5 truncate text-xs text-ink/50">
+          {showDate ? `${formatDateShort(appearance.startAt)} · ` : ""}
+          {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
+          {locationLine && ` · ${locationLine}`}
+        </p>
+        {appearance.eventName && (
+          <p className="mt-0.5 truncate text-[11px] text-ink/40">
+            Part of{" "}
+            {appearance.eventHref ? (
+              <Link href={appearance.eventHref} className="underline underline-offset-2">
+                {appearance.eventName}
+              </Link>
+            ) : (
+              appearance.eventName
+            )}
           </p>
-          {locationLine && <p className="mt-0.5 truncate text-xs text-ink/50">{locationLine}</p>}
-          {appearance.geographyLabel && <p className="mt-0.5 text-xs text-ink/40">{appearance.geographyLabel}</p>}
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-findmi-700">
-              {appearance.statusLabel}
-            </span>
-            {appearance.eventName &&
-              (appearance.eventHref ? (
-                <Link href={appearance.eventHref} className="text-[11px] text-ink/45 underline underline-offset-2">
-                  Part of {appearance.eventName}
-                </Link>
-              ) : (
-                <span className="text-[11px] text-ink/45">Part of {appearance.eventName}</span>
-              ))}
-          </div>
-        </div>
-        <Link href={appearance.editHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
-          Manage
-        </Link>
+        )}
       </div>
+      <Link href={appearance.editHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+        Manage
+      </Link>
     </li>
   );
+}
+
+function LiveDotSmall() {
+  return <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />;
 }
 
 /** Command Center V3.1 — the compact Coming Up row (live QA correction).
@@ -2798,35 +2737,49 @@ function ComingUpRow({ appearance }: { appearance: DashboardAppearance }) {
   const venueLine = [appearance.venueName, [appearance.city, appearance.state].filter(Boolean).join(", ")]
     .filter(Boolean)
     .join(", ");
-  const detailLine = [
-    formatDateShort(appearance.startAt),
-    `${formatTime(appearance.startAt)}–${formatTime(appearance.endAt)}`,
-    venueLine,
-    appearance.geographyLabel,
-  ]
-    .filter(Boolean)
-    .join(" · ");
   return (
-    <li className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-      <div className="min-w-0">
+    <li className="flex items-center gap-3 px-4 py-2.5 first:pt-3 last:pb-3">
+      <ScheduleDateBadge iso={appearance.startAt} />
+      <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-ink">{appearance.title}</p>
-        <p className="mt-0.5 truncate text-xs text-ink/50">{detailLine}</p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
-          <span className="font-semibold text-findmi-700">{appearance.statusLabel}</span>
-          {appearance.eventName &&
-            (appearance.eventHref ? (
-              <Link href={appearance.eventHref} className="text-ink/45 underline underline-offset-2">
-                Part of {appearance.eventName}
+        <p className="mt-0.5 truncate text-xs text-ink/50">
+          {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
+          {venueLine && ` · ${venueLine}`}
+        </p>
+        {appearance.eventName && (
+          <p className="mt-0.5 truncate text-[11px] text-ink/40">
+            Part of{" "}
+            {appearance.eventHref ? (
+              <Link href={appearance.eventHref} className="underline underline-offset-2">
+                {appearance.eventName}
               </Link>
             ) : (
-              <span className="text-ink/45">Part of {appearance.eventName}</span>
-            ))}
-        </p>
+              appearance.eventName
+            )}
+          </p>
+        )}
       </div>
       <Link href={appearance.editHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
         Manage
       </Link>
     </li>
+  );
+}
+
+/** Findmi Owner Product visual system — a compact month/day box, the
+ * same "date column" scanning aid a real schedule-management surface
+ * needs (the Loom references' own quality bar this pass targets), used
+ * for both Where I'll Be's real Appearance rows and its event-only
+ * participation rows so the two read as one consistent schedule list. */
+function ScheduleDateBadge({ iso }: { iso: string }) {
+  const d = new Date(iso);
+  return (
+    <span className="flex w-11 shrink-0 flex-col items-center justify-center rounded-lg bg-black/[0.04] py-1.5">
+      <span className="text-[9px] font-bold uppercase tracking-wide text-ink/45">
+        {d.toLocaleDateString("en-US", { month: "short" })}
+      </span>
+      <span className="font-display text-sm font-bold leading-none text-ink">{d.getDate()}</span>
+    </span>
   );
 }
 
