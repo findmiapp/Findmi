@@ -314,34 +314,80 @@ export async function EventPublicView({ slug }: { slug: string }) {
         )}
       </div>
 
-      {/* Public Message Action + Event CTA Cohesion pass — MESSAGE lives
-          HERE now: a fixed primary row directly below the details card,
-          never inside the horizontally-scrollable Tier B utility rail
-          below (a visitor previously had to swipe to even discover it).
-          When the organizer has a legacy (non-recurring) event's own
-          external "Apply to Vend" CTA configured, it's paired right here
-          — [ MESSAGE ] [ APPLY TO VEND ] — both the same h-11/rounded-lg/
-          text-sm/font-bold/uppercase geometry, so they read as a matched
-          pair; Apply to Vend keeps its exact existing href/displayMode
-          (see legacyVendorApplyCta above), only its position/radius
-          changed. A recurring event's own Apply to Vend is occurrence-
-          dependent (resolved client-side inside EventScheduleCtas below,
-          per whichever date is selected) and isn't knowable at this
-          server-render point, so it stays exactly where it already was;
-          MESSAGE still renders alone in this same fixed row for that
-          case, so it's never buried in the scroller either way.
+      {/* Tier A — the strongest, organizer-configured actions, PRIMARY
+          EVENT ACTION per the public composition hierarchy (Public
+          Experience V5: identity -> when -> where -> primary action ->
+          relationship content). Moved ahead of the Message/Directions/
+          Apply-to-Vend row below — Tickets/RSVP is what most visitors
+          actually came to do, so it belongs first, not after a row of
+          secondary actions. For a recurring event, the selected
+          occurrence's own RSVP/ticket/vendor-apply override (if any) wins
+          over the parent's resolved action — see EventScheduleCtas; a
+          legacy event keeps the exact original server-resolved customCtas
+          rendering below (minus Apply to Vend, in the secondary row below
+          instead — see legacyTierACtas). */}
+      {hasOccurrences ? (
+        <EventScheduleCtas
+          eventId={event.id}
+          ticketsEnabled={event.tickets_enabled}
+          ticketsUrl={event.tickets_url}
+          rsvpEnabled={event.rsvp_enabled}
+          rsvp={rsvpForm}
+          vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
+          vendorApplication={vendorAppForm}
+        />
+      ) : (
+        legacyTierACtas.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2.5">
+            {legacyTierACtas.map((action) => (
+              <FormAction
+                key={action.label}
+                href={action.href}
+                displayMode={action.displayMode}
+                label={action.label}
+                className={
+                  action.weight === "solid"
+                    ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                }
+                track={{
+                  event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
+                  subject_type: "event",
+                  subject_id: event.id,
+                  event_id: event.id,
+                }}
+              />
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Secondary actions — Message/Directions/Apply-to-Vend, one shared
+          h-11/rounded-lg/outline geometry so they read as one visual tier
+          BELOW Tier A's stronger treatment, never competing with it for
+          attention. MESSAGE lives here rather than the horizontally-
+          scrollable utility rail further down (a visitor previously had
+          to swipe to even discover it). When the organizer has a legacy
+          (non-recurring) event's own external "Apply to Vend" CTA
+          configured, it's paired right here; it keeps its exact existing
+          href/displayMode (see legacyVendorApplyCta above), only its
+          position/radius changed. A recurring event's own Apply to Vend
+          is occurrence-dependent (resolved client-side inside
+          EventScheduleCtas above, per whichever date is selected) and
+          isn't knowable at this server-render point, so it stays exactly
+          where it already was; MESSAGE still renders alone in this row
+          for that case.
 
           Directions/Location IA pass (Public Experience V4) — Directions
-          now sits in this same fixed row too, same h-11 geometry as
-          Apply to Vend, instead of the horizontally-scrollable Tier B
-          rail it used to share with Save/Add to Calendar/Share/Contact.
-          It stays a quiet outline pill (never Tier A weight — Tickets/
-          RSVP/Apply to Vend keep the strongest visual treatment when an
-          organizer has configured them), but a visitor no longer has to
-          discover it by swiping. Location's own NAME link (a different
-          intent — "what/where is this place" vs. "get me there") is
-          unaffected, still rendered separately in the details card above
-          and "About the Venue" below. */}
+          sits in this same row, same h-11 geometry, instead of the
+          horizontally-scrollable Tier B rail it used to share with Save/
+          Add to Calendar/Share/Contact. It stays a quiet outline pill
+          (Tickets/RSVP/Apply to Vend above keep the strongest visual
+          treatment when an organizer has configured them), but a visitor
+          no longer has to discover it by swiping. Location's own NAME
+          link (a different intent — "what/where is this place" vs. "get
+          me there") is unaffected, still rendered separately in the
+          details card above and "About the Venue" below. */}
       <div className="mt-4 flex flex-wrap items-center gap-2.5">
         {showMessageButton && (
           <MessageButton
@@ -378,49 +424,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
           />
         )}
       </div>
-
-      {/* Tier A — the strongest, organizer-configured actions. For a
-          recurring event, the selected occurrence's own RSVP/ticket/
-          vendor-apply override (if any) wins over the parent's resolved
-          action — see EventScheduleCtas; a legacy event keeps the exact
-          original server-resolved customCtas rendering below (minus
-          Apply to Vend, now in the primary row above — see
-          legacyTierACtas). */}
-      {hasOccurrences ? (
-        <EventScheduleCtas
-          eventId={event.id}
-          ticketsEnabled={event.tickets_enabled}
-          ticketsUrl={event.tickets_url}
-          rsvpEnabled={event.rsvp_enabled}
-          rsvp={rsvpForm}
-          vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
-          vendorApplication={vendorAppForm}
-        />
-      ) : (
-        legacyTierACtas.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-2.5">
-            {legacyTierACtas.map((action) => (
-              <FormAction
-                key={action.label}
-                href={action.href}
-                displayMode={action.displayMode}
-                label={action.label}
-                className={
-                  action.weight === "solid"
-                    ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-                }
-                track={{
-                  event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
-                  subject_type: "event",
-                  subject_id: event.id,
-                  event_id: event.id,
-                }}
-              />
-            ))}
-          </div>
-        )
-      )}
 
       {/* Tier B — supporting utility actions, visually quiet, grouped
           together and separate from Tier A above. Mobile layout pass: a

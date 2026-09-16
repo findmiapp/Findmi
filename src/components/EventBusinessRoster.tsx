@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import BusinessLogoCard from "./BusinessLogoCard";
+import SupabaseImage from "./SupabaseImage";
 import { HorizontalScroller } from "./Section";
+import { cityState } from "@/lib/format";
 import type { EventBusinessListing } from "@/lib/data";
 
 export default function EventBusinessRoster({
@@ -125,9 +128,20 @@ export default function EventBusinessRoster({
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Density pass (Public Experience V5) — the complete roster used the
+          same rich vertical BusinessLogoCard (16:10 photo + overlapping
+          logo) the Featured Vendors rail above uses, which reads great for
+          a small curated set but got extremely tall on mobile once an
+          event confirms a real-sized roster (grid-cols-1 stacking N full
+          photo cards). Featured Vendors keeps that richer treatment (it's
+          a small, curated highlight set); the full A-Z roster below uses
+          RosterListItem instead — still genuinely image-led (a real
+          logo/cover thumbnail, never a bare gray row) but compact enough
+          that several businesses can be scanned without each consuming a
+          near-full viewport. */}
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((b) => (
-          <RosterCard key={b.id} business={b} />
+          <RosterListItem key={b.id} business={b} />
         ))}
       </div>
     </div>
@@ -138,7 +152,59 @@ export default function EventBusinessRoster({
 // preview card as Brands We Love / Discover More Like This, rather than
 // CompactCard's small generic image tile — "Find Them" is passed through
 // as the roster's own CTA copy via BusinessLogoCard's now-configurable
-// ctaLabel (item 6).
+// ctaLabel (item 6). Still used for the Featured Vendors rail above.
 function RosterCard({ business }: { business: EventBusinessListing }) {
   return <BusinessLogoCard business={business} ctaLabel="Find Them" />;
+}
+
+/** Compact, image-led roster row — Public Experience V5 (see the grid's
+ * own comment above). A real logo/cover thumbnail keeps this from reading
+ * as a plain directory row, at a fraction of BusinessLogoCard's height. */
+function RosterListItem({ business }: { business: EventBusinessListing }) {
+  const meta = [business.categories[0]?.name, cityState(business.city, business.state)].filter(Boolean).join(" · ");
+  const thumb = business.logo_url ?? business.cover_image_url;
+
+  return (
+    <Link
+      href={`/business/${business.slug}`}
+      className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3 transition active:scale-[0.99] hover:border-black/10 hover:shadow-sm"
+    >
+      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-black/[0.04] sm:h-16 sm:w-16">
+        {thumb ? (
+          <SupabaseImage
+            src={thumb}
+            alt=""
+            fill
+            sizes="64px"
+            className={business.logo_url ? "object-contain p-1.5" : "object-cover"}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone to-ink">
+            <StorefrontGlyph className="h-6 w-6 text-white/25" />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-display text-sm font-bold text-ink">{business.name}</p>
+        {meta && <p className="mt-0.5 truncate text-xs text-ink/55">{meta}</p>}
+      </div>
+      <span className="shrink-0 rounded-full bg-findmi-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700">
+        Find Them
+      </span>
+    </Link>
+  );
+}
+
+function StorefrontGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M4 9.5L5 4h14l1 5.5M4 9.5a2.2 2.2 0 004.3.7M4 9.5a2.2 2.2 0 004.3.7m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.3-.7M5 10v9.5a1 1 0 001 1h5v-6h2v6h5a1 1 0 001-1V10"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }

@@ -13,7 +13,7 @@ import ShareButton from "@/components/ShareButton";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
-import { HappeningCard, HappeningRow } from "@/components/HappeningCard";
+import { HappeningFeatureCard, HappeningRow } from "@/components/HappeningCard";
 import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
 import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, isOpenNow } from "@/lib/locationHours";
@@ -174,89 +174,84 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* 3. Action row — Tier A (Directions + Message) fixed, always
-          visible without scrolling, matching Event's own [ MESSAGE ]
-          [ APPLY TO VEND ] fixed-primary-row geometry (h-11/rounded-lg).
-          Directions leads (solid aqua) since a Location's physical place
-          IS the point of the page. Tier B (Website/Call/Email/Save) is a
-          quiet, horizontally-scrollable pill rail below — same treatment
-          Event's own Directions/Save/Share/Contact rail already uses —
-          so no giant stacked buttons and no clipped labels at any width.
-          Every action only renders when its underlying data exists. */}
+      {/* 3. Action row (Public Experience V5) — Directions used to be a
+          giant solid full-color pill, the single largest object on the
+          page after the cover, isolated above a separate horizontally-
+          scrolling utility rail. Redesigned into one coherent, equally-
+          weighted secondary-action cluster — Directions/Message/Website/
+          Call — all the same compact outline geometry (matches
+          MessageButton's own "compact" h-9/rounded-lg treatment), so
+          Directions stays easy and obvious without dominating the page or
+          being visually isolated. flex-wrap (never horizontal scroll) —
+          every essential action stays reachable at 360px by wrapping to a
+          second line rather than requiring a swipe. Save/Share are true
+          utilities now: a separate, smaller row, always shown regardless
+          of whether Website/Call/Email exist (Save/Share never depended
+          on contact info existing). Every action still only renders when
+          its underlying data exists. */}
       <div className="px-4 sm:px-0">
-        <div className="mt-4 flex flex-wrap items-center gap-2.5">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {directionsHref && (
             <AnalyticsLink
               href={directionsHref}
               target="_blank"
               rel="noreferrer"
-              className="flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
               trackPayload={{ event_name: "click_directions", subject_type: "location", subject_id: location.id, location_id: location.id }}
             >
-              Get Directions
+              <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
+              Directions
             </AnalyticsLink>
           )}
           {showMessageButton && (
-            <MessageButton size="default" targetType="location" targetId={location.id} targetName={location.name} />
+            <MessageButton size="compact" targetType="location" targetId={location.id} targetName={location.name} />
+          )}
+          {website && (
+            <a
+              href={website}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+            >
+              <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
+              Website
+            </a>
+          )}
+          {location.phone && (
+            <a
+              href={`tel:${location.phone}`}
+              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+            >
+              <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
+              Call
+            </a>
+          )}
+          {/* Unify Site-Wide Communications pass — this pill no longer
+              exposes location.email directly via mailto; it opens the
+              native Venue Contact inquiry form instead
+              (subject_type='venue_inquiry'), gated on the exact same
+              "does this venue have contact info on file" condition as
+              before. */}
+          {location.email && (
+            <InquireButton
+              targetType="location"
+              targetId={location.id}
+              targetName={location.name}
+              label="Contact"
+              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+            />
           )}
         </div>
 
-        {(website || location.phone || location.email) && (
-          <div className="mt-2.5 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex w-max items-center gap-2">
-              <div className="shrink-0">
-                <LocationSaveButton slug={location.slug} id={location.id} />
-              </div>
-              {/* Public Graph Integrity Pass 1 — Share as a compact,
-                  icon-only utility alongside Save, same rail Website/
-                  Call/Contact already use. Directions stays the sole
-                  primary CTA above; this never competes with it. */}
-              <div className="shrink-0">
-                <ShareButton
-                  url={canonicalUrl}
-                  title={location.name}
-                  variant="icon"
-                  track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
-                />
-              </div>
-              {website && (
-                <a
-                  href={website}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-                >
-                  <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
-                  Website
-                </a>
-              )}
-              {location.phone && (
-                <a
-                  href={`tel:${location.phone}`}
-                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-                >
-                  <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
-                  Call
-                </a>
-              )}
-              {/* Unify Site-Wide Communications pass — this pill no
-                  longer exposes location.email directly via mailto; it
-                  opens the native Venue Contact inquiry form instead
-                  (subject_type='venue_inquiry'), gated on the exact same
-                  "does this venue have contact info on file" condition
-                  as before. */}
-              {location.email && (
-                <InquireButton
-                  targetType="location"
-                  targetId={location.id}
-                  targetName={location.name}
-                  label="Contact"
-                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-                />
-              )}
-            </div>
-          </div>
-        )}
+        <div className="mt-2.5 flex items-center gap-2">
+          <LocationSaveButton slug={location.slug} id={location.id} />
+          <ShareButton
+            url={canonicalUrl}
+            title={location.name}
+            variant="icon"
+            track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
+          />
+        </div>
       </div>
 
       <div className="px-4 sm:px-0">
@@ -282,7 +277,21 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             LARGER set gets exactly ONE featured card for the very next
             happening, then the genuine remainder (never re-including that
             first item) as a compact chronological schedule below it.
-            Either branch enumerates every happening exactly once. */}
+            Either branch enumerates every happening exactly once.
+
+            Density pass (Public Experience V5) — the V4 fix above stopped
+            the duplication, but for the single-item case it still used
+            HappeningCard, a full-bleed aspect-[3/4] photo poster that
+            consumed nearly an entire mobile viewport for one relationship.
+            Coming Up Here is meant to feel like one of the most important
+            Location modules, not one enormous poster — so every branch
+            now uses HappeningFeatureCard, a compact card with a real but
+            modestly-sized thumbnail (see that component's own note), and
+            <=3 items lay out in a responsive grid so 2-3 upcoming
+            happenings can be scanned without each claiming a full
+            viewport. 4+ still gets one featured card for the nearest
+            happening plus HappeningRow (no thumbnail at all) for the
+            rest, the most compact tier for a real schedule. */}
         <section className="mt-8">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">Coming Up Here</h2>
 
@@ -292,17 +301,17 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             <>
               <p className="mt-1 text-sm text-ink/55">{happenings.length} upcoming</p>
               {happenings.length <= 3 ? (
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {happenings.map((h) => (
-                    <HappeningCard key={h.id} item={h} />
+                    <HappeningFeatureCard key={h.id} item={h} />
                   ))}
                 </div>
               ) : (
                 <>
-                  <div className="mt-4 max-w-sm">
-                    <HappeningCard item={happenings[0]} />
+                  <div className="mt-4 max-w-xl">
+                    <HappeningFeatureCard item={happenings[0]} />
                   </div>
-                  <div className="mt-4 flex flex-col gap-3">
+                  <div className="mt-3 flex flex-col gap-3">
                     {happenings.slice(1).map((h) => (
                       <HappeningRow key={h.id} item={h} />
                     ))}
@@ -416,6 +425,16 @@ function PhoneGlyph({ className }: { className?: string }) {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+// Same glyph/sizing convention as Event's own Directions pill (h-3.5 w-3.5,
+// strokeWidth 1.8, currentColor).
+function DirectionsGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M12 2L4.5 20.5l.9.9L12 18l6.6 3.4.9-.9L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
     </svg>
   );
 }
