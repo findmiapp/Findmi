@@ -40,7 +40,12 @@ export function ModulePanel({
  * (low-signal pipeline counters like Inquiries/Orders when they're near
  * zero) is deliberately quieter — same cell shape, different weight, so
  * eight metrics don't compete as equals when they aren't operationally
- * equal. Never a card of its own. */
+ * equal. Never a card of its own.
+ *
+ * V5.1 correction — mobile vertical padding tightened (py-2, was 2.5) so
+ * six cells take noticeably less height on a phone; `sm:` and up is
+ * untouched (still py-2.5), preserving the approved V5 desktop/tablet
+ * density exactly. */
 export function MetricCell({
   label,
   count,
@@ -53,7 +58,7 @@ export function MetricCell({
   tone?: "primary" | "secondary";
 }) {
   return (
-    <Link href={href} className="flex flex-col gap-0.5 px-3 py-2.5 transition hover:bg-black/[0.02] sm:px-4">
+    <Link href={href} className="flex flex-col gap-0.5 px-3 py-2 transition hover:bg-black/[0.02] sm:px-4 sm:py-2.5">
       <span
         className={
           tone === "primary"

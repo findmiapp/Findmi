@@ -124,6 +124,12 @@ export default async function AdminDashboardPage() {
     : [];
   const activeAttentionItems = attentionQueue.filter((item) => item.count > 0);
   const attentionCount = activeAttentionItems.length;
+  // V5.1 correction — Inquiries/Orders footer only renders once one of
+  // them has something to show; treated as "nothing to show" when the
+  // count is genuinely 0 OR unavailable (no service-role access) alike,
+  // since a bare "—" footer is exactly the same weak noise as "0".
+  const hasInquiries = Boolean(glance?.inquiries);
+  const hasOrders = Boolean(counts?.orders);
 
   return (
     <div className="pb-10">
@@ -167,30 +173,32 @@ export default async function AdminDashboardPage() {
         {/* NEEDS ATTENTION — mobile: first (answers "what needs me").
             Desktop: right rail, self-sized (never stretched to match the
             left column's combined height). Preserve logic: existing
-            queues only, empty state compact, active state prominent. */}
+            queues only.
+            V5.1 correction — an EMPTY queue no longer renders the full
+            ModulePanel (header + border + padded body for a single
+            sentence was too much space for "nothing to do"): it collapses
+            to one compact status row instead, so Platform Snapshot starts
+            materially sooner on mobile. An ACTIVE queue is completely
+            unchanged — still the full operational module, unreduced. */}
         <div className="lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:self-start">
-          {needsAttention && (
-            <ModulePanel
-              title="Needs Attention"
-              meta={
-                attentionCount > 0 ? (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">{attentionCount}</span>
-                ) : (
-                  <span className="text-xs font-semibold text-emerald-700">Clear ✓</span>
-                )
-              }
-            >
-              {attentionCount === 0 ? (
-                <p className="text-sm text-ink/50">Nothing needs your review right now.</p>
-              ) : (
+          {needsAttention &&
+            (attentionCount === 0 ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-emerald-50/60 px-3.5 py-2.5">
+                <span className="text-sm font-medium text-ink/60">Needs Attention</span>
+                <span className="text-sm font-semibold text-emerald-700">All clear ✓</span>
+              </div>
+            ) : (
+              <ModulePanel
+                title="Needs Attention"
+                meta={<span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">{attentionCount}</span>}
+              >
                 <div className="flex flex-col gap-1.5">
                   {activeAttentionItems.map((item) => (
                     <AttentionRow key={item.label} item={item} />
                   ))}
                 </div>
-              )}
-            </ModulePanel>
-          )}
+              </ModulePanel>
+            ))}
         </div>
 
         {/* PLATFORM SNAPSHOT — mobile: second. Desktop: left column, row 1.
@@ -214,14 +222,22 @@ export default async function AdminDashboardPage() {
                 href="/admin/appearances?linkage=standalone&when=upcoming"
               />
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-black/[0.06] pt-3">
-              <Link href="/admin/inquiries" className="text-xs text-ink/40 transition hover:text-ink/70">
-                {glance?.inquiries ?? "—"} Inquiries
-              </Link>
-              <Link href="/admin/orders" className="text-xs text-ink/40 transition hover:text-ink/70">
-                {counts?.orders ?? "—"} Orders
-              </Link>
-            </div>
+            {/* V5.1 correction — "0 Inquiries · 0 Orders" read as visually
+                weak noise when both are actually zero (the common case).
+                These are secondary pipeline counters, not core
+                platform-scale KPIs, so the footer only earns its place
+                once there's something to see; same data, same links,
+                display hierarchy only. */}
+            {(hasInquiries || hasOrders) && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-black/[0.06] pt-3">
+                <Link href="/admin/inquiries" className="text-xs text-ink/40 transition hover:text-ink/70">
+                  {glance?.inquiries ?? "—"} Inquiries
+                </Link>
+                <Link href="/admin/orders" className="text-xs text-ink/40 transition hover:text-ink/70">
+                  {counts?.orders ?? "—"} Orders
+                </Link>
+              </div>
+            )}
           </ModulePanel>
         </div>
 
