@@ -56,7 +56,14 @@ import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
 import EventSearchPicker from "./EventSearchPicker";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
-import { formatAppearanceDateRange, formatDateShort, formatDateShortInZone, formatTime, formatTimeInZone } from "@/lib/format";
+import {
+  formatAppearanceDateRange,
+  formatDateShort,
+  formatDateShortInZone,
+  formatTime,
+  formatTimeInZone,
+  getTemporalLabel,
+} from "@/lib/format";
 import { getPublicOrigin } from "@/lib/site-url";
 import CopyButton from "@/components/CopyButton";
 import { getReferralPartnerByBusinessId } from "@/lib/admin/referral-queries";
@@ -1892,11 +1899,12 @@ export default async function ManageBusinessPage({
                         location: a.location ? { value: a.location.id, label: a.location.name, sublabel: a.location.city ?? undefined } : null,
                       };
                   const locationLine = [a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+                  const isLiveNow = getTemporalLabel(a.start_at, a.end_at).live;
                   return (
                     <li key={a.id} className="px-4 py-3 first:pt-0 last:pb-0">
                       <details open={isEditing}>
                         <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
-                          <ScheduleDateBadge iso={a.start_at} />
+                          <ScheduleDateBadge iso={a.start_at} live={isLiveNow} />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
                             <p className="mt-0.5 truncate text-xs text-ink/50">
@@ -1945,7 +1953,7 @@ export default async function ManageBusinessPage({
                     Edit. */}
                 {eventOnlySchedule.map((e) => (
                   <li key={e.key} className="flex items-center gap-3 px-4 py-3 first:pt-0 last:pb-0">
-                    <ScheduleDateBadge iso={e.startAt} />
+                    <ScheduleDateBadge iso={e.startAt} live={getTemporalLabel(e.startAt, e.endAt).live} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-ink">{e.title}</p>
                       <p className="mt-0.5 truncate text-xs text-ink/50">
@@ -2768,8 +2776,26 @@ function ComingUpRow({ appearance }: { appearance: DashboardAppearance }) {
  * same "date column" scanning aid a real schedule-management surface
  * needs (the Loom references' own quality bar this pass targets), used
  * for both Where I'll Be's real Appearance rows and its event-only
- * participation rows so the two read as one consistent schedule list. */
-function ScheduleDateBadge({ iso }: { iso: string }) {
+ * participation rows so the two read as one consistent schedule list.
+ *
+ * Business Manager V4.1 — Where I'll Be prioritization. `live` switches
+ * this to the exact same aqua "Now" tile DashboardAppearanceRow already
+ * uses for Overview's own Today panel (same LiveDotSmall, same
+ * treatment) — one consistent "happening now" visual language across the
+ * whole workspace, not a second one invented for this tab. Callers derive
+ * `live` from the same start_at/end_at every row already has via
+ * getTemporalLabel (zero new data); a stop already in progress sorts
+ * first in start_at-ascending order regardless, so this only needs to
+ * badge it, never reorder the list. */
+function ScheduleDateBadge({ iso, live }: { iso: string; live?: boolean }) {
+  if (live) {
+    return (
+      <span className="flex w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-findmi py-1.5 text-white">
+        <LiveDotSmall />
+        <span className="text-[7px] font-extrabold uppercase tracking-wide">Now</span>
+      </span>
+    );
+  }
   const d = new Date(iso);
   return (
     <span className="flex w-11 shrink-0 flex-col items-center justify-center rounded-lg bg-black/[0.04] py-1.5">
