@@ -12,6 +12,7 @@ import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { resolveOpportunityByContext } from "@/lib/opportunities";
 import type { EventParticipationStatus } from "@/lib/types";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import { findCoveringOccurrenceId } from "@/lib/data";
 import {
   cancelEventAppearance,
   ensureEventAppearance,
@@ -147,6 +148,34 @@ export async function saveEvent(id: string | null, formData: FormData) {
     effectiveAreaId = null;
   }
 
+  // Admin Event Location Relationship UX pass — EventLocationField now
+  // posts a real `location_id` alongside the same venue_name/address/city/
+  // state/postal_code hidden inputs the old plain text fields already used.
+  // When a real Location was selected, its own columns are re-fetched and
+  // used to override whatever text the client submitted — the exact same
+  // "never trust client-submitted Location snapshot text" discipline
+  // updateMemberEventLocation (account/event/actions.ts) already
+  // established. Manual mode (no location_id) is completely unaffected:
+  // the raw submitted fields are used exactly as before this pass.
+  const locationId = str(formData, "location_id");
+  let matchedLocation: {
+    name: string;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  } | null = null;
+  if (locationId) {
+    const { data: location } = await supabase
+      .from("locations")
+      .select("name, address, city, state, postal_code, latitude, longitude")
+      .eq("id", locationId)
+      .maybeSingle();
+    if (location) matchedLocation = location;
+  }
+
   const payload = {
     name,
     slug,
@@ -154,11 +183,18 @@ export async function saveEvent(id: string | null, formData: FormData) {
     cover_image_url: str(formData, "cover_image_url"),
     start_at: startIso,
     end_at: endIso,
-    venue_name: str(formData, "venue_name"),
-    address: str(formData, "address"),
-    city: str(formData, "city"),
-    state: str(formData, "state"),
-    postal_code: str(formData, "postal_code"),
+    venue_name: matchedLocation ? matchedLocation.name : str(formData, "venue_name"),
+    address: matchedLocation ? matchedLocation.address : str(formData, "address"),
+    city: matchedLocation ? matchedLocation.city : str(formData, "city"),
+    state: matchedLocation ? matchedLocation.state : str(formData, "state"),
+    postal_code: matchedLocation ? matchedLocation.postal_code : str(formData, "postal_code"),
+    // Only ever written when a real Location is matched — manual mode
+    // omits these keys entirely (undefined is dropped from the request
+    // body), leaving any existing latitude/longitude on the row untouched,
+    // same asymmetric behavior updateMemberEventLocation's own payload
+    // already has.
+    latitude: matchedLocation ? matchedLocation.latitude : undefined,
+    longitude: matchedLocation ? matchedLocation.longitude : undefined,
     market_id: effectiveMarketId,
     market_area_id: effectiveAreaId,
     organizer_name: str(formData, "organizer_name"),
@@ -352,6 +388,86 @@ export async function saveEvent(id: string | null, formData: FormData) {
       .delete()
       .in("id", removedOccurrenceIds);
     if (occDeleteError) redirect(errorRedirectUrl(editPath, `Occurrences: ${occDeleteError.message}`));
+  }
+
+  // Admin Event Location Relationship UX pass — gives the Primary Date
+  // (events.start_at/end_at, no dedicated row of its own) a canonical
+  // event_occurrences.location_id relationship, reusing the exact same
+  // findCoveringOccurrenceId identity rule and update-or-seed logic already
+  // proven in the owner-facing updateMemberEventLocation (account/event/
+  // actions.ts) — never a second, independently-defined notion of "the
+  // Primary Date's own occurrence," and never a fake occurrence created
+  // merely to attach a Location when one isn't otherwise warranted. Reads
+  // event_occurrences fresh, AFTER the upsert/delete above, so an
+  // Additional Date added/edited/removed in this exact same save is
+  // correctly reflected (e.g. a covering occurrence added this submit is
+  // found; one just removed is correctly treated as gone). Only ever
+  // touches the one occurrence representing the Primary Date's own
+  // calendar day — every Additional Date is left exactly as this save's
+  // own occurrence upsert/delete above already decided, never touched
+  // again here.
+  {
+    const { data: freshOccurrences } = await supabase
+      .from("event_occurrences")
+      .select("id, start_at")
+      .eq("event_id", eventId as string);
+    const primaryOccurrenceId = findCoveringOccurrenceId(startIso as string, freshOccurrences ?? []);
+
+    if (matchedLocation) {
+      if (primaryOccurrenceId) {
+        await supabase
+          .from("event_occurrences")
+          .update({
+            location_id: locationId,
+            venue_name: matchedLocation.name,
+            address: matchedLocation.address,
+            city: matchedLocation.city,
+            state: matchedLocation.state,
+            postal_code: matchedLocation.postal_code,
+          })
+          .eq("id", primaryOccurrenceId);
+        await syncOfficialOccurrenceAppearances(supabase, primaryOccurrenceId);
+      } else {
+        // Same minimal seed-occurrence pattern createMemberEvent/
+        // updateMemberEventLocation already use — dated identically to the
+        // Event's own start_at/end_at, so getEffectiveEventSchedule
+        // correctly suppresses the synthetic Primary Date placeholder
+        // instead of showing a duplicate visible date.
+        const { data: seeded } = await supabase
+          .from("event_occurrences")
+          .insert({
+            event_id: eventId as string,
+            start_at: startIso as string,
+            end_at: endIso as string,
+            location_id: locationId,
+            venue_name: matchedLocation.name,
+            address: matchedLocation.address,
+            city: matchedLocation.city,
+            state: matchedLocation.state,
+            postal_code: matchedLocation.postal_code,
+          })
+          .select("id")
+          .single();
+        if (seeded) await propagateAllDatesParticipation(supabase, eventId as string, [seeded.id]);
+      }
+    } else if (primaryOccurrenceId) {
+      // Switching the Primary Date from a canonical Location back to
+      // manual venue text — clear only this one occurrence's location_id
+      // (never delete it) and refresh its venue snapshot to match, so it
+      // stops pointing at a Location it no longer represents.
+      await supabase
+        .from("event_occurrences")
+        .update({
+          location_id: null,
+          venue_name: payload.venue_name,
+          address: payload.address,
+          city: payload.city,
+          state: payload.state,
+          postal_code: payload.postal_code,
+        })
+        .eq("id", primaryOccurrenceId);
+      await syncOfficialOccurrenceAppearances(supabase, primaryOccurrenceId);
+    }
   }
 
   // Participation roster: ParticipationRoster only ever renders rows for

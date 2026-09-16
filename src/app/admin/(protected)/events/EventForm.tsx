@@ -15,6 +15,10 @@ import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
 import EventOccurrencesEditor from "@/components/admin/EventOccurrencesEditor";
 import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
+import EventLocationField, {
+  type ManualVenueValues,
+  type SelectedLocationDetail,
+} from "@/components/account/EventLocationField";
 import type {
   AdminEvent,
   AdminEventOccurrence,
@@ -26,7 +30,9 @@ import type {
 import type { AdminMarketOption } from "@/lib/admin/business-markets";
 import type { Category } from "@/lib/types";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
+import { findCoveringOccurrenceId } from "@/lib/data";
 import { saveEvent } from "./actions";
+import { createInlineAdminLocation } from "../locations/actions";
 
 export default function EventForm({
   event,
@@ -58,6 +64,49 @@ export default function EventForm({
   error?: string;
 }) {
   const action = saveEvent.bind(null, event?.id ?? null);
+
+  // Admin Event Location Relationship UX pass — the Primary Date's
+  // canonical Location, if one exists, using the exact same "which real
+  // occurrence represents the Primary Date" identity rule the owner-facing
+  // Event Manager Edit page already uses (findCoveringOccurrenceId, in
+  // lib/data.ts) — never a second, independently-defined notion of
+  // "the event's Location." A legacy/manual event with no such occurrence
+  // relationship falls back to its own existing venue/address text,
+  // rendered as manual mode — never auto-matched against a Location by
+  // text alone, so a legacy event's data is never silently reinterpreted
+  // as "connected" to a Location it was never actually related to.
+  const primaryOccurrenceId = event ? findCoveringOccurrenceId(event.start_at, occurrences) : null;
+  const primaryOccurrenceLocationId = primaryOccurrenceId
+    ? (occurrences.find((o) => o.id === primaryOccurrenceId)?.location_id ?? null)
+    : null;
+  const primaryLocationRow = primaryOccurrenceLocationId
+    ? (locations.find((l) => l.id === primaryOccurrenceLocationId) ?? null)
+    : null;
+  const initialLocation: SelectedLocationDetail | null = primaryLocationRow
+    ? {
+        id: primaryLocationRow.id,
+        name: primaryLocationRow.name,
+        slug: primaryLocationRow.slug,
+        // Category name isn't resolved here — same simplification
+        // EventOccurrencesEditor's own RelationField already makes for its
+        // per-occurrence Location card (city/state only, no category
+        // lookup) — purely cosmetic, not required for the relationship.
+        category: null,
+        address: primaryLocationRow.address,
+        city: primaryLocationRow.city,
+        state: primaryLocationRow.state,
+        postal_code: primaryLocationRow.postal_code,
+      }
+    : null;
+  const initialManual: ManualVenueValues | null = !initialLocation
+    ? {
+        venue_name: event?.venue_name ?? "",
+        address: event?.address ?? "",
+        city: event?.city ?? "",
+        state: event?.state ?? "",
+        postal_code: event?.postal_code ?? "",
+      }
+    : null;
 
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -122,13 +171,25 @@ export default function EventForm({
         />
       </div>
 
-      <TextField label="Venue Name" name="venue_name" defaultValue={event?.venue_name} />
-      <TextField label="Address" name="address" defaultValue={event?.address} />
-      <div className="grid gap-4 sm:grid-cols-3">
-        <TextField label="City" name="city" defaultValue={event?.city} />
-        <TextField label="State" name="state" defaultValue={event?.state} />
-        <TextField label="ZIP Code" name="postal_code" defaultValue={event?.postal_code} />
-      </div>
+      {/* Admin Event Location Relationship UX pass — was five plain, giant
+          text fields with no relationship to a real Findmi Location at
+          all. Reuses the exact same EventLocationField the owner-facing
+          Event Manager already uses (search existing Locations, add a new
+          one inline, or fall back to manual venue text), passing
+          createInlineAdminLocation so a new Location created here goes
+          through Admin's own requireAdminSupabase() authorization rather
+          than the member-facing createInlineLocation (which needs a
+          Supabase Auth session Admin doesn't have, and would otherwise
+          grant personal ownership to whichever user happens to be signed
+          in — see that action's own doc comment). The hidden inputs it
+          renders (location_id, venue_name, address, city, state,
+          postal_code) are read by saveEvent exactly like the old text
+          fields were, plus the new location_id it also posts. */}
+      <EventLocationField
+        initialLocation={initialLocation}
+        initialManual={initialManual}
+        createLocationAction={createInlineAdminLocation}
+      />
 
       {/* Event + Appearance Geography Completion pass — Market/Area is
           FindMi DISCOVERY geography, deliberately its own section, never

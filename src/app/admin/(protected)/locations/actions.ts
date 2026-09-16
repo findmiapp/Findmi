@@ -10,6 +10,7 @@ import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
+import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
 
 /** Location review-decision notification — every CURRENT location_members
  * recipient, same shape as notifyBusinessOwners/notifyEventOrganizers
@@ -144,6 +145,91 @@ export async function saveLocation(id: string | null, formData: FormData) {
   revalidatePath("/locations");
   revalidatePath("/");
   redirect(`/admin/locations/${locationId}?saved=1`);
+}
+
+// ── INLINE EVENT LOCATION CREATION (ADMIN) ──────────────────────────────
+/** Admin Event Location Relationship UX pass — the admin-authorized
+ * counterpart to account/location/actions.ts's own createInlineLocation,
+ * for Admin's Add/Edit Event Location field (EventLocationField, via its
+ * new optional `createLocationAction` prop). Deliberately NOT a reuse of
+ * createInlineLocation itself: that action requires a real Supabase Auth
+ * session (`sessionSupabase.auth.getUser()`) and calls create_owned_location,
+ * which atomically grants the caller personal `owner` in location_members —
+ * neither fits Admin, which authenticates via a single shared
+ * ADMIN_PASSWORD session cookie (requireAdminSupabase(), no Supabase Auth
+ * user, no member identity to grant ownership to). Reusing it unchanged
+ * would either hard-fail every admin call (no session) or, worse, silently
+ * attach venue ownership to whatever Supabase Auth user happens to be
+ * signed in on the same browser — a real authorization bug, not a
+ * convenience.
+ *
+ * Instead this mirrors saveLocation() above exactly — the same
+ * requireAdminSupabase() session, the same direct `locations` insert (no
+ * RPC, no location_members row — admin-created Locations are unowned,
+ * exactly like one created via the standalone /admin/locations/new form),
+ * the same slug generation, and the same is_demo=false ("Published")
+ * default a brand-new admin Location already gets (LocationForm's own
+ * `defaultChecked={location ? !location.is_demo : true}`). The one shared
+ * piece of logic — the non-fuzzy duplicate check — comes from
+ * lib/locationCreation.ts, not duplicated here, and this returns the exact
+ * same CreateInlineLocationResult shape createInlineLocation does so
+ * EventLocationField can treat both callers identically. */
+export async function createInlineAdminLocation(formData: FormData): Promise<CreateInlineLocationResult> {
+  const supabase = await requireAdminSupabase();
+
+  const name = str(formData, "name");
+  const address = str(formData, "address");
+  const city = str(formData, "city");
+  const state = str(formData, "state");
+  const postalCode = str(formData, "postal_code");
+  const force = str(formData, "force") === "1";
+
+  if (!name) return { status: "error", error: "Location name is required." };
+
+  if (!force) {
+    const duplicates = await findLikelyDuplicateLocations(supabase, { name, address, city, state });
+    if (duplicates.length > 0) return { status: "duplicates", duplicates };
+  }
+
+  const baseSlug = resolveSlugInput(null, name);
+  if (!baseSlug) return { status: "error", error: "Location name is required to generate a URL." };
+  const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("locations", candidate));
+
+  const { data: created, error } = await supabase
+    .from("locations")
+    .insert({
+      name,
+      slug,
+      address,
+      city,
+      state,
+      postal_code: postalCode,
+      // Admin has full authority over its own content — same "Published"
+      // default a brand-new Location gets from the standalone admin form
+      // (LocationForm), never the member-facing is_demo=true review gate.
+      is_demo: false,
+    })
+    .select("id, name, slug, address, city, state, postal_code")
+    .single();
+  if (error || !created) {
+    return { status: "error", error: "Couldn't create that location. Please try again." };
+  }
+
+  revalidatePath("/admin/locations");
+  revalidatePath("/locations");
+  return {
+    status: "created",
+    location: {
+      id: created.id,
+      name: created.name,
+      slug: created.slug,
+      category: null,
+      address: created.address,
+      city: created.city,
+      state: created.state,
+      postal_code: created.postal_code,
+    },
+  };
 }
 
 export async function deleteLocation(id: string) {

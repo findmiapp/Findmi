@@ -15,7 +15,7 @@ import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/mar
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
-import type { SelectedLocationDetail } from "@/components/account/EventLocationField";
+import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -98,85 +98,11 @@ export async function uploadMemberLocationImage(
 // ── NATIVE LOCATION CREATION ─────────────────────────────────────────────
 const CREATE_LOCATION_PATH = "/account/location/new";
 
-function normalizeForMatch(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-/** Practical, non-fuzzy duplicate check — same shape/reasoning as
- * findLikelyDuplicateBusiness (account/business/actions.ts): a normalized
- * name match that ALSO agrees on city/state whenever both sides have one,
- * or an exact address match. Demo rows are never candidates — a seeded/
- * pending Location is still visible here (is_demo doesn't distinguish
- * "real but unpublished" from "seed data" the way businesses'
- * publication_status does), so this deliberately checks every Location
- * regardless of is_demo — the goal is catching a genuine duplicate venue,
- * not filtering by moderation state. A match never auto-creates a second
- * Location; the visitor is directed to the existing Claim Location flow
- * (createMemberLocation) or the "Use This Location" choice (inline Event
- * Location creation, createInlineLocation) instead.
- *
- * Inline Event Location Creation pass — widened from a single `{slug,
- * name}` match to a small, ranked list of full SelectedLocationDetail-
- * shaped candidates (address match(es) first, then name+city/state
- * matches, deduped, capped at 3) so callers that need to render a real
- * "this may already exist" picker (createInlineLocation) have everything
- * they need without a second query. createMemberLocation's own existing
- * single-match redirect behavior is unchanged — it just reads the first
- * candidate off this same list. */
-async function findLikelyDuplicateLocations(
-  admin: SupabaseClient,
-  input: { name: string; address: string | null; city: string | null; state: string | null }
-): Promise<SelectedLocationDetail[]> {
-  const { data } = await admin
-    .from("locations")
-    .select("id, slug, name, address, city, state, postal_code, category:categories(name)");
-  const rows = (data ?? []) as {
-    id: string;
-    slug: string;
-    name: string;
-    address: string | null;
-    city: string | null;
-    state: string | null;
-    postal_code: string | null;
-    category: { name: string } | { name: string }[] | null;
-  }[];
-
-  const toCandidate = (row: (typeof rows)[number]): SelectedLocationDetail => ({
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    address: row.address,
-    city: row.city,
-    state: row.state,
-    postal_code: row.postal_code,
-    category: (Array.isArray(row.category) ? row.category[0] : row.category)?.name ?? null,
-  });
-
-  const matches: SelectedLocationDetail[] = [];
-  const seen = new Set<string>();
-  const addMatch = (row: (typeof rows)[number]) => {
-    if (seen.has(row.id)) return;
-    seen.add(row.id);
-    matches.push(toCandidate(row));
-  };
-
-  const inputAddress = input.address ? normalizeForMatch(input.address) : null;
-  if (inputAddress) {
-    for (const row of rows) {
-      if (row.address && normalizeForMatch(row.address) === inputAddress) addMatch(row);
-    }
-  }
-
-  const normalizedName = normalizeForMatch(input.name);
-  for (const row of rows) {
-    if (normalizeForMatch(row.name) !== normalizedName) continue;
-    const cityMatches = !input.city || !row.city || normalizeForMatch(input.city) === normalizeForMatch(row.city);
-    const stateMatches = !input.state || !row.state || normalizeForMatch(input.state) === normalizeForMatch(row.state);
-    if (cityMatches && stateMatches) addMatch(row);
-  }
-
-  return matches.slice(0, 3);
-}
+// findLikelyDuplicateLocations moved to lib/locationCreation.ts (Admin
+// Event Location Relationship UX pass) so admin/locations/actions.ts's own
+// authorized createInlineAdminLocation can share the exact same duplicate
+// check without importing across the admin/public route boundary or
+// duplicating this logic — see that module's own doc comment.
 
 const CREATE_LOCATION_FRIENDLY_ERROR: Record<string, string> = {
   user_required: "You need to be signed in to create a venue.",
@@ -305,10 +231,10 @@ export async function createMemberLocation(formData: FormData) {
 }
 
 // ── INLINE EVENT LOCATION CREATION ──────────────────────────────────────
-export type CreateInlineLocationResult =
-  | { status: "created"; location: SelectedLocationDetail }
-  | { status: "duplicates"; duplicates: SelectedLocationDetail[] }
-  | { status: "error"; error: string };
+// CreateInlineLocationResult now lives in lib/locationCreation.ts (imported
+// above) — shared verbatim with admin/locations/actions.ts's own
+// createInlineAdminLocation, so EventLocationField can treat either
+// caller's result identically.
 
 /** "Add New Location" from inside the Event workflow (EventLocationField) —
  * a non-redirecting counterpart to createMemberLocation above, for a caller

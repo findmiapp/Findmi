@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useAccountSearch, type AccountSearchResult } from "./useAccountSearch";
 import { createInlineLocation } from "@/app/(public)/account/location/actions";
+import type { CreateInlineLocationResult } from "@/lib/locationCreation";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -76,12 +77,22 @@ function resultToSelected(r: AccountSearchResult): SelectedLocationDetail {
  * account/location/actions.ts) that's then selected here exactly as if it
  * had come back from search — same `selected` state, same hidden inputs,
  * same "Change Location"/"Remove Location" behavior. Manual venue entry is
- * untouched and remains fully available. */
+ * untouched and remains fully available.
+ *
+ * Admin Event Location Relationship UX pass — `createLocationAction`
+ * (optional, defaults to the member-facing createInlineLocation) lets
+ * Admin's own Add/Edit Event form pass an admin-authorized counterpart
+ * (createInlineAdminLocation, admin/locations/actions.ts) instead, since
+ * createInlineLocation's Supabase-Auth-session + create_owned_location
+ * ownership grant don't fit Admin's own ADMIN_PASSWORD session model. Every
+ * existing caller (owner Create/Edit Event, the per-occurrence Dates
+ * forms) omits this prop and is completely unaffected. */
 export default function EventLocationField({
   initialLocation,
   initialManual,
   onGeographyChange,
   onLocationChange,
+  createLocationAction = createInlineLocation,
 }: {
   initialLocation: SelectedLocationDetail | null;
   initialManual: ManualVenueValues | null;
@@ -108,6 +119,7 @@ export default function EventLocationField({
    * changes what the field itself renders or how its own hidden inputs
    * post for a real <form> caller. */
   onLocationChange?: (value: { location: SelectedLocationDetail | null; manualVenue: ManualVenueValues | null }) => void;
+  createLocationAction?: (formData: FormData) => Promise<CreateInlineLocationResult>;
 }) {
   const hasManualSeed = Boolean(
     initialManual && (initialManual.venue_name || initialManual.address || initialManual.city || initialManual.state || initialManual.postal_code)
@@ -162,7 +174,7 @@ export default function EventLocationField({
     fd.set("postal_code", addForm.postal_code);
     if (force) fd.set("force", "1");
     startCreating(async () => {
-      const result = await createInlineLocation(fd);
+      const result = await createLocationAction(fd);
       if (result.status === "error") {
         setAddError(result.error);
         return;
