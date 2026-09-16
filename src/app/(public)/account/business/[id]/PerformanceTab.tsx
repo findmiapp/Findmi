@@ -109,7 +109,7 @@ export default function PerformanceTab({
       </div>
 
       {data.isEmpty ? (
-        <div className="rounded-2xl bg-black/[0.02] p-4">
+        <div className="max-w-2xl rounded-2xl bg-black/[0.02] p-4">
           <p className="text-sm font-semibold text-ink">Your performance starts here</p>
           <p className="mt-1.5 text-sm text-ink/60">
             Findmi is now measuring how people discover and interact with {businessName}. Activity will appear here
@@ -119,7 +119,17 @@ export default function PerformanceTab({
           <p className="mt-2 text-xs font-semibold text-ink/40">No activity recorded in this period yet.</p>
         </div>
       ) : (
-        <div>
+        // Business Manager V4 — a real 2-region composition at desktop:
+        // the trend/actions/discovery/appearance/product breakdowns (the
+        // sections an owner scans down through) form the wide main
+        // column; Audience and QR Analytics (more compact, self-
+        // contained signals) become a self-sized rail beside it, via the
+        // same CSS grid placement technique Overview/Owner Command
+        // Center's own grids already use. Mobile stacks in the same DOM
+        // order as before — nothing here changes what's computed, only
+        // how the same sections are arranged.
+        <div className="lg:grid lg:grid-cols-3 lg:items-start lg:gap-x-8">
+        <div className="lg:col-start-1 lg:col-span-2">
           {/* ── Trend ── */}
           {nonZeroTrendPoints.length > 0 && (
             <Section title={`${data.trend.metricLabel} Over Time`}>
@@ -168,39 +178,6 @@ export default function PerformanceTab({
                   </div>
                 ))}
               </div>
-            </Section>
-          )}
-
-          {/* ── Audience — Followers folded in as a compact, deliberately
-              quieter secondary section (smaller numeral than the headline
-              stats above) — same data/privacy rule the old standalone
-              Followers tab used, no new query. "(legacy)" replaced with
-              plain "email-only": that's the actual, useful distinction
-              for an owner (no Findmi account behind it), not a label
-              about Findmi's own implementation history. ── */}
-          {followerSummary.totalCount > 0 && (
-            <Section title="Audience">
-              <p className="font-display text-xl font-bold tracking-tight text-ink">{plural(followerSummary.totalCount, "Follower")}</p>
-              <p className="mt-0.5 text-xs text-ink/45">
-                {followerSummary.accountCount} with a Findmi account
-                {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount} email-only`}
-              </p>
-              {followerSummary.profiles.length > 0 && (
-                <div className="mt-3 flex flex-col gap-2">
-                  {followerSummary.profiles.map((p) => (
-                    <Link key={p.username} href={`/user/${p.username}`} className="flex items-center gap-2.5 transition hover:opacity-70">
-                      <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-mist">
-                        {p.avatar_url && (
-                          <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="28px" className="object-cover" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink">{p.display_name || `@${p.username}`}</p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
             </Section>
           )}
 
@@ -284,6 +261,41 @@ export default function PerformanceTab({
               </div>
             </Section>
           )}
+        </div>
+
+        <div className="lg:col-start-3 lg:row-start-1">
+          {/* ── Audience — Followers folded in as a compact, deliberately
+              quieter secondary section (smaller numeral than the headline
+              stats above) — same data/privacy rule the old standalone
+              Followers tab used, no new query. "(legacy)" replaced with
+              plain "email-only": that's the actual, useful distinction
+              for an owner (no Findmi account behind it), not a label
+              about Findmi's own implementation history. ── */}
+          {followerSummary.totalCount > 0 && (
+            <Section title="Audience">
+              <p className="font-display text-xl font-bold tracking-tight text-ink">{plural(followerSummary.totalCount, "Follower")}</p>
+              <p className="mt-0.5 text-xs text-ink/45">
+                {followerSummary.accountCount} with a Findmi account
+                {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount} email-only`}
+              </p>
+              {followerSummary.profiles.length > 0 && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {followerSummary.profiles.map((p) => (
+                    <Link key={p.username} href={`/user/${p.username}`} className="flex items-center gap-2.5 transition hover:opacity-70">
+                      <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-mist">
+                        {p.avatar_url && (
+                          <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="28px" className="object-cover" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink">{p.display_name || `@${p.username}`}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </Section>
+          )}
 
           {/* ── QR Analytics — never a causal-conversion claim. ── */}
           {data.qr && (
@@ -322,6 +334,7 @@ export default function PerformanceTab({
               )}
             </Section>
           )}
+        </div>
         </div>
       )}
     </div>

@@ -27,6 +27,7 @@ interface TabNavItem {
   label: string;
 }
 import AccountNav from "../../AccountNav";
+import { OwnerModule } from "../../dashboard-ui";
 import {
   addAppearanceFromEvent,
   addManualAppearance,
@@ -542,6 +543,36 @@ export default async function ManageBusinessPage({
   const SCHEDULE_PAGE_SIZE = 25;
   let scheduleLimitUsed = SCHEDULE_PAGE_SIZE;
 
+  /** Business Manager V4 — root-cause fix for "Where I'll Be shows nothing
+   * even though this business clearly has upcoming activity elsewhere in
+   * Findmi." An approved event_businesses/event_occurrence_businesses row
+   * means this business's participation was approved on the EVENT side —
+   * Event→Appearance propagation is what's supposed to keep the
+   * `appearances` table in sync with that, but any participation approved
+   * through a path/time propagation doesn't cover has no matching
+   * `appearances` row, so the raw `appearances` query above (identical to
+   * what the account-level unified schedule's own Business-appearance
+   * source reads) comes back empty for it — while the SAME occurrence can
+   * still surface at the account level via ITS OWN organizer/location
+   * sources, which read event_occurrences directly and never depend on an
+   * `appearances` row existing at all. This does not write a new
+   * `appearances` row (that would be duplicate schedule truth) — it only
+   * SURFACES the real, already-approved participation for display,
+   * composed entirely from data this block already fetches for the Add
+   * picker below (`events`/`occurrences`, plus the already-computed
+   * linkedEventIds/linkedOccurrenceIds and the ebStatusRows/eobStatusRows
+   * this business's own participation status is already read from). Zero
+   * new queries. */
+  type EventOnlySchedule = {
+    key: string;
+    title: string;
+    startAt: string;
+    endAt: string | null;
+    where: string | null;
+    href: string | null;
+  };
+  let eventOnlySchedule: EventOnlySchedule[] = [];
+
   {
     const nowIso = new Date().toISOString();
     // Schedule Scale Bound pass — the Where I'll Be list itself is now
@@ -616,7 +647,7 @@ export default async function ManageBusinessPage({
     // offered per-date (never as a bare event-level option) — a
     // recurring event is always added at the occurrence level.
     const [{ data: events }, { data: occurrences }] = await Promise.all([
-      admin.from("events").select("id, name, is_demo, start_at, end_at, venue_name, city, state").eq("is_demo", false),
+      admin.from("events").select("id, name, slug, is_demo, start_at, end_at, venue_name, city, state").eq("is_demo", false),
       admin.from("event_occurrences").select("id, event_id, start_at, timezone").gt("start_at", nowIso).order("start_at"),
     ]);
 
@@ -651,6 +682,45 @@ export default async function ManageBusinessPage({
         });
       }
     }
+
+    // See EventOnlySchedule's own doc comment above — approved
+    // participations with no matching `appearances` row, resolved from
+    // the exact same events/occurrences already fetched for the picker.
+    const eventById = new Map((events ?? []).map((ev) => [ev.id, ev]));
+    const approvedOrphanEventIds = (ebStatusRows ?? [])
+      .filter((r) => r.status === "approved" && !linkedEventIds.has(r.event_id))
+      .map((r) => r.event_id);
+    for (const eventId of approvedOrphanEventIds) {
+      const ev = eventById.get(eventId);
+      if (!ev || !ev.end_at || new Date(ev.end_at) <= new Date()) continue;
+      eventOnlySchedule.push({
+        key: `event:${ev.id}`,
+        title: ev.name,
+        startAt: ev.start_at,
+        endAt: ev.end_at,
+        where: [ev.venue_name, [ev.city, ev.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || null,
+        href: `/event/${ev.slug}`,
+      });
+    }
+    const occurrenceById = new Map((occurrences ?? []).map((occ) => [occ.id, occ]));
+    const approvedOrphanOccurrenceIds = (eobStatusRows ?? [])
+      .filter((r) => r.status === "approved" && !linkedOccurrenceIds.has(r.occurrence_id))
+      .map((r) => r.occurrence_id);
+    for (const occurrenceId of approvedOrphanOccurrenceIds) {
+      const occ = occurrenceById.get(occurrenceId);
+      if (!occ) continue;
+      const ev = eventById.get(occ.event_id);
+      if (!ev) continue;
+      eventOnlySchedule.push({
+        key: `occurrence:${occurrenceId}`,
+        title: ev.name,
+        startAt: occ.start_at,
+        endAt: null,
+        where: [ev.venue_name, [ev.city, ev.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || null,
+        href: `/event/${ev.slug}`,
+      });
+    }
+    eventOnlySchedule.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   }
 
   // Command Center V1 — resolves the same appearances array above
@@ -884,7 +954,7 @@ export default async function ManageBusinessPage({
   const switcherTab = SWITCHABLE_TABS.has(activeTab) ? activeTab : "overview";
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
       <AccountNav />
 
       {/* Admin Manage-As Foundation — persistent, unmissable on every tab,
@@ -894,7 +964,7 @@ export default async function ManageBusinessPage({
           impersonation: the founder's own admin session is the actor
           throughout (see lib/permissions.ts's requireMembership). */}
       {isAdminElevated && (
-        <div className="mx-auto mb-3 flex max-w-md items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-xs">
+        <div className="mb-3 flex max-w-md items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-xs">
           <span className="truncate font-semibold text-amber-800">Admin mode · Managing {business.name}</span>
           <Link href={`/admin/businesses/${id}`} className="shrink-0 font-bold text-amber-800 underline underline-offset-2 hover:text-amber-900">
             Exit
@@ -905,8 +975,12 @@ export default async function ManageBusinessPage({
       {/* Business identity — a compact product header, not a dashboard
           card: no enclosing box, no "Manage Business" eyebrow (redundant
           with AccountNav's own active Business pill), Plan read as plain
-          emphasis text rather than a badge on every metadata item. */}
-      <div className="mx-auto flex max-w-md items-center gap-3">
+          emphasis text rather than a badge on every metadata item.
+          Business Manager V4 — no longer centered/width-capped: the
+          identity band now establishes context at the true top of a wide
+          operating surface, the same role Owner Command Center's own
+          identity header plays one level up. */}
+      <div className="flex items-center gap-3">
         {business.logo_url ? (
           <SupabaseImage
             src={business.logo_url}
@@ -985,8 +1059,11 @@ export default async function ManageBusinessPage({
       {/* Primary Business navigation — plain text tabs with a restrained
           selected indicator (a Findmi Aqua underline), not a row of filled
           gray pills. Inactive destinations recede in color, not size, so
-          tap targets stay generous without visual weight. */}
-      <nav aria-label="Business sections" className="mx-auto mt-5 flex max-w-md gap-5 overflow-x-auto border-b border-black/[0.06] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          tap targets stay generous without visual weight. Business
+          Manager V4 — spans the real available width now instead of a
+          centered max-w-md strip; still a plain horizontally-scrolling
+          row at any width a founder-editable tab count could reach. */}
+      <nav aria-label="Business sections" className="mt-5 flex gap-5 overflow-x-auto border-b border-black/[0.06] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visibleTabs.map((t) => {
           const active = t.key === activeTab;
           return (
@@ -1004,12 +1081,19 @@ export default async function ManageBusinessPage({
         })}
       </nav>
 
-      <div className="mx-auto mt-5 max-w-md">
+      {/* Business Manager V4 — the shared max-w-md cap that forced every
+          tab into one centered mobile-width column is gone; each tab's
+          own root element below now owns its width (a wide multi-region
+          composition for Overview/Where I'll Be/Analytics/Products, a
+          2-column card grid for Profile, and a deliberately narrower
+          centered column for the secondary Settings/Inquiries/Orders
+          tabs — see each tab's own root className). */}
+      <div className="mt-5">
         {error && (
-          <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+          <p className="mb-4 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
         )}
         {saved && !error && (
-          <p className="mb-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          <p className="mb-4 max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
             Saved.
           </p>
         )}
@@ -1034,7 +1118,7 @@ export default async function ManageBusinessPage({
         {activeTab === "overview" && (
           <div className="flex flex-col gap-5">
             {created && (
-              <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+              <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
                 Business created! You can start building your profile below.
               </p>
             )}
@@ -1047,23 +1131,23 @@ export default async function ManageBusinessPage({
                 state shown early. */}
             {proPayment === "success" &&
               (pro ? (
-                <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
                   Payment received — Findmi Pro is active. Full Pro tools are unlocked below.
                 </p>
               ) : (
-                <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
                   Payment received. We&rsquo;re activating Pro — this usually only takes a moment. Refresh this page
                   shortly if it doesn&rsquo;t update automatically.
                 </p>
               ))}
             {proPayment === "cancelled" && (
-              <p className="rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
+              <p className="max-w-2xl rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
                 Checkout was canceled — your business is still Free. You can upgrade to Pro anytime.
               </p>
             )}
 
             {business.publication_status === "pending_review" && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div className="max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-sm font-bold text-amber-800">Pending Review</p>
                 <p className="mt-1 text-sm text-amber-900/80">
                   Your business is saved and you can continue building your profile. It will appear in Findmi
@@ -1085,133 +1169,158 @@ export default async function ManageBusinessPage({
               </div>
             )}
 
-            {/* TODAY — the highest-urgency operational information. Omitted
-                entirely (not a compact empty cue either) when nothing is
-                happening today: no action is required, and Coming Up right
-                below already answers "what's next." */}
-            {todayAppearances.length > 0 && (
-              <OverviewSection title="Today">
-                <ul className="flex flex-col gap-3">
-                  {todayAppearances.map((a) => (
-                    <DashboardAppearanceRow key={a.id} appearance={a} showDate={false} />
-                  ))}
-                </ul>
-              </OverviewSection>
-            )}
+            {/* Business Manager V4 — Overview becomes a real operating
+                surface at desktop width: mobile stacks in the same
+                priority order as before (Today -> Needs Attention ->
+                Coming Up -> a compact rail), DOM order unchanged; lg:
+                repositions a self-sized rail (Public Presence, What
+                You're Offering, Analytics, Findmi URL) alongside the main
+                column via CSS grid placement — the same technique Owner
+                Command Center's own grid already uses, not a copy of
+                Admin's. */}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start lg:gap-6">
+              <div className="flex flex-col gap-5 lg:col-start-1 lg:col-span-2 lg:row-start-1">
+                {/* TODAY — the highest-urgency operational information.
+                    Omitted entirely (not a compact empty cue either) when
+                    nothing is happening today: no action is required, and
+                    Coming Up right below already answers "what's next." */}
+                {todayAppearances.length > 0 && (
+                  <OverviewSection title="Today">
+                    <ul className="flex flex-col gap-3">
+                      {todayAppearances.map((a) => (
+                        <DashboardAppearanceRow key={a.id} appearance={a} showDate={false} />
+                      ))}
+                    </ul>
+                  </OverviewSection>
+                )}
 
-            {/* NEEDS ATTENTION — every item is derived from data already on
-                this page (see buildNeedsAttentionItems); nothing here is a
-                fabricated alert, and an item simply stops appearing once
-                its underlying condition is resolved. A compact divided
-                list, not one bordered card per item — hidden completely
-                when there's nothing to surface (no "you're all caught up"
-                filler). */}
-            {needsAttention.length > 0 && (
-              <OverviewSection title="Needs Attention">
-                <ul className="flex flex-col divide-y divide-black/[0.06]">
-                  {needsAttention.map((item) => (
-                    <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                      <p className="min-w-0 text-sm text-ink/75">{item.message}</p>
-                      <Link
-                        href={item.actionHref}
-                        className="shrink-0 text-xs font-bold uppercase tracking-wide text-amber-800 underline underline-offset-2"
-                      >
-                        {item.actionLabel}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </OverviewSection>
-            )}
+                {/* NEEDS ATTENTION — every item is derived from data
+                    already on this page (see buildNeedsAttentionItems);
+                    nothing here is a fabricated alert, and an item simply
+                    stops appearing once its underlying condition is
+                    resolved. A compact divided list, not one bordered card
+                    per item — hidden completely when there's nothing to
+                    surface (no "you're all caught up" filler). */}
+                {needsAttention.length > 0 && (
+                  <OverviewSection title="Needs Attention">
+                    <ul className="flex flex-col divide-y divide-black/[0.06]">
+                      {needsAttention.map((item) => (
+                        <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                          <p className="min-w-0 text-sm text-ink/75">{item.message}</p>
+                          <Link
+                            href={item.actionHref}
+                            className="shrink-0 text-xs font-bold uppercase tracking-wide text-amber-800 underline underline-offset-2"
+                          >
+                            {item.actionLabel}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </OverviewSection>
+                )}
 
-            {/* COMING UP — a PREVIEW (next 3), not the full Schedule. Full
-                management still lives in the existing Where I'll Be tab —
-                no separate calendar UI built here. Unlike Today, this
-                section always renders (even a business with nothing
-                upcoming gets one compact line) since "where am I going
-                next" deserves a direct answer either way.
-                V3.1 live QA correction — the previous DashboardAppearanceRow
-                treatment (its own rounded/bordered card per item, shared
-                with Today) dominated the screen at three-up. Today keeps
-                that treatment unchanged (accepted, and it only ever shows
-                0-1 live items); Coming Up gets its own compact row —
-                same information, the flat divided-list grammar Appearance
-                Analytics already proved (PerformanceTab.tsx), no outer
-                card per Appearance. */}
-            <OverviewSection title="Coming Up" action={{ href: `${basePath}?tab=findmi-here`, label: "Where I'll Be" }}>
-              {upcomingAppearances.length > 0 ? (
-                <ul className="flex flex-col divide-y divide-black/[0.06]">
-                  {upcomingAppearances.slice(0, 3).map((a) => (
-                    <ComingUpRow key={a.id} appearance={a} />
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-ink/50">No upcoming appearances.</p>
-              )}
-            </OverviewSection>
-
-            {/* ANALYTICS SNAPSHOT — deferred to a contextual link rather
-                than real numbers. getOwnerBusinessPerformance computes the
-                FULL Analytics tab (multiple queries plus a current+
-                previous-period analytics_events scan, trend/discovery/
-                appearance/product/QR breakdowns) — calling it here merely
-                to read three headline numbers would add that entire cost
-                to Overview, the most-visited tab, on every request. Per
-                this pass's own performance rule, that's not a fair trade
-                for a snapshot, so no parallel lightweight analytics query
-                was built either — this stays a real, prominent link into
-                the one existing Analytics implementation instead.
-                V3.1 live QA correction — compressed from a title+action
-                header plus a separate business-name-interpolated
-                description line into one tight destination row: title
-                alone, then description and the "View Analytics →" link
-                together on the same line, so it reads as a single CTA
-                rather than a mostly-empty section. */}
-            <OverviewSection title="Analytics">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-ink/50">See your reach and customer actions.</p>
-                <Link
-                  href={`${basePath}?tab=performance`}
-                  className="shrink-0 text-xs font-semibold text-findmi-700 underline underline-offset-2"
-                >
-                  View Analytics →
-                </Link>
+                {/* COMING UP — a PREVIEW (next 3), not the full Schedule.
+                    Full management still lives in the existing Where I'll
+                    Be tab — no separate calendar UI built here. Unlike
+                    Today, this section always renders (even a business
+                    with nothing upcoming gets one compact line) since
+                    "where am I going next" deserves a direct answer either
+                    way. */}
+                <OverviewSection title="Coming Up" action={{ href: `${basePath}?tab=findmi-here`, label: "Where I'll Be" }}>
+                  {upcomingAppearances.length > 0 ? (
+                    <ul className="flex flex-col divide-y divide-black/[0.06]">
+                      {upcomingAppearances.slice(0, 3).map((a) => (
+                        <ComingUpRow key={a.id} appearance={a} />
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink/50">No upcoming appearances.</p>
+                  )}
+                </OverviewSection>
               </div>
-            </OverviewSection>
 
-            {/* FindMi Global Handle Registry — the header above already
-                shows View Profile, so it isn't repeated here; this section
-                exists only for what the header can't do (claim/change the
-                handle, Copy Link) — see FindmiUrlCard/LockedFindmiUrl,
-                which already render their own "Findmi URL" label, so no
-                second OverviewSection title is added on top of it.
-                Free/Pro Entitlement pass — choosing/changing this handle
-                is Pro-only (updateBusinessHandle enforces it server-side
-                via requireProBusinessMember); Free renders a read-only
-                variant instead, still copyable, with the same
-                /upgrade/pro?business={id} link every other locked tab
-                uses.
-                V3.1 live QA correction — `quiet` on FindmiUrlCard swaps
-                its claimed-handle Copy Link/Change from outlined pill
-                capsules to plain underlined text actions; LockedFindmiUrl
-                (Business-only, not shared) gets the same treatment
-                directly. Opt-in only — Location/Event Managers, which
-                also render FindmiUrlCard, keep their existing capsule
-                presentation unchanged, and the claim/edit form itself
-                (Save/Claim/Cancel) is untouched. */}
-            <div className="border-t border-black/[0.06] pt-5">
-              {pro ? (
-                <FindmiUrlCard
-                  entityType="business"
-                  entityId={id}
-                  entityLabel={business.name}
-                  currentHandle={businessHandle}
-                  action={updateBusinessHandle.bind(null, id)}
-                  quiet
-                />
-              ) : (
-                <LockedFindmiUrl businessId={id} currentHandle={businessHandle} />
-              )}
+              <div className="flex flex-col gap-5 lg:col-start-3 lg:row-start-1">
+                {/* PUBLIC PRESENCE — "what does this Business currently
+                    look like to customers": plan, publication status, and
+                    the direct link the header's own View Profile already
+                    offers, reinforced here as its own compact rail module
+                    so it's visible alongside the rest of the workspace at
+                    desktop rather than scrolled past. Existing data only
+                    (pro/business.publication_status/business.slug). */}
+                <OwnerModule title="Public Presence">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={`text-sm font-semibold ${pro ? "text-findmi-700" : "text-ink/60"}`}>{pro ? "Pro" : "Free"}</span>
+                    {business.publication_status === "pending_review" ? (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                        Pending Review
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-black/[0.05] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
+                        Published
+                      </span>
+                    )}
+                  </div>
+                  {business.slug && (
+                    <Link href={`/business/${business.slug}`} className="mt-2 inline-flex text-xs font-semibold text-findmi-700 underline underline-offset-2">
+                      View Public Page →
+                    </Link>
+                  )}
+                </OwnerModule>
+
+                {/* WHAT YOU'RE OFFERING — "what is this Business
+                    offering," using the SAME `products` array Products
+                    already fetched above (no new query). Only rendered
+                    when there's something real to show. */}
+                {pro && products.length > 0 && (
+                  <OwnerModule title="What You're Offering" meta={<Link href={`${basePath}?tab=products`} className="text-xs font-bold text-findmi-700 underline underline-offset-2">Products →</Link>}>
+                    <p className="text-sm text-ink/70">
+                      {products.filter((p) => p.is_active).length} active {products.filter((p) => p.is_active).length === 1 ? "product" : "products"}
+                    </p>
+                  </OwnerModule>
+                )}
+
+                {/* ANALYTICS SNAPSHOT — deferred to a contextual link
+                    rather than real numbers. getOwnerBusinessPerformance
+                    computes the FULL Analytics tab (multiple queries plus
+                    a current+previous-period analytics_events scan) —
+                    calling it here merely to read three headline numbers
+                    would add that entire cost to Overview, the
+                    most-visited tab, on every request. This stays a real,
+                    prominent link into the one existing Analytics
+                    implementation instead. */}
+                <OwnerModule title="Analytics">
+                  <p className="text-sm text-ink/50">See your reach and customer actions.</p>
+                  <Link href={`${basePath}?tab=performance`} className="mt-2 inline-flex text-xs font-semibold text-findmi-700 underline underline-offset-2">
+                    View Analytics →
+                  </Link>
+                </OwnerModule>
+
+                {/* FindMi Global Handle Registry — Free/Pro Entitlement
+                    pass — choosing/changing this handle is Pro-only
+                    (updateBusinessHandle enforces it server-side via
+                    requireProBusinessMember); Free renders a read-only
+                    variant instead, still copyable, with the same
+                    /upgrade/pro?business={id} link every other locked tab
+                    uses. */}
+                {/* No OwnerModule title here — FindmiUrlCard/LockedFindmiUrl
+                    already render their own "Findmi URL" label internally
+                    (see either component), so wrapping with a second title
+                    would just duplicate it. */}
+                <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
+                  {pro ? (
+                    <FindmiUrlCard
+                      entityType="business"
+                      entityId={id}
+                      entityLabel={business.name}
+                      currentHandle={businessHandle}
+                      action={updateBusinessHandle.bind(null, id)}
+                      quiet
+                    />
+                  ) : (
+                    <LockedFindmiUrl businessId={id} currentHandle={businessHandle} />
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1229,10 +1338,11 @@ export default async function ManageBusinessPage({
 
         {/* ── Profile ──────────────────────────────────────────────── */}
         {activeTab === "profile" && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 lg:max-w-5xl">
           <div className={cardClass}>
             <form action={profileAction} className="flex flex-col gap-4">
               <p className="font-display text-base font-bold tracking-tight text-ink">Business Basics</p>
+              <p className="-mt-2 text-xs text-ink/45">Control what customers see on your public Findmi profile.</p>
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
                 <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
@@ -1370,7 +1480,13 @@ export default async function ManageBusinessPage({
               isAdminElevated={isAdminElevated}
             />
           )}
+          {/* Business Manager V4 — Gallery and Contact & Links are already
+              two fully separate forms with their own submit actions; at
+              desktop they sit side by side as two distinct cards instead
+              of stacking full-width, real grouping rather than one long
+              scroll — no change to either form's fields or action. */}
           {pro && (
+          <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
             <div className={cardClass}>
               <form action={galleryAction} className="flex flex-col gap-4">
                 <p className="font-display text-base font-bold tracking-tight text-ink">Gallery</p>
@@ -1380,8 +1496,6 @@ export default async function ManageBusinessPage({
                 </button>
               </form>
             </div>
-          )}
-          {pro && (
             <div className={cardClass}>
               <form action={linksAction} className="flex flex-col gap-4">
                 <p className="font-display text-base font-bold tracking-tight text-ink">Contact &amp; Links</p>
@@ -1476,6 +1590,7 @@ export default async function ManageBusinessPage({
                 </button>
               </form>
             </div>
+          </div>
           )}
           </div>
         )}
@@ -1495,7 +1610,7 @@ export default async function ManageBusinessPage({
             exact same actions as before. */}
         {activeTab === "products" &&
           (pro ? (
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-5 lg:max-w-5xl">
               <details className="group" open={addProductHasDraft}>
                 <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
                   <div className="min-w-0">
@@ -1540,6 +1655,7 @@ export default async function ManageBusinessPage({
               </details>
 
               {products.length > 0 && (
+                <OwnerModule title="Catalog" meta={<span className="text-xs text-ink/40">{products.length} {products.length === 1 ? "product" : "products"}</span>}>
                 <ul className="flex flex-col divide-y divide-black/[0.06]">
                   {products.map((p) => {
                     const status = productDisplayStatus(p);
@@ -1547,28 +1663,37 @@ export default async function ManageBusinessPage({
                     return (
                       <li key={p.id} className="py-3 first:pt-0 last:pb-0">
                         <details>
-                          <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                            <div className="flex min-w-0 items-center gap-3">
-                              {p.image_url && (
-                                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
-                                  {/* eslint-disable-next-line @next/next/no-img-element -- small preview only, a live Storage URL */}
-                                  <img src={p.image_url} alt="" className="h-full w-full object-cover" />
-                                </div>
-                              )}
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                                <p className="mt-0.5 truncate text-xs text-ink/50">
-                                  {priceLine && (
-                                    <>
-                                      {priceLine}
-                                      {" · "}
-                                    </>
-                                  )}
-                                  <span className={PRODUCT_STATUS_TONE_CLASS[status.tone]}>{status.label}</span>
-                                </p>
+                          {/* Business Manager V4 — a real table-like row at
+                              desktop (image, name, price, status, Edit as
+                              distinct columns you can scan down), the same
+                              compact stacked block as before at mobile —
+                              same <details>/<summary> accordion, same edit
+                              form underneath, nothing about the
+                              interaction changed. */}
+                          <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden sm:grid sm:grid-cols-[2.5rem_1fr_6rem_9rem_3rem] sm:items-center sm:gap-4">
+                            {p.image_url ? (
+                              <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
+                                {/* eslint-disable-next-line @next/next/no-img-element -- small preview only, a live Storage URL */}
+                                <img src={p.image_url} alt="" className="h-full w-full object-cover" />
                               </div>
+                            ) : (
+                              <div className="hidden h-10 w-10 shrink-0 rounded-lg bg-black/[0.03] sm:block" />
+                            )}
+                            <div className="min-w-0 flex-1 sm:flex-none">
+                              <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
+                              <p className="mt-0.5 truncate text-xs text-ink/50 sm:hidden">
+                                {priceLine && (
+                                  <>
+                                    {priceLine}
+                                    {" · "}
+                                  </>
+                                )}
+                                <span className={PRODUCT_STATUS_TONE_CLASS[status.tone]}>{status.label}</span>
+                              </p>
                             </div>
-                            <span className="shrink-0 text-xs font-semibold text-findmi-700">Edit</span>
+                            <p className="hidden truncate text-sm text-ink/60 sm:block">{priceLine ?? "—"}</p>
+                            <p className={`hidden truncate text-xs sm:block ${PRODUCT_STATUS_TONE_CLASS[status.tone]}`}>{status.label}</p>
+                            <span className="shrink-0 text-xs font-semibold text-findmi-700 sm:text-right">Edit</span>
                           </summary>
                           <div className="mt-3 flex flex-col gap-3">
                             {p.moderationStatus === "pending_review" && (
@@ -1660,6 +1785,7 @@ export default async function ManageBusinessPage({
                     );
                   })}
                 </ul>
+                </OwnerModule>
               )}
             </div>
           ) : (
@@ -1683,21 +1809,28 @@ export default async function ManageBusinessPage({
             addFromEvent/addManual/updateOwnerAppearance/
             removeOwnerAppearance are the exact same actions as before. */}
         {activeTab === "findmi-here" && (
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-5 lg:max-w-3xl">
+            {/* Business Manager V4 — this is the customer-facing schedule
+                workspace for THIS business, not a second copy of Account
+                Schedule (which is owner-wide across every managed
+                Business/Event/Location). hasAnySchedule now also counts
+                eventOnlySchedule — an approved Event participation that
+                genuinely has upcoming activity but happens to have no
+                `appearances` row shouldn't read as "nothing scheduled." */}
             <details className="group" open={addHasDraft}>
               <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
                 <div className="min-w-0">
                   <p className="font-display text-base font-bold tracking-tight text-ink">
-                    {appearances.length > 0 ? "Findmi Here" : "Where will customers find you next?"}
+                    {appearances.length + eventOnlySchedule.length > 0 ? "Where I'll Be" : "Where will customers find you next?"}
                   </p>
                   <p className="mt-1 text-sm text-ink/60">
-                    {appearances.length > 0
-                      ? "Manage where customers can find you next."
+                    {appearances.length + eventOnlySchedule.length > 0
+                      ? "This is what customers see on your public Findmi profile."
                       : "Add your next market, pop-up, event or location."}
                   </p>
                 </div>
                 <span className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
-                  <span className="group-open:hidden">{appearances.length > 0 ? "+ Add" : "+ Add Where I'll Be"}</span>
+                  <span className="group-open:hidden">{appearances.length + eventOnlySchedule.length > 0 ? "+ Add" : "+ Add Where I'll Be"}</span>
                   <span className="hidden group-open:inline">Close</span>
                 </span>
               </summary>
@@ -1740,16 +1873,18 @@ export default async function ManageBusinessPage({
               </div>
             </details>
 
-            {/* EXISTING APPEARANCES — flat divided list, no outer card, no
-                per-row card. Edit is the row's primary/visible action;
-                Remove is demoted inside that same existing row-level
-                disclosure (still one tap away, never harder to find —
-                just no longer a bright red button floating on every row
-                by default). Source ("Findmi Event"/"Added by you") and
-                participation status are both preserved but quiet — status
-                gets restrained emphasis only when it isn't the
-                expected/approved state. */}
-            {appearances.length > 0 && (
+            {/* EXISTING APPEARANCES — a bounded module (a real, coherent
+                operating concept — Findmi's own approved rule for when a
+                boundary earns its place), flat divided rows inside it. Edit
+                is the row's primary/visible action; Remove is demoted
+                inside that same existing row-level disclosure (still one
+                tap away, never harder to find — just no longer a bright
+                red button floating on every row by default). Source
+                ("Findmi Event"/"Added by you") and participation status are
+                both preserved but quiet — status gets restrained emphasis
+                only when it isn't the expected/approved state. */}
+            {(appearances.length > 0 || eventOnlySchedule.length > 0) && (
+              <OwnerModule title="Upcoming">
               <ul className="flex flex-col divide-y divide-black/[0.06]">
                 {appearances.map((a) => {
                   const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
@@ -1831,7 +1966,34 @@ export default async function ManageBusinessPage({
                     </li>
                   );
                 })}
+                {/* Approved Event participation with no `appearances` row
+                    of its own (see EventOnlySchedule's own doc comment) —
+                    real, upcoming, customer-facing, just not editable here
+                    (there's no Appearance to edit; the Event itself is the
+                    source). Same row grammar, "View Event" instead of
+                    Edit. */}
+                {eventOnlySchedule.map((e) => (
+                  <li key={e.key} className="py-3 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">{e.title}</p>
+                        <p className="mt-0.5 text-xs text-ink/50">Findmi Event · Confirmed</p>
+                        <p className="mt-0.5 text-xs text-ink/60">
+                          {formatDateShort(e.startAt)} · {formatTime(e.startAt)}
+                          {e.endAt && `–${formatTime(e.endAt)}`}
+                        </p>
+                        {e.where && <p className="mt-0.5 truncate text-xs text-ink/50">{e.where}</p>}
+                      </div>
+                      {e.href && (
+                        <Link href={e.href} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+                          View Event
+                        </Link>
+                      )}
+                    </div>
+                  </li>
+                ))}
               </ul>
+              </OwnerModule>
             )}
 
             {/* Schedule Scale Bound pass — a quiet continuation control,
@@ -1858,7 +2020,7 @@ export default async function ManageBusinessPage({
             settings, Event Invitations/Applications) so neither is
             orphaned by their removal from the primary rail. ─────────── */}
         {activeTab === "settings" && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 lg:max-w-2xl">
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Plan &amp; Status</p>
             <span
@@ -2147,7 +2309,7 @@ export default async function ManageBusinessPage({
             same "?tab=<key>&<extra param>" convention as ?editing=<id>
             elsewhere on this page. */}
         {activeTab === "inquiries" && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 lg:max-w-2xl">
             {/* Launch V2 Pass 1, Section 13 — this tab is now
                 CONFIGURATION ONLY. The legacy list/thread/reply UI that
                 used to render below (backed by the `inquiries`/
@@ -2196,7 +2358,7 @@ export default async function ManageBusinessPage({
             and internal_note (updateOrderItemFulfillment), never
             payment_status/total_charged/fees. */}
         {activeTab === "orders" && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 lg:max-w-3xl">
             {!openOrder && (
               <>
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
