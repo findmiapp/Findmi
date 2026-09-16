@@ -2,6 +2,7 @@ import NavDesktop from "@/components/NavDesktop";
 import MobileHeader from "@/components/MobileHeader";
 import AdminToolbar from "@/components/AdminToolbar";
 import Footer from "@/components/Footer";
+import SiteChrome from "@/components/SiteChrome";
 import { filterNavItemsForAudience, getVisibleNavItems } from "@/lib/navigation";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -69,17 +70,21 @@ export default async function PublicLayout({ children }: { children: React.React
   }
 
   return (
-    <>
-      <AdminToolbar />
-      <MobileHeader
-        navItems={navItems}
-        adminToolbar={isAdmin}
-        authenticated={authenticated}
-        businesses={businesses}
-      />
-      <NavDesktop navItems={navItems} authenticated={authenticated} businesses={businesses} />
-      <div className={`flex-1 ${isAdmin ? "pt-[calc(3.5rem+1.75rem)]" : "pt-14"} md:pt-0`}>{children}</div>
-      <Footer />
-    </>
+    <SiteChrome
+      adminToolbar={<AdminToolbar />}
+      mobileHeader={
+        <MobileHeader
+          navItems={navItems}
+          adminToolbar={isAdmin}
+          authenticated={authenticated}
+          businesses={businesses}
+        />
+      }
+      navDesktop={<NavDesktop navItems={navItems} authenticated={authenticated} businesses={businesses} />}
+      footer={<Footer />}
+      isAdmin={isAdmin}
+    >
+      {children}
+    </SiteChrome>
   );
 }

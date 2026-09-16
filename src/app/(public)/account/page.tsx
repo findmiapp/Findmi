@@ -232,7 +232,7 @@ export default async function AccountHomePage({
       <div className="lg:flex lg:items-start lg:justify-between lg:gap-6">
         <header className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
-          <h1 className="mt-0.5 font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">
+          <h1 className="mt-0.5 font-display text-lg font-bold tracking-tight text-ink sm:text-2xl">
             Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
           </h1>
           {singleBusiness && (
@@ -248,7 +248,7 @@ export default async function AccountHomePage({
         </header>
 
         {myBusinesses.length > 1 && (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:mt-0 lg:max-w-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 pr-6 lg:mt-0 lg:max-w-xs lg:pr-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {myBusinesses.map((b) => (
               <Link
                 key={b.id}
@@ -308,6 +308,7 @@ export default async function AccountHomePage({
       <div className="mt-4">
         <BusinessScopedAction
           variant="full"
+          size="compact"
           businesses={myBusinesses}
           tab="findmi-here"
           icon={<PlusGlyph className="h-4 w-4" />}

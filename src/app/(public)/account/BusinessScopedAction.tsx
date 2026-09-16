@@ -89,6 +89,7 @@ export default function BusinessScopedAction({
   businesses,
   tab,
   variant = "pill",
+  size = "default",
   eyebrow,
   headline,
   description,
@@ -99,6 +100,12 @@ export default function BusinessScopedAction({
   businesses: BusinessOption[];
   tab: string;
   variant?: "pill" | "card" | "link" | "full";
+  /** Owner Command Center V4.1 — "full" only. "compact" is a modest
+   * height/padding reduction for a context (the Command Center's primary
+   * CTA) that reads closer to an operating control than a marketing
+   * button; every other "full" caller (e.g. Schedule's own CTA) keeps
+   * "default" and is byte-for-byte unchanged. */
+  size?: "default" | "compact";
   eyebrow?: string;
   headline?: string;
   description?: string;
@@ -150,7 +157,9 @@ export default function BusinessScopedAction({
     // enough on some accounts' locales that it can wrap to two lines on
     // narrow screens; a fixed height would clip or overlap it there.
     const fullClass =
-      "flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full bg-findmi px-4 py-3 text-center text-sm font-bold uppercase text-white transition hover:bg-findmi-600 active:scale-[0.99]";
+      size === "compact"
+        ? "flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full bg-findmi px-4 py-2.5 text-center text-sm font-bold uppercase text-white transition hover:bg-findmi-600 active:scale-[0.99]"
+        : "flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full bg-findmi px-4 py-3 text-center text-sm font-bold uppercase text-white transition hover:bg-findmi-600 active:scale-[0.99]";
     if (businesses.length === 0) {
       return (
         <Link href={zeroHref} className={fullClass}>
