@@ -28,7 +28,7 @@ import {
   syncOfficialEventAppearances,
   syncOfficialOccurrenceAppearances,
 } from "@/lib/appearance-event-sync";
-import { isPrimaryDateId, primaryDateId } from "@/lib/data";
+import { findCoveringOccurrenceId, isPrimaryDateId, primaryDateId } from "@/lib/data";
 import { MAX_BULK_GENERATED_DATES, resolveEndDateForTimes } from "@/lib/schedule-dates";
 import type { EventParticipationScope, EventParticipationStatus } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
@@ -997,15 +997,22 @@ export async function bulkUpdateEventDatesHours(
 // copies that Location's fields down into these same text columns
 // (unconditional, unchanged) — that text snapshot is what every legacy
 // display path already reads. Event <-> Venue/Location Relational
-// Workflow pass — when there is no event_occurrences row yet for this
-// event (a plain, single-date event that has never touched the Dates
-// tab), a real Location selection here ALSO seeds that event's one
-// default occurrence with the genuine location_id relationship, mirroring
-// createMemberEvent's own new occurrence-seeding behavior. If the event
-// already has one or more occurrences (multi-date/recurring), this never
-// guesses which one the owner means — that's the Dates tab's own job, per
-// occurrence — so this only ever touches the text snapshot in that case,
-// exactly as before.
+// Primary Event Location Relationship fix — a real Location selection here
+// must give the Event's own PRIMARY DATE a genuine event_occurrences.location_id
+// relationship, exactly like any Additional Date already gets via the Dates
+// tab — not just once (when the Event has zero occurrences), but every time,
+// regardless of how many Additional Date occurrences already exist. The
+// deciding question is never "does ANY occurrence exist" — it's "does an
+// occurrence representing THIS Event's Primary Date exist" (identified via
+// findCoveringOccurrenceId's same "same local calendar date" rule
+// bulkGenerateEventDates/getEffectiveEventSchedule already use). If one does,
+// it's updated in place (never duplicated); if not, the minimal seed
+// occurrence is inserted exactly as before, dated identically to
+// events.start_at/end_at. Switching back to a manual venue clears that same
+// occurrence's location_id (never deletes the row — it may still be the only
+// occurrence covering that calendar day) and refreshes its venue snapshot to
+// the new manual text. Additional Date occurrences are never read for a
+// match beyond this, and never written to, by any of this.
 export async function updateMemberEventLocation(eventId: string, formData: FormData) {
   const redirectPath = `/account/event/${eventId}?tab=dates`;
   const admin = await requireEventManager(eventId, redirectPath);
@@ -1069,31 +1076,67 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
   // sync — nothing is approved against a brand-new occurrence.
   await syncOfficialEventAppearances(admin, eventId);
 
-  if (matchedLocation && event) {
-    const { count } = await admin
+  if (event) {
+    const { data: existingOccurrences } = await admin
       .from("event_occurrences")
-      .select("id", { count: "exact", head: true })
+      .select("id, start_at")
       .eq("event_id", eventId);
-    if (!count) {
-      const { data: seeded } = await admin
+    const primaryOccurrenceId = findCoveringOccurrenceId(event.start_at, existingOccurrences ?? []);
+
+    if (matchedLocation) {
+      if (primaryOccurrenceId) {
+        await admin
+          .from("event_occurrences")
+          .update({
+            location_id: locationId,
+            venue_name: matchedLocation.name,
+            address: matchedLocation.address,
+            city: matchedLocation.city,
+            state: matchedLocation.state,
+            postal_code: matchedLocation.postal_code,
+          })
+          .eq("id", primaryOccurrenceId);
+        await syncOfficialOccurrenceAppearances(admin, primaryOccurrenceId);
+      } else {
+        const { data: seeded } = await admin
+          .from("event_occurrences")
+          .insert({
+            event_id: eventId,
+            start_at: event.start_at,
+            end_at: event.end_at,
+            location_id: locationId,
+            venue_name: matchedLocation.name,
+            address: matchedLocation.address,
+            city: matchedLocation.city,
+            state: matchedLocation.state,
+            postal_code: matchedLocation.postal_code,
+          })
+          .select("id")
+          .single();
+        // Multi-Date Business Participation Pass 2B — an all_dates Business
+        // approved before this Event ever had a real occurrence row must
+        // still pick up this newly-seeded one.
+        if (seeded) await propagateAllDatesParticipation(admin, eventId, [seeded.id]);
+      }
+    } else if (primaryOccurrenceId) {
+      // Switching the Primary Date from a canonical Location back to manual
+      // venue text — clear only this one occurrence's location_id (never
+      // delete it) and refresh its venue snapshot to match, so it stops
+      // pointing at a Location it no longer represents. Never reaches an
+      // Additional Date's own occurrence: primaryOccurrenceId only ever
+      // identifies the one covering the Primary Date's own calendar day.
+      await admin
         .from("event_occurrences")
-        .insert({
-          event_id: eventId,
-          start_at: event.start_at,
-          end_at: event.end_at,
-          location_id: locationId,
-          venue_name: matchedLocation.name,
-          address: matchedLocation.address,
-          city: matchedLocation.city,
-          state: matchedLocation.state,
-          postal_code: matchedLocation.postal_code,
+        .update({
+          location_id: null,
+          venue_name: payload.venue_name,
+          address: payload.address,
+          city: payload.city,
+          state: payload.state,
+          postal_code: payload.postal_code,
         })
-        .select("id")
-        .single();
-      // Multi-Date Business Participation Pass 2B — an all_dates Business
-      // approved before this Event ever had a real occurrence row must
-      // still pick up this newly-seeded one.
-      if (seeded) await propagateAllDatesParticipation(admin, eventId, [seeded.id]);
+        .eq("id", primaryOccurrenceId);
+      await syncOfficialOccurrenceAppearances(admin, primaryOccurrenceId);
     }
   }
 

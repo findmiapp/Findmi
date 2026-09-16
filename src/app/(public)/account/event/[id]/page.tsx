@@ -33,7 +33,7 @@ import {
   updateParticipatingBusinessStatus,
 } from "../actions";
 import { weekdayIndexOf } from "@/lib/schedule-dates";
-import { primaryDateId } from "@/lib/data";
+import { findCoveringOccurrenceId, primaryDateId } from "@/lib/data";
 import type { EventParticipationStatus } from "@/lib/types";
 import ParticipationScopeEditor from "./ParticipationScopeEditor";
 
@@ -179,7 +179,16 @@ export default async function ManageEventPage({
   // `occurrences` is already fetched above for Dates & Locations, so this
   // is one extra lookup only when an occurrence actually has a
   // location_id.
-  const occurrenceLocationId = occurrences.find((o) => o.location_id)?.location_id ?? null;
+  //
+  // Primary Event Location Relationship fix — this must be the occurrence
+  // that actually REPRESENTS the Event's own Primary Date (same "same local
+  // calendar date" rule as updateMemberEventLocation/getEffectiveEventSchedule
+  // via findCoveringOccurrenceId), never just the first occurrence in the
+  // list that happens to have any location_id at all — a multi-venue event
+  // could otherwise show an Additional Date's venue as though it were the
+  // Primary Date's own.
+  const primaryOccurrenceId = findCoveringOccurrenceId(event.start_at, occurrences);
+  const occurrenceLocationId = occurrences.find((o) => o.id === primaryOccurrenceId)?.location_id ?? null;
   const occurrenceLocationRow = occurrenceLocationId
     ? await admin
         .from("locations")
@@ -765,6 +774,15 @@ export default async function ManageEventPage({
                 date: addDate ?? "",
                 start_time: addStartTime ?? "",
                 end_time: addEndTime ?? "",
+                // Primary Event Location Relationship fix, Step 8 — absent a
+                // validation-error retry (addLocationHint, which always wins:
+                // it's exactly what the organizer just submitted), a brand-new
+                // Additional Date defaults its Location to the Primary Date's
+                // own canonical Location, if it has one — a starting point
+                // only, not inheritance: it's plain useState initial state in
+                // EventDateFieldsForm, so changing it here never touches this
+                // date once created, and later changing the Primary Date's own
+                // Location never reaches back into it.
                 location: addLocationHint
                   ? {
                       id: addLocationHint.id,
@@ -777,7 +795,7 @@ export default async function ManageEventPage({
                       state: addLocationHint.state ?? null,
                       postal_code: addLocationHint.postal_code ?? null,
                     }
-                  : null,
+                  : matchedEventLocation,
                 manualVenue: null,
               }}
             />

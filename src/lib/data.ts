@@ -1799,6 +1799,34 @@ export function isPrimaryDateId(id: string): boolean {
   return id.startsWith("primary:");
 }
 
+/** Primary Event Location Relationship fix — identifies which REAL
+ * event_occurrences row (if any) represents the Event's own Primary Date,
+ * using the exact same "same LOCAL CALENDAR DATE" rule
+ * bulkGenerateEventDates/getEffectiveEventSchedule already use to decide a
+ * day is "already covered" — never a second, independently-defined notion
+ * of Primary-Date identity. A day can only ever have a real occurrence
+ * land on it via the seed-occurrence paths (createMemberEvent,
+ * updateMemberEventLocation) or ordinary Additional-Date authoring that
+ * already refuses to duplicate an already-covered day — so a match here
+ * is always genuinely the Primary Date's own row, never a coincidental
+ * Additional Date. Pure/no I/O — callers pass whichever occurrence rows
+ * they already have in hand (a fresh query, or an already-fetched admin
+ * list), so this works identically from a Server Action and from a
+ * Server Component that already loaded its own occurrences. Ties (more
+ * than one occurrence somehow on the same day — no DB constraint
+ * prevents it) resolve to the earliest by start_at, a stable, arbitrary
+ * but deterministic choice. */
+export function findCoveringOccurrenceId(
+  eventStartAtIso: string,
+  occurrences: { id: string; start_at: string }[]
+): string | null {
+  const primaryLocalDate = isoToLocalDateTime(eventStartAtIso).slice(0, 10);
+  const matches = occurrences
+    .filter((o) => isoToLocalDateTime(o.start_at).slice(0, 10) === primaryLocalDate)
+    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+  return matches[0]?.id ?? null;
+}
+
 /** One unified, chronological schedule for the public Event page: the
  * Primary Date (events.start_at/end_at) plus every real Additional Date
  * (getUpcomingOccurrencesForEvent's own result) — "N effective dates,"
