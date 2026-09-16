@@ -7,6 +7,7 @@ import {
   getRecentActivity,
 } from "@/lib/admin/dashboard-queries";
 import { getPendingMarketRequestGroups } from "@/lib/admin/market-requests";
+import AdminGlobalSearch from "./AdminGlobalSearch";
 
 export const dynamic = "force-dynamic";
 
@@ -181,6 +182,11 @@ export default async function AdminDashboardPage() {
         <h1 className="mt-0.5 font-display text-2xl font-semibold tracking-tight text-ink">Findmi Command Center</h1>
         <p className="mt-1 text-sm text-ink/60">Review what needs attention and manage what&rsquo;s happening across Findmi.</p>
       </div>
+
+      {/* Admin Global Search pass — placed here, between the intro and
+          Needs Attention, so it's immediately available near the top of
+          Admin rather than buried under Quick Add/At a Glance. */}
+      <AdminGlobalSearch />
 
       {!counts && (
         <p className="mt-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
