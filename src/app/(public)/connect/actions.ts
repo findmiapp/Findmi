@@ -44,7 +44,9 @@ import {
 import { isBusinessPro } from "@/lib/entitlements";
 import { BUSINESS_INQUIRY_TOPIC_LABELS, isBusinessInquiryTopic, sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import type { PlanTier } from "@/lib/types";
-import { ensureEventAppearance, cancelEventAppearance } from "@/lib/appearance-event-sync";
+import { ensureEventAppearance, realizeEventLevelApproval, declineEventLevelParticipation } from "@/lib/appearance-event-sync";
+import { isPrimaryDateId, primaryDateId } from "@/lib/data";
+import type { EventParticipationScope } from "@/lib/types";
 
 type ActionResult = { conversationId: string } | { error: string };
 
@@ -356,9 +358,16 @@ export async function messageEventOrganizer(eventId: string, actingBusinessId: s
  * one per date. */
 export async function applyToEventPublic(
   eventId: string,
-  occurrenceIds: string[],
+  dateIds: string[],
   actingBusinessId: string,
-  note: string
+  note: string,
+  // Multi-Date Business Participation Pass 2B — explicit, never inferred
+  // (LOCKED: selecting every currently-visible date under "Selected dates"
+  // must stay 'selected_dates' — only an explicit "All dates" choice ever
+  // produces 'all_dates'). Defaults to 'selected_dates' so any caller that
+  // doesn't pass this (there are none left after this pass) keeps the
+  // pre-existing occurrence-scoped behavior exactly as it was.
+  scope: EventParticipationScope = "selected_dates"
 ): Promise<ActionResult> {
   try {
     await requireBusinessMember(actingBusinessId);
@@ -375,21 +384,11 @@ export async function applyToEventPublic(
   const { data: occurrenceRows } = await admin.from("event_occurrences").select("id").eq("event_id", eventId);
   const allOccurrenceIds = ((occurrenceRows ?? []) as { id: string }[]).map((o) => o.id);
   const isRecurring = allOccurrenceIds.length > 0;
-
-  let selectedOccurrenceIds = [...new Set(occurrenceIds.filter(Boolean))];
-  if (isRecurring) {
-    if (allOccurrenceIds.length === 1 && selectedOccurrenceIds.length === 0) {
-      selectedOccurrenceIds = allOccurrenceIds;
-    } else {
-      // Defense in depth — only accept ids that actually belong to this
-      // event, regardless of what the client claims.
-      const validIds = new Set(allOccurrenceIds);
-      selectedOccurrenceIds = selectedOccurrenceIds.filter((id) => validIds.has(id));
-    }
-    if (selectedOccurrenceIds.length === 0) {
-      return { error: "Choose at least one date to apply for." };
-    }
-  }
+  // A genuinely single-date Event (no Additional Dates at all) keeps its
+  // exact original legacy whole-event application behavior — no scope
+  // chooser is ever shown for it (see MessageButton's own gate), and it's
+  // always treated as 'all_dates' (the whole event IS the one date).
+  const effectiveScope: EventParticipationScope = isRecurring ? scope : "all_dates";
 
   let conversationId: string | null = null;
 
@@ -404,10 +403,71 @@ export async function applyToEventPublic(
     if (currentStatus === "approved") return { error: "You're already a confirmed participant in that event." };
 
     if (currentStatus === "invited") {
-      await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", actingBusinessId);
-      await ensureEventAppearance(admin, eventId, actingBusinessId);
+      await admin
+        .from("event_businesses")
+        .update({ status: "approved", participation_scope: effectiveScope })
+        .eq("event_id", eventId)
+        .eq("business_id", actingBusinessId);
+      await realizeEventLevelApproval(admin, eventId, actingBusinessId);
     } else if (currentStatus !== "applied" && currentStatus !== "pending") {
-      await admin.from("event_businesses").upsert({ event_id: eventId, business_id: actingBusinessId, status: "applied" }, { onConflict: "event_id,business_id" });
+      await admin
+        .from("event_businesses")
+        .upsert(
+          { event_id: eventId, business_id: actingBusinessId, status: "applied", participation_scope: effectiveScope },
+          { onConflict: "event_id,business_id" }
+        );
+    }
+
+    try {
+      const outcome = await createOpportunity(admin, {
+        type: "event_application",
+        eventId,
+        eventOccurrenceId: null,
+        businessId: actingBusinessId,
+        initiatorUserId: userId,
+        initiatorEntityType: "business",
+        initiatorEntityId: actingBusinessId,
+        note: note.trim() || null,
+      });
+      if ("opportunity" in outcome) conversationId = outcome.opportunity.conversation_id;
+    } catch (err) {
+      console.error("[opportunities] failed to record application Opportunity", err);
+    }
+  } else if (effectiveScope === "all_dates") {
+    // Multi-Date Business Participation Pass 2B — applying for the WHOLE
+    // Event: durable intent that auto-includes every date added later
+    // (propagateAllDatesParticipation), never a per-occurrence Opportunity
+    // loop. Mirrors the non-recurring branch above exactly, just with
+    // participation_scope='all_dates' recorded explicitly.
+    const { data: existingRow } = await admin
+      .from("event_businesses")
+      .select("status")
+      .eq("event_id", eventId)
+      .eq("business_id", actingBusinessId)
+      .maybeSingle();
+    const currentStatus = (existingRow as { status: string } | null)?.status ?? null;
+    if (currentStatus === "approved") return { error: "You're already a confirmed participant in that event." };
+
+    if (currentStatus === "invited") {
+      await admin
+        .from("event_businesses")
+        .update({ status: "approved", participation_scope: "all_dates" })
+        .eq("event_id", eventId)
+        .eq("business_id", actingBusinessId);
+      await realizeEventLevelApproval(admin, eventId, actingBusinessId);
+    } else if (currentStatus !== "applied" && currentStatus !== "pending") {
+      await admin
+        .from("event_businesses")
+        .upsert(
+          { event_id: eventId, business_id: actingBusinessId, status: "applied", participation_scope: "all_dates" },
+          { onConflict: "event_id,business_id" }
+        );
+    } else {
+      await admin
+        .from("event_businesses")
+        .update({ participation_scope: "all_dates" })
+        .eq("event_id", eventId)
+        .eq("business_id", actingBusinessId);
     }
 
     try {
@@ -426,16 +486,75 @@ export async function applyToEventPublic(
       console.error("[opportunities] failed to record application Opportunity", err);
     }
   } else {
+    // selected_dates — dateIds may mix the synthetic Primary Date id (see
+    // lib/data.ts's primaryDateId/isPrimaryDateId) with real occurrence
+    // ids. The Primary Date has no event_occurrence_businesses row (never
+    // create one — LOCKED architecture); its inclusion is instead recorded
+    // via a null-occurrence event_application Opportunity, the exact same
+    // shape a non-recurring Event's own application already uses.
+    const validRealIds = new Set(allOccurrenceIds);
+    const selectedOccurrenceIds = [...new Set(dateIds.filter((id) => !isPrimaryDateId(id) && validRealIds.has(id)))];
+    const includesPrimary = dateIds.includes(primaryDateId(eventId));
+    if (selectedOccurrenceIds.length === 0 && !includesPrimary) {
+      return { error: "Choose at least one date to apply for." };
+    }
+
+    const { data: existingRow } = await admin
+      .from("event_businesses")
+      .select("status")
+      .eq("event_id", eventId)
+      .eq("business_id", actingBusinessId)
+      .maybeSingle();
+    const currentStatus = (existingRow as { status: string } | null)?.status ?? null;
+
+    if (includesPrimary && currentStatus === "invited") {
+      // Crossing: the organizer already invited (whole-event) and this
+      // application explicitly includes the Primary Date — mutual intent
+      // now exists for it, same crossing rule the non-recurring branch
+      // above already applies.
+      await admin
+        .from("event_businesses")
+        .update({ status: "approved", participation_scope: "selected_dates" })
+        .eq("event_id", eventId)
+        .eq("business_id", actingBusinessId);
+      await ensureEventAppearance(admin, eventId, actingBusinessId);
+    } else if (currentStatus !== "approved") {
+      await admin
+        .from("event_businesses")
+        .upsert(
+          { event_id: eventId, business_id: actingBusinessId, status: currentStatus ?? "applied", participation_scope: "selected_dates" },
+          { onConflict: "event_id,business_id" }
+        );
+    }
+
+    if (includesPrimary) {
+      try {
+        const outcome = await createOpportunity(admin, {
+          type: "event_application",
+          eventId,
+          eventOccurrenceId: null,
+          businessId: actingBusinessId,
+          initiatorUserId: userId,
+          initiatorEntityType: "business",
+          initiatorEntityId: actingBusinessId,
+          note: note.trim() || null,
+        });
+        if (!conversationId && "opportunity" in outcome) conversationId = outcome.opportunity.conversation_id;
+      } catch (err) {
+        console.error("[opportunities] failed to record application Opportunity", err);
+      }
+    }
+
     for (const occurrenceId of selectedOccurrenceIds) {
-      const { data: existingRow } = await admin
+      const { data: existingOccRow } = await admin
         .from("event_occurrence_businesses")
         .select("status")
         .eq("occurrence_id", occurrenceId)
         .eq("business_id", actingBusinessId)
         .maybeSingle();
-      const currentStatus = (existingRow as { status: string } | null)?.status ?? null;
-      if (currentStatus === "approved") continue; // already confirmed for this date — nothing to (re)apply for
-      if (currentStatus !== "applied" && currentStatus !== "pending") {
+      const currentOccStatus = (existingOccRow as { status: string } | null)?.status ?? null;
+      if (currentOccStatus === "approved") continue; // already confirmed for this date — nothing to (re)apply for
+      if (currentOccStatus !== "applied" && currentOccStatus !== "pending") {
         await admin
           .from("event_occurrence_businesses")
           .upsert({ occurrence_id: occurrenceId, business_id: actingBusinessId, status: "applied" }, { onConflict: "occurrence_id,business_id" });
@@ -539,7 +658,10 @@ export async function inviteBusinessToEventPublic(actingEventId: string, targetB
 
   const { error } = await admin
     .from("event_businesses")
-    .upsert({ event_id: actingEventId, business_id: targetBusinessId, status: "invited" }, { onConflict: "event_id,business_id", ignoreDuplicates: true });
+    .upsert(
+      { event_id: actingEventId, business_id: targetBusinessId, status: "invited", participation_scope: "all_dates" },
+      { onConflict: "event_id,business_id", ignoreDuplicates: true }
+    );
   if (error) return { error: error.message };
 
   let conversationId: string | null = null;
@@ -557,7 +679,7 @@ export async function inviteBusinessToEventPublic(actingEventId: string, targetB
     if ("opportunity" in outcome) conversationId = outcome.opportunity.conversation_id;
     if (outcome.kind === "crossed") {
       await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", actingEventId).eq("business_id", targetBusinessId);
-      await ensureEventAppearance(admin, actingEventId, targetBusinessId);
+      await realizeEventLevelApproval(admin, actingEventId, targetBusinessId);
     }
   } catch (err) {
     console.error("[opportunities] failed to record invitation Opportunity", err);
@@ -689,10 +811,10 @@ export async function respondToInvitationInThread(conversationId: string, opport
   const eventId = (opportunity as { event_id: string }).event_id;
   if (response === "accepted") {
     await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", businessId);
-    await ensureEventAppearance(admin, eventId, businessId);
+    await realizeEventLevelApproval(admin, eventId, businessId);
   } else {
     await admin.from("event_businesses").update({ status: "declined" }).eq("event_id", eventId).eq("business_id", businessId);
-    await cancelEventAppearance(admin, eventId, businessId);
+    await declineEventLevelParticipation(admin, eventId, businessId);
   }
   await resolveOpportunity(admin, opportunityId, response, response === "accepted" ? "Invitation accepted." : "Invitation declined.");
 
@@ -746,9 +868,9 @@ export async function respondToApplicationInThread(conversationId: string, event
     if (error) redirect(`${redirectPath}?error=${encodeURIComponent(error.message)}`);
 
     if (response === "approved") {
-      await ensureEventAppearance(admin, eventId, businessId);
+      await realizeEventLevelApproval(admin, eventId, businessId);
     } else {
-      await cancelEventAppearance(admin, eventId, businessId);
+      await declineEventLevelParticipation(admin, eventId, businessId);
     }
 
     try {

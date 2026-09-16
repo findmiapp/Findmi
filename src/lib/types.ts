@@ -629,6 +629,16 @@ export type EventParticipationStatus =
   | "approved"
   | "declined";
 
+// Multi-Date Business Participation Pass 2B — the durable intent behind an
+// event_businesses row for a multi-date Event. 'all_dates' propagates
+// automatically onto every date added later (no organizer follow-up
+// needed); 'selected_dates' is a closed, explicit set that never
+// auto-propagates. null (not part of this union — the column itself is
+// nullable) means legacy/unspecified, and is never auto-interpreted as
+// either value — see propagateAllDatesParticipation in
+// lib/appearance-event-sync.ts.
+export type EventParticipationScope = "all_dates" | "selected_dates";
+
 // Appearance Provenance pass — how this Appearance row came to exist:
 // "manual" (owner-typed, no event link), "event_self_added" (owner chose
 // a real FindMi event/occurrence themselves), or "official_participation"

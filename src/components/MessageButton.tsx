@@ -73,6 +73,10 @@ export default function MessageButton({
   const [mode, setMode] = useState<Mode>("message");
   const [actorId, setActorId] = useState<string>("");
   const [selectedOccurrenceIds, setSelectedOccurrenceIds] = useState<string[]>([]);
+  // Multi-Date Business Participation Pass 2B — explicit, never inferred:
+  // selecting every currently-visible date under "Selected dates" stays
+  // 'selected_dates'; only this dedicated toggle ever produces 'all_dates'.
+  const [applyScope, setApplyScope] = useState<"all_dates" | "selected_dates">("selected_dates");
   const [body, setBody] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -116,6 +120,7 @@ export default function MessageButton({
     // needed); zero or multiple occurrences start with nothing selected —
     // multiple REQUIRES an explicit choice, never a silent default.
     setSelectedOccurrenceIds(eventOccurrences && eventOccurrences.length === 1 ? [eventOccurrences[0].id] : []);
+    setApplyScope("selected_dates");
     setBody("");
     setNote("");
     setError(null);
@@ -179,14 +184,22 @@ export default function MessageButton({
   }
 
   const needsOccurrenceChoice = Boolean(eventOccurrences && eventOccurrences.length > 1);
-  const canSubmitApply = Boolean(selectedActor) && (!needsOccurrenceChoice || selectedOccurrenceIds.length > 0);
+  const canSubmitApply =
+    Boolean(selectedActor) && (!needsOccurrenceChoice || applyScope === "all_dates" || selectedOccurrenceIds.length > 0);
 
   async function submitApply() {
     if (!canSubmitApply || !selectedActor) return;
     setSubmitting(true);
     setError(null);
     try {
-      const result = await applyToEventPublic(targetId, selectedOccurrenceIds, selectedActor.id, note);
+      const effectiveScope = needsOccurrenceChoice ? applyScope : "all_dates";
+      const result = await applyToEventPublic(
+        targetId,
+        effectiveScope === "all_dates" ? [] : selectedOccurrenceIds,
+        selectedActor.id,
+        note,
+        effectiveScope
+      );
       if ("error" in result) {
         setError(result.error);
         setSubmitting(false);
@@ -382,21 +395,53 @@ export default function MessageButton({
 
                   {mode === "apply" && (
                     <div className="flex flex-col gap-3">
-                      {/* Occurrence-Aware Event Participation pass —
-                          Phase 2. Multiple dates: a REQUIRED multi-select
-                          checkbox list, never a "whole event" default (an
-                          approved whole-event application on a recurring
-                          Event is invisible on the public per-occurrence
-                          roster — see this pass's own root-cause fix).
-                          Exactly one date: shown as a plain confirmation
-                          line, already selected — no extra tap needed. No
-                          occurrence rows at all: no date UI, legacy
-                          whole-event application. */}
-                      {eventOccurrences && eventOccurrences.length > 1 && (
+                      {/* Multi-Date Business Participation Pass 2B — for a
+                          multi-date Event, the applicant first chooses
+                          between durable "All dates" (auto-includes every
+                          date added later) and "Selected dates" (a closed,
+                          explicit set — never auto-propagates). Only
+                          "Selected dates" shows the per-date checklist
+                          below, which now includes the Primary Date
+                          alongside every Additional Date as one unified,
+                          human-facing list (never exposing "primary"/
+                          "occurrence" terminology). A single-date Event
+                          skips this chooser entirely — nothing to choose
+                          between. */}
+                      {needsOccurrenceChoice && (
                         <div>
-                          <span className="mb-1.5 block text-xs font-medium text-ink">
-                            Choose the date(s) you&rsquo;d like to participate
-                          </span>
+                          <span className="mb-1.5 block text-xs font-medium text-ink">Participating dates</span>
+                          <div className="flex flex-col gap-1.5 rounded-xl border border-black/10 bg-white p-2">
+                            <label className="flex items-start gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-black/[0.02]">
+                              <input
+                                type="radio"
+                                name="apply-scope"
+                                checked={applyScope === "all_dates"}
+                                onChange={() => setApplyScope("all_dates")}
+                                className="mt-0.5 h-4 w-4 shrink-0 accent-findmi"
+                              />
+                              <span className="text-sm text-ink">
+                                All dates
+                                <span className="block text-xs text-ink/45">Participate throughout this Event</span>
+                              </span>
+                            </label>
+                            <label className="flex items-start gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-black/[0.02]">
+                              <input
+                                type="radio"
+                                name="apply-scope"
+                                checked={applyScope === "selected_dates"}
+                                onChange={() => setApplyScope("selected_dates")}
+                                className="mt-0.5 h-4 w-4 shrink-0 accent-findmi"
+                              />
+                              <span className="text-sm text-ink">
+                                Selected dates
+                                <span className="block text-xs text-ink/45">Choose dates</span>
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                      {needsOccurrenceChoice && applyScope === "selected_dates" && eventOccurrences && (
+                        <div>
                           <div className="flex flex-col gap-1.5 rounded-xl border border-black/10 bg-white p-2">
                             {eventOccurrences.map((o) => (
                               <label key={o.id} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-black/[0.02]">

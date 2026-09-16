@@ -13,11 +13,12 @@ import { resolveOpportunityByContext } from "@/lib/opportunities";
 import type { EventParticipationStatus } from "@/lib/types";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
 import {
-  ensureEventAppearance,
-  cancelEventAppearance,
+  declineEventLevelParticipation,
   ensureOccurrenceAppearance,
   cancelOccurrenceAppearance,
   cancelOfficialOccurrenceAppearances,
+  propagateAllDatesParticipation,
+  realizeEventLevelApproval,
   syncOfficialEventAppearances,
   syncOfficialOccurrenceAppearances,
 } from "@/lib/appearance-event-sync";
@@ -326,6 +327,17 @@ export async function saveEvent(id: string | null, formData: FormData) {
         }
       }
     }
+
+    // Multi-Date Business Participation Pass 2B — only genuinely NEW
+    // occurrence rows (a client-generated id with no prior row at all)
+    // propagate durable all_dates participation; an ordinary edit of an
+    // existing occurrence never re-triggers this. A brand-new row saved
+    // as 'cancelled' is excluded too — nothing to realize participation
+    // against yet.
+    const newOccurrenceIds = occurrencesToUpsert
+      .filter((occ) => occ.status !== "cancelled" && !priorOccurrenceStatusById.has(occ.id))
+      .map((occ) => occ.id);
+    await propagateAllDatesParticipation(supabase, eventId as string, newOccurrenceIds);
   }
   if (removedOccurrenceIds.length > 0) {
     // Schedule Integrity pass — cancel each removed occurrence's official-
@@ -376,9 +388,16 @@ export async function saveEvent(id: string | null, formData: FormData) {
     if (!ebError) {
       for (const row of toUpsert) {
         if (row.status === "approved") {
-          await ensureEventAppearance(supabase, eventId as string, row.business_id);
+          // Multi-Date Business Participation Pass 2B — scope-aware: a
+          // no-op beyond ensureEventAppearance for a legacy NULL-scope row
+          // (admin's own roster editor has no scope selector, so every
+          // admin-added participant keeps whatever scope it already had —
+          // never auto-assigned here), but correctly backfills/realizes
+          // occurrence participation for any business that already carries
+          // an explicit all_dates/selected_dates scope from elsewhere.
+          await realizeEventLevelApproval(supabase, eventId as string, row.business_id);
         } else {
-          await cancelEventAppearance(supabase, eventId as string, row.business_id);
+          await declineEventLevelParticipation(supabase, eventId as string, row.business_id);
         }
       }
     }
@@ -386,9 +405,9 @@ export async function saveEvent(id: string | null, formData: FormData) {
   if (removedIds.length > 0) {
     // Reverse-sync before the roster row itself is gone — cancels only a
     // source='official_participation' appearance (see
-    // cancelEventAppearance), never an owner's own appearance.
+    // declineEventLevelParticipation), never an owner's own appearance.
     for (const businessId of removedIds) {
-      await cancelEventAppearance(supabase, eventId as string, businessId);
+      await declineEventLevelParticipation(supabase, eventId as string, businessId);
     }
     await supabase
       .from("event_businesses")

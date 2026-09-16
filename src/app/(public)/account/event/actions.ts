@@ -17,14 +17,20 @@ import { createLinkedMarketRequest, findExistingGeographyMatch } from "@/lib/mar
 import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import {
+  backfillAllDatesParticipation,
   cancelEventAppearance,
   cancelOfficialOccurrenceAppearances,
+  declineEventLevelParticipation,
   ensureEventAppearance,
+  propagateAllDatesParticipation,
+  realizeEventLevelApproval,
+  reconcileOccurrenceParticipationDown,
   syncOfficialEventAppearances,
   syncOfficialOccurrenceAppearances,
 } from "@/lib/appearance-event-sync";
+import { isPrimaryDateId, primaryDateId } from "@/lib/data";
 import { MAX_BULK_GENERATED_DATES, resolveEndDateForTimes } from "@/lib/schedule-dates";
-import type { EventParticipationStatus } from "@/lib/types";
+import type { EventParticipationScope, EventParticipationStatus } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 
 const UPLOAD_BUCKET = "findmi-media";
@@ -309,17 +315,25 @@ export async function createMemberEvent(formData: FormData) {
       // manual-venue path (no real Location was actually selected there,
       // so there is no relationship to create — text-only, exactly as
       // before).
-      await admin.from("event_occurrences").insert({
-        event_id: eventId,
-        start_at: startIso,
-        end_at: endIso,
-        location_id: locationHintId,
-        venue_name: location.name,
-        address: location.address,
-        city: location.city,
-        state: location.state,
-        postal_code: location.postal_code,
-      });
+      const { data: seeded } = await admin
+        .from("event_occurrences")
+        .insert({
+          event_id: eventId,
+          start_at: startIso,
+          end_at: endIso,
+          location_id: locationHintId,
+          venue_name: location.name,
+          address: location.address,
+          city: location.city,
+          state: location.state,
+          postal_code: location.postal_code,
+        })
+        .select("id")
+        .single();
+      // Multi-Date Business Participation Pass 2B — no participants exist
+      // yet at creation time, so this is always a no-op today, but wiring
+      // it here keeps every occurrence-creation path consistent.
+      if (seeded) await propagateAllDatesParticipation(admin, eventId, [seeded.id]);
     }
   } else if (manualVenue.venue_name || manualVenue.address || manualVenue.city || manualVenue.state || manualVenue.postal_code) {
     await admin.from("events").update(manualVenue).eq("id", eventId);
@@ -604,14 +618,23 @@ export async function addMemberEventDate(eventId: string, formData: FormData) {
     fail("End time must be after the start time.");
   }
 
-  const { error } = await admin.from("event_occurrences").insert({
-    event_id: eventId,
-    start_at,
-    end_at,
-    location_id: locationId,
-    ...(await resolveOccurrenceVenue(admin, locationId, manualVenueFromFormData(formData))),
-  });
+  const { data: inserted, error } = await admin
+    .from("event_occurrences")
+    .insert({
+      event_id: eventId,
+      start_at,
+      end_at,
+      location_id: locationId,
+      ...(await resolveOccurrenceVenue(admin, locationId, manualVenueFromFormData(formData))),
+    })
+    .select("id")
+    .single();
   if (error) fail("Couldn't add that date. Please try again.");
+
+  // Multi-Date Business Participation Pass 2B — durable all_dates intent
+  // (see propagateAllDatesParticipation's own doc comment) auto-includes
+  // this brand-new date, zero organizer follow-up required.
+  if (inserted) await propagateAllDatesParticipation(admin, eventId, [inserted.id]);
 
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { date_added: "1" }));
@@ -798,8 +821,13 @@ export async function bulkGenerateEventDates(
   const skippedExisting = dates.length - rowsToInsert.length;
   if (rowsToInsert.length === 0) return { created: 0, skippedExisting };
 
-  const { error } = await admin.from("event_occurrences").insert(rowsToInsert);
+  const { data: inserted, error } = await admin.from("event_occurrences").insert(rowsToInsert).select("id");
   if (error) return { error: "Couldn't save the generated dates. Please try again." };
+
+  // Multi-Date Business Participation Pass 2B — only the rows actually
+  // inserted after dedupe propagate; a skipped-as-already-covered date
+  // never re-triggers this for a date that already has its participation.
+  await propagateAllDatesParticipation(admin, eventId, (inserted ?? []).map((o) => o.id));
 
   revalidatePath(redirectPath);
   return { created: rowsToInsert.length, skippedExisting };
@@ -1011,17 +1039,25 @@ export async function updateMemberEventLocation(eventId: string, formData: FormD
       .select("id", { count: "exact", head: true })
       .eq("event_id", eventId);
     if (!count) {
-      await admin.from("event_occurrences").insert({
-        event_id: eventId,
-        start_at: event.start_at,
-        end_at: event.end_at,
-        location_id: locationId,
-        venue_name: matchedLocation.name,
-        address: matchedLocation.address,
-        city: matchedLocation.city,
-        state: matchedLocation.state,
-        postal_code: matchedLocation.postal_code,
-      });
+      const { data: seeded } = await admin
+        .from("event_occurrences")
+        .insert({
+          event_id: eventId,
+          start_at: event.start_at,
+          end_at: event.end_at,
+          location_id: locationId,
+          venue_name: matchedLocation.name,
+          address: matchedLocation.address,
+          city: matchedLocation.city,
+          state: matchedLocation.state,
+          postal_code: matchedLocation.postal_code,
+        })
+        .select("id")
+        .single();
+      // Multi-Date Business Participation Pass 2B — an all_dates Business
+      // approved before this Event ever had a real occurrence row must
+      // still pick up this newly-seeded one.
+      if (seeded) await propagateAllDatesParticipation(admin, eventId, [seeded.id]);
     }
   }
 
@@ -1148,7 +1184,26 @@ export async function updateMemberEventImages(eventId: string, formData: FormDat
  * exists: canonical participation moves straight to 'approved' and the
  * Appearance sync runs once, immediately, rather than waiting on a
  * response to an invitation that's already redundant. */
-export async function inviteParticipatingBusiness(eventId: string, businessId: string, note?: string) {
+/** Multi-Date Business Participation Pass 2B — a single-date Event always
+ * invites 'all_dates' (there's nothing to choose between — the whole
+ * event IS the one date); a multi-date Event honors the organizer's own
+ * explicit scope choice. `selectedDateIds` (only meaningful for
+ * scope='selected_dates') may mix the synthetic Primary Date id (see
+ * lib/data.ts's primaryDateId/isPrimaryDateId) with real occurrence ids —
+ * a real occurrence gets a direct event_occurrence_businesses 'invited'
+ * row (same shape admin's own addOccurrenceVendor already uses); the
+ * Primary Date has no occurrence row to write, so its inclusion is
+ * recorded via participation_scope alone and realized on accept (see
+ * realizeEventLevelApproval). One event_invitation Opportunity is still
+ * created either way — a single conversation/invite card regardless of
+ * scope, never a schema change to Opportunity itself. */
+export async function inviteParticipatingBusiness(
+  eventId: string,
+  businessId: string,
+  note?: string,
+  scope: EventParticipationScope = "all_dates",
+  selectedDateIds: string[] = []
+) {
   const redirectPath = `/account/event/${eventId}?tab=participants`;
   const admin = await requireEventManager(eventId, redirectPath);
 
@@ -1160,10 +1215,32 @@ export async function inviteParticipatingBusiness(eventId: string, businessId: s
     redirect(appendQuery(redirectPath, { error: "Verify your email before inviting a business." }));
   }
 
+  const { count: occurrenceCount } = await admin.from("event_occurrences").select("id", { count: "exact", head: true }).eq("event_id", eventId);
+  const effectiveScope: EventParticipationScope = (occurrenceCount ?? 0) > 0 ? scope : "all_dates";
+
   const { error } = await admin
     .from("event_businesses")
-    .upsert({ event_id: eventId, business_id: businessId, status: "invited" }, { onConflict: "event_id,business_id", ignoreDuplicates: true });
+    .upsert(
+      { event_id: eventId, business_id: businessId, status: "invited", participation_scope: effectiveScope },
+      { onConflict: "event_id,business_id", ignoreDuplicates: true }
+    );
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  if (effectiveScope === "selected_dates") {
+    const realDateIds = selectedDateIds.filter((id) => !isPrimaryDateId(id));
+    if (realDateIds.length > 0) {
+      const { data: owned } = await admin.from("event_occurrences").select("id").eq("event_id", eventId).in("id", realDateIds);
+      const ownedIds = ((owned ?? []) as { id: string }[]).map((o) => o.id);
+      if (ownedIds.length > 0) {
+        await admin
+          .from("event_occurrence_businesses")
+          .upsert(
+            ownedIds.map((occurrence_id) => ({ occurrence_id, business_id: businessId, status: "invited" as const })),
+            { onConflict: "occurrence_id,business_id", ignoreDuplicates: true }
+          );
+      }
+    }
+  }
 
   if (user) {
     try {
@@ -1179,7 +1256,7 @@ export async function inviteParticipatingBusiness(eventId: string, businessId: s
       });
       if (outcome.kind === "crossed") {
         await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", businessId);
-        await ensureEventAppearance(admin, eventId, businessId);
+        await realizeEventLevelApproval(admin, eventId, businessId);
       }
     } catch (err) {
       console.error("[opportunities] failed to record invitation Opportunity", err);
@@ -1261,9 +1338,9 @@ export async function updateParticipatingBusinessStatus(eventId: string, busines
   if (error) redirect(appendQuery(redirectPath, { error: error.message }));
 
   if (status === "approved") {
-    await ensureEventAppearance(admin, eventId, businessId);
+    await realizeEventLevelApproval(admin, eventId, businessId);
   } else {
-    await cancelEventAppearance(admin, eventId, businessId);
+    await declineEventLevelParticipation(admin, eventId, businessId);
   }
 
   if (status === "approved" || status === "declined") {
@@ -1283,14 +1360,79 @@ export async function updateParticipatingBusinessStatus(eventId: string, busines
   redirect(appendQuery(redirectPath, { participant_updated: "1" }));
 }
 
-/** Remove a participant entirely — reverse-syncs the appearance first
- * (same as admin's own removedIds handling), then deletes the roster
- * row. Scoped to (event_id, business_id). */
+/** Multi-Date Business Participation Pass 2B — SCOPE CHANGE (LOCKED
+ * behavior — see this pass's own spec).
+ *   all_dates -> selected_dates: reconciles occurrence participation DOWN
+ *     to exactly the kept dates (every other occurrence declined + its
+ *     Appearance canceled); if the Primary Date isn't in the kept set,
+ *     the Event-level Appearance is canceled too. Only ever removes
+ *     participation, never adds it beyond what's already approved.
+ *   selected_dates -> all_dates: backfills every currently missing date
+ *     (ensures the Primary Date Appearance + every current occurrence),
+ *     after which future dates auto-propagate via
+ *     propagateAllDatesParticipation exactly like any other all_dates
+ *     Business.
+ * Only ever called on an already-'approved' participant — the scope on a
+ * still-pending invitation/application is set at invite/apply time
+ * instead (see inviteParticipatingBusiness/applyToEventPublic). */
+export async function updateParticipatingBusinessScope(
+  eventId: string,
+  businessId: string,
+  scope: EventParticipationScope,
+  keepDateIds: string[] = []
+) {
+  const redirectPath = `/account/event/${eventId}?tab=participants`;
+  const admin = await requireEventManager(eventId, redirectPath);
+
+  const { data: row } = await admin
+    .from("event_businesses")
+    .select("status")
+    .eq("event_id", eventId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (!row || (row as { status: string }).status !== "approved") {
+    redirect(appendQuery(redirectPath, { error: "Only an already-approved participant's scope can be changed." }));
+  }
+
+  const includesPrimary = keepDateIds.includes(primaryDateId(eventId));
+  const { error } = await admin
+    .from("event_businesses")
+    .update({ participation_scope: scope, status: scope === "selected_dates" && !includesPrimary ? "declined" : "approved" })
+    .eq("event_id", eventId)
+    .eq("business_id", businessId);
+  if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  if (scope === "all_dates") {
+    await ensureEventAppearance(admin, eventId, businessId);
+    await backfillAllDatesParticipation(admin, eventId, businessId);
+  } else {
+    if (includesPrimary) {
+      await ensureEventAppearance(admin, eventId, businessId);
+    } else {
+      await cancelEventAppearance(admin, eventId, businessId);
+    }
+    await reconcileOccurrenceParticipationDown(
+      admin,
+      eventId,
+      businessId,
+      keepDateIds.filter((id) => !isPrimaryDateId(id))
+    );
+  }
+
+  revalidatePath(redirectPath);
+  redirect(appendQuery(redirectPath, { participant_updated: "1" }));
+}
+
+/** Remove a participant entirely — reverse-syncs the Appearance(s) and
+ * every occurrence-level participation row first (Multi-Date Business
+ * Participation Pass 2B — a removed Business is never left publicly
+ * visible on any date, all_dates or selected_dates alike), then deletes
+ * the event-level roster row. Scoped to (event_id, business_id). */
 export async function removeParticipatingBusiness(eventId: string, businessId: string) {
   const redirectPath = `/account/event/${eventId}?tab=participants`;
   const admin = await requireEventManager(eventId, redirectPath);
 
-  await cancelEventAppearance(admin, eventId, businessId);
+  await declineEventLevelParticipation(admin, eventId, businessId);
   await admin.from("event_businesses").delete().eq("event_id", eventId).eq("business_id", businessId);
 
   try {

@@ -540,3 +540,227 @@ export async function cancelOfficialOccurrenceAppearances(supabase: SupabaseClie
     console.error(`[appearance-event-sync] failed to cancel official-participation appearances for occurrence ${occurrenceId}:`, error);
   }
 }
+
+// ── Multi-Date Business Participation Pass 2B — durable ALL DATES
+// propagation ───────────────────────────────────────────────────────────
+// event_businesses.participation_scope='all_dates' is durable intent: a
+// Business approved this way participates on every CURRENT AND FUTURE date
+// of the Event, with zero organizer follow-up required when a date is
+// added later. This is the one centralized helper every occurrence-
+// creation path (bulkGenerateEventDates, addMemberEventDate,
+// updateMemberEventLocation's seed branch, createMemberEvent's seed, and
+// Admin's saveEvent() occurrence upsert) calls with whichever occurrence
+// ids it just newly inserted — never with an existing/edited occurrence's
+// id, so an ordinary date/time/Location edit never re-triggers this.
+//
+// Idempotent by construction: event_occurrence_businesses' own
+// UNIQUE(occurrence_id, business_id) + ignoreDuplicates upsert means
+// calling this twice (or from two overlapping bulk operations) never
+// creates a duplicate row, and ensureOccurrenceAppearance is itself
+// idempotent (checks for an existing non-canceled Appearance first) — so
+// re-running this for an occurrence that already has the row/Appearance
+// is always a safe no-op, never a duplicate.
+export async function propagateAllDatesParticipation(
+  supabase: SupabaseClient,
+  eventId: string,
+  newOccurrenceIds: string[]
+): Promise<void> {
+  if (newOccurrenceIds.length === 0) return;
+
+  // Only approved, explicitly-scoped all_dates businesses ever propagate —
+  // never a pending invitation/application (nothing to realize yet — see
+  // this pass's own "pending all_dates invite" rule), never
+  // 'selected_dates', and never legacy NULL scope (LOCKED: never
+  // auto-propagate an unspecified-scope row onto a new date).
+  const { data: allDatesBusinesses, error: fetchError } = await supabase
+    .from("event_businesses")
+    .select("business_id")
+    .eq("event_id", eventId)
+    .eq("status", "approved")
+    .eq("participation_scope", "all_dates");
+  if (fetchError) {
+    console.error(`[appearance-event-sync] failed to fetch all_dates businesses for event ${eventId}:`, fetchError);
+    return;
+  }
+  const businessIds = ((allDatesBusinesses ?? []) as { business_id: string }[]).map((r) => r.business_id);
+  if (businessIds.length === 0) return;
+
+  const rows = businessIds.flatMap((business_id) =>
+    newOccurrenceIds.map((occurrence_id) => ({ occurrence_id, business_id, status: "approved" as const }))
+  );
+  const { error: upsertError } = await supabase
+    .from("event_occurrence_businesses")
+    .upsert(rows, { onConflict: "occurrence_id,business_id", ignoreDuplicates: true });
+  if (upsertError) {
+    console.error(`[appearance-event-sync] failed to propagate all_dates participation for event ${eventId}:`, upsertError);
+    return;
+  }
+
+  for (const businessId of businessIds) {
+    for (const occurrenceId of newOccurrenceIds) {
+      await ensureOccurrenceAppearance(supabase, occurrenceId, businessId);
+    }
+  }
+}
+
+/** Reverse direction of propagateAllDatesParticipation — reconciles an
+ * all_dates Business's occurrence-level participation DOWN to an explicit
+ * set of still-active date ids (Primary Date handled separately by the
+ * caller — this only ever touches event_occurrence_businesses/occurrence
+ * Appearances). Used by the all_dates -> selected_dates scope change (every
+ * occurrence NOT in `keepOccurrenceIds` is declined + its Appearance
+ * canceled) and by removing an all_dates Business from the Event entirely
+ * (call with `keepOccurrenceIds: []`). Never touches a business whose
+ * occurrence row is already 'declined' — same idempotent, safe-to-rerun
+ * posture as every other function in this file. */
+export async function reconcileOccurrenceParticipationDown(
+  supabase: SupabaseClient,
+  eventId: string,
+  businessId: string,
+  keepOccurrenceIds: string[]
+): Promise<void> {
+  const { data: occurrenceRows, error } = await supabase.from("event_occurrences").select("id").eq("event_id", eventId);
+  if (error) {
+    console.error(`[appearance-event-sync] failed to fetch occurrences for event ${eventId}:`, error);
+    return;
+  }
+  const keepSet = new Set(keepOccurrenceIds);
+  const toDrop = ((occurrenceRows ?? []) as { id: string }[]).map((o) => o.id).filter((id) => !keepSet.has(id));
+  if (toDrop.length === 0) return;
+
+  const { error: declineError } = await supabase
+    .from("event_occurrence_businesses")
+    .update({ status: "declined" })
+    .eq("business_id", businessId)
+    .in("occurrence_id", toDrop)
+    .neq("status", "declined");
+  if (declineError) {
+    console.error(`[appearance-event-sync] failed to decline occurrence participation for business ${businessId}:`, declineError);
+  }
+
+  for (const occurrenceId of toDrop) {
+    await cancelOccurrenceAppearance(supabase, occurrenceId, businessId);
+  }
+}
+
+/** Backfills an all_dates Business's occurrence-level participation UP to
+ * EVERY current event_occurrences row (not just newly-created ones — see
+ * propagateAllDatesParticipation above for the incremental, new-occurrence-
+ * only counterpart). Used at ALL-DATES approval time (an approved all_dates
+ * invitation/application must realize every date that already exists, not
+ * just future ones) and by the selected_dates -> all_dates scope change.
+ * Unlike propagateAllDatesParticipation's ignoreDuplicates upsert, this
+ * explicitly OVERWRITES each occurrence's row to 'approved' — an existing
+ * 'declined' row (from a prior selected_dates scope, or a prior decline)
+ * must be reactivated, not silently skipped. Never touches the Primary
+ * Date (events.start_at/end_at, no occurrence row) — the caller is
+ * responsible for ensureEventAppearance separately (see
+ * realizeEventLevelApproval below, which does both). */
+export async function backfillAllDatesParticipation(supabase: SupabaseClient, eventId: string, businessId: string): Promise<void> {
+  const { data: occurrenceRows, error } = await supabase.from("event_occurrences").select("id").eq("event_id", eventId);
+  if (error) {
+    console.error(`[appearance-event-sync] failed to fetch occurrences for event ${eventId}:`, error);
+    return;
+  }
+  const occurrenceIds = ((occurrenceRows ?? []) as { id: string }[]).map((o) => o.id);
+  if (occurrenceIds.length === 0) return;
+
+  const { error: upsertError } = await supabase
+    .from("event_occurrence_businesses")
+    .upsert(
+      occurrenceIds.map((occurrence_id) => ({ occurrence_id, business_id: businessId, status: "approved" as const })),
+      { onConflict: "occurrence_id,business_id" }
+    );
+  if (upsertError) {
+    console.error(`[appearance-event-sync] failed to backfill all_dates participation for business ${businessId}:`, upsertError);
+    return;
+  }
+  for (const occurrenceId of occurrenceIds) {
+    await ensureOccurrenceAppearance(supabase, occurrenceId, businessId);
+  }
+}
+
+/** Approves whichever occurrence rows were already pre-recorded for a
+ * selected_dates Business (written at invite/apply time — see
+ * inviteParticipatingBusiness/applyToEventPublic) — never every occurrence
+ * of the Event (that's backfillAllDatesParticipation's job, for
+ * participation_scope='all_dates' only). Reads the existing rows back
+ * rather than requiring the caller to pass the original date list again,
+ * so this stays a one-line call at every approval site. Never touches an
+ * already-declined row (nothing to approve there). */
+export async function approveSelectedDatesOccurrences(supabase: SupabaseClient, eventId: string, businessId: string): Promise<void> {
+  const { data: occurrenceRows, error } = await supabase.from("event_occurrences").select("id").eq("event_id", eventId);
+  if (error) {
+    console.error(`[appearance-event-sync] failed to fetch occurrences for event ${eventId}:`, error);
+    return;
+  }
+  const occurrenceIds = ((occurrenceRows ?? []) as { id: string }[]).map((o) => o.id);
+  if (occurrenceIds.length === 0) return;
+
+  const { data: preRecorded, error: fetchError } = await supabase
+    .from("event_occurrence_businesses")
+    .select("occurrence_id")
+    .eq("business_id", businessId)
+    .in("occurrence_id", occurrenceIds)
+    .neq("status", "declined");
+  if (fetchError) {
+    console.error(`[appearance-event-sync] failed to fetch pre-recorded occurrence participation for business ${businessId}:`, fetchError);
+    return;
+  }
+  const ids = ((preRecorded ?? []) as { occurrence_id: string }[]).map((r) => r.occurrence_id);
+  if (ids.length === 0) return;
+
+  const { error: updateError } = await supabase
+    .from("event_occurrence_businesses")
+    .update({ status: "approved" })
+    .eq("business_id", businessId)
+    .in("occurrence_id", ids);
+  if (updateError) {
+    console.error(`[appearance-event-sync] failed to approve selected-dates occurrence participation for business ${businessId}:`, updateError);
+    return;
+  }
+  for (const occurrenceId of ids) {
+    await ensureOccurrenceAppearance(supabase, occurrenceId, businessId);
+  }
+}
+
+/** The one shared "approve this Business's event-level (Primary Date)
+ * participation" realization, scope-aware — replaces a bare
+ * ensureEventAppearance call at every approval site
+ * (updateParticipatingBusinessStatus, respondToInvitationInThread,
+ * inviteParticipatingBusiness/inviteBusinessToEventPublic's "crossed"
+ * branch, applyToEventPublic's crossed branch,
+ * resolveEventApplicationDecision's whole-event branch). Always ensures
+ * the Primary Date Appearance, THEN additionally realizes occurrence-level
+ * participation according to whichever scope is currently recorded on
+ * event_businesses — all_dates backfills every current occurrence,
+ * selected_dates approves only the pre-recorded ones, legacy NULL scope
+ * does nothing further (unchanged pre-this-pass behavior). */
+export async function realizeEventLevelApproval(supabase: SupabaseClient, eventId: string, businessId: string): Promise<void> {
+  await ensureEventAppearance(supabase, eventId, businessId);
+
+  const { data: row } = await supabase
+    .from("event_businesses")
+    .select("participation_scope")
+    .eq("event_id", eventId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  const scope = (row as { participation_scope: string | null } | null)?.participation_scope ?? null;
+
+  if (scope === "all_dates") {
+    await backfillAllDatesParticipation(supabase, eventId, businessId);
+  } else if (scope === "selected_dates") {
+    await approveSelectedDatesOccurrences(supabase, eventId, businessId);
+  }
+}
+
+/** The one shared "decline/remove this Business's event-level
+ * participation" realization — replaces a bare cancelEventAppearance call
+ * at every decline/removal site. Cancels the Primary Date Appearance AND
+ * reconciles every occurrence-level row down to none (declined + its
+ * Appearance canceled) — LOCKED: a declined/removed Business is never left
+ * publicly visible on any date, all_dates or selected_dates alike. */
+export async function declineEventLevelParticipation(supabase: SupabaseClient, eventId: string, businessId: string): Promise<void> {
+  await cancelEventAppearance(supabase, eventId, businessId);
+  await reconcileOccurrenceParticipationDown(supabase, eventId, businessId, []);
+}

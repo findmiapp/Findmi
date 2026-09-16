@@ -10,6 +10,7 @@ import {
 } from "./format";
 import { resolveEffectiveEventMarket } from "./event-markets";
 import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
+import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
 import type {
   Appearance,
   Business,
@@ -1768,6 +1769,98 @@ export async function getUpcomingOccurrencesForEvent(
   }
 
   return occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
+}
+
+// ── Multi-Date Business Participation Pass 2B — Primary Date Integrity ──
+// events.start_at/end_at (the Primary Date) is never migrated into
+// event_occurrences (LOCKED architecture — see this pass's own spec), but
+// getUpcomingOccurrencesForEvent above queries ONLY event_occurrences, so
+// the Primary Date was completely invisible on the public Event page's
+// date selector/hero/roster the moment ANY Additional Date existed (the
+// confirmed "Primary Date public-roster hole" — see the Pass 2A audit).
+// getEffectiveEventSchedule below is the smallest presentation/query-layer
+// fix: it synthesizes a Primary Date entry, shaped exactly like a real
+// EventOccurrenceWithLocation so every existing occurrence-consuming
+// component (EventOccurrenceCard/EventOccurrenceContext/
+// EventScheduleSummary/EventScheduleCtas) can treat it uniformly, WITHOUT
+// ever writing a database occurrence row for it.
+
+/** A synthetic Primary Date's own id is never a real UUID — see
+ * isPrimaryDateId below — so it safely fails (matches zero rows) if it
+ * were ever mistakenly passed into a real occurrence write path (e.g.
+ * `.eq("id", occurrenceId)` against event_occurrences, a uuid column)
+ * instead of silently corrupting data. Deliberately includes the event id
+ * so two different events' synthetic entries can never collide. */
+export function primaryDateId(eventId: string): string {
+  return `primary:${eventId}`;
+}
+
+export function isPrimaryDateId(id: string): boolean {
+  return id.startsWith("primary:");
+}
+
+/** One unified, chronological schedule for the public Event page: the
+ * Primary Date (events.start_at/end_at) plus every real Additional Date
+ * (getUpcomingOccurrencesForEvent's own result) — "N effective dates,"
+ * never exposing "Primary"/"Additional"/"occurrence" terminology to the
+ * caller. Skips synthesizing a Primary Date entry when:
+ *   - it's already past (end_at <= now), or
+ *   - a REAL event_occurrences row already exists on the exact same LOCAL
+ *     CALENDAR DATE — the identical "already covered" dedup rule
+ *     bulkGenerateEventDates already applies at write time (see that
+ *     function's own comment). A legacy event whose Location was set
+ *     before any Additional Date existed already got a real occurrence
+ *     row seeded for its Primary Date (see updateMemberEventLocation/
+ *     createMemberEvent) — that real row is always preferred, never
+ *     duplicated by a synthetic entry for the same day.
+ * The synthetic entry's `location` is always null (events has no
+ * location_id relationship of its own); its venue_name/address/city/
+ * state/postal_code mirror the parent Event's own fields, same as the
+ * legacy (zero-occurrence) rendering path already used before this pass. */
+export async function getEffectiveEventSchedule(
+  event: Pick<FindmiEvent, "id" | "start_at" | "end_at" | "venue_name" | "address" | "city" | "state" | "postal_code">,
+  limit = 12
+): Promise<EventOccurrenceWithLocation[]> {
+  const realOccurrences = await getUpcomingOccurrencesForEvent(event.id, limit);
+
+  // events.end_at is nullable at the type/DB level even though app-level
+  // validation always requires it at creation (see createMemberEvent) —
+  // never synthesize an entry from an incomplete Primary Date.
+  if (!event.end_at) return realOccurrences;
+
+  const primaryStillUpcoming = new Date(event.end_at).getTime() > Date.now();
+  const primaryLocalDate = isoToLocalDateTime(event.start_at).slice(0, 10);
+  const alreadyCoveredByRealOccurrence = realOccurrences.some(
+    (o) => isoToLocalDateTime(o.start_at).slice(0, 10) === primaryLocalDate
+  );
+  if (!primaryStillUpcoming || alreadyCoveredByRealOccurrence) {
+    return realOccurrences;
+  }
+
+  const primaryEntry: EventOccurrenceWithLocation = {
+    id: primaryDateId(event.id),
+    event_id: event.id,
+    start_at: event.start_at,
+    end_at: event.end_at,
+    location_id: null,
+    featured: false,
+    status: "scheduled",
+    ticket_url_override: null,
+    vendor_apply_url_override: null,
+    market_id: null,
+    rsvp_url_override: null,
+    timezone: DEFAULT_ADMIN_TIMEZONE,
+    created_at: event.start_at,
+    updated_at: event.start_at,
+    venue_name: event.venue_name,
+    address: event.address,
+    city: event.city,
+    state: event.state,
+    postal_code: event.postal_code,
+    location: null,
+  };
+
+  return [primaryEntry, ...realOccurrences].sort((a, b) => a.start_at.localeCompare(b.start_at)).slice(0, limit);
 }
 
 /** Whether an event has ANY event_occurrences row at all — any status,

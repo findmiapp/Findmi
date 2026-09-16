@@ -29,10 +29,13 @@ import {
   updateMemberEventLocation,
   updateMemberEventMarket,
   updateMemberEventPrimaryDate,
+  updateParticipatingBusinessScope,
   updateParticipatingBusinessStatus,
 } from "../actions";
 import { weekdayIndexOf } from "@/lib/schedule-dates";
+import { primaryDateId } from "@/lib/data";
 import type { EventParticipationStatus } from "@/lib/types";
+import ParticipationScopeEditor from "./ParticipationScopeEditor";
 
 export const metadata: Metadata = {
   title: "Manage Event",
@@ -257,6 +260,18 @@ export default async function ManageEventPage({
     allDates
       .filter((d) => d.endAt && d.endAt > nowIso)
       .sort((a, b) => a.startAt.localeCompare(b.startAt))[0] ?? null;
+
+  // Multi-Date Business Participation Pass 2B — the organizer-facing
+  // "Participating dates" picker (invite scope + per-participant scope
+  // change) uses the SAME synthetic Primary Date id convention as the
+  // public apply flow (primaryDateId/isPrimaryDateId, lib/data.ts) so a
+  // date id chosen here means the same thing everywhere it's read
+  // server-side. Human-facing labels only — never "primary"/"occurrence"
+  // terminology.
+  const effectiveScheduleDates = [
+    { id: primaryDateId(id), label: formatScheduleDisplay(event.start_at, event.end_at ?? event.start_at).dateLabel },
+    ...occurrences.map((o) => ({ id: o.id, label: formatScheduleDisplay(o.start_at, o.end_at).dateLabel })),
+  ];
 
   // Event Manager V3, Overview — "pending attention" reads the already-
   // fetched participants list (no new query) for a compact nudge instead
@@ -790,7 +805,11 @@ export default async function ManageEventPage({
                 </span>
               </summary>
               <div className="mt-4 rounded-2xl border border-black/10 p-4">
-                <AddParticipantSearch eventId={id} excludeIds={participants.map((p) => p.business_id)} />
+                <AddParticipantSearch
+                  eventId={id}
+                  excludeIds={participants.map((p) => p.business_id)}
+                  effectiveDates={effectiveScheduleDates}
+                />
               </div>
             </details>
 
@@ -820,7 +839,12 @@ export default async function ManageEventPage({
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-ink">{p.business_name}</p>
-                          <p className="text-xs text-ink/50">{PARTICIPATION_LABEL[p.status]}</p>
+                          <p className="text-xs text-ink/50">
+                            {PARTICIPATION_LABEL[p.status]}
+                            {effectiveScheduleDates.length > 1 && p.participation_scope && (
+                              <span> · {p.participation_scope === "all_dates" ? "All dates" : "Selected dates"}</span>
+                            )}
+                          </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
                           {(p.status === "applied" || p.status === "pending" || p.status === "invited") && (
@@ -844,6 +868,20 @@ export default async function ManageEventPage({
                           </form>
                         </div>
                       </div>
+                      {/* Multi-Date Business Participation Pass 2B — scope
+                          can only be changed once a participant is already
+                          approved (see updateParticipatingBusinessScope's
+                          own guard), and only matters for a multi-date
+                          Event. */}
+                      {effectiveScheduleDates.length > 1 && p.status === "approved" && (
+                        <ParticipationScopeEditor
+                          eventId={id}
+                          businessId={p.business_id}
+                          currentScope={p.participation_scope}
+                          effectiveDates={effectiveScheduleDates}
+                          onSave={updateParticipatingBusinessScope}
+                        />
+                      )}
                       {/* Opportunities + Conversation Foundation V1 — the
                           applicant's own optional initial note, read from
                           its Conversation via

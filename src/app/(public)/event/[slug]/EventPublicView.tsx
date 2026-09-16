@@ -31,11 +31,12 @@ import {
   eventHasAnyOccurrences,
   findLocationByExactVenue,
   getBusinessesForEvent,
+  getEffectiveEventSchedule,
   getEventBySlug,
   getEventImages,
   getEventProducts,
   getOccurrenceBusinessRosters,
-  getUpcomingOccurrencesForEvent,
+  isPrimaryDateId,
 } from "@/lib/data";
 import { cityStateZip, formatDateRange } from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
@@ -91,18 +92,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, upcomingOccurrences, hasOccurrences, matchedLocation] =
+  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation] =
     await Promise.all([
       getBusinessesForEvent(event.id),
       attachEventCategories([event]),
       getEventProducts(event.id),
       getEventImages(event.id),
-      // Schedule Authoring V4 — bumped from the default 12 to a still-
-      // bounded 40 (never "hundreds") so a realistic month-long pop-up's
-      // full schedule is actually reachable here, not silently truncated.
-      // See the "Show all dates" disclosure below for how this stays
-      // readable rather than just rendering more cards up front.
-      getUpcomingOccurrencesForEvent(event.id, EVENT_PUBLIC_OCCURRENCE_LIMIT),
       eventHasAnyOccurrences(event.id),
       // Event Manager Location UX pass — events has no location_id column
       // of its own (only event_occurrences does), so a legacy (no-
@@ -118,6 +113,17 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // occurrence-linked relationship whenever one exists.
       event.venue_name ? findLocationByExactVenue(event.venue_name, event.address) : Promise.resolve(null),
     ]);
+  // Multi-Date Business Participation Pass 2B — Primary Date Integrity.
+  // Only ever synthesizes/includes the Primary Date entry when this Event
+  // already has real Additional Dates (hasOccurrences) — a genuinely
+  // single-date event keeps its exact original legacy rendering (no
+  // pointless one-card "Upcoming Dates" carousel). Schedule Authoring V4 —
+  // bumped from the default 12 to a still-bounded 40 (never "hundreds") so
+  // a realistic month-long pop-up's full schedule is actually reachable
+  // here, not silently truncated. See the "Show all dates" disclosure
+  // below for how this stays readable rather than just rendering more
+  // cards up front.
+  const upcomingOccurrences = hasOccurrences ? await getEffectiveEventSchedule(event, EVENT_PUBLIC_OCCURRENCE_LIMIT) : [];
   // Event <-> Venue/Location Relational Workflow pass — upcomingOccurrences
   // is already sorted nearest-first and already carries each occurrence's
   // REAL resolved Location (see getUpcomingOccurrencesForEvent), so the
@@ -131,10 +137,23 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // Depends on upcomingOccurrences' own ids, so this can't join the
   // Promise.all above — one extra query, only for a recurring event, for
   // every one of its upcoming occurrences' rosters at once (never one
-  // query per occurrence — see getOccurrenceBusinessRosters).
-  const rostersByOccurrence = hasOccurrences
-    ? await getOccurrenceBusinessRosters(upcomingOccurrences.map((o) => o.id))
-    : {};
+  // query per occurrence — see getOccurrenceBusinessRosters). The
+  // synthetic Primary Date id is deliberately excluded from this query
+  // (it's not a real occurrence_id — see getEffectiveEventSchedule) and
+  // keyed in separately below from the already-fetched `businesses`
+  // (getBusinessesForEvent's approved event_businesses roster), which is
+  // exactly the Primary Date's own correct roster: an approved
+  // event_businesses row means "this Business participates in the Primary
+  // Date" for every scope (all_dates, a selected_dates Business that
+  // explicitly included the Primary Date, and legacy NULL-scope rows) —
+  // see updateParticipatingBusinessStatus/resolveEventApplicationDecision
+  // for how that status is derived.
+  const realOccurrenceIds = upcomingOccurrences.filter((o) => !isPrimaryDateId(o.id)).map((o) => o.id);
+  const rostersByOccurrence = hasOccurrences ? await getOccurrenceBusinessRosters(realOccurrenceIds) : {};
+  const primaryEntry = upcomingOccurrences.find((o) => isPrimaryDateId(o.id));
+  if (primaryEntry) {
+    rostersByOccurrence[primaryEntry.id] = businesses;
+  }
   const category = eventWithCategories.categories[0] ?? null;
   const location = cityStateZip(event.city, event.state, event.postal_code);
   const venueLine = [event.venue_name, event.address, location].filter(Boolean).join(" · ");

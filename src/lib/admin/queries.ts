@@ -7,6 +7,7 @@ import type {
   Category,
   CategoryKind,
   EventOccurrence,
+  EventParticipationScope,
   EventParticipationStatus,
   EventPublicationStatus,
   FindmiEvent,
@@ -254,6 +255,9 @@ export interface EventParticipant {
   featured: boolean;
   offering_text: string | null;
   display_order: number | null;
+  // Multi-Date Business Participation Pass 2B — null for a legacy/
+  // unspecified relationship (never displayed as either explicit value).
+  participation_scope: EventParticipationScope | null;
 }
 
 // Event Detail V2 polish pass, item 15 — a founder-picked small set of
@@ -299,7 +303,7 @@ export async function getAdminEventById(id: string): Promise<{
       supabase.from("events").select("*").eq("id", id).maybeSingle(),
       supabase
         .from("event_businesses")
-        .select("business_id, status, featured, offering_text, display_order, businesses(name, logo_url)")
+        .select("business_id, status, featured, offering_text, display_order, participation_scope, businesses(name, logo_url)")
         .eq("event_id", id)
         .order("display_order", { ascending: true, nullsFirst: false }),
       supabase
@@ -375,6 +379,7 @@ export async function getAdminEventById(id: string): Promise<{
     featured: boolean;
     offering_text: string | null;
     display_order: number | null;
+    participation_scope: EventParticipationScope | null;
     businesses: { name: string; logo_url: string | null } | { name: string; logo_url: string | null }[] | null;
   };
   const rows = (links ?? []) as LinkRow[];
@@ -406,6 +411,7 @@ export async function getAdminEventById(id: string): Promise<{
       featured: l.featured,
       offering_text: l.offering_text,
       display_order: l.display_order,
+      participation_scope: l.participation_scope ?? null,
     };
   });
 

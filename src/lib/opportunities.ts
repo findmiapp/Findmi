@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { EventParticipationStatus } from "@/lib/types";
 import { getAccountEmail, getEntityManagerEmails, dedupeEmails } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
 import {
@@ -6,6 +7,7 @@ import {
   cancelEventAppearance,
   ensureOccurrenceAppearance,
   cancelOccurrenceAppearance,
+  backfillAllDatesParticipation,
 } from "@/lib/appearance-event-sync";
 
 // Opportunities + Conversation Foundation V1 — the one shared module both
@@ -988,55 +990,89 @@ export async function resolveEventApplicationDecision(
   // rather than at every resolveOpportunity call site below.
   const opportunityStatus: Exclude<OpportunityStatus, "pending"> = decision === "approved" ? "accepted" : "declined";
 
-  if (occurrenceSpecific.length > 0) {
-    const resolvedOccurrenceIds: string[] = [];
-    for (const row of occurrenceSpecific) {
-      const resolved = await resolveOpportunity(admin, row.id, opportunityStatus, systemMessage, false);
-      if (!resolved || !resolved.event_occurrence_id) continue; // already resolved by a concurrent action — skip, not an error
-      const occurrenceId = resolved.event_occurrence_id;
-      resolvedOccurrenceIds.push(occurrenceId);
-      if (decision === "approved") {
-        await admin
-          .from("event_occurrence_businesses")
-          .upsert({ occurrence_id: occurrenceId, business_id: businessId, status: "approved" }, { onConflict: "occurrence_id,business_id" });
-        await ensureOccurrenceAppearance(admin, occurrenceId, businessId);
-      } else {
-        await admin
-          .from("event_occurrence_businesses")
-          .upsert({ occurrence_id: occurrenceId, business_id: businessId, status: "declined" }, { onConflict: "occurrence_id,business_id" });
-        await cancelOccurrenceAppearance(admin, occurrenceId, businessId);
-      }
+  if (occurrenceSpecific.length === 0 && wholeEvent.length === 0) return { kind: "not_found" };
+
+  // Multi-Date Business Participation Pass 2B — a selected_dates
+  // application/invitation may legitimately include BOTH the Primary Date
+  // (a null-occurrence Opportunity) AND one or more real Additional Dates
+  // (occurrence-specific Opportunities) in the SAME submission — San
+  // Gennaro's own Business B (Sep 17-19, where Sep 17 is the Primary Date)
+  // is exactly this shape. Both groups are resolved together here so
+  // neither is left dangling pending. A genuinely AMBIGUOUS legacy
+  // application (no occurrence-specific Opportunity at all, on a recurring
+  // Event, with no recorded 'all_dates' scope) is the ONE case this still
+  // refuses to guess about — see the scope check below.
+  if (occurrenceSpecific.length === 0 && isRecurring && decision === "approved") {
+    const { data: scopeRow } = await admin
+      .from("event_businesses")
+      .select("participation_scope")
+      .eq("event_id", eventId)
+      .eq("business_id", businessId)
+      .maybeSingle();
+    if ((scopeRow as { participation_scope: string | null } | null)?.participation_scope !== "all_dates") {
+      return { kind: "ambiguous" };
     }
-    if (resolvedOccurrenceIds.length === 0) return { kind: "not_found" };
-
-    // Whole-event summary flag only — see this function's own doc comment.
-    await admin.from("event_businesses").upsert({ event_id: eventId, business_id: businessId, status: decision }, { onConflict: "event_id,business_id" });
-    await sendApplicationDecisionNotification(admin, eventId, businessId, decision, resolvedOccurrenceIds);
-    return { kind: "resolved_occurrences", occurrenceIds: resolvedOccurrenceIds };
   }
 
-  if (wholeEvent.length === 0) return { kind: "not_found" };
-
-  if (isRecurring && decision === "approved") {
-    // Ambiguous legacy application — never guess which date(s) the
-    // applicant meant. Nothing is written; the caller must surface a
-    // clear error instead of silently approving into nowhere.
-    return { kind: "ambiguous" };
+  const resolvedOccurrenceIds: string[] = [];
+  for (const row of occurrenceSpecific) {
+    const resolved = await resolveOpportunity(admin, row.id, opportunityStatus, systemMessage, false);
+    if (!resolved || !resolved.event_occurrence_id) continue; // already resolved by a concurrent action — skip, not an error
+    const occurrenceId = resolved.event_occurrence_id;
+    resolvedOccurrenceIds.push(occurrenceId);
+    if (decision === "approved") {
+      await admin
+        .from("event_occurrence_businesses")
+        .upsert({ occurrence_id: occurrenceId, business_id: businessId, status: "approved" }, { onConflict: "occurrence_id,business_id" });
+      await ensureOccurrenceAppearance(admin, occurrenceId, businessId);
+    } else {
+      await admin
+        .from("event_occurrence_businesses")
+        .upsert({ occurrence_id: occurrenceId, business_id: businessId, status: "declined" }, { onConflict: "occurrence_id,business_id" });
+      await cancelOccurrenceAppearance(admin, occurrenceId, businessId);
+    }
   }
 
-  // Either genuinely non-recurring, or a safe decline of an ambiguous
-  // legacy application (declining creates no participation either way).
+  let primaryResolved = false;
   for (const row of wholeEvent) {
-    await resolveOpportunity(admin, row.id, opportunityStatus, systemMessage, false);
+    const resolved = await resolveOpportunity(admin, row.id, opportunityStatus, systemMessage, false);
+    if (resolved) primaryResolved = true;
   }
-  await admin.from("event_businesses").upsert({ event_id: eventId, business_id: businessId, status: decision }, { onConflict: "event_id,business_id" });
-  if (decision === "approved") {
+
+  if (resolvedOccurrenceIds.length === 0 && !primaryResolved) return { kind: "not_found" };
+
+  // event_businesses.status is never a cosmetic summary flag any more
+  // (Multi-Date Business Participation Pass 2B) — it's the authoritative
+  // Primary Date signal getBusinessesForEvent's public roster reads: only
+  // 'approved' when this exact decision resolved the Primary Date
+  // (primaryResolved), never when only occurrence-specific dates were
+  // decided — a Business approved for Sep 18-19 only must NOT show on
+  // Sep 17's (Primary Date's) public roster.
+  const ebStatus: EventParticipationStatus = decision === "approved" && primaryResolved ? "approved" : "declined";
+  await admin.from("event_businesses").upsert({ event_id: eventId, business_id: businessId, status: ebStatus }, { onConflict: "event_id,business_id" });
+
+  if (decision === "approved" && primaryResolved) {
     await ensureEventAppearance(admin, eventId, businessId);
-  } else {
+    // all_dates application/invitation resolved via the whole-event
+    // (null-occurrence) Opportunity alone (no occurrence-specific ones) —
+    // backfill every CURRENT occurrence too, not just the Primary Date.
+    // Idempotent/harmless to also run this when occurrence-specific
+    // Opportunities already resolved some dates individually above.
+    const { data: scopeRow } = await admin
+      .from("event_businesses")
+      .select("participation_scope")
+      .eq("event_id", eventId)
+      .eq("business_id", businessId)
+      .maybeSingle();
+    if ((scopeRow as { participation_scope: string | null } | null)?.participation_scope === "all_dates") {
+      await backfillAllDatesParticipation(admin, eventId, businessId);
+    }
+  } else if (decision === "declined") {
     await cancelEventAppearance(admin, eventId, businessId);
   }
-  await sendApplicationDecisionNotification(admin, eventId, businessId, decision, []);
-  return { kind: "resolved_whole_event" };
+
+  await sendApplicationDecisionNotification(admin, eventId, businessId, decision, resolvedOccurrenceIds);
+  return resolvedOccurrenceIds.length > 0 ? { kind: "resolved_occurrences", occurrenceIds: resolvedOccurrenceIds } : { kind: "resolved_whole_event" };
 }
 
 // ── Read helpers ─────────────────────────────────────────────────────────
