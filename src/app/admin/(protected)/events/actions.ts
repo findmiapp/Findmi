@@ -13,12 +13,12 @@ import { resolveOpportunityByContext } from "@/lib/opportunities";
 import type { EventParticipationStatus } from "@/lib/types";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
 import {
-  declineEventLevelParticipation,
+  cancelEventAppearance,
+  ensureEventAppearance,
   ensureOccurrenceAppearance,
   cancelOccurrenceAppearance,
   cancelOfficialOccurrenceAppearances,
   propagateAllDatesParticipation,
-  realizeEventLevelApproval,
   syncOfficialEventAppearances,
   syncOfficialOccurrenceAppearances,
 } from "@/lib/appearance-event-sync";
@@ -387,27 +387,45 @@ export async function saveEvent(id: string | null, formData: FormData) {
     // as officially participating once it's not 'approved'.
     if (!ebError) {
       for (const row of toUpsert) {
+        // Production Bugfix — Multi-Date Participation Status. This roster
+        // (ParticipationRoster's "Legacy Event-Level Participation"
+        // section, rendered for an occurrence-bearing event) is
+        // DELIBERATELY a separate, event-level-only track from
+        // event_occurrence_businesses — see that component's own doc
+        // comment: a legacy row here "won't appear in Who You'll Find Here
+        // for any date," and removing/re-adding it is explicitly meant to
+        // have NO effect on occurrence-level participation, which is
+        // managed entirely through OccurrenceAwareAdd/OccurrenceVendorManager
+        // instead. realizeEventLevelApproval/declineEventLevelParticipation
+        // (used correctly everywhere else this pass touched — the
+        // organizer's own Businesses tab, invite/apply flows, scope
+        // changes — where there is only ONE unified relationship) are the
+        // WRONG helpers here: their scope-aware backfill/reconcile reaches
+        // into event_occurrence_businesses, which for this admin action
+        // means saving or removing a harmless legacy row could silently
+        // approve or DECLINE every one of an event's real Additional-Date
+        // rows for that business — confirmed in production against San
+        // Gennaro (Pizza Parlor/Project Latte's 10 already-approved
+        // event_occurrence_businesses rows were mass-declined the moment
+        // their unrelated legacy event_businesses row was removed here).
+        // Restored to the narrower, whole-event-only sync this action
+        // always used before that change — Primary Date Appearance only,
+        // never touching occurrence-level rows.
         if (row.status === "approved") {
-          // Multi-Date Business Participation Pass 2B — scope-aware: a
-          // no-op beyond ensureEventAppearance for a legacy NULL-scope row
-          // (admin's own roster editor has no scope selector, so every
-          // admin-added participant keeps whatever scope it already had —
-          // never auto-assigned here), but correctly backfills/realizes
-          // occurrence participation for any business that already carries
-          // an explicit all_dates/selected_dates scope from elsewhere.
-          await realizeEventLevelApproval(supabase, eventId as string, row.business_id);
+          await ensureEventAppearance(supabase, eventId as string, row.business_id);
         } else {
-          await declineEventLevelParticipation(supabase, eventId as string, row.business_id);
+          await cancelEventAppearance(supabase, eventId as string, row.business_id);
         }
       }
     }
   }
   if (removedIds.length > 0) {
     // Reverse-sync before the roster row itself is gone — cancels only a
-    // source='official_participation' appearance (see
-    // declineEventLevelParticipation), never an owner's own appearance.
+    // source='official_participation' appearance (see cancelEventAppearance),
+    // never an owner's own appearance, and never touches occurrence-level
+    // participation — see this loop's own note above.
     for (const businessId of removedIds) {
-      await declineEventLevelParticipation(supabase, eventId as string, businessId);
+      await cancelEventAppearance(supabase, eventId as string, businessId);
     }
     await supabase
       .from("event_businesses")

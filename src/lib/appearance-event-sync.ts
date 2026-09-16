@@ -292,6 +292,18 @@ export async function ensureEventAppearance(supabase: SupabaseClient, eventId: s
   const fields = await deriveEventFields(supabase, eventId);
   if (!fields) return;
 
+  // Production Bugfix — Multi-Date Participation Status. Ordered +
+  // limited to exactly one row before .maybeSingle(): a business that's
+  // been approved/declined more than once for this event can accumulate
+  // more than one canceled official_participation row (confirmed against
+  // San Gennaro's own production data — repeated approve/decline cycles
+  // left 10+ duplicate canceled event-level appearances per business).
+  // Without this bound, .maybeSingle() errors on 2+ matches, `canceled`
+  // silently becomes null (the error is discarded), and this falls
+  // through to the insert branch below — creating ANOTHER duplicate
+  // instead of reactivating one of the existing rows, compounding every
+  // time. Reactivates the most recently canceled row when duplicates
+  // already exist from before this fix.
   const { data: canceled } = await supabase
     .from("appearances")
     .select("id")
@@ -300,6 +312,8 @@ export async function ensureEventAppearance(supabase: SupabaseClient, eventId: s
     .is("event_occurrence_id", null)
     .eq("status", "canceled")
     .eq("source", "official_participation")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (canceled) {
     await supabase.from("appearances").update({ ...fields, status: "confirmed" }).eq("id", canceled.id);
@@ -373,6 +387,10 @@ export async function ensureOccurrenceAppearance(supabase: SupabaseClient, occur
   const { event_id, title, start_at, end_at, location_id, venue_name, address, city, state, latitude, longitude } = derived;
   const fields = { event_id, title, start_at, end_at, location_id, venue_name, address, city, state, latitude, longitude };
 
+  // Production Bugfix — Multi-Date Participation Status. Same ordered +
+  // limited bound as ensureEventAppearance's own identical reactivation
+  // lookup above — see that function's comment for the proven duplicate-
+  // creation bug this prevents.
   const { data: canceled } = await supabase
     .from("appearances")
     .select("id")
@@ -380,6 +398,8 @@ export async function ensureOccurrenceAppearance(supabase: SupabaseClient, occur
     .eq("event_occurrence_id", occurrenceId)
     .eq("status", "canceled")
     .eq("source", "official_participation")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (canceled) {
     await supabase.from("appearances").update({ ...fields, status: "confirmed" }).eq("id", canceled.id);

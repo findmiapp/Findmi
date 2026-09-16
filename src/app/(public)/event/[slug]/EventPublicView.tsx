@@ -14,7 +14,7 @@ import EventCoverLightbox from "@/components/EventCoverLightbox";
 import EventFollowButton from "@/components/EventFollowButton";
 import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
-import EventOccurrenceCard from "@/components/EventOccurrenceCard";
+import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
 import EventScheduleActions from "@/components/EventScheduleActions";
 import EventScheduleCtas from "@/components/EventScheduleCtas";
@@ -55,13 +55,11 @@ import { getSupabase } from "@/lib/supabase";
 // Schedule Authoring V4 — a bulk-generated Event can legitimately have
 // 30+ upcoming dates (a month-long pop-up). Bounded, not unbounded: this
 // still caps the query, it just raises the cap from the old default (12)
-// enough to cover a realistic single-month activation. The carousel below
-// only ever shows the first EVENT_PUBLIC_VISIBLE_OCCURRENCES up front;
-// anything beyond that sits behind an explicit "Show all" disclosure
-// (same zero-JS <details> pattern BusinessPublicView's own Findmi Here
-// "Show N More" already uses) rather than rendering everything at once.
+// enough to cover a realistic single-month activation. The rail below
+// (UpcomingDatesRail) only ever shows its own first N cards up front,
+// with a compact "View all" trigger as the final scrollable item —
+// never rendering everything at once.
 const EVENT_PUBLIC_OCCURRENCE_LIMIT = 40;
-const EVENT_PUBLIC_VISIBLE_OCCURRENCES = 10;
 
 async function resolveCanonicalUrl(eventId: string, slug: string): Promise<string> {
   const supabase = getSupabase();
@@ -498,41 +496,16 @@ export async function EventPublicView({ slug }: { slug: string }) {
           <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
             Upcoming Dates
           </p>
-          {/* pt-2 — QA fix: the selected card's aqua ring/border (see
-              EventOccurrenceCard) is a box-shadow that bleeds slightly
-              outside the card's own box; with zero top padding here it
-              sat flush against this scroller's top edge and got clipped
-              by the overflow-x-auto container's (CSS-forced) overflow-y
-              clipping. Local to this carousel only — every other
-              HorizontalScroller on the site is unaffected. */}
-          <HorizontalScroller className="pt-2">
-            {upcomingOccurrences.slice(0, EVENT_PUBLIC_VISIBLE_OCCURRENCES).map((occ) => (
-              <EventOccurrenceCard key={occ.id} occurrence={occ} />
-            ))}
-          </HorizontalScroller>
-          {/* Schedule Authoring V4 — bounded initial results + an explicit
-              "Show all" disclosure, never hundreds of cards rendered up
-              front. Every occurrence is still passed to
-              EventOccurrenceProvider above regardless (the date SELECTOR
-              context, and therefore Tier A CTAs/Location/roster switching,
-              is unaffected either way) — this only changes how many cards
-              are visible before the organizer's full schedule is asked
-              for. */}
-          {upcomingOccurrences.length > EVENT_PUBLIC_VISIBLE_OCCURRENCES && (
-            <details className="group mt-3 px-4 sm:px-0">
-              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-findmi-700 [&::-webkit-details-marker]:hidden">
-                <span className="group-open:hidden">
-                  Show all {upcomingOccurrences.length} dates
-                </span>
-                <span className="hidden group-open:inline">Show fewer dates</span>
-              </summary>
-              <div className="mt-3 flex flex-col gap-2">
-                {upcomingOccurrences.slice(EVENT_PUBLIC_VISIBLE_OCCURRENCES).map((occ) => (
-                  <EventOccurrenceCard key={occ.id} occurrence={occ} />
-                ))}
-              </div>
-            </details>
-          )}
+          {/* Public Upcoming Dates Mobile UX pass — ONE horizontal rail:
+              "View all N" (UpcomingDatesRail's own compact trigger) is the
+              final scrollable item in the SAME rail, never a second
+              line/section beneath the carousel. Bounded initial render is
+              preserved (see that component's own doc comment); every
+              occurrence is still passed to EventOccurrenceProvider above
+              regardless of how many cards are currently visible, so the
+              date SELECTOR context (Tier A CTAs/Location/roster switching)
+              is unaffected either way. */}
+          <UpcomingDatesRail occurrences={upcomingOccurrences} />
         </div>
       )}
 
