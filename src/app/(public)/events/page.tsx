@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import HomeEventCard from "@/components/HomeEventCard";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
 import AreaPicker from "@/components/discover/AreaPicker";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
+import EventDiscoveryCard from "@/components/discover/EventDiscoveryCard";
 import EventFilters from "@/components/discover/EventFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
 import {
@@ -100,13 +100,15 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     if (key === "market") p.delete("area");
     return `/events${p.toString() ? `?${p.toString()}` : ""}`;
   };
-  if (params.q) chips.push({ label: `"${params.q}"`, href: withoutParam("q") });
+  // Events Discovery V4 — no chip for `q`: the term is already visible in
+  // the search field itself, so a duplicate chip for it is redundant
+  // (same fix Businesses Discovery V4 already applied to /businesses).
   if (params.market) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
 
   const sheetFilterCount = [params.category, params.location].filter(Boolean).length;
-  const filtering = chips.length > 0 || timeKey !== "next";
+  const filtering = chips.length > 0 || timeKey !== "next" || Boolean(params.q);
 
   const loadMoreHref = (() => {
     const p = new URLSearchParams(baseParams);
@@ -137,11 +139,16 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <SearchFilterAnalytics pageType="events" filterParams={["category", "market", "area", "when"]} />
       <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Events</h1>
-      <p className="mt-1.5 text-sm text-ink/60 sm:text-base">
+      {/* Events Discovery V4, item 1 — same mobile-header compression as
+          Businesses Discovery V4: this subtitle adds little a consumer
+          can't already infer from the page title + search field, and was
+          previously the single biggest contributor to pre-result mobile
+          space. Hidden on mobile, kept unchanged on desktop. */}
+      <p className="mt-1.5 hidden text-sm text-ink/60 sm:block sm:text-base">
         Markets, pop-ups, and festivals — and who you&rsquo;ll find here.
       </p>
 
-      <form method="get" className="mt-5 flex flex-col gap-3">
+      <form method="get" className="mt-4 flex flex-col gap-3">
         <ArchiveSearchField defaultValue={params.q} placeholder="Search events" />
 
         {/* Time is the primary axis for event discovery — same tabs, same
@@ -180,7 +187,10 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         {chips.length > 0 && <ActiveFilterChips chips={chips} clearHref={timeKey === "next" ? "/events" : `/events?when=${timeKey}`} />}
       </form>
 
-      <p className="mt-5 text-sm text-ink/50">
+      {/* Events Discovery V4, item 4 — same compact treatment as
+          Businesses Discovery V4's result count: smaller/lighter than
+          any surrounding control text, never a headline. */}
+      <p className="mt-3 text-xs font-medium text-ink/45">
         {events.length === 0 && !hasMore ? 0 : `${events.length}${hasMore ? "+" : ""}`} event{events.length === 1 && !hasMore ? "" : "s"}
         {timeKey === "weekend" ? " this weekend" : timeKey === "today" ? " today" : timeKey === "week" ? " this week" : ""}
       </p>
@@ -196,9 +206,14 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         </div>
       ) : (
         <>
-          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {/* Events Discovery V4, items 5/6/7/10 — the results grid now
+              uses EventDiscoveryCard, a dedicated dense presentation,
+              instead of HomeEventCard (which stays unchanged — it's also
+              the Homepage's own discovery card). Same grid breakpoints as
+              before; the density win comes from the card itself. */}
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {events.map((e, i) => (
-              <HomeEventCard
+              <EventDiscoveryCard
                 key={e.id}
                 event={e}
                 analyticsContext={{ pageType: "events", placement: "results_grid", position: i + 1 }}
