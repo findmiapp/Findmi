@@ -4,6 +4,7 @@ import BusinessLogoCard from "@/components/BusinessLogoCard";
 import ActiveFilterChips, { type ActiveFilterChip } from "@/components/discover/ActiveFilterChips";
 import AreaPicker from "@/components/discover/AreaPicker";
 import ArchiveSearchField from "@/components/discover/ArchiveSearchField";
+import BusinessDiscoveryCard from "@/components/discover/BusinessDiscoveryCard";
 import BusinessFilters from "@/components/discover/BusinessFilters";
 import FilterSheet from "@/components/discover/FilterSheet";
 import SortSelect from "@/components/discover/SortSelect";
@@ -173,6 +174,17 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     : selectedMarket
       ? getMarketAreaLabel(selectedMarket)
       : undefined;
+  // Businesses Discovery V4, item 4 — the search term is already visible
+  // inside the input itself (which now has its own × clear control — see
+  // ArchiveSearchField), so it no longer doubles as a removable chip
+  // underneath ("Coffee" in the box AND "Coffee" × in a chip said the
+  // same thing twice). `chips` below is now real NON-SEARCH filters
+  // only, so "Clear All" also only ever appears when there's an actual
+  // filter worth clearing — a search-only visit renders no chip row at
+  // all. `filtering` (used for empty-state copy/"Clear filters") stays
+  // broader than `chips` on purpose: a text search that matches nothing
+  // must still say "No businesses matched" rather than the generic
+  // "check back soon" empty state, even though it renders no chip.
   const chips: ActiveFilterChip[] = [];
   const withoutParam = (key: string) => {
     const p = new URLSearchParams(baseParams);
@@ -180,7 +192,6 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     if (key === "market") p.delete("area");
     return `/businesses${p.toString() ? `?${p.toString()}` : ""}`;
   };
-  if (params.q) chips.push({ label: `"${params.q}"`, href: withoutParam("q") });
   if (params.market) chips.push({ label: marketAreaLabel ?? params.market, href: withoutParam("market") });
   if (params.category) chips.push({ label: categoryName ?? params.category, href: withoutParam("category") });
   if (params.location) chips.push({ label: params.location, href: withoutParam("location") });
@@ -197,21 +208,38 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     return `/businesses?${p.toString()}`;
   })();
 
-  const activeCount = chips.length;
-  const filtering = activeCount > 0;
+  const filtering = chips.length > 0 || Boolean(params.q);
 
   return (
-    <div className="py-8 sm:py-10">
+    // Businesses Discovery V4 — py-8/sm:py-10 was the same generous top/
+    // bottom breathing room every archive page opens with; tightened on
+    // mobile only (sm: unchanged) since the whole point of this pass is
+    // giving that space back to results, not desktop layout.
+    <div className="py-5 sm:py-10">
       <SearchFilterAnalytics pageType="businesses" filterParams={["category", "market", "area"]} />
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Businesses</h1>
-        <p className="mt-1.5 text-sm text-ink/60 sm:text-base">
+        {/* Businesses Discovery V4, item 1 — this line added little a
+            consumer couldn't already infer from the page title + search
+            field, and was previously the single biggest contributor
+            (alongside the old giant control stack below) to how far
+            results sat from the top of a mobile viewport. Hidden below
+            sm: rather than shortened — omitting it entirely is
+            explicitly sanctioned by this pass's own spec when it "adds
+            little value" on small mobile; desktop keeps it unchanged. */}
+        <p className="mt-1.5 hidden text-sm text-ink/60 sm:block sm:text-base">
           Search Findmi&rsquo;s directory of local vendors and brands.
         </p>
 
-        <form method="get" className="mt-5 flex flex-col gap-3">
+        <form method="get" className="mt-3 flex flex-col gap-2.5 sm:mt-5 sm:gap-3">
           <ArchiveSearchField defaultValue={params.q} placeholder="Search by name or description" />
-          <div className="flex flex-wrap items-center gap-2.5">
+          {/* Businesses Discovery V4, item 3 — Area/Filters/Sort
+              consolidated onto one row (gap tightened from 2.5 to 2, and
+              SortSelect itself shrunk — see that component's own note);
+              AreaPicker and FilterSheet are shared with the Find Your
+              Area modal and /events' own filter sheet respectively, so
+              neither's own geometry changed, only this row's spacing. */}
+          <div className="flex flex-wrap items-center gap-1">
             <AreaPicker
               options={markets.map((m) => ({
                 slug: m.slug,
@@ -323,13 +351,18 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
         </div>
       ) : (
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <p className="mt-5 text-sm text-ink/50">
+          {/* Businesses Discovery V4, item 5 — compact and subordinate:
+              tighter top margin (was mt-5, its own clear break from the
+              controls above) so it reads as the controls→results
+              transition rather than its own section, smaller/lighter
+              than any surrounding control text, never a headline. */}
+          <p className="mt-3 text-xs font-medium text-ink/45">
             {businesses.length === 0 && !hasMore ? 0 : `${businesses.length}${hasMore ? "+" : ""}`} business
             {businesses.length === 1 && !hasMore ? "" : "es"}
           </p>
 
           {businesses.length === 0 ? (
-            <div className="mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
+            <div className="mt-4 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center">
               <p className="text-sm text-ink/60">
                 {filtering
                   ? `No businesses matched${categoryName ? ` ${categoryName}` : ""}${marketAreaLabel ? ` in ${marketAreaLabel}` : params.market ? ` in that area` : ""}${params.location ? ` in ${params.location}` : ""}.`
@@ -343,9 +376,19 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
             </div>
           ) : (
             <>
-              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Businesses Discovery V4, item 6/7/8/10/11 — the flat
+                  Results Mode grid now uses BusinessDiscoveryCard, a
+                  dedicated dense presentation, instead of
+                  BusinessLogoCard (the rich vertical card Browse Mode's
+                  own rails above, and Discover More Like This/Brands We
+                  Love elsewhere, keep unchanged — this is a NEW,
+                  additional card, not a resize of that shared one).
+                  Same grid breakpoints as before (1/2/3 columns) — the
+                  density win comes entirely from the card itself being
+                  far shorter, not from a wider grid. */}
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {businesses.map((b, i) => (
-                  <BusinessLogoCard
+                  <BusinessDiscoveryCard
                     key={b.id}
                     business={b}
                     nextAppearance={appearanceHints.get(b.id)}
