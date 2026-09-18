@@ -188,15 +188,29 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           utilities now: a separate, smaller row, always shown regardless
           of whether Website/Call/Email exist (Save/Share never depended
           on contact info existing). Every action still only renders when
-          its underlying data exists. */}
+          its underlying data exists.
+
+          Mobile Action Density fix — live QA at 360-412px showed this row
+          staircasing (3 pills on line one, one orphaned pill alone on
+          line two) because plain flex-wrap has no opinion on how many
+          items share a row. `basis-[46%] grow` gives every pill a mobile-
+          only minimum share of the row (two comfortably fit, a third is
+          pushed down), and `grow` lets a genuinely final odd-one-out fill
+          the remaining width instead of sitting stranded at its own
+          content size — never a single tiny pill dead-centered on its own
+          line. `sm:basis-auto sm:grow-0` restores plain natural-width
+          flex-wrap from the tablet breakpoint up, where the whole cluster
+          already fits one row with room to spare. Button geometry itself
+          (height/border/radius/type scale/icon size) is untouched — only
+          the row's own sizing behavior changed. */}
       <div className="px-4 sm:px-0">
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-1.5">
           {directionsHref && (
             <AnalyticsLink
               href={directionsHref}
               target="_blank"
               rel="noreferrer"
-              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+              className="flex h-9 grow basis-[46%] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-findmi/40 px-2.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50 sm:grow-0 sm:basis-auto sm:justify-start"
               trackPayload={{ event_name: "click_directions", subject_type: "location", subject_id: location.id, location_id: location.id }}
             >
               <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
@@ -204,14 +218,16 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             </AnalyticsLink>
           )}
           {showMessageButton && (
-            <MessageButton size="compact" targetType="location" targetId={location.id} targetName={location.name} />
+            <div className="grow basis-[46%] sm:grow-0 sm:basis-auto [&>button]:w-full [&>button]:justify-center sm:[&>button]:w-auto sm:[&>button]:justify-start">
+              <MessageButton size="compact" targetType="location" targetId={location.id} targetName={location.name} />
+            </div>
           )}
           {website && (
             <a
               href={website}
               target="_blank"
               rel="noreferrer"
-              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              className="flex h-9 grow basis-[46%] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink sm:grow-0 sm:basis-auto sm:justify-start"
             >
               <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
               Website
@@ -220,7 +236,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           {location.phone && (
             <a
               href={`tel:${location.phone}`}
-              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              className="flex h-9 grow basis-[46%] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink sm:grow-0 sm:basis-auto sm:justify-start"
             >
               <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
               Call
@@ -238,12 +254,12 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               targetId={location.id}
               targetName={location.name}
               label="Contact"
-              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              className="flex h-9 grow basis-[46%] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink sm:grow-0 sm:basis-auto sm:justify-start"
             />
           )}
         </div>
 
-        <div className="mt-2.5 flex items-center gap-2">
+        <div className="mt-2 flex items-center gap-2">
           <LocationSaveButton slug={location.slug} id={location.id} />
           <ShareButton
             url={canonicalUrl}
@@ -291,8 +307,15 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             happenings can be scanned without each claiming a full
             viewport. 4+ still gets one featured card for the nearest
             happening plus HappeningRow (no thumbnail at all) for the
-            rest, the most compact tier for a real schedule. */}
-        <section className="mt-8">
+            rest, the most compact tier for a real schedule.
+
+            Mobile Action Density fix — mt-8 (32px) after the tightened,
+            two-row-at-most action cluster above read as a large dead zone
+            before this section. mt-5 (20px) keeps a real visual break
+            (Coming Up Here is still its own section, not glued to the
+            actions) without the excess gap the old spacing left once the
+            action area itself got shorter. */}
+        <section className="mt-5">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">Coming Up Here</h2>
 
           {happenings.length === 0 ? (
