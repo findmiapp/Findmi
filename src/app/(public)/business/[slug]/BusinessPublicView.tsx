@@ -1035,7 +1035,7 @@ function BusinessLinksRow({
           {...(action.external ? { target: "_blank", rel: "noreferrer" } : {})}
           title={action.title}
           aria-label={action.title}
-          className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-white px-3.5 text-xs font-bold text-ink transition hover:border-findmi/40 hover:bg-findmi-50"
+          className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
           trackPayload={{
             event_name: "click_contact_channel",
             subject_type: "business",
@@ -1044,9 +1044,7 @@ function BusinessLinksRow({
             metadata: { channel: CONTACT_ICON_TO_CHANNEL[action.icon] },
           }}
         >
-          <span className="text-findmi-700">
-            <ContactGlyph icon={action.icon} />
-          </span>
+          <ContactGlyph icon={action.icon} />
           {action.label}
         </AnalyticsLink>
       ))}
@@ -1056,16 +1054,22 @@ function BusinessLinksRow({
 
 type ContactIcon = "phone" | "mail" | "instagram" | "globe" | "facebook" | "tiktok";
 
+// Business ↔ Public Parity pass — resized from h-5 to h-3.5 (and the pill
+// itself from a rounded-full h-10 to the rounded-lg h-9 Event/Location's
+// own Directions/Website/Call pills use, see BusinessLinksRow above) so
+// Business's contact/social row reads as the same Findmi contextual-
+// action language as the other two public entity pages, not a visibly
+// different, older button system. Same icon marks, same click behavior.
 function ContactGlyph({ icon }: { icon: ContactIcon }) {
-  if (icon === "phone") return <PhoneGlyph className="h-5 w-5" />;
-  if (icon === "mail") return <MailGlyph className="h-5 w-5" />;
+  if (icon === "phone") return <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />;
+  if (icon === "mail") return <MailGlyph className="h-3.5 w-3.5 shrink-0" />;
   return <SocialGlyph icon={icon} />;
 }
 
 function SocialGlyph({ icon }: { icon: "instagram" | "globe" | "facebook" | "tiktok" }) {
   if (icon === "instagram") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+      <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 shrink-0">
         <rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="currentColor" strokeWidth="1.6" />
         <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.6" />
         <circle cx="17" cy="7" r="1" fill="currentColor" />
@@ -1074,7 +1078,7 @@ function SocialGlyph({ icon }: { icon: "instagram" | "globe" | "facebook" | "tik
   }
   if (icon === "globe") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+      <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 shrink-0">
         <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.6" />
         <ellipse cx="12" cy="12" rx="3.4" ry="8.5" stroke="currentColor" strokeWidth="1.6" />
         <path d="M3.5 12h17" stroke="currentColor" strokeWidth="1.6" />
@@ -1083,7 +1087,7 @@ function SocialGlyph({ icon }: { icon: "instagram" | "globe" | "facebook" | "tik
   }
   if (icon === "facebook") {
     return (
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+      <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 shrink-0">
         <path
           d="M14.5 21v-7.5h2.5l.5-3h-3V8.5c0-.9.3-1.5 1.6-1.5H17.5V4.3C17.2 4.2 16.2 4 15 4c-2.5 0-4 1.5-4 4.3V10.5H8.5v3H11V21"
           stroke="currentColor"
@@ -1097,7 +1101,7 @@ function SocialGlyph({ icon }: { icon: "instagram" | "globe" | "facebook" | "tik
   // tiktok — a simplified line rendition of the note-and-swirl mark, same
   // minimal stroke language as every other glyph on this page.
   return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+    <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 shrink-0">
       <path
         d="M13 4v10.3a3 3 0 11-2.2-2.9"
         stroke="currentColor"

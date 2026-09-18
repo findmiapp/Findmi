@@ -1579,6 +1579,30 @@ export default async function ManageBusinessPage({
                   Save Links &amp; Contact
                 </button>
               </form>
+
+              {/* Business ↔ Public Parity pass — Customer Inquiries is the
+                  same "customer engagement" concept as the Announcement
+                  above (both control what a visitor can do on the public
+                  Business page), but its actual toggle/topics form lives
+                  in its own existing tab (?tab=inquiries — see that
+                  section's own note on why it stays separate). Previously
+                  only reachable via Settings, two hops from Profile, while
+                  Bulletin sat right here — this compact status Row closes
+                  that gap with zero new logic: same Row primitive
+                  Overview's own Business panel already uses for "View →"
+                  links, reading the same accepts_inquiries/inquiry_topics
+                  the public page's own canInquire check reads. */}
+              <div className="border-t border-black/[0.05] px-4 py-3">
+                <Row
+                  label="Customer Inquiries"
+                  value={
+                    business.accepts_inquiries && sanitizeBusinessInquiryTopics(business.inquiry_topics).length > 0
+                      ? "Enabled →"
+                      : "Off →"
+                  }
+                  href={`${basePath}?tab=inquiries`}
+                />
+              </div>
             </Panel>
           </div>
           )}
