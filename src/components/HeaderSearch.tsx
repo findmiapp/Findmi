@@ -166,6 +166,32 @@ export default function HeaderSearch({ variant }: { variant: "icon" | "text" }) 
               placeholder="Search businesses, events, products..."
               className="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink/40 focus:outline-none"
             />
+            {/* Clear button — only ever shown once there's something to
+                clear. onMouseDown preventDefault stops the button from
+                ever taking focus away from the input in the first place
+                (the standard technique for a clear-button that must never
+                blur its own text field); the onClick refocus is a safety
+                net for input methods that don't fire a preceding
+                mousedown (e.g. some touch/assistive-tech activation
+                paths). Clearing q alone is enough to reset results/
+                loading back to empty — the existing debounce effect
+                above already does that for any query under MIN_CHARS, so
+                this reuses that exact path rather than introducing a
+                second "cleared" state. */}
+            {q.length > 0 && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setQ("");
+                  inputRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-ink/40 transition hover:bg-black/[0.06] hover:text-ink/70"
+              >
+                <ClearGlyph className="h-3 w-3" />
+              </button>
+            )}
           </form>
 
           <div id="header-search-results" role="listbox" className="mt-2 max-h-[60vh] overflow-y-auto">
@@ -248,6 +274,14 @@ function SearchGlyph({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.8" />
       <path d="M20 20l-4.5-4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ClearGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
