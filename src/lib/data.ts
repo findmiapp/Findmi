@@ -2984,15 +2984,80 @@ function normalizeCategoryEmbed(raw: unknown): LocationCategoryRef | null {
   return (value as LocationCategoryRef | null) ?? null;
 }
 
-export async function getLocations(limit = 20): Promise<LocationWithCategory[]> {
+export interface LocationsDiscoveryOptions {
+  limit?: number;
+  /** Locations Discovery V4 — plain substring match over name/city/state,
+   * same fields (and same `.or(...ilike...)` shape) searchLocations
+   * already uses for Global Search. A separate, parallel implementation
+   * on purpose: searchLocations is Global Search's own typeahead path
+   * (fixed small limit, no other filters) and stays untouched. */
+  q?: string;
+  /** Locations Discovery V4 — resolved via the categories table (kind=
+   * "location") the same way marketSlug/areaSlug below are resolved via
+   * markets/market_areas: an unknown slug returns zero rows rather than
+   * silently falling back to unfiltered results. */
+  categorySlug?: string;
+  /** Consumer Event Market Filtering V1's same Market concept, applied to
+   * Locations — which already carry their own market_id directly (no
+   * junction table/occurrence resolution needed, unlike businesses/
+   * events), so this is a plain `.eq("market_id", ...)` once resolved. */
+  marketSlug?: string;
+  /** Only meaningful alongside marketSlug (Area slugs are unique per-
+   * Market, not globally) — same "unresolved Market makes an Area
+   * meaningless" rule getEffectiveUpcomingEvents already applies. A
+   * location's market_area_id is only ever set via a cascading Market ->
+   * Area select (see its own field comment in types.ts), so once
+   * resolved it's already guaranteed scoped to that Market — no need to
+   * also intersect with market_id. */
+  areaSlug?: string;
+}
+
+export async function getLocations(options: LocationsDiscoveryOptions = {}): Promise<LocationWithCategory[]> {
+  const { limit = 20, q, categorySlug, marketSlug, areaSlug } = options;
   const supabase = getSupabase();
   if (!supabase) return [];
-  const { data } = await supabase
-    .from("locations")
-    .select("*, category:categories(id, name, slug)")
-    .eq("is_demo", false)
-    .order("name")
-    .limit(limit);
+
+  let marketId: string | null = null;
+  if (marketSlug) {
+    const { data: marketRow } = await supabase.from("markets").select("id").eq("slug", marketSlug).eq("active", true).maybeSingle();
+    if (!marketRow) return [];
+    marketId = marketRow.id;
+  }
+  let areaId: string | null = null;
+  if (areaSlug) {
+    if (!marketId) return [];
+    const { data: areaRow } = await supabase
+      .from("market_areas")
+      .select("id")
+      .eq("market_id", marketId)
+      .eq("slug", areaSlug)
+      .eq("active", true)
+      .maybeSingle();
+    if (!areaRow) return [];
+    areaId = areaRow.id;
+  }
+  let categoryId: string | null = null;
+  if (categorySlug) {
+    const { data: categoryRow } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("kind", "location")
+      .eq("slug", categorySlug)
+      .maybeSingle();
+    if (!categoryRow) return [];
+    categoryId = categoryRow.id;
+  }
+
+  let query = supabase.from("locations").select("*, category:categories(id, name, slug)").eq("is_demo", false);
+  if (areaId) query = query.eq("market_area_id", areaId);
+  else if (marketId) query = query.eq("market_id", marketId);
+  if (categoryId) query = query.eq("category_id", categoryId);
+  if (q?.trim()) {
+    const pattern = `%${q.trim()}%`;
+    query = query.or(`name.ilike.${pattern},city.ilike.${pattern},state.ilike.${pattern}`);
+  }
+
+  const { data } = await query.order("name").limit(limit);
   const locations = ((data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
     ...l,
     category: normalizeCategoryEmbed(l.category),
@@ -3013,6 +3078,19 @@ export async function getLocations(limit = 20): Promise<LocationWithCategory[]> 
   }
 
   return locations.map((l) => ({ ...l, upcomingCount: countByLocation.get(l.id) ?? 0 }));
+}
+
+/** Location-kind categories for the /locations discovery filter — same
+ * shape/reasoning as getCategories (business-kind) and getProductCategories
+ * (product-kind): categories are split by kind and this must never return
+ * business/event/product rows even though they share one table. "Other"
+ * always sorts last, same convention as getCategories. */
+export async function getLocationCategories(): Promise<Category[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase.from("categories").select("*").eq("kind", "location").order("name");
+  const categories = data ?? [];
+  return [...categories.filter((c) => c.name !== "Other"), ...categories.filter((c) => c.name === "Other")];
 }
 
 /** Global Search pass — Locations as a first-class searchable entity,
