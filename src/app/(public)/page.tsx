@@ -333,6 +333,9 @@ export default async function HomePage({
           <Link href="/events" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
             Explore events →
           </Link>
+          <Link href="/locations" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+            Explore locations →
+          </Link>
         </div>
       </section>
     </div>
