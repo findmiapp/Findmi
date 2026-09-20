@@ -1391,6 +1391,17 @@ export default async function ManageBusinessPage({
                   <input type="text" name="postal_code" defaultValue={business.postal_code ?? ""} className={inputClass} />
                 </label>
               </div>
+              {/* Free Location Field Transparency — Free can write these
+                  same fields (see the comment above), but BusinessPublicView
+                  only ever renders location for a Pro business
+                  (`{pro && location && ...}`). Without this, a Free owner
+                  had no way to know their City/State/ZIP wouldn't actually
+                  reach their public page. Subordinate caption only, no
+                  entitlement/CTA change — Pro never sees it, since it isn't
+                  true for Pro. */}
+              {!pro && (
+                <p className="text-xs text-ink/45">City, state and ZIP appear on your public page with Findmi Pro.</p>
+              )}
 
               {/* Free Basic Profile Editing pass — About/description,
                   Website and Instagram are genuine Free profile fields

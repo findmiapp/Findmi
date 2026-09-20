@@ -37,7 +37,14 @@ export async function middleware(request: NextRequest) {
 
     if (!user) {
       const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("next", getSafeRedirect(pathname));
+      // Preserve the full original destination — not just its pathname —
+      // so a query string carrying real intent (?plan=pro, ?invite=CODE,
+      // ?ref=CODE) survives the round trip through /login instead of
+      // silently reverting to whatever the target page defaults to.
+      // getSafeRedirect re-validates/reconstructs this the same safe way
+      // it already does for every other caller (login/signup/auth
+      // callback) — passing it the query string here doesn't weaken that.
+      loginUrl.searchParams.set("next", getSafeRedirect(pathname + request.nextUrl.search));
       return NextResponse.redirect(loginUrl);
     }
     return response;
