@@ -554,8 +554,12 @@ function FreeSection({ card, ctaHref }: { card: ResolvedJoinFreeCard; ctaHref: s
       >
         {ctaLabel}
       </Link>
+      {/* Canonical Plan Config pass — "products" removed: Products is a
+          Free capability now (Free/Pro Entitlement Realignment pass), so
+          naming it as a reason to upgrade was stale and actively
+          wrong. */}
       <p className="mt-2 text-center text-xs text-ink/45">
-        Need your full schedule, products, custom Findmi URL and more? Upgrade to Pro anytime.
+        Need your full schedule, custom Findmi URL and more? Upgrade to Pro anytime.
       </p>
     </div>
   );

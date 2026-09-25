@@ -31,10 +31,21 @@ export const dynamic = "force-dynamic";
 // & TikTok": About/description and Website are now genuine Free profile
 // fields (create + edit), so they're no longer Pro-exclusive claims.
 // Public email/phone and Facebook/TikTok remain Pro-only, unchanged.
+//
+// Canonical Plan Config pass — "Products & services showcase" is
+// removed: Products became a Free capability in the Free/Pro
+// Entitlement Realignment pass, so listing it here was stale and
+// actively wrong. Replaced with "Analytics & audience insights" — a
+// real, currently Pro-gated capability (see lib/commerce/plans.ts's
+// PRO_PLAN.features) that was previously missing from this list
+// entirely despite being Pro-only since the Analytics re-gating pass.
+// Every other line here is untouched — each was already accurate and
+// wasn't part of the audit's stale-copy findings, so this stays a
+// surgical fix, not a rewrite of the page's whole value proposition.
 const CORE_BENEFITS = [
   "Public contact info, Facebook & TikTok",
   "Enhanced photo gallery",
-  "Products & services showcase",
+  "Analytics & audience insights",
   "Show your full upcoming schedule",
   "Business announcements",
   "Priority profile review/support",

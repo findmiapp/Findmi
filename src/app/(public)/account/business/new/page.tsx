@@ -290,9 +290,15 @@ export default async function AddBusinessPage({
                     </p>
                   </div>
 
+                  {/* Canonical Plan Config pass — "Gallery + products" is
+                      now just "Gallery": Products became a Free
+                      capability in the Free/Pro Entitlement Realignment
+                      pass, so bundling it into a Pro-only bullet was
+                      stale and actively wrong. Every other bullet here is
+                      untouched. */}
                   <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
                     <PlanBullet>Full Findmi Here schedule</PlanBullet>
-                    <PlanBullet>Gallery + products</PlanBullet>
+                    <PlanBullet>Gallery</PlanBullet>
                     <PlanBullet>Contact info + customer inquiries</PlanBullet>
                     <PlanBullet>Business updates</PlanBullet>
                     <PlanBullet>Custom Findmi URL</PlanBullet>
@@ -322,8 +328,12 @@ export default async function AddBusinessPage({
                     <PlanBullet>Up to 5 markets</PlanBullet>
                     <PlanBullet>Findmi search &amp; discovery</PlanBullet>
                   </ul>
+                  {/* Canonical Plan Config pass — "products" removed:
+                      Products is a Free capability now (Free/Pro
+                      Entitlement Realignment pass), so naming it as a
+                      reason to upgrade was stale and actively wrong. */}
                   <p className="mt-1 text-xs text-ink/45">
-                    Upgrade anytime for your full schedule, products, custom Findmi URL and more.
+                    Upgrade anytime for your full schedule, custom Findmi URL and more.
                   </p>
                 </label>
               </div>

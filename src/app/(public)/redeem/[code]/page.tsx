@@ -117,14 +117,20 @@ export default async function RedeemInvitePage({
 
           {/* Invite Self-Service Polish pass — a compact, honest recap of
               what Pro actually unlocks (matching the real gated tabs in
-              account/business/[id]/page.tsx: Gallery, Products, Links &
-              Contact, plus the full Findmi Here schedule) rather than a
-              generic "you're all set." No tour/modal — just this list. */}
+              account/business/[id]/page.tsx: Gallery, Links & Contact,
+              plus the full Findmi Here schedule) rather than a generic
+              "you're all set." No tour/modal — just this list.
+              Canonical Plan Config pass — "Add Products" is removed
+              (Products became a Free capability in the Free/Pro
+              Entitlement Realignment pass), and "website" is dropped
+              from the socials/contact line (Website is a Free profile
+              field now too) — both were stale, actively-wrong claims.
+              Every other line is untouched: still accurate, and wasn't
+              part of the audit's stale-copy findings. */}
           <ul className="mt-4 flex flex-col gap-1.5 text-left text-sm text-ink/70">
             <ProUnlockItem>Complete your full business profile</ProUnlockItem>
             <ProUnlockItem>Add photos to your Gallery</ProUnlockItem>
-            <ProUnlockItem>Add Products</ProUnlockItem>
-            <ProUnlockItem>Add website, socials &amp; contact links</ProUnlockItem>
+            <ProUnlockItem>Add socials &amp; contact links</ProUnlockItem>
             <ProUnlockItem>Build out your full Findmi Here schedule</ProUnlockItem>
           </ul>
 

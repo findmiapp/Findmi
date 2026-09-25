@@ -76,9 +76,18 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // "Photos, products & business updates" back into "Photos + products"
     // (matches the Findmi Story pass's benefit wording) plus its own
     // "Business updates" line.
+    //
+    // Canonical Plan Config pass — "Photos + products" is now just
+    // "Photos": Products became a Free capability in the Free/Pro
+    // Entitlement Realignment pass, so this bundled bullet was stale and
+    // actively wrong. This same fix was also applied to the LIVE
+    // site_sections override row for this exact card (page_key='join',
+    // section_key='card_discovery_pro') — this fallback and the live
+    // row must both stay accurate, since either can be what actually
+    // renders depending on whether an admin override exists.
     features: [
       "Full Findmi Here schedule",
-      "Photos + products",
+      "Photos",
       "Contact info + customer inquiries",
       "Business updates",
       "Custom Findmi URL",
