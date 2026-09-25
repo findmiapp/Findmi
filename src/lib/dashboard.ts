@@ -8,7 +8,7 @@ import {
 } from "@/lib/data";
 import { getPendingInvitationsForBusiness } from "@/lib/opportunities";
 import { isBusinessPro, isPlanTierPro } from "@/lib/entitlements";
-import type { PlanTier } from "@/lib/types";
+import type { PlanTier, EventPublicationStatus } from "@/lib/types";
 
 // Account Command Center V1 — assembles the two new /account sections
 // (Needs Your Attention, Coming Up) purely from EXISTING authorized
@@ -67,6 +67,15 @@ export interface DashboardEvent {
   /** Same reasoning as DashboardBusiness.coverImageUrl above — one extra,
    * optional column on the existing event_members(events(...)) select. */
   coverImageUrl?: string | null;
+  /** Updates Information Architecture pass — threaded through from the
+   * same event_members(events(...)) select (one more optional column,
+   * zero new queries), so getAccountCommandCenter can tell a genuinely
+   * pending_review Event apart from a rejected one. is_demo alone can't:
+   * both states keep is_demo=true (see event/[id]/page.tsx's own
+   * isRejected doc comment, the authoritative source for this exact
+   * distinction). Optional so any other caller building a lighter-weight
+   * DashboardEvent shape (none currently needs one) still compiles. */
+  publicationStatus?: EventPublicationStatus;
 }
 export interface DashboardLocation {
   id: string;
@@ -93,6 +102,15 @@ export interface AttentionItem {
   title: string;
   subtitle: string | null;
   href: string;
+  /** Updates Information Architecture pass — every existing attention
+   * source classified by tracing its real underlying status (never by
+   * wording alone; see getAccountCommandCenter's own comments at each
+   * push site): "action_required" means the business owner is the next
+   * actor (an invitation awaiting response, a rejected Event needing
+   * changes, expired Pro needing renewal); "awaiting_approval" means the
+   * owner already completed their step and FindMi/another party is next
+   * (pending_review Business/Event/Location, a pending claim). */
+  category: "action_required" | "awaiting_approval";
 }
 
 export interface ScheduleItem {
@@ -477,15 +495,30 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
     getUnifiedSchedule(admin, { businesses, events, locations }, SCHEDULE_DISPLAY_LIMIT),
   ]);
 
-  // ---- Needs Your Attention ----
+  // ---- Updates (formerly "Needs Your Attention") ----
+  // Updates Information Architecture pass — every item below is
+  // classified by its REAL underlying status, never by wording alone
+  // (see each push site's own comment for the source). "action_required"
+  // = the business owner is the next actor; "awaiting_approval" = the
+  // owner already completed their step and FindMi/another party is next.
+  // Every title below is now just the entity/thing's own name — the
+  // status/explanation lives entirely in subtitle — so a long real name
+  // (e.g. "San Gennaro 100th Anniversary") never has to share one
+  // truncating line with a status sentence.
   const attention: AttentionItem[] = [];
 
+  // Invitations — opportunities.status='pending' (getPendingInvitationsForBusiness's
+  // own query), i.e. an organizer invited this Business and it's waiting
+  // on THIS owner's accept/decline. Unambiguously action_required.
   businesses.forEach((b, i) => {
     for (const inv of invitationsByBusiness[i]) {
       attention.push({
         key: `invite:${inv.id}`,
-        title: `${inv.eventName} invited ${b.name}`,
-        subtitle: inv.occurrenceStartAt ? new Date(inv.occurrenceStartAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Review and respond",
+        category: "action_required",
+        title: inv.eventName,
+        subtitle: inv.occurrenceStartAt
+          ? `Invited ${b.name} for ${new Date(inv.occurrenceStartAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} — review and respond`
+          : `Invited ${b.name} — review and respond`,
         href: `/account/business/${b.id}?tab=opportunities`,
       });
     }
@@ -494,41 +527,74 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
   // Launch V2 Pass 1.1 — the generic "N recent customer conversations"
   // item that used to live here is REMOVED (live QA: it duplicated the
   // Inbox preview on Home while making the actual conversations less
-  // immediate). Needs Your Attention is now genuinely operational-status
-  // only; real customer-Conversation visibility lives entirely in the
-  // Inbox preview/page instead (see account/page.tsx and
+  // immediate). Updates is now genuinely operational-status only; real
+  // customer-Conversation visibility lives entirely in the Inbox
+  // preview/page instead (see account/page.tsx and
   // account/messages/page.tsx) — never a fabricated "unread" count here.
 
-  // Pending Review — informational only, never framed as an error/action
-  // the member caused. Wording deliberately matches the existing Business
-  // Manager Overview banner's own tone ("Your business is saved... it
-  // will appear in Findmi discovery after review").
+  // Business pending_review — the owner already submitted; FindMi is the
+  // next actor. awaiting_approval. (Business.publication_status can also
+  // reach 'rejected' via admin — see businesses/actions.ts's own
+  // reject action — but no owner-facing UI anywhere in the app currently
+  // surfaces that state, not even on the Business Manager's own Overview
+  // tab. Reorganizing existing state into truthful UI can't invent a
+  // rejected-business treatment that doesn't exist anywhere yet, so this
+  // stays scoped to pending_review only, exactly as today.)
   for (const b of businesses) {
     if (b.pendingReview) {
       attention.push({
         key: `pending_business:${b.id}`,
-        title: `${b.name} is awaiting Findmi review`,
-        subtitle: "You can keep building your profile in the meantime.",
+        category: "awaiting_approval",
+        title: b.name,
+        subtitle: "Awaiting FindMi approval",
         href: `/account/business/${b.id}`,
       });
     }
   }
+  // Events — is_demo alone can't tell pending_review apart from rejected
+  // (both keep is_demo=true; see event/[id]/page.tsx's own isRejected
+  // doc comment, the authoritative source for this distinction).
+  // publicationStatus (threaded onto the existing event_members(events(...))
+  // select in account/page.tsx, zero new queries) resolves it: rejected
+  // means the owner must fix and resubmit (action_required — same
+  // "Needs changes before it can be resubmitted" copy the Event Manager's
+  // own status pill already uses, and the same /account/event/{id}
+  // destination, where the real Submit for Review action already lives
+  // on Overview); anything else with is_demo=true is genuinely awaiting
+  // FindMi's first review (awaiting_approval), same as before.
   for (const e of events) {
-    if (e.isDemo) {
+    if (e.publicationStatus === "rejected") {
       attention.push({
         key: `pending_event:${e.id}`,
-        title: `${e.name} is awaiting Findmi review`,
-        subtitle: null,
+        category: "action_required",
+        title: e.name,
+        subtitle: "Needs changes before it can be resubmitted",
+        href: `/account/event/${e.id}`,
+      });
+    } else if (e.isDemo) {
+      attention.push({
+        key: `pending_event:${e.id}`,
+        category: "awaiting_approval",
+        title: e.name,
+        subtitle: "Awaiting FindMi approval",
         href: `/account/event/${e.id}`,
       });
     }
   }
+  // Locations — is_demo is the ONLY review-state column Location has (no
+  // separate publication_status/rejected concept exists — confirmed by
+  // admin/(protected)/locations/actions.ts's own doc comment: "Location's
+  // own review state is just the one is_demo boolean... the schema can't
+  // distinguish [a first submission from a later un-publish] from each
+  // other"). Either way FindMi/admin is the next actor, never the owner,
+  // so awaiting_approval is correct regardless of which real case it is.
   for (const l of locations) {
     if (l.isDemo) {
       attention.push({
         key: `pending_location:${l.id}`,
-        title: `${l.name} is awaiting Findmi review`,
-        subtitle: null,
+        category: "awaiting_approval",
+        title: l.name,
+        subtitle: "Awaiting FindMi approval",
         href: `/account/location/${l.id}`,
       });
     }
@@ -538,9 +604,11 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
   // section below (never duplicated), since a pending claim genuinely
   // has no member action while under review (same "Typically reviewed
   // within 48-72 hours" wording the existing section already uses).
+  // awaiting_approval — already submitted, FindMi reviews next.
   if (pendingClaimsCount > 0) {
     attention.push({
       key: "pending_claims",
+      category: "awaiting_approval",
       title: `${pendingClaimsCount} pending claim${pendingClaimsCount === 1 ? "" : "s"} under review`,
       subtitle: "Typically reviewed within 48–72 hours.",
       href: "/account#pending-claims",
@@ -549,14 +617,16 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
 
   // Pro Expiration — expired only (isBusinessPro is the one authoritative
   // active-entitlement check; there is no reliable "expiring soon"
-  // signal to invent one for).
+  // signal to invent one for). action_required — only the owner can
+  // renew.
   for (const row of planRows) {
     if (isPlanTierPro(row.plan_tier) && !isBusinessPro(row)) {
       const b = businesses.find((x) => x.id === row.id);
       attention.push({
         key: `pro_expired:${row.id}`,
-        title: `Findmi Pro expired for ${b?.name ?? "your business"}`,
-        subtitle: "Renew to restore your full profile.",
+        category: "action_required",
+        title: b?.name ?? "Your business",
+        subtitle: "Findmi Pro expired — renew to restore your full profile.",
         href: `/upgrade/pro?business=${row.id}`,
       });
     }

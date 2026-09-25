@@ -5,13 +5,13 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { listConversationsForUser } from "@/lib/opportunities";
 import { conversationContextLabel } from "@/lib/admin/conversations";
-import { getAccountCommandCenter, type ScheduleItem } from "@/lib/dashboard";
+import { getAccountCommandCenter, type ScheduleItem, type AttentionItem } from "@/lib/dashboard";
 import { getTemporalLabel, formatDateShort } from "@/lib/format";
+import type { EventPublicationStatus } from "@/lib/types";
 import { getPublicOrigin } from "@/lib/site-url";
 import LiveDot from "@/components/LiveDot";
 import ShareButton from "@/components/ShareButton";
 import SupabaseImage from "@/components/SupabaseImage";
-import NavIcon from "@/components/NavIcon";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import AccountNav from "./AccountNav";
@@ -103,7 +103,12 @@ export default async function AccountHomePage({
       .select("id, business_id, businesses(name, slug)")
       .eq("user_id", user.id)
       .eq("status", "pending"),
-    supabase.from("event_members").select("event_id, events(name, is_demo, cover_image_url)").eq("user_id", user.id),
+    // Updates Information Architecture pass — publication_status added
+    // (one more optional column, not a new query) so getAccountCommandCenter
+    // can tell a genuinely pending_review Event apart from a rejected one;
+    // is_demo alone can't (see dashboard.ts's own DashboardEvent doc
+    // comment).
+    supabase.from("event_members").select("event_id, events(name, is_demo, cover_image_url, publication_status)").eq("user_id", user.id),
     supabase
       .from("location_members")
       .select("location_id, locations(name, is_demo, logo_url, cover_image_url)")
@@ -150,14 +155,35 @@ export default async function AccountHomePage({
 
   type EventMembershipRow = {
     event_id: string;
-    events: { name: string; is_demo: boolean; cover_image_url: string | null } | { name: string; is_demo: boolean; cover_image_url: string | null }[] | null;
+    events:
+      | { name: string; is_demo: boolean; cover_image_url: string | null; publication_status: EventPublicationStatus }
+      | { name: string; is_demo: boolean; cover_image_url: string | null; publication_status: EventPublicationStatus }[]
+      | null;
   };
   const myEvents = ((eventMemberships ?? []) as EventMembershipRow[])
     .map((m) => {
       const event = Array.isArray(m.events) ? m.events[0] : m.events;
-      return event ? { id: m.event_id, name: event.name, isDemo: event.is_demo, coverImageUrl: event.cover_image_url } : null;
+      return event
+        ? {
+            id: m.event_id,
+            name: event.name,
+            isDemo: event.is_demo,
+            coverImageUrl: event.cover_image_url,
+            publicationStatus: event.publication_status,
+          }
+        : null;
     })
-    .filter((e): e is { id: string; name: string; isDemo: boolean; coverImageUrl: string | null } => Boolean(e));
+    .filter(
+      (
+        e
+      ): e is {
+        id: string;
+        name: string;
+        isDemo: boolean;
+        coverImageUrl: string | null;
+        publicationStatus: EventPublicationStatus;
+      } => Boolean(e)
+    );
 
   type LocationMembershipRow = {
     location_id: string;
@@ -217,7 +243,14 @@ export default async function AccountHomePage({
   const upcomingSchedule = scheduleItems.slice(0, 3);
 
   const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
-  const attentionCount = attentionItems.length;
+  // Updates Information Architecture pass — split by the category
+  // getAccountCommandCenter already classified each item's real
+  // underlying status into (see dashboard.ts). Rendering order below
+  // always puts Action Required first within the module; each
+  // subsection is only rendered when it actually has items.
+  const actionRequiredItems = attentionItems.filter((i) => i.category === "action_required");
+  const awaitingApprovalItems = attentionItems.filter((i) => i.category === "awaiting_approval");
+  const hasUpdates = actionRequiredItems.length > 0 || awaitingApprovalItems.length > 0;
 
   // Mobile Command Center V2 — imageUrl precedence per the read-only
   // audit's documented recommendation, deliberately DIFFERENT from the
@@ -293,7 +326,7 @@ export default async function AccountHomePage({
       <div className="lg:flex lg:items-start lg:justify-between lg:gap-6">
         <header className="min-w-0">
           <h1 className="text-sm font-semibold text-ink/70">
-            Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
+            Welcome Back{profile?.display_name ? `, ${profile.display_name}` : ""}
           </h1>
           {singleBusiness && (
             <p className="mt-1 flex items-center gap-2 text-sm text-ink/60">
@@ -372,7 +405,7 @@ export default async function AccountHomePage({
         </div>
         {myBusinesses.length > 0 && (
           <div className="flex-1">
-            <AnalyticsAction businesses={myBusinesses} icon={<NavIcon name="target" className="h-4 w-4" />} />
+            <AnalyticsAction businesses={myBusinesses} icon={<ChartGlyph className="h-4 w-4" />} />
           </div>
         )}
       </div>
@@ -383,45 +416,47 @@ export default async function AccountHomePage({
           places Today/Coming Up + Inbox as the wider main column and
           Needs Attention + What You're Managing as a self-sized rail via
           explicit CSS grid line placement, so all four are visible
-          together instead of one long scroll. Needs Attention and What
-          You're Managing are now independent grid children (previously a
-          single shared wrapper) so Needs Attention can move earlier in
-          DOM order without dragging Managing along with it — same
+          together instead of one long scroll. Updates and What You're
+          Managing are now independent grid children (previously a
+          single shared wrapper) so Updates can move earlier in DOM
+          order without dragging Managing along with it — same
           col-start-3/row-start technique the Inbox div already used for
           its own hasAnyManaged-conditional placement. */}
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
-        {/* NEEDS ATTENTION — genuinely operational/status items only
-            (pending invitations, pending review, pending claims, expired
-            Pro) — same getAccountCommandCenter data as before. Rendered
-            only when there's something active: an empty "All caught up"
-            line was removed rather than placed ahead of useful schedule
-            content, per this pass's own scope. On mobile this is now the
-            very first operational content (before Today/Coming Up)
-            whenever it's non-empty; desktop keeps it pinned to the top of
+        {/* UPDATES — Information Architecture pass: renamed from "Needs
+            Attention" because its contents were never all actionable —
+            "Test Event is awaiting Findmi review" needs nothing from the
+            owner. Same getAccountCommandCenter data as before, now split
+            by the real underlying status each item was classified from
+            (see dashboard.ts): ACTION REQUIRED (the owner is the next
+            actor) always renders first when present; AWAITING APPROVAL
+            (the owner already acted, FindMi/another party is next) below
+            it. Either subsection is omitted entirely when empty — never
+            an empty heading. The whole module is omitted when there are
+            no updates at all, same as the old "All caught up" removal
+            this pass keeps: no reserved card for a clear state, and
+            nothing placed ahead of useful schedule content. On mobile
+            this is the first operational content (before Today/Coming
+            Up) whenever non-empty; desktop keeps it pinned to the top of
             the right-hand rail regardless of DOM order. */}
-        {attentionCount > 0 && (
+        {hasUpdates && (
           <div className="lg:col-start-3 lg:row-start-1">
-            <OwnerModule
-              title="Needs Attention"
-              meta={<span className="rounded-full bg-findmi-50 px-2 py-0.5 text-xs font-bold text-findmi-700">{attentionCount}</span>}
-            >
-              <div className="flex flex-col gap-1.5">
-                {attentionItems.map((item) => (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50">
-                      <span className="h-2 w-2 rounded-full bg-findmi" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
-                      {item.subtitle && <span className="block truncate text-xs text-ink/50">{item.subtitle}</span>}
-                    </span>
-                    <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
-                  </Link>
-                ))}
+            <OwnerModule title="Updates">
+              <div className="flex flex-col gap-4">
+                {actionRequiredItems.length > 0 && (
+                  <UpdateSubsection
+                    label="Action Required"
+                    items={actionRequiredItems}
+                    countClassName="bg-red-50 text-red-700"
+                  />
+                )}
+                {awaitingApprovalItems.length > 0 && (
+                  <UpdateSubsection
+                    label="Awaiting Approval"
+                    items={awaitingApprovalItems}
+                    countClassName="bg-findmi-50 text-findmi-700"
+                  />
+                )}
               </div>
             </OwnerModule>
           </div>
@@ -508,7 +543,7 @@ export default async function AccountHomePage({
             Attention now, so it stays anchored under wherever Needs
             Attention landed (or the top of the rail, when there's
             nothing needing attention). */}
-        <div className={`lg:col-start-3 ${attentionCount > 0 ? "lg:row-start-2" : "lg:row-start-1"}`}>
+        <div className={`lg:col-start-3 ${hasUpdates ? "lg:row-start-2" : "lg:row-start-1"}`}>
           {hasAnyManaged ? (
             <OwnerModule title="What You're Managing">
               <ManageOnFindmiList entities={managedEntities} />
@@ -585,6 +620,56 @@ export default async function AccountHomePage({
   );
 }
 
+/** Updates Information Architecture pass — one labeled group inside the
+ * Updates module (Action Required or Awaiting Approval), each with its
+ * own count badge whose color is the ONLY urgency signal: a restrained
+ * light-red/dark-red badge (countClassName, passed by the caller) for
+ * Action Required, the existing neutral Aqua treatment for Awaiting
+ * Approval — never a solid/screaming red, never the reverse. */
+function UpdateSubsection({
+  label,
+  items,
+  countClassName,
+}: {
+  label: string;
+  items: AttentionItem[];
+  countClassName: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${countClassName}`}>{items.length}</span>
+      </div>
+      <div className="mt-1.5 flex flex-col gap-1.5">
+        {items.map((item) => (
+          <UpdateRow key={item.key} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One Updates row — the entity/thing's own name gets its own primary
+ * line, the status/explanation its own secondary line (never
+ * concatenated into one truncating sentence — the real-device QA
+ * problem this pass fixes). Both lines wrap rather than truncate, so a
+ * real long name ("San Gennaro 100th Anniversary") stays fully
+ * readable. Every current source always carries a real, useful href
+ * (see dashboard.ts's own push sites), so every row stays tappable with
+ * its chevron — never a fake destination invented here. */
+function UpdateRow({ item }: { item: AttentionItem }) {
+  return (
+    <Link href={item.href} className="flex items-start gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-ink">{item.title}</span>
+        {item.subtitle && <span className="mt-0.5 block text-xs text-ink/50">{item.subtitle}</span>}
+      </span>
+      <ChevronGlyph className="mt-0.5 h-4 w-4 shrink-0 text-ink/30" />
+    </Link>
+  );
+}
+
 /** Mobile Command Center V2 — the Today/Coming Up rail's own card,
  * built local to this page rather than importing AppearanceFeedCard/
  * CompactCard: those are consumer-discovery components that fire
@@ -649,6 +734,24 @@ function ChevronGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Final Action-Bar Polish follow-up — the Analytics action's own icon.
+ * FindMi's curated icon system (NavIcon/NAV_ICON_KEYS, admin-configurable
+ * nav items only — see PlusGlyph's own doc comment on why a fixed,
+ * code-only usage doesn't belong there) has no chart/trend glyph, and
+ * neither does anything else in the app (the only chart-shaped SVG that
+ * exists is PerformanceTab's own data-driven trend line, which plots
+ * real point data and isn't a fixed icon). Ascending bar chart, same
+ * 24x24/currentColor/rounded-stroke language as every other one-off
+ * glyph in this file — reads unambiguously as Analytics, not a
+ * target/bullseye, not an external-link arrow. No new dependency. */
+function ChartGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M5 19V13M12 19V8M19 19V5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

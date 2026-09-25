@@ -892,22 +892,30 @@ export default async function ManageBusinessPage({
       orderSummary.newCount + orderSummary.openCount + orderSummary.readyCount + orderSummary.fulfilledCount + orderSummary.cancelledCount > 0);
   const visibleTabs: TabNavItem[] = ordersRelevant ? [...PRIMARY_TABS, ORDERS_TAB] : PRIMARY_TABS;
 
-  // Mobile Navigation Fix — a horizontally-scrolling tab strip has no
-  // affordance that more destinations exist off-screen (live QA: "Couldn't
-  // even tell I had to scroll to get to products"). Mobile now gets a
-  // deliberately finite 3-control row instead: Overview and Where I'll Be
-  // stay directly tappable (the two destinations an owner returns to
-  // constantly); everything else collapses into one "More" control whose
-  // own label becomes the current destination's name when inside it (e.g.
-  // "Products ▾") so the active location is never ambiguous. Desktop's
-  // sidebar is untouched — it already has room for the full list. Same
-  // routes/keys as visibleTabs above, just split into two mobile groups;
-  // Settings (never part of visibleTabs/the primary rail) is added here
-  // since mobile has no other entry point for it once the old strip's
-  // horizontal scroll is gone.
-  const mobilePrimaryTabs = PRIMARY_TABS.slice(0, 2);
+  // Mobile Navigation Fix, revised by the Stable Primary Nav pass — a
+  // horizontally-scrolling tab strip has no affordance that more
+  // destinations exist off-screen (live QA: "Couldn't even tell I had to
+  // scroll to get to products"). Mobile gets a deliberately finite
+  // 4-control row: Overview, Where I'll Be, and Analytics stay directly
+  // tappable and ALWAYS present — Analytics used to only occupy the 3rd
+  // slot's relabeled "More ▾" when it happened to be the active tab
+  // (real-device QA: the primary nav's own information architecture
+  // changed shape depending on which tab was active, and Analytics
+  // disappeared into More the moment it wasn't). Analytics is a major Pro
+  // conversion surface, so it now gets the same permanent, stable primary
+  // slot Overview/Where I'll Be already have, regardless of activeTab.
+  // Everything else (Profile, Products, Orders, Settings) collapses into
+  // one "More" control whose own label becomes the current destination's
+  // name when inside it (e.g. "Products ▾") so the active location stays
+  // unambiguous — unchanged behavior, just never Analytics anymore.
+  // Desktop's sidebar is untouched — it already has room for the full
+  // list. Same routes/keys as visibleTabs above, just split into two
+  // mobile groups; Settings (never part of visibleTabs/the primary rail)
+  // is added here since mobile has no other entry point for it once the
+  // old strip's horizontal scroll is gone.
+  const mobilePrimaryTabs = PRIMARY_TABS.slice(0, 3);
   const mobileMoreTabs: { key: string; label: string }[] = [
-    ...PRIMARY_TABS.slice(2).map((t) => ({ key: t.key, label: t.label })),
+    ...PRIMARY_TABS.slice(3).map((t) => ({ key: t.key, label: t.label })),
     ...(ordersRelevant ? [{ key: ORDERS_TAB.key, label: ORDERS_TAB.label }] : []),
     { key: "settings", label: "Settings" },
   ];
