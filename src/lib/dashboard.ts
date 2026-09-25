@@ -50,16 +50,32 @@ export interface DashboardBusiness {
   id: string;
   name: string;
   pendingReview: boolean;
+  /** Mobile Command Center V2 — threaded through from the same
+   * business_members(businesses(...)) select page.tsx already runs (one
+   * extra column, not a new query) so getUnifiedSchedule can resolve a
+   * real image for a Business-sourced schedule item without a per-item
+   * fetch. Null when the business has neither set; optional (not every
+   * caller needs imagery — /account/schedule's own text-only list still
+   * builds this shape without these two columns, unchanged). */
+  logoUrl?: string | null;
+  coverImageUrl?: string | null;
 }
 export interface DashboardEvent {
   id: string;
   name: string;
   isDemo: boolean;
+  /** Same reasoning as DashboardBusiness.coverImageUrl above — one extra,
+   * optional column on the existing event_members(events(...)) select. */
+  coverImageUrl?: string | null;
 }
 export interface DashboardLocation {
   id: string;
   name: string;
   isDemo: boolean;
+  /** Same reasoning as DashboardBusiness above — extra, optional columns
+   * on the existing location_members(locations(...)) select. */
+  logoUrl?: string | null;
+  coverImageUrl?: string | null;
 }
 
 export interface CommandCenterInput {
@@ -116,6 +132,21 @@ export interface ScheduleItem {
   actionKind: "business_appearance" | "event" | "location";
   appearanceId?: string;
   appearanceBusinessId?: string;
+  /** Mobile Command Center V2 — best available real image for this
+   * happening, resolved here (server-side, per source) from fields
+   * already being fetched or trivially added to an existing select —
+   * never a new per-item query. Precedence, documented once here rather
+   * than re-derived at each call site below:
+   *   Business Appearance: appearance.flyer_image_url -> business
+   *     cover_image_url -> business logo_url -> null.
+   *   Event (occurrence or non-recurring fallback): event
+   *     cover_image_url -> null (events have no logo_url column).
+   *   Location happening: location cover_image_url -> location
+   *     logo_url -> null.
+   * Purely presentational — never affects dedup/sorting/semantics, and
+   * a null value is a real, honest "no image available," never a
+   * placeholder URL. */
+  imageUrl: string | null;
 }
 
 export interface CommandCenterData {
@@ -157,6 +188,7 @@ interface FallbackEventRow {
   venue_name: string | null;
   city: string | null;
   state: string | null;
+  cover_image_url: string | null;
 }
 /** Legacy/non-recurring managed Events fall back to the event's own
  * start_at/end_at, exactly as every other Findmi surface already does for
@@ -177,12 +209,28 @@ async function getFallbackNonRecurringEvents(admin: SupabaseClient, candidateEve
   if (targets.length === 0) return [];
   const { data } = await admin
     .from("events")
-    .select("id, start_at, end_at, venue_name, city, state")
+    .select("id, start_at, end_at, venue_name, city, state, cover_image_url")
     .in("id", targets)
     .gt("end_at", new Date().toISOString());
-  return ((data ?? []) as { id: string; start_at: string; end_at: string; venue_name: string | null; city: string | null; state: string | null }[]).map(
-    (r) => ({ event_id: r.id, start_at: r.start_at, end_at: r.end_at, venue_name: r.venue_name, city: r.city, state: r.state })
-  );
+  return (
+    (data ?? []) as {
+      id: string;
+      start_at: string;
+      end_at: string;
+      venue_name: string | null;
+      city: string | null;
+      state: string | null;
+      cover_image_url: string | null;
+    }[]
+  ).map((r) => ({
+    event_id: r.id,
+    start_at: r.start_at,
+    end_at: r.end_at,
+    venue_name: r.venue_name,
+    city: r.city,
+    state: r.state,
+    cover_image_url: r.cover_image_url,
+  }));
 }
 
 interface LocationOccurrenceRow {
@@ -341,6 +389,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
         where: occ.location ? [occ.location.name, cityState(occ.location.city, occ.location.state)].filter(Boolean).join(" · ") : null,
         href: `/account/event/${e.id}?tab=dates`,
         actionKind: "event",
+        imageUrl: e.coverImageUrl ?? null,
       }));
     }
   });
@@ -355,6 +404,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
       where: [ev.venue_name, cityState(ev.city, ev.state)].filter(Boolean).join(" · ") || null,
       href: `/account/event/${e.id}`,
       actionKind: "event",
+      imageUrl: e.coverImageUrl ?? ev.cover_image_url ?? null,
     }));
   }
 
@@ -373,6 +423,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
         actionKind: "business_appearance",
         appearanceId: a.id,
         appearanceBusinessId: b.id,
+        imageUrl: a.flyer_image_url ?? b.coverImageUrl ?? b.logoUrl ?? null,
       }));
     }
   });
@@ -392,6 +443,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
       where: loc.name,
       href: `/event/${row.event_slug}`,
       actionKind: "location",
+      imageUrl: loc.coverImageUrl ?? loc.logoUrl ?? null,
     }));
   }
   for (const row of locationAppearances) {
@@ -405,6 +457,7 @@ export async function getUnifiedSchedule(admin: SupabaseClient, input: UnifiedSc
       where: loc.name,
       href: row.business_slug ? `/business/${row.business_slug}` : `/account/location/${loc.id}`,
       actionKind: "location",
+      imageUrl: loc.coverImageUrl ?? loc.logoUrl ?? null,
     }));
   }
 
@@ -597,6 +650,7 @@ export async function getUnifiedPastSchedule(admin: SupabaseClient, input: Unifi
         actionKind: "business_appearance",
         appearanceId: a.id,
         appearanceBusinessId: b.id,
+        imageUrl: a.flyer_image_url ?? b.coverImageUrl ?? b.logoUrl ?? null,
       }));
     }
   });
@@ -612,6 +666,7 @@ export async function getUnifiedPastSchedule(admin: SupabaseClient, input: Unifi
       where: loc.name,
       href: row.business_slug ? `/business/${row.business_slug}` : `/account/location/${loc.id}`,
       actionKind: "location",
+      imageUrl: loc.coverImageUrl ?? loc.logoUrl ?? null,
     }));
   }
 

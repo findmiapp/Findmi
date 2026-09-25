@@ -10,6 +10,7 @@ import { getTemporalLabel, formatDateShort } from "@/lib/format";
 import { getPublicOrigin } from "@/lib/site-url";
 import LiveDot from "@/components/LiveDot";
 import ShareButton from "@/components/ShareButton";
+import SupabaseImage from "@/components/SupabaseImage";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import AccountNav from "./AccountNav";
@@ -38,24 +39,24 @@ async function getProBusinessIdSet(
   return new Set((data ?? []).filter((r) => r.plan_tier === "pro" || r.plan_tier === "pro_seller").map((r) => r.id));
 }
 
-/** Owner Command Center V4 — a genuine recomposition, not a restyle. Same
- * account model, same tables, same routes/actions as before (nothing
- * here is a new query beyond the existing getAccountCommandCenter/
- * listConversationsForUser calls this page already made) — what changed
- * is the INFORMATION ARCHITECTURE: "Your Findmi" (View Public Page/Share)
- * is no longer a separate section further down the page — it's folded
- * directly into the identity header for the common single-business case,
- * since repeating "here's your one business" twice on one screen served
- * no one. Desktop now uses real width (a 2-column operational grid —
- * Where I'll Be + Inbox as the wider main column, Needs Attention + What
- * You're Managing as a self-sized rail) instead of one centered
- * max-w-2xl document; mobile keeps the exact same DOM order as the
- * priority sequence (identity -> primary action -> Where I'll Be -> Inbox
- * -> Needs Attention -> Managing), with the rail repositioned purely via
- * CSS grid placement at lg: — the same "DOM order = mobile priority,
- * explicit grid placement repositions for desktop" technique Admin's own
- * Command Center proved, reused here as an engineering pattern, not a
- * visual copy: Owner keeps its own warmer rounded-2xl/shadow-sm module
+/** Owner Command Center V4 / Mobile Command Center V2 — a genuine
+ * recomposition, not a restyle. Same account model, same tables, same
+ * routes/actions as before (nothing here is a new query beyond the
+ * existing getAccountCommandCenter/listConversationsForUser calls this
+ * page already made, and V2 actively removes a confirmed duplicate one
+ * — see the listConversationsForUser call site below) — what changed is
+ * the INFORMATION ARCHITECTURE. "Your Findmi" (View Public Page/Share)
+ * is folded directly into a compacted identity header for the common
+ * single-business case. Mobile DOM order is the mobile priority order:
+ * identity -> primary action -> Needs Attention (only when non-empty)
+ * -> Today/Coming Up visual rail -> Inbox -> What You're Managing.
+ * Desktop places Today/Coming Up + Inbox as the wider main column and
+ * Needs Attention + Managing as a self-sized rail, via explicit CSS
+ * grid line placement (lg:col-start/lg:row-start) rather than DOM
+ * reordering — the same "DOM order = mobile priority, explicit grid
+ * placement repositions for desktop" technique Admin's own Command
+ * Center proved, reused here as an engineering pattern, not a visual
+ * copy: Owner keeps its own warmer rounded-2xl/shadow-sm module
  * language (see dashboard-ui.tsx) rather than Admin's flatter surfaces. */
 export default async function AccountHomePage({
   searchParams,
@@ -86,31 +87,52 @@ export default async function AccountHomePage({
       .select("display_name, email_verified_at")
       .eq("id", user.id)
       .maybeSingle<{ display_name: string | null; email_verified_at: string | null }>(),
-    supabase.from("business_members").select("business_id, businesses(name, slug, publication_status)").eq("user_id", user.id),
+    // Mobile Command Center V2 — logo_url/cover_image_url added to each
+    // of these three existing selects (one extra column apiece, not a
+    // new query) so Where I'll Be / What You're Managing can resolve
+    // real imagery without a per-row fetch. See lib/dashboard.ts's own
+    // DashboardBusiness/DashboardEvent/DashboardLocation doc comments.
+    supabase
+      .from("business_members")
+      .select("business_id, businesses(name, slug, publication_status, logo_url, cover_image_url)")
+      .eq("user_id", user.id),
     supabase
       .from("business_claim_requests")
       .select("id, business_id, businesses(name, slug)")
       .eq("user_id", user.id)
       .eq("status", "pending"),
-    supabase.from("event_members").select("event_id, events(name, is_demo)").eq("user_id", user.id),
-    supabase.from("location_members").select("location_id, locations(name, is_demo)").eq("user_id", user.id),
+    supabase.from("event_members").select("event_id, events(name, is_demo, cover_image_url)").eq("user_id", user.id),
+    supabase
+      .from("location_members")
+      .select("location_id, locations(name, is_demo, logo_url, cover_image_url)")
+      .eq("user_id", user.id),
   ]);
 
   type BusinessMembershipRow = {
     business_id: string;
     businesses:
-      | { name: string; slug: string; publication_status: string }
-      | { name: string; slug: string; publication_status: string }[]
+      | { name: string; slug: string; publication_status: string; logo_url: string | null; cover_image_url: string | null }
+      | { name: string; slug: string; publication_status: string; logo_url: string | null; cover_image_url: string | null }[]
       | null;
   };
   const myBusinesses = ((businessMemberships ?? []) as BusinessMembershipRow[])
     .map((m) => {
       const business = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
       return business
-        ? { id: m.business_id, name: business.name, slug: business.slug, pendingReview: business.publication_status === "pending_review" }
+        ? {
+            id: m.business_id,
+            name: business.name,
+            slug: business.slug,
+            pendingReview: business.publication_status === "pending_review",
+            logoUrl: business.logo_url,
+            coverImageUrl: business.cover_image_url,
+          }
         : null;
     })
-    .filter((b): b is { id: string; name: string; slug: string; pendingReview: boolean } => Boolean(b));
+    .filter(
+      (b): b is { id: string; name: string; slug: string; pendingReview: boolean; logoUrl: string | null; coverImageUrl: string | null } =>
+        Boolean(b)
+    );
 
   type PendingClaimRow = {
     id: string;
@@ -126,25 +148,32 @@ export default async function AccountHomePage({
 
   type EventMembershipRow = {
     event_id: string;
-    events: { name: string; is_demo: boolean } | { name: string; is_demo: boolean }[] | null;
+    events: { name: string; is_demo: boolean; cover_image_url: string | null } | { name: string; is_demo: boolean; cover_image_url: string | null }[] | null;
   };
   const myEvents = ((eventMemberships ?? []) as EventMembershipRow[])
     .map((m) => {
       const event = Array.isArray(m.events) ? m.events[0] : m.events;
-      return event ? { id: m.event_id, name: event.name, isDemo: event.is_demo } : null;
+      return event ? { id: m.event_id, name: event.name, isDemo: event.is_demo, coverImageUrl: event.cover_image_url } : null;
     })
-    .filter((e): e is { id: string; name: string; isDemo: boolean } => Boolean(e));
+    .filter((e): e is { id: string; name: string; isDemo: boolean; coverImageUrl: string | null } => Boolean(e));
 
   type LocationMembershipRow = {
     location_id: string;
-    locations: { name: string; is_demo: boolean } | { name: string; is_demo: boolean }[] | null;
+    locations:
+      | { name: string; is_demo: boolean; logo_url: string | null; cover_image_url: string | null }
+      | { name: string; is_demo: boolean; logo_url: string | null; cover_image_url: string | null }[]
+      | null;
   };
   const myLocations = ((locationMemberships ?? []) as LocationMembershipRow[])
     .map((m) => {
       const location = Array.isArray(m.locations) ? m.locations[0] : m.locations;
-      return location ? { id: m.location_id, name: location.name, isDemo: location.is_demo } : null;
+      return location
+        ? { id: m.location_id, name: location.name, isDemo: location.is_demo, logoUrl: location.logo_url, coverImageUrl: location.cover_image_url }
+        : null;
     })
-    .filter((l): l is { id: string; name: string; isDemo: boolean } => Boolean(l));
+    .filter(
+      (l): l is { id: string; name: string; isDemo: boolean; logoUrl: string | null; coverImageUrl: string | null } => Boolean(l)
+    );
 
   const admin = getAdminSupabase();
   const businessIds = myBusinesses.map((b) => b.id);
@@ -157,7 +186,15 @@ export default async function AccountHomePage({
   // attached to an invitation/application) — that interaction already
   // has a structured representation under Needs Your Attention/
   // Opportunities, so it never doubles up here.
-  const conversations = (admin ? await listConversationsForUser(admin, user.id) : []).filter((c) => c.subjectType !== "opportunity");
+  // Mobile Command Center V2 — passes the managed-entity ids this page
+  // already fetched above (myBusinesses/myEvents/myLocations), so
+  // listConversationsForUser skips its own internal re-fetch of
+  // business_members/event_members/location_members (the confirmed
+  // duplicate query from the read-only audit). See that function's own
+  // doc comment in lib/opportunities.ts.
+  const conversations = (
+    admin ? await listConversationsForUser(admin, user.id, { businesses: myBusinesses, events: myEvents, locations: myLocations }) : []
+  ).filter((c) => c.subjectType !== "opportunity");
   const inboxPreview = conversations.slice(0, 3);
 
   const { attention: attentionItems, schedule: scheduleItems } = admin
@@ -180,6 +217,14 @@ export default async function AccountHomePage({
   const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
   const attentionCount = attentionItems.length;
 
+  // Mobile Command Center V2 — imageUrl precedence per the read-only
+  // audit's documented recommendation, deliberately DIFFERENT from the
+  // schedule rail's own precedence below: a compact management-list row
+  // is a small square-ish thumbnail, where a brand logo (designed for
+  // recognition at small sizes) reads more clearly than a wide cover
+  // photo — Business and Location both use logo_url first, for visual
+  // consistency within this one unified list. Events have no logo_url
+  // column at all, so cover_image_url is their only option.
   const managedEntities: ManagedEntity[] = [
     ...myBusinesses.map(
       (b): ManagedEntity => ({
@@ -192,6 +237,7 @@ export default async function AccountHomePage({
         ],
         href: `/account/business/${b.id}`,
         cta: b.pendingReview ? "Finish Your Business" : "Manage",
+        imageUrl: b.logoUrl ?? b.coverImageUrl,
       })
     ),
     ...myEvents.map(
@@ -202,6 +248,7 @@ export default async function AccountHomePage({
         pills: [e.isDemo ? { label: "In Review", tone: "warning" as const } : null],
         href: `/account/event/${e.id}`,
         cta: e.isDemo ? "Finish Your Event" : "Manage",
+        imageUrl: e.coverImageUrl,
       })
     ),
     ...myLocations.map(
@@ -212,6 +259,7 @@ export default async function AccountHomePage({
         pills: [l.isDemo ? { label: "Pending Review", tone: "warning" as const } : null],
         href: `/account/location/${l.id}`,
         cta: "Manage",
+        imageUrl: l.logoUrl ?? l.coverImageUrl,
       })
     ),
   ];
@@ -223,16 +271,26 @@ export default async function AccountHomePage({
       <AccountSync />
       <AccountNav />
 
-      {/* IDENTITY — compact on mobile (no giant hero), and on desktop sits
-          beside direct access to whatever the owner actually needs next:
-          the multi-business switcher chips, or (the common case) a single
-          business's own View Public Page/Share — folded in here instead
-          of a separate "Your Findmi" section further down the page that
-          just repeated the same one business a second time. */}
+      {/* IDENTITY — Mobile Command Center V2 pass: the read-only audit
+          found this compact header still accounted for roughly the top
+          half of the first mobile viewport before any real operational
+          content appeared. The "Your Findmi" eyebrow is removed outright
+          (pure decoration, zero information) and the greeting drops from
+          a bold h1 heading to a single quiet line — still a real h1 for
+          document structure/accessibility, just no longer visually
+          competing with Needs Attention / Today's schedule below it.
+          The multi-business pill strip is REMOVED per this pass's own
+          explicit product decision: it carried strictly less information
+          than What You're Managing further down (same businesses, no
+          status/Pro pills, no distinguishing behavior — just a second,
+          redundant way to reach the same destinations) and created an
+          unbounded, affordance-less horizontal strip for accounts with
+          several businesses. No active-business selection/state replaces
+          it in this pass. Single-business View Public Page/Share is
+          unchanged. */}
       <div className="lg:flex lg:items-start lg:justify-between lg:gap-6">
         <header className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
-          <h1 className="mt-0.5 font-display text-lg font-bold tracking-tight text-ink sm:text-2xl">
+          <h1 className="text-sm font-semibold text-ink/70">
             Welcome back{profile?.display_name ? `, ${profile.display_name}` : ""}
           </h1>
           {singleBusiness && (
@@ -247,19 +305,6 @@ export default async function AccountHomePage({
           )}
         </header>
 
-        {myBusinesses.length > 1 && (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 pr-6 lg:mt-0 lg:max-w-xs lg:pr-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {myBusinesses.map((b) => (
-              <Link
-                key={b.id}
-                href={`/account/business/${b.id}`}
-                className="shrink-0 rounded-full border border-black/10 bg-white px-3.5 py-1.5 text-xs font-bold text-ink transition hover:border-findmi/40"
-              >
-                {b.name}
-              </Link>
-            ))}
-          </div>
-        )}
         {singleBusiness && !singleBusiness.pendingReview && (
           <div className="mt-3 flex shrink-0 gap-2 lg:mt-0">
             <Link
@@ -316,25 +361,69 @@ export default async function AccountHomePage({
         />
       </div>
 
-      {/* OPERATIONAL GRID — mobile stacks in priority order (where am I
-          going -> what's in my inbox -> what needs me -> what am I
-          managing); desktop places Where I'll Be + Inbox as the wider
-          main column and Needs Attention + What You're Managing as a
-          self-sized rail, so all four are visible together instead of one
-          long scroll. DOM order stays the mobile order; only CSS grid
-          placement repositions the rail at lg:. */}
+      {/* OPERATIONAL GRID — Mobile Command Center V2: mobile DOM order is
+          the mobile priority order (does anything need me -> what's
+          happening now/coming up -> inbox -> what am I managing); desktop
+          places Today/Coming Up + Inbox as the wider main column and
+          Needs Attention + What You're Managing as a self-sized rail via
+          explicit CSS grid line placement, so all four are visible
+          together instead of one long scroll. Needs Attention and What
+          You're Managing are now independent grid children (previously a
+          single shared wrapper) so Needs Attention can move earlier in
+          DOM order without dragging Managing along with it — same
+          col-start-3/row-start technique the Inbox div already used for
+          its own hasAnyManaged-conditional placement. */}
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
-        {/* WHERE I'LL BE — the next few upcoming happenings from the
-            existing unified schedule (Business appearances, organized
-            Events, managed-Location happenings — already deduplicated by
-            getUnifiedSchedule). Only rendered once there's SOMETHING
-            managed; a brand-new owner with nothing yet sees the primary
-            CTA and the Create-Your-Business module instead of an empty
-            schedule box. */}
+        {/* NEEDS ATTENTION — genuinely operational/status items only
+            (pending invitations, pending review, pending claims, expired
+            Pro) — same getAccountCommandCenter data as before. Rendered
+            only when there's something active: an empty "All caught up"
+            line was removed rather than placed ahead of useful schedule
+            content, per this pass's own scope. On mobile this is now the
+            very first operational content (before Today/Coming Up)
+            whenever it's non-empty; desktop keeps it pinned to the top of
+            the right-hand rail regardless of DOM order. */}
+        {attentionCount > 0 && (
+          <div className="lg:col-start-3 lg:row-start-1">
+            <OwnerModule
+              title="Needs Attention"
+              meta={<span className="rounded-full bg-findmi-50 px-2 py-0.5 text-xs font-bold text-findmi-700">{attentionCount}</span>}
+            >
+              <div className="flex flex-col gap-1.5">
+                {attentionItems.map((item) => (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50">
+                      <span className="h-2 w-2 rounded-full bg-findmi" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
+                      {item.subtitle && <span className="block truncate text-xs text-ink/50">{item.subtitle}</span>}
+                    </span>
+                    <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
+                  </Link>
+                ))}
+              </div>
+            </OwnerModule>
+          </div>
+        )}
+
+        {/* TODAY / COMING UP — a compact visual rail, replacing the old
+            text-only "Where I'll Be" rows. Same upcomingSchedule data
+            (already deduplicated, sorted, and capped by
+            getUnifiedSchedule — no scheduling logic touched here), same
+            per-item href/actionKind/relatedTo semantics — only the
+            presentation changed, to real imagery (item.imageUrl, threaded
+            from existing selects — zero per-card queries) plus the
+            existing getTemporalLabel live/upcoming label. Only rendered
+            once there's SOMETHING managed, same as before. */}
         {hasAnyManaged && (
           <div className="lg:col-start-1 lg:col-span-2 lg:row-start-1">
             <OwnerModule
-              title="Where I'll Be"
+              title="Today / Coming Up"
               meta={
                 <Link href="/account/schedule" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
                   Full Schedule →
@@ -344,9 +433,9 @@ export default async function AccountHomePage({
               {upcomingSchedule.length === 0 ? (
                 <CompactStatus label="No upcoming schedule — add where you'll be next so people can find you." />
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {upcomingSchedule.map((item) => (
-                    <ScheduleRow key={item.key} item={item} />
+                    <ScheduleCard key={item.key} item={item} />
                   ))}
                 </div>
               )}
@@ -394,45 +483,16 @@ export default async function AccountHomePage({
           </OwnerModule>
         </div>
 
-        {/* NEEDS ATTENTION — genuinely operational/status items only
-            (pending invitations, pending review, pending claims, expired
-            Pro) — same getAccountCommandCenter data as before. Clear ->
-            one compact line, never a reserved card. Active -> a real
-            module, full prominence. */}
-        <div className="flex flex-col gap-5 lg:col-start-3 lg:row-start-1 lg:row-span-2">
-          {attentionCount === 0 ? (
-            <CompactStatus tone="positive" label="Needs Attention · All caught up ✓" />
-          ) : (
-            <OwnerModule
-              title="Needs Attention"
-              meta={<span className="rounded-full bg-findmi-50 px-2 py-0.5 text-xs font-bold text-findmi-700">{attentionCount}</span>}
-            >
-              <div className="flex flex-col gap-1.5">
-                {attentionItems.map((item) => (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50">
-                      <span className="h-2 w-2 rounded-full bg-findmi" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
-                      {item.subtitle && <span className="block truncate text-xs text-ink/50">{item.subtitle}</span>}
-                    </span>
-                    <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
-                  </Link>
-                ))}
-              </div>
-            </OwnerModule>
-          )}
-
-          {/* WHAT YOU'RE MANAGING — one unified, filterable list
-              (ManageOnFindmiList, unchanged component) rather than
-              separate Business/Event/Location cards. Zero managed ->
-              the real prerequisite (Create your Business), never a faked
-              destination. */}
+        {/* WHAT YOU'RE MANAGING — one unified, filterable list
+            (ManageOnFindmiList, now with real entity imagery + a
+            full-row tap target — see that component's own comments)
+            rather than separate Business/Event/Location cards. Zero
+            managed -> the real prerequisite (Create your Business),
+            never a faked destination. Independent grid child from Needs
+            Attention now, so it stays anchored under wherever Needs
+            Attention landed (or the top of the rail, when there's
+            nothing needing attention). */}
+        <div className={`lg:col-start-3 ${attentionCount > 0 ? "lg:row-start-2" : "lg:row-start-1"}`}>
           {hasAnyManaged ? (
             <OwnerModule title="What You're Managing">
               <ManageOnFindmiList entities={managedEntities} />
@@ -509,46 +569,63 @@ export default async function AccountHomePage({
   );
 }
 
-/** One compact row in the Where I'll Be module — the exact same live/
- * upcoming-date badge language the old single "Next Up" card used,
- * generalized to render 1-of-N instead of only ever the first item. */
-function ScheduleRow({ item }: { item: ScheduleItem }) {
+/** Mobile Command Center V2 — the Today/Coming Up rail's own card,
+ * built local to this page rather than importing AppearanceFeedCard/
+ * CompactCard: those are consumer-discovery components that fire
+ * entity_impression/entity_click analytics via buildEntityEventFields,
+ * which owner-dashboard cards must never do (this pass's own hard
+ * scope boundary). This mirrors their visual grammar instead — a
+ * shrink-0 image-first card in a horizontal rail, a live badge reusing
+ * the exact same getTemporalLabel this app already treats as the one
+ * source of truth for "happening now" — without importing either
+ * component or any analytics call. Routes to the exact same item.href
+ * every prior text row used; only the presentation changed. */
+function ScheduleCard({ item }: { item: ScheduleItem }) {
   const { label, live } = getTemporalLabel(item.startAt, item.endAt);
   return (
-    <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
-      <span
-        className={`flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 ${
-          live ? "animate-happening-now-glow bg-red-600 text-white" : "bg-black/[0.04] text-ink"
-        }`}
-      >
-        {live ? (
-          <>
-            <LiveDot className="text-white" />
-            <span className="text-[6px] font-extrabold uppercase tracking-wide">Now</span>
-          </>
+    <Link
+      href={item.href}
+      className={`flex w-[128px] shrink-0 flex-col gap-2 rounded-2xl border p-2 transition active:scale-[0.98] ${
+        live ? "border-findmi/50 bg-findmi-50" : "border-black/5 bg-white hover:shadow-md hover:shadow-black/5"
+      }`}
+    >
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-black/[0.04]">
+        {item.imageUrl ? (
+          <SupabaseImage src={item.imageUrl} alt={item.title} fill sizes="128px" className="object-cover" />
         ) : (
-          <>
-            <span className="text-[9px] font-semibold uppercase tracking-wide text-ink/50">
-              {new Date(item.startAt).toLocaleDateString("en-US", { month: "short" })}
-            </span>
-            <span className="text-sm font-bold leading-none">{new Date(item.startAt).getDate()}</span>
-          </>
+          <div className="flex h-full w-full items-center justify-center">
+            <ScheduleFallbackGlyph className="h-7 w-7 text-black/15" />
+          </div>
         )}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
-        <p className="truncate text-xs text-ink/45">
-          {!live && `${label} · `}
-          {item.relatedTo.join(" · ")}
-        </p>
+        <span
+          className={`absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
+            live ? "bg-red-600 text-white" : "bg-white/90 text-ink/70"
+          }`}
+        >
+          {live && <LiveDot className="text-white" />}
+          {live ? "Now" : label}
+        </span>
       </div>
-      <Link
-        href={item.href}
-        className="shrink-0 rounded-full border border-black/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
-      >
-        {item.actionKind === "business_appearance" ? "Edit" : item.actionKind === "event" ? "Manage" : "View"}
-      </Link>
-    </div>
+      <div className="min-w-0 px-0.5 pb-0.5">
+        <p className="truncate text-xs font-bold text-ink">{item.title}</p>
+        <p className="truncate text-[11px] text-ink/45">{item.relatedTo.join(" · ")}</p>
+      </div>
+    </Link>
+  );
+}
+
+function ScheduleFallbackGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M12 21s-7-5.686-7-11a7 7 0 1 1 14 0c0 5.314-7 11-7 11Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="10" r="2.4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
   );
 }
 

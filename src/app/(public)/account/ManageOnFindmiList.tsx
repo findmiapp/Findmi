@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import NavIcon from "@/components/NavIcon";
 import type { NavIconKey } from "@/lib/navigation";
+import SupabaseImage from "@/components/SupabaseImage";
 
 export type ManagedEntityKind = "business" | "event" | "location";
 
@@ -15,6 +16,12 @@ export interface ManagedEntity {
   pills: ({ label: string; tone: "warning" | "pro" } | null)[];
   href: string;
   cta: string;
+  /** Mobile Command Center V2 — real entity imagery (see page.tsx's own
+   * precedence comment at the managedEntities call site) so this row
+   * reads as "that specific business/event/location," not a generic
+   * type icon. Null falls back to the same NavIcon-in-a-circle treatment
+   * this list always used. */
+  imageUrl: string | null;
 }
 
 const FILTERS: { key: "all" | ManagedEntityKind; label: string }[] = [
@@ -89,12 +96,26 @@ export default function ManageOnFindmiList({ entities }: { entities: ManagedEnti
   );
 }
 
+/** Mobile Command Center V2 — the whole row is now the one, single
+ * navigation target (previously only the small trailing CTA button
+ * was tappable, a poor mobile target). The former CTA <Link> becomes a
+ * plain <span> styled the same way, so this stays one valid anchor
+ * rather than a nested/invalid <a> inside an <a>. Same href, same
+ * visible action language, same badges/filtering — navigation
+ * semantics unchanged. */
 function EntityRow({ entity, showType }: { entity: ManagedEntity; showType: boolean }) {
   const activePills = entity.pills.filter((p): p is { label: string; tone: "warning" | "pro" } => Boolean(p));
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-2.5 shadow-sm">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
-        <NavIcon name={ICON_BY_KIND[entity.kind]} className="h-4 w-4" />
+    <Link
+      href={entity.href}
+      className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-2.5 shadow-sm transition hover:border-black/10 active:scale-[0.99]"
+    >
+      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-findmi-50 text-findmi-700">
+        {entity.imageUrl ? (
+          <SupabaseImage src={entity.imageUrl} alt={entity.name} fill sizes="40px" className="object-cover" />
+        ) : (
+          <NavIcon name={ICON_BY_KIND[entity.kind]} className="h-4 w-4" />
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-ink">{entity.name}</p>
@@ -109,13 +130,10 @@ function EntityRow({ entity, showType }: { entity: ManagedEntity; showType: bool
           </div>
         )}
       </div>
-      <Link
-        href={entity.href}
-        className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-      >
+      <span className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
         {entity.cta} →
-      </Link>
-    </div>
+      </span>
+    </Link>
   );
 }
 

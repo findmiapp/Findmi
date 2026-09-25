@@ -1381,9 +1381,29 @@ export interface ConversationListItem {
  * Section 11: no folders/search/unread count — just participant name,
  * last message preview, last activity timestamp (Launch V2 Pass 1 adds
  * subjectType/myEntityLabel/productName, purely additive, so the
- * original Messages page's own usage is unaffected). */
-export async function listConversationsForUser(admin: SupabaseClient, userId: string): Promise<ConversationListItem[]> {
-  const managed = await getUserManagedEntities(admin, userId);
+ * original Messages page's own usage is unaffected).
+ *
+ * Mobile Command Center V2 — `preFetchedManaged` is optional and purely
+ * additive: the read-only /account audit confirmed this function's own
+ * getUserManagedEntities() call re-fetches business_members/
+ * event_members/location_members, the exact same three tables
+ * account/page.tsx already queries directly for its own myBusinesses/
+ * myEvents/myLocations. When a caller already has that data (account/
+ * page.tsx now does), passing it here skips the redundant re-fetch
+ * entirely. Omitting it (every OTHER existing caller, e.g. account/
+ * messages/page.tsx) falls back to the original internal
+ * getUserManagedEntities() call — byte-for-byte the same behavior as
+ * before this pass, since messages/page.tsx has no such pre-fetched
+ * data of its own to offer. Only `id` is required from each entity —
+ * an already-fetched array with more fields (name/slug/pendingReview/
+ * etc.) satisfies this structurally, no new query, no reshaping needed
+ * at the call site. */
+export async function listConversationsForUser(
+  admin: SupabaseClient,
+  userId: string,
+  preFetchedManaged?: { businesses: { id: string }[]; events: { id: string }[]; locations: { id: string }[] }
+): Promise<ConversationListItem[]> {
+  const managed = preFetchedManaged ?? (await getUserManagedEntities(admin, userId));
   const businessIds = managed.businesses.map((b) => b.id);
   const eventIds = managed.events.map((e) => e.id);
   const locationIds = managed.locations.map((l) => l.id);
