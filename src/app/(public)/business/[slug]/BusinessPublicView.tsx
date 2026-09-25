@@ -341,14 +341,16 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // SCHEDULE" principle); Facebook/TikTok aren't named in that unlock and
   // stay Pro-only, same as before. Phone/email already can't reach this
   // point for Free — `contact` above is hardcoded to {null, null} unless
-  // pro. Location stays Pro-only too (unchanged Free-identity rule, see
-  // the identity block above) — that's a separate, independent gate from
-  // BusinessLinksRow below, which only ever handles contact/social.
+  // pro. Free/Pro Entitlement Realignment pass — location (city/state/
+  // ZIP) is Free-public now too, no longer part of this Pro-only gate
+  // (see the identity block above) — that's a separate, independent
+  // concern from BusinessLinksRow below, which only ever handles
+  // contact/social.
   const freeSocialLinks = socialLinks.filter((l) => l.label === "Website" || l.label === "Instagram");
   const detailsSocialLinks = pro ? socialLinks : freeSocialLinks;
   // Compact Location + Links pass — location is no longer part of this
   // check at all: it already renders compactly inline with category in
-  // the identity block above (line ~490, `pro && location`), which was
+  // the identity block above (line ~490, now Free+Pro), which was
   // ALWAYS the real, correct, compact placement — the old DetailsBlock
   // duplicated it a second time inside a large card below. This is now
   // purely "is there any contact/social action to show."
@@ -362,9 +364,11 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // address only includes locality/region since businesses has no street-
   // address field to draw from. Plan-tier gating applies here too, kept in
   // sync with the on-page rendering above rather than only visually
-  // hidden: description/website/Instagram are public for both tiers now
-  // (Free/Pro Entitlement pass), Facebook/TikTok/phone/location stay
-  // Pro-only, and contact.phone is already null for Free regardless.
+  // hidden: description/website/Instagram are public for both tiers
+  // (Free/Pro Entitlement pass), and — Free/Pro Entitlement Realignment
+  // pass — location is public for both tiers now too. Facebook/TikTok/
+  // phone stay Pro-only, and contact.phone is already null for Free
+  // regardless.
   const sameAs = [
     business.website_url,
     business.instagram_url,
@@ -383,9 +387,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
       : {}),
     ...(contact.phone ? { telephone: contact.phone } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
-    // Free identity has no location — withheld from structured data too,
-    // same reasoning as description/phone/sameAs above.
-    ...(pro && (business.city || business.state || business.postal_code)
+    // Free/Pro Entitlement Realignment pass — location is public
+    // structured data for both tiers now, matching the on-page identity
+    // block above.
+    ...(business.city || business.state || business.postal_code
       ? {
           address: {
             "@type": "PostalAddress",
@@ -560,10 +565,14 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                   one going forward, but a legacy row could still carry
                   more from before that rule existed). */}
               {pro && primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
-              {/* Free identity is exactly cover/logo/name/1 category —
-                  location is hidden too, not just the "+N" count above. */}
-              {pro && primaryCategory && location && <span aria-hidden="true">·</span>}
-              {pro && location && (
+              {/* Free/Pro Entitlement Realignment pass — city/state/ZIP
+                  are Free-public now (FREE = GET FOUND: a consumer
+                  discovery platform needs a business's location
+                  regardless of plan tier), so `location` renders for both
+                  tiers here. The "+N" extra-category count above stays
+                  Pro-only — unrelated field, unchanged by this pass. */}
+              {primaryCategory && location && <span aria-hidden="true">·</span>}
+              {location && (
                 <span>
                   {location}
                   {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}

@@ -161,11 +161,14 @@ export async function uploadMemberBusinessImage(
 // distributed across the three functions.
 
 /** Profile tab — Free's allowlist (name/logo/cover/short description/
- * city/state/category/description/website/Instagram — see Free Basic
- * Profile Editing pass); Pro additionally gets PROFILE_PRO_COLUMNS
- * (country only, at this point). Category itself isn't in this list —
- * it's handled separately below via the atomic set_business_category()
- * RPC, same as the original action.
+ * city/state/postal_code/category/description/website/Instagram/
+ * country — see Free Basic Profile Editing pass and the Free/Pro
+ * Entitlement Realignment pass below). Every Profile column is now
+ * Free, same allowlist regardless of plan tier — Profile has no
+ * Pro-only field left; Links & Contact (LINKS_COLUMNS below) remains
+ * the Pro-only surface. Category itself isn't in this list — it's
+ * handled separately below via the atomic set_business_category() RPC,
+ * same as the original action.
  *
  * Free Basic Profile Editing pass — description/website_url/
  * instagram_url moved here from Pro-only (description was in
@@ -175,8 +178,14 @@ export async function uploadMemberBusinessImage(
  * BusinessPublicView.tsx), not merely Free-visible-if-already-set: a
  * Free owner can create AND later edit them through this SAME action,
  * same as every other Free field. Email/phone/Facebook/TikTok/CTAs/
- * Bulletin/inquiry config/Products/custom URL/Gallery are unaffected and
- * remain exactly as Pro-gated as before. */
+ * Bulletin/inquiry config/custom URL/Gallery are unaffected and remain
+ * exactly as Pro-gated as before.
+ *
+ * Free/Pro Entitlement Realignment pass — country moved here too, from
+ * PROFILE_PRO_COLUMNS (now empty/retired below). FREE = GET FOUND: a
+ * consumer discovery platform needs a business's country regardless of
+ * plan tier, same reasoning as city/state/postal_code already being
+ * here. No PROFILE_PRO_COLUMNS-only field remains. */
 const PROFILE_FREE_COLUMNS = [
   "name",
   "logo_url",
@@ -188,9 +197,9 @@ const PROFILE_FREE_COLUMNS = [
   "description",
   "website_url",
   "instagram_url",
+  "country",
 ] as const;
-const PROFILE_PRO_COLUMNS = ["country"] as const;
-const PROFILE_ALLOWED_COLUMNS = [...PROFILE_FREE_COLUMNS, ...PROFILE_PRO_COLUMNS] as const;
+const PROFILE_ALLOWED_COLUMNS = PROFILE_FREE_COLUMNS;
 
 /** Links & Contact tab — entirely Pro-only (gated via
  * requireProBusinessMember, not a per-column allowlist like Profile —
@@ -215,11 +224,17 @@ const LINKS_COLUMNS = [
 
 /**
  * Profile tab save — name, logo, cover image, short description, city,
- * state, category, full description, website, and Instagram regardless
- * of plan tier (Free Basic Profile Editing pass); Pro additionally gets
- * country. Same "payload built FROM allowedColumns, not just gated by
- * it" discipline as the original action, and the same atomic
- * set_business_category() category replace.
+ * state, postal code, category, full description, website, Instagram,
+ * and (Free/Pro Entitlement Realignment pass) country, all regardless
+ * of plan tier. `pro`/`allowedColumns` below are kept even though every
+ * Profile column is now Free-allowed — Profile has no Pro-only column
+ * left at this point, so allowedColumns resolves the same for both
+ * tiers, but the resolution stays in place (rather than being deleted)
+ * so a future Pro-only Profile field only ever needs to reappear in
+ * PROFILE_ALLOWED_COLUMNS, not a re-derived authorization path. Same
+ * "payload built FROM allowedColumns, not just gated by it" discipline
+ * as the original action, and the same atomic set_business_category()
+ * category replace.
  *
  * Authorization is never trusted from the client — identical
  * authorize-then-elevate shape as every other action in this file:
@@ -255,20 +270,26 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
     .maybeSingle();
   if (!business) redirect(appendQuery(redirectPath, { error: "Business not found." }));
 
-  // Resolved here (not just for gating what already differs — see
-  // PROFILE_ALLOWED_COLUMNS above) so the entitlement state is loaded
-  // fresh from the database on every call, never assumed or cached.
+  // Free/Pro Entitlement Realignment pass — PROFILE_ALLOWED_COLUMNS and
+  // PROFILE_FREE_COLUMNS are now the same array (Profile has no
+  // remaining Pro-only column), so this resolves identically for both
+  // tiers today. Kept rather than collapsed to a single constant so a
+  // future Pro-only Profile field re-introduces the split without
+  // touching this resolution shape again; entitlement state is still
+  // loaded fresh from the database on every call either way, never
+  // assumed or cached.
   const pro = isBusinessPro(business);
   const allowedColumns = pro ? PROFILE_ALLOWED_COLUMNS : PROFILE_FREE_COLUMNS;
 
   const name = str(formData, "name");
   if (!name) redirect(appendQuery(redirectPath, { error: "Business name is required." }));
 
-  // country is the one remaining Pro-only field — read from the
-  // submitted form regardless of tier (harmless: only the columns
-  // actually named in allowedColumns below ever reach the real Supabase
-  // payload), same "extra fields are simply never looked at" pattern
-  // this action already documents.
+  // country is a regular Free field now (Free/Pro Entitlement
+  // Realignment pass) — read from the submitted form the same as every
+  // other candidate value; only the columns actually named in
+  // allowedColumns below ever reach the real Supabase payload, same
+  // "extra fields are simply never looked at" pattern this action
+  // already documents.
   const candidateValues: Record<(typeof PROFILE_ALLOWED_COLUMNS)[number], string | null> = {
     name,
     logo_url: str(formData, "logo_url"),

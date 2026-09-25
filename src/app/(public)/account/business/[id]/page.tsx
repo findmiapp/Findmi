@@ -197,14 +197,15 @@ const ORDER_STATUS_LABELS: Record<"new" | "confirmed" | "ready" | "fulfilled" | 
  * its own action, which already owns every authorization/validation/
  * allowlist/atomicity concern for that section.
  *
- * Free Business Editing Pass 3 — Free still gets its own basic-factual
- * field set (name/logo/cover/short description/city/state/category, in
- * the Profile tab), and Pro additionally gets a Profile-only addition
- * (full description, country) plus the entirely Pro-only Gallery and
- * Links & Contact tabs — mirrors updateBusinessProfile/
- * updateBusinessLinks/updateBusinessGallery's own allowlists exactly
- * (../actions.ts), so nothing shown here can submit a field those
- * actions wouldn't already accept. */
+ * Free/Pro Entitlement Realignment pass — every core Profile field
+ * (name/logo/cover/short description/city/state/postal code/full
+ * description/website/Instagram/country/category) is Free now. The
+ * separate Gallery + Links & Contact card further down the Profile tab
+ * (additional gallery photos, email/phone/Facebook/TikTok/Bulletin) is
+ * untouched by this pass and remains Pro-only, same as before. Mirrors
+ * updateBusinessProfile/updateBusinessLinks/updateBusinessGallery's own
+ * allowlists exactly (../actions.ts), so nothing shown here can submit
+ * a field those actions wouldn't already accept. */
 export default async function ManageBusinessPage({
   params,
   searchParams,
@@ -492,8 +493,14 @@ export default async function ManageBusinessPage({
   // getOwnerBusinessPerformance does no authorization of its own, same
   // convention as every other lib/business-*.ts read helper on this page.
   const perfRange = isOwnerPerformanceRange(rangeParam) ? rangeParam : DEFAULT_OWNER_PERFORMANCE_RANGE;
+  // Free/Pro Entitlement Realignment pass — Analytics is Pro-only again
+  // (it was reachable free before this pass). Gated here too, not just
+  // at render, so a Free owner on this tab never triggers the
+  // getOwnerBusinessPerformance query at all — same "don't do the paid
+  // feature's work for a Free caller" discipline as every other
+  // Pro-gated tab on this page.
   const performanceData =
-    activeTab === "performance" ? await getOwnerBusinessPerformance(admin, id, perfRange) : null;
+    activeTab === "performance" && pro ? await getOwnerBusinessPerformance(admin, id, perfRange) : null;
 
   const requestPayoutAction = referralPartner
     ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
@@ -1320,15 +1327,28 @@ export default async function ManageBusinessPage({
         )}
 
         {/* ── Performance ──────────────────────────────────────────── */}
-        {activeTab === "performance" && performanceData && (
-          <PerformanceTab
-            data={performanceData}
-            basePath={basePath}
-            range={perfRange}
-            businessName={business.name}
-            followerSummary={followerSummary}
-          />
-        )}
+        {/* Free/Pro Entitlement Realignment pass — Analytics (including
+            the Audience section inside PerformanceTab) is Pro-only again,
+            same UpgradeLockedTab pattern as every other Pro-gated tab on
+            this page. PerformanceTab/getOwnerBusinessPerformance
+            themselves are completely unchanged — only this gate moved. */}
+        {activeTab === "performance" &&
+          (pro && performanceData ? (
+            <PerformanceTab
+              data={performanceData}
+              basePath={basePath}
+              range={perfRange}
+              businessName={business.name}
+              followerSummary={followerSummary}
+            />
+          ) : (
+            <UpgradeLockedTab
+              businessId={id}
+              tabKey="performance"
+              description="Understand how people discover and engage with your business."
+              isAdminElevated={isAdminElevated}
+            />
+          ))}
 
         {/* ── Profile ──────────────────────────────────────────────── */}
         {activeTab === "profile" && (
@@ -1391,17 +1411,14 @@ export default async function ManageBusinessPage({
                   <input type="text" name="postal_code" defaultValue={business.postal_code ?? ""} className={inputClass} />
                 </label>
               </div>
-              {/* Free Location Field Transparency — Free can write these
-                  same fields (see the comment above), but BusinessPublicView
-                  only ever renders location for a Pro business
-                  (`{pro && location && ...}`). Without this, a Free owner
-                  had no way to know their City/State/ZIP wouldn't actually
-                  reach their public page. Subordinate caption only, no
-                  entitlement/CTA change — Pro never sees it, since it isn't
-                  true for Pro. */}
-              {!pro && (
-                <p className="text-xs text-ink/45">City, state and ZIP appear on your public page with Findmi Pro.</p>
-              )}
+              {/* Free/Pro Entitlement Realignment pass — the previous
+                  "City, state and ZIP appear on your public page with
+                  Findmi Pro." caption is removed: BusinessPublicView now
+                  renders location for both tiers (see that file's own
+                  entitlement pass), so the caption is no longer true for
+                  either plan and would only mislead a Free owner into
+                  thinking these fields still need Pro to reach their
+                  public page. */}
 
               {/* Free Basic Profile Editing pass — About/description,
                   Website and Instagram are genuine Free profile fields
@@ -1445,19 +1462,16 @@ export default async function ManageBusinessPage({
                 </label>
               </div>
 
-              {/* Pro-only addition — PROFILE_PRO_COLUMNS in ../actions.ts
-                  allows this only when this business's server-resolved
-                  plan_tier is Pro. Free never renders this field, so a
-                  Free owner can't even see it, let alone submit it — and
-                  even if they crafted a raw request with this field
-                  name, the action's own allowlist (resolved server-side,
-                  never from the submitted form) silently drops it. */}
-              {pro && (
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
-                  <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
-                </label>
-              )}
+              {/* Free/Pro Entitlement Realignment pass — country is a
+                  regular Free field now (PROFILE_FREE_COLUMNS in
+                  ../actions.ts authorizes the write for both tiers), so
+                  it's always rendered here regardless of plan, same
+                  presentation-follows-authorization pattern as
+                  city/state/ZIP/About above. */}
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
+                <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
+              </label>
 
               <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
                 Save Profile
@@ -1633,8 +1647,14 @@ export default async function ManageBusinessPage({
             updateMemberProduct/setMemberProductActive/
             submitProductToMarketplace/returnProductToCatalog are the
             exact same actions as before. */}
-        {activeTab === "products" &&
-          (pro ? (
+        {/* Free/Pro Entitlement Realignment pass — Products is Free now
+            (FREE = GET FOUND; a consumer discovery platform needs
+            products regardless of plan tier). The `pro` ternary and its
+            UpgradeLockedTab branch are removed; Product CRUD itself
+            (createMemberProduct/updateMemberProduct/setMemberProductActive/
+            submitProductToMarketplace/returnProductToCatalog) is
+            completely unchanged, reused as-is for both tiers. */}
+        {activeTab === "products" && (
             <div className="flex flex-col gap-4 lg:max-w-5xl">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[13px] text-ink/50">
@@ -1806,14 +1826,7 @@ export default async function ManageBusinessPage({
                 </Panel>
               )}
             </div>
-          ) : (
-            <UpgradeLockedTab
-              businessId={id}
-              tabKey="products"
-              description="Show customers what you make, sell or offer."
-              isAdminElevated={isAdminElevated}
-            />
-          ))}
+          )}
 
         {/* ── Where I'll Be / Findmi Here ─────────────────────────────
             V3 — replaces the old giant enclosing card (+ two equally-
