@@ -177,3 +177,137 @@ export function secondaryButtonClass(size: "sm" | "md" = "md") {
     ? "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 px-3 text-[12px] font-semibold text-ink transition hover:border-black/20"
     : "inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-black/10 px-4 text-[13px] font-semibold text-ink transition hover:border-black/20";
 }
+
+// ── Performance Command Center pass — three additive primitives, built
+// for Analytics but generic enough for any future report-style surface
+// (another metric strip, another ranked/proportional list). None of the
+// existing exports above are modified — every other Business Manager
+// tab that already imports Panel/Row/RowList/Stat/etc. is unaffected. ──
+
+/** A single headline metric, sized to actually anchor a page (not a
+ * Stat's supporting-number scale) — the KPI Command Strip's one unit.
+ * `comparison` is pre-formatted by the caller (e.g. from an existing
+ * OwnerPerformanceMetric's own changeLabel, or a low-data absolute
+ * fallback) — this component never computes or reinterprets a
+ * percentage itself. `helpText` is shown only when there's no
+ * comparison to display (e.g. Followers, which has no period-over-
+ * period figure today), so a metric never shows two competing caption
+ * lines. */
+export function PerformanceMetric({
+  label,
+  value,
+  comparison,
+  comparisonTone = "neutral",
+  helpText,
+}: {
+  label: string;
+  value: ReactNode;
+  comparison?: string | null;
+  comparisonTone?: "up" | "down" | "neutral";
+  helpText?: string | null;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <p className="truncate text-[10.5px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
+      <p className="font-display text-[1.85rem] font-bold leading-none tracking-tight text-ink tabular-nums sm:text-[2.1rem]">
+        {value}
+      </p>
+      {comparison ? (
+        <p className={`text-[11.5px] font-semibold ${comparisonTone === "up" ? "text-findmi-700" : "text-ink/45"}`}>{comparison}</p>
+      ) : (
+        helpText && <p className="text-[11.5px] text-ink/40">{helpText}</p>
+      )}
+    </div>
+  );
+}
+
+/** A labeled value with a proportional fill bar beneath it — "how much
+ * of the whole does this row represent," read from a share the caller
+ * already computed (e.g. one Discovery Source's impressions divided by
+ * the total across all sources). `share` is 0..1; this component only
+ * clamps and renders it, it never derives a percentage from raw counts
+ * itself. */
+export function ShareBar({
+  label,
+  value,
+  share,
+  sublabel,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  share: number;
+  sublabel?: ReactNode;
+}) {
+  const widthPercent = Math.max(0, Math.min(1, share)) * 100;
+  return (
+    <div className="flex flex-col gap-1.5 px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-[13px] font-medium text-ink">{label}</span>
+        <span className="shrink-0 text-[13px] font-semibold text-ink/70">{value}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.05]">
+        <div className="h-full rounded-full bg-findmi" style={{ width: `${widthPercent}%` }} />
+      </div>
+      {sublabel && <span className="text-[11px] text-ink/40">{sublabel}</span>}
+    </div>
+  );
+}
+
+/** One row in a ranked list (Top Appearances/Top Products) — a rank
+ * badge, title/subtitle, and a relative-performance bar. `relativeScore`
+ * is 0..1, already normalized by the caller against the TOP item in the
+ * same already-server-ranked list — this component never re-sorts or
+ * re-scores anything, it only renders the rank position and proportion
+ * it's given. Rank 1 gets the one accent treatment in the list (a
+ * filled Aqua badge); every other rank is a quiet numbered outline, so
+ * the list reads as "here's what's winning," not a rainbow leaderboard. */
+export function RankedPerformanceRow({
+  rank,
+  title,
+  subtitle,
+  metricLine,
+  relativeScore,
+  href,
+}: {
+  rank: number;
+  title: ReactNode;
+  subtitle?: ReactNode;
+  metricLine?: ReactNode;
+  relativeScore: number;
+  href?: string;
+}) {
+  const widthPercent = Math.max(0, Math.min(1, relativeScore)) * 100;
+  const content = (
+    <>
+      <span
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+          rank === 1 ? "bg-findmi text-white" : "bg-black/[0.05] text-ink/50"
+        }`}
+      >
+        {rank}
+      </span>
+      <span className="min-w-0 flex-1">
+        {/* Title, metric line, and subtitle each get their own truncated
+            line (never forced onto one row) — a long product name next
+            to a long metric string (e.g. every one of Products' 5
+            metrics active at once) must never force horizontal overflow
+            on a narrow phone; each line degrades independently instead. */}
+        <span className="block truncate text-[13px] font-semibold text-ink">{title}</span>
+        {metricLine && <span className="mt-0.5 block truncate text-[11.5px] font-semibold text-ink/55">{metricLine}</span>}
+        {subtitle && <span className="mt-0.5 block truncate text-[11px] text-ink/40">{subtitle}</span>}
+        <span className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-black/[0.05]">
+          <span className="block h-full rounded-full bg-findmi/60" style={{ width: `${widthPercent}%` }} />
+        </span>
+      </span>
+    </>
+  );
+  const rowClass = "flex items-center gap-3 px-4 py-2.5";
+  if (href) {
+    return (
+      <Link href={href} className={`${rowClass} transition hover:bg-black/[0.02]`}>
+        {content}
+      </Link>
+    );
+  }
+  return <div className={rowClass}>{content}</div>;
+}

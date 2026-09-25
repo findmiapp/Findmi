@@ -1339,6 +1339,7 @@ export default async function ManageBusinessPage({
               basePath={basePath}
               range={perfRange}
               businessName={business.name}
+              businessSlug={business.slug ?? null}
               followerSummary={followerSummary}
             />
           ) : (
