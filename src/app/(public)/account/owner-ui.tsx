@@ -241,7 +241,13 @@ export function ShareBar({
   const widthPercent = Math.max(0, Math.min(1, share)) * 100;
   return (
     <div className="flex flex-col gap-1.5 px-4 py-2.5">
-      <div className="flex items-center justify-between gap-3">
+      {/* Low-data mobile pass — was a rigid single-line row (label
+          shrinking against a shrink-0 value); a longer value string
+          (now including an explicit share percentage, see the caller)
+          could force overflow on a narrow phone. flex-wrap lets the
+          value drop to its own line as a whole unit instead — never
+          truncated, never overflowing. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <span className="min-w-0 truncate text-[13px] font-medium text-ink">{label}</span>
         <span className="shrink-0 text-[13px] font-semibold text-ink/70">{value}</span>
       </div>

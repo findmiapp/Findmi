@@ -16,13 +16,21 @@ import { Panel, RowList, Row, Stat, SectionEyebrow, PerformanceMetric, ShareBar,
 // here: every number still comes pre-aggregated from
 // lib/analytics/ownerPerformance.ts, this file never touches
 // analytics_events, and no new metric is computed anywhere in this file
-// that ownerPerformance.ts didn't already return. What changed is
-// entirely the language and hierarchy: four headline metrics anchor the
-// page as a real instrument strip (not four small Stats in a plain
-// grid), ranked lists get an actual rank/relative-performance treatment
-// instead of plain text rows, Discovery Sources get a proportional
-// share bar, and the ten near-identical bordered Panels this page used
-// to be are consolidated into six, each doing one real job.
+// that ownerPerformance.ts didn't already return.
+//
+// Low-Data Polish pass — the Command Center redesign correctly handles
+// TRUE ZERO DATA (data.isEmpty: KPI strip + one onboarding module) and
+// HEALTHY DATA (every section has real content), but a real production
+// business with SOME activity in only one or two areas (e.g. a couple
+// of impressions, nothing else yet) previously saw most sections
+// silently disappear — the page looked like it stopped working rather
+// than like a capable product waiting for more activity. Every section
+// below data.isEmpty now always renders its shell (title still real,
+// no icons/warnings/illustrations), and shows either its real content
+// or a short, calm SectionWaiting line — never a graveyard of zeroed-
+// out individual metrics, and never fake/interpolated data. QR stays
+// the one deliberate exception: it's still fully absent without a real
+// QR campaign, since owner QR self-service doesn't exist yet.
 const RANGE_TABS: { value: OwnerPerformanceRange; label: string }[] = OWNER_PERFORMANCE_RANGES.map((v) => ({
   value: v,
   label: v === "all" ? "All Time" : `${v} Days`,
@@ -40,6 +48,41 @@ function compactMetricLine(parts: { count: number; word: string }[]): string {
     .filter((p) => p.count > 0)
     .map((p) => plural(p.count, p.word))
     .join(" · ");
+}
+
+/** A section header that ALWAYS stacks title above subtitle, at every
+ * width — the fix for the production mobile bug where Panel's own
+ * title+meta slot (a single flex row, no wrap) forced a section title
+ * and a full sentence of supporting copy to fight for the same line on
+ * a ~360px phone. Every Analytics section below uses this instead of
+ * Panel's built-in title/meta props, so none of them can develop that
+ * same narrow-column wrapping problem. Kept local — nothing outside
+ * this one Analytics-specific header pattern needs it today. */
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="border-b border-black/[0.06] px-4 py-3">
+      <h2 className="text-[13px] font-bold text-ink">{title}</h2>
+      {subtitle && <p className="mt-0.5 text-[11.5px] text-ink/45">{subtitle}</p>}
+    </div>
+  );
+}
+
+/** A calm, compact "the report is ready, we're waiting for activity"
+ * line — never an error/warning treatment (no icon, no color beyond
+ * the page's normal muted text), never more than two short lines. Used
+ * wherever a section has zero rows in a business that is NOT globally
+ * data.isEmpty — i.e. the business has some real activity elsewhere,
+ * so this section's capability should still be communicated, just
+ * honestly marked as not populated yet. `title` is omitted when the
+ * section already has its own compact label (e.g. a SectionEyebrow)
+ * immediately above, so the waiting copy never doubles a heading. */
+function SectionWaiting({ title, body }: { title?: string; body: string }) {
+  return (
+    <div className="py-1">
+      {title && <p className="text-[13px] font-semibold text-ink/70">{title}</p>}
+      <p className={`text-[12px] leading-relaxed text-ink/45 ${title ? "mt-1" : ""}`}>{body}</p>
+    </div>
+  );
 }
 
 // ── Low-data-aware comparison formatting ────────────────────────────
@@ -106,12 +149,6 @@ export default function PerformanceTab({
   const impressionsComparison = formatComparison(data.headline.impressions);
   const profileViewsComparison = formatComparison(data.headline.profileViews);
   const actionsComparison = formatComparison(data.headline.actionsTaken);
-  const followerHelpText =
-    followerSummary.totalCount > 0
-      ? `${followerSummary.accountCount.toLocaleString()} with a Findmi account${
-          followerSummary.legacyCount > 0 ? ` · ${followerSummary.legacyCount.toLocaleString()} email-only` : ""
-        }`
-      : "People who follow your business appear here.";
 
   const emptyStateActions = [
     { href: `${basePath}?tab=profile`, label: "Complete your profile" },
@@ -132,7 +169,6 @@ export default function PerformanceTab({
   const commerceEventActions = data.secondaryActions.filter((a) => !ENGAGEMENT_LABELS.has(a.label));
 
   const hasWhatsNext = engagementActions.length > 0 || commerceEventActions.length > 0 || data.contactChannels.length > 0;
-  const hasWhatsPerforming = data.appearances.length > 0 || data.products.length > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -140,7 +176,8 @@ export default function PerformanceTab({
           visual anchor. Title/range control on top, four headline
           metrics below a hairline divider, sized to actually read as a
           command instrument rather than four small numbers floating in
-          a generic grid. ── */}
+          a generic grid. Unchanged this pass except the Followers
+          caption below. ── */}
       <Panel>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0">
@@ -185,11 +222,22 @@ export default function PerformanceTab({
             comparison={actionsComparison.text}
             comparisonTone={actionsComparison.tone}
           />
-          <PerformanceMetric label="Followers" value={followerSummary.totalCount.toLocaleString()} helpText={followerHelpText} />
+          {/* Low-Data Polish pass — was "People who follow your business
+              appear here." when zero, which read as an empty-state
+              instruction living inside a KPI tile rather than a metric
+              caption. A plain, constant "Total followers" now labels
+              this tile the same way regardless of count (the
+              account/legacy breakdown still lives in the Audience
+              section below, not duplicated here) — never implies growth,
+              never adds a period comparison (not available today). */}
+          <PerformanceMetric label="Followers" value={followerSummary.totalCount.toLocaleString()} helpText="Total followers" />
         </div>
       </Panel>
 
       {data.isEmpty ? (
+        // TRUE ZERO DATA — unchanged from the previous pass: KPI strip
+        // above, plus exactly this one onboarding module. None of the
+        // section-level waiting states below ever render here.
         <Panel padded={false}>
           <div className="px-4 py-5">
             <p className="text-[15px] font-bold text-ink">Your performance starts here</p>
@@ -206,188 +254,225 @@ export default function PerformanceTab({
           </div>
         </Panel>
       ) : (
-        // Same 2/3 main-column + 1/3 rail composition as before: the
-        // narrative sections (Trend -> Discovery -> Actions ->
-        // Performing) form the main column in that exact "four
-        // questions" order; Audience and QR are supporting information
-        // in the rail. Mobile stacks in the same DOM order.
+        // SOME DATA / LOW DATA / HEALTHY DATA — one continuum, not two
+        // separate branches: every section below always renders its
+        // real shell now; each independently shows real content or a
+        // compact SectionWaiting line depending on whether ITS OWN data
+        // is populated. A business healthy in every section simply
+        // never hits any SectionWaiting branch. Same 2/3 main-column +
+        // 1/3 rail composition, same "four questions" order, same
+        // mobile DOM-order stacking as before.
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-start lg:gap-4">
           <div className="flex flex-col gap-4 lg:col-start-1 lg:col-span-2">
             {/* ── Discovery Trend — enlarged from a 96px decorative
                 sparkline into the page's one real chart moment. Still
-                Profile Views only, still the same dependency-free SVG,
-                still falls back to a single Stat when there's only one
-                meaningful point. ── */}
-            {nonZeroTrendPoints.length > 0 && (
-              <Panel padded={false}>
-                <div className="px-4 pt-4">
-                  <h2 className="text-[15px] font-bold text-ink">Discovery Trend</h2>
-                  <p className="mt-0.5 text-[12px] text-ink/45">Profile views over this period</p>
-                </div>
-                <div className="px-4 pb-4 pt-3">
-                  {nonZeroTrendPoints.length === 1 ? (
-                    <PerformanceMetric
-                      value={nonZeroTrendPoints[0].value.toLocaleString()}
-                      label={nonZeroTrendPoints[0].label}
-                      helpText="Profile views"
-                    />
-                  ) : (
-                    <TrendChart points={data.trend.points} />
-                  )}
-                </div>
-              </Panel>
-            )}
+                Profile Views only, still the same dependency-free SVG.
+                Now always rendered (was: hidden entirely with zero
+                non-zero points) with an honest waiting state instead of
+                a fake flat line. ── */}
+            <Panel padded={false}>
+              <SectionHeader title="Discovery Trend" subtitle="Profile views over this period" />
+              <div className="px-4 pb-4 pt-3">
+                {nonZeroTrendPoints.length === 0 ? (
+                  <SectionWaiting
+                    title="No profile views yet"
+                    body="Your profile-view trend will begin building as people open your Findmi profile."
+                  />
+                ) : nonZeroTrendPoints.length === 1 ? (
+                  <PerformanceMetric
+                    value={nonZeroTrendPoints[0].value.toLocaleString()}
+                    label={nonZeroTrendPoints[0].label}
+                    helpText="Profile views"
+                  />
+                ) : (
+                  <TrendChart points={data.trend.points} />
+                )}
+              </div>
+            </Panel>
 
             {/* ── How People Find You — the same Discovery Sources data,
-                now a proportional share bar per source instead of plain
-                text counts. ── */}
-            {data.discoverySources.length > 0 && (
-              <Panel title="How People Find You" meta={<span className="text-[11px] text-ink/40">Where your discovery is coming from</span>} padded={false}>
+                each source now stating its explicit share-of-discovery
+                percentage (computed client-side from the already-
+                returned impression counts — no new metric) alongside
+                the proportional bar, so the bar's meaning is never
+                ambiguous. ── */}
+            <Panel padded={false}>
+              <SectionHeader title="How People Find You" subtitle="Where your discovery is coming from" />
+              {data.discoverySources.length === 0 ? (
+                <div className="px-4 py-3">
+                  <SectionWaiting body="Where people discover you will appear here as your profile, products and appearances get seen across Findmi." />
+                </div>
+              ) : (
                 <RowList>
-                  {data.discoverySources.map((s) => (
-                    <ShareBar
-                      key={s.label}
-                      label={s.label}
-                      value={
-                        <span>
-                          {plural(s.impressions, "impression")}
-                          {s.clicks > 0 && ` · ${plural(s.clicks, "click")}`}
-                        </span>
-                      }
-                      share={totalDiscoveryImpressions > 0 ? s.impressions / totalDiscoveryImpressions : 0}
-                      sublabel={s.clickRate !== null && s.clickRate > 0 ? `${Math.round(s.clickRate * 100)}% click rate` : undefined}
-                    />
-                  ))}
+                  {data.discoverySources.map((s) => {
+                    const sharePercent =
+                      totalDiscoveryImpressions > 0 ? Math.round((s.impressions / totalDiscoveryImpressions) * 100) : 0;
+                    return (
+                      <ShareBar
+                        key={s.label}
+                        label={s.label}
+                        value={
+                          <span>
+                            {plural(s.impressions, "impression")}
+                            {s.clicks > 0 && ` · ${plural(s.clicks, "click")}`}
+                            {" · "}
+                            <span className="font-bold text-findmi-700">{sharePercent}% of discovery</span>
+                          </span>
+                        }
+                        share={totalDiscoveryImpressions > 0 ? s.impressions / totalDiscoveryImpressions : 0}
+                        sublabel={s.clickRate !== null && s.clickRate > 0 ? `${Math.round(s.clickRate * 100)}% click rate` : undefined}
+                      />
+                    );
+                  })}
                 </RowList>
-              </Panel>
-            )}
+              )}
+            </Panel>
 
             {/* ── What People Do Next — Actions and Link Clicks merged
                 into one section, grouped by what the action actually
-                means (engagement on Findmi, a commerce/event action, or
-                an outbound link click) rather than nine flat rows. Empty
-                groups never render. ── */}
-            {hasWhatsNext && (
-              <Panel title="What People Do Next" meta={<span className="text-[11px] text-ink/40">After discovery</span>}>
-                <div className="flex flex-col gap-5">
-                  {engagementActions.length > 0 && (
-                    <div>
-                      <SectionEyebrow>Engagement</SectionEyebrow>
-                      <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
-                        {engagementActions.map((item) => (
-                          <Stat key={item.label} value={item.count.toLocaleString()} label={item.label} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {commerceEventActions.length > 0 && (
-                    <div>
-                      <SectionEyebrow>Commerce &amp; Events</SectionEyebrow>
-                      <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
-                        {commerceEventActions.map((item) => (
-                          <Stat key={item.label} value={item.count.toLocaleString()} label={item.label} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {data.contactChannels.length > 0 && (
-                    <div>
-                      <SectionEyebrow>Links &amp; Contact</SectionEyebrow>
-                      <div className="mt-2.5 overflow-hidden rounded-lg border border-black/[0.06]">
-                        <RowList>
-                          {data.contactChannels.map((c) => (
-                            <Row key={c.channel} label={c.label} value={c.count.toLocaleString()} />
+                means. Now always rendered; a business with zero actions
+                gets one waiting line instead of the section vanishing
+                (never nine individual zeroed rows). Once real data
+                exists, only non-zero groups/rows ever render. ── */}
+            <Panel padded={false}>
+              <SectionHeader title="What People Do Next" subtitle="After discovery" />
+              <div className="p-4">
+                {hasWhatsNext ? (
+                  <div className="flex flex-col gap-5">
+                    {engagementActions.length > 0 && (
+                      <div>
+                        <SectionEyebrow>Engagement</SectionEyebrow>
+                        <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
+                          {engagementActions.map((item) => (
+                            <Stat key={item.label} value={item.count.toLocaleString()} label={item.label} />
                           ))}
-                        </RowList>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              </Panel>
-            )}
+                    )}
+                    {commerceEventActions.length > 0 && (
+                      <div>
+                        <SectionEyebrow>Commerce &amp; Events</SectionEyebrow>
+                        <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
+                          {commerceEventActions.map((item) => (
+                            <Stat key={item.label} value={item.count.toLocaleString()} label={item.label} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {data.contactChannels.length > 0 && (
+                      <div>
+                        <SectionEyebrow>Links &amp; Contact</SectionEyebrow>
+                        <div className="mt-2.5 overflow-hidden rounded-lg border border-black/[0.06]">
+                          <RowList>
+                            {data.contactChannels.map((c) => (
+                              <Row key={c.channel} label={c.label} value={c.count.toLocaleString()} />
+                            ))}
+                          </RowList>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <SectionWaiting
+                    title="No actions yet"
+                    body="Directions, saves, follows, shares, website visits and other engagement will appear here as people take action."
+                  />
+                )}
+              </div>
+            </Panel>
 
             {/* ── What's Performing — Appearance + Product Analytics
-                merged into one section (was two near-identical Panels),
-                now with an actual rank badge and relative-performance
-                bar per item instead of plain text rows. Server-side
-                ranking order is used exactly as returned — this never
-                re-sorts anything. ── */}
-            {hasWhatsPerforming && (
-              <Panel title="What's Performing" meta={<span className="text-[11px] text-ink/40">Getting the most attention</span>} padded={false}>
-                <div className="flex flex-col">
-                  {data.appearances.length > 0 && (
-                    <div className={data.products.length > 0 ? "border-b border-black/[0.06] pb-1" : ""}>
-                      <div className="px-4 pt-3">
-                        <SectionEyebrow>Top Appearances</SectionEyebrow>
-                      </div>
-                      <RowList>
-                        {data.appearances.map((a, i) => {
-                          const topScore = Math.max(1, appearanceEngagementScore(data.appearances[0]));
-                          const metricLine = compactMetricLine([
-                            { count: a.impressions, word: "impression" },
-                            { count: a.clicks, word: "click" },
-                            { count: a.directions, word: "direction" },
-                            { count: a.saves, word: "save" },
-                            { count: a.qrScans, word: "QR scan" },
-                          ]);
-                          return (
-                            <RankedPerformanceRow
-                              key={a.id}
-                              rank={i + 1}
-                              title={a.title}
-                              subtitle={[formatDateShort(a.startAt), a.eventName, a.location].filter(Boolean).join(" · ")}
-                              metricLine={metricLine || undefined}
-                              relativeScore={appearanceEngagementScore(a) / topScore}
-                            />
-                          );
-                        })}
-                      </RowList>
+                merged into one section. Now always rendered with both
+                subsections always present; each independently shows its
+                real server-ranked list or a compact waiting line. Never
+                invents an Appearance/Product or a ranking — the array
+                order is used exactly as returned whenever it's
+                non-empty. ── */}
+            <Panel padded={false}>
+              <SectionHeader title="What's Performing" subtitle="Getting the most attention" />
+              <div className="flex flex-col">
+                <div className="border-b border-black/[0.06] pb-1">
+                  <div className="px-4 pt-3 pb-1">
+                    <SectionEyebrow>Top Appearances</SectionEyebrow>
+                  </div>
+                  {data.appearances.length === 0 ? (
+                    <div className="px-4 pb-3">
+                      <SectionWaiting body="Performance will appear here as your Findmi Here appearances receive discovery and engagement." />
                     </div>
-                  )}
-                  {data.products.length > 0 && (
-                    <div className="pb-1">
-                      <div className="px-4 pt-3">
-                        <SectionEyebrow>Top Products</SectionEyebrow>
-                      </div>
-                      <RowList>
-                        {data.products.map((p, i) => {
-                          const topScore = Math.max(1, productEngagementScore(data.products[0]));
-                          const metricLine = compactMetricLine([
-                            { count: p.impressions, word: "impression" },
-                            { count: p.views, word: "view" },
-                            { count: p.cardClicks, word: "card click" },
-                            { count: p.externalClicks, word: "shop click" },
-                            { count: p.saves, word: "save" },
-                          ]);
-                          return (
-                            <RankedPerformanceRow
-                              key={p.id}
-                              rank={i + 1}
-                              title={p.name}
-                              metricLine={metricLine || undefined}
-                              relativeScore={productEngagementScore(p) / topScore}
-                            />
-                          );
-                        })}
-                      </RowList>
-                    </div>
+                  ) : (
+                    <RowList>
+                      {data.appearances.map((a, i) => {
+                        const topScore = Math.max(1, appearanceEngagementScore(data.appearances[0]));
+                        const metricLine = compactMetricLine([
+                          { count: a.impressions, word: "impression" },
+                          { count: a.clicks, word: "click" },
+                          { count: a.directions, word: "direction" },
+                          { count: a.saves, word: "save" },
+                          { count: a.qrScans, word: "QR scan" },
+                        ]);
+                        return (
+                          <RankedPerformanceRow
+                            key={a.id}
+                            rank={i + 1}
+                            title={a.title}
+                            subtitle={[formatDateShort(a.startAt), a.eventName, a.location].filter(Boolean).join(" · ")}
+                            metricLine={metricLine || undefined}
+                            relativeScore={appearanceEngagementScore(a) / topScore}
+                          />
+                        );
+                      })}
+                    </RowList>
                   )}
                 </div>
-              </Panel>
-            )}
+                <div className="pb-1">
+                  <div className="px-4 pt-3 pb-1">
+                    <SectionEyebrow>Top Products</SectionEyebrow>
+                  </div>
+                  {data.products.length === 0 ? (
+                    <div className="px-4 pb-3">
+                      <SectionWaiting body="Product performance will appear here as people discover and interact with your products." />
+                    </div>
+                  ) : (
+                    <RowList>
+                      {data.products.map((p, i) => {
+                        const topScore = Math.max(1, productEngagementScore(data.products[0]));
+                        const metricLine = compactMetricLine([
+                          { count: p.impressions, word: "impression" },
+                          { count: p.views, word: "view" },
+                          { count: p.cardClicks, word: "card click" },
+                          { count: p.externalClicks, word: "shop click" },
+                          { count: p.saves, word: "save" },
+                        ]);
+                        return (
+                          <RankedPerformanceRow
+                            key={p.id}
+                            rank={i + 1}
+                            title={p.name}
+                            metricLine={metricLine || undefined}
+                            relativeScore={productEngagementScore(p) / topScore}
+                          />
+                        );
+                      })}
+                    </RowList>
+                  )}
+                </div>
+              </div>
+            </Panel>
           </div>
 
           <div className="flex flex-col gap-4 lg:col-start-3">
-            {/* ── Your Audience — Followers itself now lives in the KPI
+            {/* ── Your Audience — Followers itself lives in the KPI
                 strip above, so this section is about the PEOPLE behind
-                that total, not a repeated count: a compact avatar grid
-                for account-followers with a public profile, or a
-                restrained factual line when there are followers but no
-                public profiles yet. Never shows growth (not available —
-                see the completed audit). ── */}
-            {followerSummary.totalCount > 0 && (
-              <Panel title="Your Audience">
-                {followerSummary.profiles.length > 0 ? (
+                that total. Now always rendered: a real waiting line
+                when there are zero followers, the existing avatar grid
+                or factual privacy-safe line once there are some. Never
+                shows growth (not available today). ── */}
+            <Panel padded={false}>
+              <SectionHeader title="Your Audience" />
+              <div className="p-4">
+                {followerSummary.totalCount === 0 ? (
+                  <SectionWaiting title="No followers yet" body={`When people follow ${businessName}, you'll see your audience here.`} />
+                ) : followerSummary.profiles.length > 0 ? (
                   <div className="grid grid-cols-4 gap-3">
                     {followerSummary.profiles.map((p) => (
                       <Link
@@ -410,19 +495,21 @@ export default function PerformanceTab({
                     {businessName} — public profiles will appear here once they&rsquo;re set.
                   </p>
                 )}
-                {(followerSummary.accountCount > 0 || followerSummary.legacyCount > 0) && (
+                {followerSummary.totalCount > 0 && (followerSummary.accountCount > 0 || followerSummary.legacyCount > 0) && (
                   <p className="mt-3 border-t border-black/[0.05] pt-2.5 text-[11px] text-ink/40">
                     {followerSummary.accountCount.toLocaleString()} with a Findmi account
                     {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount.toLocaleString()} email-only`}
                   </p>
                 )}
-              </Panel>
-            )}
+              </div>
+            </Panel>
 
-            {/* ── QR Performance — never a causal-conversion claim, and
-                — unchanged from before — never rendered at all when this
-                Business has no QR campaigns (owner self-service QR
-                doesn't exist yet; this must never imply it does). ── */}
+            {/* ── QR Performance — the one deliberate exception to
+                "always render a shell": never rendered at all, not even
+                a waiting state, when this Business has no real QR
+                campaigns (owner QR self-service doesn't exist yet, and
+                a waiting state here would incorrectly imply a business
+                can create one). Unchanged from before. ── */}
             {data.qr && (
               <Panel title="QR Performance">
                 <div className="grid grid-cols-3 gap-2">
@@ -460,7 +547,8 @@ export default function PerformanceTab({
  * inline SVG, sized up from a 96px decorative sparkline to an actual
  * primary visualization. Only rendered once there are 2+ non-zero
  * buckets to actually compare (a single-bucket trend renders as a
- * PerformanceMetric instead, in the caller above). */
+ * PerformanceMetric, and zero non-zero buckets renders a SectionWaiting
+ * line, both in the caller above). */
 function TrendChart({ points }: { points: { label: string; value: number }[] }) {
   const max = Math.max(1, ...points.map((p) => p.value));
   const width = 600;
