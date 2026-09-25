@@ -73,13 +73,21 @@ export default function ManageOnFindmiList({ entities }: { entities: ManagedEnti
 
   return (
     <>
-      <div className="mt-2 flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Final Action-Bar Polish pass — real-device QA showed "Locations"
+          clipped inside the old overflow-x-auto strip at ~360px. A 2x2
+          grid below `sm` guarantees all four filters are fully visible
+          and readable (no truncation, no shrunk tap targets, no
+          scrolling required to discover the 4th option); from `sm` up
+          there's ample width for the original single row. Same button
+          styling/behavior either way — only the container layout
+          changed. */}
+      <div className="mt-2 grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
         {FILTERS.map((f) => (
           <button
             key={f.key}
             type="button"
             onClick={() => setFilter(f.key)}
-            className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+            className={`w-full whitespace-nowrap rounded-full px-3.5 py-1.5 text-center text-xs font-bold uppercase tracking-wide transition sm:w-auto ${
               filter === f.key ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
             }`}
           >

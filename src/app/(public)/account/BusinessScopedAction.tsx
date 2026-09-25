@@ -90,6 +90,7 @@ export default function BusinessScopedAction({
   tab,
   variant = "pill",
   size = "default",
+  tone = "primary",
   eyebrow,
   headline,
   description,
@@ -104,8 +105,18 @@ export default function BusinessScopedAction({
    * height/padding reduction for a context (the Command Center's primary
    * CTA) that reads closer to an operating control than a marketing
    * button; every other "full" caller (e.g. Schedule's own CTA) keeps
-   * "default" and is byte-for-byte unchanged. */
-  size?: "default" | "compact";
+   * "default" and is byte-for-byte unchanged. Final Action-Bar Polish
+   * pass adds "row" — the compact side-by-side action-row treatment
+   * (Where I'll Be + Analytics on /account), sized so two of these can
+   * sit in an equal-width flex row at 360px without wrapping. */
+  size?: "default" | "compact" | "row";
+  /** Final Action-Bar Polish pass — "full" only. "primary" (default,
+   * unchanged) is the existing filled-Aqua/white-text treatment every
+   * prior "full" caller already renders. "secondary" is the new white/
+   * outlined treatment for a clearly-secondary action sharing a row with
+   * a primary one (e.g. Analytics next to Where I'll Be) — same routing,
+   * same chooser, only the fill changes. */
+  tone?: "primary" | "secondary";
   eyebrow?: string;
   headline?: string;
   description?: string;
@@ -156,10 +167,19 @@ export default function BusinessScopedAction({
     // min-h (not a fixed h-12) + text-center — the CTA copy is long
     // enough on some accounts' locales that it can wrap to two lines on
     // narrow screens; a fixed height would clip or overlap it there.
+    // "row" is the one exception: it's a deliberately short, fixed-copy
+    // label ("Where I'll Be") sized for a paired half-width layout, so a
+    // fixed h-12 + whitespace-nowrap is correct there instead.
+    const toneClass =
+      tone === "secondary"
+        ? "border border-black/15 bg-white text-ink hover:border-findmi/40 hover:bg-findmi-50"
+        : "bg-findmi text-white hover:bg-findmi-600";
     const fullClass =
-      size === "compact"
-        ? "flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full bg-findmi px-4 py-2.5 text-center text-sm font-bold uppercase text-white transition hover:bg-findmi-600 active:scale-[0.99]"
-        : "flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full bg-findmi px-4 py-3 text-center text-sm font-bold uppercase text-white transition hover:bg-findmi-600 active:scale-[0.99]";
+      size === "row"
+        ? `flex h-12 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-center text-xs font-bold uppercase transition active:scale-[0.99] ${toneClass}`
+        : size === "compact"
+          ? `flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-center text-sm font-bold uppercase transition active:scale-[0.99] ${toneClass}`
+          : `flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-center text-sm font-bold uppercase transition active:scale-[0.99] ${toneClass}`;
     if (businesses.length === 0) {
       return (
         <Link href={zeroHref} className={fullClass}>
@@ -252,10 +272,24 @@ export function ActionStripLink({ href, label }: { href: string; icon?: ReactNod
   );
 }
 
-function ChooserList({ businesses, tab, onSelect }: { businesses: BusinessOption[]; tab: string; onSelect?: () => void }) {
+function ChooserList({
+  businesses,
+  tab,
+  onSelect,
+  label = "Which business?",
+}: {
+  businesses: BusinessOption[];
+  tab: string;
+  onSelect?: () => void;
+  /** Final Action-Bar Polish pass — optional, defaults to the original
+   * copy every existing caller still gets. Lets a different action (e.g.
+   * Analytics' "View analytics for") reuse this exact chooser instead of
+   * a second, duplicated dropdown implementation. */
+  label?: string;
+}) {
   return (
     <>
-      <p className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/40">Which business?</p>
+      <p className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
       <div className="flex flex-col">
         {businesses.map((b) => (
           <Link
@@ -272,10 +306,20 @@ function ChooserList({ businesses, tab, onSelect }: { businesses: BusinessOption
   );
 }
 
-export function WhichBusinessPanel({ businesses, tab, className }: { businesses: BusinessOption[]; tab: string; className?: string }) {
+export function WhichBusinessPanel({
+  businesses,
+  tab,
+  className,
+  chooserLabel,
+}: {
+  businesses: BusinessOption[];
+  tab: string;
+  className?: string;
+  chooserLabel?: string;
+}) {
   return (
     <div className={`absolute top-full z-20 mt-2 rounded-2xl border border-black/10 bg-white p-2 shadow-lg ${className ?? ""}`}>
-      <ChooserList businesses={businesses} tab={tab} />
+      <ChooserList businesses={businesses} tab={tab} label={chooserLabel} />
     </div>
   );
 }

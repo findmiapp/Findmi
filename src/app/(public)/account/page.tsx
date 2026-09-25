@@ -11,10 +11,12 @@ import { getPublicOrigin } from "@/lib/site-url";
 import LiveDot from "@/components/LiveDot";
 import ShareButton from "@/components/ShareButton";
 import SupabaseImage from "@/components/SupabaseImage";
+import NavIcon from "@/components/NavIcon";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import AccountNav from "./AccountNav";
 import BusinessScopedAction, { PlusGlyph } from "./BusinessScopedAction";
+import AnalyticsAction from "./AnalyticsAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
 import { CompactStatus, OwnerModule } from "./dashboard-ui";
 
@@ -346,19 +348,33 @@ export default async function AccountHomePage({
         </div>
       )}
 
-      {/* PRIMARY ACTION — the one dominant, entitlement-safe Add Where
-          I'll Be entry point (BusinessScopedAction's own zero/one/many
-          routing — completely untouched). Findmi's core wedge: a
-          business that moves needs customers to know where. */}
-      <div className="mt-4">
-        <BusinessScopedAction
-          variant="full"
-          size="compact"
-          businesses={myBusinesses}
-          tab="findmi-here"
-          icon={<PlusGlyph className="h-4 w-4" />}
-          label="Add Where I'll Be"
-        />
+      {/* ACTION ROW — Final Action-Bar Polish pass: the old single
+          full-width CTA consumed too much prime mobile space (real-
+          device QA). Now a compact two-action row: Where I'll Be
+          (primary, Aqua — BusinessScopedAction's own zero/one/many
+          routing, completely untouched) + Analytics (secondary,
+          outlined — AnalyticsAction's own zero/one/many resolver, see
+          that file and businessScope.ts's resolveAnalyticsHref). Zero
+          businesses omits Analytics entirely rather than rendering a
+          disabled control or inventing a fake destination — Where I'll
+          Be alone then takes the full row, same as its own existing
+          zero-business behavior. */}
+      <div className="mt-4 flex gap-2">
+        <div className={myBusinesses.length > 0 ? "flex-1" : "w-full"}>
+          <BusinessScopedAction
+            variant="full"
+            size="row"
+            businesses={myBusinesses}
+            tab="findmi-here"
+            icon={<PlusGlyph className="h-4 w-4" />}
+            label="Where I'll Be"
+          />
+        </div>
+        {myBusinesses.length > 0 && (
+          <div className="flex-1">
+            <AnalyticsAction businesses={myBusinesses} icon={<NavIcon name="target" className="h-4 w-4" />} />
+          </div>
+        )}
       </div>
 
       {/* OPERATIONAL GRID — Mobile Command Center V2: mobile DOM order is

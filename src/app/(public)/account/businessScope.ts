@@ -27,3 +27,24 @@ export function resolveBusinessScopedHref(businesses: BusinessOption[], tab: str
   if (businesses.length === 1) return `/account/business/${businesses[0].id}?tab=${tab}`;
   return null;
 }
+
+/** Final Action-Bar Polish pass — Analytics' own zero/one/many resolver,
+ * deliberately NOT reusing resolveBusinessScopedHref above: that
+ * function's zero case always routes to Add Business, which is correct
+ * for a CREATE action but would be a fabricated "Analytics" destination
+ * for an account with no business to show analytics for. Zero returns
+ * null here — the caller (AnalyticsAction) is expected to simply not
+ * render the action in that case, never fall back to a fake route.
+ * One business routes straight to the canonical Analytics destination
+ * Business Manager already uses everywhere else (`?tab=performance` —
+ * see PRIMARY_TABS and the Overview tab's own "Analytics" Row in
+ * account/business/[id]/page.tsx). That page's own existing pro/
+ * UpgradeLockedTab gate is what decides whether real Analytics or the
+ * locked Pro explanation renders there — nothing here re-implements or
+ * duplicates that entitlement check. Many businesses also returns null,
+ * same as resolveBusinessScopedHref's own many-case — the caller renders
+ * a chooser instead. */
+export function resolveAnalyticsHref(businesses: BusinessOption[]): string | null {
+  if (businesses.length !== 1) return null;
+  return `/account/business/${businesses[0].id}?tab=performance`;
+}
