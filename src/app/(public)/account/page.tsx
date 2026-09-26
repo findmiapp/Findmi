@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { isBusinessPro } from "@/lib/entitlements";
 import { listConversationsForUser } from "@/lib/opportunities";
 import { conversationContextLabel } from "@/lib/admin/conversations";
 import { getAccountCommandCenter, type ScheduleItem, type AttentionItem } from "@/lib/dashboard";
@@ -31,14 +32,22 @@ export const dynamic = "force-dynamic";
 /** Launch V2 Pass 1 — plan_tier isn't in the public anon/authenticated
  * column grant (see lib/entitlements.ts's own comment), so showing a
  * "Pro" pill on a managed business here needs the service-role client.
- * Read-only, display-only — never a write. */
+ * Read-only, display-only — never a write.
+ *
+ * Entitlement Consistency Cleanup — reuses the canonical isBusinessPro()
+ * (rather than a raw plan_tier comparison) so an EXPIRED dated-Pro
+ * business no longer shows a stale "Pro" pill here after its access has
+ * actually lapsed elsewhere in the app. Fetches plan_expires_at alongside
+ * plan_tier for exactly that reason — no new entitlement logic is
+ * introduced, this just stops duplicating/diverging from the one that
+ * already exists. */
 async function getProBusinessIdSet(
   admin: ReturnType<typeof getAdminSupabase>,
   businessIds: string[]
 ): Promise<Set<string>> {
   if (!admin || businessIds.length === 0) return new Set();
-  const { data } = await admin.from("businesses").select("id, plan_tier").in("id", businessIds);
-  return new Set((data ?? []).filter((r) => r.plan_tier === "pro" || r.plan_tier === "pro_seller").map((r) => r.id));
+  const { data } = await admin.from("businesses").select("id, plan_tier, plan_expires_at").in("id", businessIds);
+  return new Set((data ?? []).filter((r) => isBusinessPro(r)).map((r) => r.id));
 }
 
 /** Owner Command Center V4 / Mobile Command Center V2 — a genuine
