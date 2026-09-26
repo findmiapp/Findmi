@@ -86,17 +86,20 @@ export default function HomeEventCard({
         <div className="absolute left-3 top-3">
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
-              live ? "bg-findmi text-white" : "bg-black/45 text-white backdrop-blur-sm"
+              live
+                ? "border border-[rgba(255,255,255,0.12)] bg-[rgba(10,10,10,0.78)] text-white backdrop-blur-md"
+                : "bg-black/45 text-white backdrop-blur-sm"
             }`}
           >
-            {/* Homepage preview-card correction: the pill itself stays
-                FindMi aqua here (a filled red pill read too heavy on this
-                card) — only the dot carries the red "actively live" signal,
-                still pulsing/glowing via the shared animate-happening-now-
-                glow treatment from a5d346f. Every other live-state surface
-                (event detail hero, Upcoming Dates tile, AppearanceCard)
-                stays red per that pass — this override is scoped to this
-                card only. */}
+            {/* Happening Now badge hotfix — dark glass pill (near-black
+                translucent + faint white border + blur), replacing the
+                earlier solid FindMi-aqua fill, which read as a loud
+                promotional sticker over photography. The dot still carries
+                the red "actively live" signal, pulsing/glowing via the
+                shared animate-happening-now-glow treatment. Every other
+                live-state surface (event detail hero, Upcoming Dates tile,
+                AppearanceCard) already uses its own red-filled treatment,
+                untouched by this pass. */}
             {live && <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />}
             {live ? "Happening Now" : category}
           </span>

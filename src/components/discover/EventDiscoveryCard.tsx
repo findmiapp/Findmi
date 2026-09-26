@@ -77,7 +77,9 @@ export default function EventDiscoveryCard({
           <div className="absolute left-2 top-2">
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                live ? "bg-findmi text-white" : "bg-black/45 text-white backdrop-blur-sm"
+                live
+                  ? "border border-[rgba(255,255,255,0.12)] bg-[rgba(10,10,10,0.78)] text-white backdrop-blur-md"
+                  : "bg-black/45 text-white backdrop-blur-sm"
               }`}
             >
               {live && <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />}

@@ -72,7 +72,9 @@ export default function ConnectionCard({
           <div className="absolute left-4 top-4">
             <span
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
-                live ? "bg-findmi text-white" : "bg-black/45 text-white backdrop-blur-sm"
+                live
+                  ? "border border-[rgba(255,255,255,0.12)] bg-[rgba(10,10,10,0.78)] text-white backdrop-blur-md"
+                  : "bg-black/45 text-white backdrop-blur-sm"
               }`}
             >
               {live && <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />}
