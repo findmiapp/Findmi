@@ -157,8 +157,17 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // fallback when unconfigured. `imageSlots: 3` stays as the admin
     // card's slot count for that reason.
     label: "Hero",
-    heading: "Find what's\naround you.\nGet discovered.",
-    body: "Discover local businesses, events, pop-ups, products, and more — all in one place.",
+    // FindMi Consumer Home V1 — the live founder override on this section
+    // was still the pre-north-star "Find & Shop Local Pop-Ups From
+    // Anywhere" copy (too narrow: shopping/local-vendor framing only).
+    // Updated directly (same DB row, only heading/body fields changed) to
+    // match the clarified north star, and the default below kept in sync
+    // for the same reason closing_cta's default was — if the override is
+    // ever cleared, this can't regress into the old narrow copy. No
+    // personalization/proximity claim (no "near you"), no My World
+    // feature promise — just broader-than-shopping identity copy.
+    heading: "What you love.\nWhere it's\nhappening.",
+    body: "Discover the brands, products, and experiences you're into — and see where they're happening in real life.",
     order: 0,
     fields: ["heading", "body"],
     imageSlots: 3,
@@ -196,18 +205,21 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     fields: ["eyebrow"],
   },
   featured_events: {
-    // Homepage's first live feed. Discovery Home Composition Reset —
-    // heading now reads "What's Showing Up" (was "Upcoming Events Near
-    // You", briefly "What's Happening") — matches the product's own core
-    // consumer question, and still correctly makes no proximity claim
+    // Homepage's events feed. Consumer Home V1 — heading now reads "What's
+    // Happening" (was "What's Showing Up", briefly "What's Happening"
+    // before that, originally "Upcoming Events Near You") — this section
+    // no longer leads the homepage (Must Haves/products now come first);
+    // it's one part of FindMi's world, not the whole story, so its own
+    // heading stays a plain, honest description of its content rather
+    // than a headline claim. Still correctly makes no proximity claim
     // this section can't back (only an explicit Area filter, never
     // geolocation). Verified not live-overridden in production before
-    // changing this default. The homepage now shows a minimal Area +
-    // Today/This Weekend control row (page.tsx) plus HomeDiscoveryMosaic
-    // for the actual content; full Time x Category filtering lives at
-    // /discover, not reproduced here.
+    // changing this default. The homepage shows a minimal Area +
+    // Today/This Weekend control row (page.tsx) plus a compact events
+    // rail (no single dominant "lead" card); full Time x Category
+    // filtering lives at /discover, not reproduced here.
     label: "Featured Events",
-    heading: "What's Showing Up",
+    heading: "What's Happening",
     body: "Markets, pop-ups, and festivals coming up",
     ctaLabel: "View all",
     ctaUrl: "/events",
@@ -259,8 +271,12 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     fields: [],
   },
   explore_by_category: {
+    // Consumer Home V1 — relabeled toward the new consumer-interest
+    // framing (real business-category taxonomy, not a fabricated
+    // interest graph — see the rail's own note in page.tsx). Verified
+    // not live-overridden before changing this default.
     label: "Explore By Category",
-    heading: "Explore By Category",
+    heading: "Explore What You're Into",
     order: 65,
     fields: ["heading"],
   },

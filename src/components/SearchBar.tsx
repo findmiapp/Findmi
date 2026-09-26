@@ -41,7 +41,18 @@ const MIN_CHARS = 2;
 // remain Market-independent. This component itself needs no changes for
 // that — it already forwards `market` verbatim; direct suggestion links
 // (/event/[slug] etc.) are untouched and never carry it.
-export default function SearchBar({ marketSlug }: { marketSlug?: string }) {
+export default function SearchBar({
+  marketSlug,
+  placeholder = "Search businesses, events, products...",
+}: {
+  marketSlug?: string;
+  /** Consumer Home V1 — every existing caller omits this and keeps
+   * today's exact placeholder text; the homepage's new discovery-entry
+   * mount is the first to pass a different one ("Search anything you're
+   * into..."). Purely cosmetic — the fetch/search behavior below is
+   * completely unaffected by which placeholder is shown. */
+  placeholder?: string;
+}) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [q, setQ] = useState("");
@@ -116,7 +127,7 @@ export default function SearchBar({ marketSlug }: { marketSlug?: string }) {
           aria-expanded={showDropdown}
           aria-controls="homepage-search-results"
           aria-autocomplete="list"
-          placeholder="Search businesses, events, products..."
+          placeholder={placeholder}
           className="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-ink/40 focus:outline-none"
         />
         <button

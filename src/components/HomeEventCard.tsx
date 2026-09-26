@@ -26,24 +26,13 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
 export default function HomeEventCard({
   event,
   analyticsContext,
-  size = "default",
 }: {
   event: EventWithCategories;
   analyticsContext?: AnalyticsPlacementContext;
-  /** Discovery Home Composition Reset — optional larger presentation for
-   * a "lead" placement (HomeDiscoveryMosaic's single bigger tile). Every
-   * existing caller omits this and renders exactly as before
-   * (aspect-[4/5], text-lg/xl title) — "large" only changes the aspect
-   * ratio (landscape, so a lead tile reads as genuinely more important,
-   * not just a wider portrait card) and bumps the title one step. No
-   * other behavior (data, link, tracking, badges) changes. */
-  size?: "default" | "large";
 }) {
   const category = event.categories[0]?.name ?? null;
   const location = [event.venue_name, cityState(event.city, event.state)].filter(Boolean).join(" · ");
   const { live } = getTemporalLabel(event.start_at, event.end_at);
-  const aspectClass = size === "large" ? "aspect-[4/3] sm:aspect-[16/9]" : "aspect-[4/5]";
-  const titleClass = size === "large" ? "text-xl sm:text-2xl" : "text-lg sm:text-xl";
 
   const analyticsFields = buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });
@@ -53,7 +42,7 @@ export default function HomeEventCard({
       href={`/event/${event.slug}`}
       ref={impressionRef}
       onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
-      className={`group relative block ${aspectClass} w-full overflow-hidden rounded-2xl bg-black/5 transition active:scale-[0.98]`}
+      className="group relative block aspect-[4/5] w-full overflow-hidden rounded-2xl bg-black/5 transition active:scale-[0.98]"
     >
       {event.cover_image_url ? (
         // unoptimized — bypasses Vercel's next/image optimizer (the
@@ -115,7 +104,7 @@ export default function HomeEventCard({
       )}
 
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-4">
-        <h3 className={`line-clamp-2 font-display font-bold leading-snug text-white ${titleClass}`}>
+        <h3 className="line-clamp-2 font-display text-lg font-bold leading-snug text-white sm:text-xl">
           {event.name}
         </h3>
         <p className="flex items-center gap-1.5 text-sm text-white/90">

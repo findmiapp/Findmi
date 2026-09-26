@@ -2,10 +2,10 @@ import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
-import HomeDiscoveryMosaic from "@/components/HomeDiscoveryMosaic";
 import HomeWeather from "@/components/HomeWeather";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
+import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
 import {
   attachEventCategories,
@@ -40,6 +40,23 @@ export const revalidate = 60;
 const BRANDS_ROW_HEADING_FALLBACK = "Brands We Love";
 const BRANDS_ROW_SUBTITLE_FALLBACK = "Real businesses, worth discovering";
 
+// Consumer Home V1 — "Explore What You're Into" light/pastel category
+// treatment (Section 12: the beginnings of a pastel interest/category
+// visual system, without a per-category color column or new token
+// system). Purely a cyclic presentation array, applied by index — no new
+// business logic, no schema change. All stock Tailwind palette colors
+// (no purple/lime), with FindMi Aqua's own pale tint (bg-findmi-50)
+// included as one of the rotation's colors, matching the brand's existing
+// "pale Aqua tints are soft highlight panels" pattern.
+const CATEGORY_TINTS = [
+  "bg-findmi-50 text-findmi-700",
+  "bg-amber-50 text-amber-800",
+  "bg-rose-50 text-rose-800",
+  "bg-sky-50 text-sky-800",
+  "bg-emerald-50 text-emerald-800",
+  "bg-orange-50 text-orange-800",
+];
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -57,8 +74,9 @@ export default async function HomePage({
   // the event-category chip list existed ONLY to feed its 5 tabs + chip
   // row). Homepage = discovery, /discover = deeper filtering (task's own
   // distinction) — so only the single real chronological "anytime" query
-  // remains, now feeding HomeDiscoveryMosaic instead. Net effect: 4 fewer
-  // real database queries per homepage render, not a new one.
+  // remains, now feeding the homepage's "Must Dos" events rail instead.
+  // Net effect: 4 fewer real database queries per homepage render, not a
+  // new one.
   const [categories, nextRaw, heroFallbackBrands, homepageRows, siteSections, markets] = await Promise.all([
     getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
     // Consumer Event Market Filtering V1 — marketSlug scopes by every
@@ -82,6 +100,21 @@ export default async function HomePage({
   // "businesses" row (curated rows/business_showcase/events/products all
   // ignore it, per that function's own note).
   const resolvedRows = await Promise.all(homepageRows.map((row) => resolveHomepageRowItems(row, marketSlug, areaSlug)));
+
+  // Consumer Home V1 — no new query: the same founder-managed Homepage
+  // Rows fetched above are now rendered in TWO passes instead of one
+  // strict top-to-bottom loop, so the real product data ("Shop Local")
+  // can surface as the homepage's V1 "Must Haves" moment near the top
+  // instead of its old position after every business row. Indices (not
+  // filtered copies of the rows themselves) are what's split, so
+  // resolvedRows stays index-aligned with homepageRows throughout —
+  // brandsRowIndex (below) is unaffected. A row rendered in the first
+  // pass is excluded from the second pass, so nothing appears twice.
+  const productRowIndices: number[] = [];
+  const otherRowIndices: number[] = [];
+  homepageRows.forEach((row, i) => {
+    (row.content_type === "products" ? productRowIndices : otherRowIndices).push(i);
+  });
 
   // Founder Site Editor overrides for the structural sections that stay
   // fixed-position (hero, event discovery heading/copy, explore by
@@ -154,94 +187,125 @@ export default async function HomePage({
 
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* DISCOVERY HOME COMPOSITION RESET — content before controls. The
-          old top-to-bottom stack here was: isolated Area Picker band ->
-          Section heading + View All -> 5 time-filter pills -> event-
-          category chip row -> one 66vw event card. That's a filter/
-          results-page rhythm, not a discovery destination, and the live
-          review confirmed it reads that way. This replaces the ENTIRE
-          stack with: a compact heading + minimal control row (Area,
-          Today, This Weekend — the smallest useful homepage set; full
-          Time x Category filtering still lives at /discover, never
-          reproduced here), then real discovery content immediately —
-          HomeDiscoveryMosaic, not a single dominant card. AreaPicker's
-          own component/behavior (real market/area data, ?market=/?area=
-          query params, search) is completely untouched, same as before —
-          only its presentation shrank from a full-width band to one
-          compact control among others. Heading reads "What's Showing
-          Up" (HOMEPAGE_SECTIONS.featured_events, still founder-editable
-          via the same site_sections key, verified not live-overridden
-          before changing its default) — this section has no geolocation
-          signal, only an explicit Area filter the visitor chooses. "View
-          all" keeps its historical /events destination (this section has
-          always meant "the events archive"); Today/This Weekend are new,
-          separate shortcuts into /discover's own real when= filtering —
-          the one place that already combines window + market + area +
-          category, so the homepage doesn't need to reproduce that
-          machinery itself. */}
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="flex items-end justify-between gap-4">
-          <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
-            {upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
-          </h2>
-          <Link
-            href={
-              marketSlug
-                ? `/events?market=${encodeURIComponent(marketSlug)}${areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`
-                : "/events"
-            }
-            className="shrink-0 pb-1 text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
-          >
-            View all
-          </Link>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {markets.length > 0 && (
-            <AreaPicker
-              options={markets.map((m) => ({
-                slug: m.slug,
-                label: getMarketAreaLabel(m),
-                areasIncluded: m.areas_included,
-                areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-              }))}
-            />
-          )}
-          <Link
-            href="/discover?when=today"
-            className="flex h-10 shrink-0 items-center justify-center rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
-          >
-            Today
-          </Link>
-          <Link
-            href="/discover?when=weekend"
-            className="flex h-10 shrink-0 items-center justify-center rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
-          >
-            This Weekend
-          </Link>
-        </div>
-        <div className="mt-4">
-          <HomeDiscoveryMosaic events={nextEvents} />
-        </div>
+      {/* CONSUMER HOME V1 — discovery entry. A single lightweight search
+          field directly below the hero, reusing the existing homepage
+          search exactly as it already worked (SearchBar / the existing
+          /api/homepage-search route) — no new backend, no fake
+          autocomplete, no new component. This is the homepage's own
+          "what are you into?" moment (breadth across businesses,
+          locations, events, and products, all real), distinct from the
+          header's own search icon. */}
+      <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
+        <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
       </div>
 
-      {/* Homepage discovery flow pass — the homepage-body search field
-          that used to sit here (between Upcoming Events and Brands We
-          Love) is removed: the global/header search already covers this,
-          and it left a large, redundant field between two discovery
-          sections. SearchBar's component/API/global header search are
-          completely untouched — this only stops this ONE page-body call
-          site from rendering it. */}
-
-      {/* Founder-managed Homepage Rows — each row is a real database
-          record (see /admin/site/homepage/rows): add/rename/edit/hide/
-          reorder/delete without a code change, Businesses/Events/
-          Products/Business Showcase, Dynamic (filtered) or Curated
-          (hand-picked). isBrandsRow (Brands We Love fallback copy) still
-          targets brandsRowIndex exactly as before. */}
-      {homepageRows.map((row, i) => (
+      {/* MUST HAVES — Consumer Home V1's real-data "things to have"
+          surface. Real products already resolved above for this exact
+          homepage render (productRowIndices/otherRowIndices, no new
+          query) — the founder-managed "Shop Local" Homepage Row, simply
+          rendered FIRST instead of after every business row, with an
+          eyebrow label (the same additive Section prop Brands We Love's
+          "Discover" already uses) rather than a rewritten title, so the
+          founder's own row title/subtitle stay intact. Discovery
+          language only — see HomepageRowSection's products branch
+          (completely unchanged): no Want/Have/Love persistence, no fake
+          save state, no fabricated pricing. */}
+      {productRowIndices.map((i) => (
         <HomepageRowSection
-          key={row.id}
-          row={row}
+          key={homepageRows[i].id}
+          row={homepageRows[i]}
+          resolved={resolvedRows[i]}
+          marketSlug={marketSlug}
+          areaSlug={areaSlug}
+          isMustHavesRow
+        />
+      ))}
+
+      {/* MUST DOS / WHAT'S HAPPENING — Consumer Home V1. Same real,
+          already-fetched chronological event query as before (zero new
+          query) — but no more single dominant "lead" card (the prior
+          HomeDiscoveryMosaic's giant lead + 2 supporting tiles). Every
+          card here is the same compact size, so this reads as "several
+          real things happening," not one editorial event owning the
+          page (Section 8/2's own core requirement). AreaPicker and
+          Today/This Weekend now live here specifically, not at the very
+          top — they're temporal/location controls, so they belong with
+          the temporal section, not the search/discovery entry above.
+          AreaPicker's own component/behavior (real market/area data,
+          ?market=/?area= query params, search) is completely untouched.
+          Full Time x Category filtering still lives at /discover, never
+          reproduced here. */}
+      <div className="mx-auto max-w-6xl pt-6">
+        <div className="px-4 sm:px-6">
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-findmi-700">Must Dos</p>
+          <div className="flex items-end justify-between gap-4">
+            <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+              {upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
+            </h2>
+            <Link
+              href={
+                marketSlug
+                  ? `/events?market=${encodeURIComponent(marketSlug)}${areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`
+                  : "/events"
+              }
+              className="shrink-0 pb-1 text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
+            >
+              View all
+            </Link>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {markets.length > 0 && (
+              <AreaPicker
+                options={markets.map((m) => ({
+                  slug: m.slug,
+                  label: getMarketAreaLabel(m),
+                  areasIncluded: m.areas_included,
+                  areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+                }))}
+              />
+            )}
+            <Link
+              href="/discover?when=today"
+              className="flex h-10 shrink-0 items-center justify-center rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+            >
+              Today
+            </Link>
+            <Link
+              href="/discover?when=weekend"
+              className="flex h-10 shrink-0 items-center justify-center rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+            >
+              This Weekend
+            </Link>
+          </div>
+        </div>
+        {nextEvents.length > 0 && (
+          <div className="mt-4">
+            <HorizontalScroller>
+              {nextEvents.slice(0, 6).map((event, i) => (
+                <div key={event.id} className="w-[38vw] max-w-[170px] shrink-0 sm:w-48">
+                  <HomeEventCard
+                    event={event}
+                    analyticsContext={{ pageType: "home", placement: "homepage_happening", position: i + 1 }}
+                  />
+                </div>
+              ))}
+            </HorizontalScroller>
+          </div>
+        )}
+      </div>
+
+      {/* Founder-managed Homepage Rows — every row EXCEPT the products
+          row(s) already rendered above as Must Haves (see
+          otherRowIndices). Each remaining row is still a real database
+          record (see /admin/site/homepage/rows): add/rename/edit/hide/
+          reorder/delete without a code change. isBrandsRow (Brands We
+          Love fallback copy) still targets brandsRowIndex exactly as
+          before — that index is into the full homepageRows array, so
+          splitting the render into two passes doesn't affect it. */}
+      {otherRowIndices.map((i) => (
+        <HomepageRowSection
+          key={homepageRows[i].id}
+          row={homepageRows[i]}
           resolved={resolvedRows[i]}
           marketSlug={marketSlug}
           areaSlug={areaSlug}
@@ -249,28 +313,28 @@ export default async function HomePage({
         />
       ))}
 
-      {/* Explore By Category — compact rail, existing category data/
-          destinations untouched. Homepage discovery flow pass — pills
-          switched from a rounded-2xl/px-4 py-3 "card" treatment to a
-          rounded-full/px-4 py-2 pill (matching the same compact-pill
-          pattern already used elsewhere on this page), and the section's
-          own py-6 tightened to py-5, so this reads as a full, intentional
-          rail rather than a few oversized controls surrounded by
-          whitespace. Still the same horizontally-scrollable-on-mobile,
-          wraps-on-sm: layout as before (that mechanic already existed);
-          no new carousel, no data/query change. */}
+      {/* EXPLORE WHAT YOU'RE INTO — Consumer Home V1. Existing category
+          data/destinations completely untouched (same getHomeCategories()
+          fetch, same /businesses?category= links); moved here from its
+          old position at the very bottom of the page (removed there, not
+          duplicated) and restyled with a light/pastel per-category tint
+          (Section 12 — a cyclic presentation array, CATEGORY_TINTS above,
+          no new schema/column, no per-category business logic). This is
+          real business-category taxonomy, not a fabricated interest
+          graph — no "Your Interests" label, nothing saved, nothing
+          personalized. */}
       {categories.length > 0 && (
         <section className="py-5">
           <div className="mx-auto max-w-6xl">
             <div className="mb-3 px-4 sm:px-6">
               <h2 className="text-lg font-semibold tracking-tight text-ink">{exploreSec.heading}</h2>
             </div>
-            <div className="flex gap-2 overflow-x-auto px-4 pb-1 sm:flex-wrap sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {categories.map((c) => (
+            <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 sm:flex-wrap sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {categories.map((c, i) => (
                 <Link
                   key={c.id}
                   href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}${marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`}
-                  className="flex shrink-0 items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-ink transition hover:border-findmi/50 hover:bg-findmi-50"
+                  className={`flex min-w-[132px] shrink-0 items-center rounded-2xl px-4 py-3.5 text-sm font-semibold transition hover:opacity-80 ${CATEGORY_TINTS[i % CATEGORY_TINTS.length]}`}
                 >
                   {c.name}
                 </Link>
@@ -338,6 +402,7 @@ async function HomepageRowSection({
   marketSlug,
   areaSlug,
   isBrandsRow,
+  isMustHavesRow,
 }: {
   row: HomepageRow;
   resolved: Awaited<ReturnType<typeof resolveHomepageRowItems>>;
@@ -359,6 +424,13 @@ async function HomepageRowSection({
    * plain behavior (blank subtitle just hides the subtitle line) rather
    * than silently inheriting Brands We Love's own fallback copy. */
   isBrandsRow?: boolean;
+  /** Consumer Home V1 — true only for a "products" content-type row
+   * (page.tsx's productRowIndices), rendered near the top of the
+   * homepage as the "Must Haves" moment. Adds an eyebrow label only —
+   * same additive Section prop isBrandsRow's "Discover" already uses —
+   * so the founder's own row title/subtitle ("Shop Local" / "Real
+   * products from FindMi businesses") stay exactly as configured. */
+  isMustHavesRow?: boolean;
 }) {
   if (resolved.contentType === "business_showcase") {
     // Discovery Home Composition Reset, task Section 16 — this founder-
@@ -517,6 +589,7 @@ async function HomepageRowSection({
     <Section
       title={row.title}
       subtitle={row.subtitle ?? undefined}
+      eyebrow={isMustHavesRow ? "Must Haves" : undefined}
       viewAllHref="/marketplace"
       impressionPayload={{
         event_name: "discovery_section_impression",

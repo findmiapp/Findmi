@@ -197,10 +197,11 @@ export default function HomeHero({
               FOR YOU / FOR BRANDS action row is removed entirely, not
               replaced with another acquisition module. The hero is now
               pure identity/imagery: headline, description, real photos.
-              Real discovery content (HomeDiscoveryMosaic) follows
-              immediately below the hero in page.tsx; business
-              acquisition moved deeper (closing_cta, near the bottom) —
-              a consumer no longer has to choose a "side" of FindMi
+              Real discovery content (search, Must Haves, Must Dos,
+              Brands, Explore What You're Into) follows immediately below
+              the hero in page.tsx; business acquisition stays deeper
+              (closing_cta, near the bottom) — a consumer no longer has
+              to choose a "side" of FindMi
               before seeing the product. */}
         </div>
 
