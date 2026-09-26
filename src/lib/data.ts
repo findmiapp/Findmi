@@ -2979,7 +2979,7 @@ export type LocationWithCategory = FindmiLocation & {
  * single-element array rather than a bare object (see getUpcomingAtLocation's
  * own identical Array.isArray(row.event) normalization) — never trusted as
  * a plain object without this check. */
-function normalizeCategoryEmbed(raw: unknown): LocationCategoryRef | null {
+export function normalizeCategoryEmbed(raw: unknown): LocationCategoryRef | null {
   const value = Array.isArray(raw) ? (raw[0] ?? null) : raw;
   return (value as LocationCategoryRef | null) ?? null;
 }

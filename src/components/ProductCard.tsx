@@ -7,6 +7,7 @@ import { formatCurrency, formatPrice } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+import WantHeartButton from "./WantHeartButton";
 
 export default function ProductCard({
   product,
@@ -101,6 +102,13 @@ export default function ProductCard({
             <span className="line-clamp-2 text-xs font-medium text-white/50">{product.name}</span>
           </div>
         )}
+        {/* Consumer Experience V1 — "Want" affordance. Collectible-object
+            entity grammar for Products: a compact heart/bookmark overlay,
+            not a full commerce action — this is the "might I love this"
+            signal, never a cart/checkout shortcut. Same shared save
+            infrastructure (guest localStorage, or the account once signed
+            in) every other Save control on the site already uses. */}
+        <WantHeartButton type="product" slug={product.slug} id={product.id} className="absolute right-2 top-2 h-7 w-7" />
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
         {badgeLabel && <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">{badgeLabel}</p>}

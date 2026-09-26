@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { PUBLIC_BUSINESS_COLUMNS, PUBLIC_PRODUCT_COLUMNS } from "@/lib/data";
+import { PUBLIC_BUSINESS_COLUMNS, PUBLIC_PRODUCT_COLUMNS, normalizeCategoryEmbed, type LocationWithCategory } from "@/lib/data";
 import type { Business, FindmiEvent, Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -35,11 +35,22 @@ export async function GET(request: NextRequest) {
   const businessSlugs = parseSlugs(request.nextUrl.searchParams.get("business"));
   const eventSlugs = parseSlugs(request.nextUrl.searchParams.get("event"));
   const productSlugs = parseSlugs(request.nextUrl.searchParams.get("product"));
+  // Consumer Experience V1 / My World — two additive params, same exact
+  // pattern as the three above: `location` resolves lib/saved.ts's
+  // per-device Saved Locations list; `followedBusiness` resolves
+  // lib/followed.ts's per-device guest-follow list (a business slug this
+  // device has already submitted an email to follow — see FollowButton).
+  // Both are real, already-persisted lists; this route just adds the read
+  // side for them, same as it already does for business/event/product.
+  const locationSlugs = parseSlugs(request.nextUrl.searchParams.get("location"));
+  const followedBusinessSlugs = parseSlugs(request.nextUrl.searchParams.get("followedBusiness"));
 
   const supabase = getSupabase();
-  if (!supabase) return NextResponse.json({ businesses: [], events: [], products: [] });
+  if (!supabase) {
+    return NextResponse.json({ businesses: [], events: [], products: [], locations: [], followedBusinesses: [] });
+  }
 
-  const [businessResult, eventResult, productResult] = await Promise.all([
+  const [businessResult, eventResult, productResult, locationResult, followedBusinessResult] = await Promise.all([
     businessSlugs.length
       ? supabase.from("businesses").select(PUBLIC_BUSINESS_COLUMNS).in("slug", businessSlugs).eq("is_demo", false)
       : Promise.resolve({ data: [] as Business[], error: null }),
@@ -53,6 +64,20 @@ export async function GET(request: NextRequest) {
           .in("slug", productSlugs)
           .eq("is_active", true)
       : Promise.resolve({ data: [] as never[], error: null }),
+    locationSlugs.length
+      ? supabase
+          .from("locations")
+          .select("*, category:categories(id, name, slug)")
+          .in("slug", locationSlugs)
+          .eq("is_demo", false)
+      : Promise.resolve({ data: [] as never[], error: null }),
+    followedBusinessSlugs.length
+      ? supabase
+          .from("businesses")
+          .select(PUBLIC_BUSINESS_COLUMNS)
+          .in("slug", followedBusinessSlugs)
+          .eq("is_demo", false)
+      : Promise.resolve({ data: [] as Business[], error: null }),
   ]);
 
   if (businessResult.error) {
@@ -64,6 +89,12 @@ export async function GET(request: NextRequest) {
   if (productResult.error) {
     console.error("[api/saved] products query failed", { message: productResult.error.message });
   }
+  if (locationResult.error) {
+    console.error("[api/saved] locations query failed", { message: locationResult.error.message });
+  }
+  if (followedBusinessResult.error) {
+    console.error("[api/saved] followedBusinesses query failed", { message: followedBusinessResult.error.message });
+  }
 
   const businesses = ((businessResult.data ?? []) as Business[]).map((b) => ({ ...b, categories: [] }));
   const events = (eventResult.data ?? []) as FindmiEvent[];
@@ -72,6 +103,11 @@ export async function GET(request: NextRequest) {
     const business = Array.isArray(r.business) ? (r.business[0] ?? null) : r.business;
     return { ...r, business };
   });
+  const locations = ((locationResult.data ?? []) as (LocationWithCategory & { category: unknown })[]).map((l) => ({
+    ...l,
+    category: normalizeCategoryEmbed(l.category),
+  }));
+  const followedBusinesses = ((followedBusinessResult.data ?? []) as Business[]).map((b) => ({ ...b, categories: [] }));
 
-  return NextResponse.json({ businesses, events, products });
+  return NextResponse.json({ businesses, events, products, locations, followedBusinesses });
 }

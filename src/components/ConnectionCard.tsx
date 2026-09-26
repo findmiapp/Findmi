@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
+import WantHeartButton from "./WantHeartButton";
 import type { EventWithCategories } from "@/lib/types";
 import { cityState, formatDateShort, formatTime, getTemporalLabel } from "@/lib/format";
 import LiveDot from "./LiveDot";
@@ -9,47 +10,60 @@ import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
-/** Discovery Foundation V1 — the Brand -> Place -> Moment connection-card
- * grammar the design package (16-artboard "Recommended System") called
- * for: an event's own real time/place (Moment + Place, same visual
+/** Consumer Experience V1 — the Brand -> Place -> Moment connection-card
+ * grammar: an event's own real time/place (Moment + Place, same visual
  * language HomeEventCard already established — photo, gradient, badge,
  * title, date, location) with a real approved participating business
- * (Brand) surfaced underneath, never fabricated. `brand` is optional and
- * omitted entirely (no placeholder/fake row) when the anchor event
- * genuinely has no approved participant to show — see page.tsx's anchor
- * selection, which never invents one.
+ * (Brand) surfaced underneath, never fabricated. `brand`/`place` are
+ * optional and omitted entirely (no placeholder/fake row) when the anchor
+ * genuinely has no approved participant or no resolvable Location — see
+ * page.tsx's selection, which never invents either.
+ *
+ * Presentation reworked this pass to make the relationship itself
+ * legible (a small "Showing up at" connective line) and to make every
+ * known relationship a real, separate destination — the brand links to
+ * its business profile, the place links to its Location profile when one
+ * exists — rather than plain text. The image block is its own Link (to
+ * the event); the footer's brand/place links are siblings, not nested
+ * inside it, so no link ever ends up inside another link. Selection logic
+ * (which event/brand this receives) is untouched — see page.tsx.
  *
  * Deliberately NOT built on HomeEventCard (protected, commit
  * 1f63a4f — do not touch) even though it reuses that component's exact
  * photo/gradient/badge/glyph treatment for visual consistency: this card
- * adds a second, distinct footer region (the Brand row) that HomeEventCard
- * has no concept of, and is sized as the homepage's one anchor moment
- * (a distinct compositional ROLE — see the design package's Recommended
- * Synthesis) rather than a same-size rail card. */
+ * adds a distinct footer region HomeEventCard has no concept of, and is
+ * sized as the homepage's one anchor moment (a distinct compositional
+ * ROLE) rather than a same-size rail card. */
 export default function ConnectionCard({
   event,
   brand,
+  place,
   analyticsContext,
 }: {
   event: EventWithCategories;
   brand?: { name: string; slug: string; logo_url: string | null } | null;
+  /** A real, resolvable Findmi Location for this specific occurrence
+   * (Recurring Events V2's occurrence->location link) — omitted, never
+   * fabricated, when the occurrence has no first-class Location on file
+   * (legacy text-only venue fields still render as plain text below). */
+  place?: { name: string; slug: string } | null;
   analyticsContext?: AnalyticsPlacementContext;
 }) {
   const category = event.categories[0]?.name ?? null;
-  const location = [event.venue_name, cityState(event.city, event.state)].filter(Boolean).join(" · ");
+  const cityStateLabel = cityState(event.city, event.state);
+  const locationLabel = [event.venue_name, cityStateLabel].filter(Boolean).join(" · ");
   const { live } = getTemporalLabel(event.start_at, event.end_at);
 
   const analyticsFields = buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext);
-  const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });
+  const impressionRef = useViewportImpression<HTMLDivElement>({ event_name: "entity_impression", ...analyticsFields });
 
   return (
-    <Link
-      href={`/event/${event.slug}`}
-      ref={impressionRef}
-      onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
-      className="group block overflow-hidden rounded-3xl bg-black/5 shadow-sm transition active:scale-[0.99]"
-    >
-      <div className="relative aspect-[4/5] w-full sm:aspect-[2.35/1]">
+    <div ref={impressionRef} className="overflow-hidden rounded-3xl bg-black/5 shadow-sm">
+      <Link
+        href={`/event/${event.slug}`}
+        onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
+        className="group relative block aspect-[4/5] w-full sm:aspect-[2.35/1]"
+      >
         {event.cover_image_url ? (
           <SupabaseImage
             src={event.cover_image_url}
@@ -84,6 +98,11 @@ export default function ConnectionCard({
         )}
 
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-5 sm:p-6">
+          {brand && (
+            <p className="text-xs font-bold uppercase tracking-wide text-white/70 sm:text-sm">
+              {brand.name} · Showing up at
+            </p>
+          )}
           <h2 className="line-clamp-2 font-display text-2xl font-bold leading-snug tracking-tight text-white sm:text-3xl">
             {event.name}
           </h2>
@@ -93,43 +112,53 @@ export default function ConnectionCard({
               {formatDateShort(event.start_at)} · {formatTime(event.start_at)}
             </span>
           </p>
-          {location && (
+          {locationLabel && (
             <p className="flex items-start gap-1.5 text-sm text-white/80 sm:text-base">
               <PinGlyph className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="line-clamp-2">{location}</span>
+              <span className="line-clamp-2">{locationLabel}</span>
             </p>
           )}
         </div>
-      </div>
+      </Link>
 
-      {/* Brand footer — the "Brand" leg of the connection grammar. Omitted
+      {/* Footer — the rest of the connection grammar as real, separate
+          destinations (never nested inside the image Link above): the
+          Brand to its business profile, the Place to its Location profile
+          when one exists, plus the "Want to do" save action. Omitted
           entirely (not a blank/placeholder row) when the anchor has no
-          real approved participant, per the task's data rules. */}
+          real approved participant or resolvable Location. */}
       <div className="flex items-center justify-between gap-3 bg-white px-4 py-3.5 sm:px-6">
-        {brand ? (
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-black/5">
-              {brand.logo_url ? (
-                <SupabaseImage src={brand.logo_url} alt="" fill sizes="32px" className="object-cover" />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center text-[11px] font-bold text-ink/40">
-                  {brand.name.slice(0, 1).toUpperCase()}
-                </span>
-              )}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {brand ? (
+            <Link href={`/business/${brand.slug}`} className="flex min-w-0 items-center gap-2.5 group/brand">
+              <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-black/5">
+                {brand.logo_url ? (
+                  <SupabaseImage src={brand.logo_url} alt="" fill sizes="32px" className="object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-[11px] font-bold text-ink/40">
+                    {brand.name.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+              </span>
+              <span className="truncate text-sm font-semibold text-ink group-hover/brand:underline">{brand.name}</span>
+            </Link>
+          ) : (
+            <span className="truncate text-sm text-ink/50">
+              {formatDateShort(event.start_at)} · {formatTime(event.start_at)}
             </span>
-            <span className="truncate text-sm font-semibold text-ink">{brand.name}</span>
-          </div>
-        ) : (
-          <span className="truncate text-sm text-ink/50">
-            {formatDateShort(event.start_at)} · {formatTime(event.start_at)}
-          </span>
-        )}
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-findmi-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-findmi-700">
-          View details
-          <ChevronGlyph className="h-2.5 w-2.5" />
-        </span>
+          )}
+          {place && (
+            <>
+              <span className="text-ink/25">·</span>
+              <Link href={`/location/${place.slug}`} className="truncate text-sm text-ink/55 hover:text-ink hover:underline">
+                {place.name}
+              </Link>
+            </>
+          )}
+        </div>
+        <WantHeartButton type="event" slug={event.slug} id={event.id} className="h-9 w-9 shrink-0 !bg-findmi-50 !text-findmi-700" />
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -152,14 +181,6 @@ function PinGlyph({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function ChevronGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
