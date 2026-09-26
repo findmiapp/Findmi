@@ -114,9 +114,14 @@ export default function HomeEventCard({
           </span>
         </p>
         {location && (
-          <p className="flex items-center gap-1.5 text-sm text-white/80">
-            <PinGlyph className="h-4 w-4 shrink-0" />
-            <span className="truncate">{location}</span>
+          // Must Dos Event Card Visual Restoration pass — line-clamp-2
+          // (was a hard single-line truncate) so "Venue Name · City,
+          // State" gets a real second line on a wide card instead of
+          // being cut mid-word; only relevant now that the homepage's
+          // own wrapper is wide enough for it to matter (see page.tsx).
+          <p className="flex items-start gap-1.5 text-sm text-white/80">
+            <PinGlyph className="mt-0.5 h-4 w-4 shrink-0" />
+            <span className="line-clamp-2">{location}</span>
           </p>
         )}
       </div>

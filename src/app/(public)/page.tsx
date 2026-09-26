@@ -281,8 +281,22 @@ export default async function HomePage({
         {nextEvents.length > 0 && (
           <div className="mt-4">
             <HorizontalScroller>
+              {/* Must Dos Event Card Visual Restoration pass — the prior
+                  ~38vw/170px wrapper (an over-correction from Composition
+                  Reset) shrank these into unreadable thumbnails that
+                  truncated nearly every field. HomeEventCard's own
+                  full-bleed visual grammar (photo, gradient, badge,
+                  title, date, location — see that component) was never
+                  the problem; only this wrapper's width was. Restored to
+                  a substantial card (~80vw on mobile, capped so the next
+                  card visibly peeks) using the exact same sm:+ width
+                  (`sm:w-72`) the founder-managed "events" Homepage Row
+                  already uses for this identical card elsewhere in this
+                  file — reused, not reinvented. Event selection/query
+                  (`nextEvents`, still the same single already-fetched
+                  query) is completely unchanged. */}
               {nextEvents.slice(0, 6).map((event, i) => (
-                <div key={event.id} className="w-[38vw] max-w-[170px] shrink-0 sm:w-48">
+                <div key={event.id} className="w-[80vw] max-w-[330px] shrink-0 sm:w-72">
                   <HomeEventCard
                     event={event}
                     analyticsContext={{ pageType: "home", placement: "homepage_happening", position: i + 1 }}
