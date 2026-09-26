@@ -11,6 +11,23 @@ import {
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import LiveDot from "./LiveDot";
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+/** True when `iso`'s local wall-clock time in `timezone` is exactly
+ * midnight (00:00) — Midnight Display Polish pass. Used ONLY to decide
+ * how an occurrence's end timestamp should be represented in the DATE
+ * LABEL below; the actual stored timestamp is never touched, and the
+ * TIME line always renders the real end time regardless (so "ends at
+ * midnight" still correctly shows "12:00 AM"). */
+function isExactlyMidnightInZone(iso: string, timezone: string): boolean {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(
+    new Date(iso)
+  );
+  const hour = parts.find((p) => p.type === "hour")?.value;
+  const minute = parts.find((p) => p.type === "minute")?.value;
+  return hour === "00" && minute === "00";
+}
+
 /** One card in the public event page's "Upcoming Dates" row — Recurring
  * Events V2 makes this the occurrence SELECTOR for the whole page (see
  * EventOccurrenceContext), not an independent ticket link. Clicking/
@@ -41,6 +58,16 @@ export default function EventOccurrenceCard({ occurrence }: { occurrence: EventO
   const now = Date.now();
   const live = !cancelled && new Date(occurrence.start_at).getTime() <= now && new Date(occurrence.end_at).getTime() > now;
 
+  // Midnight Display Polish: an occurrence ending exactly at local midnight
+  // (e.g. 11:30 AM -> 12:00 AM the next day) reads to a visitor as "the
+  // day it started," not a two-day span — so for DATE-LABEL purposes only,
+  // roll the effective end back to the prior local calendar day. The real
+  // occurrence.end_at is never touched, and the TIME line below always
+  // renders the true end time (still "12:00 AM") regardless.
+  const dateLabelEndIso = isExactlyMidnightInZone(occurrence.end_at, occurrence.timezone)
+    ? new Date(new Date(occurrence.end_at).getTime() - ONE_DAY_MS).toISOString()
+    : occurrence.end_at;
+
   // A multi-day occurrence (its own start/end fall on different calendar
   // days in ITS OWN timezone — e.g. an overnight date) gets both bounds
   // ("Sep 25 – Sep 26"); a same-day occurrence gets the fuller
@@ -49,11 +76,11 @@ export default function EventOccurrenceCard({ occurrence }: { occurrence: EventO
   // real occurrence data already available on this object.
   const sameDay =
     formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone) ===
-      formatMonthAbbrevInZone(occurrence.end_at, occurrence.timezone) &&
-    formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone) === formatDayOfMonthInZone(occurrence.end_at, occurrence.timezone);
+      formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone) &&
+    formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone) === formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone);
   const dateLabel = sameDay
     ? formatDateShortInZone(occurrence.start_at, occurrence.timezone)
-    : `${formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone)} ${formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone)} – ${formatMonthAbbrevInZone(occurrence.end_at, occurrence.timezone)} ${formatDayOfMonthInZone(occurrence.end_at, occurrence.timezone)}`;
+    : `${formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone)} ${formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone)} – ${formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone)} ${formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone)}`;
   // Time-of-day only for both bounds, regardless of same-day/multi-day —
   // the date line above already conveys any day-crossing, so this line
   // never needs to fall back to a combined date+time string the way
