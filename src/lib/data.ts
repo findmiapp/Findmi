@@ -1376,7 +1376,7 @@ function applyEventTextFilters<
  * plain FindmiEvent fields shows the right concrete date/place for a
  * recurring event without needing its own occurrence-aware rewrite. A
  * shallow clone; the underlying event row/id/slug are untouched. */
-function applyOccurrenceOverride(
+export function applyOccurrenceOverride(
   event: FindmiEvent,
   occurrence: EventOccurrence | null,
   location: FindmiLocation | null

@@ -2,20 +2,24 @@ import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
+import ConnectionCard from "@/components/ConnectionCard";
 import HomeWeather from "@/components/HomeWeather";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
 import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
 import {
+  applyOccurrenceOverride,
   attachEventCategories,
+  getBusinessesForEvent,
   getCategoriesForDynamicBusinessRow,
   getConsumerVisibleMarketsWithAreas,
+  getEffectiveUpcomingEvents,
   getFeaturedBusinesses,
   getHomeCategories,
   getMarketAreaLabel,
   getNextAppearanceHints,
-  getUpcomingEvents,
+  getOccurrenceBusinessRosters,
 } from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
 import {
@@ -77,20 +81,62 @@ export default async function HomePage({
   // remains, now feeding the homepage's "Must Dos" events rail instead.
   // Net effect: 4 fewer real database queries per homepage render, not a
   // new one.
-  const [categories, nextRaw, heroFallbackBrands, homepageRows, siteSections, markets] = await Promise.all([
+  const [categories, effectiveEventRows, heroFallbackBrands, homepageRows, siteSections, markets] = await Promise.all([
     getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
-    // Consumer Event Market Filtering V1 — marketSlug scopes by every
-    // candidate occurrence's EFFECTIVE physical Market (see
-    // lib/event-markets.ts), never business Market entitlement. Absent =
-    // today's unfiltered behavior, unchanged.
-    getUpcomingEvents(10, "anytime", marketSlug, areaSlug),
+    // Discovery Foundation V1 — the exact same query getUpcomingEvents(10,
+    // "anytime", ...) used to run inline (bounds=null IS "anytime" — see
+    // getDiscoveryWindowBounds), called directly here instead so this
+    // render can also read each row's own `occurrence` (for the anchor's
+    // Brand lookup below) rather than only the flattened FindmiEvent
+    // getUpcomingEvents returns. Same real chronological data, same
+    // Market/Area scoping, zero additional queries versus before.
+    getEffectiveUpcomingEvents(null, { marketSlug, areaSlug: marketSlug ? areaSlug : undefined }),
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
   ]);
 
-  const nextEvents = await attachEventCategories(nextRaw);
+  // DISCOVERY FOUNDATION V1 — the homepage's one prominent anchor.
+  // Deterministic, explainable rule: the single soonest real thing in the
+  // exact same eligible set Must Dos already shows below (real,
+  // is_demo=false, publication_status='live', not yet ended, respecting
+  // the current Market/Area filter, occurrence-aware so a currently-live
+  // occurrence of a recurring event outranks a same-day one that hasn't
+  // started) — rows already arrive sorted by effective start ascending
+  // (see getEffectiveUpcomingEvents). No editorial override, no
+  // hardcoded business/event: whichever real event is soonest wins,
+  // whatever it is on a given day. Excluded from the Must Dos rail below
+  // (restRows) so the same event never appears twice on the page.
+  const anchorRow = effectiveEventRows[0] ?? null;
+  const restRows = effectiveEventRows.slice(1, 11);
+  const nextRaw = restRows.map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
+  const anchorEventRaw = anchorRow
+    ? applyOccurrenceOverride(anchorRow.event, anchorRow.occurrence, anchorRow.occurrenceLocation)
+    : null;
+
+  const categorized = await attachEventCategories(anchorEventRaw ? [anchorEventRaw, ...nextRaw] : nextRaw);
+  const anchorEvent = anchorEventRaw ? categorized[0] : null;
+  const nextEvents = anchorEventRaw ? categorized.slice(1) : categorized;
+
+  // The anchor's Brand — a real approved participant only, never
+  // fabricated. Occurrence-based events (Recurring Events V2) are judged
+  // by event_occurrence_businesses (authoritative for that specific
+  // date), never the legacy event_businesses table; a legacy one-time
+  // event falls back to getBusinessesForEvent exactly as the event page
+  // itself does. Featured participant wins the tie-break when more than
+  // one is approved; otherwise the first (name-ordered, per each query's
+  // own ordering). No brand row at all — not a placeholder — when an
+  // anchor genuinely has zero approved participants.
+  const anchorBusinesses = anchorRow
+    ? anchorRow.occurrence
+      ? ((await getOccurrenceBusinessRosters([anchorRow.occurrence.id]))[anchorRow.occurrence.id] ?? [])
+      : await getBusinessesForEvent(anchorRow.event.id)
+    : [];
+  const anchorBrandRecord = anchorBusinesses.find((b) => b.featured) ?? anchorBusinesses[0] ?? null;
+  const anchorBrand = anchorBrandRecord
+    ? { name: anchorBrandRecord.name, slug: anchorBrandRecord.slug, logo_url: anchorBrandRecord.logo_url }
+    : null;
 
   // Each row's content is resolved in parallel — one query per row
   // (dynamic mode) or a curated-id lookup (curated mode), same shared
@@ -233,6 +279,22 @@ export default async function HomePage({
       <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
         <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
       </div>
+
+      {/* DISCOVERY FOUNDATION V1 — the homepage's one prominent, genuinely
+          upcoming (or currently live) real-world discovery: a Brand ->
+          Place -> Moment connection card (see anchorEvent/anchorBrand
+          selection above and ConnectionCard.tsx). Renders nothing when
+          there is no eligible real event at all — an honest empty state,
+          never a placeholder. */}
+      {anchorEvent && (
+        <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+          <ConnectionCard
+            event={anchorEvent}
+            brand={anchorBrand}
+            analyticsContext={{ pageType: "home", placement: "homepage_anchor" }}
+          />
+        </div>
+      )}
 
       {/* MUST HAVES — Consumer Home V1's real-data "things to have"
           surface. Real products already resolved above for this exact
