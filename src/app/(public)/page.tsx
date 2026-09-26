@@ -2,7 +2,6 @@ import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
-import CompactEventCard from "@/components/CompactEventCard";
 import HomeWeather from "@/components/HomeWeather";
 import HomeHero from "@/components/HomeHero";
 import Section, { HorizontalScroller } from "@/components/Section";
@@ -272,13 +271,9 @@ export default async function HomePage({
       )}
 
       {/* MUST DOS / WHAT'S HAPPENING — the same real chronological event
-          query as before (unchanged). Compact Event Carousel pass — cards
-          switched from HomeEventCard's tall aspect-[4/5] treatment to the
-          new short/wide CompactEventCard (see that file's own doc
-          comment); HomeEventCard itself is untouched and still used by
-          any founder-configured "events" Homepage Row (see
-          HomepageRowSection below) and everywhere else it already
-          rendered. AreaPicker/Today/This Weekend controls untouched. */}
+          query as before. Event-card geometry/treatment (HomeEventCard)
+          and the AreaPicker/Today/This Weekend controls are completely
+          untouched. */}
       <div className="mx-auto max-w-6xl pt-8">
         <div className="px-4 sm:px-6">
           <p className="mb-1 text-xs font-bold uppercase tracking-wide text-findmi-700">Must Dos</p>
@@ -324,14 +319,10 @@ export default async function HomePage({
         </div>
         {nextEvents.length > 0 && (
           <div className="mt-4">
-            {/* snap-x/snap-mandatory/scroll-smooth added only via this
-                call's own className override (HorizontalScroller's
-                existing extensibility point) — the shared component
-                itself, and every other rail using it, is untouched. */}
-            <HorizontalScroller className="snap-x snap-mandatory scroll-smooth">
+            <HorizontalScroller>
               {nextEvents.slice(0, 6).map((event, i) => (
-                <div key={event.id} className="w-[80vw] max-w-[330px] shrink-0 snap-start sm:w-72">
-                  <CompactEventCard
+                <div key={event.id} className="w-[80vw] max-w-[330px] shrink-0 sm:w-72">
+                  <HomeEventCard
                     event={event}
                     analyticsContext={{ pageType: "home", placement: "homepage_happening", position: i + 1 }}
                   />
