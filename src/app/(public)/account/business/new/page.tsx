@@ -118,8 +118,8 @@ export default async function AddBusinessPage({
         </p>
       ) : (
         <p className="mt-2 text-sm text-ink/60">
-          You&rsquo;ll own and manage it right away, and Findmi will review it before it appears in discovery. Choose
-          Free or Pro below — Free never requires payment.
+          Get started free — no credit card required. You&rsquo;ll own and manage your business right away, and
+          Findmi will review it before it appears in discovery. Pro is available anytime below if you want more.
         </p>
       )}
 
@@ -220,19 +220,21 @@ export default async function AddBusinessPage({
           </label>
 
           {/* Plan choice — Native Business Onboarding Pass 3, restyled by
-              the Pro Positioning pass to the same hierarchy as /join:
-              Pro first/dominant with FindMi Here spotlighted, Free
-              smaller/quieter directly below as a genuinely selectable
-              option. Join Conversion Copy Cleanup pass — dropped the
-              "basic index"/"basic listing" framing and the strike-through
-              denial line, which had gone stale after Free gained About/
-              Website/Instagram/3 appearances/5 markets; Free now states
-              its own real benefits instead. Radio values/names and the
-              default selection logic are UNCHANGED — Free stays
-              defaultChecked unless ?plan=pro was passed in (never
-              auto-selecting a paid plan just because it's now visually
-              first) — so createMemberBusiness (untouched) submits
-              identically to before. Every bullet below is a CURRENT
+              the Pro Positioning pass to match /join's card treatment,
+              then flipped by the P0 Safe-to-Share Acquisition pass: Free
+              is now first/dominant for a normal, no-intent visitor, with
+              Pro first/dominant only when `wantsPro` (explicit ?plan=pro
+              or a round-tripped plan_choice) is true — see ProPlanOption/
+              FreePlanOption below. Join Conversion Copy Cleanup pass —
+              dropped the "basic index"/"basic listing" framing and the
+              strike-through denial line, which had gone stale after Free
+              gained About/Website/Instagram/3 appearances/5 markets; Free
+              now states its own real benefits instead. Radio values/names
+              and the default selection logic are UNCHANGED — whichever
+              plan is dominant is also the one defaultChecked, and
+              `wantsPro` alone still decides which that is — so
+              createMemberBusiness (untouched) submits identically to
+              before. Every bullet below is a CURRENT
               entitlement (see account/business/actions.ts's
               PROFILE_FREE_COLUMNS/PROFILE_PRO_COLUMNS/LINKS_COLUMNS and
               business/[slug]/page.tsx's own `pro &&` gates) — nothing
@@ -260,82 +262,29 @@ export default async function AddBusinessPage({
           ) : (
             <div>
               <span className="mb-1.5 block text-sm font-medium text-ink">Choose your plan</span>
+              {/* P0 Safe-to-Share Acquisition pass — the dominant/quiet
+                  visual treatment and render order now both follow
+                  `wantsPro` instead of Pro always being first/dominant.
+                  Explicit Pro intent (?plan=pro, or a rejected
+                  resubmission's own round-tripped plan_choice) is fully
+                  preserved: wantsPro still drives defaultChecked exactly
+                  as before, and now ALSO keeps Pro visually dominant/first
+                  for that one visitor — nothing about that path changed.
+                  A normal, no-intent visitor (the common case) now sees
+                  Free first and dominant, with "$99/year" no longer the
+                  first monetary message on the page. */}
               <div className="flex flex-col gap-3">
-                {/* Pro — dominant choice, same visual weight/aqua glow as
-                    /join's ProCard, FindMi Here spotlighted inside it. */}
-                <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
-                    <input type="radio" name="plan_choice" value="pro" defaultChecked={wantsPro} className="h-4 w-4 accent-findmi" />
-                  </div>
-                  <p className="flex items-baseline gap-1">
-                    <span className="font-display text-2xl font-bold tracking-tight text-ink">$99</span>
-                    <span className="text-xs font-medium text-ink/45">/ year</span>
-                  </p>
-
-                  {/* Final Conversion Consistency pass — Free can also add/
-                      manage appearances now (Passes 1-2), so this no longer
-                      frames "adding appearances" as the Pro-exclusive
-                      benefit — the real Pro distinction is the full
-                      schedule showing publicly (Free/Pro Entitlement pass:
-                      Free's public profile shows its next 3, Pro shows the
-                      full schedule). Also drops the "Featured with Pro"
-                      eyebrow (implied FindMi itself features the
-                      business), matching join/page.tsx's ProCard. */}
-                  <div className="rounded-2xl bg-findmi-50 p-3">
-                    <p className="text-sm font-bold text-ink">Findmi Here</p>
-                    <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers where to find you next.</p>
-                    <p className="mt-1 text-xs text-ink/60">
-                      Your full upcoming schedule shows on your public profile — not just your next few appearances.
-                    </p>
-                  </div>
-
-                  {/* Canonical Plan Config pass — "Gallery + products" is
-                      now just "Gallery": Products became a Free
-                      capability in the Free/Pro Entitlement Realignment
-                      pass, so bundling it into a Pro-only bullet was
-                      stale and actively wrong. Every other bullet here is
-                      untouched. */}
-                  <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
-                    <PlanBullet>Full Findmi Here schedule</PlanBullet>
-                    <PlanBullet>Gallery</PlanBullet>
-                    <PlanBullet>Contact info + customer inquiries</PlanBullet>
-                    <PlanBullet>Business updates</PlanBullet>
-                    <PlanBullet>Custom Findmi URL</PlanBullet>
-                    <PlanBullet>Expanded discovery</PlanBullet>
-                  </ul>
-                </label>
-
-                {/* Free — small, quiet option directly below Pro, not an
-                    equal competing card. Join Conversion Copy Cleanup pass
-                    — corrected to reflect Free's real entitlements (About/
-                    Website/Instagram/3 appearances/5 markets), not the
-                    older, narrower "basic listing" framing. */}
-                <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-ink/70">Prefer to start free?</p>
-                    <input type="radio" name="plan_choice" value="free" defaultChecked={!wantsPro} className="h-4 w-4 accent-findmi" />
-                  </div>
-                  <p className="flex items-baseline gap-1.5">
-                    <span className="text-sm font-bold text-ink">Findmi Free</span>
-                    <span className="text-sm text-ink/45">· $0</span>
-                  </p>
-                  <p className="text-xs text-ink/60">Create your Findmi page and show your next 3 appearances.</p>
-                  <ul className="mt-1 flex flex-col gap-1 text-xs text-ink/50">
-                    <PlanBullet>Business profile + About</PlanBullet>
-                    <PlanBullet>Website + Instagram</PlanBullet>
-                    <PlanBullet>Next 3 upcoming appearances</PlanBullet>
-                    <PlanBullet>Up to 5 markets</PlanBullet>
-                    <PlanBullet>Findmi search &amp; discovery</PlanBullet>
-                  </ul>
-                  {/* Canonical Plan Config pass — "products" removed:
-                      Products is a Free capability now (Free/Pro
-                      Entitlement Realignment pass), so naming it as a
-                      reason to upgrade was stale and actively wrong. */}
-                  <p className="mt-1 text-xs text-ink/45">
-                    Upgrade anytime for your full schedule, custom Findmi URL and more.
-                  </p>
-                </label>
+                {wantsPro ? (
+                  <>
+                    <ProPlanOption dominant />
+                    <FreePlanOption dominant={false} />
+                  </>
+                ) : (
+                  <>
+                    <FreePlanOption dominant />
+                    <ProPlanOption dominant={false} />
+                  </>
+                )}
               </div>
               <p className="mt-1.5 text-xs text-ink/40">$99 for one year of Findmi Pro. No automatic renewal.</p>
 
@@ -425,6 +374,133 @@ export default async function AddBusinessPage({
         </form>
       </div>
     </div>
+  );
+}
+
+/** P0 Safe-to-Share Acquisition pass — Pro's plan-chooser option,
+ * extracted so its dominant/quiet visual treatment can be driven by a
+ * prop (see the parent's own comment on why: whichever plan the visitor
+ * actually wants — explicit ?plan=pro, or the normal no-intent case —
+ * gets both the dominant styling AND the pre-selected radio). Content is
+ * byte-identical to the plan card that always rendered here before this
+ * pass; only the dominant/quiet class sets and defaultChecked now vary
+ * with a prop instead of being hardcoded to "always dominant." */
+function ProPlanOption({ dominant }: { dominant: boolean }) {
+  if (!dominant) {
+    return (
+      <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-ink/70">Want deeper tools?</p>
+          <input type="radio" name="plan_choice" value="pro" className="h-4 w-4 accent-findmi" />
+        </div>
+        <p className="flex items-baseline gap-1.5">
+          <span className="text-sm font-bold text-ink">Findmi Pro</span>
+          <span className="text-sm text-ink/45">· $99/year</span>
+        </p>
+        <p className="text-xs text-ink/60">Full Findmi Here schedule, gallery, contact info and more.</p>
+      </label>
+    );
+  }
+  return (
+    <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
+        <input type="radio" name="plan_choice" value="pro" defaultChecked className="h-4 w-4 accent-findmi" />
+      </div>
+      <p className="flex items-baseline gap-1">
+        <span className="font-display text-2xl font-bold tracking-tight text-ink">$99</span>
+        <span className="text-xs font-medium text-ink/45">/ year</span>
+      </p>
+
+      {/* Final Conversion Consistency pass — Free can also add/manage
+          appearances now (Passes 1-2), so this no longer frames "adding
+          appearances" as the Pro-exclusive benefit — the real Pro
+          distinction is the full schedule showing publicly (Free/Pro
+          Entitlement pass: Free's public profile shows its next 3, Pro
+          shows the full schedule). Also drops the "Featured with Pro"
+          eyebrow (implied FindMi itself features the business), matching
+          join/page.tsx's ProCard. */}
+      <div className="rounded-2xl bg-findmi-50 p-3">
+        <p className="text-sm font-bold text-ink">Findmi Here</p>
+        <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers where to find you next.</p>
+        <p className="mt-1 text-xs text-ink/60">
+          Your full upcoming schedule shows on your public profile — not just your next few appearances.
+        </p>
+      </div>
+
+      {/* Canonical Plan Config pass — "Gallery + products" is now just
+          "Gallery": Products became a Free capability in the Free/Pro
+          Entitlement Realignment pass, so bundling it into a Pro-only
+          bullet was stale and actively wrong. Every other bullet here is
+          untouched. */}
+      <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
+        <PlanBullet>Full Findmi Here schedule</PlanBullet>
+        <PlanBullet>Gallery</PlanBullet>
+        <PlanBullet>Contact info + customer inquiries</PlanBullet>
+        <PlanBullet>Business updates</PlanBullet>
+        <PlanBullet>Custom Findmi URL</PlanBullet>
+        <PlanBullet>Expanded discovery</PlanBullet>
+      </ul>
+    </label>
+  );
+}
+
+/** P0 Safe-to-Share Acquisition pass — Free's plan-chooser option, same
+ * extraction/reasoning as ProPlanOption above. The quiet-treatment
+ * content (used when an explicit Pro visitor has Pro dominant instead) is
+ * byte-identical to the small Free card that always rendered here before
+ * this pass. The dominant treatment is new: Free previously never had a
+ * "led with" presentation at all, since Pro was always dominant — this
+ * mirrors Pro's own dominant layout (spotlight box + fuller bullet list)
+ * so Free reads as a complete, legitimate primary offer, not a shrunken
+ * fallback. No feature/entitlement claim here is new: every bullet is the
+ * same current Free entitlement the quiet version already listed. */
+function FreePlanOption({ dominant }: { dominant: boolean }) {
+  if (!dominant) {
+    return (
+      <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-ink/70">Prefer to start free?</p>
+          <input type="radio" name="plan_choice" value="free" className="h-4 w-4 accent-findmi" />
+        </div>
+        <p className="flex items-baseline gap-1.5">
+          <span className="text-sm font-bold text-ink">Findmi Free</span>
+          <span className="text-sm text-ink/45">· $0 · No credit card required</span>
+        </p>
+        <p className="text-xs text-ink/60">Create your Findmi page and show your next 3 appearances.</p>
+        {/* Canonical Plan Config pass — "products" removed: Products is a
+            Free capability now (Free/Pro Entitlement Realignment pass),
+            so naming it as a reason to upgrade was stale and actively
+            wrong. */}
+        <p className="mt-1 text-xs text-ink/45">Upgrade anytime for your full schedule, custom Findmi URL and more.</p>
+      </label>
+    );
+  }
+  return (
+    <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Get Started Free</p>
+        <input type="radio" name="plan_choice" value="free" defaultChecked className="h-4 w-4 accent-findmi" />
+      </div>
+      <p className="flex items-baseline gap-1.5">
+        <span className="font-display text-2xl font-bold tracking-tight text-ink">$0</span>
+        <span className="text-xs font-medium text-ink/45">No credit card required</span>
+      </p>
+
+      <div className="rounded-2xl bg-findmi-50 p-3">
+        <p className="text-sm font-bold text-ink">Your Findmi page, live today</p>
+        <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers who you are and where you&rsquo;ll be next.</p>
+        <p className="mt-1 text-xs text-ink/60">Create your business page now — upgrade anytime, no pressure.</p>
+      </div>
+
+      <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
+        <PlanBullet>Business profile + About</PlanBullet>
+        <PlanBullet>Website + Instagram</PlanBullet>
+        <PlanBullet>Next 3 upcoming appearances</PlanBullet>
+        <PlanBullet>Up to 5 markets</PlanBullet>
+        <PlanBullet>Findmi search &amp; discovery</PlanBullet>
+      </ul>
+    </label>
   );
 }
 

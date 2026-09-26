@@ -212,23 +212,29 @@ export default async function JoinPage({
         </div>
       </div>
 
-      {/* FINDMI PRO — the dominant, primary product section. */}
+      {/* FREE — P0 Safe-to-Share Acquisition pass: now the primary,
+          first-rendered product section (was previously "secondary
+          fallback" below Pro). Pro still exists in full immediately after
+          it and remains one scroll away, never removed. */}
+      {free.visible && (
+        // id="free" — the Hero's "Explore Free" tile anchors here.
+        <div id="free" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-10 sm:px-6 sm:pt-12">
+          <FreeSection card={free} ctaHref={freeCtaHref} />
+        </div>
+      )}
+
+      {/* FINDMI PRO — still the full, complete offer, now presented after
+          Free rather than before it. Explicit Pro intent (the #pro anchor,
+          proCtaHref, ?plan=pro downstream on account/business/new) is
+          entirely unchanged — a visitor who wants Pro first can still jump
+          straight to it from the hero's "Explore Pro" tile. */}
       {proCard.visible && (
         // id="pro" — the Hero's "Explore Pro" tile anchors here (/Join
         // Hero Composition pass). scroll-mt clears the fixed mobile
         // header (h-14, plus the admin toolbar's own top-7 offset when
         // present) so the jump doesn't land the card flush under it.
-        <div id="pro" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-10 sm:px-6 sm:pt-12">
+        <div id="pro" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-6 sm:px-6">
           <ProCard card={proCard} extra={proExtra} ctaHref={proCtaHref} />
-        </div>
-      )}
-
-      {/* FREE — secondary fallback. Visibly quieter than Pro, but still
-          positive/legitimate. */}
-      {free.visible && (
-        // id="free" — the Hero's "Explore Free" tile anchors here.
-        <div id="free" className="mx-auto max-w-xl scroll-mt-24 px-4 pt-6 sm:px-6">
-          <FreeSection card={free} ctaHref={freeCtaHref} />
         </div>
       )}
 
@@ -322,73 +328,71 @@ function HeroHeadline({ heading }: { heading: string }) {
   );
 }
 
-/** /Join Hero Composition pass — the new "Choose Your Path" module:
- * PROMISE (headline/body above) -> CHOOSE YOUR PATH (these two tiles) ->
- * PROOF (the real Native Rose showcase carousel below). Compact
- * navigation tiles, not
- * pricing cards — they anchor down into the page's own full Pro/Free
- * sections (#pro/#free) rather than starting signup immediately; the
- * actual conversion CTAs/destinations live only in those full sections
- * (ProCard/FreeSection, both untouched by this pass). Price/context
- * values reuse the same resolved CMS fields those full sections already
- * use (proCard.price/priceSuffix, free.price) rather than hardcoding a
- * second copy of them; the short comparison phrases below have no
- * existing CMS field to map to and are small fixed presentation
- * microcopy, kept code-level per this pass's own scope instruction rather
- * than wiring up new CMS fields for two short marketing phrases. */
-/** /Join hero tile micro-fix pass — the prior "$0 · No card required" pass
- * shrank "$0" along with the qualifier, which lost the price's visual
- * prominence entirely. Fixed by keeping "$0" at the exact same font-size/
- * weight/tracking as Pro's price and placing the qualifier as its own
- * smaller two-line block beside it (no dot separator).
+/** /Join Hero Composition pass — the "Choose Your Path" module: PROMISE
+ * (headline/body above) -> CHOOSE YOUR PATH (these two tiles) -> PROOF
+ * (the real Native Rose showcase carousel below). Compact navigation
+ * tiles, not pricing cards — they anchor down into the page's own full
+ * Pro/Free sections (#pro/#free) rather than starting signup immediately;
+ * the actual conversion CTAs/destinations live only in those full
+ * sections (ProCard/FreeSection, both untouched by this pass beyond their
+ * own render order below). Price/context values reuse the same resolved
+ * CMS fields those full sections already use (proCard.price/priceSuffix,
+ * free.price) rather than hardcoding a second copy of them.
  *
- * Both tiles now share a min-height per row (price row: min-h-7, matching
- * text-lg's own 1.75rem line-height; description row: min-h-8, room for
- * up to 2 lines of text-xs) instead of one-off margins, so the label/
- * price/description/Explore rows start at the same vertical position on
- * both cards regardless of the Free price row's extra qualifier line —
- * the four-row rhythm the pass asked for. */
+ * P0 Safe-to-Share Acquisition pass — Free now renders FIRST (left tile)
+ * with the dominant visual treatment (the aqua-tinted card previously
+ * reserved for Pro), and Pro renders second, quieter. This is a straight
+ * swap of the two tiles' content/styling, not a new layout: the grid,
+ * anchors (#free/#pro still exist below unchanged), and both full
+ * sections are untouched. Free's own copy is now the exact acquisition
+ * message this pass requires ("Get Started Free" / "No credit card
+ * required") instead of the previous quieter "Start free" / "No card
+ * required" framing. */
 function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: ResolvedJoinFreeCard }) {
   const proPrice = [proCard.price, proCard.priceSuffix].filter(Boolean).join("");
   return (
     <div className="mt-6 grid grid-cols-2 gap-2.5">
-      <Link
-        href="#pro"
-        className="rounded-2xl border border-findmi/30 bg-findmi-50 p-3.5 transition hover:border-findmi/50"
-      >
-        <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
-        <div className="mt-1 flex min-h-7 items-center">
-          <p className="font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
-        </div>
-        <p className="mt-1 min-h-8 text-xs text-ink/60">Your complete Findmi page + full schedule</p>
-        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-findmi-700">
-          Explore Pro <span aria-hidden>→</span>
-        </p>
-      </Link>
-      <Link href="#free" className="rounded-2xl border border-black/10 bg-white p-3.5 transition hover:border-black/20">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Start free</p>
+      <Link href="#free" className="rounded-2xl border border-findmi/30 bg-findmi-50 p-3.5 transition hover:border-findmi/50">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Get Started Free</p>
         <div className="mt-1 flex min-h-7 items-center gap-1.5">
           <p className="font-display text-lg font-bold tracking-tight text-ink">{free.price}</p>
           <span className="flex flex-col text-[11px] font-medium leading-[1.15] text-ink/50">
-            <span>No card</span>
+            <span>No credit card</span>
             <span>required</span>
           </span>
         </div>
         <p className="mt-1 min-h-8 text-xs text-ink/60">Your business page + next 3 appearances</p>
-        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
+        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-findmi-700">
           Explore Free <span aria-hidden>→</span>
+        </p>
+      </Link>
+      <Link
+        href="#pro"
+        className="rounded-2xl border border-black/10 bg-white p-3.5 transition hover:border-black/20"
+      >
+        <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Findmi Pro</p>
+        <div className="mt-1 flex min-h-7 items-center">
+          <p className="font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
+        </div>
+        <p className="mt-1 min-h-8 text-xs text-ink/60">Your complete Findmi page + full schedule</p>
+        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
+          Explore Pro <span aria-hidden>→</span>
         </p>
       </Link>
     </div>
   );
 }
 
+/** P0 Safe-to-Share Acquisition pass — this now runs secondary to a
+ * primary Free CTA (see FinalCta below), so its own lines flipped: Pro is
+ * now the quiet secondary option here (Free already has its own dominant
+ * button), and the claim line is unchanged. */
 function SecondaryActions({
-  freeCtaHref,
+  proCtaHref,
   claim,
   align = "left",
 }: {
-  freeCtaHref: string;
+  proCtaHref: string;
   claim: ResolvedJoinClaimBusiness;
   align?: "left" | "center";
 }) {
@@ -396,9 +400,9 @@ function SecondaryActions({
   return (
     <div className={`flex flex-col gap-1.5 text-sm text-ink/45 ${align === "center" ? "items-center text-center" : ""}`}>
       <p>
-        Not ready for Pro?{" "}
-        <Link href={freeCtaHref} className={linkClass}>
-          Start free
+        Want deeper tools?{" "}
+        <Link href={proCtaHref} className={linkClass}>
+          Explore Pro
         </Link>
       </p>
       <p>
@@ -721,10 +725,18 @@ function InviteDisclosure({ section }: { section: ResolvedJoinInviteSection }) {
 }
 
 /** Final Conversion Section — the page always ends on a conversion
- * action. Reuses the exact same CTA destinations as the Hero, with the
- * same quiet secondary-action hierarchy. Final Join Conversion Story
- * pass — heading/body restated around the concrete page (name/offer/
- * schedule), matching the hero, instead of generic "discovery" framing. */
+ * action. Reuses the exact same CTA destinations as the Hero.
+ *
+ * P0 Safe-to-Share Acquisition pass — the dominant button here used to
+ * read "Get Findmi Pro — $99/year", making the legacy one-time price the
+ * page's final, loudest ask. That's replaced with the Free CTA (truthful,
+ * no charge, no card) as the primary action; Pro moves into
+ * SecondaryActions below it, same as the rest of the page's now Free-
+ * first hierarchy. No price is stated on this button at all — Free's own
+ * full section above already states "$0" once, and Pro's own full section
+ * above states its real price once; restating either here would either be
+ * redundant (Free) or risk implying $99 is the button's own action
+ * (Pro) when this button no longer points at Pro. */
 function FinalCta({
   proCtaHref,
   freeCtaHref,
@@ -743,13 +755,14 @@ function FinalCta({
         <p className="mt-2 text-sm text-ink/60">Your business, what you offer and everywhere you&rsquo;ll be next.</p>
 
         <div className="mt-6 flex flex-col items-center gap-4">
-          <a
-            href={proCtaHref}
+          <Link
+            href={freeCtaHref}
             className="flex h-12 w-full max-w-xs items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
-            Get Findmi Pro — $99/year
-          </a>
-          <SecondaryActions freeCtaHref={freeCtaHref} claim={claim} align="center" />
+            Get Started Free
+          </Link>
+          <p className="text-xs text-ink/40">No credit card required.</p>
+          <SecondaryActions proCtaHref={proCtaHref} claim={claim} align="center" />
         </div>
       </div>
     </div>

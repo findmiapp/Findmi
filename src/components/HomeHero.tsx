@@ -193,23 +193,26 @@ export default function HomeHero({
             </div>
           )}
 
-          {/* Homepage discovery flow pass — was text-[8px] italic, small
-              enough to read as fine print/accidental rather than an
-              intentional secondary pathway. Bumped to a legible-but-still-
-              clearly-secondary size (11px, not italic, muted lead-in +
-              stronger link — the same quiet-secondary-action pattern used
-              elsewhere on the site), with "→" added and the trailing
-              period dropped. Still one compact line, same /join
-              destination, same tap-target preservation. */}
-          <p className="mt-3 text-[11px] leading-[1.3] text-ink/45">
-            Have a business or brand?{" "}
+          {/* P0 Safe-to-Share Acquisition pass — promoted from a small
+              underlined text link ("Get discovered →") to a genuine,
+              intentionally discoverable secondary CTA. Same /join
+              destination, same normal-flow position right after the
+              collage (never between body and it — that position was
+              rejected for mobile collision reasons, see this file's own
+              header comment), so the collage's own carefully-tuned
+              geometry above is completely untouched; a taller CTA block
+              here only pushes whatever comes after HomeHero down slightly,
+              which is expected and safe. */}
+          <div className="mt-3">
+            <p className="text-[11px] font-semibold text-ink/50">Have a business or brand?</p>
             <Link
               href="/join"
-              className="-my-[5px] -mx-1 inline-block px-1 py-[5px] font-semibold text-ink/70 underline underline-offset-2 hover:text-ink"
+              className="mt-1.5 inline-flex h-9 items-center justify-center rounded-full border border-findmi/30 bg-white px-4 text-[12px] font-bold uppercase tracking-wide text-ink transition hover:border-findmi/50"
             >
-              Get discovered →
+              Get Started Free
             </Link>
-          </p>
+            <p className="mt-1.5 text-[11px] text-ink/40">No credit card required.</p>
+          </div>
         </div>
 
         {/* ================= DESKTOP (sm:+) — unchanged from the prior pass ================ */}
@@ -219,15 +222,19 @@ export default function HomeHero({
               {headingContent}
             </h1>
             {description && <p className="mt-4 max-w-md text-base text-ink/60">{description}</p>}
-            {/* Homepage discovery flow pass — same copy/weight update as
-                the mobile line above; desktop spacing/layout otherwise
+            {/* P0 Safe-to-Share Acquisition pass — same CTA promotion as
+                the mobile branch above; desktop spacing/layout otherwise
                 untouched. */}
-            <p className="mt-2 text-sm text-ink/45">
-              Have a business or brand?{" "}
-              <Link href="/join" className="font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
-                Get discovered →
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-ink/50">Have a business or brand?</p>
+              <Link
+                href="/join"
+                className="mt-1.5 inline-flex h-10 items-center justify-center rounded-full border border-findmi/30 bg-white px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-findmi/50"
+              >
+                Get Started Free
               </Link>
-            </p>
+              <p className="mt-1.5 text-xs text-ink/40">No credit card required.</p>
+            </div>
           </div>
 
           {a && (
