@@ -1,7 +1,8 @@
 // Findmi Analytics Phase 2A — shared placement/attribution context.
 //
 // Shared cards (BusinessCard/ProductCard/LocationCard/HomeEventCard/
-// CompactCard/AppearanceCard) can't guess where they were rendered — a
+// CompactEventCard/CompactCard/AppearanceCard) can't guess where they
+// were rendered — a
 // parent surface (a Discovery Page Builder row, a plain discovery route,
 // a roster) optionally hands this down so the card's own
 // entity_impression/entity_click carries more than just the entity's

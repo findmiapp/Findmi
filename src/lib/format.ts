@@ -22,7 +22,7 @@ export function formatTime(iso: string): string {
   });
 }
 
-function dateKey(date: Date): string {
+export function dateKey(date: Date): string {
   // YYYY-MM-DD in APP_TIMEZONE — for same-day comparisons that don't break
   // near midnight just because the server itself runs in UTC.
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -45,6 +45,35 @@ export function formatDateRange(startIso: string, endIso?: string | null): strin
     return `${start} · ${startTime} – ${formatTime(endIso)}`;
   }
   return `${start} – ${formatDateShort(endIso)}`;
+}
+
+/** Compact-card date/time — deliberately NOT formatDateRange (which
+ * includes the weekday and always shows both start/end times, tuned for
+ * roomier list rows). A short landscape preview card only has room for
+ * one concise line: a single-day event shows its start time only
+ * ("Sep 26 · 12 PM" — an end time nobody reads on a glance-sized card);
+ * a genuinely multi-day span shows the real start/end instants the
+ * record actually has ("Oct 1–5 · 10 AM–8 PM"), never a fabricated
+ * "same time every day" claim — those are just this one record's own two
+ * real timestamps (start_at's time-of-day, end_at's time-of-day),
+ * formatted concisely, not an assumption about the days in between. */
+export function formatCardDateRange(startIso: string, endIso?: string | null): string {
+  const start = new Date(startIso);
+  const startMonthDay = start.toLocaleDateString("en-US", { timeZone: APP_TIMEZONE, month: "short", day: "numeric" });
+  const startTime = formatTime(startIso);
+  if (!endIso) return `${startMonthDay} · ${startTime}`;
+
+  const end = new Date(endIso);
+  if (dateKey(start) === dateKey(end)) return `${startMonthDay} · ${startTime}`;
+
+  const startMonth = start.toLocaleDateString("en-US", { timeZone: APP_TIMEZONE, month: "short" });
+  const endMonth = end.toLocaleDateString("en-US", { timeZone: APP_TIMEZONE, month: "short" });
+  const endDay = end.toLocaleDateString("en-US", { timeZone: APP_TIMEZONE, day: "numeric" });
+  const dateRange =
+    startMonth === endMonth
+      ? `${startMonthDay}–${endDay}`
+      : `${startMonthDay} – ${end.toLocaleDateString("en-US", { timeZone: APP_TIMEZONE, month: "short", day: "numeric" })}`;
+  return `${dateRange} · ${startTime}–${formatTime(endIso)}`;
 }
 
 /** Time only, no date — for rows that already show the date on a separate
