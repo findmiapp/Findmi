@@ -120,22 +120,25 @@ export default function HomeHero({
             top, which is still ~70-90px higher than the previous pass's
             Image 1 position simply because there's no CTA + its margins
             sitting between body and the collage anymore. */}
-        {/* Homepage discovery flow pass — pt-8→pt-6 (24px, was 32px): safe
-            to tighten since the collage's own position is anchored to
-            body's bottom (mt-1, see below), never to this top padding. */}
-        <div className="px-6 pb-3 pt-6 sm:hidden">
+        {/* Visual Regression Correction — pt-6→pt-4 and pb-3→pb-2 (was
+            24px/12px, now 16px/8px): the hero's CONCEPT/imagery/copy are
+            unchanged (restored verbatim from b263d56), only this outer
+            padding and the headline-to-description gap below were tightened,
+            per explicit instruction — the mobile hero was taking excessive
+            vertical space before a visitor reached search, not that its
+            content or composition were wrong. */}
+        <div className="px-6 pb-2 pt-4 sm:hidden">
           <div>
             <h1 className="max-w-[90%] font-display text-[clamp(1.7rem,8.2vw,2rem)] font-bold leading-[0.97] tracking-tight text-ink">
               {headingContent}
             </h1>
-            {/* Description micro pass: max-w-[58%]→[60%] (still clear of
-                the coffee image's left edge at 61%, ~3-4px margin at
-                every width since both are % of the same canvas) plus
-                text-[17px]→[16px] — together aiming to reflow ~5 lines
-                down to ~4 without shrinking the type noticeably. Color
-                (text-ink/60) and leading ratio (1.425) unchanged. */}
+            {/* Visual Regression Correction — mt-8→mt-3 (32px→12px): this
+                gap (headline to description), not the type itself, was the
+                biggest single contributor to the hero's excess height.
+                Line-height (leading-[1.425]), size, color, and max-width
+                are all untouched. */}
             {description && (
-              <p className="mt-8 max-w-[60%] text-[16px] leading-[1.425] text-ink/60">{description}</p>
+              <p className="mt-3 max-w-[60%] text-[16px] leading-[1.425] text-ink/60">{description}</p>
             )}
           </div>
 

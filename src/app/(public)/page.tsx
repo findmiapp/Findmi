@@ -2,26 +2,30 @@ import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
-import ConnectionCard from "@/components/ConnectionCard";
 import HomeWeather from "@/components/HomeWeather";
+import HomeHero from "@/components/HomeHero";
 import Section, { HorizontalScroller } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
 import {
-  applyOccurrenceOverride,
   attachEventCategories,
-  getBusinessesForEvent,
   getCategoriesForDynamicBusinessRow,
   getConsumerVisibleMarketsWithAreas,
-  getEffectiveUpcomingEvents,
+  getFeaturedBusinesses,
   getHomeCategories,
   getHomepageRowProducts,
   getMarketAreaLabel,
   getNextAppearanceHints,
-  getOccurrenceBusinessRosters,
+  getUpcomingEvents,
 } from "@/lib/data";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
-import { getSiteSections, resolveSection, resolveWeatherConfig, HOMEPAGE_SECTIONS } from "@/lib/site-sections";
+import {
+  getSiteSections,
+  resolveHeroImageSlots,
+  resolveSection,
+  resolveWeatherConfig,
+  HOMEPAGE_SECTIONS,
+} from "@/lib/site-sections";
 import type { Category } from "@/lib/types";
 import { getWeatherContext } from "@/lib/weather";
 
@@ -62,78 +66,37 @@ export default async function HomePage({
   // alongside ?market= (same contract as /businesses and /events).
   const areaSlug = marketSlug ? areaSlugRaw : undefined;
 
-  const [categories, effectiveEventRows, homepageRows, siteSections, markets, wantItProducts] = await Promise.all([
-    getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
-    // Discovery Foundation V1 — bounds=null IS "anytime" (see
-    // getDiscoveryWindowBounds); called directly (not via getUpcomingEvents)
-    // so this render can also read each row's own `occurrence` (for the
-    // anchor's Brand/Place lookups below).
-    getEffectiveUpcomingEvents(null, { marketSlug, areaSlug: marketSlug ? areaSlug : undefined }),
-    getVisibleHomepageRows(),
-    getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
-    getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
-    // Consumer Experience V1 — "Want it." Real marketplace-approved
-    // products (marketplace_status='approved', is_active=true), ordered
-    // deterministically (is_featured first as a tie-break, then
-    // home_sort_order, then name — see getHomepageRowProducts) rather
-    // than REQUIRING is_featured=true the way a founder-configured
-    // "products" Homepage Row's featured_only setting can. That
-    // combination (marketplace_status='approved' AND is_featured=true) is
-    // exactly what was producing only one visible product on production —
-    // this consumer discovery rail draws from the same real approved
-    // products directly instead, without changing what is_featured means
-    // anywhere else (getHomepageRowProducts's own featuredOnly param,
-    // the admin row's own checkbox, and marketplace_status/is_featured
-    // themselves are all completely untouched).
-    getHomepageRowProducts({ limit: 10 }),
-  ]);
+  // Visual Regression Correction — back to the single getUpcomingEvents
+  // call (occurrence override applied internally) now that Home no longer
+  // needs each row's raw `occurrence`/`occurrenceLocation` for a homepage
+  // anchor (see the removed ConnectionCard section below). The
+  // occurrence-aware helpers themselves (getEffectiveUpcomingEvents,
+  // applyOccurrenceOverride, getBusinessesForEvent,
+  // getOccurrenceBusinessRosters) are untouched in lib/data.ts — this page
+  // simply doesn't need their extra detail anymore.
+  const [categories, nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, wantItProducts] =
+    await Promise.all([
+      getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
+      getUpcomingEvents(10, "anytime", marketSlug, areaSlug),
+      getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
+      getVisibleHomepageRows(),
+      getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
+      getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
+      // Consumer Experience V1 — "Want it." Real marketplace-approved
+      // products (marketplace_status='approved', is_active=true), ordered
+      // deterministically (is_featured first as a tie-break, then
+      // home_sort_order, then name — see getHomepageRowProducts) rather
+      // than REQUIRING is_featured=true the way a founder-configured
+      // "products" Homepage Row's featured_only setting can. That
+      // combination (marketplace_status='approved' AND is_featured=true)
+      // is exactly what was producing only one visible product on
+      // production — this consumer discovery rail draws from the same
+      // real approved products directly instead, without changing what
+      // is_featured means anywhere else.
+      getHomepageRowProducts({ limit: 10 }),
+    ]);
 
-  // DISCOVERY FOUNDATION V1 — the homepage's one prominent anchor.
-  // Deterministic, explainable rule: the single soonest real thing in the
-  // exact same eligible set Must Dos also shows below (real, is_demo=false,
-  // publication_status='live', not yet ended, respecting the current
-  // Market/Area filter, occurrence-aware so a currently-live occurrence of
-  // a recurring event outranks a same-day one that hasn't started) — rows
-  // already arrive sorted by effective start ascending. No editorial
-  // override, no hardcoded business/event: whichever real event is
-  // soonest wins, whatever it is on a given day. Excluded from the Must
-  // Dos rail below (restRows) so the same event never appears twice.
-  const anchorRow = effectiveEventRows[0] ?? null;
-  const restRows = effectiveEventRows.slice(1, 11);
-  const nextRaw = restRows.map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
-  const anchorEventRaw = anchorRow
-    ? applyOccurrenceOverride(anchorRow.event, anchorRow.occurrence, anchorRow.occurrenceLocation)
-    : null;
-
-  const categorized = await attachEventCategories(anchorEventRaw ? [anchorEventRaw, ...nextRaw] : nextRaw);
-  const anchorEvent = anchorEventRaw ? categorized[0] : null;
-  const nextEvents = anchorEventRaw ? categorized.slice(1) : categorized;
-
-  // The anchor's Brand — a real approved participant only, never
-  // fabricated. Occurrence-based events (Recurring Events V2) are judged
-  // by event_occurrence_businesses (authoritative for that specific
-  // date), never the legacy event_businesses table; a legacy one-time
-  // event falls back to getBusinessesForEvent exactly as the event page
-  // itself does. Featured participant wins the tie-break when more than
-  // one is approved; otherwise the first. No brand row at all — not a
-  // placeholder — when an anchor genuinely has zero approved participants.
-  const anchorBusinesses = anchorRow
-    ? anchorRow.occurrence
-      ? ((await getOccurrenceBusinessRosters([anchorRow.occurrence.id]))[anchorRow.occurrence.id] ?? [])
-      : await getBusinessesForEvent(anchorRow.event.id)
-    : [];
-  const anchorBrandRecord = anchorBusinesses.find((b) => b.featured) ?? anchorBusinesses[0] ?? null;
-  const anchorBrand = anchorBrandRecord
-    ? { name: anchorBrandRecord.name, slug: anchorBrandRecord.slug, logo_url: anchorBrandRecord.logo_url }
-    : null;
-  // The anchor's Place — a real, resolvable Findmi Location only (the
-  // occurrence's own linked location_id, already fetched by
-  // getEffectiveUpcomingEvents for the date/venue override above). A
-  // legacy event or an occurrence with no linked Location simply has no
-  // Place link — never a fabricated one.
-  const anchorPlace = anchorRow?.occurrenceLocation
-    ? { name: anchorRow.occurrenceLocation.name, slug: anchorRow.occurrenceLocation.slug }
-    : null;
+  const nextEvents = await attachEventCategories(nextRaw);
 
   // Each row's content is resolved in parallel — one query per row
   // (dynamic mode) or a curated-id lookup (curated mode), same shared
@@ -171,7 +134,7 @@ export default async function HomePage({
   });
 
   // Founder Site Editor overrides for the structural sections that stay
-  // fixed-position (hero copy, event discovery heading/copy, explore by
+  // fixed-position (hero, event discovery heading/copy, explore by
   // category, closing CTA) — every field falls back to the current
   // hardcoded default (HOMEPAGE_SECTIONS) when no row/field exists.
   const resolve = (key: string) => resolveSection(siteSections, key, HOMEPAGE_SECTIONS[key]);
@@ -181,6 +144,25 @@ export default async function HomePage({
   const heroSec = resolve("hero");
   const businessDoorwaySec = resolve("business_doorway");
 
+  // Homepage Hero Founder Control pass — Image 1 ("Large Image") and
+  // Image 2 ("Overlay Image") are purely founder-controlled (Site Editor
+  // -> Hero), each with its own optional destination link and an
+  // enabled/disabled toggle, and NEVER fall back to a Business/Event/
+  // Product photo. Image 3 (desktop-only, bottom-right) still falls back
+  // to a real photo already being fetched above when left unconfigured.
+  // Slot 0/1 are threaded through BY INDEX (never compacted), so turning
+  // one off can never shift the other into its spot. Restored verbatim
+  // from the pre-Consumer-V1 baseline (commit b263d56) — this pass only
+  // tightened the mobile hero's own internal spacing (see HomeHero.tsx).
+  const heroImageSlots = resolveHeroImageSlots(siteSections);
+  const heroThirdSlotFallback = heroFallbackBrands[2]?.cover_image_url ?? undefined;
+  const heroImages: Array<string | undefined> = [
+    heroImageSlots[0]?.enabled && heroImageSlots[0].url ? heroImageSlots[0].url : undefined,
+    heroImageSlots[1]?.enabled && heroImageSlots[1].url ? heroImageSlots[1].url : undefined,
+    heroImageSlots[2]?.url ?? heroThirdSlotFallback,
+  ];
+  const heroImageLinks = [heroImageSlots[0]?.link, heroImageSlots[1]?.link];
+
   // Weather / Local Context — founder-configurable city; only fetched
   // when the founder has the module on, and lib/weather.ts fails soft
   // (returns null, or a result with `conditions: null`) rather than
@@ -188,49 +170,23 @@ export default async function HomePage({
   const weatherConfig = resolveWeatherConfig(siteSections);
   const weatherContext = weatherConfig.show ? await getWeatherContext(weatherConfig.city) : null;
 
-  // Consumer Experience V1 — the old giant marketing hero (a founder-
-  // configured 3-image collage above the fold) has been removed from the
-  // logged-out homepage entirely, per this pass's explicit authorization:
-  // it delayed real discovery by a full viewport and made the page read
-  // as a marketing site before it read as FindMi. The founder's Hero
-  // heading/body copy (Site Editor -> Hero) is reused here as a compact,
-  // text-only intro instead — FindMi explains itself through the
-  // discovery experience that follows immediately below, not through
-  // imagery. The three Hero image slots (Site Editor -> Hero -> Image
-  // 1-3) are simply unused by this page now; nothing about their stored
-  // values or the admin UI that edits them changed.
-  const introHeading = (heroSec.heading ?? "Your world, happening around you.").replace(/\n+/g, " ").trim();
-
   return (
     <div>
       {/* Weather / Local Context — unchanged, directly below the header. */}
       <HomeWeather context={weatherContext} />
 
-      {/* Compact intro — replaces the old image-collage hero. One
-          headline (founder-editable), an optional short body line, a
-          quiet entry point into My World, and the existing business
-          acquisition doorway line right below — in that order, so a
-          consumer's very first read is "what FindMi is for me," not a
-          business pitch. */}
-      <div className="mx-auto max-w-6xl px-4 pb-2 pt-7 sm:px-6">
-        <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-ink sm:text-3xl">
-          {introHeading}
-        </h1>
-        {heroSec.body && <p className="mt-2 max-w-md text-sm text-ink/60 sm:text-base">{heroSec.body}</p>}
-        <Link
-          href="/my-world"
-          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
-        >
-          My World
-          <span aria-hidden="true">→</span>
-        </Link>
-      </div>
+      {/* Visual Regression Correction — the illy/founder image-collage hero
+          restored verbatim from commit b263d56 (do not re-approximate; see
+          HomeHero.tsx for the exact markup, which this pass only tightened
+          the mobile vertical spacing of). Copy is whatever the founder has
+          configured in Site Editor -> Hero (heroSec.heading/body) — this
+          page never hardcodes it. */}
+      <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Business Acquisition doorway — unchanged content/behavior, just
-          repositioned directly under the new compact intro instead of
-          under the old hero collage. */}
+      {/* Business Acquisition doorway — unchanged content/behavior,
+          directly beneath the hero, before the search entry. */}
       {businessDoorwaySec.visible && (
-        <div className="mx-auto max-w-6xl px-4 pb-1 pt-2 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 pb-1 pt-3 sm:px-6">
           <Link
             href={businessDoorwaySec.ctaUrl ?? "/join"}
             className="inline-flex flex-wrap items-baseline gap-1 text-sm text-ink/50 transition hover:text-ink/70"
@@ -251,13 +207,9 @@ export default async function HomePage({
 
       {/* Lightweight taste layer — real business-category taxonomy (same
           getHomeCategories() fetch, same /businesses?category= links this
-          always used), moved up from its old position near the bottom of
-          the page to sit directly under search, per this pass's "top
-          experience" requirement. Compact chip row, not a full section —
-          this is a lens onto discovery, not a second directory listing.
-          Rendered once now (was previously duplicated conceptually by
-          appearing only at the bottom); nothing else about its
-          destinations or data changed. */}
+          always used), sitting directly under search. Compact chip row,
+          not a full section — a lens onto discovery, not a second
+          directory listing. */}
       {categories.length > 0 && (
         <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">{exploreSec.heading}</p>
@@ -275,30 +227,12 @@ export default async function HomePage({
         </div>
       )}
 
-      {/* THE ANCHOR — the one prominent, genuinely upcoming (or currently
-          live) real-world discovery: a Brand -> Place -> Moment connection
-          card (see anchorEvent/anchorBrand/anchorPlace selection above and
-          ConnectionCard.tsx). Renders nothing when there is no eligible
-          real event at all — an honest empty state, never a placeholder.
-          This answers "what is happening in my world." */}
-      {anchorEvent && (
-        <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
-          <ConnectionCard
-            event={anchorEvent}
-            brand={anchorBrand}
-            place={anchorPlace}
-            analyticsContext={{ pageType: "home", placement: "homepage_anchor" }}
-          />
-        </div>
-      )}
-
       {/* WANT IT — real, approved marketplace products (see wantItProducts
           above), collectible-object entity grammar (square photo, brand
           byline, price, a "Want" heart — never a checkout-forward
-          treatment). Answers "what might I love." Founder-editable
-          heading when a "products" Homepage Row exists; a sensible
-          default otherwise. Honest empty state: renders nothing if there
-          are genuinely no approved products yet. */}
+          treatment). Founder-editable heading when a "products" Homepage
+          Row exists; a sensible default otherwise. Honest empty state:
+          renders nothing if there are genuinely no approved products yet. */}
       {wantItProducts.length > 0 && (
         <Section
           title={productsRow?.title || "Want it"}
@@ -325,9 +259,7 @@ export default async function HomePage({
       )}
 
       {/* BRANDS SHOWING UP — the existing Brands We Love row/component,
-          completely untouched logic and geometry (protected width fix),
-          repositioned as its own distinct "where can I actually find it"
-          moment rather than one of several look-alike carousels. */}
+          completely untouched logic and geometry (protected width fix). */}
       {brandsRowIndex !== -1 && (
         <HomepageRowSection
           row={homepageRows[brandsRowIndex]}
@@ -338,15 +270,9 @@ export default async function HomePage({
         />
       )}
 
-      {/* MUST DOS / WHAT'S HAPPENING — the same real, already-fetched
-          chronological event query as before, minus the anchor above so
-          nothing repeats. Deliberately NOT placed immediately after the
-          anchor (that would just read as a second, redundant event
-          section) — it now follows Want It and Brands Showing Up, as one
-          distinct "experiences worth doing" moment among several
-          different kinds of discovery objects, not the page's whole
-          identity. Event-card geometry/treatment (HomeEventCard) and the
-          AreaPicker/Today/This Weekend controls are completely
+      {/* MUST DOS / WHAT'S HAPPENING — the same real chronological event
+          query as before. Event-card geometry/treatment (HomeEventCard)
+          and the AreaPicker/Today/This Weekend controls are completely
           untouched. */}
       <div className="mx-auto max-w-6xl pt-8">
         <div className="px-4 sm:px-6">
@@ -470,7 +396,7 @@ async function HomepageRowSection({
   marketSlug?: string;
   areaSlug?: string;
   /** True only for the Brands We Love row pulled out above. Gates the
-   * "Discover"-style eyebrow and the blank-copy fallback below to that
+   * "Showing Up"-style eyebrow and the blank-copy fallback below to that
    * one row specifically. */
   isBrandsRow?: boolean;
 }) {
@@ -507,11 +433,10 @@ async function HomepageRowSection({
       <Section
         title={isBrandsRow ? row.title || BRANDS_ROW_HEADING_FALLBACK : row.title}
         subtitle={(isBrandsRow ? row.subtitle || BRANDS_ROW_SUBTITLE_FALLBACK : row.subtitle) ?? undefined}
-        // Consumer Experience V1 — "Showing Up" (was "Discover") for
-        // Brands We Love specifically, to read as the connection moment
-        // ("where can I actually find this brand") this pass calls for.
-        // Underlying selection/ordering rules are completely untouched —
-        // this is a label only.
+        // Consumer Experience V1 — "Showing Up" for Brands We Love
+        // specifically, to read as the connection moment ("where can I
+        // actually find this brand"). Underlying selection/ordering rules
+        // are completely untouched — this is a label only.
         eyebrow={isBrandsRow ? "Showing Up" : undefined}
         viewAllHref={viewAllHref}
         impressionPayload={{
