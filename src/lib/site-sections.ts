@@ -293,7 +293,16 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
   },
   closing_cta: {
     label: "Closing CTA",
-    eyebrow: "Founding 500 · $99/year",
+    // Consumer Discovery Homepage V2, Section 22 — replaces the retired
+    // "Founding 500 · $99/year" fallback (a scarcity claim tied to the
+    // legacy one-time offer, never legitimate copy to resurrect). The
+    // live production site_sections row currently overrides this field
+    // with its own text either way, so this is a dormant-but-safe
+    // default: if that override is ever cleared, this can no longer
+    // regress into stale pricing/scarcity language. Evergreen and
+    // truthful, matching the "Get Started Free / No credit card
+    // required" acquisition message already live elsewhere on this page.
+    eyebrow: "Get Started Free · No Credit Card Required",
     heading: "More visibility.\nMore customers.\nMore growth.",
     body: "List your business, promote events, sell products, and connect with your community.",
     ctaLabel: "Join Findmi →",

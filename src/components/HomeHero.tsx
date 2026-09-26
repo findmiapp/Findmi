@@ -193,16 +193,35 @@ export default function HomeHero({
             </div>
           )}
 
+          {/* Consumer Discovery Homepage V2 — the hero's primary CONSUMER
+              action (task Section 8), added here rather than between body
+              and the collage: that zone is where Image 2 is deliberately
+              pulled up via a negative offset (see this file's own header
+              comment) to fill the open space beside body's lower rows —
+              inserting new normal-flow content there would push the
+              collage down while Image 2 stays pinned exactly 119px above
+              it, so it would end up overlapping whatever sits directly
+              above the collage instead of that intentional blank space.
+              Right after the collage (this exact spot) is the one place
+              already proven safe by the prior pass's own business CTA
+              addition — a taller block here only pushes later content
+              down, never collides with the collage's own geometry. Routes
+              to /discover, a real, already-built Where->When->What
+              discovery page — never a dead link. */}
+          <Link
+            href="/discover"
+            className="mt-3 flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 active:scale-[0.98]"
+          >
+            Explore What&rsquo;s Happening
+          </Link>
+
           {/* P0 Safe-to-Share Acquisition pass — promoted from a small
               underlined text link ("Get discovered →") to a genuine,
               intentionally discoverable secondary CTA. Same /join
-              destination, same normal-flow position right after the
-              collage (never between body and it — that position was
-              rejected for mobile collision reasons, see this file's own
-              header comment), so the collage's own carefully-tuned
-              geometry above is completely untouched; a taller CTA block
-              here only pushes whatever comes after HomeHero down slightly,
-              which is expected and safe. */}
+              destination. Consumer Discovery Homepage V2 — now sits below
+              the primary consumer action above, quieter by construction
+              (outlined vs. filled), so business participation stays
+              discoverable without competing with consumer discovery. */}
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-ink/50">Have a business or brand?</p>
             <Link
@@ -222,9 +241,25 @@ export default function HomeHero({
               {headingContent}
             </h1>
             {description && <p className="mt-4 max-w-md text-base text-ink/60">{description}</p>}
+
+            {/* Consumer Discovery Homepage V2 — the hero's primary
+                CONSUMER action (task Section 8). Desktop has no collage-
+                collision constraint (the collage is a separate flex
+                sibling, never overlapping this text column), so this sits
+                directly after the description, ahead of the business CTA
+                below it. Routes to /discover, a real, already-built
+                Where->When->What discovery page. */}
+            <Link
+              href="/discover"
+              className="mt-5 inline-flex h-12 items-center justify-center rounded-full bg-findmi px-7 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            >
+              Explore What&rsquo;s Happening
+            </Link>
+
             {/* P0 Safe-to-Share Acquisition pass — same CTA promotion as
-                the mobile branch above; desktop spacing/layout otherwise
-                untouched. */}
+                the mobile branch above. Consumer Discovery Homepage V2 —
+                now sits below the primary consumer action above, quieter
+                by construction (outlined vs. filled). */}
             <div className="mt-4">
               <p className="text-xs font-semibold text-ink/50">Have a business or brand?</p>
               <Link

@@ -7,6 +7,7 @@ import type { TrackEventPayload } from "@/lib/analytics/track";
 export default function Section({
   title,
   subtitle,
+  eyebrow,
   viewAllHref,
   children,
   className = "py-6",
@@ -14,6 +15,11 @@ export default function Section({
 }: {
   title: string;
   subtitle?: string;
+  /** Consumer Discovery Homepage V2 — an optional small label above the
+   * title, for the rare section that should read as a discovery moment
+   * rather than a plain row (e.g. Brands We Love). Every existing caller
+   * omits this and renders exactly as before. */
+  eyebrow?: string;
   viewAllHref?: string;
   children: React.ReactNode;
   /** Replaces (never appends to) the default "py-6" outer vertical
@@ -42,6 +48,7 @@ export default function Section({
           All vertically centers against the title specifically), with the
           subtitle continuing on its own line below either way. */}
       <div className="mb-3 px-4 sm:px-6">
+        {eyebrow && <p className="mb-1 text-xs font-bold uppercase tracking-wide text-findmi-700">{eyebrow}</p>}
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
           {viewAllHref && (

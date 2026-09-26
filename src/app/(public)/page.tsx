@@ -3,6 +3,7 @@ import ProductCard from "@/components/ProductCard";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
+import HomeEditorialFeature from "@/components/HomeEditorialFeature";
 import HomeWeather from "@/components/HomeWeather";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
@@ -234,6 +235,18 @@ export default async function HomePage({
         </Section>
       </div>
 
+      {/* EDITORIAL FEATURE — Consumer Discovery Homepage V2 (task Section
+          7.C/10). One real discovery object given meaningfully more
+          visual weight than the standard card rails around it: the single
+          soonest real upcoming event, i.e. nextEvents[0] — the exact same
+          chronological getUpcomingEvents("anytime") query the "Next Up"/
+          "All" tabs directly above already use. Zero new query,
+          deterministic (never randomized, never a fabricated "featured"
+          flag), and renders nothing at all when there's no real upcoming
+          event to show — see HomeEditorialFeature's own doc comment for
+          the full selection-rule writeup. */}
+      {nextEvents.length > 0 && <HomeEditorialFeature event={nextEvents[0]} />}
+
       {/* Homepage discovery flow pass — the homepage-body search field
           that used to sit here (between Upcoming Events and Brands We
           Love) is removed: the global/header search already covers this,
@@ -451,6 +464,13 @@ async function HomepageRowSection({
       <Section
         title={isBrandsRow ? row.title || BRANDS_ROW_HEADING_FALLBACK : row.title}
         subtitle={(isBrandsRow ? row.subtitle || BRANDS_ROW_SUBTITLE_FALLBACK : row.subtitle) ?? undefined}
+        // Consumer Discovery Homepage V2 — Brands We Love specifically
+        // (never any other founder-added "businesses" row) reads as a
+        // discovery moment rather than a plain row. Underlying selection/
+        // ordering rules (is_featured/founding_member tiering, shuffle
+        // within tier only) are completely untouched — this is a label
+        // only, see shuffleWithinFeaturedTiers in lib/data.ts.
+        eyebrow={isBrandsRow ? "Discover" : undefined}
         viewAllHref={viewAllHref}
         impressionPayload={{
           event_name: "discovery_section_impression",
