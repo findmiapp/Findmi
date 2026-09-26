@@ -1,18 +1,16 @@
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
-import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
+import HomeDiscoveryMosaic from "@/components/HomeDiscoveryMosaic";
 import HomeWeather from "@/components/HomeWeather";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
-import HomeEventDiscovery from "@/components/HomeEventDiscovery";
 import AreaPicker from "@/components/discover/AreaPicker";
 import {
   attachEventCategories,
   getCategoriesForDynamicBusinessRow,
   getConsumerVisibleMarketsWithAreas,
-  getEventCategories,
   getFeaturedBusinesses,
   getHomeCategories,
   getMarketAreaLabel,
@@ -52,43 +50,29 @@ export default async function HomePage({
   // alongside ?market= (same contract as /businesses and /events).
   const areaSlug = marketSlug ? areaSlugRaw : undefined;
 
-  const [
-    categories,
-    eventCategories,
-    nextRaw,
-    todayRaw,
-    weekRaw,
-    weekendRaw,
-    allRaw,
-    heroFallbackBrands,
-    homepageRows,
-    siteSections,
-    markets,
-  ] = await Promise.all([
+  // Discovery Home Composition Reset — the homepage no longer reproduces
+  // /discover's full Time x Category filtering (that lived entirely in
+  // the now-deleted HomeEventDiscovery: 4 of these 5 event windows —
+  // now/week/weekend, plus a duplicate "anytime" call for "All" — and
+  // the event-category chip list existed ONLY to feed its 5 tabs + chip
+  // row). Homepage = discovery, /discover = deeper filtering (task's own
+  // distinction) — so only the single real chronological "anytime" query
+  // remains, now feeding HomeDiscoveryMosaic instead. Net effect: 4 fewer
+  // real database queries per homepage render, not a new one.
+  const [categories, nextRaw, heroFallbackBrands, homepageRows, siteSections, markets] = await Promise.all([
     getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
-    getEventCategories(), // EVENT categories — the event discovery filter only, see that function's note
-    // Consumer Event Market Filtering V1 — marketSlug scopes each window
-    // by every candidate occurrence's EFFECTIVE physical Market (see
+    // Consumer Event Market Filtering V1 — marketSlug scopes by every
+    // candidate occurrence's EFFECTIVE physical Market (see
     // lib/event-markets.ts), never business Market entitlement. Absent =
     // today's unfiltered behavior, unchanged.
-    getUpcomingEvents(10, "anytime", marketSlug, areaSlug), // "Next Up" — see HomeEventDiscovery's own note on this
-    getUpcomingEvents(10, "now", marketSlug, areaSlug),
-    getUpcomingEvents(10, "week", marketSlug, areaSlug), // Standardize Upcoming Event Time Filters pass — new "This Week" tab
-    getUpcomingEvents(10, "weekend", marketSlug, areaSlug),
-    getUpcomingEvents(10, "anytime", marketSlug, areaSlug), // "All" — same real chronological query as Next Up
+    getUpcomingEvents(10, "anytime", marketSlug, areaSlug),
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
   ]);
 
-  const [nextEvents, todayEvents, weekEvents, weekendEvents, allEvents] = await Promise.all([
-    attachEventCategories(nextRaw),
-    attachEventCategories(todayRaw),
-    attachEventCategories(weekRaw),
-    attachEventCategories(weekendRaw),
-    attachEventCategories(allRaw),
-  ]);
+  const nextEvents = await attachEventCategories(nextRaw);
 
   // Each row's content is resolved in parallel — one query per row
   // (dynamic mode) or a curated-id lookup (curated mode), same shared
@@ -170,68 +154,74 @@ export default async function HomePage({
 
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Consumer Discovery Homepage V2.1 — mobile density pass. The
-          Area Picker no longer renders as its own isolated full-width
-          band above this section (a real complaint from the live mobile
-          review: one small pill consuming an entire visual row, with
-          most of that row's width left blank). It now renders INSIDE
-          this same Section, directly above the time filters — WHERE,
-          then WHEN, then RESULTS, as one discovery control system
-          instead of three unrelated homepage sections. AreaPicker's own
-          component/behavior (real market/area data, ?market=/?area=
-          query params, search) is completely untouched — only its call
-          site moved. Section's own default "py-6" vertical rhythm is
-          tightened here (pt-2, keeping pb-6) specifically for this one
-          instance — Section's className prop exists for exactly this
-          per-caller override (see its own doc comment) and no other
-          Section caller is affected.
-          Heading changed from "Upcoming Events Near You" to "What's
-          Happening" (HOMEPAGE_SECTIONS.featured_events, verified not
-          live-overridden) — this section has no geolocation signal at
-          all, only an explicit Area filter the visitor chooses, so
-          "Near You" claimed a proximity the product doesn't actually
-          have. */}
-      <div className="mx-auto max-w-6xl">
-        <Section
-          title={upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
-          className="pt-2 pb-6"
-          // Consumer Event Market Filtering V1, item I — this section
-          // represents general event browsing (never the curated/editorial
-          // Featured Events concept — see getFeaturedEvents, untouched by
-          // this pass), so its View All propagates the selected Market.
-          viewAllHref={
-            marketSlug
-              ? `/events?market=${encodeURIComponent(marketSlug)}${areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`
-              : "/events"
-          }
-        >
+      {/* DISCOVERY HOME COMPOSITION RESET — content before controls. The
+          old top-to-bottom stack here was: isolated Area Picker band ->
+          Section heading + View All -> 5 time-filter pills -> event-
+          category chip row -> one 66vw event card. That's a filter/
+          results-page rhythm, not a discovery destination, and the live
+          review confirmed it reads that way. This replaces the ENTIRE
+          stack with: a compact heading + minimal control row (Area,
+          Today, This Weekend — the smallest useful homepage set; full
+          Time x Category filtering still lives at /discover, never
+          reproduced here), then real discovery content immediately —
+          HomeDiscoveryMosaic, not a single dominant card. AreaPicker's
+          own component/behavior (real market/area data, ?market=/?area=
+          query params, search) is completely untouched, same as before —
+          only its presentation shrank from a full-width band to one
+          compact control among others. Heading reads "What's Showing
+          Up" (HOMEPAGE_SECTIONS.featured_events, still founder-editable
+          via the same site_sections key, verified not live-overridden
+          before changing its default) — this section has no geolocation
+          signal, only an explicit Area filter the visitor chooses. "View
+          all" keeps its historical /events destination (this section has
+          always meant "the events archive"); Today/This Weekend are new,
+          separate shortcuts into /discover's own real when= filtering —
+          the one place that already combines window + market + area +
+          category, so the homepage doesn't need to reproduce that
+          machinery itself. */}
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="flex items-end justify-between gap-4">
+          <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+            {upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
+          </h2>
+          <Link
+            href={
+              marketSlug
+                ? `/events?market=${encodeURIComponent(marketSlug)}${areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`
+                : "/events"
+            }
+            className="shrink-0 pb-1 text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
+          >
+            View all
+          </Link>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {markets.length > 0 && (
-            <div className="mb-3 px-4 sm:px-6">
-              <AreaPicker
-                options={markets.map((m) => ({
-                  slug: m.slug,
-                  label: getMarketAreaLabel(m),
-                  areasIncluded: m.areas_included,
-                  areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-                }))}
-              />
-            </div>
+            <AreaPicker
+              options={markets.map((m) => ({
+                slug: m.slug,
+                label: getMarketAreaLabel(m),
+                areasIncluded: m.areas_included,
+                areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+              }))}
+            />
           )}
-          <HomeEventDiscovery
-            // Remounts (resetting its internal time×category cache) when
-            // the homepage's own Market/Area changes — same lesson already
-            // applied to HomepageBusinessRow's own cache below.
-            key={`${marketSlug ?? "all"}-${areaSlug ?? "all"}`}
-            next={nextEvents}
-            today={todayEvents}
-            week={weekEvents}
-            weekend={weekendEvents}
-            all={allEvents}
-            eventCategories={eventCategories}
-            marketSlug={marketSlug}
-            areaSlug={areaSlug}
-          />
-        </Section>
+          <Link
+            href="/discover?when=today"
+            className="flex h-10 shrink-0 items-center justify-center rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+          >
+            Today
+          </Link>
+          <Link
+            href="/discover?when=weekend"
+            className="flex h-10 shrink-0 items-center justify-center rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+          >
+            This Weekend
+          </Link>
+        </div>
+        <div className="mt-4">
+          <HomeDiscoveryMosaic events={nextEvents} />
+        </div>
       </div>
 
       {/* Homepage discovery flow pass — the homepage-body search field
@@ -371,32 +361,19 @@ async function HomepageRowSection({
   isBrandsRow?: boolean;
 }) {
   if (resolved.contentType === "business_showcase") {
-    // Homepage Business Acquisition Section Rebuild pass — this section no
-    // longer fetches/depends on live business data at all: it shows real,
-    // static screenshots (see BusinessShowcaseCarousel's own note) rather
-    // than a data-driven UI approximation, so there's nothing to fetch or
-    // null-check here anymore. Outer card styling (white/pale-aqua
-    // gradient, restrained border, rounded-3xl) is unchanged; only the
-    // copy hierarchy and CTA label changed (see this pass's own report).
-    return (
-      <section className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
-        <div className="overflow-hidden rounded-3xl border border-findmi/15 bg-gradient-to-br from-findmi-50 via-white to-white p-4 sm:p-6">
-          <h2 className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">{row.title}</h2>
-          {row.subtitle && <p className="mt-1.5 max-w-md text-sm text-ink/60">{row.subtitle}</p>}
-          <div className="mt-4">
-            <BusinessShowcaseCarousel />
-          </div>
-          <div className="mt-4 flex justify-center sm:justify-start">
-            <Link
-              href="/join"
-              className="inline-flex items-center justify-center rounded-full bg-findmi px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-findmi-600"
-            >
-              Create your Findmi page
-            </Link>
-          </div>
-        </div>
-      </section>
-    );
+    // Discovery Home Composition Reset, task Section 16 — this founder-
+    // configured row (currently live, sort_order 20, between Brands We
+    // Love and Shop Local) is a business-acquisition pitch sitting in the
+    // middle of consumer discovery, redundant with the dedicated deeper
+    // acquisition moment near the bottom of this exact page (closing_cta,
+    // below). Skipped here on the HOMEPAGE specifically — presentation
+    // only: the row itself, its title/subtitle, and its config_json are
+    // completely untouched in homepage_rows/the admin editor
+    // (/admin/site/homepage/rows), so a founder who reorders/edits it
+    // there sees their own data intact; this page simply no longer
+    // renders this one content type. BusinessShowcaseCarousel itself is
+    // untouched and importable elsewhere if ever needed again.
+    return null;
   }
 
   if (resolved.items.length === 0) return null;

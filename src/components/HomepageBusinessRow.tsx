@@ -137,14 +137,20 @@ export default function HomepageBusinessRow({
       ) : items.length === 0 ? (
         <p className="px-4 text-sm text-ink/45 sm:px-6">No brands in this category yet.</p>
       ) : (
-        /* Homepage discovery flow pass — mobile card width w-[80vw]
-           max-w-sm -> w-[76vw] max-w-[340px] (desktop sm:w-96 unchanged):
-           a small tightening only, so the next card's peek reads more
-           clearly as swipeable without over-compressing this pattern —
-           BusinessLogoCard itself is untouched. */
-        <div className="flex gap-4 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        /* Discovery Home Composition Reset, task Section 14 — asymmetric
+           widths: the first card in the row reads as the lead brand
+           (larger, same real BusinessLogoCard, untouched component),
+           every other card is deliberately narrower so more neighboring
+           brands are visibly peeking at once ("more visible neighboring
+           brands" per the task) instead of one more same-sized carousel.
+           BusinessLogoCard itself is completely unchanged — this is a
+           wrapper-width-only presentation choice. */
+        <div className="flex gap-3 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {items.map((b, i) => (
-            <div key={b.id} className="w-[76vw] max-w-[340px] shrink-0 sm:w-96">
+            <div
+              key={b.id}
+              className={i === 0 ? "w-[68vw] max-w-[300px] shrink-0 sm:w-[380px]" : "w-[46vw] max-w-[220px] shrink-0 sm:w-64"}
+            >
               <BusinessLogoCard
                 business={b}
                 nextAppearance={hints[b.id]}

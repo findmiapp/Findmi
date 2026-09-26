@@ -193,41 +193,15 @@ export default function HomeHero({
             </div>
           )}
 
-          {/* Consumer Discovery Homepage V2.1 — mobile density pass. The
-              live mobile review found the prior stacked composition
-              (full-width primary button, then a separate "Have a
-              business or brand?" module) too tall and visually
-              disconnected. Recomposed into one compact two-column action
-              row — FOR YOU / FOR BRANDS — same two destinations
-              (/discover, /join) and the same "No credit card required"
-              reassurance, just presented as one related decision instead
-              of two stacked modules. Still placed right after the
-              collage (never between body and it — see this file's own
-              header comment on why: Image 2's negative-offset pull-up
-              would collide with new content there), so the collage's
-              own tuned geometry stays untouched. */}
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">For You</p>
-              <Link
-                href="/discover"
-                className="mt-1.5 flex h-11 items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 active:scale-[0.98]"
-              >
-                Explore
-              </Link>
-              <p className="mt-1.5 text-[11px] text-ink/45">What&rsquo;s happening</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">For Brands</p>
-              <Link
-                href="/join"
-                className="mt-1.5 flex h-11 items-center justify-center rounded-full border border-findmi/30 bg-white text-xs font-bold uppercase tracking-wide text-ink transition hover:border-findmi/50 active:scale-[0.98]"
-              >
-                Start Free
-              </Link>
-              <p className="mt-1.5 text-[11px] text-ink/45">No credit card required</p>
-            </div>
-          </div>
+          {/* Discovery Home Composition Reset, task Section 4/5 — the
+              FOR YOU / FOR BRANDS action row is removed entirely, not
+              replaced with another acquisition module. The hero is now
+              pure identity/imagery: headline, description, real photos.
+              Real discovery content (HomeDiscoveryMosaic) follows
+              immediately below the hero in page.tsx; business
+              acquisition moved deeper (closing_cta, near the bottom) —
+              a consumer no longer has to choose a "side" of FindMi
+              before seeing the product. */}
         </div>
 
         {/* ================= DESKTOP (sm:+) — unchanged from the prior pass ================ */}
@@ -238,35 +212,10 @@ export default function HomeHero({
             </h1>
             {description && <p className="mt-4 max-w-md text-base text-ink/60">{description}</p>}
 
-            {/* Consumer Discovery Homepage V2.1 — same FOR YOU / FOR
-                BRANDS two-column recomposition as the mobile branch
-                above, for consistency across breakpoints (task Section
-                14 explicitly allows two columns on desktop too). Desktop
-                has no collage-collision constraint (the collage is a
-                separate flex sibling, never overlapping this text
-                column), so this sits directly after the description. */}
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">For You</p>
-                <Link
-                  href="/discover"
-                  className="mt-1.5 flex h-12 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                >
-                  Explore
-                </Link>
-                <p className="mt-1.5 text-xs text-ink/45">What&rsquo;s happening</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">For Brands</p>
-                <Link
-                  href="/join"
-                  className="mt-1.5 flex h-12 items-center justify-center rounded-full border border-findmi/30 bg-white text-sm font-bold uppercase tracking-wide text-ink transition hover:border-findmi/50"
-                >
-                  Start Free
-                </Link>
-                <p className="mt-1.5 text-xs text-ink/45">No credit card required</p>
-              </div>
-            </div>
+            {/* Discovery Home Composition Reset — same removal as the
+                mobile branch above: no CTA row at all. Pure identity/
+                imagery; discovery content and business acquisition both
+                live further down the page. */}
           </div>
 
           {a && (

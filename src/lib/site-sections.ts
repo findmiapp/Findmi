@@ -196,18 +196,18 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     fields: ["eyebrow"],
   },
   featured_events: {
-    // Homepage's first live feed. Consumer Discovery Homepage V2.1 —
-    // heading changed from "Upcoming Events Near You" to "What's
-    // Happening": this section has no geolocation signal, only an
-    // explicit Area filter (AreaPicker, now integrated directly into
-    // this same section) the visitor chooses themselves, so "Near You"
-    // claimed a proximity the product doesn't actually have. Verified
-    // not live-overridden in production before changing this default.
-    // The primary time filter (Next Up/Today/This Week/This Weekend/
-    // All) and secondary category chips live in HomeEventDiscovery, not
-    // here.
+    // Homepage's first live feed. Discovery Home Composition Reset —
+    // heading now reads "What's Showing Up" (was "Upcoming Events Near
+    // You", briefly "What's Happening") — matches the product's own core
+    // consumer question, and still correctly makes no proximity claim
+    // this section can't back (only an explicit Area filter, never
+    // geolocation). Verified not live-overridden in production before
+    // changing this default. The homepage now shows a minimal Area +
+    // Today/This Weekend control row (page.tsx) plus HomeDiscoveryMosaic
+    // for the actual content; full Time x Category filtering lives at
+    // /discover, not reproduced here.
     label: "Featured Events",
-    heading: "What's Happening",
+    heading: "What's Showing Up",
     body: "Markets, pop-ups, and festivals coming up",
     ctaLabel: "View all",
     ctaUrl: "/events",
