@@ -137,20 +137,21 @@ export default function HomepageBusinessRow({
       ) : items.length === 0 ? (
         <p className="px-4 text-sm text-ink/45 sm:px-6">No brands in this category yet.</p>
       ) : (
-        /* Discovery Home Composition Reset, task Section 14 — asymmetric
-           widths: the first card in the row reads as the lead brand
-           (larger, same real BusinessLogoCard, untouched component),
-           every other card is deliberately narrower so more neighboring
-           brands are visibly peeking at once ("more visible neighboring
-           brands" per the task) instead of one more same-sized carousel.
-           BusinessLogoCard itself is completely unchanged — this is a
-           wrapper-width-only presentation choice. */
+        /* Brands We Love Card Width Consistency hotfix — the Discovery
+           Home Composition Reset's index-based `i === 0 ? wide : narrow`
+           ternary made every card's outer geometry depend on its
+           position in the row rather than on the viewport, so which
+           business rendered "wide" changed with every shuffle-within-tier
+           reshuffle (see lib/data.ts's shuffleWithinFeaturedTiers) — the
+           rail visibly changed card widths as a user scrolled, which read
+           as broken, not as an intentional lead card. Reverted to the one
+           uniform width this exact call site used before that pass
+           (w-[76vw] max-w-[340px] shrink-0 sm:w-96) — every card the same
+           size at a given viewport, BusinessLogoCard itself untouched
+           (it's `w-full`, purely wrapper-driven). */
         <div className="flex gap-3 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {items.map((b, i) => (
-            <div
-              key={b.id}
-              className={i === 0 ? "w-[68vw] max-w-[300px] shrink-0 sm:w-[380px]" : "w-[46vw] max-w-[220px] shrink-0 sm:w-64"}
-            >
+            <div key={b.id} className="w-[76vw] max-w-[340px] shrink-0 sm:w-96">
               <BusinessLogoCard
                 business={b}
                 nextAppearance={hints[b.id]}
