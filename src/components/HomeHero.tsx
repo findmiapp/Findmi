@@ -193,44 +193,40 @@ export default function HomeHero({
             </div>
           )}
 
-          {/* Consumer Discovery Homepage V2 — the hero's primary CONSUMER
-              action (task Section 8), added here rather than between body
-              and the collage: that zone is where Image 2 is deliberately
-              pulled up via a negative offset (see this file's own header
-              comment) to fill the open space beside body's lower rows —
-              inserting new normal-flow content there would push the
-              collage down while Image 2 stays pinned exactly 119px above
-              it, so it would end up overlapping whatever sits directly
-              above the collage instead of that intentional blank space.
-              Right after the collage (this exact spot) is the one place
-              already proven safe by the prior pass's own business CTA
-              addition — a taller block here only pushes later content
-              down, never collides with the collage's own geometry. Routes
-              to /discover, a real, already-built Where->When->What
-              discovery page — never a dead link. */}
-          <Link
-            href="/discover"
-            className="mt-3 flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 active:scale-[0.98]"
-          >
-            Explore What&rsquo;s Happening
-          </Link>
-
-          {/* P0 Safe-to-Share Acquisition pass — promoted from a small
-              underlined text link ("Get discovered →") to a genuine,
-              intentionally discoverable secondary CTA. Same /join
-              destination. Consumer Discovery Homepage V2 — now sits below
-              the primary consumer action above, quieter by construction
-              (outlined vs. filled), so business participation stays
-              discoverable without competing with consumer discovery. */}
-          <div className="mt-3">
-            <p className="text-[11px] font-semibold text-ink/50">Have a business or brand?</p>
-            <Link
-              href="/join"
-              className="mt-1.5 inline-flex h-9 items-center justify-center rounded-full border border-findmi/30 bg-white px-4 text-[12px] font-bold uppercase tracking-wide text-ink transition hover:border-findmi/50"
-            >
-              Get Started Free
-            </Link>
-            <p className="mt-1.5 text-[11px] text-ink/40">No credit card required.</p>
+          {/* Consumer Discovery Homepage V2.1 — mobile density pass. The
+              live mobile review found the prior stacked composition
+              (full-width primary button, then a separate "Have a
+              business or brand?" module) too tall and visually
+              disconnected. Recomposed into one compact two-column action
+              row — FOR YOU / FOR BRANDS — same two destinations
+              (/discover, /join) and the same "No credit card required"
+              reassurance, just presented as one related decision instead
+              of two stacked modules. Still placed right after the
+              collage (never between body and it — see this file's own
+              header comment on why: Image 2's negative-offset pull-up
+              would collide with new content there), so the collage's
+              own tuned geometry stays untouched. */}
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">For You</p>
+              <Link
+                href="/discover"
+                className="mt-1.5 flex h-11 items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 active:scale-[0.98]"
+              >
+                Explore
+              </Link>
+              <p className="mt-1.5 text-[11px] text-ink/45">What&rsquo;s happening</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-ink/40">For Brands</p>
+              <Link
+                href="/join"
+                className="mt-1.5 flex h-11 items-center justify-center rounded-full border border-findmi/30 bg-white text-xs font-bold uppercase tracking-wide text-ink transition hover:border-findmi/50 active:scale-[0.98]"
+              >
+                Start Free
+              </Link>
+              <p className="mt-1.5 text-[11px] text-ink/45">No credit card required</p>
+            </div>
           </div>
         </div>
 
@@ -242,33 +238,34 @@ export default function HomeHero({
             </h1>
             {description && <p className="mt-4 max-w-md text-base text-ink/60">{description}</p>}
 
-            {/* Consumer Discovery Homepage V2 — the hero's primary
-                CONSUMER action (task Section 8). Desktop has no collage-
-                collision constraint (the collage is a separate flex
-                sibling, never overlapping this text column), so this sits
-                directly after the description, ahead of the business CTA
-                below it. Routes to /discover, a real, already-built
-                Where->When->What discovery page. */}
-            <Link
-              href="/discover"
-              className="mt-5 inline-flex h-12 items-center justify-center rounded-full bg-findmi px-7 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-            >
-              Explore What&rsquo;s Happening
-            </Link>
-
-            {/* P0 Safe-to-Share Acquisition pass — same CTA promotion as
-                the mobile branch above. Consumer Discovery Homepage V2 —
-                now sits below the primary consumer action above, quieter
-                by construction (outlined vs. filled). */}
-            <div className="mt-4">
-              <p className="text-xs font-semibold text-ink/50">Have a business or brand?</p>
-              <Link
-                href="/join"
-                className="mt-1.5 inline-flex h-10 items-center justify-center rounded-full border border-findmi/30 bg-white px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-findmi/50"
-              >
-                Get Started Free
-              </Link>
-              <p className="mt-1.5 text-xs text-ink/40">No credit card required.</p>
+            {/* Consumer Discovery Homepage V2.1 — same FOR YOU / FOR
+                BRANDS two-column recomposition as the mobile branch
+                above, for consistency across breakpoints (task Section
+                14 explicitly allows two columns on desktop too). Desktop
+                has no collage-collision constraint (the collage is a
+                separate flex sibling, never overlapping this text
+                column), so this sits directly after the description. */}
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">For You</p>
+                <Link
+                  href="/discover"
+                  className="mt-1.5 flex h-12 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                >
+                  Explore
+                </Link>
+                <p className="mt-1.5 text-xs text-ink/45">What&rsquo;s happening</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">For Brands</p>
+                <Link
+                  href="/join"
+                  className="mt-1.5 flex h-12 items-center justify-center rounded-full border border-findmi/30 bg-white text-sm font-bold uppercase tracking-wide text-ink transition hover:border-findmi/50"
+                >
+                  Start Free
+                </Link>
+                <p className="mt-1.5 text-xs text-ink/45">No credit card required</p>
+              </div>
             </div>
           </div>
 

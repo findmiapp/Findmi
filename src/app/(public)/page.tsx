@@ -3,7 +3,6 @@ import ProductCard from "@/components/ProductCard";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
-import HomeEditorialFeature from "@/components/HomeEditorialFeature";
 import HomeWeather from "@/components/HomeWeather";
 import Section, { HorizontalScroller } from "@/components/Section";
 import HomeHero from "@/components/HomeHero";
@@ -171,43 +170,31 @@ export default async function HomePage({
 
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Consumer Area Picker V1 — compact, URL-only ("?market=", never
-          persisted to a cookie/localStorage/session). Searchable — see
-          AreaPicker's own note — suitable for dozens/hundreds of
-          Markets, not just today's 5. Scopes dynamic business AND event
-          discovery below (rows, category chips, search) — never
-          products, appearances, or venues, which never read this param
-          at all. Deliberately NOT in the global header — page-scoped
-          only. Consumer-facing label is "Area" (never "Market", the
-          internal/admin/business term); the ?market= URL param itself
-          is unchanged. Option labels prefer each Market's founder-set
-          consumer display name via getMarketAreaLabel. */}
-      {markets.length > 0 && (
-        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-          <AreaPicker
-            options={markets.map((m) => ({
-              slug: m.slug,
-              label: getMarketAreaLabel(m),
-              areasIncluded: m.areas_included,
-              areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-            }))}
-          />
-        </div>
-      )}
-
-      {/* Discovery filters (Up Next default) + first live feed — heading
-          is exactly "Upcoming Events Near You" (see HOMEPAGE_SECTIONS'
-          featured_events default). Begins immediately after the Hero now
-          (homepage order pass) — Search moved below this complete
-          section (see below), so event cards are visible sooner. */}
-      {/* Business Profile + Event Detail V2 polish pass, item 1: reuses
-          Section's own header (title left, View All same line/vertically
-          centered to it, smaller/underlined, subtitle-free here) instead
-          of a page-specific hand-rolled header — the shared architecture
-          this item asked for, not a one-off. */}
+      {/* Consumer Discovery Homepage V2.1 — mobile density pass. The
+          Area Picker no longer renders as its own isolated full-width
+          band above this section (a real complaint from the live mobile
+          review: one small pill consuming an entire visual row, with
+          most of that row's width left blank). It now renders INSIDE
+          this same Section, directly above the time filters — WHERE,
+          then WHEN, then RESULTS, as one discovery control system
+          instead of three unrelated homepage sections. AreaPicker's own
+          component/behavior (real market/area data, ?market=/?area=
+          query params, search) is completely untouched — only its call
+          site moved. Section's own default "py-6" vertical rhythm is
+          tightened here (pt-2, keeping pb-6) specifically for this one
+          instance — Section's className prop exists for exactly this
+          per-caller override (see its own doc comment) and no other
+          Section caller is affected.
+          Heading changed from "Upcoming Events Near You" to "What's
+          Happening" (HOMEPAGE_SECTIONS.featured_events, verified not
+          live-overridden) — this section has no geolocation signal at
+          all, only an explicit Area filter the visitor chooses, so
+          "Near You" claimed a proximity the product doesn't actually
+          have. */}
       <div className="mx-auto max-w-6xl">
         <Section
           title={upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
+          className="pt-2 pb-6"
           // Consumer Event Market Filtering V1, item I — this section
           // represents general event browsing (never the curated/editorial
           // Featured Events concept — see getFeaturedEvents, untouched by
@@ -218,6 +205,18 @@ export default async function HomePage({
               : "/events"
           }
         >
+          {markets.length > 0 && (
+            <div className="mb-3 px-4 sm:px-6">
+              <AreaPicker
+                options={markets.map((m) => ({
+                  slug: m.slug,
+                  label: getMarketAreaLabel(m),
+                  areasIncluded: m.areas_included,
+                  areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+                }))}
+              />
+            </div>
+          )}
           <HomeEventDiscovery
             // Remounts (resetting its internal time×category cache) when
             // the homepage's own Market/Area changes — same lesson already
@@ -234,18 +233,6 @@ export default async function HomePage({
           />
         </Section>
       </div>
-
-      {/* EDITORIAL FEATURE — Consumer Discovery Homepage V2 (task Section
-          7.C/10). One real discovery object given meaningfully more
-          visual weight than the standard card rails around it: the single
-          soonest real upcoming event, i.e. nextEvents[0] — the exact same
-          chronological getUpcomingEvents("anytime") query the "Next Up"/
-          "All" tabs directly above already use. Zero new query,
-          deterministic (never randomized, never a fabricated "featured"
-          flag), and renders nothing at all when there's no real upcoming
-          event to show — see HomeEditorialFeature's own doc comment for
-          the full selection-rule writeup. */}
-      {nextEvents.length > 0 && <HomeEditorialFeature event={nextEvents[0]} />}
 
       {/* Homepage discovery flow pass — the homepage-body search field
           that used to sit here (between Upcoming Events and Brands We
