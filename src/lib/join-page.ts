@@ -85,7 +85,17 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // section_key='card_discovery_pro') — this fallback and the live
     // row must both stay accurate, since either can be what actually
     // renders depending on whether an admin override exists.
+    // Business Acquisition + Stale Plan Copy Cleanup pass — "Analytics"
+    // added as the leading bullet (a real, currently Pro-gated capability
+    // — see account/business/[id]/page.tsx's `pro && performanceData` /
+    // PerformanceTab, gated via isBusinessPro — that was previously
+    // missing from this list entirely). Canonical product rule: Pro
+    // should lead with intelligence/optimization, not schedule
+    // completion, so "Full Findmi Here schedule" moves down rather than
+    // leading. Every other bullet here is an existing, verified-accurate
+    // Pro capability, untouched.
     features: [
+      "Analytics — see how people find and engage with you",
       "Full Findmi Here schedule",
       "Photos",
       "Contact info + customer inquiries",
@@ -374,18 +384,30 @@ export function resolveJoinFreeCard(overrides: Map<string, SiteSection>): Resolv
 // saving one never wipes the other's fields (see actions.ts).
 
 export const JOIN_PRO_EXTRA_DEFAULTS = {
-  billingLabel: "Your complete Findmi presence.",
+  // Business Acquisition + Stale Plan Copy Cleanup pass — was "Your
+  // complete Findmi presence.", framing Pro as the plan that completes
+  // your page. Canonical product rule: "PRO: understand what's working
+  // and grow it" — restated to match that exactly.
+  billingLabel: "Understand what's working and grow it.",
   // Join Page Conversion Rebuild pass — new field: the one-line description
   // shown right under the price. Added rather than repurposing an existing
   // field so `noRenewalNote` below keeps its own literal, unambiguous
   // meaning ("No automatic renewal.") in its existing spot further down.
-  // Final Join Conversion Story pass — restated around the concrete
-  // things a customer finds on the page.
-  descriptionLine: "Your full schedule, products, photos and everything customers need to find and connect with your business.",
+  // Business Acquisition + Stale Plan Copy Cleanup pass — was "Your full
+  // schedule, products, photos and everything customers need to find and
+  // connect with your business." (schedule-completion framing). Restated
+  // around Analytics, the real current Pro differentiator.
+  descriptionLine: "Deeper performance insights, plus gallery, contact info and more, once you're ready to grow.",
   noRenewalNote: "No automatic renewal.",
-  highlightHeading: "Findmi Here",
-  highlightSubheading: "Show customers where you’ll be next.",
-  highlightBody: "Keep your full upcoming schedule on one page.",
+  // Business Acquisition + Stale Plan Copy Cleanup pass — the highlight
+  // box was "Findmi Here" (full schedule) — repositioned to Analytics,
+  // reusing the exact same truthful copy already used for this real
+  // Pro-gated feature's own upgrade-lock elsewhere (account/business/
+  // [id]/page.tsx's UpgradeLockedTab tabKey="performance" description),
+  // not invented fresh here.
+  highlightHeading: "Analytics",
+  highlightSubheading: "See what's working — and grow it.",
+  highlightBody: "Understand how people discover and engage with your business.",
   // Display copy only — see this pass's own report / the admin field's own
   // hint. The actual charged amount always comes from
   // BUSINESS_PRO_INTRO_PRICE_CENTS (businessProCheckout.ts), never from

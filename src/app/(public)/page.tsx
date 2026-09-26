@@ -131,6 +131,15 @@ export default async function HomePage({
   const exploreSec = resolve("explore_by_category");
   const closingSec = resolve("closing_cta");
   const heroSec = resolve("hero");
+  // Business Acquisition + Stale Plan Copy Cleanup pass — this key was
+  // marked SUPERSEDED (2026 feed-builder pass) when the Business Showcase
+  // moved to a founder-managed Homepage Row, and page.tsx stopped reading
+  // it. Reused again here, unchanged shape, purely as ordinary founder-
+  // editable heading/cta text for a much smaller presentation (see the
+  // single-line acquisition prompt below) — not the old full showcase
+  // section. Verified no live site_sections override exists for this key
+  // before relying on its default copy.
+  const businessDoorwaySec = resolve("business_doorway");
 
   // Homepage Hero Founder Control pass — Image 1 ("Large Image", the
   // large lower/left tile) and Image 2 ("Overlay Image", the smaller
@@ -186,6 +195,32 @@ export default async function HomePage({
       <HomeWeather context={weatherContext} />
 
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
+
+      {/* Business Acquisition + Stale Plan Copy Cleanup pass — restores a
+          small, single-line business entry beneath the hero imagery and
+          BEFORE the consumer search entry. Present in an earlier homepage
+          pass, then lost when a later recomposition removed the FOR YOU /
+          FOR BRANDS module entirely — removing that giant split was
+          correct; removing this one small line was not (a business
+          visitor should be able to understand "I can put my brand on
+          this" without the consumer homepage becoming a business landing
+          page). Additive only: one understated text line, not a card, no
+          pricing, doesn't compete with the search entry directly below
+          it. Deeper acquisition still lives only at the closing_cta near
+          the bottom — this is not a second competing module. */}
+      {businessDoorwaySec.visible && (
+        <div className="mx-auto max-w-6xl px-4 pb-1 pt-3 sm:px-6">
+          <Link
+            href={businessDoorwaySec.ctaUrl ?? "/join"}
+            className="inline-flex flex-wrap items-baseline gap-1 text-sm text-ink/50 transition hover:text-ink/70"
+          >
+            <span>{businessDoorwaySec.heading}</span>
+            <span className="font-semibold text-ink underline decoration-ink/25 underline-offset-2">
+              {businessDoorwaySec.ctaLabel}
+            </span>
+          </Link>
+        </div>
+      )}
 
       {/* CONSUMER HOME V1 — discovery entry. A single lightweight search
           field directly below the hero, reusing the existing homepage

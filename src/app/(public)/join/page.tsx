@@ -361,7 +361,15 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
             <span>required</span>
           </span>
         </div>
-        <p className="mt-1 min-h-8 text-xs text-ink/60">Your business page + next 3 appearances</p>
+        {/* Business Acquisition + Stale Plan Copy Cleanup pass — was
+            "Your business page + next 3 appearances": true, but leading
+            with a numeric limit made Free read as the crippled option
+            next to Pro's "complete" framing. Free's real feature list
+            (including that same accurate 3-appearance detail) still lives
+            in the full FreeSection below — this top-level tile now leads
+            with creation/identity instead, matching the acquisition
+            funnel's actual first step (create, don't compare limits). */}
+        <p className="mt-1 min-h-8 text-xs text-ink/60">Create your business page and start showing up</p>
         <p className="mt-2 flex items-center gap-1 text-xs font-bold text-findmi-700">
           Explore Free <span aria-hidden>→</span>
         </p>
@@ -374,7 +382,12 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
         <div className="mt-1 flex min-h-7 items-center">
           <p className="font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
         </div>
-        <p className="mt-1 min-h-8 text-xs text-ink/60">Your complete Findmi page + full schedule</p>
+        {/* Was "Your complete Findmi page + full schedule" — positioned
+            Pro as merely "the plan that unlocks your full schedule."
+            Canonical product rule: Free creates and distributes, Pro
+            explains/optimizes — Analytics is Pro's real, current
+            differentiator (see ProCard's own highlight box below). */}
+        <p className="mt-1 min-h-8 text-xs text-ink/60">Analytics and deeper tools to grow</p>
         <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
           Explore Pro <span aria-hidden>→</span>
         </p>
@@ -558,12 +571,16 @@ function FreeSection({ card, ctaHref }: { card: ResolvedJoinFreeCard; ctaHref: s
       >
         {ctaLabel}
       </Link>
-      {/* Canonical Plan Config pass — "products" removed: Products is a
-          Free capability now (Free/Pro Entitlement Realignment pass), so
-          naming it as a reason to upgrade was stale and actively
-          wrong. */}
+      {/* Business Acquisition + Stale Plan Copy Cleanup pass — was "Need
+          your full schedule, custom Findmi URL and more?", leading with
+          the schedule limit as the upgrade reason. Reworded to lead with
+          Pro's real current differentiator (Analytics) instead — the
+          full schedule/custom URL are still real Pro features, just no
+          longer the headline pitch (Canonical Plan Config pass note on
+          Products above still applies: no longer named as a reason to
+          upgrade, since Products is Free). */}
       <p className="mt-2 text-center text-xs text-ink/45">
-        Need your full schedule, custom Findmi URL and more? Upgrade to Pro anytime.
+        Want deeper insights and more tools to grow? Upgrade to Pro anytime.
       </p>
     </div>
   );

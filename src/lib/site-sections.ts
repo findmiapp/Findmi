@@ -173,22 +173,21 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     imageSlots: 3,
     orderable: false,
   },
-  // business_doorway: SUPERSEDED (2026 feed-builder pass) — the Business
-  // Showcase is now a founder-managed Homepage Row
-  // (content_type: "business_showcase"), hideable/reorderable there
-  // instead of pinned at a fixed site_sections position. Registry entry
-  // kept (harmless, unread) rather than deleted.
+  // business_doorway — Business Acquisition + Stale Plan Copy Cleanup
+  // pass: reused again as the homepage's small single-line business entry
+  // (page.tsx, directly beneath the hero). Previously marked SUPERSEDED
+  // when the full Business Showcase carousel moved to a founder-managed
+  // Homepage Row; that carousel still exists there, untouched — this key
+  // is back to its original, much smaller job (a one-line "Have a
+  // business or brand? Get discovered →" prompt), not the showcase.
+  // ctaLabel default updated from "Join Findmi →" to "Get discovered →"
+  // (verified no live site_sections override exists for this key) to
+  // match that exact restored copy.
   business_doorway: {
-    // Repurposed (2026 discovery-marketplace redesign) as the homepage's
-    // Business Showcase — a compact swipeable carousel demonstrating real
-    // FindMi UI patterns (profile/events/products/discovery), not the
-    // one-line masthead link this used to be. Key/admin card kept as-is
-    // so this stays founder-editable; the 4 slide captions themselves are
-    // fixed copy in BusinessShowcaseCarousel.tsx, not a new per-slide CMS.
-    label: "Business Showcase",
+    label: "Business Acquisition Line",
     heading: "Have a business or brand?",
     body: "Get discovered on Findmi.",
-    ctaLabel: "Join Findmi →",
+    ctaLabel: "Get discovered →",
     ctaUrl: "/join",
     order: 45,
     fields: ["heading", "body", "cta"],

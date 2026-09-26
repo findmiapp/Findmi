@@ -261,7 +261,19 @@ export default async function AddBusinessPage({
             </>
           ) : (
             <div>
-              <span className="mb-1.5 block text-sm font-medium text-ink">Choose your plan</span>
+              {/* Business Acquisition + Stale Plan Copy Cleanup pass —
+                  was unconditionally "Choose your plan", framing every
+                  normal (no-intent) visitor as being asked to buy
+                  software before they've created anything. The normal
+                  path now reads "Get started" (Free is the obvious
+                  default below, not a competing decision); explicit Pro
+                  intent (?plan=pro) keeps "Choose your plan" since that
+                  visitor arrived specifically to weigh the two — nothing
+                  about defaultChecked/plan_choice/Stripe routing changed,
+                  this is the label text only. */}
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                {wantsPro ? "Choose your plan" : "Get started"}
+              </span>
               {/* P0 Safe-to-Share Acquisition pass — the dominant/quiet
                   visual treatment and render order now both follow
                   `wantsPro` instead of Pro always being first/dominant.
@@ -397,7 +409,12 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
           <span className="text-sm font-bold text-ink">Findmi Pro</span>
           <span className="text-sm text-ink/45">· $99/year</span>
         </p>
-        <p className="text-xs text-ink/60">Full Findmi Here schedule, gallery, contact info and more.</p>
+        {/* Business Acquisition + Stale Plan Copy Cleanup pass — was
+            "Full Findmi Here schedule, gallery, contact info and more."
+            (schedule-first). Analytics — a real, currently Pro-gated
+            capability, see account/business/[id]/page.tsx's `pro &&`
+            gate on PerformanceTab — now leads. */}
+        <p className="text-xs text-ink/60">Analytics, full schedule, gallery, contact info and more.</p>
       </label>
     );
   }
@@ -412,28 +429,29 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
         <span className="text-xs font-medium text-ink/45">/ year</span>
       </p>
 
-      {/* Final Conversion Consistency pass — Free can also add/manage
-          appearances now (Passes 1-2), so this no longer frames "adding
-          appearances" as the Pro-exclusive benefit — the real Pro
-          distinction is the full schedule showing publicly (Free/Pro
-          Entitlement pass: Free's public profile shows its next 3, Pro
-          shows the full schedule). Also drops the "Featured with Pro"
-          eyebrow (implied FindMi itself features the business), matching
-          join/page.tsx's ProCard. */}
+      {/* Business Acquisition + Stale Plan Copy Cleanup pass — was a
+          "Findmi Here" / full-schedule highlight box (schedule-completion
+          framing — accurate, since Free really is capped at 3 public
+          appearances vs Pro's full schedule, but not the right LEADING
+          pitch — see canonical rule: Pro explains/optimizes, it isn't
+          merely "the plan that unlocks your schedule"). Repositioned to
+          Analytics, a real, currently Pro-gated capability (see
+          account/business/[id]/page.tsx's `pro && performanceData` gate),
+          reusing the same truthful copy as that feature's own upgrade-
+          lock elsewhere (UpgradeLockedTab tabKey="performance"). */}
       <div className="rounded-2xl bg-findmi-50 p-3">
-        <p className="text-sm font-bold text-ink">Findmi Here</p>
-        <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers where to find you next.</p>
-        <p className="mt-1 text-xs text-ink/60">
-          Your full upcoming schedule shows on your public profile — not just your next few appearances.
-        </p>
+        <p className="text-sm font-bold text-ink">Analytics</p>
+        <p className="mt-0.5 text-xs font-semibold text-ink/75">See what&rsquo;s working — and grow it.</p>
+        <p className="mt-1 text-xs text-ink/60">Understand how people discover and engage with your business.</p>
       </div>
 
-      {/* Canonical Plan Config pass — "Gallery + products" is now just
-          "Gallery": Products became a Free capability in the Free/Pro
-          Entitlement Realignment pass, so bundling it into a Pro-only
-          bullet was stale and actively wrong. Every other bullet here is
-          untouched. */}
+      {/* Business Acquisition + Stale Plan Copy Cleanup pass — Analytics
+          added as the leading bullet (see above); every other bullet
+          remains an existing, verified-accurate Pro capability. Canonical
+          Plan Config pass note above still applies: "Gallery + products"
+          stays just "Gallery," Products being a Free capability. */}
       <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
+        <PlanBullet>Analytics</PlanBullet>
         <PlanBullet>Full Findmi Here schedule</PlanBullet>
         <PlanBullet>Gallery</PlanBullet>
         <PlanBullet>Contact info + customer inquiries</PlanBullet>
@@ -471,8 +489,11 @@ function FreePlanOption({ dominant }: { dominant: boolean }) {
         {/* Canonical Plan Config pass — "products" removed: Products is a
             Free capability now (Free/Pro Entitlement Realignment pass),
             so naming it as a reason to upgrade was stale and actively
-            wrong. */}
-        <p className="mt-1 text-xs text-ink/45">Upgrade anytime for your full schedule, custom Findmi URL and more.</p>
+            wrong. Business Acquisition + Stale Plan Copy Cleanup pass —
+            was "Upgrade anytime for your full schedule, custom Findmi URL
+            and more." (schedule-first); reworded to lead with Analytics,
+            consistent with ProPlanOption/join/page.tsx's FreeSection. */}
+        <p className="mt-1 text-xs text-ink/45">Upgrade anytime for Analytics and more.</p>
       </label>
     );
   }
