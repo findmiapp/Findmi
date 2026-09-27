@@ -1359,9 +1359,12 @@ export default async function ManageBusinessPage({
               data={performanceData}
               basePath={basePath}
               range={perfRange}
+              businessId={id}
               businessName={business.name}
               businessSlug={business.slug ?? null}
               followerSummary={followerSummary}
+              qrEligibleAppearances={appearances.map((a) => ({ id: a.id, name: a.title }))}
+              qrEligibleProducts={products.map((p) => ({ id: p.id, name: p.name }))}
             />
           ) : (
             <UpgradeLockedTab

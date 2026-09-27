@@ -11,6 +11,7 @@ import {
 import type { BusinessFollowerSummary } from "@/lib/business-followers";
 import SupabaseImage from "@/components/SupabaseImage";
 import { Panel, RowList, Row, Stat, SectionEyebrow, PerformanceMetric, ShareBar, RankedPerformanceRow, secondaryButtonClass } from "../../owner-ui";
+import QrCampaignCreator from "./QrCampaignCreator";
 
 // Performance Command Center pass — Analytics stays presentational-only
 // here: every number still comes pre-aggregated from
@@ -127,13 +128,21 @@ export default function PerformanceTab({
   data,
   basePath,
   range,
+  businessId,
   businessName,
   businessSlug,
   followerSummary,
+  qrEligibleAppearances,
+  qrEligibleProducts,
 }: {
   data: OwnerPerformanceData;
   basePath: string;
   range: OwnerPerformanceRange;
+  /** Pro QR Self-Service V1 — needed to call the owner QR creation
+   * action, which re-verifies everything server-side (see
+   * account/business/qr-actions.ts); this file never calls it directly
+   * and never trusts anything about this id beyond passing it through. */
+  businessId: string;
   businessName: string;
   /** Threaded through as a plain prop so the zero-data module's "Share
    * your Findmi page" CTA can link to the real public profile without
@@ -143,6 +152,12 @@ export default function PerformanceTab({
    * plain prop for the Audience section rather than expanding
    * ownerPerformance.ts's own query/aggregation. */
   followerSummary: BusinessFollowerSummary;
+  /** Pro QR Self-Service V1 — this business's own appearances/products
+   * (already fetched unconditionally by page.tsx for the Where I'll Be/
+   * Products tabs), reduced to {id, name} for the QR creator's target
+   * picker. No new query added here or in page.tsx. */
+  qrEligibleAppearances: { id: string; name: string }[];
+  qrEligibleProducts: { id: string; name: string }[];
 }) {
   const nonZeroTrendPoints = data.trend.points.filter((p) => p.value > 0);
 
@@ -504,38 +519,68 @@ export default function PerformanceTab({
               </div>
             </Panel>
 
-            {/* ── QR Performance — the one deliberate exception to
-                "always render a shell": never rendered at all, not even
-                a waiting state, when this Business has no real QR
-                campaigns (owner QR self-service doesn't exist yet, and
-                a waiting state here would incorrectly imply a business
-                can create one). Unchanged from before. ── */}
-            {data.qr && (
-              <Panel title="QR Performance">
-                <div className="grid grid-cols-3 gap-2">
-                  <Stat value={data.qr.totalScans.toLocaleString()} label="Scans" />
-                  <Stat value={data.qr.uniqueSessions.toLocaleString()} label="Visitors" />
-                  <Stat value={data.qr.actionsFromQr.toLocaleString()} label="Actions" />
-                </div>
-                {data.qrCampaigns.length > 0 && (
-                  <div className="mt-3 flex flex-col divide-y divide-black/[0.05] border-t border-black/[0.05]">
-                    {data.qrCampaigns.map((c) => (
-                      <div key={c.id} className="flex items-center justify-between gap-3 py-2.5">
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-semibold text-ink">{c.name}</p>
-                          {c.placement && <p className="text-[11px] text-ink/40">{c.placement}</p>}
-                        </div>
-                        <p className="shrink-0 text-right text-[11px] text-ink/50">
-                          {c.scans.toLocaleString()} scans
-                          <br />
-                          {c.uniqueVisitors.toLocaleString()} visitors
-                        </p>
-                      </div>
-                    ))}
+            {/* ── QR Performance — Pro QR Self-Service V1. Previously the
+                one deliberate exception to "always render a shell" (fully
+                absent with no campaigns, since owner self-service didn't
+                exist). Now always renders: an empty state with the
+                create control when this Business has no campaigns yet,
+                the existing scan/visitor/action reporting plus an
+                unobtrusive create control when it does. Reporting itself
+                (Stat/campaign rows) is unchanged except the new
+                per-campaign action-type line. ── */}
+            <Panel title="QR Performance">
+              {data.qr ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Stat value={data.qr.totalScans.toLocaleString()} label="Scans" />
+                    <Stat value={data.qr.uniqueSessions.toLocaleString()} label="Visitors" />
+                    <Stat value={data.qr.actionsFromQr.toLocaleString()} label="Actions" />
                   </div>
-                )}
-              </Panel>
-            )}
+                  {data.qrCampaigns.length > 0 && (
+                    <div className="mt-3 flex flex-col divide-y divide-black/[0.05] border-t border-black/[0.05]">
+                      {data.qrCampaigns.map((c) => (
+                        <div key={c.id} className="flex items-center justify-between gap-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] font-semibold text-ink">{c.name}</p>
+                            {c.placement && <p className="text-[11px] text-ink/40">{c.placement}</p>}
+                            {c.actionBreakdown.length > 0 && (
+                              <p className="mt-0.5 truncate text-[11px] text-ink/45">
+                                {c.actionBreakdown.map((a) => `${a.label} ${a.count}`).join(" · ")}
+                              </p>
+                            )}
+                          </div>
+                          <p className="shrink-0 text-right text-[11px] text-ink/50">
+                            {c.scans.toLocaleString()} scans
+                            <br />
+                            {c.uniqueVisitors.toLocaleString()} visitors
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 border-t border-black/[0.05] pt-3">
+                    <QrCampaignCreator
+                      businessId={businessId}
+                      businessName={businessName}
+                      appearances={qrEligibleAppearances}
+                      products={qrEligibleProducts}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <p className="text-[12.5px] text-ink/50">
+                    Connect your real-world presence to Findmi and see what happens after the scan.
+                  </p>
+                  <QrCampaignCreator
+                    businessId={businessId}
+                    businessName={businessName}
+                    appearances={qrEligibleAppearances}
+                    products={qrEligibleProducts}
+                  />
+                </div>
+              )}
+            </Panel>
           </div>
         </div>
       )}

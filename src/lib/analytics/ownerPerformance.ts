@@ -288,6 +288,11 @@ export interface OwnerPerformanceQrCampaign {
   scans: number;
   uniqueVisitors: number;
   actions: number;
+  /** Pro QR Self-Service V1 — the SAME action total above, broken down
+   * by which kind of action it was, using the already-existing per-event
+   * attribution (acquisition_source="qr" + acquisition_qr_campaign_id).
+   * Only non-zero types, sorted by count — never a new event type. */
+  actionBreakdown: OwnerPerformanceBreakdownItem[];
 }
 
 export interface OwnerPerformanceTrendPoint {
@@ -338,8 +343,22 @@ interface QrScanRow {
 }
 interface QrActionRow {
   acquisition_qr_campaign_id: string | null;
+  event_name: string;
   occurred_at: string;
 }
+
+// Pro QR Self-Service V1 — the per-QR-campaign action-type breakdown.
+// Reuses SECONDARY_ACTION_DEFS' own event->label vocabulary (the exact
+// same labels the site-wide "What People Do Next" section already uses)
+// plus click_contact_channel (already part of OWNER_ACTION_EVENT_NAMES
+// and therefore already fetched by the QR action query below, but
+// deliberately excluded from SECONDARY_ACTION_DEFS in favor of its own
+// richer per-channel section there) collapsed into one combined line
+// here, since a per-QR-campaign breakdown doesn't need that granularity.
+const QR_ACTION_BREAKDOWN_DEFS: { eventName: AnalyticsEventName; label: string }[] = [
+  ...SECONDARY_ACTION_DEFS,
+  { eventName: "click_contact_channel", label: "Contact & Links" },
+];
 
 function isCurrentPeriod(occurredAt: string, bounds: RangeBounds): boolean {
   return bounds.currentStartIso === null || occurredAt >= bounds.currentStartIso;
@@ -520,7 +539,7 @@ export async function getOwnerBusinessPerformance(
       .in("qr_campaign_id", campaignIds);
     let actionQuery = admin
       .from("analytics_events")
-      .select("acquisition_qr_campaign_id, occurred_at")
+      .select("acquisition_qr_campaign_id, event_name, occurred_at")
       .eq("acquisition_source", "qr")
       .in("acquisition_qr_campaign_id", campaignIds)
       .in("event_name", [...OWNER_ACTION_EVENT_NAMES]);
@@ -668,13 +687,21 @@ export async function getOwnerBusinessPerformance(
       : null;
   const qrCampaigns: OwnerPerformanceQrCampaign[] = campaigns.map((c) => {
     const campaignScans = currentScanRows.filter((r) => r.qr_campaign_id === c.id);
+    const campaignActionRows = currentQrActionRows.filter((r) => r.acquisition_qr_campaign_id === c.id);
+    const actionBreakdown: OwnerPerformanceBreakdownItem[] = QR_ACTION_BREAKDOWN_DEFS.map((def) => ({
+      label: def.label,
+      count: campaignActionRows.filter((r) => r.event_name === def.eventName).length,
+    }))
+      .filter((item) => item.count > 0)
+      .sort((a, b) => b.count - a.count);
     return {
       id: c.id,
       name: c.name,
       placement: c.placement,
       scans: campaignScans.length,
       uniqueVisitors: new Set(campaignScans.map((r) => r.session_id)).size,
-      actions: currentQrActionRows.filter((r) => r.acquisition_qr_campaign_id === c.id).length,
+      actions: campaignActionRows.length,
+      actionBreakdown,
     };
   });
 
