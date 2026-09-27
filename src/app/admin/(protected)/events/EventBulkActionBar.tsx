@@ -4,19 +4,14 @@ import { useState } from "react";
 import type { Category } from "@/lib/types";
 import LifecycleBulkActionBar from "@/components/admin/LifecycleBulkActionBar";
 import {
-  bulkArchiveProducts,
-  bulkPauseProducts,
-  bulkPermanentDeleteProducts,
-  bulkQuickEditProducts,
-  bulkResumeProducts,
-  bulkRestoreFromArchive,
-  bulkRestoreFromTrash,
-  bulkTrashProducts,
+  bulkArchiveEvents,
+  bulkPermanentDeleteEvents,
+  bulkQuickEditEvents,
+  bulkRestoreEventsFromArchive,
+  bulkRestoreEventsFromTrash,
+  bulkTrashEvents,
 } from "./lifecycle-actions";
 
-/** V2 — now a thin wrapper over the shared LifecycleBulkActionBar (see
- * that file for why Pause/Resume are never shown together). Only the
- * Quick Edit form (category + Featured) stays product-specific. */
 function QuickEditForm({ ids, categories }: { ids: string[]; categories: Category[] }) {
   const [open, setOpen] = useState(false);
   if (!open) {
@@ -33,7 +28,7 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   }
   return (
     <form
-      action={bulkQuickEditProducts}
+      action={bulkQuickEditEvents}
       className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2.5"
     >
       {ids.map((id) => (
@@ -74,12 +69,14 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   );
 }
 
-export default function ProductBulkActionBar({
+export default function EventBulkActionBar({
   view,
   selectedIds,
   categories,
 }: {
-  view: "active" | "paused" | "archived" | "trashed" | "other";
+  // No "paused" view — see lifecycle-actions.ts's note: events have no
+  // Pause concept (DB CHECK constraint), unlike Businesses/Products.
+  view: "active" | "archived" | "trashed" | "other";
   selectedIds: string[];
   categories: Category[];
 }) {
@@ -87,15 +84,13 @@ export default function ProductBulkActionBar({
     <LifecycleBulkActionBar
       view={view}
       selectedIds={selectedIds}
-      entityNoun="product"
+      entityNoun="event"
       actions={{
-        pause: bulkPauseProducts,
-        resume: bulkResumeProducts,
-        archive: bulkArchiveProducts,
-        restoreFromArchive: bulkRestoreFromArchive,
-        trash: bulkTrashProducts,
-        restoreFromTrash: bulkRestoreFromTrash,
-        permanentDelete: bulkPermanentDeleteProducts,
+        archive: bulkArchiveEvents,
+        restoreFromArchive: bulkRestoreEventsFromArchive,
+        trash: bulkTrashEvents,
+        restoreFromTrash: bulkRestoreEventsFromTrash,
+        permanentDelete: bulkPermanentDeleteEvents,
       }}
       quickEdit={(ids) => <QuickEditForm ids={ids} categories={categories} />}
     />

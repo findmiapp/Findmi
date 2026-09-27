@@ -27,12 +27,19 @@ export default function BusinessesFilterBar({
   initialQ,
   initialCategory,
   initialPublished,
+  initialLifecycle,
   children,
 }: {
   categories: Category[];
   initialQ: string;
   initialCategory: string;
   initialPublished: string;
+  /** Admin Content Lifecycle V2 — the current lifecycle tab (Active/
+   * Paused/Archived/Trash), set by plain page-navigation Link pills above
+   * this component (see page.tsx). Carried through here purely so an
+   * in-place search/category change (this component's own client-side
+   * navigate()) doesn't silently drop back to the default tab. */
+  initialLifecycle?: string;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -62,6 +69,7 @@ export default function BusinessesFilterBar({
     if (nextQ.trim()) params.set("q", nextQ.trim());
     if (nextCategory) params.set("category", nextCategory);
     if (nextPublished) params.set("published", nextPublished);
+    if (initialLifecycle) params.set("lifecycle", initialLifecycle);
     const qs = params.toString();
     startTransition(() => {
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });

@@ -76,6 +76,29 @@ export interface BusinessListFilters {
   // user-created/claimed-pending businesses in this same list rather
   // than building a second moderation screen.
   published?: "public" | "demo" | "pending_review";
+  /** Admin Content Lifecycle V2 — a SEPARATE dimension from `published`
+   * above (a business can be Pending Review and Active/Paused at the
+   * same time). "active"/"paused" both exclude archived_at/trashed_at
+   * and split on the business's own existing publication_status='paused'
+   * value (its real, pre-existing Pause) — no new concept, just its own
+   * tab. Omitting `lifecycle` defaults to "active", same reasoning as
+   * Products V1: Archive/Trash must never be the thing you see by
+   * default. */
+  lifecycle?: "active" | "paused" | "archived" | "trashed";
+}
+
+function applyLifecycleFilter<
+  Q extends { eq: (c: string, v: unknown) => Q; neq: (c: string, v: unknown) => Q; is: (c: string, v: null) => Q; not: (c: string, op: string, v: null) => Q },
+>(query: Q, lifecycle: BusinessListFilters["lifecycle"]): Q {
+  if (lifecycle === "archived") return query.not("archived_at", "is", null).is("trashed_at", null);
+  if (lifecycle === "trashed") return query.not("trashed_at", "is", null);
+  if (lifecycle === "paused") return query.is("archived_at", null).is("trashed_at", null).eq("publication_status", "paused");
+  // "active" (explicit or default) — deliberately NOT publication_status=
+  // 'live' specifically: draft/pending_review/rejected businesses have
+  // their own dedicated moderation filter (`published` above) and must
+  // stay visible in the default admin view exactly as before this pass —
+  // only Paused (its own tab) is excluded here.
+  return query.is("archived_at", null).is("trashed_at", null).neq("publication_status", "paused");
 }
 
 export async function getAdminBusinesses(filters: BusinessListFilters = {}): Promise<AdminBusiness[]> {
@@ -99,6 +122,7 @@ export async function getAdminBusinesses(filters: BusinessListFilters = {}): Pro
     if (filters.published === "public") query = query.eq("is_demo", false);
     if (filters.published === "demo") query = query.eq("is_demo", true);
     if (filters.published === "pending_review") query = query.eq("is_demo", false).eq("publication_status", "pending_review");
+    else query = applyLifecycleFilter(query, filters.lifecycle);
     const { data } = await query;
     return ((data ?? []) as unknown as AdminBusiness[]) ?? [];
   }
@@ -110,7 +134,11 @@ export async function getAdminBusinesses(filters: BusinessListFilters = {}): Pro
   }
   if (filters.published === "public") query = query.eq("is_demo", false);
   if (filters.published === "demo") query = query.eq("is_demo", true);
-  if (filters.published === "pending_review") query = query.eq("is_demo", false).eq("publication_status", "pending_review");
+  if (filters.published === "pending_review") {
+    query = query.eq("is_demo", false).eq("publication_status", "pending_review").is("trashed_at", null);
+  } else {
+    query = applyLifecycleFilter(query, filters.lifecycle);
+  }
   const { data } = await query;
   return (data as AdminBusiness[]) ?? [];
 }
@@ -197,6 +225,12 @@ export interface EventListFilters {
    * keeps it non-public, so it was never miscounted before and still
    * isn't now. */
   needsReview?: boolean;
+  /** Admin Content Lifecycle V2 — archived_at/trashed_at only. Unlike
+   * BusinessListFilters.lifecycle, there is no "paused" value: events.
+   * publication_status has a DB-level CHECK constraint restricting it to
+   * 'pending_review' | 'live' | 'rejected' (see EventPublicationStatus in
+   * lib/types.ts) — Events have no Pause concept to filter by. */
+  lifecycle?: "active" | "archived" | "trashed";
 }
 
 export async function getAdminEvents(filters: EventListFilters = {}): Promise<AdminEvent[]> {
@@ -210,7 +244,8 @@ export async function getAdminEvents(filters: EventListFilters = {}): Promise<Ad
     let query = supabase
       .from("events")
       .select("*, event_businesses!inner(status)")
-      .in("event_businesses.status", ["applied", "pending"]);
+      .in("event_businesses.status", ["applied", "pending"])
+      .is("trashed_at", null);
     if (filters.q) {
       const term = `%${filters.q}%`;
       query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
@@ -223,7 +258,7 @@ export async function getAdminEvents(filters: EventListFilters = {}): Promise<Ad
   }
 
   if (filters.needsReview) {
-    let query = supabase.from("events").select("*").eq("publication_status", "pending_review");
+    let query = supabase.from("events").select("*").eq("publication_status", "pending_review").is("trashed_at", null);
     if (filters.q) {
       const term = `%${filters.q}%`;
       query = query.or(`name.ilike.${term},slug.ilike.${term},venue_name.ilike.${term}`);
@@ -242,6 +277,9 @@ export async function getAdminEvents(filters: EventListFilters = {}): Promise<Ad
   if (filters.when === "upcoming") query = query.gte("start_at", nowIso);
   if (filters.when === "past") query = query.lt("start_at", nowIso);
   if (filters.vendorAppsOpen) query = query.eq("vendor_applications_enabled", true);
+  if (filters.lifecycle === "archived") query = query.not("archived_at", "is", null).is("trashed_at", null);
+  else if (filters.lifecycle === "trashed") query = query.not("trashed_at", "is", null);
+  else query = query.is("archived_at", null).is("trashed_at", null);
   const { data } = await query.order("start_at", { ascending: false });
   return (data as AdminEvent[]) ?? [];
 }
@@ -585,7 +623,14 @@ export async function getEventOptionById(id: string | null): Promise<SelectOptio
 // Locations
 // ---------------------------------------------------------------------
 
-export async function getAdminLocations(q?: string): Promise<AdminLocation[]> {
+/** Admin Content Lifecycle V2 — Locations have no existing Pause/
+ * publication concept (V1's audit finding, reconfirmed here — no column
+ * exists to pause one), so only three states apply: active/archived/
+ * trashed. No "paused" value in this union at all, by design. */
+export async function getAdminLocations(
+  q?: string,
+  lifecycle: "active" | "archived" | "trashed" = "active"
+): Promise<AdminLocation[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
   let query = supabase.from("locations").select("*").order("name");
@@ -593,6 +638,9 @@ export async function getAdminLocations(q?: string): Promise<AdminLocation[]> {
     const term = `%${q}%`;
     query = query.or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`);
   }
+  if (lifecycle === "archived") query = query.not("archived_at", "is", null).is("trashed_at", null);
+  else if (lifecycle === "trashed") query = query.not("trashed_at", "is", null);
+  else query = query.is("archived_at", null).is("trashed_at", null);
   const { data } = await query;
   return (data as AdminLocation[]) ?? [];
 }

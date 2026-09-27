@@ -269,6 +269,10 @@ export interface Business {
   // Market entitlement (business_markets). Never consulted by Market
   // entitlement/limit logic — purely additional precision.
   market_area_id?: string | null;
+  // Admin Content Lifecycle V2 — orthogonal to publication_status
+  // (existing Pause). NULL = not archived/not trashed.
+  archived_at?: string | null;
+  trashed_at?: string | null;
 }
 
 export interface Market {
@@ -566,6 +570,10 @@ export interface FindmiEvent {
   bulletin_enabled: boolean;
   bulletin_heading: string | null;
   bulletin_body: string | null;
+  // Admin Content Lifecycle V2 — orthogonal to publication_status
+  // (existing Pause). NULL = not archived/not trashed.
+  archived_at?: string | null;
+  trashed_at?: string | null;
 }
 
 export interface EventImage {
@@ -810,6 +818,11 @@ export interface FindmiLocation {
   // Location V2 — optional weekly hours of operation. Null = never
   // entered = Hours section hidden entirely on the public page.
   hours: LocationHours | null;
+  // Admin Content Lifecycle V2 — Locations have no existing Pause/
+  // publication concept; these are NOT one either. NULL = not archived/
+  // not trashed.
+  archived_at?: string | null;
+  trashed_at?: string | null;
 }
 
 export type LocationWeekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";

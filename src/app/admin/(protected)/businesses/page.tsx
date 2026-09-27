@@ -1,22 +1,40 @@
 import Link from "next/link";
 import { getAdminBusinesses, getAllCategories } from "@/lib/admin/queries";
 import BusinessesFilterBar from "./BusinessesFilterBar";
+import BusinessBulkListClient from "./BusinessBulkListClient";
 
 export const dynamic = "force-dynamic";
+
+const LIFECYCLE_TABS = [
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+  { value: "archived", label: "Archived" },
+  { value: "trashed", label: "Trash" },
+] as const;
 
 export default async function AdminBusinessesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; published?: string; decided?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; published?: string; decided?: string; lifecycle?: string; result?: string }>;
 }) {
-  const { q, category, published, decided } = await searchParams;
+  const { q, category, published, decided, lifecycle, result } = await searchParams;
   const publishedFilter =
     published === "public" || published === "demo" || published === "pending_review" ? published : undefined;
+  const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value;
+  // Admin Content Lifecycle V2 — the lifecycle tabs are ignored while a
+  // `published` moderation filter is active (same "two independent
+  // dimensions, moderation queue wins the query branch" rule Products
+  // V1 established), otherwise default to "active".
+  const effectiveLifecycle = publishedFilter ? undefined : (lifecycleTab ?? "active");
 
   const [businesses, categories] = await Promise.all([
-    getAdminBusinesses({ q, categoryId: category, published: publishedFilter }),
+    getAdminBusinesses({ q, categoryId: category, published: publishedFilter, lifecycle: effectiveLifecycle }),
     getAllCategories("business"),
   ]);
+
+  const barView: "active" | "paused" | "archived" | "trashed" | "other" = publishedFilter
+    ? "other"
+    : (effectiveLifecycle ?? "active");
 
   return (
     <div>
@@ -41,43 +59,43 @@ export default async function AdminBusinessesPage({
         </p>
       )}
 
+      {result && (
+        <p className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-2.5 text-sm text-ink/80">{result}</p>
+      )}
+
+      {/* Admin Content Lifecycle V2 — the four lifecycle views, reachable
+          as plain, visible pill links (never an obscure query param a
+          visitor has to guess) — same pattern as Products. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {LIFECYCLE_TABS.map((tab) => {
+          const active = (lifecycleTab ?? "active") === tab.value && !publishedFilter;
+          const params = new URLSearchParams();
+          if (tab.value !== "active") params.set("lifecycle", tab.value);
+          if (q) params.set("q", q);
+          if (category) params.set("category", category);
+          const href = `/admin/businesses${params.toString() ? `?${params.toString()}` : ""}`;
+          return (
+            <Link
+              key={tab.value}
+              href={href}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                active ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
+
       <BusinessesFilterBar
         categories={categories}
         initialQ={q ?? ""}
         initialCategory={category ?? ""}
         initialPublished={published ?? ""}
+        initialLifecycle={lifecycleTab && lifecycleTab !== "active" ? lifecycleTab : undefined}
       >
-        <div className="flex flex-col gap-2">
-          {businesses.length === 0 ? (
-            <p className="text-sm text-ink/50">No businesses found.</p>
-          ) : (
-            businesses.map((b) => (
-              <Link
-                key={b.id}
-                href={`/admin/businesses/${b.id}`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">{b.name}</p>
-                  <p className="truncate text-xs text-ink/45">
-                    {[b.city, b.state].filter(Boolean).join(", ") || b.slug}
-                  </p>
-                </div>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                    b.is_demo
-                      ? "bg-black/[0.06] text-ink/50"
-                      : b.publication_status === "pending_review"
-                        ? "bg-amber-50 text-amber-700"
-                        : "bg-findmi-50 text-findmi-700"
-                  }`}
-                >
-                  {b.is_demo ? "Demo" : b.publication_status === "pending_review" ? "Pending Review" : "Public"}
-                </span>
-              </Link>
-            ))
-          )}
-        </div>
+        <BusinessBulkListClient businesses={businesses} view={barView} categories={categories} />
       </BusinessesFilterBar>
     </div>
   );

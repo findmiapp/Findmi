@@ -4,19 +4,16 @@ import { useState } from "react";
 import type { Category } from "@/lib/types";
 import LifecycleBulkActionBar from "@/components/admin/LifecycleBulkActionBar";
 import {
-  bulkArchiveProducts,
-  bulkPauseProducts,
-  bulkPermanentDeleteProducts,
-  bulkQuickEditProducts,
-  bulkResumeProducts,
-  bulkRestoreFromArchive,
-  bulkRestoreFromTrash,
-  bulkTrashProducts,
+  bulkArchiveBusinesses,
+  bulkPauseBusinesses,
+  bulkPermanentDeleteBusinesses,
+  bulkQuickEditBusinesses,
+  bulkResumeBusinesses,
+  bulkRestoreBusinessesFromArchive,
+  bulkRestoreBusinessesFromTrash,
+  bulkTrashBusinesses,
 } from "./lifecycle-actions";
 
-/** V2 — now a thin wrapper over the shared LifecycleBulkActionBar (see
- * that file for why Pause/Resume are never shown together). Only the
- * Quick Edit form (category + Featured) stays product-specific. */
 function QuickEditForm({ ids, categories }: { ids: string[]; categories: Category[] }) {
   const [open, setOpen] = useState(false);
   if (!open) {
@@ -33,7 +30,7 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   }
   return (
     <form
-      action={bulkQuickEditProducts}
+      action={bulkQuickEditBusinesses}
       className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2.5"
     >
       {ids.map((id) => (
@@ -74,7 +71,7 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   );
 }
 
-export default function ProductBulkActionBar({
+export default function BusinessBulkActionBar({
   view,
   selectedIds,
   categories,
@@ -87,15 +84,15 @@ export default function ProductBulkActionBar({
     <LifecycleBulkActionBar
       view={view}
       selectedIds={selectedIds}
-      entityNoun="product"
+      entityNoun="business"
       actions={{
-        pause: bulkPauseProducts,
-        resume: bulkResumeProducts,
-        archive: bulkArchiveProducts,
-        restoreFromArchive: bulkRestoreFromArchive,
-        trash: bulkTrashProducts,
-        restoreFromTrash: bulkRestoreFromTrash,
-        permanentDelete: bulkPermanentDeleteProducts,
+        pause: bulkPauseBusinesses,
+        resume: bulkResumeBusinesses,
+        archive: bulkArchiveBusinesses,
+        restoreFromArchive: bulkRestoreBusinessesFromArchive,
+        trash: bulkTrashBusinesses,
+        restoreFromTrash: bulkRestoreBusinessesFromTrash,
+        permanentDelete: bulkPermanentDeleteBusinesses,
       }}
       quickEdit={(ids) => <QuickEditForm ids={ids} categories={categories} />}
     />

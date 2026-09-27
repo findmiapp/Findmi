@@ -1,16 +1,29 @@
 import Link from "next/link";
-import { getAdminLocations } from "@/lib/admin/queries";
-import { cityState } from "@/lib/format";
+import { getAdminLocations, getAllCategories } from "@/lib/admin/queries";
+import LocationBulkListClient from "./LocationBulkListClient";
 
 export const dynamic = "force-dynamic";
+
+// No "Paused" tab — Locations have no Pause concept at all (V1's audit
+// finding, reconfirmed in V2 — no column exists to pause one).
+const LIFECYCLE_TABS = [
+  { value: "active", label: "Active" },
+  { value: "archived", label: "Archived" },
+  { value: "trashed", label: "Trash" },
+] as const;
 
 export default async function AdminLocationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; lifecycle?: string; result?: string }>;
 }) {
-  const { q } = await searchParams;
-  const locations = await getAdminLocations(q);
+  const { q, lifecycle, result } = await searchParams;
+  const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value ?? "active";
+
+  const [locations, categories] = await Promise.all([
+    getAdminLocations(q, lifecycleTab),
+    getAllCategories("location"),
+  ]);
 
   return (
     <div>
@@ -24,7 +37,37 @@ export default async function AdminLocationsPage({
         </Link>
       </div>
 
+      {result && (
+        <p className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-2.5 text-sm text-ink/80">{result}</p>
+      )}
+
+      {/* Admin Content Lifecycle V2 — the three lifecycle views, reachable
+          as plain, visible pill links (never an obscure query param a
+          visitor has to guess) — same pattern as Products/Businesses/
+          Events, minus the Paused tab which doesn't apply here. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {LIFECYCLE_TABS.map((tab) => {
+          const active = lifecycleTab === tab.value;
+          const params = new URLSearchParams();
+          if (tab.value !== "active") params.set("lifecycle", tab.value);
+          if (q) params.set("q", q);
+          const href = `/admin/locations${params.toString() ? `?${params.toString()}` : ""}`;
+          return (
+            <Link
+              key={tab.value}
+              href={href}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                active ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
+
       <form method="get" className="mt-4">
+        {lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
         <input
           type="text"
           name="q"
@@ -34,32 +77,8 @@ export default async function AdminLocationsPage({
         />
       </form>
 
-      <div className="mt-4 flex flex-col gap-2">
-        {locations.length === 0 ? (
-          <p className="text-sm text-ink/50">No locations yet.</p>
-        ) : (
-          locations.map((l) => (
-            <Link
-              key={l.id}
-              href={`/admin/locations/${l.id}`}
-              className="flex items-center justify-between gap-3 rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-ink">{l.name}</p>
-                <p className="truncate text-xs text-ink/45">
-                  {[l.address, cityState(l.city, l.state)].filter(Boolean).join(" · ") || l.slug}
-                </p>
-              </div>
-              <span
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                  l.is_demo ? "bg-black/[0.06] text-ink/50" : "bg-findmi-50 text-findmi-700"
-                }`}
-              >
-                {l.is_demo ? "Demo" : "Public"}
-              </span>
-            </Link>
-          ))
-        )}
+      <div className="mt-4">
+        <LocationBulkListClient locations={locations} view={lifecycleTab} categories={categories} />
       </div>
     </div>
   );

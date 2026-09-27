@@ -1,11 +1,19 @@
 import Link from "next/link";
-import { getAdminEvents } from "@/lib/admin/queries";
-import { formatDateRange } from "@/lib/format";
+import { getAdminEvents, getAllCategories } from "@/lib/admin/queries";
+import EventBulkListClient from "./EventBulkListClient";
 
 export const dynamic = "force-dynamic";
 
 const selectClass =
   "rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm text-ink focus:border-ink/30 focus:outline-none";
+
+// No "Paused" tab — events have no Pause concept (DB CHECK constraint on
+// publication_status; see events/lifecycle-actions.ts's note).
+const LIFECYCLE_TABS = [
+  { value: "active", label: "Active" },
+  { value: "archived", label: "Archived" },
+  { value: "trashed", label: "Trash" },
+] as const;
 
 export default async function AdminEventsPage({
   searchParams,
@@ -17,19 +25,36 @@ export default async function AdminEventsPage({
     pending?: string;
     needsReview?: string;
     decided?: string;
+    lifecycle?: string;
+    result?: string;
   }>;
 }) {
-  const { q, when, vendorApps, pending, needsReview, decided } = await searchParams;
+  const { q, when, vendorApps, pending, needsReview, decided, lifecycle, result } = await searchParams;
   const whenFilter = when === "upcoming" || when === "past" ? when : undefined;
   const needsReviewOnly = needsReview === "1";
+  const lifecycleTab = LIFECYCLE_TABS.find((t) => t.value === lifecycle)?.value;
+  // Admin Content Lifecycle V2 — same "moderation queue filter wins the
+  // query branch" rule as Businesses: the lifecycle tabs are ignored
+  // while vendorApps/pending/needsReview drive a dedicated query branch,
+  // otherwise default to "active".
+  const moderationFilterActive = vendorApps === "1" || pending === "1" || needsReviewOnly;
+  const effectiveLifecycle = moderationFilterActive ? undefined : (lifecycleTab ?? "active");
 
-  const events = await getAdminEvents({
-    q,
-    when: whenFilter,
-    vendorAppsOpen: vendorApps === "1",
-    pendingApplications: pending === "1",
-    needsReview: needsReviewOnly,
-  });
+  const [events, categories] = await Promise.all([
+    getAdminEvents({
+      q,
+      when: whenFilter,
+      vendorAppsOpen: vendorApps === "1",
+      pendingApplications: pending === "1",
+      needsReview: needsReviewOnly,
+      lifecycle: effectiveLifecycle,
+    }),
+    getAllCategories("event"),
+  ]);
+
+  const barView: "active" | "archived" | "trashed" | "other" = moderationFilterActive
+    ? "other"
+    : (effectiveLifecycle ?? "active");
 
   return (
     <div>
@@ -60,7 +85,37 @@ export default async function AdminEventsPage({
         </p>
       )}
 
+      {result && (
+        <p className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-2.5 text-sm text-ink/80">{result}</p>
+      )}
+
+      {/* Admin Content Lifecycle V2 — the four lifecycle views, reachable
+          as plain, visible pill links (never an obscure query param a
+          visitor has to guess) — same pattern as Products/Businesses. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {LIFECYCLE_TABS.map((tab) => {
+          const active = (lifecycleTab ?? "active") === tab.value && !moderationFilterActive;
+          const params = new URLSearchParams();
+          if (tab.value !== "active") params.set("lifecycle", tab.value);
+          if (q) params.set("q", q);
+          if (when) params.set("when", when);
+          const href = `/admin/events${params.toString() ? `?${params.toString()}` : ""}`;
+          return (
+            <Link
+              key={tab.value}
+              href={href}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                active ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
+
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        {lifecycleTab && lifecycleTab !== "active" && <input type="hidden" name="lifecycle" value={lifecycleTab} />}
         <input
           type="text"
           name="q"
@@ -101,50 +156,8 @@ export default async function AdminEventsPage({
         </div>
       </form>
 
-      <div className="mt-4 flex flex-col gap-2">
-        {events.length === 0 ? (
-          <p className="text-sm text-ink/50">No events found.</p>
-        ) : (
-          events.map((e) => {
-            // Event Rejection State pass — badge now reads the explicit
-            // publication_status column directly, same authoritative
-            // source the needsReview filter/count above use — no more
-            // event_members-ownership inference.
-            const status =
-              !e.is_demo
-                ? "Live"
-                : e.publication_status === "pending_review"
-                  ? "In Review"
-                  : e.publication_status === "rejected"
-                    ? "Rejected"
-                    : "Demo";
-            const statusClass =
-              status === "Live"
-                ? "bg-findmi-50 text-findmi-700"
-                : status === "In Review"
-                  ? "bg-amber-100 text-amber-800"
-                  : status === "Rejected"
-                    ? "bg-red-50 text-red-700"
-                    : "bg-black/[0.06] text-ink/50";
-            return (
-              <Link
-                key={e.id}
-                href={`/admin/events/${e.id}`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">{e.name}</p>
-                  <p className="truncate text-xs text-ink/45">
-                    {formatDateRange(e.start_at, e.end_at)}
-                  </p>
-                </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusClass}`}>
-                  {status}
-                </span>
-              </Link>
-            );
-          })
-        )}
+      <div className="mt-4">
+        <EventBulkListClient events={events} view={barView} categories={categories} />
       </div>
     </div>
   );

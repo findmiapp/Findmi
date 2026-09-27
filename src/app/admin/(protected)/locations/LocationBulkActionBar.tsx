@@ -4,19 +4,14 @@ import { useState } from "react";
 import type { Category } from "@/lib/types";
 import LifecycleBulkActionBar from "@/components/admin/LifecycleBulkActionBar";
 import {
-  bulkArchiveProducts,
-  bulkPauseProducts,
-  bulkPermanentDeleteProducts,
-  bulkQuickEditProducts,
-  bulkResumeProducts,
-  bulkRestoreFromArchive,
-  bulkRestoreFromTrash,
-  bulkTrashProducts,
+  bulkArchiveLocations,
+  bulkPermanentDeleteLocations,
+  bulkQuickEditLocations,
+  bulkRestoreLocationsFromArchive,
+  bulkRestoreLocationsFromTrash,
+  bulkTrashLocations,
 } from "./lifecycle-actions";
 
-/** V2 — now a thin wrapper over the shared LifecycleBulkActionBar (see
- * that file for why Pause/Resume are never shown together). Only the
- * Quick Edit form (category + Featured) stays product-specific. */
 function QuickEditForm({ ids, categories }: { ids: string[]; categories: Category[] }) {
   const [open, setOpen] = useState(false);
   if (!open) {
@@ -33,7 +28,7 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   }
   return (
     <form
-      action={bulkQuickEditProducts}
+      action={bulkQuickEditLocations}
       className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2.5"
     >
       {ids.map((id) => (
@@ -52,15 +47,6 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
         ))}
       </select>
 
-      <label className="flex items-center gap-1.5 text-xs font-semibold text-ink/70">
-        <input type="checkbox" name="apply_featured" className="h-3.5 w-3.5" />
-        Featured
-      </label>
-      <select name="is_featured" className="rounded-lg border border-black/10 px-2 py-1.5 text-xs">
-        <option value="true">On</option>
-        <option value="false">Off</option>
-      </select>
-
       <button
         type="submit"
         className="rounded-full bg-findmi px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
@@ -74,12 +60,14 @@ function QuickEditForm({ ids, categories }: { ids: string[]; categories: Categor
   );
 }
 
-export default function ProductBulkActionBar({
+export default function LocationBulkActionBar({
   view,
   selectedIds,
   categories,
 }: {
-  view: "active" | "paused" | "archived" | "trashed" | "other";
+  // No "paused" view — Locations have no Pause concept at all (no
+  // publication_status/is_active column exists).
+  view: "active" | "archived" | "trashed" | "other";
   selectedIds: string[];
   categories: Category[];
 }) {
@@ -87,15 +75,13 @@ export default function ProductBulkActionBar({
     <LifecycleBulkActionBar
       view={view}
       selectedIds={selectedIds}
-      entityNoun="product"
+      entityNoun="location"
       actions={{
-        pause: bulkPauseProducts,
-        resume: bulkResumeProducts,
-        archive: bulkArchiveProducts,
-        restoreFromArchive: bulkRestoreFromArchive,
-        trash: bulkTrashProducts,
-        restoreFromTrash: bulkRestoreFromTrash,
-        permanentDelete: bulkPermanentDeleteProducts,
+        archive: bulkArchiveLocations,
+        restoreFromArchive: bulkRestoreLocationsFromArchive,
+        trash: bulkTrashLocations,
+        restoreFromTrash: bulkRestoreLocationsFromTrash,
+        permanentDelete: bulkPermanentDeleteLocations,
       }}
       quickEdit={(ids) => <QuickEditForm ids={ids} categories={categories} />}
     />
