@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Fraunces, Caveat } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
 // One typeface for the whole app — headings included. Both prior display
@@ -15,27 +15,6 @@ import "./globals.css";
 // letter-spacing softening.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const displayFont = Inter({ subsets: ["latin"], variable: "--font-display" });
-
-// Homepage Visual North Star V1 — two narrowly-scoped additions, NOT a
-// change to the app-wide Inter decision above (font-sans/font-display
-// stay exactly Inter everywhere else). The reference's editorial hero
-// headline deliberately contrasts a serif display face against modern
-// sans UI type — Inter itself can't do that. Fraunces is a warm,
-// soft-contrast serif built for exactly this "premium/cultural, not
-// newspaper, not wedding invitation" register; Caveat is a legible,
-// unfussy handwritten face for the small "Brands. Products. Experiences.
-// IRL." annotation. Both load via next/font/google, the same mechanism
-// already used for Inter — no new npm dependency. Exposed as their own
-// `font-editorial`/`font-hand` Tailwind utilities (tailwind.config.ts),
-// used only by the hero collage — every other heading on the site keeps
-// reading font-display (Inter), untouched.
-const editorialFont = Fraunces({
-  subsets: ["latin"],
-  weight: ["600", "700"],
-  style: ["normal"],
-  variable: "--font-editorial",
-});
-const handFont = Caveat({ subsets: ["latin"], weight: ["600"], variable: "--font-hand" });
 
 // `||` (not `??`) so an env var that's *set but blank* — e.g. left empty in
 // a hosting dashboard — still falls back instead of producing an invalid URL.
@@ -70,7 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${displayFont.variable} ${editorialFont.variable} ${handFont.variable}`}>
+    <html lang="en" className={`${inter.variable} ${displayFont.variable}`}>
       <body className="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
         {children}
       </body>
