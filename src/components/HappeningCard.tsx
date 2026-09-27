@@ -80,7 +80,7 @@ export function HappeningFeatureCard({ item }: { item: LocationHappening }) {
         </p>
         {item.subtitle && <p className="mt-0.5 truncate text-xs text-ink/50">{item.subtitle}</p>}
       </div>
-      <span className="hidden shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white sm:inline-block">
+      <span className="hidden shrink-0 rounded-xl bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white sm:inline-block">
         {happeningCtaLabel(item.type)}
       </span>
     </Link>
@@ -147,7 +147,7 @@ export function HappeningRow({ item }: { item: LocationHappening }) {
           <p className="mt-0.5 truncate text-xs text-ink/50">{item.subtitle}</p>
         )}
       </div>
-      <span className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
+      <span className="shrink-0 rounded-xl bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
         {happeningCtaLabel(item.type)}
       </span>
     </Link>

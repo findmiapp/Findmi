@@ -114,7 +114,7 @@ export async function validateImageFile(file: File): Promise<ImageValidationResu
       // actionable message instead.
       return {
         error:
-          "That HEIC/HEIF photo couldn't be converted. Please try again, or use a JPG or PNG instead — on iPhone, Settings → Camera → Formats → \"Most Compatible\" saves new photos as JPG.",
+          "That HEIC/HEIF photo couldn't be converted. Please try again, or use a JPG or PNG instead. On iPhone, Settings → Camera → Formats → \"Most Compatible\" saves new photos as JPG.",
       };
     }
   }

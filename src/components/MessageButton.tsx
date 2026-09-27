@@ -290,7 +290,7 @@ export default function MessageButton({
                   <p className="text-sm text-ink/60">Sign in with your free Findmi account to message on Findmi.</p>
                   <a
                     href={`/login${nextParam}`}
-                    className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   >
                     Sign In
                   </a>
@@ -300,7 +300,7 @@ export default function MessageButton({
                   <p className="text-sm text-ink/60">Verify your email before you can message on Findmi.</p>
                   <a
                     href={`/account/verify-email${nextParam}`}
-                    className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   >
                     Verify Email
                   </a>
@@ -314,7 +314,7 @@ export default function MessageButton({
                   </p>
                   <Link
                     href="/account/business/new"
-                    className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   >
                     Create a Business
                   </Link>
@@ -358,7 +358,7 @@ export default function MessageButton({
                         type="button"
                         onClick={submitMessage}
                         disabled={submitting || !body.trim()}
-                        className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+                        className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                       >
                         {submitting ? "…" : "Send"}
                       </button>
@@ -486,7 +486,7 @@ export default function MessageButton({
                         type="button"
                         onClick={submitApply}
                         disabled={submitting || !canSubmitApply}
-                        className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+                        className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                       >
                         {submitting ? "…" : "Apply to Vend"}
                       </button>
@@ -510,7 +510,7 @@ export default function MessageButton({
                         type="button"
                         onClick={submitInvite}
                         disabled={submitting}
-                        className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+                        className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                       >
                         {submitting ? "…" : "Send Invite"}
                       </button>

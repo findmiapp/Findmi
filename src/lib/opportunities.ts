@@ -609,7 +609,7 @@ async function notifyOpportunityResolved(admin: SupabaseClient, opportunity: Opp
       heading: accepted ? `You're confirmed for ${eventName}` : `Your application to ${eventName} was declined`,
       body: [
         accepted
-          ? `Your application to participate in ${eventName} was approved — you're now confirmed.`
+          ? `Your application to participate in ${eventName} was approved. You're now confirmed.`
           : `Your application to participate in ${eventName} wasn't approved this time.`,
       ],
       actionLabel: "View Business",
@@ -706,7 +706,7 @@ export async function createOpportunity(
         await addMessage(admin, resolved.conversation_id, participantId, "note", note);
       }
       const crossedLabel = existingRow.type === "event_invitation" ? "invitation" : "application";
-      await addMessage(admin, resolved.conversation_id, null, "system", `Matched an existing ${crossedLabel} — participation confirmed.`);
+      await addMessage(admin, resolved.conversation_id, null, "system", `Matched an existing ${crossedLabel}. Participation confirmed.`);
     }
     await notifyOpportunityResolved(admin, resolved);
     return { kind: "crossed", opportunity: resolved };
@@ -942,7 +942,7 @@ async function sendApplicationDecisionNotification(
     heading: accepted ? `You're confirmed for ${eventName}${dateSuffix}` : `Your application to ${eventName} was declined`,
     body: [
       accepted
-        ? `Your application to participate in ${eventName}${dateSuffix} was approved — you're now confirmed.`
+        ? `Your application to participate in ${eventName}${dateSuffix} was approved. You're now confirmed.`
         : `Your application to participate in ${eventName} wasn't approved this time.`,
     ],
     actionLabel: "View Business",

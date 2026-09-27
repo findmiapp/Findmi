@@ -128,7 +128,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
         const appearance = o.appearance_id ? appearanceById.get(o.appearance_id) : null;
         const label =
           o.method === "event_pickup" && appearance
-            ? `Pickup at ${appearance.venue_name ?? appearance.title} — ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
+            ? `Pickup at ${appearance.venue_name ?? appearance.title}, ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
             : FULFILLMENT_LABELS[o.method as FulfillmentMethod];
         return {
           method: o.method as FulfillmentMethod,
@@ -233,7 +233,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
         eventId: null,
         processingFeePayer: "vendor",
         available: false,
-        unavailableReason: "The selected fulfillment option is no longer offered — please choose another.",
+        unavailableReason: "The selected fulfillment option is no longer offered. Please choose another.",
         availableFulfillmentOptions: optionsForProduct(product.id),
       } as CartLineQuote);
       continue;
@@ -270,7 +270,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
           eventId: matchedAppearance?.event_id ?? null,
           processingFeePayer: "vendor",
           available: false,
-          unavailableReason: "This pickup date has passed — please choose another.",
+          unavailableReason: "This pickup date has passed. Please choose another.",
           availableFulfillmentOptions: optionsForProduct(product.id),
         } as CartLineQuote);
         continue;
@@ -292,7 +292,7 @@ export async function computeOrderDraft(lines: CartLine[]): Promise<OrderDraft> 
     const eventId = appearance?.event_id ?? null;
 
     const appearanceLabel = appearance
-      ? `${appearance.venue_name ?? appearance.title} — ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
+      ? `${appearance.venue_name ?? appearance.title}, ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
       : null;
 
     quoteLines.push({

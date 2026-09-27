@@ -75,7 +75,7 @@ export default function ReplyComposer({
       <button
         type="submit"
         disabled={submitting || !body.trim()}
-        className="ml-auto flex h-10 items-center justify-center rounded-full bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+        className="ml-auto flex h-10 items-center justify-center rounded-2xl bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
       >
         {submitting ? "…" : "Send"}
       </button>

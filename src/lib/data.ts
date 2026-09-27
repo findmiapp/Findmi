@@ -2547,7 +2547,7 @@ export async function getFulfillmentOptionsForProduct(
       // a confirmed pickup time that was actually just a placeholder.
       const label =
         row.method === "event_pickup" && appearance
-          ? `Pickup at ${appearance.venue_name ?? appearance.title} — ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
+          ? `Pickup at ${appearance.venue_name ?? appearance.title}, ${formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}`
           : METHOD_LABELS[row.method];
       return { method: row.method, price: row.price, label, appearanceId: row.appearance_id };
     })

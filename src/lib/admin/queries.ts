@@ -873,7 +873,7 @@ export async function getUpcomingAppearanceOptionsForBusiness(businessId: string
     .order("start_at", { ascending: true });
   return (data ?? []).map((a) => ({
     value: a.id,
-    label: `${a.venue_name ?? a.title} — ${new Date(a.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+    label: `${a.venue_name ?? a.title} (${new Date(a.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })})`,
   }));
 }
 

@@ -84,7 +84,7 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
 
         <button
           type="submit"
-          className="flex h-9 w-fit items-center rounded-full bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          className="flex h-9 w-fit items-center rounded-xl bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Apply
         </button>

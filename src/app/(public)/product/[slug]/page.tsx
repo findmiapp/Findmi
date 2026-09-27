@@ -231,7 +231,7 @@ export default async function ProductPage({
                 href={purchaseUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                 trackPayload={{
                   event_name: "product_external_click",
                   subject_type: "product",
@@ -247,7 +247,7 @@ export default async function ProductPage({
                 href={inquiryAction.url}
                 displayMode={inquiryAction.displayMode}
                 label="Contact Seller"
-                className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               />
             ) : null}
 

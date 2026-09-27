@@ -31,7 +31,7 @@ export default function SubmitBar({
             name="intent"
             value="save_add_another"
             disabled={pending}
-            className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-100 disabled:opacity-60"
+            className="rounded-2xl border border-findmi/30 bg-findmi-50 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-100 disabled:opacity-60"
           >
             {pending ? "Saving…" : addAnotherLabel}
           </button>
@@ -41,7 +41,7 @@ export default function SubmitBar({
           name="intent"
           value="save"
           disabled={pending}
-          className="rounded-xl bg-findmi px-6 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600 disabled:opacity-60"
+          className="rounded-2xl bg-findmi px-6 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:bg-findmi-600 disabled:opacity-60"
         >
           {pending ? "Saving…" : saveLabel}
         </button>

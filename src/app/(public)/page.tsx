@@ -223,13 +223,13 @@ export default async function HomePage({
             )}
             <Link
               href="/discover?when=today"
-              className="flex h-10 shrink-0 items-center justify-center rounded-xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+              className="flex h-10 shrink-0 items-center justify-center rounded-2xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
             >
               Today
             </Link>
             <Link
               href="/discover?when=weekend"
-              className="flex h-10 shrink-0 items-center justify-center rounded-xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+              className="flex h-10 shrink-0 items-center justify-center rounded-2xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
             >
               This Weekend
             </Link>
@@ -348,7 +348,7 @@ export default async function HomePage({
             <p className="max-w-md text-sm text-white/70">{closingSec.body}</p>
             <Link
               href={closingSec.ctaUrl ?? "/join"}
-              className="rounded-xl bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              className="rounded-2xl bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               {closingSec.ctaLabel}
             </Link>

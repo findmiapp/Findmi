@@ -182,7 +182,7 @@ export default function PostCard({
         {price && <p className="text-sm font-semibold text-white">{price}</p>}
 
         {cta && (
-          <span className="mt-0.5 block rounded-full bg-findmi py-2 text-center text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
+          <span className="mt-0.5 block rounded-2xl bg-findmi py-2 text-center text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
             {cta}
           </span>
         )}

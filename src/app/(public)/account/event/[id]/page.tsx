@@ -46,7 +46,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-11 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-11 items-center justify-center rounded-2xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 // Event Manager V3 — replaces the old eight-tab inventory (Overview /
 // Event Details / Dates / Location / Findmi Area / Gallery / Businesses /
@@ -815,7 +815,7 @@ export default async function ManageEventPage({
                   <p className="font-display text-base font-bold tracking-tight text-ink">Businesses</p>
                   <p className="mt-1 text-sm text-ink/60">Invite an existing Findmi business to participate.</p>
                 </div>
-                <span className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
+                <span className="flex h-9 shrink-0 items-center gap-1 rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
                   <span className="group-open:hidden">+ Invite</span>
                   <span className="hidden group-open:inline">Close</span>
                 </span>

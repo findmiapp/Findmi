@@ -2129,7 +2129,7 @@ export default async function ManageBusinessPage({
                         plan_tier, so it correctly allows this repurchase. */}
                     <Link
                       href={`/upgrade/pro?business=${id}`}
-                      className="mt-3 flex h-11 w-full items-center justify-center rounded-xl bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                      className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                     >
                       {isExpiredPro ? "Renew Pro" : "Upgrade to Pro"}
                     </Link>
@@ -2248,14 +2248,14 @@ export default async function ManageBusinessPage({
                           <CopyButton
                             value={code}
                             label="Copy Code"
-                            className="shrink-0 rounded-lg bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                            className="shrink-0 rounded-xl bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
                           />
                         </div>
                         <p className="mt-2 break-all font-mono text-xs text-ink/70">{referralLink}</p>
                         <CopyButton
                           value={referralLink}
                           label="Copy Link"
-                          className="mt-2 shrink-0 rounded-lg bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                          className="mt-2 shrink-0 rounded-xl bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
                         />
                       </div>
                     );
@@ -2297,7 +2297,7 @@ export default async function ManageBusinessPage({
                   <button
                     type="submit"
                     disabled={referralPartner.availableCommissionCents <= 0}
-                    className="flex h-11 w-full items-center justify-center rounded-xl bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Request Payout
                     {referralPartner.availableCommissionCents > 0

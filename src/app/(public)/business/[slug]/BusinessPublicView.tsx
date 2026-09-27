@@ -423,13 +423,13 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             <div className="flex shrink-0 items-center gap-2">
               <Link
                 href={`/account/business/${business.id}`}
-                className="rounded-lg bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                className="rounded-xl bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               >
                 Edit Business
               </Link>
               <Link
                 href="/account"
-                className="rounded-lg border border-findmi/30 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/50"
+                className="rounded-xl border border-findmi/30 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/50"
               >
                 Back to Dashboard
               </Link>
@@ -620,7 +620,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 {nextViewLabel && nextAppearanceHref && (
                   <Link
                     href={nextAppearanceHref}
-                    className="flex h-9 items-center justify-center rounded-lg bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    className="flex h-9 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   >
                     {nextViewLabel}
                   </Link>
@@ -630,7 +630,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                     href={nextDirectionsHref}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-black/10 px-4 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-black/10 px-4 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
                   >
                     Directions
                   </a>
@@ -668,8 +668,8 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 topics={enabledInquiryTopics}
                 className={
                   appearances.length > 0
-                    ? "flex h-11 w-full items-center justify-center rounded-xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-                    : "flex h-12 w-full items-center justify-center rounded-xl bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    ? "flex h-11 w-full items-center justify-center rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    : "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                 }
               />
             </div>
@@ -977,7 +977,7 @@ function BusinessCtaRow({ business }: { business: Business }) {
             href={cta.url}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center justify-center rounded-lg border border-black/10 bg-white px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:border-black/20 hover:bg-black/[0.03] hover:text-ink"
+            className="inline-flex items-center justify-center rounded-xl border border-black/10 bg-white px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:border-black/20 hover:bg-black/[0.03] hover:text-ink"
           >
             {cta.label}
           </a>

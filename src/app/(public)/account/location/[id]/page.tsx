@@ -41,7 +41,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-11 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-11 items-center justify-center rounded-2xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 // Location Manager V3 — replaces the old seven-tab inventory (Overview /
 // Venue Details / Gallery / Contact / Links / Findmi Area / What's
@@ -447,7 +447,7 @@ export default async function ManageLocationPage({
                   <p className="font-display text-base font-bold tracking-tight text-ink">What&rsquo;s Happening</p>
                   <p className="mt-1 text-sm text-ink/60">Every Event date and Business appearance connected here.</p>
                 </div>
-                <span className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
+                <span className="flex h-9 shrink-0 items-center gap-1 rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
                   <span className="group-open:hidden">+ Add</span>
                   <span className="hidden group-open:inline">Close</span>
                 </span>
@@ -463,7 +463,7 @@ export default async function ManageLocationPage({
                 <div>
                   <p className="text-sm font-bold text-ink">Create an Event here</p>
                   <p className="mt-1 text-xs text-ink/50">Start a brand-new Event with this Location already set.</p>
-                  <Link href={`/account/event/new?location_id=${id}`} className="mt-2 inline-flex h-9 items-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
+                  <Link href={`/account/event/new?location_id=${id}`} className="mt-2 inline-flex h-9 items-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
                     + Create Event
                   </Link>
                   {!eventEligible && (

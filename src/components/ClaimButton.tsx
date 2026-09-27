@@ -180,7 +180,7 @@ export default function ClaimButton({
           <p className="text-sm text-ink/60">Create your free Findmi account to claim and manage this {noun}.</p>
           <a
             href={signInHref}
-            className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            className="mt-3 flex h-10 items-center justify-center rounded-2xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
             Sign In
           </a>
@@ -232,7 +232,7 @@ export default function ClaimButton({
                 must never imply or expedite claim approval. */}
             <Link
               href="/join"
-              className="mt-2 flex h-9 items-center justify-center rounded-full bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              className="mt-2 flex h-9 items-center justify-center rounded-xl bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Upgrade to Pro
             </Link>
@@ -259,7 +259,7 @@ export default function ClaimButton({
         </p>
         <Link
           href={`/account/verify-email?next=${encodeURIComponent(next)}`}
-          className="mt-3 flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          className="mt-3 flex h-10 items-center justify-center rounded-2xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Verify Email
         </Link>
@@ -344,7 +344,7 @@ export default function ClaimButton({
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+                  className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                 >
                   {submitting ? "…" : "Submit for Review"}
                 </button>

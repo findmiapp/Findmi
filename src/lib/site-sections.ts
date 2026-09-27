@@ -167,7 +167,7 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // personalization/proximity claim (no "near you"), no My World
     // feature promise — just broader-than-shopping identity copy.
     heading: "What you love.\nWhere it's\nhappening.",
-    body: "Discover the brands, products, and experiences you're into — and see where they're happening in real life.",
+    body: "Discover the brands, products, and experiences you're into, and see where they're happening in real life.",
     order: 0,
     fields: ["heading", "body"],
     imageSlots: 3,

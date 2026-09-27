@@ -40,10 +40,17 @@ export default function AreaPicker({
   options,
   paramName = "market",
   areaParamName = "area",
+  fullWidth = false,
 }: {
   options: AreaOption[];
   paramName?: string;
   areaParamName?: string;
+  /** Mobile Discover Composition pass — /discover's compact Area/When/
+   * Filters toolbar needs this trigger to fill its grid cell so all three
+   * controls read as one equal-width row; every other caller (Home,
+   * /businesses, /events, /locations, /find) omits this and keeps the
+   * exact same intrinsic-width button as before. */
+  fullWidth?: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -119,16 +126,22 @@ export default function AreaPicker({
           field) for a location pin + chevron, the consumer-facing
           "explore here" framing the task asked for. Underlying geography
           behavior (onClick/aria-expanded, ?market=/?area= state,
-          matching) is completely untouched below. */}
+          matching) is completely untouched below.
+          Mobile Discover Composition pass — rounded-xl (was rounded-full)
+          so this trigger reads as a rounded-rectangle button; fullWidth
+          is opt-in (see prop doc above) so every existing caller keeps
+          its exact current intrinsic-width appearance. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-expanded={open}
         aria-label={`Explore area: ${currentLabel}`}
-        className="flex h-10 items-center gap-1.5 rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+        className={`flex h-10 items-center gap-1.5 rounded-xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20 ${
+          fullWidth ? "w-full justify-center" : ""
+        }`}
       >
         <PinGlyph className="h-3.5 w-3.5 shrink-0 text-ink/40" />
-        <span className="font-semibold text-ink">{currentLabel}</span>
+        <span className="truncate font-semibold text-ink">{currentLabel}</span>
         <ChevronDownGlyph className="h-3 w-3 shrink-0 text-ink/40" />
       </button>
 
@@ -314,7 +327,7 @@ function RequestAreaPanel({ query, onSubmitted }: { query: string; onSubmitted: 
         type="button"
         disabled={!query || query.trim().length < 2 || state === "submitting" || checkingSession}
         onClick={submit}
-        className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50"
+        className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50"
       >
         {state === "submitting" ? "Submitting…" : "Notify me"}
       </button>

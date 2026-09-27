@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
         body.push(`Order: ${orderId}`);
 
         await notifyAdmin({
-          subject: `New paid order — ${amount}`,
+          subject: `New paid order: ${amount}`,
           heading: "New paid order",
           body,
           actionLabel: "Review Order",

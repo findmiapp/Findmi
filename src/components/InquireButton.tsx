@@ -188,7 +188,7 @@ export default function InquireButton({
                   <button
                     type="button"
                     onClick={close}
-                    className="mt-4 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    className="mt-4 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                   >
                     Done
                   </button>
@@ -273,7 +273,7 @@ export default function InquireButton({
                     type="button"
                     onClick={submit}
                     disabled={submitting || !canSubmit}
-                    className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
                   >
                     {submitting ? "Sending…" : "Send"}
                   </button>

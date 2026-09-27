@@ -45,7 +45,7 @@ export interface JoinCardDefaults {
 
 export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
   card_discovery_pro: {
-    label: "Card 1 — Findmi Pro",
+    label: "Card 1: Findmi Pro",
     eyebrow: "For businesses",
     title: "Findmi Pro",
     // Admin Join Page Editor pass — synced to match the current live
@@ -95,7 +95,7 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // Customer Inquiries (still gated separately, unaffected by this
     // pass — see BusinessPublicView.tsx's own canInquire check).
     features: [
-      "Performance analytics — see how people find and engage with you",
+      "Performance analytics. See how people find and engage with you.",
       "Discovery source & QR attribution",
       "Follower insights",
       "Customer inquiries",
@@ -105,7 +105,7 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     emphasis: true,
   },
   card_events_markets: {
-    label: "Card 2 — Events & Markets",
+    label: "Card 2: Events & Markets",
     eyebrow: "For events",
     title: "Events & Markets",
     price: "Partner Listing",
@@ -129,7 +129,7 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
   // Still resolved through the exact same resolveJoinCard()/admin form as
   // before — only the PUBLIC presentation changed, not how it's edited.
   card_multi_region: {
-    label: "Card 3 — Multi-Region / National",
+    label: "Card 3: Multi-Region / National",
     eyebrow: "For regional & national brands",
     title: "Bring your whole footprint to Findmi.",
     // No longer rendered publicly (the rebuilt section deliberately shows
@@ -276,7 +276,7 @@ export interface JoinTile {
 // what_you_get row) while keeping the exact current copy as the fallback.
 export const JOIN_WHAT_YOU_GET_TILE_DEFAULTS: JoinTile[] = [
   { label: "Business Profile", detail: "Your story, photos, categories and contact information in one place." },
-  { label: "Products & Services", detail: "A catalog customers can browse — and buy where enabled." },
+  { label: "Products & Services", detail: "A catalog customers can browse, and buy where enabled." },
   { label: "Findmi Here", detail: "Your upcoming appearances so customers always know where you'll be next." },
   {
     label: "Events",
@@ -410,7 +410,7 @@ export const JOIN_PRO_EXTRA_DEFAULTS = {
   // [id]/page.tsx's UpgradeLockedTab tabKey="performance" description),
   // not invented fresh here.
   highlightHeading: "Analytics",
-  highlightSubheading: "See what's working — and grow it.",
+  highlightSubheading: "See what's working and grow it.",
   highlightBody: "Understand how people discover and engage with your business.",
   // Display copy only — see this pass's own report / the admin field's own
   // hint. The actual charged amount always comes from

@@ -66,7 +66,7 @@ export async function createPendingOrder(
     if (!error && data) orderId = data.id;
     else if (error && error.code !== "23505") return { error: error.message }; // 23505 = unique_violation, retry
   }
-  if (!orderId) return { error: "Could not create order — please try again." };
+  if (!orderId) return { error: "Could not create order. Please try again." };
 
   const itemRows = draft.items.map((item) => ({
     order_id: orderId,

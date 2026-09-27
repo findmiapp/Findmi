@@ -8,6 +8,8 @@ import AppearanceFeedCard from "@/components/AppearanceFeedCard";
 import Section, { HorizontalScroller } from "@/components/Section";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import AreaPicker from "@/components/discover/AreaPicker";
+import WhenPicker from "@/components/discover/WhenPicker";
+import CategoryFilterSheet from "@/components/discover/CategoryFilterSheet";
 import {
   getConsumerVisibleMarketsWithAreas,
   getEventsDiscovery,
@@ -145,11 +147,24 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Discover</h1>
       <p className="mt-1.5 text-sm text-ink/60 sm:text-base">Find what&rsquo;s happening around you.</p>
 
-      {/* WHERE — Area selector, same URL convention (?market=/?area=) and
-          "Don't see your area?" request flow /businesses and /events
-          already use. Reused verbatim, not rebuilt. */}
-      <div className="mt-4">
+      {/* Mobile Discover Composition pass — replaces the old, stacked
+          Area block + always-visible When tabs row + full category-pill
+          wall (a filter wall that pushed all real content below the
+          fold on mobile) with a compact three-control toolbar: Area /
+          When / Filters, each a small trigger that opens the SAME
+          underlying picker/sheet the old inline controls already used
+          (AreaPicker unchanged; WhenPicker/CategoryFilterSheet are new
+          presentational wrappers around the exact same ?when=/?category=
+          semantics buildHref already establishes below). No filtering
+          capability removed — Today/This Weekend/Upcoming and every
+          category are still one tap away, they just no longer occupy
+          permanent vertical space above Happening Soon. Desktop keeps
+          the same compact row (it was never the problem this pass
+          fixes), just narrower now that it's 3 controls instead of a
+          multi-row stack. */}
+      <div className="mt-4 grid grid-cols-3 gap-2">
         <AreaPicker
+          fullWidth
           options={markets.map((m) => ({
             slug: m.slug,
             label: getMarketAreaLabel(m),
@@ -157,62 +172,12 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
             areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
           }))}
         />
+        <WhenPicker options={WHEN_TABS.map((t) => ({ key: t.key, label: t.label }))} />
+        <CategoryFilterSheet
+          categories={homeCategories.map((c) => ({ id: c.id, slug: c.slug, name: c.name }))}
+          allCategoriesHref={buildHref("/businesses", { category: undefined, when: undefined })}
+        />
       </div>
-
-      {/* WHEN — compact temporal tabs, driving BOTH Happening Soon
-          (appearances) and the Events section below via each function's
-          own already-established time vocabulary. Featured Brands is
-          intentionally NOT time-scoped — a business listing has no
-          "happens at a time" concept the way an appearance/event does
-          (see this pass's own report). */}
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {WHEN_TABS.map((t) => (
-          <Link
-            key={t.key}
-            href={buildHref("/discover", { when: t.key })}
-            className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-              whenKey === t.key ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
-            }`}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
-
-      {/* WHAT — compact, founder-curated category subset (getHomeCategories,
-          the same show_on_home/home_sort_order mechanism the homepage
-          strip already uses) instead of the full alphabetical taxonomy
-          wall. A selected pill is a real filter here (Happening Soon +
-          Featured Brands both use business-kind categories, same as this
-          list) — clicking it again clears it. Events use a SEPARATE
-          taxonomy and are intentionally unaffected (see Params' own
-          comment); "All Categories" hands off to /businesses' full sheet
-          (location/featured/founding filters this page doesn't need to
-          duplicate), carrying the current Area along. */}
-      {homeCategories.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {homeCategories.map((c) => {
-            const active = categorySlug === c.slug;
-            return (
-              <Link
-                key={c.id}
-                href={buildHref("/discover", { category: active ? undefined : c.slug })}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                  active ? "bg-findmi text-white" : "border border-black/10 text-ink/70 hover:border-black/30 hover:text-ink"
-                }`}
-              >
-                {c.name}
-              </Link>
-            );
-          })}
-          <Link
-            href={buildHref("/businesses", { category: undefined, when: undefined })}
-            className="rounded-full border border-dashed border-black/15 px-3.5 py-1.5 text-xs font-semibold text-ink/50 transition hover:border-black/30 hover:text-ink/70"
-          >
-            All Categories →
-          </Link>
-        </div>
-      )}
 
       {/* RESULTS */}
       {hasNothingCurated ? (

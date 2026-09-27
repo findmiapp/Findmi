@@ -517,8 +517,8 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
         category: "action_required",
         title: inv.eventName,
         subtitle: inv.occurrenceStartAt
-          ? `Invited ${b.name} for ${new Date(inv.occurrenceStartAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} — review and respond`
-          : `Invited ${b.name} — review and respond`,
+          ? `Invited ${b.name} for ${new Date(inv.occurrenceStartAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}. Review and respond`
+          : `Invited ${b.name}. Review and respond`,
         href: `/account/business/${b.id}?tab=opportunities`,
       });
     }
@@ -626,7 +626,7 @@ export async function getAccountCommandCenter(admin: SupabaseClient, input: Comm
         key: `pro_expired:${row.id}`,
         category: "action_required",
         title: b?.name ?? "Your business",
-        subtitle: "Findmi Pro expired — renew to restore your full profile.",
+        subtitle: "Findmi Pro expired. Renew to restore Performance analytics.",
         href: `/upgrade/pro?business=${row.id}`,
       });
     }

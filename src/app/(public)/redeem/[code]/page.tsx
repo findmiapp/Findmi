@@ -139,7 +139,7 @@ export default async function RedeemInvitePage({
 
           <Link
             href={`/account/business/${business_id}`}
-            className="mt-6 flex h-12 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            className="mt-6 flex h-12 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
             Finish Your Business
           </Link>
@@ -220,7 +220,7 @@ export default async function RedeemInvitePage({
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
               href={`/signup?next=${encodeURIComponent(redeemPath)}`}
-              className="flex h-12 flex-1 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              className="flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Create Account
             </Link>
@@ -263,7 +263,7 @@ export default async function RedeemInvitePage({
           <form action={redeemAction} className="mt-6">
             <button
               type="submit"
-              className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Redeem Organizer Access
             </button>
@@ -306,7 +306,7 @@ export default async function RedeemInvitePage({
           </p>
           <Link
             href={`/account/business/new?invite=${encodeURIComponent(code)}`}
-            className="mt-6 flex h-12 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            className="mt-6 flex h-12 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
             Add Your Business
           </Link>
@@ -346,7 +346,7 @@ export default async function RedeemInvitePage({
               <input type="hidden" name="business_id" value={singleTarget.id} />
               <button
                 type="submit"
-                className="flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                className="flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               >
                 Apply Pro to {singleTarget.name}
               </button>
@@ -378,7 +378,7 @@ export default async function RedeemInvitePage({
               </div>
               <button
                 type="submit"
-                className="mt-4 flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               >
                 Apply Pro
               </button>

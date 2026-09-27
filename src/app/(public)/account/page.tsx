@@ -563,7 +563,7 @@ export default async function AccountHomePage({
               <p className="mt-1 text-xs text-ink/60">List your business, event, or location on Findmi.</p>
               <Link
                 href="/join"
-                className="mt-3 flex h-11 items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                className="mt-3 flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               >
                 Get discovered
               </Link>

@@ -23,7 +23,7 @@ import { resolveAnalyticsHref, type BusinessOption } from "./businessScope";
  * businesses" choice this pass made) — the zero-length branch below is
  * a defensive fallback, not the primary path. */
 const ROW_BUTTON_CLASS =
-  "flex h-12 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-black/15 bg-white px-3 text-center text-xs font-bold uppercase text-ink transition hover:border-findmi/40 hover:bg-findmi-50 active:scale-[0.99]";
+  "flex h-12 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-black/15 bg-white px-3 text-center text-xs font-bold uppercase text-ink transition hover:border-findmi/40 hover:bg-findmi-50 active:scale-[0.99]";
 
 export default function AnalyticsAction({
   businesses,

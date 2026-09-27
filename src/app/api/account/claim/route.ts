@@ -290,7 +290,7 @@ export async function POST(request: NextRequest) {
   const entityName = (entity as { name: string } | null)?.name ?? "Unknown";
   const typeLabel = type === "location" ? "Venue" : type === "event" ? "Event" : "Business";
   await notifyAdmin({
-    subject: `New ${typeLabel} ownership claim — ${entityName}`,
+    subject: `New ${typeLabel} ownership claim: ${entityName}`,
     heading: `New ${typeLabel} ownership claim`,
     body: [`${typeLabel}: ${entityName}`, `Claimant: ${fullName}`, `Email: ${email}`, `Phone: ${phone}`],
     actionLabel: "Review Claims",

@@ -72,7 +72,7 @@ export default function BusinessFilters({
 
       <button
         type="submit"
-        className="mt-1 flex h-11 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        className="mt-1 flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
         Show Results
       </button>

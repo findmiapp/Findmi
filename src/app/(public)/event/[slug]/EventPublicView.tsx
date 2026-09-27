@@ -16,7 +16,7 @@ import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
-import EventScheduleActions, { EventScheduleDirections } from "@/components/EventScheduleActions";
+import EventScheduleActions from "@/components/EventScheduleActions";
 import EventScheduleCtas from "@/components/EventScheduleCtas";
 import EventScheduleSummary from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
@@ -340,6 +340,20 @@ export async function EventPublicView({ slug }: { slug: string }) {
           legacy event keeps the exact original server-resolved customCtas
           rendering below (minus Apply to Vend, in the secondary row below
           instead — see legacyTierACtas). */}
+      {/* Event CTA Layout pass — RSVP/Get Tickets/Apply to Vend (Tier A)
+          and Directions now share ONE flex row (`[ RSVP ] [ DIRECTIONS ]`
+          on mobile) instead of stacking on separate lines: Directions
+          used to render in its own row down in the secondary/contextual
+          block below. Each button is flex-1, so 2 buttons split the row
+          evenly and 1 or 3 still degrade sensibly. flex-wrap keeps every
+          action reachable at 360px by wrapping instead of a horizontal
+          scroll or squeeze.
+          Recurring events: EventScheduleCtas owns its own wrapping div
+          and self-guards on emptiness (Tier A + Directions both depend on
+          client-only selected-occurrence state — see its own doc comment
+          for why that decision can't live here). Legacy events: this
+          Server Component already knows legacyTierACtas/showDirections
+          synchronously, so the wrapping div is gated inline instead. */}
       {hasOccurrences ? (
         <EventScheduleCtas
           eventId={event.id}
@@ -349,10 +363,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
           rsvp={rsvpForm}
           vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
           vendorApplication={vendorAppForm}
+          directionsEnabled={event.directions_enabled}
         />
       ) : (
-        legacyTierACtas.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-2.5">
+        (legacyTierACtas.length > 0 || showDirections) && (
+          <div className="mt-4 flex flex-wrap items-stretch gap-2.5">
             {legacyTierACtas.map((action) => (
               <FormAction
                 key={action.label}
@@ -361,8 +376,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 label={action.label}
                 className={
                   action.weight === "solid"
-                    ? "flex h-12 items-center justify-center rounded-xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-11 items-center justify-center rounded-xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    ? "flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    : "flex h-11 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
                 }
                 track={{
                   event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
@@ -372,50 +387,44 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 }}
               />
             ))}
+            {showDirections && (
+              <AnalyticsLink
+                href={directionsHref!}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
+              >
+                <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
+                Directions
+              </AnalyticsLink>
+            )}
           </div>
         )
       )}
 
       {/* Secondary/contextual actions (Event + Location Action Row
-          Consistency pass) — Directions/Website/Call now use the exact
-          same compact h-9/rounded-lg/px-3/text-xs button geometry as the
-          Location page's own primary action row, instead of the taller
-          h-11/px-5/text-sm treatment this row used since Public
-          Experience V4/V5. Directions leads (still Aqua-accented, same
-          size as its neighbors — never larger just for being Directions);
-          Website/Call render only when the Event's already-resolved
-          canonicalLocation actually has them on file (see
-          canonicalWebsite/canonicalPhone above) — no new query, and
-          nothing renders when a Location isn't linked or has no
-          website/phone. Message and a legacy event's own Apply to Vend
-          join the same row at the same size, so every action here reads
-          as one coherent tier below Tier A, matching Location's own
-          [Directions][Website][Call] + Message/Contact pattern. flex-wrap
-          (never horizontal scroll) keeps every action reachable at 360px
-          by wrapping to a second line rather than requiring a swipe. */}
+          Consistency pass) — Website/Call use the same compact
+          h-9/rounded-xl/px-3/text-xs button geometry as the Location
+          page's own secondary actions. Website/Call render only when the
+          Event's already-resolved canonicalLocation actually has them on
+          file (see canonicalWebsite/canonicalPhone above) — no new
+          query, and nothing renders when a Location isn't linked or has
+          no website/phone. Message and a legacy event's own Apply to
+          Vend join the same row at the same size. flex-wrap (never
+          horizontal scroll) keeps every action reachable at 360px by
+          wrapping to a second line rather than requiring a swipe.
+          Event CTA Layout pass — Directions no longer lives in this rail;
+          it moved up into the primary Tier A row above, sharing a
+          balanced `[ RSVP ] [ DIRECTIONS ]` row instead of its own
+          separate line. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {hasOccurrences ? (
-          <EventScheduleDirections eventId={event.id} directionsEnabled={event.directions_enabled} />
-        ) : (
-          showDirections && (
-            <AnalyticsLink
-              href={directionsHref!}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-              trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
-            >
-              <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
-              Directions
-            </AnalyticsLink>
-          )
-        )}
         {canonicalWebsite && (
           <a
             href={canonicalWebsite}
             target="_blank"
             rel="noreferrer"
-            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
           >
             <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
             Website
@@ -424,7 +433,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
         {canonicalPhone && (
           <a
             href={`tel:${canonicalPhone}`}
-            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
           >
             <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
             Call
@@ -444,7 +453,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
             href={legacyVendorApplyCta.href}
             displayMode={legacyVendorApplyCta.displayMode}
             label="Apply to Vend"
-            className="flex h-9 items-center justify-center rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+            className="flex h-9 items-center justify-center rounded-xl border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
             track={{ event_name: "click_apply_to_vend", subject_type: "event", subject_id: event.id, event_id: event.id }}
           />
         )}
@@ -458,10 +467,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
           bleeds the scroll track to the same edges as the padded content
           around it, and overflow-x-auto contains all overflow within this
           one element — it can't cause page-level horizontal scroll.
-          Directions/Location IA pass — Directions no longer lives in this
-          rail; it moved to the fixed primary row above (see
-          EventScheduleDirections) since it's a high-intent physical
-          action, not a low-intent utility. */}
+          Directions/Location IA pass, extended by the Event CTA Layout
+          pass — Directions no longer lives in this rail; it moved into
+          Tier A's own shared row above (`[ RSVP ] [ DIRECTIONS ]` — see
+          EventScheduleCtas) since it's a high-intent physical action, not
+          a low-intent utility. */}
       <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex w-max items-center gap-2">
           <div className="shrink-0">

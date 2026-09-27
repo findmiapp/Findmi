@@ -41,11 +41,11 @@ const DEFAULT_HERO: AboutHero = {
   eyebrow: null,
   heading: "About Findmi",
   intro:
-    "Findmi helps you discover brands, vendors, mobile businesses, products, events, pop-ups, markets, and places — with one question always in mind:",
+    "Findmi helps you discover brands, vendors, mobile businesses, products, events, pop-ups, markets, and places, with one question always in mind:",
   highlight: "Where can I find this business next?",
   bodyParagraphs: [
     "A lot of the best businesses don't sit still. Coffee carts, food trucks, flower stands, and small makers move between markets, pop-ups, and events every week. Findmi connects the dots: browse a business and see where they'll be next, or browse an event and see who's going to be there.",
-    "For businesses, Findmi is one home for what you sell, where you'll be next, and how customers can reach you — instead of juggling five different social posts to announce a location.",
+    "For businesses, Findmi is one home for what you sell, where you'll be next, and how customers can reach you, instead of juggling five different social posts to announce a location.",
   ],
   ctaLabel: "Explore Findmi",
   ctaUrl: "/discover",

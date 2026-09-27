@@ -34,7 +34,7 @@ export async function notifyFounderOfPaidClaim(params: {
   const entityName = (entity as { name: string } | null)?.name ?? "Unknown";
 
   await notifyAdmin({
-    subject: `New Paid Findmi Claim — ${entityName}`,
+    subject: `New Paid Findmi Claim: ${entityName}`,
     heading: "New paid Findmi claim",
     body: [
       `${claimType === "business" ? "Business" : "Event"}: ${entityName}`,

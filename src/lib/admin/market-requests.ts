@@ -123,7 +123,7 @@ export async function getPendingMarketRequestGroups(): Promise<MarketRequestGrou
       // own doc comment.
       previousMarketLabel: market ? market.display_name || market.name : null,
       previousAreaLabel: areaJoin
-        ? `${areaJoin.display_name || areaJoin.name}${areaParentMarket ? ` — ${areaParentMarket.display_name || areaParentMarket.name}` : ""}`
+        ? `${areaJoin.display_name || areaJoin.name}${areaParentMarket ? `, ${areaParentMarket.display_name || areaParentMarket.name}` : ""}`
         : null,
     };
     const key = r.effective_normalized_key;
@@ -271,7 +271,7 @@ export async function getRecentlyResolvedMarketRequests(limit = 12): Promise<Res
     const areaJoin = Array.isArray(r.market_areas) ? r.market_areas[0] : r.market_areas;
     const areaParentMarket = areaJoin ? (Array.isArray(areaJoin.markets) ? areaJoin.markets[0] : areaJoin.markets) : null;
     const areaLabel = areaJoin
-      ? `${areaJoin.display_name || areaJoin.name}${areaParentMarket ? ` — ${areaParentMarket.display_name || areaParentMarket.name}` : ""}`
+      ? `${areaJoin.display_name || areaJoin.name}${areaParentMarket ? `, ${areaParentMarket.display_name || areaParentMarket.name}` : ""}`
       : null;
     return {
       id: r.id,

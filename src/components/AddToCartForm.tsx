@@ -102,7 +102,7 @@ export default function AddToCartForm({
             });
             setAdded(true);
           }}
-          className="h-11 flex-1 rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          className="h-11 flex-1 rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Add to Cart
         </button>

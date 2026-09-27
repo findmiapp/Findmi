@@ -267,7 +267,7 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
           }
         : {
             id: "no-market",
-            message: "No Findmi Market is assigned yet — you won't appear in general discovery.",
+            message: "No Findmi Market is assigned yet. You won't appear in general discovery.",
             actionLabel: "View Market",
             actionHref: `${base}?tab=market`,
           }

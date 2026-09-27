@@ -33,7 +33,7 @@ const CORE_BENEFITS = [
 ];
 
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 /** Pro Upgrade — Internal Checkout Handoff Foundation pass. The one
  * canonical internal surface for an EXISTING claimed business's owner/

@@ -46,7 +46,7 @@ export default async function JoinSalesPage({
         </p>
         <Link
           href="/"
-          className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+          className="mt-6 inline-flex h-12 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
           Back to Findmi
         </Link>

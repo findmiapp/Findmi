@@ -120,7 +120,7 @@ export async function deleteCategoryRow(
     .select("id", { count: "exact", head: true })
     .eq("parent_id", id);
   if ((childCount ?? 0) > 0) {
-    return { error: "This category has subcategories — delete or reassign them first." };
+    return { error: "This category has subcategories. Delete or reassign them first." };
   }
 
   const { error } = await supabase.from("categories").delete().eq("id", id).eq("kind", kind);

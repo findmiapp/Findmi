@@ -115,7 +115,7 @@ export async function findExistingGeographyMatch(admin: SupabaseClient, text: st
       const market = marketById.get(area.market_id);
       const marketLabel = market?.display_name || market?.name || "Unknown Market";
       const areaLabel = area.display_name || area.name;
-      return { type: "area", marketId: area.market_id, marketLabel, areaId: area.id, areaLabel, label: `${areaLabel} — ${marketLabel}` };
+      return { type: "area", marketId: area.market_id, marketLabel, areaId: area.id, areaLabel, label: `${areaLabel}, ${marketLabel}` };
     }
   }
 

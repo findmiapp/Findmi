@@ -171,7 +171,7 @@ export default function ProductFieldsForm({
       )}
       <button
         type="submit"
-        className="mt-1 w-fit rounded-xl bg-findmi px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        className="mt-1 w-fit rounded-2xl bg-findmi px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
         {submitLabel}
       </button>

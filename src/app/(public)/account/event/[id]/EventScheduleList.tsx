@@ -15,9 +15,9 @@ import {
 } from "../actions";
 
 const secondaryButtonClass =
-  "flex h-9 items-center justify-center rounded-xl border border-black/10 px-3.5 text-xs font-semibold text-ink/70 transition hover:border-black/20 disabled:opacity-50";
+  "flex h-9 items-center justify-center rounded-2xl border border-black/10 px-3.5 text-xs font-semibold text-ink/70 transition hover:border-black/20 disabled:opacity-50";
 const primaryButtonClass =
-  "flex h-9 items-center justify-center rounded-xl bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50";
+  "flex h-9 items-center justify-center rounded-2xl bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 
