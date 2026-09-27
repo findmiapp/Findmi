@@ -16,10 +16,16 @@ export default function EventShareButton({
   title,
   url,
   track,
+  layout = "pill",
 }: {
   title: string;
   url: string;
   track?: Omit<TrackEventPayload, "event_name" | "referrer" | "utm_source" | "utm_medium" | "utm_campaign" | "metadata">;
+  /** Event Detail Action Bar Correction pass — "pill" (default, unchanged)
+   * is the existing Tier B rounded-full pill. "grid" is an icon-over-label
+   * control that fills its parent grid cell, used only by the Event
+   * page's Tier B utility row (see EventUtilityActions). */
+  layout?: "pill" | "grid";
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -43,6 +49,19 @@ export default function EventShareButton({
       // Clipboard unavailable (older browser/permissions) — nothing more
       // to do; the button simply doesn't confirm a copy that didn't happen.
     }
+  }
+
+  if (layout === "grid") {
+    return (
+      <button
+        type="button"
+        onClick={handleShare}
+        className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+      >
+        <ShareGlyph className="h-4 w-4" />
+        <span className="text-[11px] font-semibold uppercase tracking-wide">{copied ? "Copied" : "Share"}</span>
+      </button>
+    );
   }
 
   return (

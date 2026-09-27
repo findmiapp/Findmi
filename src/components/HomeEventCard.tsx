@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import type { EventWithCategories } from "@/lib/types";
+import type { EventWithCategories, FindmiEvent } from "@/lib/types";
 import { cityState, formatDateShort, formatTime, getTemporalLabel } from "@/lib/format";
 import LiveDot from "./LiveDot";
 import { trackEvent } from "@/lib/analytics/track";
@@ -23,6 +23,23 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
 // per-kind aspect ratios. No attendee/RSVP/popularity data is shown —
 // FindmiEvent has no such column (see CompactEventCard's same note) —
 // and no price, since events carry no price field in the schema today.
+/** Real Tickets > RSVP > Apply to Vend precedence, direct-URL tier only —
+ * Event Preview Card Visual Direction pass. This mirrors the same
+ * priority EventPublicView's own Tier A CTAs use, but skips the Form
+ * Manager/occurrence-override resolution that requires its own async
+ * lookup (not worth an extra query per card in a homepage carousel): the
+ * event's own direct URL fields are already real, founder-configured
+ * data, just like every other field this card reads. Returns null (no
+ * fabricated CTA) when none of the three toggles has both its flag AND a
+ * destination — including a vendor-application deadline that's passed. */
+function resolvePrimaryCta(event: FindmiEvent): string | null {
+  if (event.tickets_enabled && event.tickets_url) return "Get Tickets";
+  if (event.rsvp_enabled && event.rsvp_url) return "RSVP";
+  const deadlinePassed = event.vendor_application_deadline ? new Date(event.vendor_application_deadline) < new Date() : false;
+  if (event.vendor_applications_enabled && event.vendor_application_url && !deadlinePassed) return "Apply to Vend";
+  return null;
+}
+
 export default function HomeEventCard({
   event,
   analyticsContext,
@@ -33,6 +50,17 @@ export default function HomeEventCard({
   const category = event.categories[0]?.name ?? null;
   const location = [event.venue_name, cityState(event.city, event.state)].filter(Boolean).join(" · ");
   const { live } = getTemporalLabel(event.start_at, event.end_at);
+  // Event Preview Card Visual Direction pass — a real signal (the same
+  // direct-URL fields the event page itself reads), never a fabricated
+  // one. Rendered as a plain span inside this same Link (same pattern
+  // HappeningFeatureCard's own CTA badge already uses), not a second,
+  // separately-tappable link/button — nesting a real <a>/<button> inside
+  // this card's own outer Link would be invalid, doubly-clickable HTML.
+  // Tapping anywhere on the card, including this pill, opens the event
+  // page, where the real action (with full Form Manager/occurrence-
+  // override resolution) actually lives — click behavior is otherwise
+  // completely unchanged from before this pass.
+  const primaryCta = resolvePrimaryCta(event);
 
   const analyticsFields = buildEntityEventFields("event", event.id, { eventId: event.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });
@@ -42,7 +70,7 @@ export default function HomeEventCard({
       href={`/event/${event.slug}`}
       ref={impressionRef}
       onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
-      className="group relative block aspect-[4/5] w-full overflow-hidden rounded-2xl bg-black/5 transition active:scale-[0.98]"
+      className="group relative block aspect-[4/5] w-full overflow-hidden rounded-3xl bg-black/5 transition active:scale-[0.98]"
     >
       {event.cover_image_url ? (
         // unoptimized — bypasses Vercel's next/image optimizer (the
@@ -79,8 +107,12 @@ export default function HomeEventCard({
       {/* Legibility gradient for the white overlay text, bottom-anchored —
           same treatment PostCard uses (darkened in the visual-polish
           pass for the same reason: via/10 was too light by the time the
-          gradient reached the text block against a bright photo). */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
+          gradient reached the text block against a bright photo).
+          Event Preview Card Visual Direction pass — deepened further
+          (85→92, 35→45) so the now-larger title/CTA block reads as
+          intentionally layered onto the photo rather than merely
+          legible. */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/45 to-transparent" />
 
       {(live || category) && (
         <div className="absolute left-3 top-3">
@@ -106,8 +138,18 @@ export default function HomeEventCard({
         </div>
       )}
 
-      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-4">
-        <h3 className="line-clamp-2 font-display text-lg font-bold leading-snug text-white sm:text-xl">
+      {/* Event Preview Card Visual Direction pass — title bumped up a
+          weight/size step (lg/xl -> xl/2xl, font-extrabold) and given
+          tracking-tight (which, paired with font-display, picks up
+          globals.css's own softened -0.006em letter-spacing — never the
+          harsher Tailwind default) for "substantially more presence,"
+          per the reference direction. No secondary descriptor line: events
+          have no short subtitle/tagline field today (only a long-form
+          description), so nothing renders there rather than fabricating
+          one. Bottom gap widened slightly (1.5->2) to give the now-larger
+          title room to breathe from the date/location lines below it. */}
+      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-4">
+        <h3 className="line-clamp-2 font-display text-xl font-extrabold leading-snug tracking-tight text-white sm:text-2xl">
           {event.name}
         </h3>
         <p className="flex items-center gap-1.5 text-sm text-white/90">
@@ -126,6 +168,25 @@ export default function HomeEventCard({
             <PinGlyph className="mt-0.5 h-4 w-4 shrink-0" />
             <span className="line-clamp-2">{location}</span>
           </p>
+        )}
+        {/* Event Preview Card Visual Direction pass, correction — the
+            card's own real primary-action signal (see resolvePrimaryCta
+            above), now full-width and sized like the site's actual
+            primary-button geometry (h-11/rounded-2xl — the same
+            convention EventScheduleCtas' own solid CTA uses) so it reads
+            as the bottom of one deliberate action composition, not a
+            small pill dropped under the metadata. Still just a plain
+            span within this same overlay block, not a second link/button
+            — see resolvePrimaryCta's own note on why — and still omitted
+            entirely (no reserved slot/empty gap) when the event has none,
+            so the card looks complete either way. Card height/aspect
+            ratio is unchanged; this only reshapes content already inside
+            the existing bottom overlay. */}
+        {primaryCta && (
+          <span className="mt-1.5 flex h-11 w-full items-center justify-center gap-1.5 rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white">
+            {primaryCta}
+            <ArrowGlyph className="h-3.5 w-3.5 shrink-0" />
+          </span>
         )}
       </div>
     </Link>
@@ -151,6 +212,17 @@ function PinGlyph({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+// Event Preview Card Visual Direction pass, correction — small trailing
+// affordance on the now full-width primary-action bar, same convention
+// as the Directions glyph elsewhere (currentColor, strokeWidth 1.8).
+function ArrowGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

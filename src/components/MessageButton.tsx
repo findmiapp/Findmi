@@ -50,6 +50,7 @@ export default function MessageButton({
   targetName,
   eventOccurrences,
   size = "compact",
+  layout = "pill",
 }: {
   targetType: "event" | "business" | "location";
   targetId: string;
@@ -63,8 +64,15 @@ export default function MessageButton({
    * match the Event page's own Tier A CTA geometry, used only in the
    * Event page's fixed primary-action row (never in a scroller). Purely a
    * trigger-button sizing variant — the modal itself is identical either
-   * way. */
+   * way. Ignored when `layout="grid"`. */
   size?: "compact" | "default";
+  /** Event Detail Action Bar Correction pass — "pill" (default, unchanged)
+   * is the existing text pill used on Business/Location pages. "grid" is
+   * an icon-over-label control that fills its parent grid cell, used only
+   * by the Event page's Tier B utility row (see EventUtilityActions). The
+   * modal itself is identical either way — only the trigger markup
+   * changes. */
+  layout?: "pill" | "grid";
 }) {
   const router = useRouter();
   const [state, setState] = useState<ViewerState | "loading">("loading");
@@ -239,9 +247,11 @@ export default function MessageButton({
   // Location pages; "default" matches the Event page's Tier A CTA
   // geometry (h-11/text-sm) for the fixed primary-action row.
   const triggerClass =
-    size === "compact"
-      ? "flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg border border-findmi/40 bg-white px-2.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-      : "flex h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-findmi/40 bg-white px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50";
+    layout === "grid"
+      ? "flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+      : size === "compact"
+        ? "flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg border border-findmi/40 bg-white px-2.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+        : "flex h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-findmi/40 bg-white px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50";
 
   return (
     <>
@@ -253,7 +263,14 @@ export default function MessageButton({
         aria-expanded={open}
         className={triggerClass}
       >
-        Message
+        {layout === "grid" ? (
+          <>
+            <MessageGlyph className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] font-semibold uppercase tracking-wide">Message</span>
+          </>
+        ) : (
+          "Message"
+        )}
       </button>
 
       {mounted &&
@@ -533,6 +550,21 @@ function CloseGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Grid-layout trigger icon only (Event Detail Action Bar Correction pass)
+// — matches the other Tier B utility icons' sizing/strokeWidth convention.
+function MessageGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M4 5.5h16a1 1 0 011 1v10a1 1 0 01-1 1H8l-4 3v-3H4a1 1 0 01-1-1v-10a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

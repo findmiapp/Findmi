@@ -2,8 +2,41 @@
 
 import { useAccountSaved } from "@/lib/useAccountSaved";
 
-export default function EventSaveButton({ slug, id }: { slug: string; id?: string }) {
+export default function EventSaveButton({
+  slug,
+  id,
+  layout = "pill",
+}: {
+  slug: string;
+  id?: string;
+  /** Event Detail Action Bar Correction pass — "pill" (default, unchanged)
+   * is the existing Tier B rounded-full pill. "grid" is an icon-over-label
+   * control that fills its parent grid cell, used only by the Event
+   * page's Tier B utility row (see EventUtilityActions). */
+  layout?: "pill" | "grid";
+}) {
   const { saved, toggle } = useAccountSaved("event", slug, id);
+
+  if (layout === "grid") {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        aria-pressed={saved}
+        className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+      >
+        <svg viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} className="h-4 w-4 shrink-0">
+          <path
+            d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="text-[11px] font-semibold uppercase tracking-wide">{saved ? "Saved" : "Save"}</span>
+      </button>
+    );
+  }
 
   // Final refinement pass, item 6 — matches the exact pill treatment
   // (border, height, text size) every other Tier B utility action already

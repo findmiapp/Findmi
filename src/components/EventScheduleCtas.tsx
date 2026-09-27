@@ -85,8 +85,8 @@ export default function EventScheduleCtas({
   if (rsvpAction) actions.push({ label: "RSVP", action: rsvpAction, weight: "solid", eventName: "click_rsvp" });
   if (vendorAction) actions.push({ label: "Apply to Vend", action: vendorAction, weight: "outline", eventName: "click_apply_to_vend" });
 
-  // Same resolution EventScheduleDirections (EventScheduleActions.tsx)
-  // uses, duplicated here rather than imported so this component can make
+  // Same resolution EventUtilityActions.tsx's Add to Calendar item uses,
+  // duplicated here rather than imported so this component can make
   // its own single "render anything at all" decision without composing
   // two components each capable of independently returning null.
   const location = selected.location;
@@ -109,7 +109,7 @@ export default function EventScheduleCtas({
           className={
             weight === "solid"
               ? "flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              : "flex h-11 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+              : "flex h-12 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
           }
           track={{
             event_name: eventName,
@@ -126,7 +126,7 @@ export default function EventScheduleCtas({
           href={directionsHref}
           target="_blank"
           rel="noreferrer"
-          className="flex h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+          className="flex h-12 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
           onClick={() =>
             trackEvent({
               event_name: "click_directions",

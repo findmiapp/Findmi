@@ -53,6 +53,7 @@ export default function AddToCalendarButton({
   location,
   startAt,
   endAt,
+  layout = "pill",
 }: {
   title: string;
   description?: string | null;
@@ -62,6 +63,13 @@ export default function AddToCalendarButton({
    * calendar apps require SOME end, so this is the least presumptuous
    * default rather than fabricating a specific one. */
   endAt?: string | null;
+  /** Event Detail Action Bar Correction pass — "pill" (default, unchanged)
+   * is the existing Tier B rounded-full pill. "grid" is an icon-over-label
+   * control that fills its parent grid cell (label shortened to
+   * "Calendar" to avoid wrapping), used only by the Event page's Tier B
+   * utility row (see EventUtilityActions). The dropdown menu itself is
+   * identical either way — only the trigger markup changes. */
+  layout?: "pill" | "grid";
 }) {
   const [open, setOpen] = useState(false);
   // Bug fix (action-row UX pass): this button sits inside the event page's
@@ -102,9 +110,14 @@ export default function AddToCalendarButton({
     setOpen(false);
   }
 
+  const triggerClass =
+    layout === "grid"
+      ? "flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+      : "flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink";
+
   return (
     <div
-      className="relative"
+      className={layout === "grid" ? "relative h-full w-full" : "relative"}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
       }}
@@ -119,10 +132,19 @@ export default function AddToCalendarButton({
           }
           setOpen((o) => !o);
         }}
-        className="flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+        className={triggerClass}
       >
-        <CalendarPlusGlyph className="h-3.5 w-3.5" />
-        Add to Calendar
+        {layout === "grid" ? (
+          <>
+            <CalendarPlusGlyph className="h-4 w-4" />
+            <span className="text-[11px] font-semibold uppercase tracking-wide">Calendar</span>
+          </>
+        ) : (
+          <>
+            <CalendarPlusGlyph className="h-3.5 w-3.5" />
+            Add to Calendar
+          </>
+        )}
       </button>
       {open && coords && (
         <div

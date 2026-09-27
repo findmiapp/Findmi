@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactElement } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
@@ -16,8 +17,8 @@ import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
-import EventScheduleActions from "@/components/EventScheduleActions";
 import EventScheduleCtas from "@/components/EventScheduleCtas";
+import EventUtilityActions, { UtilityActionGrid } from "@/components/EventUtilityActions";
 import EventScheduleSummary from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
@@ -250,10 +251,36 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // Location link (see the pass report).
   const hasVenueDetails = Boolean(event.venue_name || event.address || location);
 
+  // Event Detail Action Bar Correction pass — Message/Save/Share don't
+  // depend on the selected occurrence (client-only, unknowable here at
+  // SSR time), so they're built ONCE here and reused as-is by both the
+  // legacy path (rendered directly into UtilityActionGrid below) and the
+  // recurring path (passed through to EventUtilityActions, which only
+  // adds its own occurrence-dependent Add to Calendar decision on top).
+  // Never duplicated, never re-resolved per branch.
+  const messageAction = showMessageButton ? (
+    <MessageButton
+      layout="grid"
+      targetType="event"
+      targetId={event.id}
+      targetName={event.name}
+      eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
+    />
+  ) : null;
+  const saveAction = <EventSaveButton slug={event.slug} id={event.id} layout="grid" />;
+  const shareAction = (
+    <EventShareButton
+      title={event.name}
+      url={canonicalUrl}
+      track={{ subject_type: "event", subject_id: event.id, event_id: event.id }}
+      layout="grid"
+    />
+  );
+
   // Recurring Events V2 — for an event WITH occurrence rows, occurrence
   // scheduling becomes public scheduling truth: the details card's date/
   // time/location and the Directions/Add to Calendar actions read the
-  // shared selectedOccurrence (EventScheduleSummary/EventScheduleActions)
+  // shared selectedOccurrence (EventScheduleSummary/EventUtilityActions)
   // instead of the parent event's own start_at/end_at/venue fields, which
   // stop being authoritative the moment occurrences exist. A legacy event
   // with zero occurrence rows (hasOccurrences false, upcomingOccurrences
@@ -377,7 +404,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 className={
                   action.weight === "solid"
                     ? "flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-11 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    : "flex h-12 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
                 }
                 track={{
                   event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
@@ -392,7 +419,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 href={directionsHref!}
                 target="_blank"
                 rel="noreferrer"
-                className="flex h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                className="flex h-12 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
                 trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
               >
                 <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
@@ -403,128 +430,128 @@ export async function EventPublicView({ slug }: { slug: string }) {
         )
       )}
 
-      {/* Secondary/contextual actions (Event + Location Action Row
-          Consistency pass) — Website/Call use the same compact
-          h-9/rounded-xl/px-3/text-xs button geometry as the Location
-          page's own secondary actions. Website/Call render only when the
-          Event's already-resolved canonicalLocation actually has them on
-          file (see canonicalWebsite/canonicalPhone above) — no new
-          query, and nothing renders when a Location isn't linked or has
-          no website/phone. Message and a legacy event's own Apply to
-          Vend join the same row at the same size. flex-wrap (never
-          horizontal scroll) keeps every action reachable at 360px by
-          wrapping to a second line rather than requiring a swipe.
-          Event CTA Layout pass — Directions no longer lives in this rail;
-          it moved up into the primary Tier A row above, sharing a
-          balanced `[ RSVP ] [ DIRECTIONS ]` row instead of its own
-          separate line. */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {canonicalWebsite && (
-          <a
-            href={canonicalWebsite}
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
-          >
-            <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
-            Website
-          </a>
-        )}
-        {canonicalPhone && (
-          <a
-            href={`tel:${canonicalPhone}`}
-            className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
-          >
-            <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
-            Call
-          </a>
-        )}
-        {showMessageButton && (
-          <MessageButton
-            size="compact"
-            targetType="event"
-            targetId={event.id}
-            targetName={event.name}
-            eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
-          />
-        )}
-        {legacyVendorApplyCta && (
-          <FormAction
-            href={legacyVendorApplyCta.href}
-            displayMode={legacyVendorApplyCta.displayMode}
-            label="Apply to Vend"
-            className="flex h-9 items-center justify-center rounded-xl border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-            track={{ event_name: "click_apply_to_vend", subject_type: "event", subject_id: event.id, event_id: event.id }}
-          />
-        )}
-      </div>
-
-      {/* Tier B — supporting utility actions, visually quiet, grouped
-          together and separate from Tier A above. Mobile layout pass: a
-          single non-wrapping, horizontally scrollable row (Save → Add to
-          Calendar → Share → Contact Organizer, then Event Details when
-          present) instead of flex-wrap. -mx-4/px-4 (sm:-mx-6/sm:px-6)
-          bleeds the scroll track to the same edges as the padded content
-          around it, and overflow-x-auto contains all overflow within this
-          one element — it can't cause page-level horizontal scroll.
-          Directions/Location IA pass, extended by the Event CTA Layout
-          pass — Directions no longer lives in this rail; it moved into
-          Tier A's own shared row above (`[ RSVP ] [ DIRECTIONS ]` — see
-          EventScheduleCtas) since it's a high-intent physical action, not
-          a low-intent utility. */}
-      <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex w-max items-center gap-2">
-          <div className="shrink-0">
-            <EventSaveButton slug={event.slug} id={event.id} />
-          </div>
-          {hasOccurrences ? (
-            <EventScheduleActions eventName={event.name} description={event.description} />
-          ) : (
-            <div className="shrink-0">
-              <AddToCalendarButton
-                title={event.name}
-                description={event.description}
-                location={venueLine || null}
-                startAt={event.start_at}
-                endAt={event.end_at}
-              />
-            </div>
-          )}
-          <div className="shrink-0">
-            <EventShareButton
-              title={event.name}
-              url={canonicalUrl}
-              track={{ subject_type: "event", subject_id: event.id, event_id: event.id }}
-            />
-          </div>
-          {/* Public Message Action pass — MESSAGE moved OUT of this
-              horizontally-scrollable rail into a fixed primary row right
-              below the details card (see above) so it's never hidden
-              behind a swipe. This rail is secondary utilities only now:
-              Save/Directions/Add to Calendar/Share/Contact/Event
-              Details. */}
-          {showContact && (
-            <InquireButton
-              targetType="event"
-              targetId={event.id}
-              targetName={event.name}
-              label="Contact Organizer"
-              className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-              track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
-            />
-          )}
-          {event.external_url && (
+      {/* Contextual actions (Event + Location Action Row Consistency pass)
+          — Website/Call use the same compact h-9/rounded-xl/px-3/text-xs
+          button geometry as the Location page's own secondary actions,
+          and render only when the Event's already-resolved
+          canonicalLocation actually has them on file (see
+          canonicalWebsite/canonicalPhone above). A legacy event's own
+          Apply to Vend joins the same row at the same size. Event Detail
+          Action Bar Correction pass — this wrapper is now self-guarded
+          (only rendered when at least one of these three actually
+          exists), since MESSAGE — the one action that used to make this
+          row non-empty for nearly every event — moved into the unified
+          utility grid below. Without that guard this div would otherwise
+          render as an empty, orphaned row for the common case (no linked
+          Location website/phone, not a legacy vendor-apply event). */}
+      {(canonicalWebsite || canonicalPhone || legacyVendorApplyCta) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {canonicalWebsite && (
             <a
-              href={event.external_url}
+              href={canonicalWebsite}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
             >
-              Event Details
+              <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
+              Website
             </a>
           )}
+          {canonicalPhone && (
+            <a
+              href={`tel:${canonicalPhone}`}
+              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+            >
+              <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
+              Call
+            </a>
+          )}
+          {legacyVendorApplyCta && (
+            <FormAction
+              href={legacyVendorApplyCta.href}
+              displayMode={legacyVendorApplyCta.displayMode}
+              label="Apply to Vend"
+              className="flex h-9 items-center justify-center rounded-xl border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+              track={{ event_name: "click_apply_to_vend", subject_type: "event", subject_id: event.id, event_id: event.id }}
+            />
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Tier B — Event Detail Action Bar Correction pass. Message/Save/
+          Add to Calendar/Share are now ONE deliberate utility module
+          (UtilityActionGrid/EventUtilityActions) instead of Message
+          living alone in the row above and Save/Calendar/Share living in
+          a separately-styled horizontal scroller below: same rounded-2xl
+          icon-over-label treatment, equal width, and the column count is
+          derived from however many of the four are actually present, so
+          a missing one (no Message configured, no selected occurrence
+          for Add to Calendar) reflows the rest instead of leaving an
+          empty cell. Recurring events: EventUtilityActions owns the one
+          piece that depends on client-only selected-occurrence state
+          (Add to Calendar); Message/Save/Share don't depend on it and
+          are built once below, then passed straight through. Legacy
+          events: every action's presence is already known here
+          server-side, so the grid renders directly. */}
+      {hasOccurrences ? (
+        <EventUtilityActions
+          eventName={event.name}
+          description={event.description}
+          message={messageAction}
+          save={saveAction}
+          share={shareAction}
+        />
+      ) : (
+        <UtilityActionGrid
+          items={[
+            messageAction,
+            saveAction,
+            <AddToCalendarButton
+              key="calendar"
+              title={event.name}
+              description={event.description}
+              location={venueLine || null}
+              startAt={event.start_at}
+              endAt={event.end_at}
+              layout="grid"
+            />,
+            shareAction,
+          ].filter((item): item is ReactElement => Boolean(item))}
+        />
+      )}
+
+      {/* Overflow utilities — Contact Organizer / Event Details are
+          separate, lower-frequency actions that don't belong in the
+          strict 4-slot Message/Save/Calendar/Share module above. Kept as
+          their own self-guarded, horizontally scrollable row (only
+          rendered when at least one exists) rather than stretching the
+          module to 5-6 uneven columns. */}
+      {(showContact || event.external_url) && (
+        <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max items-center gap-2">
+            {showContact && (
+              <InquireButton
+                targetType="event"
+                targetId={event.id}
+                targetName={event.name}
+                label="Contact Organizer"
+                className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+                track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
+              />
+            )}
+            {event.external_url && (
+              <a
+                href={event.external_url}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              >
+                Event Details
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Item 8 — optional Bulletin, same shared component as Business
           Profile, right after the utility row and before About. */}
