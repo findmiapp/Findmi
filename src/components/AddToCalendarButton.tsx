@@ -67,9 +67,12 @@ export default function AddToCalendarButton({
    * is the existing Tier B rounded-full pill. "grid" is an icon-over-label
    * control that fills its parent grid cell (label shortened to
    * "Calendar" to avoid wrapping), used only by the Event page's Tier B
-   * utility row (see EventUtilityActions). The dropdown menu itself is
-   * identical either way — only the trigger markup changes. */
-  layout?: "pill" | "grid";
+   * utility row (see EventUtilityActions). Home Event Card Reconstruction
+   * pass — "glass" is a compact icon-only translucent/blurred circle for
+   * overlaying directly on photography (HomeEventCard's bottom action
+   * dock). The dropdown menu itself is identical across all three —
+   * only the trigger markup changes. */
+  layout?: "pill" | "grid" | "glass";
 }) {
   const [open, setOpen] = useState(false);
   // Bug fix (action-row UX pass): this button sits inside the event page's
@@ -113,7 +116,9 @@ export default function AddToCalendarButton({
   const triggerClass =
     layout === "grid"
       ? "flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
-      : "flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink";
+      : layout === "glass"
+        ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-black/40 text-white backdrop-blur-md transition active:scale-95"
+        : "flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink";
 
   return (
     <div
@@ -125,6 +130,7 @@ export default function AddToCalendarButton({
       <button
         ref={triggerRef}
         type="button"
+        aria-label={layout === "glass" ? "Add to Calendar" : undefined}
         onClick={() => {
           if (!open && triggerRef.current) {
             const rect = triggerRef.current.getBoundingClientRect();
@@ -139,6 +145,8 @@ export default function AddToCalendarButton({
             <CalendarPlusGlyph className="h-4 w-4" />
             <span className="text-[11px] font-semibold uppercase tracking-wide">Calendar</span>
           </>
+        ) : layout === "glass" ? (
+          <CalendarPlusGlyph className="h-4 w-4" />
         ) : (
           <>
             <CalendarPlusGlyph className="h-3.5 w-3.5" />

@@ -24,8 +24,11 @@ export default function EventShareButton({
   /** Event Detail Action Bar Correction pass — "pill" (default, unchanged)
    * is the existing Tier B rounded-full pill. "grid" is an icon-over-label
    * control that fills its parent grid cell, used only by the Event
-   * page's Tier B utility row (see EventUtilityActions). */
-  layout?: "pill" | "grid";
+   * page's Tier B utility row (see EventUtilityActions). Home Event Card
+   * Reconstruction pass — "glass" is a compact icon-only translucent/
+   * blurred circle for overlaying directly on photography (HomeEventCard's
+   * bottom action dock). */
+  layout?: "pill" | "grid" | "glass";
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -60,6 +63,19 @@ export default function EventShareButton({
       >
         <ShareGlyph className="h-4 w-4" />
         <span className="text-[11px] font-semibold uppercase tracking-wide">{copied ? "Copied" : "Share"}</span>
+      </button>
+    );
+  }
+
+  if (layout === "glass") {
+    return (
+      <button
+        type="button"
+        onClick={handleShare}
+        aria-label={copied ? "Link copied" : "Share"}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-black/40 text-white backdrop-blur-md transition active:scale-95"
+      >
+        <ShareGlyph className="h-4 w-4" />
       </button>
     );
   }
