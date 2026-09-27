@@ -73,7 +73,7 @@ export default function HomeEventCard({
   analyticsContext?: AnalyticsPlacementContext;
 }) {
   const category = event.categories[0]?.name ?? null;
-  const { live, label: temporalLabel } = getTemporalLabel(event.start_at, event.end_at);
+  const { live } = getTemporalLabel(event.start_at, event.end_at);
   const cta = resolvePrimaryCta(event);
   const directionsHref = resolveDirectionsHref(event);
   const venueLine = event.venue_name || null;
@@ -187,15 +187,6 @@ export default function HomeEventCard({
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-4">
-        {/* Real temporal status ("TODAY"/"TOMORROW"/"TUE · SEP 29"), only
-            for a NOT-currently-live event — the live case is already
-            communicated by the untouched top-left badge above; repeating
-            "Happening Now" a second time here would be redundant, and
-            "Happening Soon" isn't a real status FindMi computes anywhere,
-            so it's never fabricated. */}
-        {!live && (
-          <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-300">{temporalLabel}</p>
-        )}
         <h3 className="line-clamp-2 font-display text-xl font-extrabold leading-snug tracking-tight text-white sm:text-2xl">
           {event.name}
         </h3>
@@ -210,12 +201,14 @@ export default function HomeEventCard({
           // Full location, real data, two lines (venue then city/state)
           // rather than one middot-joined line — each truncates on its
           // own instead of wrapping, so this can't push the fixed-height
-          // card's bottom content taller than before.
+          // card's bottom content taller than before. Micro polish pass —
+          // venue semibold, city/state regular weight, so the two lines
+          // read as a clear hierarchy rather than equal weight.
           <p className="flex items-start gap-1.5 text-sm text-white/80">
             <PinGlyph className="mt-0.5 h-4 w-4 shrink-0" />
             <span className="min-w-0">
-              {venueLine && <span className="block truncate">{venueLine}</span>}
-              {cityStateLine && <span className="block truncate text-white/60">{cityStateLine}</span>}
+              {venueLine && <span className="block truncate font-semibold">{venueLine}</span>}
+              {cityStateLine && <span className="block truncate font-normal text-white/60">{cityStateLine}</span>}
             </span>
           </p>
         )}
@@ -241,10 +234,16 @@ export default function HomeEventCard({
                 trackEvent({ event_name: cta.eventName, subject_type: "event", subject_id: event.id, event_id: event.id });
                 window.open(cta.url, "_blank", "noopener,noreferrer");
               }}
-              className={`flex h-10 flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-2xl px-2.5 text-[11px] font-bold uppercase ${GLASS_BUTTON}`}
+              className={`flex h-10 flex-1 items-center justify-between gap-2 whitespace-nowrap rounded-2xl pl-3 pr-1.5 text-[11px] font-bold uppercase ${GLASS_BUTTON}`}
             >
-              {cta.label}
-              <ArrowGlyph className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{cta.label}</span>
+              {/* Micro polish pass — a rounded-square glass inset holding
+                  the chevron, visually distinct from the outer pill but
+                  NOT a second click target: this whole button is still
+                  one action (the inset has no handler of its own). */}
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/25 bg-white/15">
+                <ChevronRightGlyph className="h-3 w-3" />
+              </span>
             </button>
           )}
           {directionsHref && (
@@ -303,11 +302,12 @@ function PinGlyph({ className }: { className?: string }) {
   );
 }
 
-// Trailing affordance on the primary CTA glass button.
-function ArrowGlyph({ className }: { className?: string }) {
+// Right-facing chevron inside the primary CTA's glass inset — a plain
+// ">" shape, never the diagonal external-link arrow used elsewhere.
+function ChevronRightGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
