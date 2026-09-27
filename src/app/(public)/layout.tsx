@@ -3,6 +3,7 @@ import MobileHeader from "@/components/MobileHeader";
 import AdminToolbar from "@/components/AdminToolbar";
 import Footer from "@/components/Footer";
 import SiteChrome from "@/components/SiteChrome";
+import { BusinessesProvider } from "@/components/BusinessesContext";
 import { filterNavItemsForAudience, getVisibleNavItems } from "@/lib/navigation";
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -84,7 +85,13 @@ export default async function PublicLayout({ children }: { children: React.React
       footer={<Footer />}
       isAdmin={isAdmin}
     >
-      {children}
+      {/* Account Create Navigation Hotfix — the same `businesses` list
+          the headers above already use for QuickCreateMenu, made
+          reachable to AccountNav's own "More" menu on /account/* routes
+          (where SiteChrome swaps those headers out for OwnerHeader — see
+          that component's own comment — so QuickCreateMenu itself never
+          renders there). One provider, no second fetch. */}
+      <BusinessesProvider businesses={businesses}>{children}</BusinessesProvider>
     </SiteChrome>
   );
 }

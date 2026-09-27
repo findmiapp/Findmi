@@ -5,6 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { syncLocalToAccountOnce } from "@/lib/accountSync";
 import SignOutConfirm from "@/components/SignOutConfirm";
+import NavIcon from "@/components/NavIcon";
+import { useBusinesses } from "@/components/BusinessesContext";
+import { resolveBusinessScopedHref } from "./businessScope";
+import { PlusGlyph, WhichBusinessPanel } from "./BusinessScopedAction";
 import { signOut } from "./profile/actions";
 
 /** Launch V2 Pass 1.1 — live mobile QA fix. A `grid grid-cols-4` row
@@ -34,10 +38,25 @@ const SECONDARY_LINKS = [
   { href: "/account/profile", label: "Profile" },
 ];
 
+const menuItemClass =
+  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-ink transition hover:bg-black/[0.04]";
+
 export default function AccountNav() {
   const pathname = usePathname();
+  const businesses = useBusinesses();
   const [moreOpen, setMoreOpen] = useState(false);
+  // Account Create Navigation Hotfix — which Business-scoped create row
+  // (Where I'll Be / Product) currently has its own "Which business?"
+  // chooser open, mirroring QuickCreateMenu's identical chooserTab state.
+  // Only ever non-null while `moreOpen` is also true — closeMore below
+  // always resets both together.
+  const [createChooserTab, setCreateChooserTab] = useState<string | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+
+  function closeMore() {
+    setMoreOpen(false);
+    setCreateChooserTab(null);
+  }
 
   // Every page that renders this tab strip is already an authenticated
   // /account/* route — piggyback the one-time local→account import here
@@ -59,10 +78,10 @@ export default function AccountNav() {
   useEffect(() => {
     if (!moreOpen) return;
     function onClickOutside(e: MouseEvent) {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) closeMore();
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMoreOpen(false);
+      if (e.key === "Escape") closeMore();
     }
     document.addEventListener("mousedown", onClickOutside);
     document.addEventListener("keydown", onKeyDown);
@@ -117,13 +136,74 @@ export default function AccountNav() {
             <ChevronGlyph className={`h-3 w-3 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
           </button>
           {moreOpen && (
-            <div role="menu" className="absolute left-0 top-full z-20 mt-2 w-44 rounded-xl border border-black/[0.07] bg-white p-1.5 shadow-lg">
+            <div
+              role="menu"
+              className="absolute left-0 top-full z-20 mt-2 w-56 max-w-[calc(100vw-1.5rem)] rounded-xl border border-black/[0.07] bg-white p-1.5 shadow-lg"
+            >
+              {/* Account Create Navigation Hotfix — the account-level
+                  creation launcher: the same five actions the public
+                  header's QuickCreateMenu already offers, surfaced here
+                  since SiteChrome swaps that header out for OwnerHeader on
+                  every /account/* route (QuickCreateMenu never reaches
+                  this surface). Where I'll Be / Product reuse
+                  resolveBusinessScopedHref's existing zero/one/many
+                  routing (same as every other Business-scoped action on
+                  this page) rather than a new decision; Business/Event/
+                  Location route straight to their existing canonical
+                  creation pages. */}
+              <p className="px-2.5 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+                Create on Findmi
+              </p>
+              <BusinessScopedMenuItem
+                label="Where I'll Be"
+                tab="findmi-here"
+                icon={<PlusGlyph className="h-4 w-4" />}
+                businesses={businesses}
+                open={createChooserTab === "findmi-here"}
+                onToggle={() => setCreateChooserTab((t) => (t === "findmi-here" ? null : "findmi-here"))}
+                onNavigate={closeMore}
+              />
+              <CreateLinkItem
+                href="/account/business/new"
+                label="Business"
+                icon={<NavIcon name="storefront" className="h-4 w-4" />}
+                onNavigate={closeMore}
+              />
+              {/* Event's own page enforces canCurrentUserManageEvents()
+                  itself — this is just a link to it, nothing duplicated
+                  here; an ineligible account lands on that page's existing
+                  eligibility screen, same as every other entry point into
+                  Add Event. */}
+              <CreateLinkItem
+                href="/account/event/new"
+                label="Event"
+                icon={<NavIcon name="calendar" className="h-4 w-4" />}
+                onNavigate={closeMore}
+              />
+              <CreateLinkItem
+                href="/account/location/new"
+                label="Location / Venue"
+                icon={<NavIcon name="pin" className="h-4 w-4" />}
+                onNavigate={closeMore}
+              />
+              <BusinessScopedMenuItem
+                label="Product"
+                tab="products"
+                icon={<NavIcon name="tag" className="h-4 w-4" />}
+                businesses={businesses}
+                open={createChooserTab === "products"}
+                onToggle={() => setCreateChooserTab((t) => (t === "products" ? null : "products"))}
+                onNavigate={closeMore}
+              />
+
+              <div className="my-1.5 border-t border-black/[0.06]" />
+
               {SECONDARY_LINKS.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
                   role="menuitem"
-                  onClick={() => setMoreOpen(false)}
+                  onClick={closeMore}
                   className="block rounded-lg px-2.5 py-2 text-sm font-semibold text-ink transition hover:bg-black/[0.04]"
                 >
                   {l.label}
@@ -203,5 +283,69 @@ function ChevronGlyph({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/** Account Create Navigation Hotfix — one plain "Create on Findmi" menu
+ * row (Business/Event/Location). */
+function CreateLinkItem({
+  href,
+  label,
+  icon,
+  onNavigate,
+}: {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  onNavigate: () => void;
+}) {
+  return (
+    <Link href={href} role="menuitem" onClick={onNavigate} className={menuItemClass}>
+      <span className="shrink-0 text-ink/50">{icon}</span>
+      <span className="truncate">{label}</span>
+    </Link>
+  );
+}
+
+/** Account Create Navigation Hotfix — the Business-scoped "Create on
+ * Findmi" rows (Where I'll Be / Product), mirroring QuickCreateMenu's own
+ * BusinessScopedRow: reuses resolveBusinessScopedHref's existing zero/one/
+ * many decision (zero -> Add Business, one -> straight into that
+ * Business's Manager tab) rather than re-deciding it, and falls back to
+ * the same WhichBusinessPanel chooser several managed businesses already
+ * use elsewhere on /account. */
+function BusinessScopedMenuItem({
+  label,
+  tab,
+  icon,
+  businesses,
+  open,
+  onToggle,
+  onNavigate,
+}: {
+  label: string;
+  tab: string;
+  icon: React.ReactNode;
+  businesses: { id: string; name: string }[];
+  open: boolean;
+  onToggle: () => void;
+  onNavigate: () => void;
+}) {
+  const href = resolveBusinessScopedHref(businesses, tab);
+  if (href) {
+    return <CreateLinkItem href={href} label={label} icon={icon} onNavigate={onNavigate} />;
+  }
+  return (
+    <div className="relative">
+      <button type="button" role="menuitem" aria-haspopup="true" aria-expanded={open} onClick={onToggle} className={menuItemClass}>
+        <span className="shrink-0 text-ink/50">{icon}</span>
+        <span className="truncate">{label}</span>
+      </button>
+      {open && (
+        <div onClick={onNavigate}>
+          <WhichBusinessPanel businesses={businesses} tab={tab} className="left-0 right-0" />
+        </div>
+      )}
+    </div>
   );
 }

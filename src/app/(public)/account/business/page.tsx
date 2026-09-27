@@ -46,8 +46,25 @@ export default async function AccountBusinessPage() {
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
 
-      <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Business</h1>
-      <p className="mt-1.5 text-sm text-ink/50">Which business do you want to manage?</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Business</h1>
+          <p className="mt-1.5 text-sm text-ink/50">Which business do you want to manage?</p>
+        </div>
+        {/* Account Create Navigation Hotfix — this page only ever renders
+            its own list when there are 2+ managed businesses (see
+            resolveBusinessScopedHref's redirect above for the zero/one
+            cases), so it had no creation action of its own even though
+            the list itself gave no hint that adding another business was
+            possible. Same canonical /account/business/new flow every
+            other Business creation entry point already uses. */}
+        <Link
+          href="/account/business/new"
+          className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700"
+        >
+          + Add Business
+        </Link>
+      </div>
 
       <div className="mt-6 flex flex-col gap-2">
         {businesses.map((b) => (
