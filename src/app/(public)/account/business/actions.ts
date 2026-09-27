@@ -15,6 +15,8 @@ import { validateCustomDestination } from "@/lib/navigation";
 import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
+import { createRecurringSubscriptionCheckoutSession } from "@/lib/commerce/subscriptionCheckout";
+import type { CommercialPlan, BillingInterval } from "@/lib/commerce/subscriptionTypes";
 import { attributeReferral } from "@/lib/commerce/referrals";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
 import { claimEntityHandle } from "@/lib/handles";
@@ -1521,6 +1523,53 @@ export async function startBusinessProCheckout(businessId: string) {
   if (!admin) redirect(errorRedirectUrl(upgradePath, "Server isn't configured."));
 
   const checkout = await createBusinessProCheckoutSession(admin, businessId);
+  if ("url" in checkout) redirect(checkout.url);
+  redirect(errorRedirectUrl(upgradePath, checkout.error));
+}
+
+const ALLOWED_SUBSCRIPTION_PLANS: readonly CommercialPlan[] = ["pro", "managed_pro"];
+const ALLOWED_SUBSCRIPTION_INTERVALS: readonly BillingInterval[] = ["monthly", "annual"];
+
+/** Starts a RECURRING subscription checkout for an EXISTING, already-owned
+ * business — the new counterpart to startBusinessProCheckout above, for
+ * the Pro Monthly/Annual and Managed Pro Monthly/Annual plans. Only
+ * reachable from /upgrade/pro once isRecurringCheckoutConfigured() is
+ * true (see subscriptionPricing.ts) — this action re-validates `plan`/
+ * `interval` itself regardless, since a form's hidden values are never
+ * trusted just because the UI only offers the four legal combinations.
+ * Authorization mirrors startBusinessProCheckout exactly: a real
+ * business_members row is required, and an admin Manage-As session is
+ * refused (starting a real recurring charge is identity-sensitive/
+ * financial, not entity management). Actual Price ID resolution and
+ * every other Stripe/Supabase safety check lives in
+ * createRecurringSubscriptionCheckoutSession — this action's only job is
+ * auth + input validation + redirect. */
+export async function startSubscriptionCheckout(businessId: string, plan: string, interval: string) {
+  const upgradePath = `/upgrade/pro?business=${businessId}`;
+
+  if (!ALLOWED_SUBSCRIPTION_PLANS.includes(plan as CommercialPlan)) {
+    redirect(errorRedirectUrl(upgradePath, "Choose a valid plan."));
+  }
+  if (!ALLOWED_SUBSCRIPTION_INTERVALS.includes(interval as BillingInterval)) {
+    redirect(errorRedirectUrl(upgradePath, "Choose a valid billing interval."));
+  }
+
+  let membership;
+  try {
+    membership = await requireBusinessMember(businessId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "You don't have access to this business.";
+    redirect(errorRedirectUrl("/account", message));
+  }
+  if (membership.viaAdmin) {
+    redirect(errorRedirectUrl(upgradePath, "Exit Admin Mode to start a subscription checkout for this business."));
+  }
+
+  const checkout = await createRecurringSubscriptionCheckoutSession(
+    businessId,
+    plan as CommercialPlan,
+    interval as BillingInterval
+  );
   if ("url" in checkout) redirect(checkout.url);
   redirect(errorRedirectUrl(upgradePath, checkout.error));
 }

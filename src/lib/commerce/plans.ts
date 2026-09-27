@@ -7,19 +7,16 @@
 // price or feature-boundary change only ever means editing the objects
 // below, not hunting through every page that mentions Pro.
 //
-// IMPORTANT — this pass is presentation/config ONLY:
-//   - Stripe billing has NOT been converted to subscriptions yet. The
-//     live $99/year one-time Checkout (lib/commerce/businessProCheckout.ts,
-//     BUSINESS_PRO_INTRO_PRICE_CENTS) is UNCHANGED and still the only
-//     real charge that exists. Nothing in this file is wired into that
-//     checkout session yet, and no page's displayed PRICE changes in
-//     this pass — only stale FEATURE-claim copy (e.g. "Products" listed
-//     as Pro-exclusive) is corrected, since that was independently wrong
-//     regardless of which price is eventually charged.
-//   - Managed Pro is NOT purchasable. Nothing here creates a checkout
-//     path, a route, or a live CTA for it — see `purchasable: false`
-//     below, which future code should check before ever rendering a
-//     "Buy Managed Pro" action.
+// IMPORTANT:
+//   - Recurring Billing V1 added real recurring Checkout for Pro and
+//     Managed Pro (lib/commerce/subscriptionCheckout.ts) alongside the
+//     still-unchanged legacy $99/year one-time Checkout
+//     (lib/commerce/businessProCheckout.ts, BUSINESS_PRO_INTRO_PRICE_CENTS)
+//     — the legacy path is never removed or altered by this. `purchasable`
+//     below is what /upgrade/pro checks before rendering a plan's CTA;
+//     the recurring UI itself only appears once
+//     isRecurringCheckoutConfigured() is true (dedicated Stripe secret key
+//     + all four recurring Price IDs configured) — see subscriptionPricing.ts.
 //   - QR & Tools is listed as a Pro capability but has NOT shipped
 //     (owner self-service QR — image generation + self-serve campaign
 //     creation — doesn't exist yet; scan resolution/attribution/
@@ -124,9 +121,11 @@ export const PRO_PLAN: PlanDefinition = {
 // Includes every Pro software capability (see `features` below, which
 // deliberately repeats PRO_PLAN.features rather than requiring every
 // caller to merge two arrays) plus a bounded human-maintenance layer.
-// NOT PURCHASABLE YET — see `purchasable: false`. No billing/service
-// state exists for this plan; do not build a checkout path or live CTA
-// against it until that exists.
+// Recurring Billing V1 — now purchasable via recurring Stripe Checkout
+// (src/lib/commerce/subscriptionCheckout.ts), gated behind
+// isRecurringCheckoutConfigured() so this only ever renders a live CTA
+// once the dedicated Stripe secret key + all four recurring Price IDs are
+// actually configured — see /upgrade/pro/page.tsx.
 export const MANAGED_PRO_PLAN: PlanDefinition = {
   key: "managed_pro",
   name: "Findmi Managed Pro",
@@ -154,7 +153,7 @@ export const MANAGED_PRO_PLAN: PlanDefinition = {
     "Customer service",
     "Unlimited external research",
   ],
-  purchasable: false,
+  purchasable: true,
 };
 
 export const PLANS: Record<PlanKey, PlanDefinition> = {

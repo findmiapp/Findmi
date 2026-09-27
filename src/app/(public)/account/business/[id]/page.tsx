@@ -218,6 +218,7 @@ export default async function ManageBusinessPage({
     error?: string;
     created?: string;
     pro_payment?: string;
+    subscription_checkout?: string;
     editing?: string;
     add_title?: string;
     add_date?: string;
@@ -265,6 +266,7 @@ export default async function ManageBusinessPage({
     order: openOrderId,
     order_status: orderStatusFilter,
     pro_payment: proPayment,
+    subscription_checkout: subscriptionCheckout,
     editing,
     location_id: preselectedLocationId,
     schedule_limit: scheduleLimitParam,
@@ -1210,6 +1212,30 @@ export default async function ManageBusinessPage({
             {proPayment === "cancelled" && (
               <p className="max-w-2xl rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
                 Checkout was canceled. Your business is still Free. You can upgrade to Pro anytime.
+              </p>
+            )}
+
+            {/* Recurring Billing V1 — the recurring Checkout success/cancel
+                redirect lands here too, same as the legacy pro_payment
+                banner above and for the same reason: the webhook that
+                actually mirrors entitlement can land before or after this
+                render, so this never claims the subscription is active
+                until `pro` (read fresh from the database above) actually
+                confirms it. */}
+            {subscriptionCheckout === "success" &&
+              (pro ? (
+                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                  Your Findmi subscription is active.
+                </p>
+              ) : (
+                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                  Your payment was received. We&rsquo;re activating your Findmi subscription, which usually only
+                  takes a moment. Refresh this page shortly if it doesn&rsquo;t update automatically.
+                </p>
+              ))}
+            {subscriptionCheckout === "cancelled" && (
+              <p className="max-w-2xl rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
+                Checkout canceled. You were not charged.
               </p>
             )}
 

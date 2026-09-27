@@ -254,5 +254,52 @@ export async function syncSubscriptionFromStripe(
     return { outcome: "duplicate_active_subscription" };
   }
 
+  // Managed Pro operational state — deliberately separate from, and
+  // written AFTER, the entitlement mirror above. This is a plain,
+  // non-transactional UPDATE (not folded into sync_subscription_from_
+  // stripe()) because managed_service_status is operational state, not
+  // an entitlement: it doesn't need the same forward-only-mirror/
+  // advisory-lock guarantees plan_tier does, and a business's Managed Pro
+  // service relationship is fully described by ITS OWN subscription's
+  // current status, not by comparison against any prior value.
+  if (resolved.plan === "managed_pro") {
+    // Only ever touched here for a managed_pro subscription — this never
+    // manufactures a false "actively managed" or "paused" state for a
+    // business that was never on Managed Pro via this subscription.
+    const managedServiceStatus = GRANTING_STATUSES.has(subscription.status) ? "active" : "paused";
+    const { error: managedStatusError } = await admin
+      .from("businesses")
+      .update({ managed_service_status: managedServiceStatus })
+      .eq("id", businessId);
+    if (managedStatusError) {
+      console.error("[subscription-sync] failed to update managed_service_status", {
+        businessId,
+        subscriptionId,
+        error: managedStatusError.message,
+      });
+    }
+  } else if (resolved.plan === "pro") {
+    // Review-fix: a business synced onto a plain "pro" subscription must
+    // not be left showing a stale 'active'/'paused' Managed Pro state from
+    // an earlier managed_pro subscription. Deliberately the smallest safe
+    // correction — only clears managed_service_status (never plan_tier,
+    // never entitlement/expiry, never any OTHER business's row) and only
+    // when it isn't already 'none' (the .neq scopes the UPDATE so this is
+    // a no-op, not an extra write, for the common case of a business that
+    // was never Managed Pro).
+    const { error: clearManagedStatusError } = await admin
+      .from("businesses")
+      .update({ managed_service_status: "none" })
+      .eq("id", businessId)
+      .neq("managed_service_status", "none");
+    if (clearManagedStatusError) {
+      console.error("[subscription-sync] failed to clear managed_service_status", {
+        businessId,
+        subscriptionId,
+        error: clearManagedStatusError.message,
+      });
+    }
+  }
+
   return { outcome: "applied", mirrorOutcome: result.mirror_outcome };
 }

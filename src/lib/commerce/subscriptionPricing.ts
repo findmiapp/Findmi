@@ -43,3 +43,20 @@ export function getSubscriptionPriceId(plan: CommercialPlan, interval: BillingIn
   if (!priceId) throw new SubscriptionPriceNotConfiguredError(envVar);
   return priceId;
 }
+
+/** Recurring Billing V1 cutover gate — true only when the dedicated
+ * subscriptions Stripe secret key AND all four recurring Price IDs are
+ * present. `/upgrade/pro` checks this before ever rendering the new
+ * recurring-checkout UI; while it's false, production keeps showing only
+ * the existing legacy $99/year one-time checkout, so an unconfigured
+ * deploy never presents a broken "Subscribe" button to a real business
+ * owner. Deliberately re-checks the env directly rather than caching —
+ * this is called at most once per page render, not in a hot path. */
+export function isRecurringCheckoutConfigured(): boolean {
+  if (!process.env.STRIPE_SUBSCRIPTIONS_SECRET_KEY?.trim()) return false;
+  return (Object.keys(PRICE_ENV_VAR) as CommercialPlan[]).every((plan) =>
+    (Object.keys(PRICE_ENV_VAR[plan]) as BillingInterval[]).every((interval) =>
+      Boolean(process.env[PRICE_ENV_VAR[plan][interval]]?.trim())
+    )
+  );
+}
