@@ -1,29 +1,50 @@
 import Link from "next/link";
-import { getAdminProducts, getBusinessOptionById } from "@/lib/admin/queries";
+import { getAdminProducts, getAllCategories, getBusinessOptionById } from "@/lib/admin/queries";
 import { RelationField } from "@/components/admin/RelationPicker";
-import { formatPrice } from "@/lib/format";
+import ProductBulkListClient from "./ProductBulkListClient";
 
 export const dynamic = "force-dynamic";
+
+const LIFECYCLE_TABS = [
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+  { value: "archived", label: "Archived" },
+  { value: "trashed", label: "Trash" },
+] as const;
 
 export default async function AdminProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; business?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; business?: string; status?: string; result?: string }>;
 }) {
-  const { q, business, status } = await searchParams;
+  const { q, business, status, result } = await searchParams;
   const needsReview = status === "needs_review";
   // Product Marketplace Distribution pass — a SEPARATE filter/queue from
   // Needs Review above: content approval and Marketplace approval stay
   // two independent decisions, never combined into one filter.
   const marketplaceReview = status === "marketplace_review";
-  const [products, initialBusiness] = await Promise.all([
-    getAdminProducts({
-      q,
-      businessId: business,
-      status: needsReview ? "needs_review" : marketplaceReview ? "marketplace_review" : undefined,
-    }),
+  // Admin Content Lifecycle V1 — the four lifecycle tabs are a THIRD,
+  // independent dimension from the two moderation queues above. "active"
+  // is both the explicit tab value and the default (no status param) —
+  // see getAdminProducts' own note on why bare /admin/products no longer
+  // means "show literally everything."
+  const lifecycleStatus = LIFECYCLE_TABS.find((t) => t.value === status)?.value;
+  const effectiveStatus = needsReview
+    ? "needs_review"
+    : marketplaceReview
+      ? "marketplace_review"
+      : (lifecycleStatus ?? "active");
+
+  const [products, initialBusiness, categories] = await Promise.all([
+    getAdminProducts({ q, businessId: business, status: effectiveStatus }),
     getBusinessOptionById(business ?? null),
+    getAllCategories("product"),
   ]);
+
+  const barView: "active" | "paused" | "archived" | "trashed" | "other" =
+    effectiveStatus === "active" || effectiveStatus === "paused" || effectiveStatus === "archived" || effectiveStatus === "trashed"
+      ? effectiveStatus
+      : "other";
 
   return (
     <div>
@@ -37,10 +58,37 @@ export default async function AdminProductsPage({
         </Link>
       </div>
 
-      {/* Product Moderation pass — Product Reviews entry point, same
-          querystring-filter-on-the-existing-list shape as admin/businesses'
-          own Pending Review filter. */}
-      <div className="mt-3 flex items-center gap-2">
+      {result && (
+        <p className="mt-3 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-2.5 text-sm text-ink/80">{result}</p>
+      )}
+
+      {/* Admin Content Lifecycle V1 — the four lifecycle views. Reset to
+          "active" (no status param) via the plain /admin/products link;
+          each tab preserves the current search/business filters. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {LIFECYCLE_TABS.map((tab) => {
+          const active = (lifecycleStatus ?? "active") === tab.value && !needsReview && !marketplaceReview;
+          const params = new URLSearchParams();
+          if (tab.value !== "active") params.set("status", tab.value);
+          if (q) params.set("q", q);
+          if (business) params.set("business", business);
+          const href = `/admin/products${params.toString() ? `?${params.toString()}` : ""}`;
+          return (
+            <Link
+              key={tab.value}
+              href={href}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                active ? "bg-ink text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+        <span className="mx-1 text-black/15">|</span>
+        {/* Product Moderation pass — Product Reviews entry point, same
+            querystring-filter-on-the-existing-list shape as admin/businesses'
+            own Pending Review filter. */}
         <Link
           href="/admin/products?status=needs_review"
           className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
@@ -60,16 +108,14 @@ export default async function AdminProductsPage({
         >
           Marketplace Review
         </Link>
-        {(needsReview || marketplaceReview) && (
-          <Link href="/admin/products" className="text-xs font-semibold text-ink/50 hover:text-ink">
-            Clear filter
-          </Link>
-        )}
       </div>
 
       <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
         {needsReview && <input type="hidden" name="status" value="needs_review" />}
         {marketplaceReview && <input type="hidden" name="status" value="marketplace_review" />}
+        {!needsReview && !marketplaceReview && lifecycleStatus && lifecycleStatus !== "active" && (
+          <input type="hidden" name="status" value={lifecycleStatus} />
+        )}
         <input
           type="text"
           name="q"
@@ -95,81 +141,8 @@ export default async function AdminProductsPage({
         </button>
       </form>
 
-      <div className="mt-4 flex flex-col gap-2">
-        {products.length === 0 ? (
-          <p className="text-sm text-ink/50">No products yet.</p>
-        ) : (
-          products.map((p) => {
-            // Product Moderation pass — same priority order as the owner
-            // manager's own badge (account/business/[id]/page.tsx):
-            // never-approved/rejected content outranks the plain
-            // Active/Inactive distinction, since it's the thing that
-            // needs a founder decision.
-            const moderationStatus = p.moderation_status ?? "live";
-            const badgeLabel =
-              moderationStatus === "pending_review"
-                ? "Pending Review"
-                : moderationStatus === "rejected"
-                  ? "Rejected"
-                  : p.pending_changes
-                    ? "Changes Pending"
-                    : p.is_active
-                      ? "Active"
-                      : "Inactive";
-            const badgeClass =
-              moderationStatus === "pending_review" || p.pending_changes
-                ? "bg-amber-100 text-amber-800"
-                : moderationStatus === "rejected"
-                  ? "bg-red-50 text-red-700"
-                  : p.is_active
-                    ? "bg-findmi-50 text-findmi-700"
-                    : "bg-black/[0.06] text-ink/50";
-
-            // Product Marketplace Distribution pass — a SEPARATE badge,
-            // only shown once the owner has actually requested/received a
-            // Marketplace decision (catalog_only is the common case and
-            // stays unbadged here, same as content moderation's own
-            // "nothing to flag" rows). Never merged with badgeLabel/
-            // badgeClass above.
-            const marketplaceStatus = p.marketplace_status ?? "catalog_only";
-            const marketplaceBadge =
-              marketplaceStatus === "submitted"
-                ? { label: "Marketplace Pending", className: "bg-sky-100 text-sky-800" }
-                : marketplaceStatus === "approved"
-                  ? { label: "Marketplace Approved", className: "bg-sky-50 text-sky-700" }
-                  : marketplaceStatus === "paused"
-                    ? { label: "Marketplace Paused", className: "bg-black/[0.06] text-ink/50" }
-                    : marketplaceStatus === "rejected"
-                      ? { label: "Marketplace Rejected", className: "bg-red-50 text-red-700" }
-                      : null;
-
-            return (
-              <Link
-                key={p.id}
-                href={`/admin/products/${p.id}`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                  <p className="truncate text-xs text-ink/45">
-                    {p.business?.name ?? "—"}
-                    {formatPrice(p.price, p.price_label) ? ` · ${formatPrice(p.price, p.price_label)}` : ""}
-                  </p>
-                </div>
-                <span className="flex shrink-0 flex-col items-end gap-1">
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>
-                    {badgeLabel}
-                  </span>
-                  {marketplaceBadge && (
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${marketplaceBadge.className}`}>
-                      {marketplaceBadge.label}
-                    </span>
-                  )}
-                </span>
-              </Link>
-            );
-          })
-        )}
+      <div className="mt-4">
+        <ProductBulkListClient products={products} view={barView} categories={categories} />
       </div>
     </div>
   );

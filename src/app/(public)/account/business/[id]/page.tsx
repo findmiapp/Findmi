@@ -826,6 +826,13 @@ export default async function ManageBusinessPage({
           "id, name, slug, description, image_url, price, price_label, product_type, external_purchase_url, is_active, moderation_status, pending_changes, marketplace_status"
         )
         .eq("business_id", id)
+        // Admin Content Lifecycle V1 — Archive/Trash are admin-only
+        // states (no owner-facing action sets them); excluded here so an
+        // owner's own product list only ever shows what's actually
+        // theirs to manage, and never shows a retired product as if it
+        // were a normal active/inactive one with no explanation.
+        .is("archived_at", null)
+        .is("trashed_at", null)
         .order("is_active", { ascending: false })
         .order("name"),
       getProductCategories(),

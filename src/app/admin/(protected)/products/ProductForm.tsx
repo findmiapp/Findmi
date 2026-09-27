@@ -5,10 +5,10 @@ import FulfillmentOptionsEditor from "@/components/admin/FulfillmentOptionsEdito
 import ImageField from "@/components/admin/ImageField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
-import DeleteButton from "@/components/admin/DeleteButton";
+import ProductLifecycleButtons from "./ProductLifecycleButtons";
 import type { AdminProduct, ProductFulfillmentOptionRow, SelectOption } from "@/lib/admin/queries";
 import type { Category } from "@/lib/types";
-import { saveProduct, deleteProduct } from "./actions";
+import { saveProduct } from "./actions";
 
 export default function ProductForm({
   product,
@@ -167,10 +167,12 @@ export default function ProductForm({
 
       {product && (
         <div className="border-t border-black/5 pt-5">
-          <DeleteButton
-            action={deleteProduct.bind(null, product.id)}
-            confirmMessage="Delete This Product Permanently?\n\nThis Cannot Be Undone. The Product And Its Findmi Listing Will Be Removed."
-            label="Delete Product Permanently"
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">Lifecycle</p>
+          <ProductLifecycleButtons
+            productId={product.id}
+            productName={product.name}
+            archivedAt={product.archived_at ?? null}
+            trashedAt={product.trashed_at ?? null}
           />
         </div>
       )}

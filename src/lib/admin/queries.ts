@@ -736,8 +736,23 @@ export interface ProductListFilters {
    * SEPARATE queue the dashboard's Marketplace Reviews card links to:
    * marketplace_status='submitted'. Never combined with "needs_review" —
    * content approval and Marketplace approval stay two independent
-   * decisions, each with its own filter/queue. */
-  status?: "needs_review" | "marketplace_review";
+   * decisions, each with its own filter/queue.
+   *
+   * Admin Content Lifecycle V1 — "active"/"paused"/"archived"/"trashed"
+   * are a SEPARATE dimension from the two moderation queues above (a
+   * product can be in Needs Review and Active/Paused at the same time).
+   * "active"/"paused" both exclude archived_at/trashed_at (those two
+   * states only ever apply to a normally-managed record) and split on
+   * the product's own existing is_active flag — no new "pause" concept,
+   * just surfacing the existing one as its own tab. "archived" requires
+   * archived_at set and trashed_at NULL (a trashed-while-archived record
+   * shows only in Trash, never doubly in Archived). "trashed" requires
+   * trashed_at set, regardless of archived_at (Trash is the deepest
+   * state). Omitting `status` entirely still defaults to "active" below
+   * — see the one call site change this pass made to the products page
+   * for why the previous "no filter = show literally everything"
+   * default was replaced by explicit tabs. */
+  status?: "needs_review" | "marketplace_review" | "active" | "paused" | "archived" | "trashed";
 }
 
 export async function getAdminProducts(filters: ProductListFilters = {}): Promise<AdminProductRow[]> {
@@ -750,10 +765,18 @@ export async function getAdminProducts(filters: ProductListFilters = {}): Promis
   }
   if (filters.businessId) query = query.eq("business_id", filters.businessId);
   if (filters.status === "needs_review") {
-    query = query.or("moderation_status.eq.pending_review,pending_changes.not.is.null");
-  }
-  if (filters.status === "marketplace_review") {
-    query = query.eq("marketplace_status", "submitted");
+    query = query.or("moderation_status.eq.pending_review,pending_changes.not.is.null").is("trashed_at", null);
+  } else if (filters.status === "marketplace_review") {
+    query = query.eq("marketplace_status", "submitted").is("trashed_at", null);
+  } else if (filters.status === "archived") {
+    query = query.not("archived_at", "is", null).is("trashed_at", null);
+  } else if (filters.status === "trashed") {
+    query = query.not("trashed_at", "is", null);
+  } else if (filters.status === "paused") {
+    query = query.is("archived_at", null).is("trashed_at", null).eq("is_active", false);
+  } else {
+    // "active" (explicit or default) — the base normally-managed view.
+    query = query.is("archived_at", null).is("trashed_at", null).eq("is_active", true);
   }
   const { data } = await query.order("name");
   return ((data ?? []) as never[]).map((row: unknown) => {

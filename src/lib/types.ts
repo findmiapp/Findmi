@@ -490,6 +490,11 @@ export interface Product {
   // home_sort_order, which is documented/used only for the homepage/
   // marketplace featured rows — a different placement, not this one.
   profile_sort_order: number | null;
+  // Admin Content Lifecycle V1 — orthogonal to is_active/moderation_status/
+  // marketplace_status (never set by pausing). NULL = not archived/not
+  // trashed. See the migration's own column comments for the full model.
+  archived_at?: string | null;
+  trashed_at?: string | null;
 }
 
 export interface ProductFulfillmentOption {

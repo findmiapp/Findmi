@@ -145,8 +145,13 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     supabase
       .from("products")
       .select("id", { count: "exact", head: true })
-      .or("moderation_status.eq.pending_review,pending_changes.not.is.null"),
-    supabase.from("products").select("id", { count: "exact", head: true }).eq("marketplace_status", "submitted"),
+      .or("moderation_status.eq.pending_review,pending_changes.not.is.null")
+      .is("trashed_at", null),
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("marketplace_status", "submitted")
+      .is("trashed_at", null),
     // Event Rejection State pass — was a two-query is_demo+event_members
     // inference (countPendingEventReviews); now a plain publication_status
     // count, same shape as pendingBusinessReviews right above.
