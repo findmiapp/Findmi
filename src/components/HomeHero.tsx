@@ -1,269 +1,160 @@
 import SupabaseImage from "./SupabaseImage";
-import Link from "next/link";
 
-// The homepage's masthead.
+// Homepage Visual North Star V1 — full rewrite of the masthead around an
+// approved visual reference: a large editorial serif headline, a short
+// description, and an asymmetric real-world image collage (never a grid,
+// never a carousel), with a small handwritten annotation inside the
+// collage itself. Search/interests/discovery all live in page.tsx,
+// immediately below this section.
 //
-// Mobile geometry, several passes in: below sm:, copy (headline + body
-// only — the CTA now lives BELOW the collage, not between body and it)
-// sits in normal flow at the top, and the 3-image collage is a
-// normal-flow block that starts right after body — its start position is
-// always correct for whatever body actually renders as, never an
-// estimate. Image 2 additionally reaches up above the collage's own top,
-// into the open space beside body's lower rows, which is safe because
-// it's confined to the right side clear of body's own width cap. See the
-// mobile branch below for the exact numbers.
-// From sm: up, this file renders the UNCHANGED existing desktop
-// markup (own flex-row, own collage box) — the two are simply two
-// sibling branches (`sm:hidden` / `hidden sm:flex`) rather than one
-// shared responsive layout, because the mobile canvas's positioning
-// model genuinely doesn't translate to desktop's copy-left/collage-right
-// row, and this pass is mobile-only per its own brief.
+// Headline/description are now FIXED copy (see the exact strings the
+// visual spec requires), not routed through the founder's Site Editor →
+// Hero heading/body fields anymore — those fields still exist and still
+// hold whatever a founder last set, but this specific redesign has an
+// exact, non-substitutable copy requirement. The founder's own Hero
+// Image 1/2 slots are similarly no longer this component's image
+// source — seebelow.
 //
-// `images` are real cover photos: slot 0/1 (Large Image / Overlay Image)
-// are purely founder-uploaded (Site Editor → Hero, see
-// resolveHeroImageSlots — never a Business/Event/Product photo), slot 2
-// is a real photo already fetched for other homepage sections when left
-// unconfigured. With fewer than 3 available, this renders however many
-// real ones there are, and with zero it renders no collage at all.
-// Positions are threaded through BY INDEX, never compacted — a disabled/
-// empty slot 0 is a real gap, it never pulls slot 1's photo into its
-// spot (see the homepage's own note on this).
-//
-// Geometry changed; editability didn't — heading/body/CTA and all three
-// image slots are still the same founder-editable Site Editor fields
-// (Hero → Heading/Body/Image 1-3).
-//
-// Homepage Hero Founder Control pass — `imageLinks` is the optional
-// destination for slot 0/1 only (index-aligned: linkA for `a`, linkB for
-// `b`); slot 2 has no admin control for this and is never clickable. An
-// empty/missing link leaves the image exactly as before (unwrapped, not
-// clickable) — see HeroImageLink below.
-const DEFAULT_HEADING_LINES = ["Find what's", "around you.", "Get discovered."];
+// `images` are REAL existing FindMi photos (business cover photos,
+// product photos, event cover photos — already fetched by page.tsx for
+// other sections; see its own note on how each role is chosen), never
+// stock imagery. Every role is optional and independently omittable — a
+// role with no real photo behind it simply doesn't render, so the
+// collage always reflects exactly what's real, never a placeholder.
+export interface HeroCollageImage {
+  src: string;
+  alt: string;
+}
 
-function HeroImageLink({ href, children }: { href: string | null | undefined; children: React.ReactNode }) {
-  if (!href) return <>{children}</>;
-  // Same internal-vs-external convention as NavDesktop's NavLink
-  // (external = starts with http(s)://) — the only other place on the
-  // site a founder-entered destination becomes a real link.
-  if (/^https?:\/\//i.test(href)) {
-    return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className="block h-full w-full">
-        {children}
-      </a>
-    );
-  }
+export interface HeroCollageImages {
+  /** Left, dominant anchor image — brand/place. */
+  left?: HeroCollageImage;
+  /** Upper-right, medium — a real-world experience/place. */
+  topRight?: HeroCollageImage;
+  /** Small circular accent — product/culture. */
+  circle?: HeroCollageImage;
+  /** Lower-right, tall — experience/community. */
+  bottomRight?: HeroCollageImage;
+  /** Lower-center, medium — lifestyle/product/brand, overlapping `left`. */
+  bottomCenter?: HeroCollageImage;
+}
+
+const HEADLINE_LINES = ["Discover", "what moves you."];
+const DESCRIPTION = "Find brands, products, experiences,\nand see where they're popping up next.";
+
+function Tile({
+  image,
+  className,
+}: {
+  image?: HeroCollageImage;
+  className: string;
+}) {
+  if (!image) return null;
   return (
-    <Link href={href} className="block h-full w-full">
-      {children}
-    </Link>
+    <div className={className}>
+      <SupabaseImage src={image.src} alt={image.alt} fill sizes="(min-width: 640px) 320px, 60vw" className="object-cover" />
+    </div>
   );
 }
 
-export default function HomeHero({
-  images,
-  imageLinks,
-  heading,
-  description,
-}: {
-  images: Array<string | null | undefined>;
-  /** Optional destination for slot 0 ("Large Image") / slot 1 ("Overlay
-   * Image") only — index-aligned with `images`. Omit or leave a slot
-   * null/blank for an image that isn't clickable. */
-  imageLinks?: Array<string | null | undefined>;
-  /** Founder-editable via Site Editor → Hero → Heading (Discovery/
-   * Archive V2 Part 18) — newlines control the visual lines, same as
-   * closing_cta's heading already does elsewhere on this page. Rendered
-   * as plain React text (never dangerouslySetInnerHTML), so raw HTML in
-   * a founder's input is never interpreted, only ever displayed as
-   * literal text. */
-  heading: string | null;
-  description: string | null;
-}) {
-  const [a, b, c] = images;
-  const [linkA, linkB] = imageLinks ?? [];
-  // Real lines only, capped at 3 — the hero's compact height (and the
-  // last-line accent treatment below) is designed around exactly that
-  // many; extra lines are silently dropped rather than blowing up the
-  // masthead or erroring on unexpected founder input.
-  const lines = (heading?.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 3) ?? []);
-  const headingLines = lines.length > 0 ? lines : DEFAULT_HEADING_LINES;
-  const lastIndex = headingLines.length - 1;
+function Annotation({ className }: { className: string }) {
+  return (
+    <div className={className}>
+      <p className="font-hand text-[26px] leading-[0.95] text-ink/80">
+        Brands.
+        <br />
+        Products.
+        <br />
+        Experiences.
+        <br />
+        IRL. <span aria-hidden>♥</span>
+      </p>
+    </div>
+  );
+}
 
-  const headingContent = headingLines.map((line, i) => (
-    <span key={i}>
-      {i === lastIndex ? <span className="whitespace-nowrap text-findmi-600">{line}</span> : line}
-      {i < lastIndex && <br />}
-    </span>
-  ));
+export default function HomeHero({ images }: { images: HeroCollageImages }) {
+  const hasCollage = Boolean(images.left || images.topRight || images.circle || images.bottomRight || images.bottomCenter);
 
   return (
-    <section className="border-b border-black/5 bg-white">
+    <section className="bg-paper">
       <div className="mx-auto max-w-6xl">
-        {/* ================= MOBILE (<640px) — collage rises, CTA moves below ================
-            Text block is now Headline + Body ONLY — the CTA moved out
-            (see below), which is what actually makes the safe upward move
-            possible: body has a hard max-w-[58%] cap, so EVERY line it
-            ever wraps to is guaranteed to stay left of x:58%, regardless
-            of body's real rendered height. That guarantee is what the
-            unconstrained-width CTA never had (its natural width could
-            exceed any assumed boundary) — CTA was the actual source of
-            the earlier collision, not body.
-            The collage is a normal-flow block starting right after body
-            (mt-1 — correct by construction for whatever body's real
-            height is, never an estimate) sized to h-[130px]. Image 2
-            additionally reaches UP above the collage's own top via a
-            small negative `top` offset, into the open space beside
-            body's lower rows — safe regardless of body's actual height
-            because it's anchored at right:2%/width:36%, i.e. left edge
-            ≈62%, always clear of body's 58% cap. Image 1/3 are NOT
-            pulled negative — they start at the collage's own (flow-safe)
-            top, which is still ~70-90px higher than the previous pass's
-            Image 1 position simply because there's no CTA + its margins
-            sitting between body and the collage anymore. */}
-        {/* Visual Regression Correction — pt-6→pt-4 and pb-3→pb-2 (was
-            24px/12px, now 16px/8px): the hero's CONCEPT/imagery/copy are
-            unchanged (restored verbatim from b263d56), only this outer
-            padding and the headline-to-description gap below were tightened,
-            per explicit instruction — the mobile hero was taking excessive
-            vertical space before a visitor reached search, not that its
-            content or composition were wrong. */}
-        <div className="px-6 pb-2 pt-4 sm:hidden">
-          <div>
-            <h1 className="max-w-[90%] font-display text-[clamp(1.7rem,8.2vw,2rem)] font-bold leading-[0.97] tracking-tight text-ink">
-              {headingContent}
-            </h1>
-            {/* Visual Regression Correction — mt-8→mt-3 (32px→12px): this
-                gap (headline to description), not the type itself, was the
-                biggest single contributor to the hero's excess height.
-                Line-height (leading-[1.425]), size, color, and max-width
-                are all untouched. */}
-            {description && (
-              <p className="mt-3 max-w-[60%] text-[16px] leading-[1.425] text-ink/60">{description}</p>
-            )}
-          </div>
+        {/* ================= MOBILE (<640px) ================= */}
+        <div className="px-5 pb-3 pt-5 sm:hidden">
+          <h1 className="font-editorial max-w-[92%] text-[2.55rem] font-semibold leading-[0.92] tracking-tight text-ink">
+            {HEADLINE_LINES.map((line, i) => (
+              <span key={i}>
+                {line}
+                {i < HEADLINE_LINES.length - 1 && <br />}
+              </span>
+            ))}
+          </h1>
+          <p className="mt-3 max-w-[86%] whitespace-pre-line text-[15px] leading-[1.4] text-ink/60">{DESCRIPTION}</p>
 
-          {a && (
-            // Image-scale micro pass: collage container grew 130→160px
-            // (within the allowed 25–35px) purely to fit larger images
-            // safely — geometry/concept otherwise unchanged. Image 1's
-            // width (66%) and Image 2's width (36%, so its left edge
-            // stays at the same safe ~62% clear of body's 58% cap) are
-            // untouched — all the size increase below comes from height,
-            // per "prioritize taller."
-            <div className="relative mt-1 h-[133px] w-full">
-              {/* Image 1 — dominant/anchor (bread). Spacing micro-fix:
-                  now that Image 3 no longer exists on mobile, the
-                  collage container's old h-[160px] left ~27px of
-                  invisible dead space below bread's actual bottom edge
-                  (bread's own top/height were percentages OF that
-                  160px box, and only reached 83% of it) — that dead
-                  space, not the CTA's own margin, was most of the
-                  excess whitespace above the CTA. Container is now
-                  h-[133px], matching bread's real bottom exactly.
-                  Bread itself switched from percentage (top-[12%]
-                  h-[71%], i.e. 19.2px/113.6px of the old 160px box) to
-                  the equivalent FIXED pixels (top-[19.2px]
-                  h-[113.6px]) so it renders at the exact same size/
-                  position as before — unaffected by the container
-                  resize, left edge (0) also unchanged. */}
-              <div className="absolute left-0 top-[19.2px] h-[113.6px] w-[82.5%] overflow-hidden rounded-2xl shadow-md ring-2 ring-white">
-                <HeroImageLink href={linkA}>
-                  <SupabaseImage src={a} alt="" fill sizes="82vw" className="object-cover" />
-                </HeroImageLink>
-              </div>
-              {b && (
-                // Image 2 — coffee, the only support image left on
-                // mobile. Width-only increase: w-[30%]→w-[37.5%]
-                // (exactly ×1.25). Height (161px), top (-119px), and
-                // right-offset (1.5%) unchanged — still anchored
-                // upper-right, still clear of body's 58%-capped column
-                // (new left edge ~61%, still safely right of it), with a
-                // bit more overlap onto bread as its left edge extends
-                // further left — expected/acceptable per spec.
-                <div className="absolute right-[1.5%] top-[-119px] z-10 h-[161px] w-[37.5%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <HeroImageLink href={linkB}>
-                    <SupabaseImage src={b} alt="" fill sizes="38vw" className="object-cover" />
-                  </HeroImageLink>
-                </div>
-              )}
-              {/* Image 3 (pizza) intentionally not rendered on mobile —
-                  two-image simplification pass. Its founder/admin field,
-                  stored URL, and desktop rendering below are untouched;
-                  `c` stays available to restore this block later without
-                  any data/schema change. The resulting blank lower-right
-                  space (below/right of bread, below coffee) is
-                  intentional — do not fill it. */}
+          {hasCollage && (
+            <div className="relative mt-5 h-[430px] w-full">
+              <Tile
+                image={images.left}
+                className="absolute left-0 top-0 h-[272px] w-[62%] overflow-hidden rounded-[28px] shadow-md ring-4 ring-white"
+              />
+              <Tile
+                image={images.topRight}
+                className="absolute right-[1%] top-0 z-10 h-[160px] w-[37%] overflow-hidden rounded-3xl shadow-md ring-4 ring-white"
+              />
+              <Tile
+                image={images.circle}
+                className="absolute right-[9%] top-[138px] z-20 aspect-square w-[23%] overflow-hidden rounded-full shadow-md ring-4 ring-white"
+              />
+              <Tile
+                image={images.bottomRight}
+                className="absolute right-[1%] top-[200px] z-10 h-[230px] w-[39%] overflow-hidden rounded-3xl shadow-md ring-4 ring-white"
+              />
+              <Tile
+                image={images.bottomCenter}
+                className="absolute left-[37%] top-[232px] z-20 h-[148px] w-[33%] -rotate-2 overflow-hidden rounded-2xl shadow-md ring-4 ring-white"
+              />
+              {images.left && <Annotation className="absolute left-0 top-[280px] w-[34%]" />}
             </div>
           )}
-
-          {/* Discovery Home Composition Reset, task Section 4/5 — the
-              FOR YOU / FOR BRANDS action row is removed entirely, not
-              replaced with another acquisition module. The hero is now
-              pure identity/imagery: headline, description, real photos.
-              Real discovery content (search, Must Haves, Must Dos,
-              Brands, Explore What You're Into) follows immediately below
-              the hero in page.tsx; business acquisition stays deeper
-              (closing_cta, near the bottom) — a consumer no longer has
-              to choose a "side" of FindMi
-              before seeing the product. */}
         </div>
 
-        {/* ================= DESKTOP (sm:+) — unchanged from the prior pass ================ */}
-        <div className="hidden sm:flex sm:items-center sm:gap-8 sm:px-6 sm:py-10">
+        {/* ================= DESKTOP (sm:+) ================= */}
+        <div className="hidden sm:flex sm:items-center sm:gap-10 sm:px-6 sm:py-12">
           <div className="min-w-0 flex-1 max-w-md">
-            <h1 className="font-display text-3xl font-bold leading-[0.96] tracking-tight text-ink md:text-4xl">
-              {headingContent}
+            <h1 className="font-editorial text-5xl font-semibold leading-[0.94] tracking-tight text-ink md:text-6xl">
+              {HEADLINE_LINES.map((line, i) => (
+                <span key={i}>
+                  {line}
+                  {i < HEADLINE_LINES.length - 1 && <br />}
+                </span>
+              ))}
             </h1>
-            {description && <p className="mt-4 max-w-md text-base text-ink/60">{description}</p>}
-
-            {/* Discovery Home Composition Reset — same removal as the
-                mobile branch above: no CTA row at all. Pure identity/
-                imagery; discovery content and business acquisition both
-                live further down the page. */}
+            <p className="mt-5 max-w-sm whitespace-pre-line text-base leading-[1.5] text-ink/60">{DESCRIPTION}</p>
           </div>
 
-          {a && (
-            // Editorial collage: one dominant landscape image (top-left,
-            // ~72%×70% of this box) with two smaller images staggered
-            // over its top-right and bottom-right corners — all
-            // percentage-sized so they scale with the box at every
-            // breakpoint without per-tile breakpoint math.
-            <div className="relative h-72 w-[22rem] shrink-0 lg:h-96 lg:w-[28rem] xl:h-[26rem] xl:w-[32rem]">
-              <div className="absolute left-0 top-0 h-[70%] w-[72%] overflow-hidden rounded-3xl shadow-md ring-4 ring-white">
-                <HeroImageLink href={linkA}>
-                  <SupabaseImage
-                    src={a}
-                    alt=""
-                    fill
-                    sizes="(min-width: 1024px) 330px, 253px"
-                    className="object-cover"
-                  />
-                </HeroImageLink>
-              </div>
-              {b && (
-                <div className="absolute right-0 top-0 z-10 h-[38%] w-[40%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <HeroImageLink href={linkB}>
-                    <SupabaseImage
-                      src={b}
-                      alt=""
-                      fill
-                      sizes="(min-width: 1024px) 190px, 141px"
-                      className="object-cover"
-                    />
-                  </HeroImageLink>
-                </div>
-              )}
-              {c && (
-                <div className="absolute bottom-0 right-[4%] z-10 h-[40%] w-[42%] overflow-hidden rounded-2xl shadow-md ring-4 ring-white">
-                  <SupabaseImage
-                    src={c}
-                    alt=""
-                    fill
-                    sizes="(min-width: 1024px) 195px, 148px"
-                    className="object-cover"
-                  />
-                </div>
-              )}
+          {hasCollage && (
+            <div className="relative h-[26rem] w-[26rem] shrink-0 lg:h-[30rem] lg:w-[32rem] xl:h-[34rem] xl:w-[38rem]">
+              <Tile
+                image={images.left}
+                className="absolute left-0 top-0 h-[62%] w-[62%] overflow-hidden rounded-[32px] shadow-md ring-4 ring-white"
+              />
+              <Tile
+                image={images.topRight}
+                className="absolute right-[1%] top-0 z-10 h-[37%] w-[37%] overflow-hidden rounded-3xl shadow-md ring-4 ring-white"
+              />
+              <Tile
+                image={images.circle}
+                className="absolute right-[8%] top-[32%] z-20 aspect-square w-[21%] overflow-hidden rounded-full shadow-md ring-4 ring-white"
+              />
+              <Tile
+                image={images.bottomRight}
+                className="absolute right-[1%] top-[46%] z-10 h-[54%] w-[39%] overflow-hidden rounded-3xl shadow-md ring-4 ring-white"
+              />
+              <Tile
+                image={images.bottomCenter}
+                className="absolute left-[36%] top-[53%] z-20 h-[35%] w-[34%] -rotate-2 overflow-hidden rounded-2xl shadow-md ring-4 ring-white"
+              />
+              {images.left && <Annotation className="absolute left-0 top-[64%] w-[34%]" />}
             </div>
           )}
         </div>

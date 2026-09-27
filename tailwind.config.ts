@@ -51,6 +51,10 @@ const config: Config = {
           "Arial",
           "sans-serif",
         ],
+        // Homepage Visual North Star V1 — scoped to the hero collage only
+        // (see layout.tsx's own note). Not used by font-display/font-sans.
+        editorial: ["var(--font-editorial)", "Georgia", "serif"],
+        hand: ["var(--font-hand)", "cursive"],
       },
       borderRadius: {
         xl2: "1.25rem",

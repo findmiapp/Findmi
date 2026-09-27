@@ -3,13 +3,15 @@ import ProductCard from "@/components/ProductCard";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
 import HomeWeather from "@/components/HomeWeather";
-import HomeHero from "@/components/HomeHero";
+import HomeHero, { type HeroCollageImages } from "@/components/HomeHero";
+import SupabaseImage from "@/components/SupabaseImage";
 import Section, { HorizontalScroller } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
 import {
   attachEventCategories,
   getCategoriesForDynamicBusinessRow,
+  getCategoryShowcaseImages,
   getConsumerVisibleMarketsWithAreas,
   getFeaturedBusinesses,
   getHomeCategories,
@@ -21,7 +23,6 @@ import {
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
 import {
   getSiteSections,
-  resolveHeroImageSlots,
   resolveSection,
   resolveWeatherConfig,
   HOMEPAGE_SECTIONS,
@@ -76,9 +77,14 @@ export default async function HomePage({
   // simply doesn't need their extra detail anymore.
   const [categories, nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, wantItProducts] =
     await Promise.all([
-      getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
+      getHomeCategories(), // BUSINESS categories — circular "Explore What You're Into" row + Explore By Category, never events
       getUpcomingEvents(10, "anytime", marketSlug, areaSlug),
-      getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
+      // Homepage Visual North Star V1 — the hero collage's business-photo
+      // candidates (brand/place role). NEVER Market-filtered (editorial/
+      // decorative, see homepage-rows.ts's own note on curated content).
+      // Limit raised from 3 to 6 purely to give the collage enough real
+      // candidates to choose from — same is_featured/live/non-demo query.
+      getFeaturedBusinesses(6),
       getVisibleHomepageRows(),
       getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
       getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
@@ -97,6 +103,13 @@ export default async function HomePage({
     ]);
 
   const nextEvents = await attachEventCategories(nextRaw);
+
+  // Homepage Visual North Star V1 — one real photo per home category for
+  // the circular "Explore What You're Into" row (see getCategoryShowcaseImages'
+  // own note: an actual business genuinely tagged with that category,
+  // never a stock photo). Fetched here (not the Promise.all above) since
+  // it needs `categories`' resolved ids first.
+  const categoryImages = await getCategoryShowcaseImages(categories.map((c) => c.id));
 
   // Each row's content is resolved in parallel — one query per row
   // (dynamic mode) or a curated-id lookup (curated mode), same shared
@@ -141,27 +154,35 @@ export default async function HomePage({
   const upcomingSec = resolve("featured_events");
   const exploreSec = resolve("explore_by_category");
   const closingSec = resolve("closing_cta");
-  const heroSec = resolve("hero");
   const businessDoorwaySec = resolve("business_doorway");
 
-  // Homepage Hero Founder Control pass — Image 1 ("Large Image") and
-  // Image 2 ("Overlay Image") are purely founder-controlled (Site Editor
-  // -> Hero), each with its own optional destination link and an
-  // enabled/disabled toggle, and NEVER fall back to a Business/Event/
-  // Product photo. Image 3 (desktop-only, bottom-right) still falls back
-  // to a real photo already being fetched above when left unconfigured.
-  // Slot 0/1 are threaded through BY INDEX (never compacted), so turning
-  // one off can never shift the other into its spot. Restored verbatim
-  // from the pre-Consumer-V1 baseline (commit b263d56) — this pass only
-  // tightened the mobile hero's own internal spacing (see HomeHero.tsx).
-  const heroImageSlots = resolveHeroImageSlots(siteSections);
-  const heroThirdSlotFallback = heroFallbackBrands[2]?.cover_image_url ?? undefined;
-  const heroImages: Array<string | undefined> = [
-    heroImageSlots[0]?.enabled && heroImageSlots[0].url ? heroImageSlots[0].url : undefined,
-    heroImageSlots[1]?.enabled && heroImageSlots[1].url ? heroImageSlots[1].url : undefined,
-    heroImageSlots[2]?.url ?? heroThirdSlotFallback,
-  ];
-  const heroImageLinks = [heroImageSlots[0]?.link, heroImageSlots[1]?.link];
+  // Homepage Visual North Star V1 — the collage's five roles, each filled
+  // by a REAL, already-fetched photo from a different part of the FindMi
+  // graph (never stock imagery, never a fabricated relationship): brand
+  // (business cover photo), place/experience (event cover photo), and
+  // product (product photo). heroFallbackBrands/wantItProducts/nextEvents
+  // are the exact same real, live, non-demo content already queried above
+  // for other homepage sections — this reuses them rather than adding a
+  // new "hero-only" content query. Distinct businesses/events are used for
+  // the two business/event roles so the collage doesn't repeat a photo.
+  // Any role with no real candidate is simply omitted (see HomeHero's own
+  // graceful-degradation note) — never a placeholder image.
+  const collageBusinesses = heroFallbackBrands.filter((b) => b.cover_image_url);
+  const collageProducts = wantItProducts.filter((p) => p.image_url);
+  const collageEvents = nextEvents.filter((e) => e.cover_image_url);
+  const heroImages: HeroCollageImages = {
+    left: collageBusinesses[0]
+      ? { src: collageBusinesses[0].cover_image_url!, alt: collageBusinesses[0].name }
+      : undefined,
+    topRight: collageEvents[0] ? { src: collageEvents[0].cover_image_url!, alt: collageEvents[0].name } : undefined,
+    circle: collageProducts[0] ? { src: collageProducts[0].image_url!, alt: collageProducts[0].name } : undefined,
+    bottomRight: collageEvents[1] ? { src: collageEvents[1].cover_image_url!, alt: collageEvents[1].name } : undefined,
+    bottomCenter: collageBusinesses[1]
+      ? { src: collageBusinesses[1].cover_image_url!, alt: collageBusinesses[1].name }
+      : collageProducts[1]
+        ? { src: collageProducts[1].image_url!, alt: collageProducts[1].name }
+        : undefined,
+  };
 
   // Weather / Local Context — founder-configurable city; only fetched
   // when the founder has the module on, and lib/weather.ts fails soft
@@ -175,13 +196,13 @@ export default async function HomePage({
       {/* Weather / Local Context — unchanged, directly below the header. */}
       <HomeWeather context={weatherContext} />
 
-      {/* Visual Regression Correction — the illy/founder image-collage hero
-          restored verbatim from commit b263d56 (do not re-approximate; see
-          HomeHero.tsx for the exact markup, which this pass only tightened
-          the mobile vertical spacing of). Copy is whatever the founder has
-          configured in Site Editor -> Hero (heroSec.heading/body) — this
-          page never hardcodes it. */}
-      <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
+      {/* Homepage Visual North Star V1 — editorial serif headline + real-
+          photo collage (see HomeHero.tsx). Copy is fixed by this pass's
+          visual spec, not the founder's Site Editor -> Hero heading/body
+          fields (still stored, no longer consumed here); images are real
+          business/product/event photos already fetched above, not the
+          founder's separate Hero Image 1/2 slots. */}
+      <HomeHero images={heroImages} />
 
       {/* Business Acquisition doorway — unchanged content/behavior,
           directly beneath the hero, before the search entry. */}
@@ -205,24 +226,39 @@ export default async function HomePage({
         <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
       </div>
 
-      {/* Lightweight taste layer — real business-category taxonomy (same
-          getHomeCategories() fetch, same /businesses?category= links this
-          always used), sitting directly under search. Compact chip row,
-          not a full section — a lens onto discovery, not a second
-          directory listing. */}
+      {/* Homepage Visual North Star V1 — the taste layer becomes circular
+          real photo + label (was a text pill row), same real
+          getHomeCategories() fetch and same /businesses?category= links
+          this always used. A category with no real photographed business
+          yet (see getCategoryShowcaseImages) falls back to a plain tinted
+          circle with its initial, never a stock photo. */}
       {categories.length > 0 && (
-        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">{exploreSec.heading}</p>
-          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {categories.map((c, i) => (
-              <Link
-                key={c.id}
-                href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}${marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`}
-                className={`flex min-w-[100px] shrink-0 items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition hover:opacity-80 ${CATEGORY_TINTS[i % CATEGORY_TINTS.length]}`}
-              >
-                {c.name}
-              </Link>
-            ))}
+        <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
+          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink/40">{exploreSec.heading}</p>
+          <div className="flex gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {categories.map((c, i) => {
+              const image = categoryImages[c.id];
+              return (
+                <Link
+                  key={c.id}
+                  href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}${marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`}
+                  className="flex shrink-0 flex-col items-center gap-1.5"
+                >
+                  {image ? (
+                    <div className="relative h-16 w-16 overflow-hidden rounded-full ring-1 ring-black/5">
+                      <SupabaseImage src={image} alt="" fill sizes="64px" className="object-cover" />
+                    </div>
+                  ) : (
+                    <div
+                      className={`flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold ${CATEGORY_TINTS[i % CATEGORY_TINTS.length]}`}
+                    >
+                      {c.name.charAt(0)}
+                    </div>
+                  )}
+                  <span className="max-w-[72px] text-center text-xs font-semibold leading-tight text-ink/75">{c.name}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}

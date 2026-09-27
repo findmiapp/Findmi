@@ -326,6 +326,44 @@ export async function getHomeCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
+/** Homepage Visual North Star V1 — one real representative photo per
+ * home category, for the circular "visual interest" row. Never a
+ * fabricated/stock image: picks an actual live, non-demo business
+ * genuinely tagged with that category (via the real business_categories
+ * relationship), preferring a featured/founding one when there's a
+ * choice, falling back to logo_url when a business has no cover photo.
+ * A category with no real photographed business yet simply gets no
+ * image back (the caller renders a plain tinted circle instead) — never
+ * a stock/placeholder photo standing in for a real one. */
+export async function getCategoryShowcaseImages(categoryIds: string[]): Promise<Record<string, string>> {
+  const supabase = getSupabase();
+  if (!supabase || categoryIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from("business_categories")
+    .select(
+      "category_id, businesses(cover_image_url, logo_url, is_demo, publication_status, is_featured, founding_member)"
+    )
+    .in("category_id", categoryIds);
+  logPublicQueryError("getCategoryShowcaseImages", error);
+
+  const result: Record<string, string> = {};
+  for (const row of (data as unknown as Array<{
+    category_id: string;
+    businesses: { cover_image_url: string | null; logo_url: string | null; is_demo: boolean; publication_status: string; is_featured: boolean; founding_member: boolean } | null;
+  }>) ?? []) {
+    const b = row.businesses;
+    if (!b || b.is_demo || b.publication_status !== "live") continue;
+    const image = b.cover_image_url || b.logo_url;
+    if (!image) continue;
+    const existing = result[row.category_id];
+    // Prefer a featured/founding business's photo, but only replace an
+    // already-chosen image with another qualifying one — never drop a
+    // valid image once found.
+    if (!existing || b.is_featured || b.founding_member) result[row.category_id] = image;
+  }
+  return result;
+}
+
 /** Product Taxonomy V1 — the parent→subcategory tree that drives the
  * Marketplace's primary browse row (parents) and secondary contextual row
  * (a selected parent's children). Reuses show_on_home/home_sort_order the
