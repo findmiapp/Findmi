@@ -82,10 +82,10 @@ async function resolveIsPro(businessId: string): Promise<boolean> {
  * getBusinessBySlug() lookup above can no longer return them. This is the
  * one legitimate reader: same service-role pattern as resolveIsPro just
  * above, selecting only the two columns needed, for one specific business
- * id. The caller is responsible for only invoking this AFTER `pro` is
- * already true — never call this for a Free business (no server-side
- * entitlement check happens here; this function only reads, it doesn't
- * decide who's allowed to see the result). */
+ * id. Free Tier Entitlement Reset V1 — called unconditionally for every
+ * business now (contact info is core presence, not Pro-only); this
+ * function still only reads, it never decides who's allowed to see the
+ * result — display is entirely up to the caller. */
 async function resolveBusinessContact(businessId: string): Promise<{ email: string | null; phone: string | null }> {
   const admin = getAdminSupabase();
   if (!admin) return { email: null, phone: null };
@@ -156,19 +156,19 @@ export async function generateBusinessMetadata(slug: string): Promise<Metadata> 
   }
   if (!business) return { title: "Business not found" };
 
-  const pro = await resolveIsPro(business.id);
   const location = cityStateZip(business.city, business.state, business.postal_code);
-  // Free's description/short_description are hidden on the page itself
-  // (see BusinessPublicView below) — the meta description falls back to
-  // the exact same category+location/generic text a Free page would
-  // show, so that hidden copy never leaks into a search snippet or share
-  // preview either.
-  const description = pro
-    ? business.description?.trim().slice(0, 160) ||
-      business.short_description?.trim().slice(0, 160) ||
-      [business.categories[0]?.name, location].filter(Boolean).join(" · ") ||
-      `Discover ${business.name} on Findmi.`
-    : business.categories[0]?.name || `Discover ${business.name} on Findmi.`;
+  // Free Tier Entitlement Reset V1 bug fix — description/short_description
+  // are real, public, both-tier fields on the page itself (see
+  // BusinessPublicView below); this metadata function had fallen out of
+  // sync with that (it still substituted a category/generic fallback for
+  // Free), so a Free business's real description never appeared in a
+  // search snippet or share preview even though it was already visible
+  // on the page. Now matches the on-page rule exactly, for both tiers.
+  const description =
+    business.description?.trim().slice(0, 160) ||
+    business.short_description?.trim().slice(0, 160) ||
+    [business.categories[0]?.name, location].filter(Boolean).join(" · ") ||
+    `Discover ${business.name} on Findmi.`;
   const ogImage = business.cover_image_url ?? business.logo_url ?? undefined;
   const url = await resolveCanonicalUrl(business.id, business.slug);
 
@@ -199,45 +199,40 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   }
   if (!business) notFound();
 
+  // Free Tier Entitlement Reset V1 — `pro` still resolved (still used
+  // below for the couple of things that remain genuinely Pro-only on
+  // this page: the Inquire CTA's own separate business-controlled
+  // setting, and the "+N" extra-category count — neither touched by
+  // this pass), but it no longer gates contact info, products,
+  // appearances, gallery, people, or CTAs/Bulletin.
   const pro = await resolveIsPro(business.id);
-  // Only ever read for a Pro business — see resolveBusinessContact's own
-  // doc comment. Free never triggers this extra service-role round trip.
-  const contact = pro ? await resolveBusinessContact(business.id) : { email: null, phone: null };
+  // Free Tier Entitlement Reset V1 — contact info (phone/email) is core
+  // truthful business presence, not a paid upsell; fetched for every
+  // business now, same as products/people/gallery below.
+  const contact = await resolveBusinessContact(business.id);
 
   // "Discover More Like This" surfaces OTHER businesses, not additional
   // content about this one, so it's unaffected by plan tier — fetched
-  // either way. Everything else below is Pro-only page content, so for a
-  // Free business none of these queries even run — not fetched-then-
-  // hidden, per the pass's "avoid exposing restricted data unnecessarily"
-  // requirement.
+  // either way.
   const alternatives = await getAlternativeBusinesses(business);
 
-  let products: Awaited<ReturnType<typeof getProductsForBusiness>> = [];
-  let people: Awaited<ReturnType<typeof getPeopleForBusiness>> = [];
-  let galleryImages: Awaited<ReturnType<typeof getBusinessGalleryImages>> = [];
-  // Free Appearances Pass 2, extended by the Free/Pro Entitlement pass —
-  // appearances is fetched for EVERY business, Free included (locked
-  // product rule: Free's public profile shows its next THREE eligible
-  // upcoming appearances). Still the same query, still data-layer limited
-  // via getUpcomingAppearancesForBusiness's own `limit` param (never
-  // over-fetched then trimmed) — Free asks for 3, Pro keeps the existing
-  // default of 20, same parallel-fetch shape as before for Pro. This is a
-  // PUBLIC DISPLAY limit only — it never touches owner-side Appearance
-  // creation/management (Command Center's own aggregation queries this
-  // same table with no such limit), storage, event rosters, or /find.
-  // Every other Pro-only section below (products/people/inquiry form/
-  // gallery) is unchanged, still gated `if (pro)`.
-  let appearances: Awaited<ReturnType<typeof getUpcomingAppearancesForBusiness>>;
-  if (pro) {
-    [products, appearances, people, galleryImages] = await Promise.all([
-      getProductsForBusiness(business.id),
-      getUpcomingAppearancesForBusiness(business.id),
-      getPeopleForBusiness(business.id),
-      getBusinessGalleryImages(business.id),
-    ]);
-  } else {
-    appearances = await getUpcomingAppearancesForBusiness(business.id, 3);
-  }
+  // Free Tier Entitlement Reset V1 — products/people/gallery/appearances
+  // are all fetched in full for every business now. Products/Locations/
+  // Appearances are core "create and distribute" presence; the previous
+  // Free/Pro split here is removed. getUpcomingAppearancesForBusiness is
+  // now called the same way for every business (no `limit` argument —
+  // its own default of 20, with the existing "Show N More" disclosure
+  // below handling anything beyond the first 3 shown at once). This is
+  // still a PUBLIC DISPLAY concern only — it never touched owner-side
+  // Appearance creation/management (Command Center's own aggregation
+  // queries this same table with no such limit), storage, event rosters,
+  // or /find, and still doesn't.
+  const [products, appearances, people, galleryImages] = await Promise.all([
+    getProductsForBusiness(business.id),
+    getUpcomingAppearancesForBusiness(business.id),
+    getPeopleForBusiness(business.id),
+    getBusinessGalleryImages(business.id),
+  ]);
 
   // Action Hierarchy pass — Business's strongest CTA should be "find this
   // business" when it has somewhere upcoming to be, not Inquire (a
@@ -336,18 +331,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     isSafeExternalUrl(l.href)
   );
 
-  // Free/Pro Entitlement pass — Website and Instagram are basic-profile
-  // fields, unlocked for Free (see CLAUDE.md's "FREE = PRESENCE +
-  // SCHEDULE" principle); Facebook/TikTok aren't named in that unlock and
-  // stay Pro-only, same as before. Phone/email already can't reach this
-  // point for Free — `contact` above is hardcoded to {null, null} unless
-  // pro. Free/Pro Entitlement Realignment pass — location (city/state/
-  // ZIP) is Free-public now too, no longer part of this Pro-only gate
-  // (see the identity block above) — that's a separate, independent
-  // concern from BusinessLinksRow below, which only ever handles
-  // contact/social.
-  const freeSocialLinks = socialLinks.filter((l) => l.label === "Website" || l.label === "Instagram");
-  const detailsSocialLinks = pro ? socialLinks : freeSocialLinks;
+  // Free Tier Entitlement Reset V1 — all four standard social links
+  // (Website/Instagram/Facebook/TikTok) are core presence now, public for
+  // both tiers; the previous Free/Pro split on Facebook/TikTok is
+  // removed. Phone/email are likewise fetched and shown for both tiers
+  // now (see `contact` above).
+  const detailsSocialLinks = socialLinks;
   // Compact Location + Links pass — location is no longer part of this
   // check at all: it already renders compactly inline with category in
   // the identity block above (line ~490, now Free+Pro), which was
@@ -356,24 +345,30 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // purely "is there any contact/social action to show."
   const hasContactActions = Boolean(contact.phone || contact.email || detailsSocialLinks.length > 0);
 
+  // Free Tier Entitlement Reset V1 — computed ahead of render (mirroring
+  // BusinessCtaRow's own filter and Bulletin's own empty check) so the
+  // wrapping spacing `<div>` around each is only ever rendered alongside
+  // real content — never an empty div contributing a stray margin gap for
+  // a business with no CTAs/no bulletin configured.
+  const hasCtas = [
+    { label: business.cta_1_label, url: business.cta_1_url, enabled: business.cta_1_enabled },
+    { label: business.cta_2_label, url: business.cta_2_url, enabled: business.cta_2_enabled },
+    { label: business.cta_3_label, url: business.cta_3_url, enabled: business.cta_3_enabled },
+  ].some((c) => c.enabled && Boolean(c.label?.trim()) && isSafeExternalUrl(c.url));
+  const hasBulletin = Boolean(business.bulletin_enabled && business.bulletin_body?.trim());
+
   const canonicalUrl = await resolveCanonicalUrl(business.id, business.slug);
 
   // Truthful LocalBusiness JSON-LD — every field is a real, already-public
   // column; nothing here is inferred or fabricated (no ratings, priceRange,
   // geo coordinates, or hours — none of those are modeled in the schema).
   // address only includes locality/region since businesses has no street-
-  // address field to draw from. Plan-tier gating applies here too, kept in
-  // sync with the on-page rendering above rather than only visually
-  // hidden: description/website/Instagram are public for both tiers
-  // (Free/Pro Entitlement pass), and — Free/Pro Entitlement Realignment
-  // pass — location is public for both tiers now too. Facebook/TikTok/
-  // phone stay Pro-only, and contact.phone is already null for Free
-  // regardless.
-  const sameAs = [
-    business.website_url,
-    business.instagram_url,
-    ...(pro ? [business.facebook_url, business.tiktok_url] : []),
-  ].filter(isSafeExternalUrl);
+  // address field to draw from. Free Tier Entitlement Reset V1 — every
+  // field here (description/social links/location/phone) is now public
+  // for both tiers, kept in sync with the on-page rendering above.
+  const sameAs = [business.website_url, business.instagram_url, business.facebook_url, business.tiktok_url].filter(
+    isSafeExternalUrl
+  );
   const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
@@ -784,19 +779,22 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             </section>
           )}
 
-          {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin,
-              now second (after Findmi Here — see above), before Shop/
-              About. Both are promotional profile content — Pro-only.
-              BusinessCtaRow's own top margin only applies when Findmi
-              Here actually rendered above it; otherwise (no upcoming
-              appearances) it reverts to being this column's own first
-              item, exactly as before this pass. */}
-          {pro && (
+          {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin.
+              Free Tier Entitlement Reset V1 — both are core "distribute
+              your real presence" features now, public for both tiers; the
+              previous Pro-only gate is removed. Each wrapping div is only
+              rendered alongside real content (see hasCtas/hasBulletin
+              above), so a business with neither never gets a stray empty-
+              margin gap. BusinessCtaRow's own top margin only applies when
+              Findmi Here actually rendered above it; otherwise (no
+              upcoming appearances) it reverts to being this column's own
+              first item, exactly as before this pass. */}
+          {hasCtas && (
             <div className={appearances.length > 0 ? "mt-8" : ""}>
               <BusinessCtaRow business={business} />
             </div>
           )}
-          {pro && (
+          {hasBulletin && (
             <div className="mt-8">
               <Bulletin
                 label={business.bulletin_label?.trim() || "Announcement"}
@@ -812,9 +810,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               purchasable state (BusinessShopSection), and `business` is
               passed through so ProductCard's Add to Cart gate checks the
               real commerce_enabled flag instead of falling back to
-              purchasable alone. Free-tier hidden too — implicitly:
-              `products` is never fetched for a Free business (see
-              above), so it's always [] here regardless of plan. */}
+              purchasable alone. Free Tier Entitlement Reset V1 — `products`
+              is now fetched for every business (see above), so this
+              section shows real products for Free and Pro alike; only
+              existing moderation/marketplace-eligibility rules (untouched,
+              enforced inside getProductsForBusiness) still decide what a
+              "real" product is. */}
           {products.length > 0 && (
             <BusinessShopSection
               businessName={business.name}
@@ -835,9 +836,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               with fewer than 2 images (nothing to browse), so a business
               with 0-1 gallery photos correctly shows nothing here. Same
               shared lightbox (prev/next, keyboard, close) as everywhere
-              else it's used. Free-tier hidden too — implicitly:
-              `galleryImages` is never fetched for a Free business (see
-              above), so it's always [] here regardless of plan. */}
+              else it's used. Free Tier Entitlement Reset V1 — `galleryImages`
+              is now fetched for every business (see above), so this shows
+              a real gallery for Free and Pro alike; existing upload/
+              validation rules (unchanged) still decide what's in it. */}
           {galleryImages.length > 1 && (
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
@@ -862,9 +864,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
 
           {/* People — editorial, human; single person gets a stronger
               treatment, multiple people use a horizontal carousel. Never
-              rendered empty. Free-tier hidden too — implicitly: `people`
-              is never fetched for a Free business (see above), so it's
-              always [] here regardless of plan. */}
+              rendered empty. Free Tier Entitlement Reset V1 — `people` is
+              now fetched for every business (see above); this was plan-
+              gated display only, no other privacy/approval rule involved
+              (getPeopleForBusiness itself is unchanged), so removing the
+              plan gate here is display-entitlement-only, exactly as
+              intended. */}
           {people.length > 0 && (
             <section className="mt-8">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">{peopleHeading}</h2>

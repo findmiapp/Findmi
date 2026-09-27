@@ -217,9 +217,13 @@ export default function ClaimButton({
         {type !== "event" && (
           <div className="mt-3 rounded-xl border border-findmi/20 bg-findmi-50 p-3">
             <p className="text-xs font-bold text-ink">Need access sooner?</p>
+            {/* Free Tier Entitlement Reset V1 — "plus your full business
+                profile, gallery, products, appearances, contact links and
+                more" is removed: every one of those is a Free capability
+                now, not a Pro upsell reason. */}
             <p className="mt-1 text-xs text-ink/60">
               Upgrade to Findmi Pro for priority review, typically within 2 business hours during regular business
-              hours, plus your full business profile, gallery, products, appearances, contact links and more.
+              hours, plus Performance analytics and more.
             </p>
             {/* Pro Upgrade — Internal Checkout Handoff Foundation pass: this
                 claimant doesn't own the business yet (claim still pending

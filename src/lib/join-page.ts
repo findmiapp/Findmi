@@ -85,22 +85,20 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // section_key='card_discovery_pro') — this fallback and the live
     // row must both stay accurate, since either can be what actually
     // renders depending on whether an admin override exists.
-    // Business Acquisition + Stale Plan Copy Cleanup pass — "Analytics"
-    // added as the leading bullet (a real, currently Pro-gated capability
-    // — see account/business/[id]/page.tsx's `pro && performanceData` /
-    // PerformanceTab, gated via isBusinessPro — that was previously
-    // missing from this list entirely). Canonical product rule: Pro
-    // should lead with intelligence/optimization, not schedule
-    // completion, so "Full Findmi Here schedule" moves down rather than
-    // leading. Every other bullet here is an existing, verified-accurate
-    // Pro capability, untouched.
+    // Free Tier Entitlement Reset V1 — the previous list here (Full
+    // Findmi Here schedule, Photos, Contact info, Business updates,
+    // Custom Findmi URL) named exactly the features this reset makes
+    // Free; naming them as Pro reasons would now be false. Rewritten to
+    // only the capabilities that are still genuinely, currently Pro-only
+    // (see lib/entitlements.ts/PerformanceTab.tsx) — Performance
+    // analytics (discovery sources, QR attribution, followers) and
+    // Customer Inquiries (still gated separately, unaffected by this
+    // pass — see BusinessPublicView.tsx's own canInquire check).
     features: [
-      "Analytics — see how people find and engage with you",
-      "Full Findmi Here schedule",
-      "Photos",
-      "Contact info + customer inquiries",
-      "Business updates",
-      "Custom Findmi URL",
+      "Performance analytics — see how people find and engage with you",
+      "Discovery source & QR attribution",
+      "Follower insights",
+      "Customer inquiries",
       "Expanded discovery across Findmi",
     ],
     ctaLabel: "Get Findmi Pro",
@@ -322,22 +320,28 @@ export function resolveJoinWhatYouGet(overrides: Map<string, SiteSection>) {
 // admin content, same convention as the now-unrendered Pro `tagline`
 // above — nothing is deleted, only presentation changed.
 export const JOIN_FREE_CARD_DEFAULTS = {
-  // Join Conversion Copy Cleanup pass — Free now states its own real
-  // benefits directly (About/Website/Instagram/3 appearances/5 markets)
-  // instead of a vaguer "basic presence" framing.
+  // Free Tier Entitlement Reset V1 — Free now truthfully states the full
+  // core presence this reset unlocks (was "Next 3 upcoming appearances" /
+  // "Up to 5 markets", and separately listed Gallery/Products/Contact
+  // Info/Custom URL as Pro-only in requiresProFeatures below — all now
+  // real Free capabilities, see the reset's own acceptance matrix).
   title: "Start with Findmi Free",
   price: "$0",
   shortTagline: "Create your business page and show customers where you'll be next.",
   description: "No payment or credit card required.",
   disclosureLabel: "View What's Included",
   includedFeatures: [
-    "Business profile + About",
-    "Website + Instagram",
-    "Next 3 upcoming appearances",
-    "Up to 5 markets",
+    "Business profile, products & gallery",
+    "Contact info & social links",
+    "Complete upcoming appearance schedule",
+    "Unlimited relevant markets",
     "Findmi search & discovery",
   ],
-  requiresProFeatures: ["Full Upcoming Schedule", "Gallery", "Products & Services", "Public Contact Info", "Custom Findmi URL"],
+  // requiresProFeatures still isn't rendered on the public page (see this
+  // constant's own doc comment) — kept in sync anyway so it never
+  // resurfaces stale claims if that changes. Performance/Analytics is the
+  // one remaining real Pro-only capability.
+  requiresProFeatures: ["Performance analytics"],
   ctaLabel: "Start free",
 };
 
@@ -393,11 +397,11 @@ export const JOIN_PRO_EXTRA_DEFAULTS = {
   // shown right under the price. Added rather than repurposing an existing
   // field so `noRenewalNote` below keeps its own literal, unambiguous
   // meaning ("No automatic renewal.") in its existing spot further down.
-  // Business Acquisition + Stale Plan Copy Cleanup pass — was "Your full
-  // schedule, products, photos and everything customers need to find and
-  // connect with your business." (schedule-completion framing). Restated
-  // around Analytics, the real current Pro differentiator.
-  descriptionLine: "Deeper performance insights, plus gallery, contact info and more, once you're ready to grow.",
+  // Free Tier Entitlement Reset V1 — was "...plus gallery, contact info
+  // and more, once you're ready to grow." — gallery/contact info are Free
+  // now, so naming them as a reason to upgrade would be false. Restated
+  // around only what's still genuinely Pro-only: Performance analytics.
+  descriptionLine: "Deeper performance insights into how people discover and engage with your business.",
   noRenewalNote: "No automatic renewal.",
   // Business Acquisition + Stale Plan Copy Cleanup pass — the highlight
   // box was "Findmi Here" (full schedule) — repositioned to Analytics,

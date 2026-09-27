@@ -10,10 +10,10 @@ import { uploadMemberBusinessImage } from "../actions";
  * display order), but calls uploadMemberBusinessImage (gated by
  * requireBusinessMember, not requireAdmin) so it works for a real
  * business member. Deliberately no move/reorder controls (out of scope
- * for this pass) — add and remove only. Pro-only: the page only renders
- * this inside its existing {pro && ...} block, and updateMemberBusiness
- * only ever applies the submitted gallery_image_url list when its own
- * server-resolved plan_tier is Pro. */
+ * for this pass) — add and remove only. Free Tier Entitlement Reset V1 —
+ * no longer Pro-only: the page renders this for every business now, and
+ * updateBusinessGallery applies the submitted gallery_image_url list
+ * regardless of plan_tier. */
 export default function MemberGalleryField({
   businessId,
   name,

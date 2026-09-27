@@ -228,16 +228,18 @@ export default async function AddBusinessPage({
               FreePlanOption below. Join Conversion Copy Cleanup pass —
               dropped the "basic index"/"basic listing" framing and the
               strike-through denial line, which had gone stale after Free
-              gained About/Website/Instagram/3 appearances/5 markets; Free
-              now states its own real benefits instead. Radio values/names
-              and the default selection logic are UNCHANGED — whichever
-              plan is dominant is also the one defaultChecked, and
-              `wantsPro` alone still decides which that is — so
-              createMemberBusiness (untouched) submits identically to
-              before. Every bullet below is a CURRENT
+              gained About/Website/Instagram; Free Tier Entitlement Reset
+              V1 further expanded this to the complete core presence
+              (products, gallery, contact info, complete schedule,
+              unlimited markets) — Free now states its own real benefits
+              instead. Radio values/names and the default selection logic
+              are UNCHANGED — whichever plan is dominant is also the one
+              defaultChecked, and `wantsPro` alone still decides which
+              that is — so createMemberBusiness (untouched) submits
+              identically to before. Every bullet below is a CURRENT
               entitlement (see account/business/actions.ts's
-              PROFILE_FREE_COLUMNS/PROFILE_PRO_COLUMNS/LINKS_COLUMNS and
-              business/[slug]/page.tsx's own `pro &&` gates) — nothing
+              requireBusinessMemberWithDetails/PROFILE_FREE_COLUMNS and
+              BusinessPublicView.tsx's remaining `pro &&` gates) — nothing
               promised here that doesn't already exist. Choosing Pro
               doesn't create the business as Pro directly: it's still
               created Free + pending_review first (same RPC), then this
@@ -409,12 +411,11 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
           <span className="text-sm font-bold text-ink">Findmi Pro</span>
           <span className="text-sm text-ink/45">· $99/year</span>
         </p>
-        {/* Business Acquisition + Stale Plan Copy Cleanup pass — was
-            "Full Findmi Here schedule, gallery, contact info and more."
-            (schedule-first). Analytics — a real, currently Pro-gated
-            capability, see account/business/[id]/page.tsx's `pro &&`
-            gate on PerformanceTab — now leads. */}
-        <p className="text-xs text-ink/60">Analytics, full schedule, gallery, contact info and more.</p>
+        {/* Free Tier Entitlement Reset V1 — was "Analytics, full
+            schedule, gallery, contact info and more." Schedule/gallery/
+            contact info are Free capabilities now; only Analytics
+            remains genuinely Pro-only. */}
+        <p className="text-xs text-ink/60">Performance analytics and deeper insights to grow.</p>
       </label>
     );
   }
@@ -429,34 +430,25 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
         <span className="text-xs font-medium text-ink/45">/ year</span>
       </p>
 
-      {/* Business Acquisition + Stale Plan Copy Cleanup pass — was a
-          "Findmi Here" / full-schedule highlight box (schedule-completion
-          framing — accurate, since Free really is capped at 3 public
-          appearances vs Pro's full schedule, but not the right LEADING
-          pitch — see canonical rule: Pro explains/optimizes, it isn't
-          merely "the plan that unlocks your schedule"). Repositioned to
-          Analytics, a real, currently Pro-gated capability (see
-          account/business/[id]/page.tsx's `pro && performanceData` gate),
-          reusing the same truthful copy as that feature's own upgrade-
-          lock elsewhere (UpgradeLockedTab tabKey="performance"). */}
       <div className="rounded-2xl bg-findmi-50 p-3">
         <p className="text-sm font-bold text-ink">Analytics</p>
         <p className="mt-0.5 text-xs font-semibold text-ink/75">See what&rsquo;s working — and grow it.</p>
         <p className="mt-1 text-xs text-ink/60">Understand how people discover and engage with your business.</p>
       </div>
 
-      {/* Business Acquisition + Stale Plan Copy Cleanup pass — Analytics
-          added as the leading bullet (see above); every other bullet
-          remains an existing, verified-accurate Pro capability. Canonical
-          Plan Config pass note above still applies: "Gallery + products"
-          stays just "Gallery," Products being a Free capability. */}
+      {/* Free Tier Entitlement Reset V1 — the previous list here (Full
+          Findmi Here schedule, Gallery, Contact info, Business updates,
+          Custom Findmi URL) named exactly the features this reset makes
+          Free; those bullets are retired. Rewritten to only the
+          capabilities that are still genuinely Pro-only — see
+          lib/entitlements.ts / PerformanceTab.tsx — plus Customer
+          Inquiries, a separate, still-gated feature unaffected by this
+          pass (see BusinessPublicView.tsx's own canInquire check). */}
       <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
-        <PlanBullet>Analytics</PlanBullet>
-        <PlanBullet>Full Findmi Here schedule</PlanBullet>
-        <PlanBullet>Gallery</PlanBullet>
-        <PlanBullet>Contact info + customer inquiries</PlanBullet>
-        <PlanBullet>Business updates</PlanBullet>
-        <PlanBullet>Custom Findmi URL</PlanBullet>
+        <PlanBullet>Performance analytics</PlanBullet>
+        <PlanBullet>Discovery source &amp; QR attribution</PlanBullet>
+        <PlanBullet>Follower insights</PlanBullet>
+        <PlanBullet>Customer inquiries</PlanBullet>
         <PlanBullet>Expanded discovery</PlanBullet>
       </ul>
     </label>
@@ -485,14 +477,10 @@ function FreePlanOption({ dominant }: { dominant: boolean }) {
           <span className="text-sm font-bold text-ink">Findmi Free</span>
           <span className="text-sm text-ink/45">· $0 · No credit card required</span>
         </p>
-        <p className="text-xs text-ink/60">Create your Findmi page and show your next 3 appearances.</p>
-        {/* Canonical Plan Config pass — "products" removed: Products is a
-            Free capability now (Free/Pro Entitlement Realignment pass),
-            so naming it as a reason to upgrade was stale and actively
-            wrong. Business Acquisition + Stale Plan Copy Cleanup pass —
-            was "Upgrade anytime for your full schedule, custom Findmi URL
-            and more." (schedule-first); reworded to lead with Analytics,
-            consistent with ProPlanOption/join/page.tsx's FreeSection. */}
+        {/* Free Tier Entitlement Reset V1 — was "...show your next 3
+            appearances." Free's public profile shows the complete
+            schedule now, not just 3. */}
+        <p className="text-xs text-ink/60">Create your Findmi page and show your complete upcoming schedule.</p>
         <p className="mt-1 text-xs text-ink/45">Upgrade anytime for Analytics and more.</p>
       </label>
     );
@@ -514,11 +502,16 @@ function FreePlanOption({ dominant }: { dominant: boolean }) {
         <p className="mt-1 text-xs text-ink/60">Create your business page now — upgrade anytime, no pressure.</p>
       </div>
 
+      {/* Free Tier Entitlement Reset V1 — was "Next 3 upcoming
+          appearances" / "Up to 5 markets"; both are unlimited/complete
+          Free capabilities now. Products &amp; Gallery and Contact &amp;
+          Social added — also genuinely Free now, previously omitted here
+          entirely. */}
       <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
-        <PlanBullet>Business profile + About</PlanBullet>
-        <PlanBullet>Website + Instagram</PlanBullet>
-        <PlanBullet>Next 3 upcoming appearances</PlanBullet>
-        <PlanBullet>Up to 5 markets</PlanBullet>
+        <PlanBullet>Business profile, products &amp; gallery</PlanBullet>
+        <PlanBullet>Contact info &amp; social links</PlanBullet>
+        <PlanBullet>Complete upcoming appearance schedule</PlanBullet>
+        <PlanBullet>Unlimited relevant markets</PlanBullet>
         <PlanBullet>Findmi search &amp; discovery</PlanBullet>
       </ul>
     </label>

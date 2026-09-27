@@ -201,15 +201,16 @@ const PROFILE_FREE_COLUMNS = [
 ] as const;
 const PROFILE_ALLOWED_COLUMNS = PROFILE_FREE_COLUMNS;
 
-/** Links & Contact tab — entirely Pro-only (gated via
- * requireProBusinessMember, not a per-column allowlist like Profile —
- * there's no Free variant of this tab at all). Every one of these is an
+/** Links & Contact tab — Free Tier Entitlement Reset V1: no longer
+ * Pro-only (was gated via requireProBusinessMember's isBusinessPro
+ * check; that check is removed, see requireBusinessMemberWithDetails).
+ * Core contact info and standard social links are part of a business's
+ * truthful public presence, not a paid upsell. Every one of these is an
  * existing businesses column. Free Basic Profile Editing pass —
  * website_url/instagram_url moved OUT of this list, into
  * PROFILE_FREE_COLUMNS above (Profile tab is now their one home, for
  * both tiers — no longer edited here at all, avoiding two save paths for
- * the same columns). Facebook/TikTok stay here, unchanged/still
- * Pro-only. */
+ * the same columns). Facebook/TikTok stay here. */
 const LINKS_COLUMNS = [
   "email",
   "phone",
@@ -355,16 +356,15 @@ export async function updateBusinessProfile(businessId: string, formData: FormDa
 
 /**
  * Links & Contact tab save — email, phone, Facebook/TikTok, and the
- * announcement/bulletin fields. Entirely Pro-only (see
- * requireProBusinessMember) — a Free business's tab is locked in the UI
- * (see the page), and this action independently re-enforces the same
- * gate server-side regardless of what the client renders. Free Basic
- * Profile Editing pass — website_url/instagram_url no longer live here;
- * they're saved through updateBusinessProfile now (both tiers).
+ * announcement/bulletin fields. Free Tier Entitlement Reset V1 — no
+ * longer Pro-only; any authorized business member can save these.
+ * Free Basic Profile Editing pass — website_url/instagram_url no longer
+ * live here; they're saved through updateBusinessProfile now (both
+ * tiers, unchanged by this pass).
  */
 export async function updateBusinessLinks(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}?tab=links`;
-  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
   const payload: Record<(typeof LINKS_COLUMNS)[number], string | boolean | null> = {
     email: str(formData, "email"),
@@ -387,15 +387,18 @@ export async function updateBusinessLinks(businessId: string, formData: FormData
 }
 
 /**
- * Gallery tab save — Pro only (see requireProBusinessMember), reusing
- * the exact same business_images table and delete-then-reinsert-on-save
- * shape the original combined action (and admin's saveBusiness) already
- * used — current config, not economic history, so a wholesale replace
- * on every save is correct.
+ * Gallery tab save — Free Tier Entitlement Reset V1: no longer Pro
+ * only. Reuses the exact same business_images table and
+ * delete-then-reinsert-on-save shape the original combined action (and
+ * admin's saveBusiness) already used — current config, not economic
+ * history, so a wholesale replace on every save is correct. Existing
+ * upload validation/storage rules (see uploadMemberBusinessImage) are
+ * unchanged — only the plan gate on saving the gallery list itself is
+ * removed.
  */
 export async function updateBusinessGallery(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}?tab=gallery`;
-  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
   const galleryUrls = formData.getAll("gallery_image_url").map(String).filter(Boolean);
   await admin.from("business_images").delete().eq("business_id", businessId);
@@ -436,17 +439,21 @@ export async function updateBusinessGallery(businessId: string, formData: FormDa
 // creating an appearance) gets the same "Upgrade to Pro" redirect a
 // tampered request would.
 
-/** Pro Products Foundation pass — this helper previously had zero
- * callers (FindMi Here appearance management moved off it in Free
- * Appearances Pass 1, onto requireAuthorizedBusinessMember below); it
- * now gets its first real caller here, for Products, which — unlike
- * appearances — genuinely IS Pro/Pro Seller-only (locked rule: Free
- * cannot add/manage products). Also now returns the business row
- * (id/slug/plan_tier), not just `admin` — every real caller needs the
- * slug for revalidatePath anyway, so callers no longer need their own
- * extra read for it. Message generalized from its old FindMi-Here-
- * specific wording since it's shared across features now. */
-async function requireProBusinessMember(businessId: string, redirectPath: string) {
+/** Free Tier Entitlement Reset V1 — formerly requireProBusinessMember,
+ * which additionally required isBusinessPro() before returning. That
+ * plan gate is removed: Links/Gallery/Products/the FindMi handle are no
+ * longer Pro-only (locked rule now matches Appearances/Locations —
+ * "plan tier must never prevent an authorized business member from
+ * maintaining their business's real presence"). This helper now differs
+ * from requireAuthorizedBusinessMember below only in also fetching and
+ * returning the business row (id/name/slug/plan_tier/plan_expires_at) —
+ * every real caller needs the slug for revalidatePath (and a couple need
+ * name for notification text), so callers no longer need their own extra
+ * read for it. plan_tier/plan_expires_at stay on the returned row because
+ * Performance/Analytics (still genuinely Pro-only — untouched by this
+ * pass) and any future Pro-only feature still need a cheap way to check
+ * entitlement without a second query. */
+async function requireBusinessMemberWithDetails(businessId: string, redirectPath: string) {
   // Admin Manage-As V1 — same reasoning as updateBusinessProfile above: no
   // premature personal-session check ahead of requireBusinessMember(),
   // which already covers real member OR admin-elevated on its own.
@@ -466,30 +473,21 @@ async function requireProBusinessMember(businessId: string, redirectPath: string
     .eq("id", businessId)
     .maybeSingle();
   if (!business) redirect(appendQuery(redirectPath, { error: "Business not found." }));
-  if (!isBusinessPro(business)) {
-    redirect(appendQuery(redirectPath, { error: "Upgrade to Pro to unlock this feature." }));
-  }
 
   return { admin, business };
 }
 
 /** Free Appearances Pass 1 — the exact same authorize-then-elevate shape
- * as requireProBusinessMember above (real Supabase Auth session,
+ * as requireBusinessMemberWithDetails above (real Supabase Auth session,
  * requireBusinessMember() re-deriving real membership from the caller's
  * OWN session-scoped business_members row — never trusted from the
  * client — then elevating to the service-role client for the actual
  * write, same pattern every member action in this file already uses),
- * MINUS the plan_tier/isBusinessPro check: locked product rule is that
- * plan tier must never prevent an authorized business member from
- * maintaining FindMi Here appearance data — FindMi wants accurate
- * appearance data from Free businesses too. Deliberately a separate
- * function rather than editing requireProBusinessMember in place —
- * withdrawEventParticipation (below) still calls the original
- * Pro-gated helper, untouched by this pass; only the four actions this
- * pass's spec names (addAppearanceFromEvent, addManualAppearance,
- * updateOwnerAppearance, removeOwnerAppearance) now call this one. */
+ * MINUS the business-row fetch: these four callers never needed
+ * business.slug/name. Kept as a separate, lighter-weight helper rather
+ * than merged into the one above. */
 async function requireAuthorizedBusinessMember(businessId: string, redirectPath: string) {
-  // Admin Manage-As V1 — same reasoning as requireProBusinessMember above.
+  // Admin Manage-As V1 — same reasoning as requireBusinessMemberWithDetails above.
   try {
     await requireBusinessMember(businessId);
   } catch (err) {
@@ -509,20 +507,15 @@ async function requireAuthorizedBusinessMember(businessId: string, redirectPath:
 // posture on optional fields), never auto-generated from the business's
 // name/slug.
 //
-// Free/Pro Entitlement pass — choosing/changing a custom Findmi username
-// is Pro-only (locked rule: Free keeps its existing system-generated
-// /business/[slug] URL). Now uses requireProBusinessMember, the SAME
-// business-specific Pro re-check every other Pro-gated write in this file
-// uses (Links/Gallery/Products) — was previously
-// requireAuthorizedBusinessMember, which only checked membership, not
-// plan, so any Free owner could claim/change a handle through this action
-// even though the page's UI never offered it as Free. This action never
-// touches an EXISTING handle on a currently-Free business (see
-// claimEntityHandle/lib/handles.ts, untouched) — it only blocks a NEW
-// claim/change while Free; a previously-claimed handle keeps resolving.
+// Free Tier Entitlement Reset V1 — choosing/changing the standard Findmi
+// username is no longer Pro-only (was gated via requireProBusinessMember's
+// isBusinessPro check; that check is removed, see
+// requireBusinessMemberWithDetails). Uniqueness/reserved-word validation,
+// authorization, and routing (claimEntityHandle/lib/handles.ts) are all
+// unchanged — only the plan gate on reaching this action is removed.
 export async function updateBusinessHandle(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}`;
-  const { admin } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
   const usernameRaw = str(formData, "username");
   if (!usernameRaw) redirect(appendQuery(redirectPath, { error: "Enter a username first." }));
@@ -1534,22 +1527,22 @@ export async function startBusinessProCheckout(businessId: string) {
 
 // ── Pro Products — Member Product Management ────────────────────────────
 //
-// Pro Products Foundation pass. Locked rule: Free cannot add/manage
-// products; Pro and Pro Seller (isBusinessPro covers both) can manage
-// products belonging to their OWN business. Reuses the existing
-// `products` table/schema/taxonomy as-is — no new table, no parallel
-// product system, no new RLS write policy: every write here still goes
-// through the service-role client, exactly like admin's own
-// saveProduct/deleteProduct (src/app/admin/(protected)/products/
-// actions.ts, untouched) — the difference is WHO is allowed to reach
-// this code path, enforced entirely server-side before any write:
-//   1. requireProBusinessMember(businessId, redirectPath) — real
+// Pro Products Foundation pass, later reopened to Free by the Free Tier
+// Entitlement Reset V1. Locked rule now: any authorized business member
+// can add/manage products belonging to their OWN business, regardless of
+// plan — products are core presence (creation and distribution), not a
+// paid upsell. Reuses the existing `products` table/schema/taxonomy as-is
+// — no new table, no parallel product system, no new RLS write policy:
+// every write here still goes through the service-role client, exactly
+// like admin's own saveProduct/deleteProduct (src/app/admin/(protected)/
+// products/actions.ts, untouched) — the difference is WHO is allowed to
+// reach this code path, enforced entirely server-side before any write:
+//   1. requireBusinessMemberWithDetails(businessId, redirectPath) — real
 //      Supabase Auth session -> requireBusinessMember() (real,
 //      session-scoped business_members row, business_id never trusted
-//      from the client beyond that check) -> fresh service-role
-//      plan_tier read -> isBusinessPro gate. A Free business (including
-//      one downgraded after adding a product) gets the same
-//      "Upgrade to Pro" redirect a tampered request would.
+//      from the client beyond that check) -> fresh service-role read of
+//      the business row. No plan check — the former isBusinessPro gate
+//      here is removed; membership alone is the bar, same as Appearances.
 //   2. Edit/deactivate/reactivate additionally re-verify
 //      product.business_id === the authorized business_id with a
 //      `.eq("id", productId).eq("business_id", businessId)` double scope
@@ -1635,7 +1628,7 @@ async function setMemberProductCategory(admin: SupabaseClient, productId: string
 
 export async function createMemberProduct(businessId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}?tab=products`;
-  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
   // Event Creation + Pending Review UX pass — "Add Product" creates a
   // brand-new row (no stored product to fall back on until it exists), so
@@ -1752,7 +1745,7 @@ export async function createMemberProduct(businessId: string, formData: FormData
  *     dead-end state; there is no separate "resubmit" action. */
 export async function updateMemberProduct(businessId: string, productId: string, formData: FormData) {
   const redirectPath = `/account/business/${businessId}?tab=products`;
-  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
   const onError = (message: string): never => {
     redirect(appendQuery(redirectPath, { error: message }));
@@ -1808,7 +1801,7 @@ export async function updateMemberProduct(businessId: string, productId: string,
  * updateMemberProduct above. */
 export async function setMemberProductActive(businessId: string, productId: string, active: boolean) {
   const redirectPath = `/account/business/${businessId}?tab=products`;
-  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
   const { data: existing } = await admin
     .from("products")
@@ -1837,7 +1830,7 @@ export async function setMemberProductActive(businessId: string, productId: stri
 // Two owner-facing state transitions, deliberately separate from content
 // edits (updateMemberProduct above) — marketplace_status changes never
 // touch moderation_status/pending_changes, and content edits never touch
-// marketplace_status. Same requireProBusinessMember + double-scoped
+// marketplace_status. Same requireBusinessMemberWithDetails + double-scoped
 // (id + business_id) authorization shape as every other action in this
 // section. Neither action can ever set marketplace_status to "approved" —
 // that value is written exclusively by admin/products/actions.ts's
@@ -1850,7 +1843,7 @@ export async function setMemberProductActive(businessId: string, productId: stri
  * decisions the owner can't self-override by resubmitting). */
 export async function submitProductToMarketplace(businessId: string, productId: string) {
   const redirectPath = `/account/business/${businessId}?tab=products`;
-  const { admin, business } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
   const { data: existing } = await admin
     .from("products")
@@ -1894,7 +1887,7 @@ export async function submitProductToMarketplace(businessId: string, productId: 
  * equivalent). */
 export async function returnProductToCatalog(businessId: string, productId: string) {
   const redirectPath = `/account/business/${businessId}?tab=products`;
-  const { admin } = await requireProBusinessMember(businessId, redirectPath);
+  const { admin } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
   const { data: existing } = await admin
     .from("products")

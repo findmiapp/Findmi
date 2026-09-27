@@ -17,37 +17,18 @@ export const metadata: Metadata = {
 // or ISR-cached.
 export const dynamic = "force-dynamic";
 
-// Final Conversion Consistency pass — three items previously listed here
-// ("Manage FindMi Here appearances", "Add your own pop-ups &
-// appearances", "Connect to existing FindMi events") described adding/
-// managing appearances as Pro-exclusive; Free can do all of that too now
-// (Passes 1-2). Replaced with the two things that are actually
-// Pro-exclusive: the full upcoming schedule showing publicly (Free/Pro
-// Entitlement pass: Free's public profile shows its next 3, Pro shows
-// the full schedule) and products/services merchandising (previously
-// missing from this list entirely).
-// Free Basic Profile Editing pass — dropped "Full About section" and
-// narrowed "Website, contact & social links" to "Contact info, Facebook
-// & TikTok": About/description and Website are now genuine Free profile
-// fields (create + edit), so they're no longer Pro-exclusive claims.
-// Public email/phone and Facebook/TikTok remain Pro-only, unchanged.
-//
-// Canonical Plan Config pass — "Products & services showcase" is
-// removed: Products became a Free capability in the Free/Pro
-// Entitlement Realignment pass, so listing it here was stale and
-// actively wrong. Replaced with "Analytics & audience insights" — a
-// real, currently Pro-gated capability (see lib/commerce/plans.ts's
-// PRO_PLAN.features) that was previously missing from this list
-// entirely despite being Pro-only since the Analytics re-gating pass.
-// Every other line here is untouched — each was already accurate and
-// wasn't part of the audit's stale-copy findings, so this stays a
-// surgical fix, not a rewrite of the page's whole value proposition.
+// Free Tier Entitlement Reset V1 — four of the six previous bullets
+// ("Public contact info, Facebook & TikTok", "Enhanced photo gallery",
+// "Show your full upcoming schedule", "Business announcements") named
+// exactly the features this reset makes Free; naming them here now would
+// be false. Rewritten to only what's still genuinely Pro-only (see
+// lib/entitlements.ts / PerformanceTab.tsx) plus the two pre-existing
+// lines this pass didn't touch (Priority profile review/support isn't
+// part of this reset's scope, left as-is).
 const CORE_BENEFITS = [
-  "Public contact info, Facebook & TikTok",
-  "Enhanced photo gallery",
-  "Analytics & audience insights",
-  "Show your full upcoming schedule",
-  "Business announcements",
+  "Performance analytics & audience insights",
+  "Discovery source & QR attribution",
+  "Customer inquiries",
   "Priority profile review/support",
 ];
 

@@ -513,16 +513,13 @@ export default async function ManageBusinessPage({
     (c) => !LEGACY_BUSINESS_CATEGORY_SLUGS.has(c.slug) || c.id === currentCategoryId
   );
 
-  // FindMi Here — Owner Appearance Manager. Free Appearance Manager
-  // Final Functional Fix — this data fetch, and the manager UI it feeds
-  // below, are no longer Pro-gated: appearance MANAGEMENT (add/connect/
-  // edit/remove/withdraw) is a Free capability (Passes 1-2 already
-  // authorized it at the Server Action layer; this page's UI just
-  // hadn't caught up). The Free/Pro distinction is DISPLAY DEPTH on the
-  // public business profile (business/[slug]/page.tsx — Free/Pro
-  // Entitlement pass: Free shows its next 3 eligible upcoming
-  // appearances, Pro shows the full schedule), never management access
-  // here. Two separate reads: (1)
+  // FindMi Here — Owner Appearance Manager. Appearance MANAGEMENT (add/
+  // connect/edit/remove/withdraw) has always been a Free capability at
+  // the Server Action layer. Free Tier Entitlement Reset V1 additionally
+  // removed the old DISPLAY-only distinction on the public business
+  // profile (business/[slug]/page.tsx — Free and Pro now both show the
+  // complete upcoming schedule there); this Business Manager view was
+  // never plan-gated at all, on either side. Two separate reads: (1)
   // this business's OWN appearances (its real FindMi Here calendar —
   // see ../actions.ts for the write side), and (2) its official
   // event-roster status (event_businesses/event_occurrence_businesses),
@@ -818,7 +815,13 @@ export default async function ManageBusinessPage({
   };
   let products: OwnProduct[] = [];
   let productCategories: Awaited<ReturnType<typeof getProductCategories>> = [];
-  if (pro) {
+  // Free Tier Entitlement Reset V1 — fetched for every business now. The
+  // Products tab UI itself was already unlocked for Free (see its own
+  // section below); this data fetch had fallen out of sync with that —
+  // without it, a Free owner's own newly-created products would never
+  // appear in their own management view even though creation itself
+  // (createMemberProduct, ../actions.ts) already worked.
+  {
     const [{ data: productRows }, fetchedProductCategories] = await Promise.all([
       admin
         .from("products")
@@ -1306,13 +1309,16 @@ export default async function ManageBusinessPage({
                       }
                     />
                     {business.slug && <Row label="Public page" value="View →" href={`/business/${business.slug}`} />}
-                    {pro && (
-                      <Row
-                        label="Products"
-                        value={products.filter((p) => p.is_active).length > 0 ? `${products.filter((p) => p.is_active).length} active` : "Add first →"}
-                        href={`${basePath}?tab=products`}
-                      />
-                    )}
+                    {/* Free Tier Entitlement Reset V1 — Products is Free
+                        now (server-side gate removed in ../actions.ts);
+                        this summary row was already showing for the
+                        already-unlocked Products tab's own data, just
+                        gated behind `pro` here for no remaining reason. */}
+                    <Row
+                      label="Products"
+                      value={products.filter((p) => p.is_active).length > 0 ? `${products.filter((p) => p.is_active).length} active` : "Add first →"}
+                      href={`${basePath}?tab=products`}
+                    />
                     <Row label="Analytics" value="View →" href={`${basePath}?tab=performance`} />
                   </RowList>
                   {/* FindMi Global Handle Registry — the Row grammar above
@@ -1322,18 +1328,18 @@ export default async function ManageBusinessPage({
                       Row, still inside the ONE consolidated "Business"
                       module rather than a fifth separate card. */}
                   <div className="border-t border-black/[0.05] px-4 py-3">
-                    {pro ? (
-                      <FindmiUrlCard
-                        entityType="business"
-                        entityId={id}
-                        entityLabel={business.name}
-                        currentHandle={businessHandle}
-                        action={updateBusinessHandle.bind(null, id)}
-                        quiet
-                      />
-                    ) : (
-                      <LockedFindmiUrl businessId={id} currentHandle={businessHandle} />
-                    )}
+                    {/* Free Tier Entitlement Reset V1 — the standard
+                        FindMi handle/URL is Free now (server-side gate
+                        removed in ../actions.ts); LockedFindmiUrl is no
+                        longer reachable from here. */}
+                    <FindmiUrlCard
+                      entityType="business"
+                      entityId={id}
+                      entityLabel={business.name}
+                      currentHandle={businessHandle}
+                      action={updateBusinessHandle.bind(null, id)}
+                      quiet
+                    />
                   </div>
                 </Panel>
               </div>
@@ -1496,29 +1502,17 @@ export default async function ManageBusinessPage({
           </Panel>
 
           {/* ── Gallery + Links & Contact (Owner Shell V3 — consolidated
-              into Profile). Visual System Pass 1, Section 17: a Free
-              owner previously saw these as two back-to-back, near-
-              identical "Available with Findmi Pro" cards — now ONE
-              combined locked card covers both, described together;
-              nothing about entitlements/actions changed, only how the
-              locked state is presented. Same MemberGalleryField/
-              updateBusinessGallery and Pro gate for Gallery, same fields/
-              updateBusinessLinks/Announcement block for Links, both
-              unchanged. ──────────────────────────────────────────── */}
-          {!pro && (
-            <UpgradeLockedTab
-              businessId={id}
-              tabKey="profile"
-              description="Unlock a photo gallery, contact info, Facebook/TikTok, and a live announcement for your Business."
-              isAdminElevated={isAdminElevated}
-            />
-          )}
+              into Profile). Free Tier Entitlement Reset V1 — no longer
+              Pro-gated; the UpgradeLockedTab branch that used to cover
+              both for Free is removed. Same MemberGalleryField/
+              updateBusinessGallery and updateBusinessLinks/Announcement
+              forms, both unchanged, now rendered for every business.
+              ──────────────────────────────────────────────────────── */}
           {/* Business Manager V4 — Gallery and Contact & Links are already
               two fully separate forms with their own submit actions; at
               desktop they sit side by side as two distinct cards instead
               of stacking full-width, real grouping rather than one long
               scroll — no change to either form's fields or action. */}
-          {pro && (
           <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-4">
             <Panel title="Gallery">
               <form action={galleryAction} className="flex flex-col gap-4">
@@ -1532,9 +1526,12 @@ export default async function ManageBusinessPage({
               <form action={linksAction} className="flex flex-col gap-4">
                 {/* Free Basic Profile Editing pass — Website/Instagram
                     moved to the Business Basics section above (both tiers
-                    edit them there now); this section keeps only what's
-                    still entirely Pro-only: email/phone/Facebook/TikTok/
-                    Announcement. */}
+                    edit them there now); this section keeps the rest of
+                    Contact & Links: email/phone/Facebook/TikTok/
+                    Announcement. Free Tier Entitlement Reset V1 — none of
+                    these remain Pro-only; this whole panel now renders
+                    for every business (see the doc comment above this
+                    grid). */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
@@ -1646,7 +1643,6 @@ export default async function ManageBusinessPage({
               </div>
             </Panel>
           </div>
-          )}
           </div>
         )}
 
@@ -2075,8 +2071,8 @@ export default async function ManageBusinessPage({
 
             {pro ? (
               <p className="mt-3 text-sm text-ink/60">
-                Findmi Pro is active{planExpiresAtLabel ? ` — expires ${planExpiresAtLabel}` : ""} — your full
-                business profile, gallery, products, and complete upcoming schedule are all unlocked.
+                Findmi Pro is active{planExpiresAtLabel ? ` — expires ${planExpiresAtLabel}` : ""} — Performance
+                analytics for your business are unlocked.
               </p>
             ) : (
               <div
@@ -2086,33 +2082,32 @@ export default async function ManageBusinessPage({
               >
                 {isExpiredPro ? (
                   <>
-                    {/* Business Pro Expiration Enforcement pass — a lapsed
+                    {/* Business Pro Expiration Enforcement pass, updated by
+                        the Free Tier Entitlement Reset V1 — a lapsed
                         renewal, not a first-time upgrade: the copy and CTA
-                        below say "Renew"/"expired", never "Unlock"/"Upgrade",
-                        since this business already had the full Pro
-                        experience and nothing about its stored data changed
-                        — renewing simply restores access immediately. */}
+                        below say "Renew"/"expired", never "Unlock"/"Upgrade".
+                        Your full profile/products/gallery/contact/schedule
+                        are Free-tier features now and were never removed by
+                        expiration — only Performance analytics locks again. */}
                     <p className="text-sm font-bold text-ink">
                       Your Findmi Pro plan expired{planExpiresAtLabel ? ` on ${planExpiresAtLabel}` : ""}
                     </p>
                     <p className="mt-1 text-sm text-ink/60">
-                      Renew Pro to restore your full business details, contact links, gallery, products, and complete
-                      upcoming schedule — nothing was removed, it&rsquo;s all still there.
+                      Renew Pro to restore Performance analytics — your business profile, products, gallery, contact
+                      info, and complete upcoming schedule all stay exactly as they are; nothing was removed.
                     </p>
                   </>
                 ) : (
                   <>
-                    <p className="text-sm font-bold text-ink">Unlock your full Findmi presence</p>
-                    {/* Final Conversion Consistency pass — "appearances" removed:
-                        Free can already add/manage appearances (Passes 1-2), so
-                        naming it here as a Pro upgrade reason was stale. Replaced
-                        with the actual Pro-exclusive distinction — the full
-                        upcoming schedule showing publicly (Free/Pro Entitlement
-                        pass: Free's public profile shows its next 3, Pro shows
-                        the full schedule). */}
+                    {/* Free Tier Entitlement Reset V1 — the previous copy
+                        here ("Unlock your full Findmi presence... business
+                        details, contact links, gallery, products, and your
+                        complete upcoming schedule") is retired: every one of
+                        those is a Free feature now. Pro's real remaining
+                        differentiator is Performance/Analytics. */}
+                    <p className="text-sm font-bold text-ink">Understand what&rsquo;s working, and grow it</p>
                     <p className="mt-1 text-sm text-ink/60">
-                      Upgrade to Pro for your full business details, contact links, gallery, products, and your complete
-                      upcoming schedule.
+                      Upgrade to Pro for Performance analytics — how people discover and engage with your business.
                     </p>
                   </>
                 )}
@@ -2142,8 +2137,10 @@ export default async function ManageBusinessPage({
                     {/* Pro Invite Sharing UX pass, made consistent across every
                         Pro-gated Business Manager tab by the Pro Invite / Promo
                         Code Consistency pass — same always-visible treatment as
-                        UpgradeLockedTab below (Gallery/Products/Links & Contact),
-                        same wording, no longer collapsed behind a summary toggle.
+                        UpgradeLockedTab below (Performance/Customer Inquiries,
+                        the two tabs still genuinely Pro-only after the Free Tier
+                        Entitlement Reset V1), same wording, no longer collapsed
+                        behind a summary toggle.
                         Reuses the exact same goToRedeemCode -> /redeem/[code]
                         routing/redemption flow as /join and /account (no separate
                         redemption implementation), with this already-authorized
@@ -2593,45 +2590,12 @@ export default async function ManageBusinessPage({
   );
 }
 
-/** Free/Pro Entitlement pass — read-only counterpart to FindmiUrlCard for
- * a Free business. An already-claimed handle (from before this business
- * was Free, or claimed while briefly Pro) is preserved and kept
- * copyable/functional (inbound links must never break); there's simply no
- * form to change it. No handle yet: plain "Upgrade to Pro" prompt, same
- * copy convention ("Available with Findmi Pro" upgrade card) as
- * UpgradeLockedTab below, reused rather than duplicated as a full tab
- * lock since this lives inline on Overview, not its own tab. */
-function LockedFindmiUrl({ businessId, currentHandle }: { businessId: string; currentHandle: string | null }) {
-  const url = currentHandle ? `findmi.app/${currentHandle}` : null;
-  return (
-    <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi URL</p>
-      {url ? (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2.5">
-          <p className="min-w-0 break-all text-base font-bold text-findmi-700">{url}</p>
-          <CopyButton
-            value={`https://${url}`}
-            label="Copy Link"
-            className="shrink-0 text-xs font-semibold text-ink/55 underline underline-offset-2 transition hover:text-ink"
-          />
-        </div>
-      ) : (
-        <p className="mt-2 text-sm text-ink/60">Choose an easy-to-share FindMi link for your business.</p>
-      )}
-      <p className="mt-2 text-xs text-ink/50">
-        Upgrade to Pro to {url ? "customize" : "choose"} your Findmi URL.{" "}
-        <Link href={`/upgrade/pro?business=${businessId}`} className="font-semibold text-findmi-700 underline underline-offset-2">
-          Upgrade to Pro
-        </Link>
-      </p>
-    </div>
-  );
-}
-
-/** Shared "this tab needs Pro" lock state — same shape Products already
- * used before this pass (upgrade CTA, no broken/empty form), now reused
- * for Gallery and Links & Contact too since all three are entirely
- * Pro-only tabs.
+/** Shared "this tab needs Pro" lock state — still used by Performance and
+ * Customer Inquiries, the two tabs that remain genuinely Pro-only after
+ * the Free Tier Entitlement Reset V1 (Gallery/Products/Links & Contact
+ * are unconditional now — see their own sections above, and the retired
+ * LockedFindmiUrl counterpart this reset removed as dead code once the
+ * Findmi URL card itself became unconditional).
  *
  * Business Manager Pro Invite / Promo Code Consistency pass — every one of
  * these locked tabs now also offers the exact same code redemption entry

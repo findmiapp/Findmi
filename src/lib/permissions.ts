@@ -41,8 +41,8 @@ export interface Membership {
  * admin session. This is deliberately the one place this bypass lives —
  * every action/page that already calls requireBusinessMember()/
  * requireEventMember() (directly, or via a local wrapper like
- * requireProBusinessMember) inherits Manage-As for free, with no other
- * code needing to change. */
+ * requireBusinessMemberWithDetails) inherits Manage-As for free, with no
+ * other code needing to change. */
 async function requireMembership(
   table: "business_members" | "event_members" | "location_members",
   column: "business_id" | "event_id" | "location_id",

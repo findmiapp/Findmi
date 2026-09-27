@@ -115,23 +115,16 @@ export default async function RedeemInvitePage({
           </h1>
           <p className="mt-2 text-sm text-ink/70">Pro access runs through {formatDateShort(granted_until)}.</p>
 
-          {/* Invite Self-Service Polish pass — a compact, honest recap of
-              what Pro actually unlocks (matching the real gated tabs in
-              account/business/[id]/page.tsx: Gallery, Links & Contact,
-              plus the full Findmi Here schedule) rather than a generic
-              "you're all set." No tour/modal — just this list.
-              Canonical Plan Config pass — "Add Products" is removed
-              (Products became a Free capability in the Free/Pro
-              Entitlement Realignment pass), and "website" is dropped
-              from the socials/contact line (Website is a Free profile
-              field now too) — both were stale, actively-wrong claims.
-              Every other line is untouched: still accurate, and wasn't
-              part of the audit's stale-copy findings. */}
+          {/* Free Tier Entitlement Reset V1 — the previous recap here
+              (Gallery, socials & contact links, full Findmi Here schedule)
+              named exactly the features this reset makes Free; those are
+              retired. Rewritten to what Pro actually still unlocks (see
+              account/business/[id]/page.tsx's remaining Performance gate). */}
           <ul className="mt-4 flex flex-col gap-1.5 text-left text-sm text-ink/70">
-            <ProUnlockItem>Complete your full business profile</ProUnlockItem>
-            <ProUnlockItem>Add photos to your Gallery</ProUnlockItem>
-            <ProUnlockItem>Add socials &amp; contact links</ProUnlockItem>
-            <ProUnlockItem>Build out your full Findmi Here schedule</ProUnlockItem>
+            <ProUnlockItem>Performance analytics for your business</ProUnlockItem>
+            <ProUnlockItem>Discovery source &amp; QR attribution</ProUnlockItem>
+            <ProUnlockItem>Follower insights</ProUnlockItem>
+            <ProUnlockItem>Customer inquiries</ProUnlockItem>
           </ul>
 
           {/* Never implies the public listing itself has been approved —
