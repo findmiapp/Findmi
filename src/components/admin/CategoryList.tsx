@@ -132,7 +132,7 @@ export default function CategoryList({
       )}
 
       {categories.length === 0 ? (
-        <p className="text-sm text-ink/50">No categories yet — add one above.</p>
+        <p className="text-sm text-ink/50">No categories yet. Add one above.</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {displayList.map((c, i) => {
@@ -208,7 +208,7 @@ export default function CategoryList({
                   )}
                   {isLegacy && (
                     <span
-                      title="Kept for existing assignments — not part of the current taxonomy."
+                      title="Kept for existing assignments, not part of the current taxonomy."
                       className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700"
                     >
                       Legacy
@@ -254,7 +254,7 @@ export default function CategoryList({
                     <button
                       type="button"
                       disabled
-                      title="In use — remove this category from every business/event/product/location first, or leave it in place."
+                      title="In use. Remove this category from every business/event/product/location first, or leave it in place."
                       className="cursor-not-allowed rounded-lg border border-black/10 px-2 py-1 text-[11px] font-semibold text-ink/30"
                     >
                       In use
@@ -263,7 +263,7 @@ export default function CategoryList({
                     <button
                       type="button"
                       disabled
-                      title="Has subcategories — delete or reassign them first so nothing gets orphaned."
+                      title="Has subcategories. Delete or reassign them first so nothing gets orphaned."
                       className="cursor-not-allowed rounded-lg border border-black/10 px-2 py-1 text-[11px] font-semibold text-ink/30"
                     >
                       Has subcategories

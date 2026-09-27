@@ -170,7 +170,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   const selectedMarket = markets.find((m) => m.slug === params.market);
   const selectedArea = params.market ? selectedMarket?.areas.find((a) => a.slug === params.area) : undefined;
   const marketAreaLabel = selectedArea
-    ? `${selectedArea.display_name || selectedArea.name} — ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
+    ? `${selectedArea.display_name || selectedArea.name}, ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
     : selectedMarket
       ? getMarketAreaLabel(selectedMarket)
       : undefined;
@@ -268,7 +268,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
           {featuredBusinesses.length === 0 && categoryRails.length === 0 ? (
             <div className="mx-4 mt-6 rounded-2xl border border-black/5 bg-black/[0.015] p-6 text-center sm:mx-6">
               <p className="text-sm text-ink/60">
-                No businesses yet{marketAreaLabel ? ` in ${marketAreaLabel}` : ""} — check back soon.
+                No businesses yet{marketAreaLabel ? ` in ${marketAreaLabel}` : ""}. Check back soon.
               </p>
             </div>
           ) : (
@@ -366,7 +366,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
               <p className="text-sm text-ink/60">
                 {filtering
                   ? `No businesses matched${categoryName ? ` ${categoryName}` : ""}${marketAreaLabel ? ` in ${marketAreaLabel}` : params.market ? ` in that area` : ""}${params.location ? ` in ${params.location}` : ""}.`
-                  : "No businesses yet — check back soon."}
+                  : "No businesses yet. Check back soon."}
               </p>
               {filtering && (
                 <Link href="/businesses" className="mt-2 inline-block text-sm font-semibold text-findmi-700 underline underline-offset-2">

@@ -98,7 +98,7 @@ export default function BusinessMobileNav({
           onClick={() => setOpen((o) => !o)}
           aria-haspopup="menu"
           aria-expanded={open}
-          aria-label={activeMoreTab ? `${activeMoreTab.label} — Business sections menu` : "More Business sections"}
+          aria-label={activeMoreTab ? `${activeMoreTab.label}: Business sections menu` : "More Business sections"}
           className={`flex h-full items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-2 py-2 text-[12px] font-bold transition ${
             activeMoreTab ? "bg-findmi text-white shadow-sm" : "text-ink/45 hover:text-ink/70"
           }`}

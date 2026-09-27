@@ -163,12 +163,12 @@ export default function InquireButton({
             <div
               role="dialog"
               aria-modal="true"
-              aria-label={`${label} — ${targetName}`}
+              aria-label={`${label}: ${targetName}`}
               className="relative w-full max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-xl sm:max-w-sm sm:rounded-3xl sm:pb-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <h2 className="font-display text-lg font-bold tracking-tight text-ink">
-                  {sent ? "Message sent" : `${label} — ${targetName}`}
+                  {sent ? "Message sent" : `${label}: ${targetName}`}
                 </h2>
                 <button
                   type="button"
@@ -183,7 +183,7 @@ export default function InquireButton({
               {sent ? (
                 <div className="mt-4">
                   <p className="text-sm text-ink/60">
-                    Thanks — we&rsquo;ll be in touch. Your message was sent to {targetName} on Findmi.
+                    Thanks, we&rsquo;ll be in touch. Your message was sent to {targetName} on Findmi.
                   </p>
                   <button
                     type="button"

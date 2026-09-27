@@ -16,9 +16,9 @@ import UsernameField from "./UsernameField";
 import type { HandleEntityType } from "@/lib/handles";
 
 const primaryButtonClass =
-  "flex h-10 shrink-0 items-center justify-center rounded-full bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-10 shrink-0 items-center justify-center rounded-xl bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 const secondaryButtonClass =
-  "shrink-0 rounded-full border border-black/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/70 transition hover:bg-black/5";
+  "shrink-0 rounded-xl border border-black/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/70 transition hover:bg-black/5";
 
 export default function FindmiUrlCard({
   entityType,

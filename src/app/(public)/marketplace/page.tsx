@@ -8,7 +8,7 @@ import { groupByBusinessCategory } from "@/lib/curation";
 
 export const metadata: Metadata = {
   title: "Marketplace",
-  description: "Shop real products from Findmi businesses — coffee, flowers, goods, and more.",
+  description: "Shop real products from Findmi businesses: coffee, flowers, goods, and more.",
 };
 export const revalidate = 60;
 
@@ -189,7 +189,7 @@ export default async function MarketplacePage({
           <div className="mt-8">
             <h2 className="font-display text-xl font-bold tracking-tight text-ink">All Products</h2>
             {results.length === 0 ? (
-              <p className="mt-6 text-sm text-ink/50">No products yet — check back soon.</p>
+              <p className="mt-6 text-sm text-ink/50">No products yet. Check back soon.</p>
             ) : (
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
                 {results.map((p, i) => (

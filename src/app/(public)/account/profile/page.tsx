@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 export default async function ProfilePage({
   searchParams,
@@ -79,8 +79,8 @@ export default async function ProfilePage({
               />
               <span className="mt-1 block text-xs text-ink/45">
                 {profile?.phone
-                  ? "Used for important account updates — never shared publicly."
-                  : "Add a cell number for important account updates — never shared publicly."}
+                  ? "Used for important account updates, never shared publicly."
+                  : "Add a cell number for important account updates, never shared publicly."}
               </span>
             </label>
             <label className="block">
@@ -103,7 +103,7 @@ export default async function ProfilePage({
                 maxLength={80}
                 className={inputClass}
               />
-              <span className="mt-1 block text-xs text-ink/45">A general area only — never an exact address.</span>
+              <span className="mt-1 block text-xs text-ink/45">A general area only, never an exact address.</span>
             </label>
             <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
               Save Changes

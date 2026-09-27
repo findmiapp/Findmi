@@ -51,7 +51,7 @@ export default function ParticipationScopeEditor({
       <div className="flex flex-col gap-1.5">
         <label className="flex items-center gap-2 text-xs text-ink">
           <input type="radio" checked={scope === "all_dates"} onChange={() => setScope("all_dates")} className="h-3.5 w-3.5 accent-findmi" />
-          All dates — participate throughout this Event
+          All dates: participate throughout this Event
         </label>
         <label className="flex items-center gap-2 text-xs text-ink">
           <input type="radio" checked={scope === "selected_dates"} onChange={() => setScope("selected_dates")} className="h-3.5 w-3.5 accent-findmi" />

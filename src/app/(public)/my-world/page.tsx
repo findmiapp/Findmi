@@ -111,7 +111,7 @@ export default function MyWorldPage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Your world</h1>
       <p className="mt-2 max-w-md text-sm text-ink/60">
-        Everything you&rsquo;ve wanted, wanted to do, followed, and saved — kept right on this
+        Everything you&rsquo;ve wanted, wanted to do, followed, and saved, kept right on this
         device.
       </p>
 

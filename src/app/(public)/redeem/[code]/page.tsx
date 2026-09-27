@@ -253,7 +253,7 @@ export default async function RedeemInvitePage({
           </h1>
           <p className="mt-2 text-sm text-ink/70">
             No Business required. This gives your account Organizer access to create, claim, and manage Events on
-            Findmi — no separate Event fee, ever.
+            Findmi, with no separate Event fee, ever.
           </p>
           {error && (
             <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-700">
@@ -301,8 +301,8 @@ export default async function RedeemInvitePage({
             {invite.name || "You've been invited to Findmi Pro"}
           </h1>
           <p className="mt-2 text-sm text-ink/70">
-            You don&rsquo;t have a business on Findmi yet. Add one — it&rsquo;s free — and you can apply this invite
-            right after.
+            You don&rsquo;t have a business on Findmi yet. Add one for free, and you can apply this invite right
+            after.
           </p>
           <Link
             href={`/account/business/new?invite=${encodeURIComponent(code)}`}

@@ -162,7 +162,7 @@ export default function EventFollowButton({
       <button
         type="button"
         onClick={handleAuthedFollow}
-        title="Following — tap to unfollow"
+        title="Following: tap to unfollow"
         className={`flex ${h} items-center gap-1.5 rounded-full bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
       >
         <CheckGlyph className="h-3.5 w-3.5" />

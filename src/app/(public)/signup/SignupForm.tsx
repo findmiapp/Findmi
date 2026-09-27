@@ -88,7 +88,7 @@ export default function SignupForm({
           placeholder="(917) 555-1234"
           className={inputClass}
         />
-        <span className="mt-1 block text-xs text-ink/45">Used for important account updates — never shared publicly.</span>
+        <span className="mt-1 block text-xs text-ink/45">Used for important account updates, never shared publicly.</span>
       </label>
       <PasswordField name="password" label="Password" autoComplete="new-password" minLength={8} />
       <PasswordField name="confirm_password" label="Confirm password" autoComplete="new-password" minLength={8} />

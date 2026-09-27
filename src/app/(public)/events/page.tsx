@@ -89,7 +89,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   const selectedMarket = markets.find((m) => m.slug === params.market);
   const selectedArea = params.market ? selectedMarket?.areas.find((a) => a.slug === params.area) : undefined;
   const marketAreaLabel = selectedArea
-    ? `${selectedArea.display_name || selectedArea.name} — ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
+    ? `${selectedArea.display_name || selectedArea.name}, ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
     : selectedMarket
       ? getMarketAreaLabel(selectedMarket)
       : undefined;
@@ -128,12 +128,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     params.q || params.category || params.location || params.market
       ? `No events matched${marketAreaLabel ? ` in ${marketAreaLabel}` : params.market ? ` in that area` : ""}${categoryName ? ` ${categoryName}` : ""}${params.location ? ` in ${params.location}` : ""}${params.q ? ` for "${params.q}"` : ""}.`
       : timeKey === "today"
-        ? "Nothing today — try This Week or This Weekend."
+        ? "Nothing today. Try This Week or This Weekend."
         : timeKey === "week"
-          ? "Nothing this week yet — try This Weekend or All."
+          ? "Nothing this week yet. Try This Weekend or All."
           : timeKey === "weekend"
-            ? "Nothing this weekend yet — try All."
-            : "No upcoming events yet — check back soon.";
+            ? "Nothing this weekend yet. Try All."
+            : "No upcoming events yet. Check back soon.";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
@@ -145,7 +145,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
           previously the single biggest contributor to pre-result mobile
           space. Hidden on mobile, kept unchanged on desktop. */}
       <p className="mt-1.5 hidden text-sm text-ink/60 sm:block sm:text-base">
-        Markets, pop-ups, and festivals — and who you&rsquo;ll find here.
+        Markets, pop-ups, and festivals, and who you&rsquo;ll find here.
       </p>
 
       <form method="get" className="mt-4 flex flex-col gap-3">

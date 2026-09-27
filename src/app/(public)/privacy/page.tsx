@@ -18,7 +18,7 @@ export default function PrivacyPage() {
           <h2 className="text-base font-semibold text-ink">What we collect</h2>
           <p className="mt-2">
             When you follow a business or submit an inquiry, we collect the information you
-            provide — such as your name, email, phone number, and details about your request.
+            provide, such as your name, email, phone number, and details about your request.
             When a business joins Findmi, we collect the business information they submit,
             including contact details, location, and payment information processed securely by
             Stripe.
@@ -37,9 +37,9 @@ export default function PrivacyPage() {
           <h2 className="text-base font-semibold text-ink">How we share it</h2>
           <p className="mt-2">
             Inquiry and follow information you submit is shared with the specific business you
-            contacted or followed. We use third-party service providers — including Supabase
-            for our database, Stripe for payment processing, Tally for form collection, and
-            Vercel for hosting — to operate Findmi. We do not sell your personal information.
+            contacted or followed. We use third-party service providers to operate Findmi,
+            including Supabase for our database, Stripe for payment processing, Tally for form
+            collection, and Vercel for hosting. We do not sell your personal information.
           </p>
         </section>
         <section>

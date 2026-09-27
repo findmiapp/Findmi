@@ -29,7 +29,7 @@ export default function TermsPage() {
             Findmi Pro is $99 per year, billed through Stripe. This pricing is retained for as
             long as your Pro subscription remains continuously active; a lapsed subscription may
             be re-enrolled at then-current pricing. Pro does not guarantee sales, bookings, or
-            inclusion in any specific event — it provides a Findmi profile, appearance listings,
+            inclusion in any specific event. It provides a Findmi profile, appearance listings,
             and discovery inclusion as described on our Join page. We may remove content or
             suspend a profile that violates these terms.
           </p>
@@ -63,7 +63,7 @@ export default function TermsPage() {
           <p className="mt-2">
             Businesses are responsible for the accuracy of their profile, product, and
             appearance information. Findmi does not guarantee that any listed appearance,
-            date, or location is current — always confirm directly with the business for
+            date, or location is current. Always confirm directly with the business for
             time-sensitive plans.
           </p>
         </section>

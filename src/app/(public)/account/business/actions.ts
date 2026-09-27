@@ -1007,13 +1007,13 @@ async function resolveStandaloneAppearanceGeography(
   const { data: businessRow } = await admin.from("businesses").select("name").eq("id", businessId).maybeSingle();
   const businessName = businessRow?.name ?? "Unknown business";
   await notifyAdmin({
-    subject: `Appearance activity outside known Findmi areas — ${businessName}`,
+    subject: `Appearance activity outside known Findmi areas: ${businessName}`,
     heading: "Appearance activity geography unresolved",
     body: [
       `Requested: ${text}`,
       `Business: ${businessName}`,
       "Source: Where You'll Be (standalone appearance)",
-      "For awareness only — this does not create a resolvable Market Request and never affects the business's own discovery Market.",
+      "For awareness only. This does not create a resolvable Market Request and never affects the business's own discovery Market.",
     ],
   });
   return { market_id: null, market_area_id: null };
@@ -1221,7 +1221,7 @@ const CREATE_FRIENDLY_ERROR: Record<string, string> = {
   // create_owned_business() when BOTH a market_id and requested market
   // text were submitted; the form itself asks for only one, so this
   // should only ever surface from a tampered/unusual submission.
-  market_choice_ambiguous: "Choose an existing Market OR request one — not both.",
+  market_choice_ambiguous: "Choose an existing Market OR request one, not both.",
 };
 
 /** Creates a brand-new business natively — free, no payment, starting
@@ -1325,7 +1325,7 @@ export async function createMemberBusiness(formData: FormData) {
     fail("Choose a Primary Market, or request one below.");
   }
   if (marketId && requestedMarketText) {
-    fail("Choose an existing Market OR request one — not both.");
+    fail("Choose an existing Market OR request one, not both.");
   }
   if (!authorized) {
     fail("Please confirm you're authorized to create and manage this business.");
@@ -1433,7 +1433,7 @@ export async function createMemberBusiness(formData: FormData) {
   // branches below so it happens exactly once regardless of which path
   // the new owner takes next.
   await notifyAdmin({
-    subject: `Business awaiting review — ${name}`,
+    subject: `Business awaiting review: ${name}`,
     heading: "New Business awaiting review",
     body: [`Business: ${name}`, [city, state].filter(Boolean).join(", ") || "Location not provided"],
     actionLabel: "Review Business",
@@ -1704,7 +1704,7 @@ export async function createMemberProduct(businessId: string, formData: FormData
   // below for the real, separate "existing product later submitted"
   // case, which does get its own email.
   await notifyAdmin({
-    subject: `Product awaiting review — ${fields.name}`,
+    subject: `Product awaiting review: ${fields.name}`,
     heading: "New Product awaiting review",
     body: [
       `Product: ${fields.name}`,
@@ -1867,7 +1867,7 @@ export async function submitProductToMarketplace(businessId: string, productId: 
     // fall through with no update and no email, same guard the function
     // already had before this pass).
     await notifyAdmin({
-      subject: `Marketplace Product awaiting review — ${existing.name}`,
+      subject: `Marketplace Product awaiting review: ${existing.name}`,
       heading: "Marketplace Product awaiting review",
       body: [`Product: ${existing.name}`, `Business: ${business.name}`],
       actionLabel: "Review Product",

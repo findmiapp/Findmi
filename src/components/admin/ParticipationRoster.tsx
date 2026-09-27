@@ -118,7 +118,7 @@ function OccurrenceAwareAdd({ eventId, occurrences }: { eventId: string; occurre
     <div className="rounded-xl border border-black/10 bg-white p-3">
       <p className="text-xs font-semibold text-ink">Add To Specific Occurrences</p>
       <p className="mt-0.5 text-xs text-ink/45">
-        This event has multiple dates — choose which occurrence(s) this business is participating in. Status,
+        This event has multiple dates. Choose which occurrence(s) this business is participating in. Status,
         Featured, and Remove for each date are managed in that date&rsquo;s own vendor list below.
       </p>
 
@@ -403,7 +403,7 @@ export default function ParticipationRoster({
               truth for an occurrence-based event: event_occurrence_businesses,
               grouped by business, never event_businesses. */}
           {occurrenceSummaries.length === 0 ? (
-            <p className="mt-3 text-sm text-ink/45">No businesses added yet — search above to add one.</p>
+            <p className="mt-3 text-sm text-ink/45">No businesses added yet. Search above to add one.</p>
           ) : (
             <div className="mt-3 flex flex-col gap-2">
               {occurrenceSummaries.map((s) => (
@@ -439,7 +439,7 @@ export default function ParticipationRoster({
               </p>
               <p className="mt-1 text-xs text-amber-700">
                 These businesses were added before this event had specific dates (or before occurrence-specific
-                participation existed) — they won&rsquo;t appear in &ldquo;Who You&rsquo;ll Find Here&rdquo; for any
+                participation existed), they won&rsquo;t appear in &ldquo;Who You&rsquo;ll Find Here&rdquo; for any
                 date. Remove and re-add them above with the correct occurrence(s) if they should be shown.
               </p>
               {legacyRowsList}
@@ -447,7 +447,7 @@ export default function ParticipationRoster({
           )}
         </>
       ) : rows.length === 0 ? (
-        <p className="mt-3 text-sm text-ink/45">No businesses added yet — search above to add one.</p>
+        <p className="mt-3 text-sm text-ink/45">No businesses added yet. Search above to add one.</p>
       ) : (
         legacyRowsList
       )}

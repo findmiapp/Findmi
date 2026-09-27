@@ -337,7 +337,7 @@ export default function MessageButton({
                       >
                         {actorOptions.map((a) => (
                           <option key={`${a.kind}:${a.id}`} value={a.id}>
-                            {a.kind === "business" ? "Business" : "Event"} — {a.name}
+                            {a.kind === "business" ? "Business" : "Event"}: {a.name}
                           </option>
                         ))}
                       </select>

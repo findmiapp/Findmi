@@ -254,7 +254,7 @@ export default async function ProductPage({
             {soldOut && <p className="mt-2 text-center text-sm font-semibold text-ink/50">Currently sold out</p>}
             {!canAddToCart && !purchaseUrl && !inquiryAction && !soldOut && (
               <p className="text-center text-sm text-ink/45">
-                Not available for purchase right now — check back soon.
+                Not available for purchase right now. Check back soon.
               </p>
             )}
           </div>

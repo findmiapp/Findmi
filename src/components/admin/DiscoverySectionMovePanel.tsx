@@ -50,7 +50,7 @@ export default function DiscoverySectionMovePanel({
   return (
     <details className="mt-3 rounded-xl border border-black/10 bg-black/[0.015] p-3">
       <summary className="cursor-pointer select-none text-xs font-semibold text-ink">
-        Move — position {position} of {siblingCount}
+        Move: position {position} of {siblingCount}
       </summary>
 
       <div className="mt-3 flex flex-col gap-3">

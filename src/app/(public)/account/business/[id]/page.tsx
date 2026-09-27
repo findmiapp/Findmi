@@ -1199,24 +1199,24 @@ export default async function ManageBusinessPage({
             {proPayment === "success" &&
               (pro ? (
                 <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-                  Payment received — Findmi Pro is active. Full Pro tools are unlocked below.
+                  Payment received. Findmi Pro is active, and full Pro tools are unlocked below.
                 </p>
               ) : (
                 <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-                  Payment received. We&rsquo;re activating Pro — this usually only takes a moment. Refresh this page
+                  Payment received. We&rsquo;re activating Pro, which usually only takes a moment. Refresh this page
                   shortly if it doesn&rsquo;t update automatically.
                 </p>
               ))}
             {proPayment === "cancelled" && (
               <p className="max-w-2xl rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
-                Checkout was canceled — your business is still Free. You can upgrade to Pro anytime.
+                Checkout was canceled. Your business is still Free. You can upgrade to Pro anytime.
               </p>
             )}
 
             {business.publication_status === "pending_review" && (
               <div className="flex max-w-2xl items-center justify-between gap-3 rounded-lg bg-amber-50 px-3.5 py-2.5">
                 <p className="text-[13px] text-amber-900">
-                  <span className="font-bold">Pending Review</span> — visible to you now, live in discovery after Findmi reviews it.
+                  <span className="font-bold">Pending Review</span>: visible to you now, live in discovery after Findmi reviews it.
                 </p>
                 {business.slug && (
                   <Link href={`/business/${business.slug}`} className="shrink-0 text-[12px] font-bold text-amber-800 underline underline-offset-2">
@@ -1753,7 +1753,7 @@ export default async function ManageBusinessPage({
                             )}
                             {p.hasPendingChanges && (
                               <p className="text-xs text-ink/50">
-                                Your submitted changes are waiting on Findmi&rsquo;s approval — the version above
+                                Your submitted changes are waiting on Findmi&rsquo;s approval. The version above
                                 stays publicly visible until then.
                               </p>
                             )}
@@ -1775,13 +1775,13 @@ export default async function ManageBusinessPage({
                               <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">Marketplace</p>
                               <p className="mt-1 text-xs text-ink/60">
                                 {p.marketplaceStatus === "catalog_only" && "Shown on your Findmi business profile only."}
-                                {p.marketplaceStatus === "submitted" && "Submitted — awaiting Findmi's decision."}
+                                {p.marketplaceStatus === "submitted" && "Submitted, awaiting Findmi's decision."}
                                 {p.marketplaceStatus === "approved" &&
-                                  "Approved — may also appear across Findmi Marketplace and discovery."}
+                                  "Approved. May also appear across Findmi Marketplace and discovery."}
                                 {p.marketplaceStatus === "rejected" &&
-                                  "Not approved for Marketplace — still shown on your business profile."}
+                                  "Not approved for Marketplace, still shown on your business profile."}
                                 {p.marketplaceStatus === "paused" &&
-                                  "Paused — temporarily out of Marketplace/discovery; still shown on your business profile."}
+                                  "Paused, temporarily out of Marketplace/discovery. Still shown on your business profile."}
                               </p>
                               {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
                                 <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
@@ -1906,7 +1906,7 @@ export default async function ManageBusinessPage({
 
             {appearances.length + eventOnlySchedule.length === 0 && (
               <Panel padded={false}>
-                <EmptyLine>No upcoming stops yet — add where you&rsquo;ll be to appear on your public profile.</EmptyLine>
+                <EmptyLine>No upcoming stops yet. Add where you&rsquo;ll be to appear on your public profile.</EmptyLine>
               </Panel>
             )}
 
@@ -2071,7 +2071,7 @@ export default async function ManageBusinessPage({
 
             {pro ? (
               <p className="mt-3 text-sm text-ink/60">
-                Findmi Pro is active{planExpiresAtLabel ? ` — expires ${planExpiresAtLabel}` : ""} — Performance
+                Findmi Pro is active{planExpiresAtLabel ? `, expires ${planExpiresAtLabel}` : ""}. Performance
                 analytics for your business are unlocked.
               </p>
             ) : (
@@ -2093,7 +2093,7 @@ export default async function ManageBusinessPage({
                       Your Findmi Pro plan expired{planExpiresAtLabel ? ` on ${planExpiresAtLabel}` : ""}
                     </p>
                     <p className="mt-1 text-sm text-ink/60">
-                      Renew Pro to restore Performance analytics — your business profile, products, gallery, contact
+                      Renew Pro to restore Performance analytics. Your business profile, products, gallery, contact
                       info, and complete upcoming schedule all stay exactly as they are; nothing was removed.
                     </p>
                   </>
@@ -2107,7 +2107,7 @@ export default async function ManageBusinessPage({
                         differentiator is Performance/Analytics. */}
                     <p className="text-sm font-bold text-ink">Understand what&rsquo;s working, and grow it</p>
                     <p className="mt-1 text-sm text-ink/60">
-                      Upgrade to Pro for Performance analytics — how people discover and engage with your business.
+                      Upgrade to Pro for Performance analytics: how people discover and engage with your business.
                     </p>
                   </>
                 )}
@@ -2129,7 +2129,7 @@ export default async function ManageBusinessPage({
                         plan_tier, so it correctly allows this repurchase. */}
                     <Link
                       href={`/upgrade/pro?business=${id}`}
-                      className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                      className="mt-3 flex h-11 w-full items-center justify-center rounded-xl bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                     >
                       {isExpiredPro ? "Renew Pro" : "Upgrade to Pro"}
                     </Link>
@@ -2170,7 +2170,7 @@ export default async function ManageBusinessPage({
           <div className={cardClass}>
             <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Based In</p>
             <p className="mt-1.5 text-sm text-ink">{[business.city, business.state].filter(Boolean).join(", ") || "Not set"}</p>
-            <p className="mt-2 text-xs text-ink/45">Your business&rsquo;s home address — separate from your Findmi area below.</p>
+            <p className="mt-2 text-xs text-ink/45">Your business&rsquo;s home address, separate from your Findmi area below.</p>
           </div>
 
           <div className={cardClass}>
@@ -2180,7 +2180,7 @@ export default async function ManageBusinessPage({
             ) : pendingMarketRequest ? (
               <>
                 <p className="mt-1.5 text-sm font-semibold text-amber-700">
-                  Findmi area pending review — {pendingMarketRequest.requestedText}
+                  Findmi area pending review: {pendingMarketRequest.requestedText}
                 </p>
                 <p className="mt-2 text-xs text-ink/45">
                   Findmi is reviewing your requested area. Your business is live in the meantime, but won&rsquo;t
@@ -2192,7 +2192,7 @@ export default async function ManageBusinessPage({
                 <p className="mt-1.5 text-sm font-semibold text-ink/60">No Findmi area selected yet</p>
                 <p className="mt-2 text-xs text-ink/45">
                   Your Findmi area determines where your business receives general discovery. Where you&rsquo;ll be
-                  — events and pop-ups — can still happen anywhere.
+                  (events and pop-ups) can still happen anywhere.
                 </p>
                 <p className="mt-2 text-xs text-ink/40">Contact Findmi to update this.</p>
               </>
@@ -2232,7 +2232,7 @@ export default async function ManageBusinessPage({
             <div className={cardClass}>
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Referral Program</p>
               <p className="mt-1 text-sm text-ink/60">
-                Share your code — you&rsquo;ll earn a commission when a business you refer upgrades to paid Findmi
+                Share your code, and you&rsquo;ll earn a commission when a business you refer upgrades to paid Findmi
                 Pro.
               </p>
 
@@ -2248,21 +2248,21 @@ export default async function ManageBusinessPage({
                           <CopyButton
                             value={code}
                             label="Copy Code"
-                            className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                            className="shrink-0 rounded-lg bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
                           />
                         </div>
                         <p className="mt-2 break-all font-mono text-xs text-ink/70">{referralLink}</p>
                         <CopyButton
                           value={referralLink}
                           label="Copy Link"
-                          className="mt-2 shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                          className="mt-2 shrink-0 rounded-lg bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
                         />
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <p className="mt-4 text-sm text-ink/50">No active referral code yet — check back soon.</p>
+                <p className="mt-4 text-sm text-ink/50">No active referral code yet. Check back soon.</p>
               )}
 
               <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
@@ -2297,7 +2297,7 @@ export default async function ManageBusinessPage({
                   <button
                     type="submit"
                     disabled={referralPartner.availableCommissionCents <= 0}
-                    className="flex h-11 w-full items-center justify-center rounded-full bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex h-11 w-full items-center justify-center rounded-xl bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Request Payout
                     {referralPartner.availableCommissionCents > 0
@@ -2307,7 +2307,7 @@ export default async function ManageBusinessPage({
                 </form>
               )}
               <p className="mt-2 text-xs text-ink/40">
-                Payouts are reviewed and paid out manually by Findmi — no automatic transfers.
+                Payouts are reviewed and paid out manually by Findmi. No automatic transfers.
               </p>
             </div>
           )}
@@ -2564,12 +2564,12 @@ export default async function ManageBusinessPage({
                         />
                         <button
                           type="submit"
-                          className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                          className="rounded-xl bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                         >
                           Save
                         </button>
                       </form>
-                      <p className="mt-1.5 text-[11px] text-ink/35">Only visible to you and Findmi admin — never shown to the customer.</p>
+                      <p className="mt-1.5 text-[11px] text-ink/35">Only visible to you and Findmi admin, never shown to the customer.</p>
                     </div>
                   ))}
                 </div>

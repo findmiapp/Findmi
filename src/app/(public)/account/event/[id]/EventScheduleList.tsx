@@ -15,9 +15,9 @@ import {
 } from "../actions";
 
 const secondaryButtonClass =
-  "flex h-9 items-center justify-center rounded-full border border-black/10 px-3.5 text-xs font-semibold text-ink/70 transition hover:border-black/20 disabled:opacity-50";
+  "flex h-9 items-center justify-center rounded-xl border border-black/10 px-3.5 text-xs font-semibold text-ink/70 transition hover:border-black/20 disabled:opacity-50";
 const primaryButtonClass =
-  "flex h-9 items-center justify-center rounded-full bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50";
+  "flex h-9 items-center justify-center rounded-xl bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 
@@ -120,7 +120,7 @@ export default function EventScheduleList({ eventId, occurrences }: { eventId: s
         setNotice(`Updated Location for ${result.updated ?? 0} date${(result.updated ?? 0) === 1 ? "" : "s"}.`);
         clearSelection();
       } catch {
-        setError("Couldn't update the Location for those dates — please try again.");
+        setError("Couldn't update the Location for those dates. Please try again.");
       }
     });
   }
@@ -145,7 +145,7 @@ export default function EventScheduleList({ eventId, occurrences }: { eventId: s
         setNotice(`Updated hours for ${result.updated ?? 0} date${(result.updated ?? 0) === 1 ? "" : "s"}.`);
         clearSelection();
       } catch {
-        setError("Couldn't update hours for those dates — please try again.");
+        setError("Couldn't update hours for those dates. Please try again.");
       }
     });
   }
@@ -163,7 +163,7 @@ export default function EventScheduleList({ eventId, occurrences }: { eventId: s
         setNotice(`Removed ${result.removed ?? 0} date${(result.removed ?? 0) === 1 ? "" : "s"}.`);
         clearSelection();
       } catch {
-        setError("Couldn't remove those dates — please try again.");
+        setError("Couldn't remove those dates. Please try again.");
       }
     });
   }

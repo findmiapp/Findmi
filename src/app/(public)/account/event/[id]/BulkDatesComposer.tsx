@@ -23,9 +23,9 @@ import {
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-10 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50";
+  "flex h-10 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-50";
 const secondaryButtonClass =
-  "flex h-9 items-center justify-center rounded-full border border-black/10 px-3.5 text-xs font-semibold text-ink/70 transition hover:border-black/20 disabled:opacity-50";
+  "flex h-9 items-center justify-center rounded-xl border border-black/10 px-3.5 text-xs font-semibold text-ink/70 transition hover:border-black/20 disabled:opacity-50";
 
 type Mode = "closed" | "one" | "range" | "recurring";
 
@@ -150,12 +150,12 @@ export default function BulkDatesComposer({
 
   function confirmGenerationSize(count: number): boolean {
     if (count > MAX_BULK_GENERATED_DATES) {
-      setError(`That range is ${count} dates — the most Findmi can generate in one batch is ${MAX_BULK_GENERATED_DATES}. Try a shorter range.`);
+      setError(`That range is ${count} dates. The most Findmi can generate in one batch is ${MAX_BULK_GENERATED_DATES}. Try a shorter range.`);
       return false;
     }
     if (count >= BULK_GENERATION_STRONG_CONFIRM_THRESHOLD) {
       return window.confirm(
-        `This will generate ${count} dates — a very large schedule. Are you sure you want to continue?`
+        `This will generate ${count} dates, a very large schedule. Are you sure you want to continue?`
       );
     }
     if (count >= BULK_GENERATION_CONFIRM_THRESHOLD) {
@@ -272,7 +272,7 @@ export default function BulkDatesComposer({
 
   function handleSave() {
     if (newCount === 0) {
-      setError("Nothing new to save — every generated date is already on the schedule.");
+      setError("Nothing new to save. Every generated date is already on the schedule.");
       return;
     }
     const rows: BulkGenerateDateInput[] = selectableRows.map((r) => ({
@@ -308,7 +308,7 @@ export default function BulkDatesComposer({
         const skipped = result.skippedExisting ?? 0;
         const base =
           skipped > 0
-            ? `Added ${created} date${created === 1 ? "" : "s"} — ${skipped} day${skipped === 1 ? "" : "s"} in that range ${skipped === 1 ? "was" : "were"} already on the schedule.`
+            ? `Added ${created} date${created === 1 ? "" : "s"}. ${skipped} day${skipped === 1 ? "" : "s"} in that range ${skipped === 1 ? "was" : "were"} already on the schedule.`
             : `Added ${created} date${created === 1 ? "" : "s"}.`;
         // Range Extension nudge — quiet, informational only. No participation
         // is read or changed here; this pass never propagates existing
@@ -323,7 +323,7 @@ export default function BulkDatesComposer({
         setRecurStart("");
         setRecurEnd("");
       } catch {
-        setError("Couldn't save those dates — please try again.");
+        setError("Couldn't save those dates. Please try again.");
       }
     });
   }
@@ -460,7 +460,7 @@ export default function BulkDatesComposer({
               {skippedCount > 0 && (
                 <span className="font-normal text-ink/50">
                   {" "}
-                  — {skippedCount} already on the schedule, {newCount} new
+                  ({skippedCount} already on the schedule, {newCount} new)
                 </span>
               )}
             </p>

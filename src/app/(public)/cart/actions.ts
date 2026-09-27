@@ -33,7 +33,7 @@ export async function startCheckout(
   input: StartCheckoutInput
 ): Promise<{ url: string } | { error: string }> {
   const stripe = getStripe();
-  if (!stripe) return { error: "Payments aren't configured yet — missing STRIPE_SECRET_KEY." };
+  if (!stripe) return { error: "Payments aren't configured yet: missing STRIPE_SECRET_KEY." };
 
   // Best-effort: a signed-in customer's order gets linked to their account
   // (orders.user_id) so it shows up in /account/orders. Checkout works

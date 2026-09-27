@@ -294,8 +294,8 @@ export default function ClaimButton({
             >
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Claim {entityName}</h2>
               <p className="mt-1.5 text-sm text-ink/60">
-                Claiming requests management access to this {noun}. Findmi reviews every request manually —
-                submitting a claim doesn&rsquo;t guarantee access.
+                Claiming requests management access to this {noun}. Findmi reviews every request manually.
+                Submitting a claim doesn&rsquo;t guarantee access.
               </p>
 
               <form onSubmit={submit} className="mt-4 flex flex-col gap-3">

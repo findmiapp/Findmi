@@ -22,7 +22,7 @@ import type { DiscoveryWindow } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Discover",
-  description: "Find what's happening around you on Findmi — by area, by time, by category.",
+  description: "Find what's happening around you on Findmi: by area, by time, by category.",
 };
 export const revalidate = 60;
 
@@ -105,7 +105,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   const selectedMarket = markets.find((m) => m.slug === marketSlug);
   const selectedArea = marketSlug ? selectedMarket?.areas.find((a) => a.slug === areaSlug) : undefined;
   const areaLabel = selectedArea
-    ? `${selectedArea.display_name || selectedArea.name} — ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
+    ? `${selectedArea.display_name || selectedArea.name}, ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
     : selectedMarket
       ? getMarketAreaLabel(selectedMarket)
       : undefined;
@@ -226,7 +226,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
             </>
           ) : (
             <p className="text-sm text-ink/50">
-              Nothing to surface yet — check back soon, or{" "}
+              Nothing to surface yet. Check back soon, or{" "}
               <Link href="/join" className="font-medium text-ink underline underline-offset-2">
                 be the first to join
               </Link>

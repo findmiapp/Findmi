@@ -196,7 +196,7 @@ export default function AppearanceCard({
         : locationHref
           ? "View location"
           : "Get directions";
-  const ariaLabel = `${appearance.title} — ${ctaLabel}`;
+  const ariaLabel = `${appearance.title}: ${ctaLabel}`;
 
   if (hasEvent) {
     return (

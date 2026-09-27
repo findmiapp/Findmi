@@ -361,8 +361,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 label={action.label}
                 className={
                   action.weight === "solid"
-                    ? "flex h-12 items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-11 items-center justify-center rounded-full border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    ? "flex h-12 items-center justify-center rounded-xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    : "flex h-11 items-center justify-center rounded-xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
                 }
                 track={{
                   event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
@@ -499,7 +499,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
               targetId={event.id}
               targetName={event.name}
               label="Contact Organizer"
-              className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
               track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
             />
           )}
@@ -508,7 +508,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
               href={event.external_url}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
             >
               Event Details
             </a>

@@ -58,7 +58,7 @@ export default async function PeoplePage({
         </h2>
         {people.length === 0 ? (
           <p className="mt-6 text-sm text-ink/50">
-            {q ? "No one matched your search." : "No public profiles yet — check back soon."}
+            {q ? "No one matched your search." : "No public profiles yet. Check back soon."}
           </p>
         ) : (
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">

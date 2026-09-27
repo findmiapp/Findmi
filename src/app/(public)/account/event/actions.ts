@@ -155,7 +155,7 @@ const CREATE_EVENT_FRIENDLY_ERROR: Record<string, string> = {
   slug_required: "Event name is required to generate a URL.",
   start_required: "Start date/time is required.",
   invalid_end: "End date/time must be after the start date/time.",
-  market_choice_ambiguous: "Choose an existing Market OR request one — not both.",
+  market_choice_ambiguous: "Choose an existing Market OR request one, not both.",
   invalid_market: "That market isn't available. Choose another.",
 };
 
@@ -219,7 +219,7 @@ export async function createMemberEvent(formData: FormData) {
   const entitled = await canCurrentUserManageEvents(admin, user.id);
   if (!entitled) {
     fail(
-      "Event management is included with qualifying Findmi membership — get Findmi Pro (or redeem a Pro Invite) on a business you manage first."
+      "Event management is included with qualifying Findmi membership. Get Findmi Pro (or redeem a Pro Invite) on a business you manage first."
     );
   }
 
@@ -240,7 +240,7 @@ export async function createMemberEvent(formData: FormData) {
   // Market is OPTIONAL for events (unlike businesses) — matches the
   // existing admin saveEvent() action, which has never required one.
   if (marketId && requestedMarketTextRaw) {
-    fail("Choose an existing Market OR request one — not both.");
+    fail("Choose an existing Market OR request one, not both.");
   }
 
   // Same "check for an existing Market/Area match before falling back to
@@ -374,7 +374,7 @@ export async function createMemberEvent(formData: FormData) {
   // exactly once per creation. Uses only fields already read above (name,
   // startIso) — no extra query.
   await notifyAdmin({
-    subject: `Event awaiting review — ${name}`,
+    subject: `Event awaiting review: ${name}`,
     heading: "New Event awaiting review",
     body: [`Event: ${name}`, `Starts: ${new Date((created as { start_at: string }).start_at).toLocaleString()}`],
     actionLabel: "Review Event",
@@ -491,7 +491,7 @@ export async function submitEventForReview(eventId: string) {
 
   if (updated) {
     await notifyAdmin({
-      subject: `Event resubmitted for review — ${updated.name}`,
+      subject: `Event resubmitted for review: ${updated.name}`,
       heading: "Event resubmitted for review",
       body: [`Event: ${updated.name}`],
       actionLabel: "Review Event",
@@ -1158,7 +1158,7 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
   const marketId = str(formData, "market_id");
   const requestedMarketTextRaw = str(formData, "requested_market_text");
   if (marketId && requestedMarketTextRaw) {
-    redirect(appendQuery(redirectPath, { error: "Choose an existing Market OR request one — not both." }));
+    redirect(appendQuery(redirectPath, { error: "Choose an existing Market OR request one, not both." }));
   }
 
   let effectiveMarketId = marketId;
@@ -1188,7 +1188,7 @@ export async function updateMemberEventMarket(eventId: string, formData: FormDat
         // with the real event name instead of a raw id.
         const eventName = event?.name ?? "Unknown event";
         await notifyAdmin({
-          subject: `Market/Area request — ${eventName}`,
+          subject: `Market/Area request: ${eventName}`,
           heading: "New Market/Area request",
           body: [`Requested: ${requestedMarketTextRaw}`, `Event: ${eventName}`],
           actionLabel: "Review Market Requests",

@@ -176,10 +176,10 @@ export default function BusinessScopedAction({
         : "bg-findmi text-white hover:bg-findmi-600";
     const fullClass =
       size === "row"
-        ? `flex h-12 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-center text-xs font-bold uppercase transition active:scale-[0.99] ${toneClass}`
+        ? `flex h-12 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-3 text-center text-xs font-bold uppercase transition active:scale-[0.99] ${toneClass}`
         : size === "compact"
-          ? `flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-center text-sm font-bold uppercase transition active:scale-[0.99] ${toneClass}`
-          : `flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-center text-sm font-bold uppercase transition active:scale-[0.99] ${toneClass}`;
+          ? `flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-center text-sm font-bold uppercase transition active:scale-[0.99] ${toneClass}`
+          : `flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-center text-sm font-bold uppercase transition active:scale-[0.99] ${toneClass}`;
     if (businesses.length === 0) {
       return (
         <Link href={zeroHref} className={fullClass}>

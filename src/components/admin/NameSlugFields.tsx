@@ -77,7 +77,7 @@ export default function NameSlugFields({
           className={inputClass}
         />
         <span className="mt-1 block text-xs text-ink/45">
-          {slugHint ?? "Auto-generated from the name — edit only if you need a specific URL."}
+          {slugHint ?? "Auto-generated from the name. Edit only if you need a specific URL."}
         </span>
       </label>
     </div>

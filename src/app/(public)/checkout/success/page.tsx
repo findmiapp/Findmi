@@ -30,7 +30,7 @@ export default async function CheckoutSuccessPage({
     <div className="mx-auto max-w-lg px-6 py-16 text-center">
       {order?.payment_status === "paid" ? (
         <>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Thanks — order confirmed!</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Thanks, order confirmed!</h1>
           <p className="mt-2 text-sm text-ink/60">
             Order {order.order_number} · {formatCurrency(Number(order.total_charged))}
           </p>
@@ -40,13 +40,13 @@ export default async function CheckoutSuccessPage({
         <>
           <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Confirming your payment…</h1>
           <p className="mt-2 text-sm text-ink/60">
-            Order {order.order_number} is still finalizing — refresh this page in a moment.
+            Order {order.order_number} is still finalizing. Refresh this page in a moment.
           </p>
         </>
       ) : (
         <>
           <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Order not found</h1>
-          <p className="mt-2 text-sm text-ink/60">We couldn&rsquo;t find that order — check your email for a confirmation.</p>
+          <p className="mt-2 text-sm text-ink/60">We couldn&rsquo;t find that order. Check your email for a confirmation.</p>
         </>
       )}
       <Link

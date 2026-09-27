@@ -46,7 +46,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-11 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-11 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 // Event Manager V3 — replaces the old eight-tab inventory (Overview /
 // Event Details / Dates / Location / Findmi Area / Gallery / Businesses /
@@ -75,7 +75,7 @@ const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
   invited: "Invited",
   applied: "Pending (Applied)",
   pending: "Pending",
-  approved: "Approved — Confirmed",
+  approved: "Approved: Confirmed",
   declined: "Declined",
 };
 
@@ -333,7 +333,7 @@ export default async function ManageEventPage({
 
       {isAdminElevated && (
         <div className="mx-auto mb-4 max-w-md rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-bold text-amber-800">Admin mode — you are managing {event.name} with elevated access.</p>
+          <p className="text-sm font-bold text-amber-800">Admin mode: you are managing {event.name} with elevated access.</p>
           <Link
             href={`/admin/events/${id}`}
             className="mt-1.5 inline-block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
@@ -608,7 +608,7 @@ export default async function ManageEventPage({
                 </div>
               </div>
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">About the Venue — Gallery</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">About the Venue: Gallery</p>
                 <div className="mt-2">
                   <MemberEventGalleryField eventId={id} name="venue_image_url" initialUrls={result.venueImages} />
                 </div>
@@ -629,14 +629,14 @@ export default async function ManageEventPage({
                   {selectedMarket
                     ? `Findmi area: ${selectedMarket.name}${
                         event.market_area_id
-                          ? ` — ${
+                          ? `, ${
                               marketsWithAreas.find((m) => m.id === event.market_id)?.areas.find((a) => a.id === event.market_area_id)
                                 ?.name ?? "specific area assigned"
                             }`
                           : ""
                       }`
                     : pendingMarketRequest
-                      ? `Findmi area pending review — ${pendingMarketRequest.requestedText}`
+                      ? `Findmi area pending review: ${pendingMarketRequest.requestedText}`
                       : "No Findmi area selected yet."}
                 </p>
                 <form action={updateMemberEventMarket.bind(null, id)} className="mt-3 flex flex-col gap-3">
@@ -735,7 +735,7 @@ export default async function ManageEventPage({
 
                       <form action={updateMemberEventLocation.bind(null, id)} className="flex flex-col gap-3 border-t border-black/10 pt-4">
                         <p className="text-xs font-medium text-ink/60">
-                          Location — search for an existing Findmi Location, or enter your venue manually if it isn&rsquo;t on Findmi yet.
+                          Location: search for an existing Findmi Location, or enter your venue manually if it isn&rsquo;t on Findmi yet.
                         </p>
                         <EventLocationField
                           initialLocation={matchedEventLocation}

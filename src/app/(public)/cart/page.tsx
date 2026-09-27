@@ -95,7 +95,7 @@ export default function CartPage() {
 
       {quote?.hasUnavailable && (
         <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Some items in your cart are no longer available and won&rsquo;t be included at checkout — you can remove them below.
+          Some items in your cart are no longer available and won&rsquo;t be included at checkout. You can remove them below.
         </p>
       )}
 
@@ -218,7 +218,7 @@ function CartLineRow({ line, onChanged }: { line: CartLineQuote; onChanged: () =
               >
                 {line.availableFulfillmentOptions.map((o) => (
                   <option key={`${o.method}:${o.appearanceId ?? ""}`} value={`${o.method}:${o.appearanceId ?? ""}`}>
-                    {o.label} {o.price > 0 ? `— ${formatCurrency(o.price)}` : "— Free"}
+                    {o.label} {o.price > 0 ? `(${formatCurrency(o.price)})` : "(Free)"}
                   </option>
                 ))}
               </select>

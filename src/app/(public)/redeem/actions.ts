@@ -105,13 +105,13 @@ export async function redeemProInvite(code: string, formData: FormData) {
         type: "pro_invite_redeemed_event_management",
         subject: "Event Management access activated",
         heading: "Event Management access activated",
-        body: ["Your Findmi Pro Invite was redeemed — you can now create and manage Events on Findmi."],
+        body: ["Your Findmi Pro Invite was redeemed. You can now create and manage Events on Findmi."],
         actionLabel: "Add an Event",
         actionUrl: "/account",
       });
     }
     await notifyAdmin({
-      subject: "Pro Invite redeemed — Event Management",
+      subject: "Pro Invite redeemed: Event Management",
       heading: "Pro Invite redeemed",
       body: [`Code: ${code}`, "Purpose: Event Management", `Redeemed by: ${user.email ?? user.id}`],
       actionLabel: "View Pro Invites",
@@ -166,7 +166,7 @@ export async function redeemProInvite(code: string, formData: FormData) {
     await sendProductNotification({
       to: [user.email],
       type: "pro_invite_redeemed_business_pro",
-      subject: `You're Pro — ${result.business_name}`,
+      subject: `You're Pro: ${result.business_name}`,
       heading: "Your Pro Invite was redeemed",
       body: [`${result.business_name} now has Findmi Pro, granted until ${grantedUntilLabel}.`],
       actionLabel: `Manage ${result.business_name}`,
@@ -174,7 +174,7 @@ export async function redeemProInvite(code: string, formData: FormData) {
     });
   }
   await notifyAdmin({
-    subject: `Pro Invite redeemed — ${result.business_name}`,
+    subject: `Pro Invite redeemed: ${result.business_name}`,
     heading: "Pro Invite redeemed",
     body: [
       `Code: ${code}`,

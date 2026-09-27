@@ -125,7 +125,7 @@ export default function HomepageBusinessRow({
         <p className="px-4 text-sm text-ink/45 sm:px-6">Loading…</p>
       ) : failed ? (
         <div className="px-4 sm:px-6">
-          <p className="text-sm text-ink/45">Couldn&rsquo;t load this — try again.</p>
+          <p className="text-sm text-ink/45">Couldn&rsquo;t load this. Try again.</p>
           <button
             type="button"
             onClick={() => activeCategory && loadCategory(activeCategory)}

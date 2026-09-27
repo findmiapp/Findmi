@@ -45,7 +45,7 @@ async function notifySalesInbox(inquiryId: string, subject: string, body: string
       heading: subject,
       body,
       footerLabel: "Findmi Sales Inquiry",
-      footerNote: "Submitted via /join — Multi-Region / National.",
+      footerNote: "Submitted via /join: Multi-Region / National.",
     });
   } catch (err) {
     // The inquiry row already exists — a notification failure here is
@@ -154,7 +154,7 @@ export async function submitSalesInquiry(formData: FormData) {
     `Cities / markets currently served: ${cityMarketCount}`,
     `Regions / areas served or interested in: ${regions}`,
     `Goals: ${goals}`,
-    "Source: /join — Multi-Region / National",
+    "Source: /join: Multi-Region / National",
   ];
 
   // Unify Site-Wide Communications pass — this lead also becomes a real
@@ -190,7 +190,7 @@ export async function submitSalesInquiry(formData: FormData) {
   // Best-effort and strictly AFTER the row is durably persisted — see
   // notifySalesInbox's own note. Its outcome never changes what the
   // prospect sees next.
-  await notifySalesInbox(salesInquiryId, `New Findmi Multi-Region Sales Inquiry — ${businessName}`, summaryLines);
+  await notifySalesInbox(salesInquiryId, `New Findmi Multi-Region Sales Inquiry: ${businessName}`, summaryLines);
 
   redirect(SUCCESS_PATH);
 }

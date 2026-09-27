@@ -36,7 +36,7 @@ export function SuccessPanel({ onboarding }: { onboarding: OnboardingLink | null
         />
       ) : (
         <p className="mt-8 text-sm text-ink/50">
-          Onboarding form coming shortly — we&rsquo;ll be in touch by email.
+          Onboarding form coming shortly. We&rsquo;ll be in touch by email.
         </p>
       )}
 
@@ -63,7 +63,7 @@ export function UnverifiedPanel() {
         We couldn&rsquo;t find that membership.
       </h1>
       <p className="mt-4 max-w-md text-lg text-ink/60">
-        If you just paid, check your email for a receipt — we&rsquo;ll follow up shortly. If something looks
+        If you just paid, check your email for a receipt. We&rsquo;ll follow up shortly. If something looks
         wrong, reach out and we&rsquo;ll sort it out.
       </p>
       <Link
@@ -88,7 +88,7 @@ export function ConfirmingPanel() {
         Just a moment.
       </h1>
       <p className="mt-4 max-w-md text-lg text-ink/60">
-        We&rsquo;re confirming your payment with Stripe — this usually takes a few seconds.
+        We&rsquo;re confirming your payment with Stripe. This usually takes a few seconds.
       </p>
     </div>
   );
@@ -107,7 +107,7 @@ export function StillConfirmingPanel({ onRetry }: { onRetry: () => void }) {
       </h1>
       <p className="mt-4 max-w-md text-lg text-ink/60">
         Stripe is taking a little longer than usual to confirm your payment. We&rsquo;ll email you the moment
-        it&rsquo;s done — or check again now.
+        it&rsquo;s done, or check again now.
       </p>
       <button
         type="button"

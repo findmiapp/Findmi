@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 /** Native Business Onboarding Pass 2 — the smallest native "can't find
  * your business, add it" entry point. Minimal fields only (see this
@@ -118,7 +118,7 @@ export default async function AddBusinessPage({
         </p>
       ) : (
         <p className="mt-2 text-sm text-ink/60">
-          Get started free — no credit card required. You&rsquo;ll own and manage your business right away, and
+          Get started free, no credit card required. You&rsquo;ll own and manage your business right away, and
           Findmi will review it before it appears in discovery. Pro is available anytime below if you want more.
         </p>
       )}
@@ -257,7 +257,7 @@ export default async function AddBusinessPage({
                 <p className="text-sm font-bold text-findmi-700">Your Findmi Pro invite is ready.</p>
                 <p className="mt-1.5 text-sm text-findmi-700">
                   First, add the business you want to use with Findmi below. We&rsquo;ll apply your complimentary Pro
-                  access to it automatically once it&rsquo;s created — no payment required.
+                  access to it automatically once it&rsquo;s created. No payment required.
                 </p>
               </div>
             </>
@@ -331,7 +331,7 @@ export default async function AddBusinessPage({
                   className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
                 />
                 <p className="mt-1.5 text-xs text-ink/40">
-                  A valid code applies complimentary Pro after your business is created — no payment required.
+                  A valid code applies complimentary Pro after your business is created. No payment required.
                 </p>
               </details>
             </div>
@@ -432,7 +432,7 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
 
       <div className="rounded-2xl bg-findmi-50 p-3">
         <p className="text-sm font-bold text-ink">Analytics</p>
-        <p className="mt-0.5 text-xs font-semibold text-ink/75">See what&rsquo;s working — and grow it.</p>
+        <p className="mt-0.5 text-xs font-semibold text-ink/75">See what&rsquo;s working, and grow it.</p>
         <p className="mt-1 text-xs text-ink/60">Understand how people discover and engage with your business.</p>
       </div>
 
@@ -499,7 +499,7 @@ function FreePlanOption({ dominant }: { dominant: boolean }) {
       <div className="rounded-2xl bg-findmi-50 p-3">
         <p className="text-sm font-bold text-ink">Your Findmi page, live today</p>
         <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers who you are and where you&rsquo;ll be next.</p>
-        <p className="mt-1 text-xs text-ink/60">Create your business page now — upgrade anytime, no pressure.</p>
+        <p className="mt-1 text-xs text-ink/60">Create your business page now. Upgrade anytime, no pressure.</p>
       </div>
 
       {/* Free Tier Entitlement Reset V1 — was "Next 3 upcoming

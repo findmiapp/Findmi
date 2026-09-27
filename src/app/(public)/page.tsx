@@ -1,9 +1,9 @@
 import Link from "next/link";
-import ProductCard from "@/components/ProductCard";
 import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
 import HomeWeather from "@/components/HomeWeather";
 import HomeHero from "@/components/HomeHero";
+import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import Section, { HorizontalScroller } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
@@ -13,7 +13,6 @@ import {
   getConsumerVisibleMarketsWithAreas,
   getFeaturedBusinesses,
   getHomeCategories,
-  getHomepageRowProducts,
   getMarketAreaLabel,
   getNextAppearanceHints,
   getUpcomingEvents,
@@ -40,6 +39,10 @@ export const revalidate = 60;
 // never renders with a visibly blank heading/subtitle.
 const BRANDS_ROW_HEADING_FALLBACK = "Brands We Love";
 const BRANDS_ROW_SUBTITLE_FALLBACK = "Real businesses, worth discovering";
+
+// Homepage Content Priority pass — same real example business /join's own
+// Native Rose Showcase section uses (see PROOF_BUSINESS_SLUG there).
+const NATIVE_ROSE_SLUG = "the-native-rose";
 
 // Consumer Home V1 — "Explore What You're Into" light/pastel category
 // treatment. Purely a cyclic presentation array, applied by index — no new
@@ -74,27 +77,14 @@ export default async function HomePage({
   // applyOccurrenceOverride, getBusinessesForEvent,
   // getOccurrenceBusinessRosters) are untouched in lib/data.ts — this page
   // simply doesn't need their extra detail anymore.
-  const [categories, nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, wantItProducts] =
-    await Promise.all([
-      getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
-      getUpcomingEvents(10, "anytime", marketSlug, areaSlug),
-      getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
-      getVisibleHomepageRows(),
-      getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
-      getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
-      // Consumer Experience V1 — "Want it." Real marketplace-approved
-      // products (marketplace_status='approved', is_active=true), ordered
-      // deterministically (is_featured first as a tie-break, then
-      // home_sort_order, then name — see getHomepageRowProducts) rather
-      // than REQUIRING is_featured=true the way a founder-configured
-      // "products" Homepage Row's featured_only setting can. That
-      // combination (marketplace_status='approved' AND is_featured=true)
-      // is exactly what was producing only one visible product on
-      // production — this consumer discovery rail draws from the same
-      // real approved products directly instead, without changing what
-      // is_featured means anywhere else.
-      getHomepageRowProducts({ limit: 10 }),
-    ]);
+  const [categories, nextRaw, heroFallbackBrands, homepageRows, siteSections, markets] = await Promise.all([
+    getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
+    getUpcomingEvents(10, "anytime", marketSlug, areaSlug),
+    getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
+    getVisibleHomepageRows(),
+    getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
+    getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
+  ]);
 
   const nextEvents = await attachEventCategories(nextRaw);
 
@@ -103,15 +93,6 @@ export default async function HomePage({
   // query functions every other feed on the site already uses. See
   // lib/homepage-rows.ts.
   const resolvedRows = await Promise.all(homepageRows.map((row) => resolveHomepageRowItems(row, marketSlug, areaSlug)));
-
-  // Consumer Experience V1 — a founder-configured "products" Homepage Row
-  // (if one exists) still supplies this rail's HEADING copy (title/
-  // subtitle stay founder-editable via /admin/site/homepage/rows), but its
-  // ITEMS come from wantItProducts above, not resolvedRows — see that
-  // fetch's own note. A founder who never configured one still gets a
-  // sensible default heading; the rail itself never depends on the row
-  // existing at all.
-  const productsRow = homepageRows.find((row) => row.content_type === "products") ?? null;
 
   // Brands We Love — identified by content type (the first "businesses"
   // row), not by its founder-editable title text, since that title isn't
@@ -205,76 +186,13 @@ export default async function HomePage({
         <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
       </div>
 
-      {/* Lightweight taste layer — real business-category taxonomy (same
-          getHomeCategories() fetch, same /businesses?category= links this
-          always used), sitting directly under search. Compact chip row,
-          not a full section — a lens onto discovery, not a second
-          directory listing. */}
-      {categories.length > 0 && (
-        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">{exploreSec.heading}</p>
-          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {categories.map((c, i) => (
-              <Link
-                key={c.id}
-                href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}${marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`}
-                className={`flex min-w-[100px] shrink-0 items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition hover:opacity-80 ${CATEGORY_TINTS[i % CATEGORY_TINTS.length]}`}
-              >
-                {c.name}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* WANT IT — real, approved marketplace products (see wantItProducts
-          above), collectible-object entity grammar (square photo, brand
-          byline, price, a "Want" heart — never a checkout-forward
-          treatment). Founder-editable heading when a "products" Homepage
-          Row exists; a sensible default otherwise. Honest empty state:
-          renders nothing if there are genuinely no approved products yet. */}
-      {wantItProducts.length > 0 && (
-        <Section
-          title={productsRow?.title || "Want it"}
-          subtitle={productsRow?.subtitle || "Real products from FindMi businesses"}
-          viewAllHref="/marketplace"
-          impressionPayload={{
-            event_name: "discovery_section_impression",
-            page_type: "home",
-            page_path: "/",
-            metadata: { content_type: "products", mode: "consumer_discovery" },
-          }}
-        >
-          <HorizontalScroller>
-            {wantItProducts.map((p, i) => (
-              <div key={p.id} className="w-[42%] min-w-[150px] max-w-[176px] shrink-0 sm:w-44">
-                <ProductCard
-                  product={p}
-                  analyticsContext={{ pageType: "home", placement: "homepage_want_it", position: i + 1 }}
-                />
-              </div>
-            ))}
-          </HorizontalScroller>
-        </Section>
-      )}
-
-      {/* BRANDS SHOWING UP — the existing Brands We Love row/component,
-          completely untouched logic and geometry (protected width fix). */}
-      {brandsRowIndex !== -1 && (
-        <HomepageRowSection
-          row={homepageRows[brandsRowIndex]}
-          resolved={resolvedRows[brandsRowIndex]}
-          marketSlug={marketSlug}
-          areaSlug={areaSlug}
-          isBrandsRow
-        />
-      )}
-
-      {/* MUST DOS / WHAT'S HAPPENING — the same real chronological event
-          query as before. Event-card geometry/treatment (HomeEventCard)
-          and the AreaPicker/Today/This Weekend controls are completely
-          untouched. */}
-      <div className="mx-auto max-w-6xl pt-8">
+      {/* Homepage Content Priority pass — MUST DOS / WHAT'S HAPPENING is now
+          the first major content row after the opening/search area (was
+          third, after Brands We Love and category pills). Same real
+          chronological event query, event-card geometry/treatment
+          (HomeEventCard), and AreaPicker/Today/This Weekend controls as
+          before — placement only, nothing about this row itself changed. */}
+      <div className="mx-auto max-w-6xl pt-6">
         <div className="px-4 sm:px-6">
           <p className="mb-1 text-xs font-bold uppercase tracking-wide text-findmi-700">Must Dos</p>
           <div className="flex items-end justify-between gap-4">
@@ -305,13 +223,13 @@ export default async function HomePage({
             )}
             <Link
               href="/discover?when=today"
-              className="flex h-10 shrink-0 items-center justify-center rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+              className="flex h-10 shrink-0 items-center justify-center rounded-xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
             >
               Today
             </Link>
             <Link
               href="/discover?when=weekend"
-              className="flex h-10 shrink-0 items-center justify-center rounded-full border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
+              className="flex h-10 shrink-0 items-center justify-center rounded-xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
             >
               This Weekend
             </Link>
@@ -332,6 +250,79 @@ export default async function HomePage({
           </div>
         )}
       </div>
+
+      {/* Homepage Content Priority pass — NATIVE ROSE DEMO, second major
+          row: what a real Findmi business presence looks like. Reuses
+          BusinessShowcaseCarousel unmodified (same real screenshots,
+          same component /join already uses) rather than a new UI — see
+          that component's own comment. Copy also reused verbatim from
+          /join's own Native Rose Showcase section. */}
+      <div className="mx-auto max-w-4xl px-4 pt-10 sm:px-6 sm:pt-12">
+        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">
+          See what your Findmi can become.
+        </p>
+        <p className="mx-auto mt-1.5 max-w-sm text-center text-sm text-ink/60">
+          One page. Your business, products and everywhere you&rsquo;ll be next.
+        </p>
+        <div className="mt-4">
+          <BusinessShowcaseCarousel />
+        </div>
+        <div className="mt-3 flex justify-center">
+          <a
+            href={`/business/${NATIVE_ROSE_SLUG}`}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
+          >
+            View live profile <span aria-hidden>→</span>
+          </a>
+        </div>
+      </div>
+
+      {/* Homepage Content Priority pass — BRANDS WE LOVE, third major row
+          (was second, before What's Happening). Same existing row/
+          component, completely untouched logic and geometry (protected
+          width fix) — placement only. */}
+      {brandsRowIndex !== -1 && (
+        <HomepageRowSection
+          row={homepageRows[brandsRowIndex]}
+          resolved={resolvedRows[brandsRowIndex]}
+          marketSlug={marketSlug}
+          areaSlug={areaSlug}
+          isBrandsRow
+        />
+      )}
+
+      {/* Homepage Content Priority pass — category discovery pushed below
+          the first three real-activity rows (was directly under search).
+          Same real business-category taxonomy (getHomeCategories()),
+          same /businesses?category= links, same compact chip row —
+          placement only. */}
+      {categories.length > 0 && (
+        <div className="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">{exploreSec.heading}</p>
+          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {categories.map((c, i) => (
+              <Link
+                key={c.id}
+                href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}${marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`}
+                className={`flex min-w-[100px] shrink-0 items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition hover:opacity-80 ${CATEGORY_TINTS[i % CATEGORY_TINTS.length]}`}
+              >
+                {c.name}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* UI + Copy Polish pass — the homepage "Want it" products section
+          is temporarily hidden (display only): Product creation,
+          management, moderation, marketplace eligibility, public business-
+          profile display, and analytics are all completely unaffected —
+          see /marketplace and each business's own public profile, which
+          still show products normally. getHomepageRowProducts (lib/data.ts)
+          is simply no longer called from this page, so no extra query
+          runs for a section that isn't rendered. To restore: reintroduce
+          the fetch and the Section block that used to sit here (see git
+          history), unchanged. */}
 
       {/* Any remaining founder-managed Homepage Row (rare — e.g. a second
           "events" content-type row). Unchanged component/logic. */}
@@ -357,7 +348,7 @@ export default async function HomePage({
             <p className="max-w-md text-sm text-white/70">{closingSec.body}</p>
             <Link
               href={closingSec.ctaUrl ?? "/join"}
-              className="rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              className="rounded-xl bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               {closingSec.ctaLabel}
             </Link>
@@ -505,8 +496,8 @@ async function HomepageRowSection({
     );
   }
 
-  // Any other founder row content type (products rows are never routed
-  // through here anymore — see productsRow/wantItProducts above).
+  // Any other founder row content type (products rows are excluded from
+  // otherRowIndices above and never routed through here).
   return null;
 }
 

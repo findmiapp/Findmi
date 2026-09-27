@@ -60,7 +60,7 @@ export default function SavedPage() {
     <div className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Saved</h1>
       <p className="mt-2 text-ink/60">
-        Kept on this device — tap the bookmark on a business, event, or product to save it here.
+        Kept on this device. Tap the bookmark on a business, event, or product to save it here.
       </p>
 
       {loading ? null : empty ? (

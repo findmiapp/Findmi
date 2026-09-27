@@ -29,7 +29,7 @@ export async function createNativeInquiry(formData: FormData) {
     appendQuery(businessId ? `/account/inquiries/new` : "/account/inquiries", {
       ...(businessId ? { business: businessId } : {}),
       ...(productId ? { product: productId } : {}),
-      error: "This way of messaging a business has moved — use the Inquire button on the business or product page instead.",
+      error: "This way of messaging a business has moved. Use the Inquire button on the business or product page instead.",
     })
   );
 }

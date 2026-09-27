@@ -59,7 +59,7 @@ export async function requestMissingArea(input: { text: string; email?: string }
     // than landing in the review queue at all.
     if (created && !match) {
       await notifyAdmin({
-        subject: `Market/Area request — ${text}`,
+        subject: `Market/Area request: ${text}`,
         heading: "New Market/Area request",
         body: [`Requested: ${text}`, "Source: Consumer Area Picker"],
         actionLabel: "Review Market Requests",

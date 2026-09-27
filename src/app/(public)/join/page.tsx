@@ -536,7 +536,7 @@ function ProCard({ card, extra, ctaHref }: { card: ResolvedJoinCard; extra: Reso
 
       <a
         href={ctaHref}
-        className="mt-6 flex h-12 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        className="mt-6 flex h-12 items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
         {ctaLabel}
       </a>
@@ -567,7 +567,7 @@ function FreeSection({ card, ctaHref }: { card: ResolvedJoinFreeCard; ctaHref: s
 
       <Link
         href={ctaHref}
-        className="mt-3 flex h-11 items-center justify-center rounded-full border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
+        className="mt-3 flex h-11 items-center justify-center rounded-xl border border-black/10 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
       >
         {ctaLabel}
       </Link>
@@ -707,7 +707,7 @@ function RegionalSection({ card }: { card: ResolvedJoinCard }) {
 
       <Link
         href="/join/sales"
-        className="mt-5 inline-flex h-11 items-center justify-center rounded-full border border-black/15 px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+        className="mt-5 inline-flex h-11 items-center justify-center rounded-xl border border-black/15 px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
       >
         {ctaLabel}
       </Link>
@@ -774,7 +774,7 @@ function FinalCta({
         <div className="mt-6 flex flex-col items-center gap-4">
           <Link
             href={freeCtaHref}
-            className="flex h-12 w-full max-w-xs items-center justify-center rounded-full bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+            className="flex h-12 w-full max-w-xs items-center justify-center rounded-xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
             Get Started Free
           </Link>

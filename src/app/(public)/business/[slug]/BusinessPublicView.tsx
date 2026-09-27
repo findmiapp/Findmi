@@ -417,19 +417,19 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6">
           <div className="flex flex-col gap-2 rounded-2xl border border-findmi/20 bg-findmi-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Preview Mode — Pending Review</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Preview Mode: Pending Review</p>
               <p className="mt-0.5 text-sm text-ink/70">This page is only visible to you until Findmi approves it.</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Link
                 href={`/account/business/${business.id}`}
-                className="rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                className="rounded-lg bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               >
                 Edit Business
               </Link>
               <Link
                 href="/account"
-                className="rounded-full border border-findmi/30 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/50"
+                className="rounded-lg border border-findmi/30 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/50"
               >
                 Back to Dashboard
               </Link>
@@ -668,8 +668,8 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 topics={enabledInquiryTopics}
                 className={
                   appearances.length > 0
-                    ? "flex h-11 w-full items-center justify-center rounded-full border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-                    : "flex h-12 w-full items-center justify-center rounded-full bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    ? "flex h-11 w-full items-center justify-center rounded-xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    : "flex h-12 w-full items-center justify-center rounded-xl bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                 }
               />
             </div>
@@ -758,7 +758,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                   // that actually rotates open/closed instead of vanishing,
                   // and a count so "how many more" is clear before opening.
                   <details className="group">
-                    <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 rounded-full border border-black/10 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/30 [&::-webkit-details-marker]:hidden">
+                    <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 rounded-xl border border-black/10 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/30 [&::-webkit-details-marker]:hidden">
                       <span className="group-open:hidden">Show {appearances.length - 3} More</span>
                       <span className="hidden group-open:inline">Show Less</span>
                       <ChevronGlyph className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-open:rotate-90" />

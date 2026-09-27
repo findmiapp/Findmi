@@ -41,7 +41,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-11 items-center justify-center rounded-full bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-11 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 // Location Manager V3 — replaces the old seven-tab inventory (Overview /
 // Venue Details / Gallery / Contact / Links / Findmi Area / What's
@@ -320,7 +320,7 @@ export default async function ManageLocationPage({
 
       {isAdminElevated && (
         <div className="mx-auto mb-4 max-w-md rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-bold text-amber-800">Admin mode — you are managing {location.name} with elevated access.</p>
+          <p className="text-sm font-bold text-amber-800">Admin mode: you are managing {location.name} with elevated access.</p>
           <Link
             href={`/admin/locations/${id}`}
             className="mt-1.5 inline-block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
@@ -353,7 +353,7 @@ export default async function ManageLocationPage({
 
       {created === "1" && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          Location created — Findmi will review it before it appears in discovery.
+          Location created. Findmi will review it before it appears in discovery.
         </p>
       )}
       {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
@@ -403,7 +403,7 @@ export default async function ManageLocationPage({
               </Link>
               {!eventEligible && (
                 <p className="mt-2 text-xs text-ink/45">
-                  Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
+                  Requires Organizer Access / qualifying Findmi membership. The next screen explains how to get it.
                 </p>
               )}
             </div>
@@ -468,7 +468,7 @@ export default async function ManageLocationPage({
                   </Link>
                   {!eventEligible && (
                     <p className="mt-2 text-xs text-ink/45">
-                      Requires Organizer Access / qualifying Findmi membership — the next screen explains how to get it.
+                      Requires Organizer Access / qualifying Findmi membership. The next screen explains how to get it.
                     </p>
                   )}
                 </div>
@@ -596,7 +596,7 @@ export default async function ManageLocationPage({
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Identity</p>
               <p className="mt-2 text-sm font-semibold text-ink">{location.name}</p>
-              <p className="mt-0.5 text-xs text-ink/40">Managed by Findmi — contact support for a correction.</p>
+              <p className="mt-0.5 text-xs text-ink/40">Managed by Findmi. Contact support for a correction.</p>
               <form action={updateMemberLocationCategory.bind(null, id)} className="mt-3 flex flex-col items-start gap-3">
                 <CategorySubcategoryField categories={categories} defaultCategoryId={location.category_id} />
                 <button type="submit" className={`w-fit ${primaryButtonClass}`}>
@@ -695,7 +695,7 @@ export default async function ManageLocationPage({
               <p className="mt-2 text-sm text-ink">
                 {[location.address, cityStateZip(location.city, location.state, location.postal_code)].filter(Boolean).join(", ") || "Not set"}
               </p>
-              <p className="mt-0.5 text-xs text-ink/40">Managed by Findmi — contact support for a correction.</p>
+              <p className="mt-0.5 text-xs text-ink/40">Managed by Findmi. Contact support for a correction.</p>
             </div>
 
             {/* Discovery settings (Findmi Area) — visually secondary,
@@ -707,9 +707,9 @@ export default async function ManageLocationPage({
               <div className="mt-3">
                 <p className="text-sm text-ink/60">
                   {selectedMarket
-                    ? `Findmi area: ${selectedMarket.name}${selectedArea ? ` — ${selectedArea.name}` : ""}`
+                    ? `Findmi area: ${selectedMarket.name}${selectedArea ? `, ${selectedArea.name}` : ""}`
                     : pendingMarketRequest
-                      ? `Findmi area pending review — ${pendingMarketRequest.requestedText}`
+                      ? `Findmi area pending review: ${pendingMarketRequest.requestedText}`
                       : "No Findmi area selected yet."}
                 </p>
                 <form action={updateMemberLocationMarket.bind(null, id)} className="mt-3 flex flex-col gap-3">

@@ -108,7 +108,7 @@ const CREATE_LOCATION_FRIENDLY_ERROR: Record<string, string> = {
   user_required: "You need to be signed in to create a venue.",
   name_required: "Venue name is required.",
   slug_required: "Venue name is required to generate a URL.",
-  market_choice_ambiguous: "Choose an existing Market OR request one — not both.",
+  market_choice_ambiguous: "Choose an existing Market OR request one, not both.",
   invalid_market: "That market isn't available. Choose another.",
 };
 
@@ -162,7 +162,7 @@ export async function createMemberLocation(formData: FormData) {
   if (!name) fail("Venue name is required.");
 
   if (marketId && requestedMarketTextRaw) {
-    fail("Choose an existing Market OR request one — not both.");
+    fail("Choose an existing Market OR request one, not both.");
   }
 
   const duplicate = (await findLikelyDuplicateLocations(admin, { name: name!, address, city, state }))[0] ?? null;
@@ -437,7 +437,7 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
   const marketId = str(formData, "market_id");
   const requestedMarketTextRaw = str(formData, "requested_market_text");
   if (marketId && requestedMarketTextRaw) {
-    redirect(appendQuery(redirectPath, { error: "Choose an existing Market OR request one — not both." }));
+    redirect(appendQuery(redirectPath, { error: "Choose an existing Market OR request one, not both." }));
   }
 
   let effectiveMarketId = marketId;
@@ -467,7 +467,7 @@ export async function updateMemberLocationMarket(locationId: string, formData: F
         // with the real venue name instead of a raw id.
         const venueName = location?.name ?? "Unknown venue";
         await notifyAdmin({
-          subject: `Market/Area request — ${venueName}`,
+          subject: `Market/Area request: ${venueName}`,
           heading: "New Market/Area request",
           body: [`Requested: ${requestedMarketTextRaw}`, `Venue: ${venueName}`],
           actionLabel: "Review Market Requests",

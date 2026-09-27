@@ -119,7 +119,7 @@ export default function ProductFieldsForm({
           type="text"
           name="price_label"
           defaultValue={defaultValues.price_label}
-          placeholder='e.g. "From $20" — used when there&rsquo;s no exact Price above'
+          placeholder='e.g. "From $20", used when there&rsquo;s no exact Price above'
           className={inputClass}
         />
       </label>
@@ -171,7 +171,7 @@ export default function ProductFieldsForm({
       )}
       <button
         type="submit"
-        className="mt-1 w-fit rounded-full bg-findmi px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        className="mt-1 w-fit rounded-xl bg-findmi px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
         {submitLabel}
       </button>

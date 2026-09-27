@@ -10,8 +10,8 @@ const selectClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink focus:border-ink/30 focus:outline-none";
 
 const SECTION_TYPE_OPTIONS: { value: HomepageRowSectionType; label: string }[] = [
-  { value: "feed", label: "Feed — shows real content" },
-  { value: "group", label: "Group — a heading over child sections" },
+  { value: "feed", label: "Feed: shows real content" },
+  { value: "group", label: "Group: a heading over child sections" },
 ];
 
 const CONTENT_TYPE_OPTIONS: { value: HomepageRowContentType; label: string }[] = [
@@ -22,9 +22,9 @@ const CONTENT_TYPE_OPTIONS: { value: HomepageRowContentType; label: string }[] =
 ];
 
 const MODE_OPTIONS: { value: HomepageRowMode; label: string }[] = [
-  { value: "dynamic", label: "Dynamic — fills automatically from filters" },
-  { value: "curated", label: "Curated — you hand-pick exactly what shows" },
-  { value: "hybrid", label: "Hybrid — pin some, auto-fill the rest" },
+  { value: "dynamic", label: "Dynamic: fills automatically from filters" },
+  { value: "curated", label: "Curated: you hand-pick exactly what shows" },
+  { value: "hybrid", label: "Hybrid: pin some, auto-fill the rest" },
 ];
 
 type CategoryOption = { slug: string; name: string };
@@ -96,7 +96,7 @@ export default function DiscoverySectionCard({
 
         {isGroup ? (
           <p className="rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-3 text-xs text-ink/50">
-            A Group has no content of its own — it&rsquo;s a heading over up to one level of child sections.
+            A Group has no content of its own. It&rsquo;s a heading over up to one level of child sections.
             Move a Feed section under this Group from that section&rsquo;s own Move panel below.
           </p>
         ) : (
@@ -119,7 +119,7 @@ export default function DiscoverySectionCard({
 
             {isShowcase ? (
               <p className="rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-3 text-xs text-ink/50">
-                Shows Findmi&rsquo;s existing business-acquisition showcase — no items to pick.
+                Shows Findmi&rsquo;s existing business-acquisition showcase, no items to pick.
               </p>
             ) : (
               <>
@@ -205,7 +205,7 @@ export default function DiscoverySectionCard({
 
                 {mode === "hybrid" && (
                   <div>
-                    <p className="mb-1.5 text-sm font-medium text-ink">Pinned — render first, in this order</p>
+                    <p className="mb-1.5 text-sm font-medium text-ink">Pinned: render first, in this order</p>
                     <HomepageRowCuratedPicker
                       key={`pinned-${contentType}`}
                       entity={contentType}

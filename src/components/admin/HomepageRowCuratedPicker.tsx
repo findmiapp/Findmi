@@ -50,7 +50,7 @@ export default function HomepageRowCuratedPicker({
         onAdd={add}
       />
       {items.length === 0 ? (
-        <p className="mt-2 text-xs text-ink/45">Nothing picked yet — search above to add items, in the order you want them shown.</p>
+        <p className="mt-2 text-xs text-ink/45">Nothing picked yet. Search above to add items, in the order you want them shown.</p>
       ) : (
         <div className="mt-2 flex flex-col gap-1.5">
           {items.map((item, index) => (

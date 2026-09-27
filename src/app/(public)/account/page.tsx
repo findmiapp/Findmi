@@ -353,7 +353,7 @@ export default async function AccountHomePage({
           <div className="mt-3 flex shrink-0 gap-2 lg:mt-0">
             <Link
               href={`/business/${singleBusiness.slug}`}
-              className="flex h-9 items-center justify-center rounded-full border border-black/10 px-3.5 text-xs font-bold text-ink transition hover:border-black/20"
+              className="flex h-9 items-center justify-center rounded-xl border border-black/10 px-3.5 text-xs font-bold text-ink transition hover:border-black/20"
             >
               View Public Page
             </Link>
@@ -371,19 +371,19 @@ export default async function AccountHomePage({
       )}
       {eventManagementGranted === "1" && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-          Event Management access activated — you can now add an Event below.
+          Event Management access activated. You can now add an Event below.
         </p>
       )}
 
       {!profile?.email_verified_at && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <p>
-            <span className="font-semibold">Verify your email.</span> You can keep building your Findmi profile now —
-            verification is required for certain ownership actions, like claiming a listing.
+            <span className="font-semibold">Verify your email.</span> You can keep building your Findmi profile now.
+            Verification is required for certain ownership actions, like claiming a listing.
           </p>
           <Link
             href="/account/verify-email"
-            className="shrink-0 rounded-full border border-amber-300 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-amber-800 transition hover:bg-amber-100"
+            className="shrink-0 rounded-xl border border-amber-300 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-amber-800 transition hover:bg-amber-100"
           >
             Verify Email
           </Link>
@@ -491,7 +491,7 @@ export default async function AccountHomePage({
               }
             >
               {upcomingSchedule.length === 0 ? (
-                <CompactStatus label="No upcoming schedule — add where you'll be next so people can find you." />
+                <CompactStatus label="No upcoming schedule. Add where you'll be next so people can find you." />
               ) : (
                 <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {upcomingSchedule.map((item) => (
@@ -563,7 +563,7 @@ export default async function AccountHomePage({
               <p className="mt-1 text-xs text-ink/60">List your business, event, or location on Findmi.</p>
               <Link
                 href="/join"
-                className="mt-3 flex h-11 items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                className="mt-3 flex h-11 items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
               >
                 Get discovered
               </Link>
@@ -588,7 +588,7 @@ export default async function AccountHomePage({
                 </Link>
                 <Link
                   href="/join"
-                  className="flex h-9 w-fit items-center justify-center rounded-full bg-findmi px-4 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  className="flex h-9 w-fit items-center justify-center rounded-xl bg-findmi px-4 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
                 >
                   Upgrade to Pro
                 </Link>
@@ -618,7 +618,7 @@ export default async function AccountHomePage({
             />
             <button
               type="submit"
-              className="shrink-0 rounded-full border border-black/15 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+              className="shrink-0 rounded-xl border border-black/15 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
             >
               Apply
             </button>

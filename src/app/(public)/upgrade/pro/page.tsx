@@ -33,7 +33,7 @@ const CORE_BENEFITS = [
 ];
 
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 /** Pro Upgrade — Internal Checkout Handoff Foundation pass. The one
  * canonical internal surface for an EXISTING claimed business's owner/
@@ -122,7 +122,7 @@ export default async function UpgradeToProPage({
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
         <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink">{business.name} is already Pro</h1>
         <p className="mt-2 text-sm text-ink/60">
-          This business already has full Findmi Pro access — there&rsquo;s nothing more to upgrade.
+          This business already has full Findmi Pro access. There&rsquo;s nothing more to upgrade.
         </p>
         <Link href={manageHref} className={`mt-6 ${primaryButtonClass}`}>
           Manage Business

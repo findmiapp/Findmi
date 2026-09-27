@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "You",
-  description: "Your Findmi — saved businesses and what you're following.",
+  description: "Your Findmi: saved businesses and what you're following.",
 };
 
 export default function YouPage() {
@@ -29,7 +29,7 @@ export default function YouPage() {
         <div className="rounded-2xl border border-black/10 p-4">
           <p className="text-sm font-semibold text-ink">Following</p>
           <p className="text-xs text-ink/50">
-            When you follow a business, we email updates on where they&rsquo;ll be next — check
+            When you follow a business, we email updates on where they&rsquo;ll be next. Check
             your inbox.
           </p>
         </div>

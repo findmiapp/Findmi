@@ -97,7 +97,7 @@ export default function BusinessLogoCard({
     <div ref={impressionRef} className="group relative w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]">
       <Link
         href={href}
-        aria-label={`${business.name} — ${ctaLabel}`}
+        aria-label={`${business.name}: ${ctaLabel}`}
         className="absolute inset-0 z-10 rounded-3xl"
         onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
       />

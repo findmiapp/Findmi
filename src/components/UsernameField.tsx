@@ -92,7 +92,7 @@ export default function UsernameField({
       </div>
       <p className={`mt-1.5 text-xs font-medium ${statusColor}`}>
         {value.length === 0
-          ? "Choose a username — this becomes your Findmi URL."
+          ? "Choose a username. This becomes your Findmi URL."
           : value.length < MIN_LENGTH
             ? `At least ${MIN_LENGTH} characters.`
             : checking

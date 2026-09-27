@@ -16,7 +16,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-70"
+      className="rounded-xl bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-70"
     >
       {pending ? "Redirecting to Stripe…" : label}
     </button>
@@ -137,12 +137,12 @@ export default function PlanCheckoutForm({
           })}
         </div>
         <p className="mt-1.5 text-xs text-ink/45">
-          A national brand still only gets the markets its plan covers — broader coverage needs Pro or
+          A national brand still only gets the markets its plan covers. Broader coverage needs Pro or
           Multi-Region, not company size.
         </p>
       </div>
 
-      <SubmitButton label={`Continue to Payment — ${formatCurrency(plan.annual_price)}/year`} />
+      <SubmitButton label={`Continue to Payment (${formatCurrency(plan.annual_price)}/year)`} />
       <p className="text-center text-xs text-ink/40">Secure checkout via Stripe. Cancel anytime.</p>
     </form>
   );

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 /**
  * Progressive Email Verification pass — a small, dedicated verification
@@ -95,7 +95,7 @@ export default async function VerifyEmailPage({
         <>
           <p className="mt-3 text-sm text-ink/60">
             We&rsquo;ll send a verification link to <span className="font-semibold text-ink">{user.email}</span>.
-            Verification is required for certain ownership actions, like claiming an existing listing — it&rsquo;s
+            Verification is required for certain ownership actions, like claiming an existing listing, but it&rsquo;s
             never required to keep building your Findmi profile.
           </p>
 
@@ -113,8 +113,8 @@ export default async function VerifyEmailPage({
           ) : (
             <>
               <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
-                Verification link sent. Open that email on this device and tap the link to verify your account —
-                you&rsquo;ll be brought right back here, signed in.
+                Verification link sent. Open that email on this device and tap the link to verify your account.
+                You&rsquo;ll be brought right back here, signed in.
               </p>
               <form action={requestEmailVerification} className="mt-3">
                 <input type="hidden" name="next" value={next} />

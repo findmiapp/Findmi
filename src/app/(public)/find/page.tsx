@@ -19,7 +19,7 @@ import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics"
 
 export const metadata: Metadata = {
   title: "Find",
-  description: "Help me find something specific — search Findmi by what, where, and when.",
+  description: "Help me find something specific: search Findmi by what, where, and when.",
 };
 
 /**
@@ -184,7 +184,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   const selectedMarket = markets.find((m) => m.slug === marketSlug);
   const selectedArea = marketSlug ? selectedMarket?.areas.find((a) => a.slug === areaSlug) : undefined;
   const areaLabel = selectedArea
-    ? `${selectedArea.display_name || selectedArea.name} — ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
+    ? `${selectedArea.display_name || selectedArea.name}, ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
     : selectedMarket
       ? getMarketAreaLabel(selectedMarket)
       : undefined;
@@ -348,8 +348,8 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
           ) : (
             <p className="text-sm text-ink/50">
               {when === "anytime"
-                ? "Nothing here yet — widen What/Where, or check back soon."
-                : "Nothing in this window yet — try Next Up, widen What/Where, or check back soon."}
+                ? "Nothing here yet. Widen What/Where, or check back soon."
+                : "Nothing in this window yet. Try Next Up, widen What/Where, or check back soon."}
             </p>
           )}
         </div>

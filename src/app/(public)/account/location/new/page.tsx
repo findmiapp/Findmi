@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 /** Multi-Entity Self-Service V1, Stage 3 — native Location (venue) creation
  * entry point. FREE for every signed-in user — no Business Pro, no Event
@@ -65,7 +65,7 @@ export default async function AddLocationPage({
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add a Venue</h1>
       <p className="mt-2 text-sm text-ink/60">
-        You&rsquo;ll own and manage it right away in your Location Manager, free — no separate Venue fee, ever.
+        You&rsquo;ll own and manage it right away in your Location Manager, free, with no separate Venue fee, ever.
       </p>
 
       {error && (
@@ -114,7 +114,7 @@ export default async function AddLocationPage({
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Venue
           </button>
-          <p className="text-center text-xs text-ink/40">Free — no separate Venue fee, ever.</p>
+          <p className="text-center text-xs text-ink/40">Free, no separate Venue fee, ever.</p>
         </form>
       </div>
     </div>

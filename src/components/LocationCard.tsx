@@ -41,7 +41,7 @@ export default function LocationCard({
     >
       <Link
         href={`/location/${location.slug}`}
-        aria-label={`${location.name} — See What's Happening`}
+        aria-label={`${location.name}: See What's Happening`}
         className="absolute inset-0 z-10 rounded-3xl"
         onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
       />

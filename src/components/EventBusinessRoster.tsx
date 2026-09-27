@@ -69,7 +69,7 @@ export default function EventBusinessRoster({
   if (businesses.length === 0) {
     return (
       <p className="mt-6 text-sm text-ink/50">
-        Businesses for this event haven&rsquo;t been confirmed yet — check back soon.
+        Businesses for this event haven&rsquo;t been confirmed yet. Check back soon.
       </p>
     );
   }

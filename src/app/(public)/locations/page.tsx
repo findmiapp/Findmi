@@ -43,7 +43,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
   const selectedMarket = markets.find((m) => m.slug === params.market);
   const selectedArea = params.market ? selectedMarket?.areas.find((a) => a.slug === params.area) : undefined;
   const marketAreaLabel = selectedArea
-    ? `${selectedArea.display_name || selectedArea.name} — ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
+    ? `${selectedArea.display_name || selectedArea.name}, ${selectedMarket ? getMarketAreaLabel(selectedMarket) : ""}`
     : selectedMarket
       ? getMarketAreaLabel(selectedMarket)
       : undefined;
@@ -73,7 +73,7 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
   const emptyLabel =
     params.q || params.category || params.market
       ? `No locations matched${marketAreaLabel ? ` in ${marketAreaLabel}` : params.market ? ` in that area` : ""}${categoryName ? ` ${categoryName}` : ""}${params.q ? ` for "${params.q}"` : ""}.`
-      : "No locations yet — check back soon.";
+      : "No locations yet. Check back soon.";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">

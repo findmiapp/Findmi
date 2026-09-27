@@ -240,7 +240,7 @@ export default async function AccountSchedulePage({
 
       {section === "past" && (
         <p className="mt-4 text-xs text-ink/40">
-          Past organized Events aren&rsquo;t included here yet — view an Event&rsquo;s own dates from its Event Manager.
+          Past organized Events aren&rsquo;t included here yet. View an Event&rsquo;s own dates from its Event Manager.
         </p>
       )}
     </div>

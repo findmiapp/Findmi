@@ -57,7 +57,7 @@ export default function OccurrenceVendorManager({
     <div className="mt-2.5 rounded-lg border border-dashed border-black/15 bg-black/[0.015] p-2.5">
       <p className="text-xs font-semibold text-ink">Vendors for This Date</p>
       <p className="mb-2 text-[11px] text-ink/45">
-        This date&rsquo;s own roster — separate from &ldquo;Participating Businesses&rdquo; below, and never copied
+        This date&rsquo;s own roster, separate from &ldquo;Participating Businesses&rdquo; below, and never copied
         from it.
       </p>
 
@@ -90,7 +90,7 @@ export default function OccurrenceVendorManager({
           >
             Copy
           </button>
-          <span className="text-[11px] text-ink/40">Adds missing vendors only — never overwrites this date&rsquo;s own rows.</span>
+          <span className="text-[11px] text-ink/40">Adds missing vendors only, never overwrites this date&rsquo;s own rows.</span>
         </div>
       )}
 

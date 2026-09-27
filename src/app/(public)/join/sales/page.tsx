@@ -40,7 +40,7 @@ export default async function JoinSalesPage({
           <CheckGlyph />
         </div>
         <p className="mt-4 text-xs font-bold uppercase tracking-wide text-findmi-700">Multi-Region / National</p>
-        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Thanks — we&rsquo;ll be in touch.</h1>
+        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Thanks, we&rsquo;ll be in touch.</h1>
         <p className="mt-3 text-sm text-ink/60">
           We received your information and will follow up about the right Findmi setup for your business.
         </p>
@@ -134,7 +134,7 @@ export default async function JoinSalesPage({
               className={inputClass}
             />
             <span className="mt-1 block text-xs text-ink/45">
-              Describe it however makes sense — it doesn&rsquo;t need to match Findmi&rsquo;s own market names.
+              Describe it however makes sense. It doesn&rsquo;t need to match Findmi&rsquo;s own market names.
             </span>
           </label>
           <label className="block">

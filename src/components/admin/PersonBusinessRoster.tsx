@@ -78,7 +78,7 @@ export default function PersonBusinessRoster({
       />
 
       {rows.length === 0 ? (
-        <p className="mt-3 text-sm text-ink/45">Not linked to any business yet — search above to add one.</p>
+        <p className="mt-3 text-sm text-ink/45">Not linked to any business yet. Search above to add one.</p>
       ) : (
         <div className="mt-3 flex flex-col gap-2">
           {rows.map((row) => (

@@ -492,7 +492,7 @@ export default function PerformanceTab({
                 ) : (
                   <p className="text-[12.5px] text-ink/50">
                     {followerSummary.totalCount.toLocaleString()} {followerSummary.totalCount === 1 ? "person follows" : "people follow"}{" "}
-                    {businessName} — public profiles will appear here once they&rsquo;re set.
+                    {businessName}. Public profiles will appear here once they&rsquo;re set.
                   </p>
                 )}
                 {followerSummary.totalCount > 0 && (followerSummary.accountCount > 0 || followerSummary.legacyCount > 0) && (

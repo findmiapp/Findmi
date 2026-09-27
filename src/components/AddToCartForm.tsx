@@ -22,7 +22,7 @@ export default function AddToCartForm({
   if (options.length === 0) {
     return (
       <p className="text-sm text-ink/50">
-        This item isn&rsquo;t available for checkout right now — check back soon.
+        This item isn&rsquo;t available for checkout right now. Check back soon.
       </p>
     );
   }
@@ -110,7 +110,7 @@ export default function AddToCartForm({
 
       {added && (
         <p className="text-sm text-findmi-700">
-          Added to cart —{" "}
+          Added to cart.{" "}
           <Link href="/cart" className="font-semibold underline underline-offset-2">
             view cart
           </Link>

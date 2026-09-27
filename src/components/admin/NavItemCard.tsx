@@ -131,7 +131,7 @@ export default function NavItemCard({
             ))}
           </select>
           <span className="mt-1 block text-xs text-ink/45">
-            Nests this item under another as an expandable submenu — one level only.
+            Nests this item under another as an expandable submenu, one level only.
           </span>
         </label>
 
@@ -145,7 +145,7 @@ export default function NavItemCard({
             ))}
           </select>
           <span className="mt-1 block text-xs text-ink/45">
-            Who sees this item — a parent hidden for a viewer hides its children too, even if a child&rsquo;s own
+            Who sees this item. A parent hidden for a viewer hides its children too, even if a child&rsquo;s own
             audience would otherwise show it to them.
           </span>
         </label>

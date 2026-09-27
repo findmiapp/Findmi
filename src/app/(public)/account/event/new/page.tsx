@@ -63,7 +63,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 /** Multi-Entity Self-Service V1, Stage 2 — native Event creation entry
  * point. Only qualifying signed-in users may create an Event (see
@@ -114,7 +114,7 @@ export default async function AddEventPage({
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <p className="text-sm font-semibold text-ink">Event management is included with qualifying Findmi membership.</p>
           <p className="mt-2 text-sm text-ink/60">
-            Get Findmi Pro (or redeem a Pro Invite) on a business you manage to create and manage Events — no
+            Get Findmi Pro (or redeem a Pro Invite) on a business you manage to create and manage Events, with no
             separate Event fee.
           </p>
           {locationHint && (
@@ -199,7 +199,7 @@ export default async function AddEventPage({
             Create My Event
           </button>
           <p className="text-center text-xs text-ink/40">
-            No separate Event fee — included with your qualifying Findmi membership.
+            No separate Event fee. Included with your qualifying Findmi membership.
           </p>
         </form>
       </div>

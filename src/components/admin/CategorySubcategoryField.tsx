@@ -53,7 +53,7 @@ export default function CategorySubcategoryField({
     <div className="flex flex-col gap-1.5">
       <span className="block text-sm font-medium text-ink">Category</span>
       {parents.length === 0 ? (
-        <p className="text-sm text-ink/45">No product categories yet — add some in /admin/categories/products.</p>
+        <p className="text-sm text-ink/45">No product categories yet. Add some in /admin/categories/products.</p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           <select

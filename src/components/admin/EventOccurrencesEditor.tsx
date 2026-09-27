@@ -19,13 +19,13 @@ const inputClass =
 // these — see the row's hidden `timezone_${id}` input, which always posts
 // the real state value regardless of what this <select> can display.
 const TIMEZONE_OPTIONS: { value: string; label: string }[] = [
-  { value: "America/New_York", label: "Eastern — America/New_York" },
-  { value: "America/Chicago", label: "Central — America/Chicago" },
-  { value: "America/Denver", label: "Mountain — America/Denver" },
-  { value: "America/Phoenix", label: "Mountain, no DST — America/Phoenix" },
-  { value: "America/Los_Angeles", label: "Pacific — America/Los_Angeles" },
-  { value: "America/Anchorage", label: "Alaska — America/Anchorage" },
-  { value: "Pacific/Honolulu", label: "Hawaii — Pacific/Honolulu" },
+  { value: "America/New_York", label: "Eastern: America/New_York" },
+  { value: "America/Chicago", label: "Central: America/Chicago" },
+  { value: "America/Denver", label: "Mountain: America/Denver" },
+  { value: "America/Phoenix", label: "Mountain, no DST: America/Phoenix" },
+  { value: "America/Los_Angeles", label: "Pacific: America/Los_Angeles" },
+  { value: "America/Anchorage", label: "Alaska: America/Anchorage" },
+  { value: "Pacific/Honolulu", label: "Hawaii: Pacific/Honolulu" },
 ];
 
 interface Row {
@@ -161,7 +161,7 @@ export default function EventOccurrencesEditor({
       const vendorCount = vendorRostersByOccurrence[id]?.length ?? 0;
       if (vendorCount > 0) {
         const ok = window.confirm(
-          `This date has ${vendorCount} vendor${vendorCount === 1 ? "" : "s"} on its roster. Removing this date will also remove that date's entire vendor roster once you save this event — this can't be undone. Remove anyway?`
+          `This date has ${vendorCount} vendor${vendorCount === 1 ? "" : "s"} on its roster. Removing this date will also remove that date's entire vendor roster once you save this event. This can't be undone. Remove anyway?`
         );
         if (!ok) return;
       }
@@ -215,12 +215,12 @@ export default function EventOccurrencesEditor({
     <div>
       <span className="mb-1.5 block text-sm font-medium text-ink">Occurrences (Dates)</span>
       <p className="mb-3 text-xs text-ink/45">
-        For a recurring or multi-date event — each is a real, independently editable date/time/location. Leave
+        For a recurring or multi-date event, each is a real, independently editable date/time/location. Leave
         empty for a simple one-time event; the fields above (Start/End Date &amp; Time) keep working as-is.
       </p>
 
       {rows.length === 0 ? (
-        <p className="text-sm text-ink/45">No occurrences added yet — this event uses its single date above.</p>
+        <p className="text-sm text-ink/45">No occurrences added yet. This event uses its single date above.</p>
       ) : (
         <div className="flex flex-col gap-2">
           {rows.map((row, i) => (
@@ -299,7 +299,7 @@ export default function EventOccurrencesEditor({
                 </label>
                 <p className="mt-1 text-[11px] text-ink/40">
                   Start/End above are shown and saved in this date&rsquo;s own timezone. Changing this alone (without
-                  touching Start/End) re-interprets the same numbers in the new zone — an explicit correction, not a
+                  touching Start/End) re-interprets the same numbers in the new zone. It&rsquo;s an explicit correction, not a
                   no-op.
                 </p>
               </div>
@@ -467,7 +467,7 @@ export default function EventOccurrencesEditor({
         )}
       </div>
       <p className="mt-1.5 text-xs text-ink/45">
-        Generates real, independent rows from the last date&rsquo;s time/location — not a saved repeating rule.
+        Generates real, independent rows from the last date&rsquo;s time/location, not a saved repeating rule.
         Review each one before saving.
       </p>
     </div>

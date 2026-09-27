@@ -17,8 +17,8 @@ const CONTENT_TYPE_OPTIONS: { value: HomepageRowContentType; label: string }[] =
 ];
 
 const MODE_OPTIONS: { value: HomepageRowMode; label: string }[] = [
-  { value: "dynamic", label: "Dynamic — fills automatically from filters" },
-  { value: "curated", label: "Curated — you hand-pick exactly what shows" },
+  { value: "dynamic", label: "Dynamic: fills automatically from filters" },
+  { value: "curated", label: "Curated: you hand-pick exactly what shows" },
 ];
 
 const iconButtonClass =
@@ -116,7 +116,7 @@ export default function HomepageRowCard({
 
         {isShowcase ? (
           <p className="rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-3 text-xs text-ink/50">
-            This row shows Findmi&rsquo;s existing business-acquisition showcase — no items to pick. Use
+            This row shows Findmi&rsquo;s existing business-acquisition showcase, no items to pick. Use
             Visible and Move Up/Down below to control whether and where it appears.
           </p>
         ) : (
@@ -168,7 +168,7 @@ export default function HomepageRowCard({
                   defaultChecked={row.featured_only}
                   hint={`Only show ${contentType} with their own "Featured" checkbox turned on (edit that on each ${
                     contentType === "businesses" ? "Business" : contentType === "events" ? "Event" : "Product"
-                  }'s own page) — this is the manual-selection option for a Dynamic row. Switch Feed to Curated above to hand-pick an exact, ordered list instead.`}
+                  }'s own page). This is the manual-selection option for a Dynamic row. Switch Feed to Curated above to hand-pick an exact, ordered list instead.`}
                 />
 
                 <NumberField label="Items" name="item_limit" defaultValue={row.item_limit} step="1" hint="How many to show in this row." />

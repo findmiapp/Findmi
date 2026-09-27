@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-full bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
 export default async function ForgotPasswordPage({
   searchParams,
@@ -25,7 +25,7 @@ export default async function ForgotPasswordPage({
       <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Password reset</p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Reset your password</h1>
       <p className="mt-3 text-sm text-ink/60">
-        Enter your email and we&rsquo;ll send a reset link — open it on this same browser/device to finish.
+        Enter your email and we&rsquo;ll send a reset link. Open it on this same browser or device to finish.
       </p>
 
       {sent && !error && (
