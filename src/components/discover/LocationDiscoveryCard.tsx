@@ -139,8 +139,12 @@ export default function LocationDiscoveryCard({
       </div>
 
       {/* ACTIVITY LAYER — the light, non-cinematic content area. A
-          restrained teal intelligence strip, never a giant CTA block. */}
-      <div className={`flex flex-1 flex-col gap-2.5 ${compact ? "p-3" : "p-4"}`}>
+          restrained teal intelligence strip, never a giant CTA block.
+          Final Polish pass — outer gap tightened (gap-2.5 -> gap-2, ~20%)
+          for cards that actually stack summary/previews/CTA; a
+          no-activity card only ever renders the CTA here, so this has no
+          visible effect on that state (nothing to space out). */}
+      <div className={`flex flex-1 flex-col gap-2 ${compact ? "p-3" : "p-4"}`}>
         {summary && (
           <p className="flex items-center gap-1.5 text-xs font-bold text-findmi-700">
             <CalendarGlyph className="h-3.5 w-3.5 shrink-0" />
@@ -172,7 +176,10 @@ export default function LocationDiscoveryCard({
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-2 border-t border-black/5 pt-2.5">
+          // Final Polish pass — pt-2.5 -> pt-2 and inter-row gap-2 -> gap-1.5
+          // (both ~15-25%): same readable row content/thumbnails/text sizes,
+          // just less air between them, per the approved spacing-only fix.
+          <div className="flex flex-col gap-1.5 border-t border-black/5 pt-2">
             {activities.map((item) => (
               <div key={item.id} className="flex items-center gap-2.5">
                 <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-black/5">
@@ -197,13 +204,19 @@ export default function LocationDiscoveryCard({
         {/* PRIMARY ACTION — invites exploring the place, never one event's
             conversion. Plain teal text link (matches ProductCard/Business
             Overview's own restrained CTA language), not a filled button —
-            the whole card is already the tap target. */}
+            the whole card is already the tap target.
+            Final Polish pass — fixes the confirmed production mismatch:
+            this was gated on `compact` (the density variant) instead of
+            `hasActivity`, so every full-card location said "See what's
+            happening here" regardless of whether it actually had any
+            upcoming activity to show. Now correctly reflects the real,
+            already-computed activityCount — never re-derives it. */}
         <p
           className={`flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 ${
             hasActivity ? "mt-auto pt-1" : "mt-auto"
           }`}
         >
-          {compact ? "Explore this place" : "See what's happening here"}
+          {hasActivity ? "See what's happening here" : "Explore this place"}
           <ChevronGlyph className="h-2.5 w-2.5" />
         </p>
       </div>
