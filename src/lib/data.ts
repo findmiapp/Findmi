@@ -2971,9 +2971,34 @@ export type LocationWithCategory = FindmiLocation & {
    * lightweight directory-card signal only: one batched query for the
    * whole page (never one per card), and deliberately doesn't replicate
    * getUpcomingAtLocation's full venue_name-matching fallback — a card's
-   * "X upcoming" hint doesn't need that precision. */
+   * "X upcoming" hint doesn't need that precision. Untouched by Location
+   * Discovery Card V2 — LocationCard.tsx (Saved/Following, out of this
+   * pass's scope) still reads this exact field, so its meaning/value is
+   * never changed; see activityCount/activities below for the new,
+   * additive fields Location Discovery Card V2 actually uses. */
   upcomingCount?: number;
+  /** Location Discovery Card V2 — the TRUE total upcoming-activity count
+   * (event occurrences + standalone appearances at this Location via the
+   * same real FKs, deduped by construction since the two queries are
+   * mutually exclusive categories), never capped by the preview fetch
+   * limit below. Undefined where not computed. */
+  activityCount?: number;
+  /** Location Discovery Card V2 — up to 3 soonest real upcoming
+   * activities (mixed events/appearances, real identity + image), for the
+   * card's compact activity-preview row. Undefined where not computed. */
+  activities?: LocationActivityPreviewItem[];
 };
+
+/** Location Discovery Card V2 — one tiny activity-preview item (a
+ * fraction of LocationHappening's fields: just enough for a small
+ * logo/image + title + date chip, not the full happening card). */
+export interface LocationActivityPreviewItem {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  startAt: string;
+  href: string;
+}
 
 /** Some PostgREST/supabase-js versions return a to-one embed as a
  * single-element array rather than a bare object (see getUpcomingAtLocation's
@@ -3077,7 +3102,147 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
     countByLocation.set(row.location_id, (countByLocation.get(row.location_id) ?? 0) + 1);
   }
 
-  return locations.map((l) => ({ ...l, upcomingCount: countByLocation.get(l.id) ?? 0 }));
+  const activityByLocation = await getLocationActivitySummaries(
+    supabase,
+    locations.map((l) => l.id)
+  );
+
+  return locations.map((l) => ({
+    ...l,
+    upcomingCount: countByLocation.get(l.id) ?? 0,
+    activityCount: activityByLocation.get(l.id)?.count ?? 0,
+    activities: activityByLocation.get(l.id)?.items ?? [],
+  }));
+}
+
+// Location Discovery Card V2 — how many of each type to over-fetch PER
+// location before grouping/slicing in JS, same "batched across every
+// location, never one query per card" principle getLocations' own
+// upcomingCount computation already established, and the same
+// over-fetch-then-slice convention lib/dashboard.ts's
+// PER_SOURCE_FETCH_LIMIT uses for an analogous multi-entity batch.
+const ACTIVITY_PREVIEW_FETCH_PER_LOCATION = 6;
+const ACTIVITY_PREVIEW_ITEMS_PER_LOCATION = 3;
+
+/** Location Discovery Card V2 — real upcoming-activity count + a small
+ * preview per Location, for MANY locations in one pass (never one query
+ * per card). Deliberately mirrors getUpcomingAtLocation's own two real-FK
+ * sources (event_occurrences.location_id, appearances.location_id where
+ * event_id IS NULL) but WITHOUT its venue_name-matching fallback — same
+ * simplification upcomingCount above already applies, for the same
+ * reason (a directory card's activity signal doesn't need that
+ * precision). The two sources are mutually exclusive categories (an
+ * occurrence is never also a standalone appearance), so summing their
+ * per-location counts is never a double-count. */
+async function getLocationActivitySummaries(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  locationIds: string[]
+): Promise<Map<string, { count: number; items: LocationActivityPreviewItem[] }>> {
+  const result = new Map<string, { count: number; items: LocationActivityPreviewItem[] }>();
+  if (locationIds.length === 0) return result;
+  const nowIso = new Date().toISOString();
+
+  const [{ data: occurrenceCountRows }, { data: appearanceCountRows }, { data: occurrencePreviewRows }, { data: appearancePreviewRows }] =
+    await Promise.all([
+      // True counts — unbounded row fetch (location_id only), same shape
+      // as the existing upcomingCount computation above; correctness over
+      // a `.limit()` that could silently undercount a busy location.
+      supabase
+        .from("event_occurrences")
+        .select("location_id")
+        .in("location_id", locationIds)
+        .eq("status", "scheduled")
+        .gt("end_at", nowIso),
+      supabase
+        .from("appearances")
+        .select("location_id")
+        .in("location_id", locationIds)
+        .is("event_id", null)
+        .neq("status", "canceled")
+        .gt("end_at", nowIso),
+      // Preview rows — bounded, richer (real identity + image), generous
+      // per-location over-fetch before grouping/slicing to the top 3
+      // soonest per location in JS.
+      supabase
+        .from("event_occurrences")
+        .select("id, location_id, start_at, event:events(slug, name, cover_image_url, is_demo)")
+        .in("location_id", locationIds)
+        .eq("status", "scheduled")
+        .gt("end_at", nowIso)
+        .order("start_at", { ascending: true })
+        .limit(ACTIVITY_PREVIEW_FETCH_PER_LOCATION * locationIds.length),
+      supabase
+        .from("appearances")
+        .select("id, location_id, start_at, title, business:businesses(slug, name, logo_url, cover_image_url, is_demo, publication_status)")
+        .in("location_id", locationIds)
+        .is("event_id", null)
+        .neq("status", "canceled")
+        .gt("end_at", nowIso)
+        .order("start_at", { ascending: true })
+        .limit(ACTIVITY_PREVIEW_FETCH_PER_LOCATION * locationIds.length),
+    ]);
+
+  const countByLocation = new Map<string, number>();
+  for (const row of [...(occurrenceCountRows ?? []), ...(appearanceCountRows ?? [])] as { location_id: string | null }[]) {
+    if (!row.location_id) continue;
+    countByLocation.set(row.location_id, (countByLocation.get(row.location_id) ?? 0) + 1);
+  }
+
+  const itemsByLocation = new Map<string, LocationActivityPreviewItem[]>();
+  function pushItem(locationId: string, item: LocationActivityPreviewItem) {
+    const list = itemsByLocation.get(locationId) ?? [];
+    list.push(item);
+    itemsByLocation.set(locationId, list);
+  }
+
+  for (const row of (occurrencePreviewRows ?? []) as {
+    id: string;
+    location_id: string | null;
+    start_at: string;
+    event: { slug: string; name: string; cover_image_url: string | null; is_demo: boolean } | { slug: string; name: string; cover_image_url: string | null; is_demo: boolean }[] | null;
+  }[]) {
+    if (!row.location_id) continue;
+    const e = Array.isArray(row.event) ? (row.event[0] ?? null) : row.event;
+    if (!e || e.is_demo) continue;
+    pushItem(row.location_id, {
+      id: `occurrence-${row.id}`,
+      title: e.name,
+      imageUrl: e.cover_image_url,
+      startAt: row.start_at,
+      href: `/event/${e.slug}`,
+    });
+  }
+
+  for (const row of (appearancePreviewRows ?? []) as {
+    id: string;
+    location_id: string | null;
+    start_at: string;
+    title: string;
+    business:
+      | { slug: string; name: string; logo_url: string | null; cover_image_url: string | null; is_demo: boolean; publication_status: string }
+      | { slug: string; name: string; logo_url: string | null; cover_image_url: string | null; is_demo: boolean; publication_status: string }[]
+      | null;
+  }[]) {
+    if (!row.location_id) continue;
+    const b = Array.isArray(row.business) ? (row.business[0] ?? null) : row.business;
+    if (!b || b.is_demo || b.publication_status !== "live") continue;
+    pushItem(row.location_id, {
+      id: `appearance-${row.id}`,
+      title: row.title,
+      imageUrl: b.logo_url ?? b.cover_image_url,
+      startAt: row.start_at,
+      href: `/business/${b.slug}`,
+    });
+  }
+
+  for (const locationId of locationIds) {
+    const items = (itemsByLocation.get(locationId) ?? [])
+      .sort((a, b) => a.startAt.localeCompare(b.startAt))
+      .slice(0, ACTIVITY_PREVIEW_ITEMS_PER_LOCATION);
+    result.set(locationId, { count: countByLocation.get(locationId) ?? 0, items });
+  }
+
+  return result;
 }
 
 /** Location-kind categories for the /locations discovery filter — same

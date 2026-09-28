@@ -2,46 +2,86 @@
 
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
-import type { LocationWithCategory } from "@/lib/data";
-import { cityState } from "@/lib/format";
+import WantHeartButton from "@/components/WantHeartButton";
+import type { LocationActivityPreviewItem, LocationWithCategory } from "@/lib/data";
+import { cityState, formatDateShort } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
-/** Locations Discovery V4 — a dedicated DENSE result presentation for
- * /locations' own results grid, deliberately separate from LocationCard
- * (which stays unchanged — it's also used by Saved and Following, both
- * out of scope here). Same split BusinessDiscoveryCard already drew
- * against BusinessLogoCard for /businesses, and EventDiscoveryCard drew
- * against HomeEventCard for /events.
+/** Location Discovery Card V2 — a dedicated PLACE + ACTIVITY grammar,
+ * replacing this file's earlier "Locations Discovery V4" dense-row
+ * treatment (which borrowed BusinessDiscoveryCard's compact row shape).
+ * That row worked for grid density but made every Location read as a
+ * generic directory listing — no different from a Business or a plain
+ * search result. This card is deliberately its own visual grammar: large
+ * place photography establishes atmosphere (like an Event card's photo),
+ * but ONLY the image's own lower edge carries a legibility scrim — unlike
+ * HomeEventCard's full cinematic overlay, the card's real content area
+ * below the photo is light, because a Location's job is "what is
+ * happening HERE," not one time-boxed moment. Deliberately NOT built on
+ * HomeEventCard/EventCard (both locked, untouched) even though it reuses
+ * the same established primitives everywhere they already exist:
+ * WantHeartButton for Save (identical glass affordance ProductCard/
+ * HomeEventCard already use), the same findmi-teal "intelligence layer"
+ * treatment Business Overview's own activity strips use for the
+ * upcoming-activity summary, SupabaseImage for photography.
  *
- * LocationCard's own "photo on top, logo overlapping its corner, name/
- * meta/upcoming/CTA stacked below" composition is right for a curated
- * profile-style rail; it's what made a single Location eat most of a
- * mobile viewport in search results. This card borrows
- * BusinessDiscoveryCard's proven compact horizontal row instead (fixed
- * thumbnail + one flat content block, whole card as the tap target, no
- * separate CTA line) — a Location is a persistent place, closer to a
- * Business in discovery shape than to an Event's time-boxed happening.
- *
- * Image priority mirrors BusinessDiscoveryCard's cover-then-logo
- * fallback, plus one addition: when a Location has BOTH a cover photo
- * and a logo, a small logo badge overlaps the thumbnail's corner (a
- * scaled-down version of LocationCard's own overlap treatment) so real
- * brand identity isn't lost just because the thumbnail is small. */
+ * Data: location.activityCount/location.activities are computed by
+ * lib/data.ts's getLocations() (Location Discovery Card V2's own small,
+ * additive batched-query extension — see that file) from the SAME real
+ * event_occurrences.location_id / appearances.location_id relationships
+ * getUpcomingAtLocation already establishes for the public Location
+ * profile page — never a parallel activity system, never a fabricated
+ * count. location.upcomingCount (the older, narrower occurrences-only
+ * count LocationCard.tsx still reads for Saved/Following) is untouched. */
+
+const TYPE_PILL_CLASS =
+  "inline-flex items-center rounded-full bg-black/45 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm";
+
+/** Truthful, non-fabricated activity-summary copy. Only ever claims "this
+ * week" when every one of the location's real upcoming activities is
+ * actually known (count <= the fetched preview items) AND genuinely falls
+ * within the next 7 days — otherwise falls back to the safe, always-true
+ * "N upcoming happenings" phrasing rather than guessing. */
+function formatActivitySummary(count: number, items: LocationActivityPreviewItem[]): string | null {
+  if (count <= 0) return null;
+  if (count === 1) return "1 thing happening";
+  const fullyVisible = count <= items.length;
+  const now = Date.now();
+  const allWithinWeek =
+    fullyVisible &&
+    items.every((item) => {
+      const days = (new Date(item.startAt).getTime() - now) / 86_400_000;
+      return days >= 0 && days <= 7;
+    });
+  return allWithinWeek ? `${count} things happening this week` : `${count} upcoming happenings`;
+}
+
 export default function LocationDiscoveryCard({
   location,
   analyticsContext,
+  /** Location Discovery Card V2 — "full" (default) is the primary grid
+   * card documented above. "compact" preserves the exact same grammar at
+   * reduced density (shorter photo, avatar-row activity previews instead
+   * of full title/date rows) for a future carousel context, matching the
+   * spec's own Compact Location Card section — no current surface
+   * consumes it yet, kept here so the same component covers both
+   * densities rather than a second, duplicated card. */
+  variant = "full",
 }: {
   location: LocationWithCategory;
   analyticsContext?: AnalyticsPlacementContext;
+  variant?: "full" | "compact";
 }) {
   const geo = cityState(location.city, location.state);
-  const meta = [location.category?.name, geo].filter(Boolean).join(" · ");
-  const upcoming = location.upcomingCount ?? 0;
-  const hasCover = Boolean(location.cover_image_url);
-  const hasLogo = Boolean(location.logo_url);
-  const showLogoBadge = hasCover && hasLogo;
+  const typeLabel = location.category?.name ?? null;
+  const activityCount = location.activityCount ?? 0;
+  const activities = location.activities ?? [];
+  const summary = formatActivitySummary(activityCount, activities);
+  const hasActivity = activityCount > 0;
+  const compact = variant === "compact";
+  const overflow = Math.max(0, activityCount - activities.length);
 
   const analyticsFields = buildEntityEventFields("location", location.id, { locationId: location.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });
@@ -51,34 +91,121 @@ export default function LocationDiscoveryCard({
       ref={impressionRef}
       href={`/location/${location.slug}`}
       onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
-      className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-2.5 shadow-sm transition active:scale-[0.98] hover:border-black/10 hover:shadow"
+      className="flex flex-col overflow-hidden rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98] hover:shadow-md hover:shadow-black/5"
     >
-      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-mist">
-        {hasCover ? (
-          <SupabaseImage src={location.cover_image_url!} alt="" fill sizes="80px" className="object-cover" />
-        ) : hasLogo ? (
-          <SupabaseImage src={location.logo_url!} alt={location.name} fill sizes="80px" className="object-contain p-2" />
+      {/* PLACE PHOTOGRAPHY — establishes atmosphere. Legibility scrim is
+          confined to the image's own lower half only (never the whole
+          card) — this is the one deliberate visual break from a cinematic
+          Event-card overlay. */}
+      <div className={`relative w-full shrink-0 bg-mist ${compact ? "h-40" : "aspect-[4/3]"}`}>
+        {location.cover_image_url ? (
+          <SupabaseImage
+            src={location.cover_image_url}
+            alt={location.name}
+            fill
+            sizes={compact ? "(min-width: 768px) 280px, 80vw" : "(min-width: 1024px) 360px, (min-width: 640px) 46vw, 92vw"}
+            className="object-cover"
+          />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-ink">
-            <PinGlyph className="h-6 w-6 text-white/25" />
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-ink to-black">
+            <PinGlyph className="h-10 w-10 text-white/20" />
           </div>
         )}
-        {showLogoBadge && (
-          <div className="absolute -bottom-1 -right-1 h-7 w-7 overflow-hidden rounded-full bg-white shadow ring-2 ring-white">
-            <SupabaseImage src={location.logo_url!} alt="" fill sizes="28px" className="object-contain p-0.5" />
-          </div>
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3"
+          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 45%, rgba(0,0,0,0) 100%)" }}
+        />
+
+        {typeLabel && (
+          <span className={`absolute left-3 top-3 ${TYPE_PILL_CLASS}`}>{typeLabel}</span>
         )}
+        <div className="absolute right-3 top-3">
+          <WantHeartButton type="location" slug={location.slug} id={location.id} className="h-9 w-9" />
+        </div>
+
+        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 p-3.5">
+          <h3
+            className={`line-clamp-2 font-display font-extrabold leading-snug tracking-tight text-white ${compact ? "text-base" : "text-xl"}`}
+          >
+            {location.name}
+          </h3>
+          {geo && (
+            <p className="flex items-center gap-1.5 text-xs text-white/85">
+              <PinGlyph className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{geo}</span>
+            </p>
+          )}
+        </div>
       </div>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-display text-sm font-bold text-ink">{location.name}</p>
-        {meta && <p className="truncate text-xs text-ink/55">{meta}</p>}
-        {upcoming > 0 && (
-          <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-findmi-700">
-            <CalendarGlyph className="h-3 w-3 shrink-0" />
-            <span>{upcoming} upcoming</span>
+      {/* ACTIVITY LAYER — the light, non-cinematic content area. A
+          restrained teal intelligence strip, never a giant CTA block. */}
+      <div className={`flex flex-1 flex-col gap-2.5 ${compact ? "p-3" : "p-4"}`}>
+        {summary && (
+          <p className="flex items-center gap-1.5 text-xs font-bold text-findmi-700">
+            <CalendarGlyph className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{summary}</span>
+            <ChevronGlyph className="h-3 w-3 shrink-0" />
           </p>
         )}
+
+        {hasActivity && activities.length > 0 && (compact ? (
+          <div className="flex items-center -space-x-2">
+            {activities.map((item) => (
+              <span
+                key={item.id}
+                className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full border-2 border-white bg-black/5"
+              >
+                {item.imageUrl ? (
+                  <SupabaseImage src={item.imageUrl} alt="" fill sizes="32px" className="object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center bg-ink">
+                    <TagGlyph className="h-3 w-3 text-white/40" />
+                  </span>
+                )}
+              </span>
+            ))}
+            {overflow > 0 && (
+              <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white bg-black/[0.06] text-[10px] font-bold text-ink/60">
+                +{overflow}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 border-t border-black/5 pt-2.5">
+            {activities.map((item) => (
+              <div key={item.id} className="flex items-center gap-2.5">
+                <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-black/5">
+                  {item.imageUrl ? (
+                    <SupabaseImage src={item.imageUrl} alt="" fill sizes="32px" className="object-cover" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center bg-ink">
+                      <TagGlyph className="h-3 w-3 text-white/40" />
+                    </span>
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-ink">{item.title}</p>
+                  <p className="truncate text-[11px] text-ink/45">{formatDateShort(item.startAt)}</p>
+                </div>
+              </div>
+            ))}
+            {overflow > 0 && <p className="text-[11px] font-semibold text-ink/40">+{overflow} more</p>}
+          </div>
+        ))}
+
+        {/* PRIMARY ACTION — invites exploring the place, never one event's
+            conversion. Plain teal text link (matches ProductCard/Business
+            Overview's own restrained CTA language), not a filled button —
+            the whole card is already the tap target. */}
+        <p
+          className={`flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 ${
+            hasActivity ? "mt-auto pt-1" : "mt-auto"
+          }`}
+        >
+          {compact ? "Explore this place" : "See what's happening here"}
+          <ChevronGlyph className="h-2.5 w-2.5" />
+        </p>
       </div>
     </Link>
   );
@@ -90,10 +217,10 @@ function PinGlyph({ className }: { className?: string }) {
       <path
         d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.8"
         strokeLinejoin="round"
       />
-      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
 }
@@ -103,6 +230,28 @@ function CalendarGlyph({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
       <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TagGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M11.5 4H5a1 1 0 00-1 1v6.5a1 1 0 00.3.7l9 9a1 1 0 001.4 0l6.5-6.5a1 1 0 000-1.4l-9-9a1 1 0 00-.7-.3z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <circle cx="8.2" cy="8.2" r="1.3" fill="currentColor" />
     </svg>
   );
 }
