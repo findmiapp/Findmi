@@ -8,7 +8,7 @@
 // ownerPerformance.ts already established (buildQrActionBreakdown) rather
 // than a second, parallel QR-attribution implementation.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildQrActionBreakdown, type OwnerPerformanceBreakdownItem } from "./ownerPerformance";
+import { buildQrActionBreakdown, OWNER_ACTION_EVENT_NAMES, type OwnerPerformanceBreakdownItem } from "./ownerPerformance";
 
 export interface QrCampaignRow {
   id: string;
@@ -51,9 +51,22 @@ export async function getQrCampaignRow(admin: SupabaseClient, campaignId: string
  * Performance tab (it's "everything this one QR has ever done," not a
  * trend), same reasoning as the admin QR campaign view. */
 export async function getQrCampaignStats(admin: SupabaseClient, campaignId: string): Promise<QrCampaignStats> {
+  // Metric Consistency Correction — must use the EXACT same "action"
+  // definition as the Business-wide QR Performance aggregate
+  // (ownerPerformance.ts's own actionQuery): acquisition_source="qr" AND
+  // event_name in OWNER_ACTION_EVENT_NAMES. Previously this only excluded
+  // qr_scan by name, so any other event carrying acquisition_qr_campaign_id
+  // (e.g. the page_view that lands right after the scan's redirect, which
+  // every event in that session gets stamped with for attribution, not
+  // because it's itself a meaningful action) was miscounted as an action.
   const [{ data: scanRows }, { data: actionRows }] = await Promise.all([
     admin.from("analytics_events").select("session_id").eq("event_name", "qr_scan").eq("qr_campaign_id", campaignId),
-    admin.from("analytics_events").select("event_name").eq("acquisition_qr_campaign_id", campaignId).neq("event_name", "qr_scan"),
+    admin
+      .from("analytics_events")
+      .select("event_name")
+      .eq("acquisition_source", "qr")
+      .eq("acquisition_qr_campaign_id", campaignId)
+      .in("event_name", [...OWNER_ACTION_EVENT_NAMES]),
   ]);
   const scans = (scanRows ?? []) as { session_id: string }[];
   const actions = (actionRows ?? []) as { event_name: string }[];
