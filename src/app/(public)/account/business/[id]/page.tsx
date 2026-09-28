@@ -49,7 +49,6 @@ import {
   updateOwnerAppearance,
 } from "../actions";
 import { getEntityHandle } from "@/lib/handles";
-import FindmiUrlCard from "@/components/FindmiUrlCard";
 import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
 import MemberProductActiveButton from "./MemberProductActiveButton";
@@ -1213,86 +1212,95 @@ export default async function ManageBusinessPage({
           quiet meta line below. This is the LAST time Plan/Settings/View
           Profile need saying on this page — the sidebar/tab-strip below
           is pure navigation, and Overview's own Public Presence row says
-          publication status once, not twice. */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          {business.logo_url ? (
-            <SupabaseImage
-              src={business.logo_url}
-              alt=""
-              width={36}
-              height={36}
-              className="h-9 w-9 shrink-0 rounded-lg border border-black/[0.06] object-cover"
-            />
-          ) : (
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-findmi-50 font-display text-sm font-bold text-findmi-700">
-              {business.name.charAt(0).toUpperCase()}
-            </div>
-          )}
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h1 className="truncate font-display text-[17px] font-bold leading-tight tracking-tight text-ink">{business.name}</h1>
-              <Chip tone={pro ? "aqua" : "neutral"}>{pro ? "Pro" : "Free"}</Chip>
-              {/* Owner Shell V3 — persistent Business switcher. Never shown
-                  for exactly one managed Business, or for a pure admin-
-                  elevated session (managedBusinesses is always empty
-                  there). Native <details> — keyboard-operable with zero
-                  client JS. */}
-              {showSwitcher && (
-                <details className="group relative shrink-0">
-                  <summary
-                    aria-label="Switch business"
-                    className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full text-ink/35 transition hover:bg-black/[0.05] hover:text-ink [&::-webkit-details-marker]:hidden"
-                  >
-                    <ChevronGlyph className="h-4 w-4 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-black/[0.07] bg-white p-1.5 shadow-lg">
-                    <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Switch Business</p>
-                    {managedBusinesses.map((b) => (
-                      <Link
-                        key={b.id}
-                        href={`/account/business/${b.id}?tab=${switcherTab}`}
-                        className={`block truncate rounded-lg px-2.5 py-2 text-sm font-semibold transition hover:bg-black/[0.03] ${
-                          b.id === id ? "text-findmi-700" : "text-ink"
-                        }`}
-                      >
-                        {b.name}
-                      </Link>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
-            {/* Mobile: a compact text-link fallback for the two secondary
-                actions the sm:+ button pair below covers — at 390px there
-                isn't room for a long Business name AND two real buttons
-                on one row, so mobile gets plain links on their own quiet
-                line instead of a squeezed/truncated header. */}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-ink/40 sm:hidden">
-              {businessGeographyLabel && <span className="truncate">{businessGeographyLabel}</span>}
-              {business.slug && (
-                <Link href={`/business/${business.slug}`} className="font-semibold text-ink/55">
-                  View Profile
+          publication status once, not twice.
+          Business Overview V2 Visual Correction Pass — suppressed ONLY on
+          the Overview tab: BusinessOverviewV2's own Hero (logo, name,
+          Plan chip, category/geography, View Public Profile, Settings,
+          and — moved there too — the Business switcher below) already
+          covers everything this band shows, so rendering both back to
+          back produced two consecutive business headers. Every other tab
+          keeps this band exactly as it always has. */}
+      {activeTab !== "overview" && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            {business.logo_url ? (
+              <SupabaseImage
+                src={business.logo_url}
+                alt=""
+                width={36}
+                height={36}
+                className="h-9 w-9 shrink-0 rounded-lg border border-black/[0.06] object-cover"
+              />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-findmi-50 font-display text-sm font-bold text-findmi-700">
+                {business.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="truncate font-display text-[17px] font-bold leading-tight tracking-tight text-ink">{business.name}</h1>
+                <Chip tone={pro ? "aqua" : "neutral"}>{pro ? "Pro" : "Free"}</Chip>
+                {/* Owner Shell V3 — persistent Business switcher. Never shown
+                    for exactly one managed Business, or for a pure admin-
+                    elevated session (managedBusinesses is always empty
+                    there). Native <details> — keyboard-operable with zero
+                    client JS. */}
+                {showSwitcher && (
+                  <details className="group relative shrink-0">
+                    <summary
+                      aria-label="Switch business"
+                      className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full text-ink/35 transition hover:bg-black/[0.05] hover:text-ink [&::-webkit-details-marker]:hidden"
+                    >
+                      <ChevronGlyph className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-black/[0.07] bg-white p-1.5 shadow-lg">
+                      <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Switch Business</p>
+                      {managedBusinesses.map((b) => (
+                        <Link
+                          key={b.id}
+                          href={`/account/business/${b.id}?tab=${switcherTab}`}
+                          className={`block truncate rounded-lg px-2.5 py-2 text-sm font-semibold transition hover:bg-black/[0.03] ${
+                            b.id === id ? "text-findmi-700" : "text-ink"
+                          }`}
+                        >
+                          {b.name}
+                        </Link>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+              {/* Mobile: a compact text-link fallback for the two secondary
+                  actions the sm:+ button pair below covers — at 390px there
+                  isn't room for a long Business name AND two real buttons
+                  on one row, so mobile gets plain links on their own quiet
+                  line instead of a squeezed/truncated header. */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-ink/40 sm:hidden">
+                {businessGeographyLabel && <span className="truncate">{businessGeographyLabel}</span>}
+                {business.slug && (
+                  <Link href={`/business/${business.slug}`} className="font-semibold text-ink/55">
+                    View Profile
+                  </Link>
+                )}
+                <Link href={`${basePath}?tab=settings`} className="font-semibold text-ink/55">
+                  Settings
                 </Link>
-              )}
-              <Link href={`${basePath}?tab=settings`} className="font-semibold text-ink/55">
-                Settings
-              </Link>
+              </div>
+              {businessGeographyLabel && <p className="hidden truncate text-[12px] text-ink/40 sm:block">{businessGeographyLabel}</p>}
             </div>
-            {businessGeographyLabel && <p className="hidden truncate text-[12px] text-ink/40 sm:block">{businessGeographyLabel}</p>}
+          </div>
+          <div className="hidden shrink-0 items-center gap-2 sm:flex">
+            {business.slug && (
+              <Link href={`/business/${business.slug}`} className={secondaryButtonClass("sm")}>
+                View Public Page
+              </Link>
+            )}
+            <Link href={`${basePath}?tab=settings`} className={secondaryButtonClass("sm")}>
+              Settings
+            </Link>
           </div>
         </div>
-        <div className="hidden shrink-0 items-center gap-2 sm:flex">
-          {business.slug && (
-            <Link href={`/business/${business.slug}`} className={secondaryButtonClass("sm")}>
-              View Public Page
-            </Link>
-          )}
-          <Link href={`${basePath}?tab=settings`} className={secondaryButtonClass("sm")}>
-            Settings
-          </Link>
-        </div>
-      </div>
+      )}
 
       {/* MOBILE NAVIGATION — Mobile Navigation Fix (see mobileMoreTabs' own
           doc comment above and BusinessMobileNav.tsx). Desktop hides this
@@ -1445,6 +1453,7 @@ export default async function ManageBusinessPage({
                 lives; every module below only links to it. */}
             <BusinessOverviewV2
               basePath={basePath}
+              businessId={id}
               business={{
                 name: business.name,
                 slug: business.slug,
@@ -1456,6 +1465,10 @@ export default async function ManageBusinessPage({
               isExpiredPro={isExpiredPro}
               categoryLabel={overviewCategoryLabel}
               geographyLabel={businessGeographyLabel}
+              businessHandle={businessHandle}
+              updateHandleAction={updateBusinessHandle.bind(null, id)}
+              managedBusinesses={managedBusinesses}
+              switcherTab={switcherTab}
               pulse={overviewPulse}
               pulseRangeLabel={performanceData?.rangeLabel ?? null}
               discoverySources={overviewDiscoverySources}
@@ -1467,23 +1480,6 @@ export default async function ManageBusinessPage({
               needsAttention={needsAttention}
               recentOrders={orderList}
             />
-
-            {/* FindMi Global Handle Registry — kept as its own small,
-                quiet row (same `quiet` treatment as before) rather than
-                folded into BusinessOverviewV2: it's a real, self-contained
-                capability (claim/copy the Findmi handle), not a summary
-                stat, so it stays a plain reused component instead of new
-                presentation logic. */}
-            <div className="rounded-2xl border border-black/[0.06] bg-white px-4 py-3">
-              <FindmiUrlCard
-                entityType="business"
-                entityId={id}
-                entityLabel={business.name}
-                currentHandle={businessHandle}
-                action={updateBusinessHandle.bind(null, id)}
-                quiet
-              />
-            </div>
           </div>
         )}
 

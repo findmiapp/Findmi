@@ -1,8 +1,9 @@
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import { formatDateShort, formatTime } from "@/lib/format";
-import { Chip, StatusDot, secondaryButtonClass } from "../../owner-ui";
+import { Chip } from "../../owner-ui";
 import QrCampaignCreator from "./QrCampaignCreator";
+import FindmiUrlCard from "@/components/FindmiUrlCard";
 import type { DashboardAppearance, NeedsAttentionItem } from "@/lib/business-dashboard";
 import type { BusinessOrderListItem } from "@/lib/business-orders";
 
@@ -19,6 +20,12 @@ import type { BusinessOrderListItem } from "@/lib/business-orders";
 // (?tab=findmi-here / ?tab=qr / ?tab=products / ?tab=performance /
 // ?tab=orders); every "View All" link below points there, never a new
 // destination.
+//
+// Visual Correction Pass — this is ONE cohesive brand surface, not a
+// stack of individually bordered white cards. Only the Hero and the
+// Performance+Discovery module are real bordered containers; everything
+// else below them reads through typography, spacing, dividers and
+// photography rather than a fifth/sixth/seventh white rounded box.
 
 export interface OverviewPulseMetric {
   value: number;
@@ -60,11 +67,16 @@ const ORDER_STATUS_LABELS: Record<BusinessOrderListItem["status"], string> = {
 
 export default function BusinessOverviewV2({
   basePath,
+  businessId,
   business,
   pro,
   isExpiredPro,
   categoryLabel,
   geographyLabel,
+  businessHandle,
+  updateHandleAction,
+  managedBusinesses,
+  switcherTab,
   pulse,
   pulseRangeLabel,
   discoverySources,
@@ -77,11 +89,21 @@ export default function BusinessOverviewV2({
   recentOrders,
 }: {
   basePath: string;
+  businessId: string;
   business: { name: string; slug: string | null; logoUrl: string | null; coverImageUrl: string | null; publicationStatus: string };
   pro: boolean;
   isExpiredPro: boolean;
   categoryLabel: string | null;
   geographyLabel: string | null;
+  businessHandle: string | null;
+  updateHandleAction: (formData: FormData) => void | Promise<void>;
+  /** Owner Shell V3's persistent Business switcher — moved here (from the
+   * page-level workspace band, suppressed on this tab) so Overview has
+   * exactly ONE identity moment rather than two consecutive business
+   * headers. Empty for a single-business owner or a pure admin-elevated
+   * session, same as before. */
+  managedBusinesses: { id: string; name: string }[];
+  switcherTab: string;
   pulse: {
     profileViews: OverviewPulseMetric;
     qrScans: OverviewPulseMetric;
@@ -113,84 +135,141 @@ export default function BusinessOverviewV2({
   recentOrders: BusinessOrderListItem[];
 }) {
   const totalDiscoveryImpressions = discoverySources?.reduce((sum, s) => sum + s.impressions, 0) ?? 0;
+  const showSwitcher = managedBusinesses.length > 1;
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* ── Business Identity ──────────────────────────────────────── */}
+    <div className="flex flex-col gap-4">
+      {/* ── Hero — the ONE business identity moment on this tab. Photo +
+          identity in one block, actions integrated into a single attached
+          footer strip below it (never floating over the image), the
+          FindMi URL utility folded in here too instead of its own card. ── */}
       <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white">
-        <div className={`relative ${business.coverImageUrl ? "h-32 sm:h-40" : "h-20 sm:h-24"} bg-findmi-50`}>
-          {business.coverImageUrl && (
-            <>
-              <SupabaseImage src={business.coverImageUrl} alt="" fill sizes="100vw" className="object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-            </>
-          )}
-          <div className="absolute right-3 top-3 flex items-center gap-2">
+        {business.coverImageUrl ? (
+          <div className="relative h-36 sm:h-44">
+            <SupabaseImage src={business.coverImageUrl} alt="" fill sizes="100vw" className="object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 flex items-end gap-3 p-4">
+              {business.logoUrl ? (
+                <SupabaseImage
+                  src={business.logoUrl}
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="h-12 w-12 shrink-0 rounded-xl border-2 border-white/80 bg-white object-cover shadow-sm"
+                />
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-white/80 bg-white font-display text-base font-bold text-findmi-700 shadow-sm">
+                  {business.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <h2 className="truncate font-display text-lg font-bold tracking-tight text-white drop-shadow-sm">{business.name}</h2>
+                  <Chip tone={pro ? "aqua" : isExpiredPro ? "amber" : "neutral"}>
+                    {pro ? "Pro" : isExpiredPro ? "Pro Expired" : "Free"}
+                  </Chip>
+                  {showSwitcher && <BusinessSwitcher businessId={businessId} managedBusinesses={managedBusinesses} switcherTab={switcherTab} light />}
+                </div>
+                <p className="mt-0.5 truncate text-[12.5px] text-white/80">
+                  {[categoryLabel, geographyLabel].filter(Boolean).join(" · ") || "Add your category and area in Profile"}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 p-4">
+            {business.logoUrl ? (
+              <SupabaseImage
+                src={business.logoUrl}
+                alt=""
+                width={48}
+                height={48}
+                className="h-12 w-12 shrink-0 rounded-xl border border-black/[0.06] object-cover"
+              />
+            ) : (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-findmi-50 font-display text-base font-bold text-findmi-700">
+                {business.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <h2 className="truncate font-display text-lg font-bold tracking-tight text-ink">{business.name}</h2>
+                <Chip tone={pro ? "aqua" : isExpiredPro ? "amber" : "neutral"}>
+                  {pro ? "Pro" : isExpiredPro ? "Pro Expired" : "Free"}
+                </Chip>
+                {showSwitcher && <BusinessSwitcher businessId={businessId} managedBusinesses={managedBusinesses} switcherTab={switcherTab} />}
+              </div>
+              <p className="mt-0.5 truncate text-[12.5px] text-ink/50">
+                {[categoryLabel, geographyLabel].filter(Boolean).join(" · ") || "Add your category and area in Profile"}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {business.publicationStatus === "pending_review" && (
+          <div className="border-t border-amber-100 bg-amber-50 px-4 py-2">
+            <p className="text-[12px] font-semibold text-amber-900">
+              Pending Review — visible to you now, live in discovery after Findmi reviews it.
+            </p>
+          </div>
+        )}
+
+        {/* Footer action strip — integrated, not floating over the photo. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-black/[0.06] px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3">
             {business.slug && (
-              <Link
-                href={`/business/${business.slug}`}
-                className={`${secondaryButtonClass("sm")} ${business.coverImageUrl ? "border-white/40 bg-white/90 backdrop-blur" : ""}`}
-              >
+              <Link href={`/business/${business.slug}`} className="text-[12px] font-bold text-findmi-700">
                 View Public Profile →
               </Link>
             )}
-            <Link
-              href={`${basePath}?tab=settings`}
-              aria-label="Business settings"
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${
-                business.coverImageUrl
-                  ? "border-white/40 bg-white/90 text-ink/70 backdrop-blur hover:bg-white"
-                  : "border-black/10 bg-white text-ink/50 hover:border-black/20"
-              }`}
-            >
-              <GearGlyph className="h-4 w-4" />
+            <Link href={`${basePath}?tab=settings`} className="text-[12px] font-semibold text-ink/55 hover:text-ink">
+              Settings
             </Link>
           </div>
-        </div>
-
-        <div className={`relative flex items-end gap-3 px-4 pb-4 ${business.coverImageUrl ? "-mt-8" : "pt-4"}`}>
-          {business.logoUrl ? (
-            <SupabaseImage
-              src={business.logoUrl}
-              alt=""
-              width={56}
-              height={56}
-              className="h-14 w-14 shrink-0 rounded-xl border-2 border-white bg-white object-cover shadow-sm"
+          <div className="min-w-0">
+            <FindmiUrlCard
+              entityType="business"
+              entityId={businessId}
+              entityLabel={business.name}
+              currentHandle={businessHandle}
+              action={updateHandleAction}
+              quiet
             />
-          ) : (
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border-2 border-white bg-findmi-50 font-display text-lg font-bold text-findmi-700 shadow-sm">
-              {business.name.charAt(0).toUpperCase()}
-            </div>
-          )}
-          <div className="min-w-0 flex-1 pb-0.5">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <h2 className="truncate font-display text-lg font-bold tracking-tight text-ink">{business.name}</h2>
-              <Chip tone={pro ? "aqua" : isExpiredPro ? "amber" : "neutral"}>
-                {pro ? "Pro" : isExpiredPro ? "Pro Expired" : "Free"}
-              </Chip>
-            </div>
-            <p className="mt-0.5 truncate text-[12.5px] text-ink/50">
-              {[categoryLabel, geographyLabel].filter(Boolean).join(" · ") || "Add your category and area in Profile"}
-            </p>
           </div>
         </div>
-
-        {business.publicationStatus === "pending_review" && (
-          <div className="flex items-center gap-2 border-t border-amber-100 bg-amber-50 px-4 py-2">
-            <StatusDot tone="attention" label="Pending Review — visible to you now, live in discovery after Findmi reviews it." />
-          </div>
-        )}
       </div>
 
-      {/* ── Performance Pulse ───────────────────────────────────────── */}
-      <div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <PulseTile label="Profile Views" metric={pulse.profileViews} pro={pro} />
-          <PulseTile label="QR Scans" metric={pulse.qrScans} pro={pro} />
-          <PulseTile label="Actions Taken" metric={pulse.actionsTaken} pro={pro} />
-          <PulseTile label="Followers" metric={{ value: pulse.followers, changeLabel: null }} pro={pro} />
+      {/* ── Performance — one dense strip, Discovery folded into the SAME
+          module (a divider, not a second card). ── */}
+      <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white">
+        <div className="grid grid-cols-4 divide-x divide-black/[0.06]">
+          <PulseColumn label="Profile Views" metric={pulse.profileViews} pro={pro} />
+          <PulseColumn label="QR Scans" metric={pulse.qrScans} pro={pro} />
+          <PulseColumn label="Actions" metric={pulse.actionsTaken} pro={pro} />
+          <PulseColumn label="Followers" metric={{ value: pulse.followers, changeLabel: null }} pro={pro} />
         </div>
-        <div className="mt-2 flex items-center justify-between">
+
+        {pro && discoverySources && discoverySources.length > 0 && (
+          <div className="border-t border-black/[0.06] px-4 py-3">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-ink/40">How People Find You</p>
+            <div className="mt-2 flex flex-col gap-2">
+              {discoverySources.slice(0, 4).map((s) => {
+                const share = totalDiscoveryImpressions > 0 ? Math.round((s.impressions / totalDiscoveryImpressions) * 100) : 0;
+                return (
+                  <div key={s.label} className="flex items-center gap-2.5">
+                    <span className="w-24 shrink-0 truncate text-[12px] font-medium text-ink/70 sm:w-32">{s.label}</span>
+                    <span className="h-1.5 flex-1 rounded-full bg-black/[0.05]">
+                      <span className="block h-1.5 rounded-full bg-findmi" style={{ width: `${share}%` }} />
+                    </span>
+                    <span className="w-8 shrink-0 text-right text-[11px] font-semibold text-ink/50">{share}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between border-t border-black/[0.06] px-4 py-2">
           <p className="text-[11px] text-ink/35">
             {pulseRangeLabel ?? "All time"}
             {pro ? " vs. previous period" : ""}
@@ -201,74 +280,39 @@ export default function BusinessOverviewV2({
         </div>
       </div>
 
-      {/* ── Discovery Summary — Pro only, omitted entirely for Free
-          rather than shown locked/teased (cleaner, no manipulative
-          upgrade language). ── */}
-      {pro && discoverySources && discoverySources.length > 0 && (
-        <div className="rounded-2xl border border-black/[0.06] bg-white p-4">
-          <p className="text-[13px] font-bold text-ink">How People Find You</p>
-          <div className="mt-3 flex flex-col gap-2.5">
-            {discoverySources.slice(0, 4).map((s) => {
-              const share = totalDiscoveryImpressions > 0 ? Math.round((s.impressions / totalDiscoveryImpressions) * 100) : 0;
-              return (
-                <div key={s.label}>
-                  <div className="flex items-center justify-between text-[12.5px]">
-                    <span className="font-medium text-ink/75">{s.label}</span>
-                    <span className="font-semibold text-ink/50">{share}%</span>
-                  </div>
-                  <div className="mt-1 h-1.5 rounded-full bg-black/[0.05]">
-                    <div className="h-1.5 rounded-full bg-findmi" style={{ width: `${share}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Upcoming Appearances ────────────────────────────────────── */}
+      {/* ── Upcoming Appearances — a photographic rail when data exists;
+          a single quiet line, never a large empty box, otherwise. ── */}
       <div>
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] font-bold text-ink">Upcoming Appearances</p>
-          <div className="flex items-center gap-3">
-            <Link href={`${basePath}?tab=findmi-here`} className="text-[11px] font-bold text-findmi-700">
-              View All →
-            </Link>
-          </div>
-        </div>
+        <SectionHeading title="Upcoming Appearances" href={`${basePath}?tab=findmi-here`} />
         {appearances.length > 0 ? (
-          <div className="-mx-4 mt-2.5 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0">
+          <div className="-mx-4 mt-2 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
             {appearances.slice(0, 6).map((a) => (
               <AppearanceCard key={a.id} appearance={a} />
             ))}
           </div>
         ) : (
-          <div className="mt-2.5 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-black/10 px-4 py-3">
-            <p className="text-[12.5px] text-ink/45">Nothing scheduled yet.</p>
-            <Link href={`${basePath}?tab=findmi-here`} className="shrink-0 text-[12px] font-bold text-findmi-700">
+          <p className="mt-1.5 text-[12.5px] text-ink/45">
+            Nothing scheduled yet ·{" "}
+            <Link href={`${basePath}?tab=findmi-here`} className="font-bold text-findmi-700">
               + Add Where I&rsquo;ll Be
             </Link>
-          </div>
+          </p>
         )}
       </div>
 
-      {/* ── QR Campaigns ────────────────────────────────────────────── */}
+      {/* ── QR Campaigns — a compact, first-class operational list (icon
+          chip + name + scans), not a bordered admin row, plus the always-
+          available inline creator. ── */}
       <div>
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] font-bold text-ink">QR Campaigns</p>
-          <Link href={`${basePath}?tab=qr`} className="text-[11px] font-bold text-findmi-700">
-            View All →
-          </Link>
-        </div>
+        <SectionHeading title="QR Campaigns" href={`${basePath}?tab=qr`} />
         {qrCampaigns.length > 0 && (
-          <div className="mt-2.5 flex flex-col divide-y divide-black/[0.05] rounded-2xl border border-black/[0.06] bg-white">
+          <div className="mt-1.5 flex flex-col divide-y divide-black/[0.05]">
             {qrCampaigns.slice(0, 3).map((c) => (
-              <Link
-                key={c.id}
-                href={`/account/qr/${c.id}`}
-                className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-black/[0.015]"
-              >
-                <div className="min-w-0">
+              <Link key={c.id} href={`/account/qr/${c.id}`} className="flex items-center gap-3 py-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-findmi-50">
+                  <QrGlyph className="h-4 w-4 text-findmi-700" />
+                </span>
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-semibold text-ink">{c.name}</p>
                   <p className="truncate text-[11px] text-ink/45">
                     {c.destinationLabel}
@@ -280,27 +324,19 @@ export default function BusinessOverviewV2({
             ))}
           </div>
         )}
-        <div className="mt-2.5">
+        <div className="mt-2">
           <QrCampaignCreator centralOptions={qrCentralOptions} />
         </div>
       </div>
 
-      {/* ── Products ─────────────────────────────────────────────────── */}
+      {/* ── Products — a visual rail, sized so a single product never
+          reads as an accidentally empty grid. ── */}
       {productCount > 0 && (
         <div>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[13px] font-bold text-ink">Products</p>
-            <Link href={`${basePath}?tab=products`} className="text-[11px] font-bold text-findmi-700">
-              View All →
-            </Link>
-          </div>
-          <div className="-mx-4 mt-2.5 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0">
+          <SectionHeading title="Products" href={`${basePath}?tab=products`} />
+          <div className="-mx-4 mt-2 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
             {products.slice(0, 4).map((p) => (
-              <Link
-                key={p.id}
-                href={`${basePath}?tab=products`}
-                className="w-28 shrink-0 overflow-hidden rounded-2xl border border-black/[0.06] bg-white sm:w-auto"
-              >
+              <Link key={p.id} href={`${basePath}?tab=products`} className="w-28 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]">
                 <div className="relative h-28 w-full bg-black/[0.03]">
                   {p.imageUrl ? (
                     <SupabaseImage src={p.imageUrl} alt={p.name} fill sizes="160px" className="object-cover" />
@@ -310,11 +346,11 @@ export default function BusinessOverviewV2({
                     </div>
                   )}
                 </div>
-                <div className="p-2.5">
+                <div className="p-2">
                   <p className="truncate text-[12px] font-semibold text-ink">{p.name}</p>
-                  <div className="mt-1 flex items-center justify-between gap-1">
-                    <span className="text-[11.5px] text-ink/55">{p.priceLabel ?? ""}</span>
-                    {!p.isActive && <Chip tone="neutral">Inactive</Chip>}
+                  <div className="mt-0.5 flex items-center justify-between gap-1">
+                    <span className="text-[11px] text-ink/55">{p.priceLabel ?? ""}</span>
+                    {!p.isActive && <span className="text-[10px] font-semibold text-ink/35">Inactive</span>}
                   </div>
                 </div>
               </Link>
@@ -323,19 +359,20 @@ export default function BusinessOverviewV2({
         </div>
       )}
 
-      {/* ── Owner Attention + Recent Orders — conditional, never a
-          giant empty module. ── */}
+      {/* ── Owner Attention + Recent Orders — light operational feeds,
+          not feature cards: a soft tint, no border/shadow. Conditional,
+          never a giant empty module. ── */}
       {(needsAttention.length > 0 || recentOrders.length > 0) && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {needsAttention.length > 0 && (
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-4">
+            <div className="rounded-xl bg-black/[0.025] p-3.5">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[13px] font-bold text-ink">Needs Attention</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/45">Needs Attention</p>
                 <Chip tone="amber">{needsAttention.length}</Chip>
               </div>
-              <ul className="mt-2.5 flex flex-col divide-y divide-black/[0.05]">
+              <ul className="mt-2 flex flex-col divide-y divide-black/[0.05]">
                 {needsAttention.map((item) => (
-                  <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                  <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
                     <p className="min-w-0 text-[12.5px] text-ink/70">{item.message}</p>
                     <Link href={item.actionHref} className="shrink-0 text-[11px] font-bold text-findmi-700">
                       {item.actionLabel}
@@ -347,19 +384,19 @@ export default function BusinessOverviewV2({
           )}
 
           {recentOrders.length > 0 && (
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-4">
+            <div className="rounded-xl bg-black/[0.025] p-3.5">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[13px] font-bold text-ink">Recent Orders</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/45">Recent Orders</p>
                 <Link href={`${basePath}?tab=orders`} className="text-[11px] font-bold text-findmi-700">
                   View All →
                 </Link>
               </div>
-              <ul className="mt-2.5 flex flex-col divide-y divide-black/[0.05]">
+              <ul className="mt-2 flex flex-col divide-y divide-black/[0.05]">
                 {recentOrders.slice(0, 3).map((o) => (
                   <li key={o.orderId}>
                     <Link
                       href={`${basePath}?tab=orders&order=${o.orderId}`}
-                      className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                      className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-[12.5px] font-semibold text-ink">
@@ -380,19 +417,30 @@ export default function BusinessOverviewV2({
   );
 }
 
-function PulseTile({ label, metric, pro }: { label: string; metric: OverviewPulseMetric; pro: boolean }) {
+function SectionHeading({ title, href }: { title: string; href: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[13px] font-bold text-ink">{title}</p>
+      <Link href={href} className="text-[11px] font-bold text-findmi-700">
+        View All →
+      </Link>
+    </div>
+  );
+}
+
+function PulseColumn({ label, metric, pro }: { label: string; metric: OverviewPulseMetric; pro: boolean }) {
   const showChange = pro && metric.changeLabel;
   const up = showChange && metric.changeLabel!.startsWith("+");
   const down = showChange && metric.changeLabel!.startsWith("-");
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-white p-3">
-      <p className="font-display text-xl font-bold leading-none tracking-tight text-ink tabular-nums sm:text-2xl">
+    <div className="min-w-0 px-2.5 py-3 text-center sm:px-3">
+      <p className="font-display text-lg font-bold leading-none tracking-tight text-ink tabular-nums sm:text-xl">
         {metric.value.toLocaleString()}
       </p>
-      <p className="mt-1.5 truncate text-[10.5px] font-semibold uppercase tracking-wide text-ink/40">{label}</p>
+      <p className="mt-1 truncate text-[9.5px] font-semibold uppercase tracking-wide text-ink/40 sm:text-[10px]">{label}</p>
       {showChange && (
-        <p className={`mt-0.5 text-[11px] font-bold ${up ? "text-findmi-700" : down ? "text-ink/45" : "text-ink/35"}`}>
-          {up ? "↑ " : down ? "↓ " : ""}
+        <p className={`mt-0.5 truncate text-[10px] font-bold ${up ? "text-findmi-700" : down ? "text-ink/45" : "text-ink/35"}`}>
+          {up ? "↑" : down ? "↓" : ""}
           {metric.changeLabel}
         </p>
       )}
@@ -403,13 +451,10 @@ function PulseTile({ label, metric, pro }: { label: string; metric: OverviewPuls
 function AppearanceCard({ appearance }: { appearance: DashboardAppearance }) {
   const locationLine = appearance.geographyLabel ?? appearance.venueName ?? [appearance.city, appearance.state].filter(Boolean).join(", ");
   return (
-    <Link
-      href={appearance.managementHref}
-      className="w-56 shrink-0 overflow-hidden rounded-2xl border border-black/[0.06] bg-white sm:w-auto"
-    >
+    <Link href={appearance.managementHref} className="w-48 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]">
       <div className="relative h-28 w-full bg-black/[0.04]">
         {appearance.flyerImageUrl ? (
-          <SupabaseImage src={appearance.flyerImageUrl} alt={appearance.title} fill sizes="240px" className="object-cover" />
+          <SupabaseImage src={appearance.flyerImageUrl} alt={appearance.title} fill sizes="200px" className="object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-ink/20">
             <CalendarGlyphLarge className="h-8 w-8" />
@@ -417,19 +462,68 @@ function AppearanceCard({ appearance }: { appearance: DashboardAppearance }) {
         )}
         <DateBadge iso={appearance.startAt} live={appearance.temporal.live} />
       </div>
-      <div className="p-2.5">
+      <div className="p-2">
         <p className="truncate text-[12.5px] font-semibold text-ink">{appearance.title}</p>
         {locationLine && <p className="truncate text-[11px] text-ink/50">{locationLine}</p>}
-        <p className="mt-0.5 truncate text-[11px] text-ink/45">
-          {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
-        </p>
-        <div className="mt-1.5">
-          <Chip tone={appearance.participationStatus && appearance.participationStatus !== "approved" ? "amber" : "aquaSoft"}>
+        <p className="mt-0.5 flex items-center justify-between gap-1 text-[11px] text-ink/45">
+          <span className="truncate">
+            {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
+          </span>
+          <span
+            className={`shrink-0 text-[10px] font-bold ${
+              appearance.participationStatus && appearance.participationStatus !== "approved" ? "text-amber-700" : "text-findmi-700"
+            }`}
+          >
             {appearance.statusLabel}
-          </Chip>
-        </div>
+          </span>
+        </p>
       </div>
     </Link>
+  );
+}
+
+/** Owner Shell V3's persistent Business switcher, moved from the page-
+ * level workspace band into this hero (Visual Correction Pass) so a
+ * multi-business owner keeps the same switch capability without Overview
+ * showing two consecutive business headers. Same native <details>
+ * disclosure, zero client JS, as the original. `light` renders it for
+ * legibility against the cover-photo gradient. */
+function BusinessSwitcher({
+  businessId,
+  managedBusinesses,
+  switcherTab,
+  light,
+}: {
+  businessId: string;
+  managedBusinesses: { id: string; name: string }[];
+  switcherTab: string;
+  light?: boolean;
+}) {
+  return (
+    <details className="group relative shrink-0">
+      <summary
+        aria-label="Switch business"
+        className={`flex h-5 w-5 cursor-pointer list-none items-center justify-center rounded-full transition [&::-webkit-details-marker]:hidden ${
+          light ? "text-white/70 hover:bg-white/15 hover:text-white" : "text-ink/35 hover:bg-black/[0.05] hover:text-ink"
+        }`}
+      >
+        <ChevronGlyph className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-black/[0.07] bg-white p-1.5 text-left shadow-lg">
+        <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Switch Business</p>
+        {managedBusinesses.map((b) => (
+          <Link
+            key={b.id}
+            href={`/account/business/${b.id}?tab=${switcherTab}`}
+            className={`block truncate rounded-lg px-2.5 py-2 text-sm font-semibold transition hover:bg-black/[0.03] ${
+              b.id === businessId ? "text-findmi-700" : "text-ink"
+            }`}
+          >
+            {b.name}
+          </Link>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -459,16 +553,21 @@ function DateBadge({ iso, live }: { iso: string; live?: boolean }) {
   );
 }
 
-function GearGlyph({ className }: { className?: string }) {
+function ChevronGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" />
-      <path
-        d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
+      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function QrGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className}>
+      <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="11" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="3" y="11" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M11 12h2.5M11 15.5h6M15.5 12h1.5v1.5M17 15.5v1.5h-1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
