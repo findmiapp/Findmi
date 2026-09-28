@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
+import WantHeartButton from "@/components/WantHeartButton";
 import type { BusinessWithCategories } from "@/lib/types";
 import type { NextAppearanceHint } from "@/lib/data";
 import { cityState, formatDateShort } from "@/lib/format";
@@ -28,15 +29,35 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
  * Profile" CTA line; the whole card is the single tap target, which is
  * itself part of the density win. Same entity_impression/entity_click
  * analytics wiring as BusinessLogoCard (buildEntityEventFields), so the
- * results grid keeps the same tracked placement it always had. */
+ * results grid keeps the same tracked placement it always had.
+ *
+ * Businesses Discovery Density + Category Rail Pass — a second, additive
+ * "rail" variant (`variant="rail"`, opt-in only; every existing caller
+ * omits it and renders the original row exactly as before). Browse Mode's
+ * category rails were using BusinessLogoCard — a rich, tall vertical
+ * profile-preview card — at ~80vw, so only about one business was ever
+ * visible per screen. Rather than shrink that card until its logo
+ * overlap/NEXT UP panel/CTA line become cramped, "rail" is a dedicated
+ * compact, image-forward identity card: photo on top, name + city/state
+ * below, answering WHO/WHAT KIND/WHERE at a glance — no category text
+ * (redundant under a category rail's own heading), no CTA chrome (the
+ * whole card is already the tap target), Pro/Founding/New rendered as a
+ * small inline pill next to the name rather than a banner over the photo.
+ * Reuses this file's existing badge precedence and the same
+ * NextAppearanceHint bulk data /businesses already fetches — no new
+ * query. Save uses the same generic WantHeartButton overlay
+ * LocationDiscoveryCard/ProductCard already use, with `type="business"`
+ * (an existing SavedEntityType) — not new save/follow architecture. */
 export default function BusinessDiscoveryCard({
   business,
   nextAppearance,
   analyticsContext,
+  variant = "row",
 }: {
   business: BusinessWithCategories;
   nextAppearance?: NextAppearanceHint | null;
   analyticsContext?: AnalyticsPlacementContext;
+  variant?: "row" | "rail";
 }) {
   const category = business.categories[0]?.name;
   const geo = cityState(business.city, business.state);
@@ -58,6 +79,53 @@ export default function BusinessDiscoveryCard({
 
   const analyticsFields = buildEntityEventFields("business", business.id, { businessId: business.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });
+
+  if (variant === "rail") {
+    return (
+      <Link
+        ref={impressionRef}
+        href={`/business/${business.slug}`}
+        onClick={() => trackEvent({ event_name: "entity_click", ...analyticsFields })}
+        className="flex flex-col overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98] hover:border-black/10 hover:shadow"
+      >
+        <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-mist">
+          {image ? (
+            <SupabaseImage
+              src={image}
+              alt=""
+              fill
+              sizes="(min-width: 640px) 176px, 42vw"
+              className={isLogoOnly ? "object-contain p-3" : "object-cover"}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-ink">
+              <StorefrontGlyph className="h-6 w-6 text-white/25" />
+            </div>
+          )}
+          <div className="absolute right-1.5 top-1.5">
+            <WantHeartButton type="business" slug={business.slug} id={business.id} className="h-7 w-7" />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-0.5 p-2">
+          <p className="flex items-center gap-1">
+            <span className="min-w-0 flex-1 truncate font-display text-xs font-bold text-ink">{business.name}</span>
+            {badge && (
+              <span className="shrink-0 rounded-full bg-findmi-50 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-findmi-700">
+                {badge}
+              </span>
+            )}
+          </p>
+          {geo && <p className="truncate text-[10px] text-ink/50">{geo}</p>}
+          {nextAppearance && (
+            <p className="truncate text-[10px] font-bold text-findmi-700">
+              Next: {nextAppearance.venue} · {formatDateShort(nextAppearance.startAt)}
+            </p>
+          )}
+        </div>
+      </Link>
+    );
+  }
 
   return (
     <Link

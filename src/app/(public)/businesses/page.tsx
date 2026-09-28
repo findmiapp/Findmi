@@ -314,7 +314,13 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                 <Section title="Featured on Findmi" subtitle="Businesses Findmi is spotlighting right now" className="py-4">
                   <HorizontalScroller>
                     {featuredBusinesses.map((b) => (
-                      <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
+                      // Businesses Discovery Density pass — same BusinessLogoCard,
+                      // same rail, only the wrapper width narrowed (80vw -> ~62vw):
+                      // Featured is allowed a little more visual prominence than
+                      // an ordinary category rail, but 80vw showed only ~1 card at
+                      // a time on mobile; this is the minimum correction to make
+                      // horizontal browsing obvious without redesigning the card.
+                      <div key={b.id} className="w-[62vw] max-w-[280px] shrink-0 sm:w-72">
                         <BusinessLogoCard
                           business={b}
                           nextAppearance={browseAppearanceHints.get(b.id)}
@@ -335,9 +341,14 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                 >
                   <HorizontalScroller>
                     {categoryBusinesses.map((b) => (
-                      <div key={b.id} className="w-[80vw] max-w-sm shrink-0 sm:w-96">
-                        <BusinessLogoCard
+                      // Businesses Discovery Density pass — the new compact,
+                      // image-forward "rail" variant of BusinessDiscoveryCard,
+                      // sized to land ~2.0-2.4 cards visible at 360-430px
+                      // (BusinessLogoCard's own 80vw showed only ~1 at a time).
+                      <div key={b.id} className="w-[42vw] max-w-[170px] shrink-0 sm:w-44">
+                        <BusinessDiscoveryCard
                           business={b}
+                          variant="rail"
                           nextAppearance={browseAppearanceHints.get(b.id)}
                           analyticsContext={{ pageType: "businesses", placement: `category_rail:${category.slug}` }}
                         />
