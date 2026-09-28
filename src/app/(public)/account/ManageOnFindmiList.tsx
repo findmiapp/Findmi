@@ -104,19 +104,22 @@ export default function ManageOnFindmiList({ entities }: { entities: ManagedEnti
   );
 }
 
-/** Mobile Command Center V2 — the whole row is now the one, single
- * navigation target (previously only the small trailing CTA button
- * was tappable, a poor mobile target). The former CTA <Link> becomes a
- * plain <span> styled the same way, so this stays one valid anchor
- * rather than a nested/invalid <a> inside an <a>. Same href, same
- * visible action language, same badges/filtering — navigation
- * semantics unchanged. */
+/** Mobile Command Center V2 — the whole row is the one, single navigation
+ * target. Same href, same badges/filtering — navigation semantics
+ * unchanged.
+ *
+ * Account Command Center V2 — lighter row treatment matching Business
+ * Overview's visual language: a hairline border instead of a shadowed
+ * white card, and the trailing action is now a plain understated arrow
+ * link (same weight as Business Overview's "View All →") instead of a
+ * filled pill — the workspace/business list reads as a compact list, not
+ * a stack of buttons. */
 function EntityRow({ entity, showType }: { entity: ManagedEntity; showType: boolean }) {
   const activePills = entity.pills.filter((p): p is { label: string; tone: "warning" | "pro" } => Boolean(p));
   return (
     <Link
       href={entity.href}
-      className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white px-3.5 py-2.5 shadow-sm transition hover:border-black/10 active:scale-[0.99]"
+      className="flex items-center gap-3 rounded-xl border border-black/[0.06] px-3.5 py-2.5 transition hover:border-black/15 active:scale-[0.99]"
     >
       <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-findmi-50 text-findmi-700">
         {entity.imageUrl ? (
@@ -138,9 +141,7 @@ function EntityRow({ entity, showType }: { entity: ManagedEntity; showType: bool
           </div>
         )}
       </div>
-      <span className="shrink-0 rounded-full bg-findmi px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white">
-        {entity.cta} →
-      </span>
+      <span className="shrink-0 text-[11px] font-bold text-findmi-700">{entity.cta} →</span>
     </Link>
   );
 }

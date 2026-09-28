@@ -256,12 +256,14 @@ export default function BusinessOverviewV2({
               {discoverySources.slice(0, 4).map((s) => {
                 const share = totalDiscoveryImpressions > 0 ? Math.round((s.impressions / totalDiscoveryImpressions) * 100) : 0;
                 return (
-                  <div key={s.label} className="flex items-center gap-2.5">
-                    <span className="w-24 shrink-0 truncate text-[12px] font-medium text-ink/70 sm:w-32">{s.label}</span>
-                    <span className="h-1.5 flex-1 rounded-full bg-black/[0.05]">
+                  <div key={s.label} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink/70">{s.label}</span>
+                      <span className="shrink-0 text-[11px] font-semibold text-ink/50">{share}%</span>
+                    </div>
+                    <span className="h-1.5 rounded-full bg-black/[0.05]">
                       <span className="block h-1.5 rounded-full bg-findmi" style={{ width: `${share}%` }} />
                     </span>
-                    <span className="w-8 shrink-0 text-right text-[11px] font-semibold text-ink/50">{share}%</span>
                   </div>
                 );
               })}
@@ -279,6 +281,28 @@ export default function BusinessOverviewV2({
           </Link>
         </div>
       </div>
+
+      {/* ── Needs Attention — actionable problems come before passive
+          inventory, so this sits directly below Performance. Light
+          operational tint, no border/shadow. Renders nothing when empty. ── */}
+      {needsAttention.length > 0 && (
+        <div className="rounded-xl bg-black/[0.025] p-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-ink/45">Needs Attention</p>
+            <Chip tone="amber">{needsAttention.length}</Chip>
+          </div>
+          <ul className="mt-2 flex flex-col divide-y divide-black/[0.05]">
+            {needsAttention.map((item) => (
+              <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
+                <p className="min-w-0 text-[12.5px] text-ink/70">{item.message}</p>
+                <Link href={item.actionHref} className="shrink-0 text-[11px] font-bold text-findmi-700">
+                  {item.actionLabel}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* ── Upcoming Appearances — a photographic rail when data exists;
           a single quiet line, never a large empty box, otherwise. ── */}
@@ -319,7 +343,9 @@ export default function BusinessOverviewV2({
                     {!c.isActive && <span className="ml-1.5 font-semibold text-ink/35">· Inactive</span>}
                   </p>
                 </div>
-                <span className="shrink-0 text-[11px] text-ink/50">{c.scans.toLocaleString()} scans</span>
+                <span className="shrink-0 text-[11px] text-ink/50">
+                  {c.scans.toLocaleString()} scan{c.scans === 1 ? "" : "s"}
+                </span>
               </Link>
             ))}
           </div>
@@ -329,88 +355,78 @@ export default function BusinessOverviewV2({
         </div>
       </div>
 
-      {/* ── Products — a visual rail, sized so a single product never
-          reads as an accidentally empty grid. ── */}
+      {/* ── Products — a visual rail for products with imagery; a
+          compact row (no reserved photo area) for products without one,
+          so a single imageless product never leaves a tall dead area. ── */}
       {productCount > 0 && (
         <div>
           <SectionHeading title="Products" href={`${basePath}?tab=products`} />
-          <div className="-mx-4 mt-2 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-            {products.slice(0, 4).map((p) => (
-              <Link key={p.id} href={`${basePath}?tab=products`} className="w-28 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]">
-                <div className="relative h-28 w-full bg-black/[0.03]">
-                  {p.imageUrl ? (
+          <div className="-mx-4 mt-2 flex gap-2.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+            {products.slice(0, 4).map((p) =>
+              p.imageUrl ? (
+                <Link key={p.id} href={`${basePath}?tab=products`} className="w-28 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]">
+                  <div className="relative h-28 w-full bg-black/[0.03]">
                     <SupabaseImage src={p.imageUrl} alt={p.name} fill sizes="160px" className="object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-ink/20">
-                      <TagGlyph className="h-6 w-6" />
-                    </div>
-                  )}
-                </div>
-                <div className="p-2">
-                  <p className="truncate text-[12px] font-semibold text-ink">{p.name}</p>
-                  <div className="mt-0.5 flex items-center justify-between gap-1">
-                    <span className="text-[11px] text-ink/55">{p.priceLabel ?? ""}</span>
-                    {!p.isActive && <span className="text-[10px] font-semibold text-ink/35">Inactive</span>}
                   </div>
-                </div>
-              </Link>
-            ))}
+                  <div className="p-2">
+                    <p className="truncate text-[12px] font-semibold text-ink">{p.name}</p>
+                    <div className="mt-0.5 flex items-center justify-between gap-1">
+                      <span className="text-[11px] text-ink/55">{p.priceLabel ?? ""}</span>
+                      {!p.isActive && <span className="text-[10px] font-semibold text-ink/35">Inactive</span>}
+                    </div>
+                  </div>
+                </Link>
+              ) : (
+                <Link
+                  key={p.id}
+                  href={`${basePath}?tab=products`}
+                  className="flex w-40 shrink-0 items-center gap-2 rounded-xl border border-black/[0.06] px-2.5 py-2"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/[0.03] text-ink/25">
+                    <TagGlyph className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-semibold text-ink">{p.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-ink/55">{p.priceLabel ?? ""}</span>
+                      {!p.isActive && <span className="text-[10px] font-semibold text-ink/35">Inactive</span>}
+                    </div>
+                  </div>
+                </Link>
+              )
+            )}
           </div>
         </div>
       )}
 
-      {/* ── Owner Attention + Recent Orders — light operational feeds,
-          not feature cards: a soft tint, no border/shadow. Conditional,
-          never a giant empty module. ── */}
-      {(needsAttention.length > 0 || recentOrders.length > 0) && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {needsAttention.length > 0 && (
-            <div className="rounded-xl bg-black/[0.025] p-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/45">Needs Attention</p>
-                <Chip tone="amber">{needsAttention.length}</Chip>
-              </div>
-              <ul className="mt-2 flex flex-col divide-y divide-black/[0.05]">
-                {needsAttention.map((item) => (
-                  <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
-                    <p className="min-w-0 text-[12.5px] text-ink/70">{item.message}</p>
-                    <Link href={item.actionHref} className="shrink-0 text-[11px] font-bold text-findmi-700">
-                      {item.actionLabel}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {recentOrders.length > 0 && (
-            <div className="rounded-xl bg-black/[0.025] p-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/45">Recent Orders</p>
-                <Link href={`${basePath}?tab=orders`} className="text-[11px] font-bold text-findmi-700">
-                  View All →
+      {/* ── Recent Orders — after Products, last in the operational
+          hierarchy. Light tint, conditional, never a giant empty module. ── */}
+      {recentOrders.length > 0 && (
+        <div className="rounded-xl bg-black/[0.025] p-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-ink/45">Recent Orders</p>
+            <Link href={`${basePath}?tab=orders`} className="text-[11px] font-bold text-findmi-700">
+              View All →
+            </Link>
+          </div>
+          <ul className="mt-2 flex flex-col divide-y divide-black/[0.05]">
+            {recentOrders.slice(0, 3).map((o) => (
+              <li key={o.orderId}>
+                <Link
+                  href={`${basePath}?tab=orders&order=${o.orderId}`}
+                  className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-[12.5px] font-semibold text-ink">
+                      #{o.orderNumber} <span className="font-normal text-ink/45">· {o.itemCount} item{o.itemCount === 1 ? "" : "s"}</span>
+                    </p>
+                    <p className="text-[11px] text-ink/45">{formatDateShort(o.createdAt)}</p>
+                  </div>
+                  <Chip tone={o.status === "new" ? "amber" : "neutral"}>{ORDER_STATUS_LABELS[o.status]}</Chip>
                 </Link>
-              </div>
-              <ul className="mt-2 flex flex-col divide-y divide-black/[0.05]">
-                {recentOrders.slice(0, 3).map((o) => (
-                  <li key={o.orderId}>
-                    <Link
-                      href={`${basePath}?tab=orders&order=${o.orderId}`}
-                      className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-[12.5px] font-semibold text-ink">
-                          #{o.orderNumber} <span className="font-normal text-ink/45">· {o.itemCount} item{o.itemCount === 1 ? "" : "s"}</span>
-                        </p>
-                        <p className="text-[11px] text-ink/45">{formatDateShort(o.createdAt)}</p>
-                      </div>
-                      <Chip tone={o.status === "new" ? "amber" : "neutral"}>{ORDER_STATUS_LABELS[o.status]}</Chip>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
@@ -433,11 +449,13 @@ function PulseColumn({ label, metric, pro }: { label: string; metric: OverviewPu
   const up = showChange && metric.changeLabel!.startsWith("+");
   const down = showChange && metric.changeLabel!.startsWith("-");
   return (
-    <div className="min-w-0 px-2.5 py-3 text-center sm:px-3">
+    <div className="min-w-0 px-1 py-3 text-center sm:px-3">
       <p className="font-display text-lg font-bold leading-none tracking-tight text-ink tabular-nums sm:text-xl">
         {metric.value.toLocaleString()}
       </p>
-      <p className="mt-1 truncate text-[9.5px] font-semibold uppercase tracking-wide text-ink/40 sm:text-[10px]">{label}</p>
+      <p className="mt-1 text-[9px] font-semibold uppercase leading-[1.15] tracking-normal text-ink/40 sm:text-[10px] sm:tracking-wide">
+        {label}
+      </p>
       {showChange && (
         <p className={`mt-0.5 truncate text-[10px] font-bold ${up ? "text-findmi-700" : down ? "text-ink/45" : "text-ink/35"}`}>
           {up ? "↑" : down ? "↓" : ""}

@@ -1,18 +1,20 @@
-/** Owner Command Center V4 — a small set of presentational primitives
- * actually exercised by this one page. Deliberately NOT a copy of
- * Admin's dashboard-ui.tsx: same underlying principle (a bounded surface
- * only when it represents a real, coherent concept — never a card around
- * one tiny number), but Owner keeps its own warmer, already-established
- * visual language (rounded-2xl, soft shadow, the exact card treatment
- * account/page.tsx's own Next Up/Inbox rows already used) rather than
- * Admin's flatter rounded-xl/hairline-border module. Family resemblance,
- * not a shared component — Admin and Owner serve different jobs. */
+/** Account Command Center V2 — a small set of presentational primitives
+ * actually exercised by this one page. Same underlying principle as
+ * before (a bounded surface only when it represents a real, coherent
+ * concept — never a card around one tiny number), but now matched to
+ * Business Overview's visual language: a real bordered container is
+ * reserved for genuinely coherent list/rail sections (Today/Coming Up,
+ * Inbox); Needs Attention gets the lighter SoftZone treatment instead
+ * (soft tint, no border/shadow), same as Business Overview's own Needs
+ * Attention module — fewer generic white SaaS cards, not a copy-paste
+ * restyle. Family resemblance with the Business Overview module
+ * language, not a shared component — /account and Business Overview
+ * serve different jobs but should now read as siblings in one product. */
 
 /** A bounded, purposeful Owner module — header (title + optional meta)
- * plus content. Used only for the handful of Command Center sections
- * that represent a genuine coherent surface (Where I'll Be, Needs
- * Attention when active, What You're Managing) — never wrapped around a
- * single stat or a one-line status. */
+ * plus content. Lighter than before (no shadow, a hairline border
+ * instead) — reserved for a genuine coherent list/rail (Today/Coming Up,
+ * Inbox), never wrapped around a single stat or a one-line status. */
 export function OwnerModule({
   title,
   meta,
@@ -23,7 +25,7 @@ export function OwnerModule({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
+    <section className="rounded-2xl border border-black/[0.06] bg-white p-3.5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">{title}</h2>
         {meta}
@@ -33,10 +35,33 @@ export function OwnerModule({
   );
 }
 
+/** Soft, borderless operational zone — the same light-tint treatment
+ * Business Overview uses for Needs Attention (`bg-black/[0.025]`, no
+ * border/shadow): actionable rows read as an operational feed, not a
+ * feature card. */
+export function SoftZone({
+  title,
+  meta,
+  children,
+}: {
+  title: React.ReactNode;
+  meta?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl bg-black/[0.025] p-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-ink/45">{title}</h2>
+        {meta}
+      </div>
+      <div className="mt-2">{children}</div>
+    </section>
+  );
+}
+
 /** The compact, non-modal treatment for "nothing to see here right now"
- * — one row, never a full OwnerModule reserved for an empty state (the
- * same correction Admin V5.1 made to its own Needs Attention). Used for
- * Needs Attention when clear and Inbox when empty. */
+ * — one row, never a full module reserved for an empty state. Used for
+ * Inbox when empty. */
 export function CompactStatus({ label, tone = "neutral" }: { label: React.ReactNode; tone?: "neutral" | "positive" }) {
   return (
     <div

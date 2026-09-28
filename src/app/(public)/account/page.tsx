@@ -20,7 +20,8 @@ import AccountErrorBanner from "./AccountErrorBanner";
 import BusinessScopedAction, { PlusGlyph } from "./BusinessScopedAction";
 import AnalyticsAction from "./AnalyticsAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
-import { CompactStatus, OwnerModule } from "./dashboard-ui";
+import { CompactStatus, OwnerModule, SoftZone } from "./dashboard-ui";
+import { Chip } from "./owner-ui";
 
 export const metadata: Metadata = {
   title: "My Findmi",
@@ -281,7 +282,13 @@ export default async function AccountHomePage({
           proBusinessIds.has(b.id) ? { label: "Pro", tone: "pro" as const } : null,
         ],
         href: `/account/business/${b.id}`,
-        cta: b.pendingReview ? "Finish Your Business" : "Manage",
+        // Account Command Center V2 — "Open Workspace" for the normal
+        // case, matching this pass's own /account/business/[id] = THIS
+        // BUSINESS = individual business operating workspace language.
+        // "Finish Your Business" is a distinct real state (onboarding
+        // incomplete), left unchanged — a label/copy change only, same
+        // destination either way.
+        cta: b.pendingReview ? "Finish Your Business" : "Open Workspace",
         imageUrl: b.logoUrl ?? b.coverImageUrl,
       })
     ),
@@ -338,6 +345,11 @@ export default async function AccountHomePage({
           <h1 className="text-sm font-semibold text-ink/70">
             Welcome Back{profile?.display_name ? `, ${profile.display_name}` : ""}
           </h1>
+          {/* Account Command Center V2 — a compact contextual line so the
+              greeting reads as an operating surface, not a generic
+              "welcome" screen, without adding visual weight (one quiet
+              line, same size as the business identity line below it). */}
+          <p className="mt-0.5 text-xs text-ink/40">Here&rsquo;s what&rsquo;s happening across Findmi.</p>
           {singleBusiness && (
             <p className="mt-1 flex items-center gap-2 text-sm text-ink/60">
               <span className="truncate font-semibold text-ink/80">{singleBusiness.name}</span>
@@ -431,26 +443,31 @@ export default async function AccountHomePage({
           col-start-3/row-start technique the Inbox div already used for
           its own hasAnyManaged-conditional placement. */}
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
-        {/* UPDATES — Information Architecture pass: renamed from "Needs
-            Attention" because its contents were never all actionable —
-            "Test Event is awaiting Findmi review" needs nothing from the
-            owner. Same getAccountCommandCenter data as before, now split
-            by the real underlying status each item was classified from
-            (see dashboard.ts): ACTION REQUIRED (the owner is the next
-            actor) always renders first when present; AWAITING APPROVAL
-            (the owner already acted, FindMi/another party is next) below
-            it. Either subsection is omitted entirely when empty — never
-            an empty heading. The whole module is omitted when there are
-            no updates at all, same as the old "All caught up" removal
-            this pass keeps: no reserved card for a clear state, and
-            nothing placed ahead of useful schedule content. On mobile
-            this is the first operational content (before Today/Coming
-            Up) whenever non-empty; desktop keeps it pinned to the top of
-            the right-hand rail regardless of DOM order. */}
+        {/* NEEDS YOUR ATTENTION — Account Command Center V2 renames the
+            visible heading back from "Updates" per this pass's explicit
+            product direction (the account-level twin of Business
+            Overview's own "Needs Attention" module). The underlying
+            nuance the earlier "Updates" rename existed to preserve is
+            unchanged: ACTION REQUIRED (the owner is the next actor)
+            always renders first when present; AWAITING APPROVAL (the
+            owner already acted, FindMi/another party is next) below it —
+            "Test Event is awaiting Findmi review" still reads as awaiting
+            approval, never miscast as something the owner must act on.
+            Same getAccountCommandCenter data as before. Either subsection
+            is omitted entirely when empty — never an empty heading. The
+            whole module is omitted when there are no updates at all: no
+            reserved card for a clear state, and nothing placed ahead of
+            useful schedule content. On mobile this is the first
+            operational content (before Today/Coming Up) whenever non-
+            empty; desktop keeps it pinned to the top of the right-hand
+            rail regardless of DOM order. */}
         {hasUpdates && (
           <div className="lg:col-start-3 lg:row-start-1">
-            <OwnerModule title="Updates">
-              <div className="flex flex-col gap-4">
+            <SoftZone
+              title="Needs Your Attention"
+              meta={<Chip tone="amber">{actionRequiredItems.length + awaitingApprovalItems.length}</Chip>}
+            >
+              <div className="flex flex-col gap-3">
                 {actionRequiredItems.length > 0 && (
                   <UpdateSubsection
                     label="Action Required"
@@ -466,7 +483,7 @@ export default async function AccountHomePage({
                   />
                 )}
               </div>
-            </OwnerModule>
+            </SoftZone>
           </div>
         )}
 
