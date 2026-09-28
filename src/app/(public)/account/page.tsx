@@ -16,6 +16,7 @@ import SupabaseImage from "@/components/SupabaseImage";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import AccountNav from "./AccountNav";
+import AccountErrorBanner from "./AccountErrorBanner";
 import BusinessScopedAction, { PlusGlyph } from "./BusinessScopedAction";
 import AnalyticsAction from "./AnalyticsAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
@@ -366,9 +367,7 @@ export default async function AccountHomePage({
         )}
       </div>
 
-      {error && (
-        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      )}
+      {error && <AccountErrorBanner error={error} />}
       {eventManagementGranted === "1" && !error && (
         <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           Event Management access activated. You can now add an Event below.
