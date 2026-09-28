@@ -176,28 +176,25 @@ export default function LocationDiscoveryCard({
             )}
           </div>
         ) : (
-          // Final Polish pass — pt-2.5 -> pt-2 and inter-row gap-2 -> gap-1.5
-          // (both ~15-25%): same readable row content/thumbnails/text sizes,
-          // just less air between them, per the approved spacing-only fix.
-          <div className="flex flex-col gap-1.5 border-t border-black/5 pt-2">
+          // Location Discovery Activity Rail — replaces the earlier
+          // vertically-stacked title/date rows (which made an active
+          // location's card height balloon into a mini schedule) with a
+          // horizontal "within this card's own context" rail, matching
+          // the same vertical=between-contexts / horizontal=within-a-
+          // context rule /discover's rails already use. Deliberately a
+          // local scroll container rather than Section.tsx's own
+          // HorizontalScroller: that component's built-in px-4 sm:px-6
+          // edge padding is tuned for a full-bleed page-level rail sitting
+          // directly under a Section title, and would double up with this
+          // card's own p-4/p-3 content padding, misaligning the rail's
+          // edges against the summary line above and the CTA below it.
+          // The natural clip at this container's inherited padding edge
+          // is the "peek" affordance the spec asks for — no separate
+          // arrow/dot/"+N more" indicator needed.
+          <div className="flex gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {activities.map((item) => (
-              <div key={item.id} className="flex items-center gap-2.5">
-                <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-black/5">
-                  {item.imageUrl ? (
-                    <SupabaseImage src={item.imageUrl} alt="" fill sizes="32px" className="object-cover" />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center bg-ink">
-                      <TagGlyph className="h-3 w-3 text-white/40" />
-                    </span>
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-ink">{item.title}</p>
-                  <p className="truncate text-[11px] text-ink/45">{formatDateShort(item.startAt)}</p>
-                </div>
-              </div>
+              <ActivityMiniCard key={item.id} item={item} />
             ))}
-            {overflow > 0 && <p className="text-[11px] font-semibold text-ink/40">+{overflow} more</p>}
           </div>
         ))}
 
@@ -221,6 +218,35 @@ export default function LocationDiscoveryCard({
         </p>
       </div>
     </Link>
+  );
+}
+
+/** Location Discovery Activity Rail — the small, non-interactive mini-card
+ * for one activity preview inside the horizontal rail. Deliberately a
+ * plain <div>, never a nested <Link>/<a>: the whole LocationDiscoveryCard
+ * is already one outer <Link>, and nesting anchors is invalid HTML. Shows
+ * only truthful, already-fetched data (thumbnail, title, compact date) —
+ * no location/geo text (redundant inside a location's own card), no
+ * description, no CTA, no Save control (appearances/occurrences have no
+ * save/follow entity type today — inventing one here would be new
+ * entitlement architecture, out of this pass's scope). */
+function ActivityMiniCard({ item }: { item: LocationActivityPreviewItem }) {
+  return (
+    <div className="flex w-32 shrink-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-black/[0.02]">
+      <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-black/5">
+        {item.imageUrl ? (
+          <SupabaseImage src={item.imageUrl} alt="" fill sizes="128px" className="object-cover" />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center bg-ink">
+            <TagGlyph className="h-4 w-4 text-white/40" />
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-0 px-1.5 py-1.5">
+        <p className="truncate text-[11px] font-semibold leading-tight text-ink">{item.title}</p>
+        <p className="truncate text-[10px] text-ink/45">{formatDateShort(item.startAt)}</p>
+      </div>
+    </div>
   );
 }
 
