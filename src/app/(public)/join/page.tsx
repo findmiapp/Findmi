@@ -116,10 +116,6 @@ export default async function JoinPage({
   const proExtra = resolveJoinProExtra(overrides);
   const free = resolveJoinFreeCard(overrides);
   const whatYouGet = resolveJoinWhatYouGet(overrides);
-  // Preserves the existing sales CTA destination: this card's own cta_url
-  // override if a founder has set one, else the shared global Join form
-  // URL (Tally), exactly as before.
-  const regional = resolveJoinCard(overrides, "card_multi_region", global.ctaUrl);
   const inviteSection = resolveJoinInviteSection(overrides);
   const claim = resolveJoinClaimBusiness(overrides);
 
@@ -270,13 +266,16 @@ export default async function JoinPage({
         </p>
       </div>
 
-      {/* REGIONAL / NATIONAL — a secondary sales pathway, compressed to
-          read quickly rather than competing with Pro for vertical space. */}
-      {regional.visible && (
-        <div className="mx-auto max-w-4xl px-6 pb-16">
-          <RegionalSection card={regional} />
-        </div>
-      )}
+      {/* Pricing UX Cleanup pass — the Regional/National Brands sales card
+          (previously rendered here via RegionalSection, linking to
+          /join/sales) is removed from this customer-facing flow: FindMi
+          now has a coherent self-service Free -> Pro -> Managed Pro path,
+          so this page should never imply a separate regional/national
+          sales product exists when it doesn't. The underlying content
+          model (card_multi_region in join-page.ts), its admin editor, and
+          the /join/sales route are all left fully intact — only this
+          page's own render of the card (and its now-unused
+          RegionalSection component) is removed. */}
 
       {/* PRO INVITE CODE — quiet utility, collapsed by default. */}
       {inviteSection.visible && (
@@ -677,40 +676,6 @@ function GenericTile({ icon, detail }: { icon: React.ReactNode; detail: string }
     <div className="flex items-start gap-2.5 rounded-xl bg-mist/40 px-3 py-3">
       <span className="mt-0.5 shrink-0">{icon}</span>
       <p className="text-xs text-ink/60">{detail}</p>
-    </div>
-  );
-}
-
-/** Regional/National — a secondary sales pathway, compressed so it doesn't
- * out-weigh the core $99 conversion. Still resolved via the same
- * resolveJoinCard()/admin form as every other card for its copy/label —
- * only this bespoke, now-compressed public presentation is new.
- *
- * Multi-Region / National Sales Inquiry pass — the CTA destination is no
- * longer `card.ctaUrl` (which previously resolved to the wrong mailto,
- * see lib/join-page.ts's JOIN_FORM_URL_DEFAULT/JOIN_GLOBAL_DEFAULTS).
- * It's now a hardcoded native route, /join/sales, the same "label stays
- * founder-editable, destination is server-controlled" pattern this page
- * already uses for the Pro CTA (see PRO_NATIVE_CTA_URL above) — a
- * founder-configured cta_url override on this card is simply no longer
- * read for the link itself. */
-function RegionalSection({ card }: { card: ResolvedJoinCard }) {
-  const { eyebrow, title, tagline, features, ctaLabel } = card;
-  return (
-    <div className="rounded-3xl border border-black/10 bg-mist/40 p-6 sm:p-8">
-      <p className="text-xs font-bold uppercase tracking-wide text-ink/40">{eyebrow}</p>
-      <h3 className="mt-1.5 font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">{title}</h3>
-      <p className="mt-2 max-w-2xl text-sm text-ink/60">{tagline}</p>
-      {/* /Join Final Visual Conversion pass — the 5-item checklist is now
-          one compressed inline line instead of five full-height rows. */}
-      <p className="mt-2 max-w-2xl text-xs text-ink/45">{features.join(" · ")}</p>
-
-      <Link
-        href="/join/sales"
-        className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl border border-black/15 px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
-      >
-        {ctaLabel}
-      </Link>
     </div>
   );
 }
