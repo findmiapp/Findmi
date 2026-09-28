@@ -30,7 +30,7 @@ interface TabNavItem {
 import AccountNav from "../../AccountNav";
 import NavIcon from "@/components/NavIcon";
 import type { NavIconKey } from "@/lib/navigation";
-import { Panel, Row, RowList, Stat, StatusDot, Chip, EmptyLine, SectionEyebrow, secondaryButtonClass } from "../../owner-ui";
+import { Panel, Row, Stat, Chip, EmptyLine, SectionEyebrow, secondaryButtonClass } from "../../owner-ui";
 import BusinessMobileNav from "./BusinessMobileNav";
 import {
   addAppearanceFromEvent,
@@ -86,6 +86,7 @@ import {
 } from "@/lib/analytics/ownerPerformance";
 import PerformanceTab from "./PerformanceTab";
 import QrCampaignCreator, { QrCampaignContextualPanel } from "./QrCampaignCreator";
+import BusinessOverviewV2 from "./BusinessOverviewV2";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -593,12 +594,31 @@ export default async function ManageBusinessPage({
   const perfRange = isOwnerPerformanceRange(rangeParam) ? rangeParam : DEFAULT_OWNER_PERFORMANCE_RANGE;
   // Free/Pro Entitlement Realignment pass — Analytics is Pro-only again
   // (it was reachable free before this pass). Gated here too, not just
-  // at render, so a Free owner on this tab never triggers the
-  // getOwnerBusinessPerformance query at all — same "don't do the paid
-  // feature's work for a Free caller" discipline as every other
-  // Pro-gated tab on this page.
+  // at render, so a Free owner on the deep Performance TAB never triggers
+  // the getOwnerBusinessPerformance query at all — same "don't do the
+  // paid feature's work for a Free caller" discipline as every other
+  // Pro-gated tab on this page. The Performance tab's own render gate
+  // below (`pro && performanceData`) is unchanged by the addition below.
+  //
+  // Business Overview V2 — Overview's Performance Pulse needs the SAME
+  // profileViews/impressions/actionsTaken/qr.totalScans numbers this
+  // function already computes correctly, for BOTH Free and Pro (Free
+  // sees the raw values only; BusinessOverviewV2 never renders
+  // `changeLabel`/discoverySources/appearances/products/trend for a Free
+  // business). Reusing this one locked, unmodified function — rather
+  // than writing a second, parallel "basic" query — is deliberate: it
+  // guarantees Overview's numbers can never drift from the Performance
+  // tab's own definition of the same metrics.
+  // Business Overview V2 — Free vs Pro is never a reporting-PERIOD
+  // distinction (Free = reporting, Pro = intelligence — comparisons and
+  // discovery breakdown, not a shorter/longer window). Overview has no
+  // range selector, so both tiers get the same resolved perfRange
+  // (defaults to 30 days, respects ?range= if present) — identical to
+  // what the deep Performance tab itself would use.
   const performanceData =
-    activeTab === "performance" && pro ? await getOwnerBusinessPerformance(admin, id, perfRange) : null;
+    (activeTab === "performance" && pro) || activeTab === "overview"
+      ? await getOwnerBusinessPerformance(admin, id, perfRange)
+      : null;
 
   const requestPayoutAction = referralPartner
     ? requestReferralPartnerPayout.bind(null, id, referralPartner.id)
@@ -1119,6 +1139,55 @@ export default async function ManageBusinessPage({
     return { ...c, destinationLabel };
   });
 
+  // Business Overview V2 — presentation-only reshaping of already-fetched
+  // data for BusinessOverviewV2's props. No new query, no new business
+  // logic; each value below is read from a variable this page already
+  // computed above (categories/currentCategoryId, products, appearances,
+  // businessQrCampaigns, performanceData, followerSummary, needsAttention,
+  // orderList, qrEligibleEvents/Locations).
+  const overviewCategoryLabel = categories.find((c) => c.id === currentCategoryId)?.name ?? null;
+  // Same "$price or price_label" formatting rule the Products tab's own
+  // row already uses (line ~1928) — reused verbatim, not recomputed.
+  const overviewProducts = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    imageUrl: p.image_url,
+    priceLabel: p.price != null ? `$${p.price}` : p.price_label || null,
+    isActive: p.is_active,
+  }));
+  const overviewQrCampaigns = businessQrCampaigns.map((c) => ({
+    id: c.id,
+    name: c.name,
+    destinationLabel: c.destinationLabel,
+    scans: c.scans,
+    isActive: c.isActive,
+  }));
+  const overviewAppearances = [...todayAppearances, ...upcomingAppearances];
+  const overviewQrCentralOptions = {
+    businessId: id,
+    businessName: business.name,
+    appearances: appearances.map((a) => ({ id: a.id, name: a.title })),
+    products: products.map((p) => ({ id: p.id, name: p.name })),
+    events: qrEligibleEvents,
+    locations: qrEligibleLocations,
+  };
+  const overviewPulse = {
+    profileViews: {
+      value: performanceData?.headline.profileViews.value ?? 0,
+      changeLabel: performanceData?.headline.profileViews.changeLabel ?? null,
+    },
+    qrScans: {
+      value: performanceData?.qr?.totalScans ?? 0,
+      changeLabel: null,
+    },
+    actionsTaken: {
+      value: performanceData?.headline.actionsTaken.value ?? 0,
+      changeLabel: performanceData?.headline.actionsTaken.changeLabel ?? null,
+    },
+    followers: followerSummary.totalCount,
+  };
+  const overviewDiscoverySources = performanceData?.discoverySources.map((s) => ({ label: s.label, impressions: s.impressions })) ?? null;
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
       <AccountNav />
@@ -1360,123 +1429,60 @@ export default async function ManageBusinessPage({
               </div>
             )}
 
-            {/* Findmi Owner Product visual system (Sept 2026) — a real
-                2-region workspace, not stacked cards. Main column: the
-                two things that change day to day (what needs a response,
-                what's coming up). Rail: ONE Panel of compact Rows for
-                everything else that's a single fact, not its own module
-                — Public Presence/Products/Analytics/Findmi URL used to be
-                four separate white cards; a business with "0 active
-                products" doesn't need 140px to say so. Mobile: same DOM
-                order, rail becomes the second stack. */}
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_272px] lg:items-start lg:gap-6">
-              <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1">
-                {/* TODAY — the highest-urgency operational information.
-                    Omitted entirely when nothing is happening today. */}
-                {todayAppearances.length > 0 && (
-                  <Panel title="Today">
-                    <ul className="flex flex-col gap-3">
-                      {todayAppearances.map((a) => (
-                        <DashboardAppearanceRow key={a.id} appearance={a} showDate={false} />
-                      ))}
-                    </ul>
-                  </Panel>
-                )}
+            {/* Business Overview V2 — command-center recomposition of the
+                old 2-region "Today / Needs Attention / Where I'll Be" +
+                "Business rail" layout above. Every module's real
+                information is preserved, just recomposed: Public status ->
+                folded into the identity band; Public page -> "View Public
+                Profile"; Products row -> the real Products module below;
+                Analytics row -> the Performance Pulse + its own "Full
+                analytics ->" link; Today + Needs Attention + Where I'll Be
+                -> Upcoming Appearances + Owner Attention. Presentation
+                only — every data source is the same already-locked
+                function this page already called above (no new
+                authorization, no new analytics definition, no new QR
+                behavior). Deep management stays exactly where it already
+                lives; every module below only links to it. */}
+            <BusinessOverviewV2
+              basePath={basePath}
+              business={{
+                name: business.name,
+                slug: business.slug,
+                logoUrl: business.logo_url,
+                coverImageUrl: business.cover_image_url,
+                publicationStatus: business.publication_status,
+              }}
+              pro={pro}
+              isExpiredPro={isExpiredPro}
+              categoryLabel={overviewCategoryLabel}
+              geographyLabel={businessGeographyLabel}
+              pulse={overviewPulse}
+              pulseRangeLabel={performanceData?.rangeLabel ?? null}
+              discoverySources={overviewDiscoverySources}
+              appearances={overviewAppearances}
+              qrCampaigns={overviewQrCampaigns}
+              qrCentralOptions={overviewQrCentralOptions}
+              products={overviewProducts}
+              productCount={products.length}
+              needsAttention={needsAttention}
+              recentOrders={orderList}
+            />
 
-                {/* NEEDS ATTENTION — every item is derived from data
-                    already on this page (buildNeedsAttentionItems);
-                    nothing here is a fabricated alert. ONE purposeful
-                    state: when there's nothing upcoming, its own
-                    "no-appearances" item already says so here — Coming Up
-                    below then omits its own empty-state line rather than
-                    repeating the same fact a second way. */}
-                {needsAttention.length > 0 && (
-                  <Panel title="Needs Attention" meta={<Chip tone="amber">{needsAttention.length}</Chip>}>
-                    <ul className="flex flex-col divide-y divide-black/[0.05]">
-                      {needsAttention.map((item) => (
-                        <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
-                          <p className="min-w-0 text-[13px] text-ink/70">{item.message}</p>
-                          <Link href={item.actionHref} className="shrink-0 text-[12px] font-bold text-findmi-700">
-                            {item.actionLabel}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </Panel>
-                )}
-
-                {/* WHERE I'LL BE — Findmi's own strongest operating
-                    concept, so it's the one entity-list section Overview
-                    still gives a real Panel: up to 3 upcoming, or (when
-                    Needs Attention doesn't already cover the empty case)
-                    a single compact next-action line. */}
-                {(upcomingAppearances.length > 0 || needsAttention.length === 0) && (
-                  <Panel
-                    title="Where I'll Be"
-                    padded={false}
-                    meta={<Link href={`${basePath}?tab=findmi-here`} className="text-[12px] font-bold text-findmi-700">Manage →</Link>}
-                  >
-                    {upcomingAppearances.length > 0 ? (
-                      <ul className="flex flex-col divide-y divide-black/[0.05]">
-                        {upcomingAppearances.slice(0, 3).map((a) => (
-                          <ComingUpRow key={a.id} appearance={a} />
-                        ))}
-                      </ul>
-                    ) : (
-                      <EmptyLine action={{ href: `${basePath}?tab=findmi-here`, label: "Add" }}>Nothing scheduled yet.</EmptyLine>
-                    )}
-                  </Panel>
-                )}
-              </div>
-
-              <div className="lg:col-start-2 lg:row-start-1">
-                <Panel title="Business" padded={false}>
-                  <RowList>
-                    <Row
-                      label="Public status"
-                      value={
-                        business.publication_status === "pending_review" ? (
-                          <StatusDot tone="attention" label="Pending" />
-                        ) : (
-                          <StatusDot tone="positive" label="Published" />
-                        )
-                      }
-                    />
-                    {business.slug && <Row label="Public page" value="View →" href={`/business/${business.slug}`} />}
-                    {/* Free Tier Entitlement Reset V1 — Products is Free
-                        now (server-side gate removed in ../actions.ts);
-                        this summary row was already showing for the
-                        already-unlocked Products tab's own data, just
-                        gated behind `pro` here for no remaining reason. */}
-                    <Row
-                      label="Products"
-                      value={products.filter((p) => p.is_active).length > 0 ? `${products.filter((p) => p.is_active).length} active` : "Add first →"}
-                      href={`${basePath}?tab=products`}
-                    />
-                    <Row label="Analytics" value="View →" href={`${basePath}?tab=performance`} />
-                  </RowList>
-                  {/* FindMi Global Handle Registry — the Row grammar above
-                      is label/value-on-one-line; the URL itself (plus its
-                      Copy/Claim action) needs more room than that, so it
-                      gets the last slot in this same Panel instead of a
-                      Row, still inside the ONE consolidated "Business"
-                      module rather than a fifth separate card. */}
-                  <div className="border-t border-black/[0.05] px-4 py-3">
-                    {/* Free Tier Entitlement Reset V1 — the standard
-                        FindMi handle/URL is Free now (server-side gate
-                        removed in ../actions.ts); LockedFindmiUrl is no
-                        longer reachable from here. */}
-                    <FindmiUrlCard
-                      entityType="business"
-                      entityId={id}
-                      entityLabel={business.name}
-                      currentHandle={businessHandle}
-                      action={updateBusinessHandle.bind(null, id)}
-                      quiet
-                    />
-                  </div>
-                </Panel>
-              </div>
+            {/* FindMi Global Handle Registry — kept as its own small,
+                quiet row (same `quiet` treatment as before) rather than
+                folded into BusinessOverviewV2: it's a real, self-contained
+                capability (claim/copy the Findmi handle), not a summary
+                stat, so it stays a plain reused component instead of new
+                presentation logic. */}
+            <div className="rounded-2xl border border-black/[0.06] bg-white px-4 py-3">
+              <FindmiUrlCard
+                entityType="business"
+                entityId={id}
+                entityLabel={business.name}
+                currentHandle={businessHandle}
+                action={updateBusinessHandle.bind(null, id)}
+                quiet
+              />
             </div>
           </div>
         )}
