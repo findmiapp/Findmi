@@ -85,7 +85,7 @@ import {
   isOwnerPerformanceRange,
 } from "@/lib/analytics/ownerPerformance";
 import PerformanceTab from "./PerformanceTab";
-import { QrCampaignContextualPanel } from "./QrCampaignCreator";
+import QrCampaignCreator, { QrCampaignContextualPanel } from "./QrCampaignCreator";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -150,6 +150,15 @@ const PRIMARY_TABS: TabNavItem[] = [
   // stays "performance" on purpose so every existing ?tab=performance
   // link/bookmark keeps working).
   { key: "performance", label: "Analytics", icon: "target" },
+  // First-Class QR Campaigns — a real Business Manager destination of its
+  // own (create/manage/reopen trackable QR codes), deliberately separate
+  // from Analytics/Performance (measuring what they did). Placed right
+  // after Analytics so the two related-but-distinct jobs sit together in
+  // this desktop-sidebar ordering. Mobile's own primary-row placement is
+  // independent of this array position — see MOBILE_PRIMARY_KEYS below,
+  // which puts QR Campaigns (not Analytics) in mobile's 3rd always-
+  // tappable slot.
+  { key: "qr", label: "QR Campaigns", icon: "pin" },
   { key: "profile", label: "Profile", icon: "person" },
   { key: "products", label: "Products", icon: "tag" },
 ];
@@ -439,8 +448,9 @@ export default async function ManageBusinessPage({
   // itself is never plan-gated).
   const { data: qrCampaignRows } = await admin
     .from("qr_campaigns")
-    .select("id, name, appearance_id, product_id")
-    .eq("business_id", id);
+    .select("id, name, appearance_id, product_id, is_active")
+    .eq("business_id", id)
+    .order("created_at", { ascending: false });
   // Product Correction — multiple campaigns per entity are the intended
   // product model (e.g. "Table Sign" and "Store Window" both pointing at
   // the same Product), so these are lists to append to, never a single
@@ -472,6 +482,21 @@ export default async function ManageBusinessPage({
       qrCampaignsByProductId.set(c.product_id, list);
     }
   }
+  // First-Class QR Campaigns tab — the flat list of every campaign this
+  // Business actually owns (its own qr_campaigns.business_id — Business/
+  // Appearance/Product destinations only; Event/Location campaigns have
+  // no business_id at all, since that ownership is independent of this
+  // Business — see qr-actions.ts). Destination labels are resolved later,
+  // once `appearances`/`products` are populated below, rather than
+  // duplicating another lookup query here.
+  const businessQrCampaignRows = (qrCampaignRows ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    appearanceId: c.appearance_id,
+    productId: c.product_id,
+    isActive: c.is_active,
+    scans: scansByQrCampaignId.get(c.id) ?? 0,
+  }));
 
   // QR Campaigns V1 — the CURRENT USER's own Events/Locations (their real
   // event_members/location_members rows — independent of this Business's
@@ -979,26 +1004,25 @@ export default async function ManageBusinessPage({
   // horizontally-scrolling tab strip has no affordance that more
   // destinations exist off-screen (live QA: "Couldn't even tell I had to
   // scroll to get to products"). Mobile gets a deliberately finite
-  // 4-control row: Overview, Where I'll Be, and Analytics stay directly
-  // tappable and ALWAYS present — Analytics used to only occupy the 3rd
-  // slot's relabeled "More ▾" when it happened to be the active tab
-  // (real-device QA: the primary nav's own information architecture
-  // changed shape depending on which tab was active, and Analytics
-  // disappeared into More the moment it wasn't). Analytics is a major Pro
-  // conversion surface, so it now gets the same permanent, stable primary
-  // slot Overview/Where I'll Be already have, regardless of activeTab.
-  // Everything else (Profile, Products, Orders, Settings) collapses into
-  // one "More" control whose own label becomes the current destination's
-  // name when inside it (e.g. "Products ▾") so the active location stays
-  // unambiguous — unchanged behavior, just never Analytics anymore.
-  // Desktop's sidebar is untouched — it already has room for the full
-  // list. Same routes/keys as visibleTabs above, just split into two
-  // mobile groups; Settings (never part of visibleTabs/the primary rail)
-  // is added here since mobile has no other entry point for it once the
-  // old strip's horizontal scroll is gone.
-  const mobilePrimaryTabs = PRIMARY_TABS.slice(0, 3);
+  // 3-control row that ALWAYS stays directly tappable, keyed by tab key
+  // rather than array position so it can stay independent of the desktop
+  // sidebar's own ordering (visibleTabs/PRIMARY_TABS, untouched below).
+  // First-Class QR Campaigns pass — QR Campaigns takes the 3rd slot
+  // (Overview / Where I'll Be / QR Campaigns): it's the promoted
+  // operational tool this pass exists to surface, so it can't be the one
+  // that lands behind "More" on the device most owners actually use in
+  // the field. Analytics moves into "More" here ONLY — desktop's sidebar
+  // still shows Analytics directly, unchanged. Everything else (Analytics,
+  // Profile, Products, Orders, Settings) collapses into one "More" control
+  // whose own label becomes the current destination's name when inside it
+  // (e.g. "Products ▾") so the active location stays unambiguous. Settings
+  // (never part of visibleTabs/the primary rail) is added here since
+  // mobile has no other entry point for it once the old strip's
+  // horizontal scroll is gone.
+  const MOBILE_PRIMARY_KEYS = new Set(["overview", "findmi-here", "qr"]);
+  const mobilePrimaryTabs = PRIMARY_TABS.filter((t) => MOBILE_PRIMARY_KEYS.has(t.key));
   const mobileMoreTabs: { key: string; label: string }[] = [
-    ...PRIMARY_TABS.slice(3).map((t) => ({ key: t.key, label: t.label })),
+    ...PRIMARY_TABS.filter((t) => !MOBILE_PRIMARY_KEYS.has(t.key)).map((t) => ({ key: t.key, label: t.label })),
     ...(ordersRelevant ? [{ key: ORDERS_TAB.key, label: ORDERS_TAB.label }] : []),
     { key: "settings", label: "Settings" },
   ];
@@ -1079,8 +1103,21 @@ export default async function ManageBusinessPage({
   // eligibility check like Orders' own ordersRelevant). Anything else
   // falls back to Overview rather than risking a dead/empty destination
   // on the target Business.
-  const SWITCHABLE_TABS = new Set(["overview", "findmi-here", "performance", "profile", "products"]);
+  const SWITCHABLE_TABS = new Set(["overview", "findmi-here", "performance", "profile", "products", "qr"]);
   const switcherTab = SWITCHABLE_TABS.has(activeTab) ? activeTab : "overview";
+
+  // First-Class QR Campaigns tab — resolves each campaign's destination
+  // label now that `appearances`/`products` are populated, reusing the
+  // exact same title/name fields the existing qrEligibleAppearances/
+  // qrEligibleProducts lookups already read.
+  const businessQrCampaigns = businessQrCampaignRows.map((c) => {
+    const destinationLabel = c.appearanceId
+      ? (appearances.find((a) => a.id === c.appearanceId)?.title ?? "Appearance")
+      : c.productId
+        ? (products.find((p) => p.id === c.productId)?.name ?? "Product")
+        : business.name;
+    return { ...c, destinationLabel };
+  });
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
@@ -1473,6 +1510,70 @@ export default async function ManageBusinessPage({
               isAdminElevated={isAdminElevated}
             />
           ))}
+
+        {/* ── QR Campaigns ─────────────────────────────────────────── */}
+        {/* First-Class QR Campaigns — a direct Business Manager
+            destination, not a Performance subsection: creation/management
+            is a distinct job from measuring performance. Reuses the exact
+            same central QrCampaignCreator (centralOptions mode) the old
+            Performance QR panel already used, and the exact same
+            /account/qr/[id] detail route every reopen path already links
+            to — no parallel QR system, no new analytics. Free-tier
+            reachable, unlike Performance itself (see qr-actions.ts's own
+            doc comment on why QR creation is never plan-gated). Only
+            Business/Appearance/Product campaigns are listed here — this
+            Business's own qr_campaigns.business_id. Event/Location
+            campaigns have no business_id at all (that ownership is
+            independent — event_members/location_members, not
+            business_members — see lib/permissions.ts), so an existing
+            Event/Location campaign stays reachable from that Event's/
+            Location's own manager page, same as before this pass. */}
+        {activeTab === "qr" && (
+          <div className="flex flex-col gap-4 lg:max-w-2xl">
+            <p className="text-[13px] text-ink/50">
+              Create and manage trackable QR codes for your business, products, appearances, events and locations.
+            </p>
+
+            <QrCampaignCreator
+              centralOptions={{
+                businessId: id,
+                businessName: business.name,
+                appearances: appearances.map((a) => ({ id: a.id, name: a.title })),
+                products: products.map((p) => ({ id: p.id, name: p.name })),
+                events: qrEligibleEvents,
+                locations: qrEligibleLocations,
+              }}
+            />
+
+            <div>
+              <SectionEyebrow>Existing Campaigns</SectionEyebrow>
+              {businessQrCampaigns.length === 0 ? (
+                <div className="mt-2 rounded-lg border border-dashed border-black/10 px-4 py-3">
+                  <p className="text-[12.5px] text-ink/45">No QR campaigns yet — create one above.</p>
+                </div>
+              ) : (
+                <div className="mt-2 flex flex-col divide-y divide-black/[0.05] rounded-lg border border-black/[0.06] bg-white">
+                  {businessQrCampaigns.map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/account/qr/${c.id}`}
+                      className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-black/[0.015]"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-semibold text-ink">{c.name}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-ink/45">
+                          {c.destinationLabel}
+                          {!c.isActive && <span className="ml-1.5 font-semibold text-ink/35">· Inactive</span>}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-right text-[11px] text-ink/50">{c.scans.toLocaleString()} scans</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Profile ──────────────────────────────────────────────── */}
         {activeTab === "profile" && (
