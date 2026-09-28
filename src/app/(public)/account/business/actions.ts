@@ -16,6 +16,7 @@ import { isProductSlugTaken, isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
 import { createBusinessProCheckoutSession } from "@/lib/commerce/businessProCheckout";
 import { createRecurringSubscriptionCheckoutSession } from "@/lib/commerce/subscriptionCheckout";
+import { isRecurringCheckoutConfigured } from "@/lib/commerce/subscriptionPricing";
 import type { CommercialPlan, BillingInterval } from "@/lib/commerce/subscriptionTypes";
 import { attributeReferral } from "@/lib/commerce/referrals";
 import { findExistingGeographyMatch } from "@/lib/market-requests";
@@ -1470,16 +1471,26 @@ export async function createMemberBusiness(formData: FormData) {
     redirect(`/redeem/${encodeURIComponent(inviteRaw)}?business=${businessId}`);
   }
 
-  // Plan choice — Native Business Onboarding Pass 3. The business is
-  // ALWAYS created the same safe way first (free + pending_review, owner
-  // membership already granted by the RPC above) regardless of which
-  // plan was chosen — Pro is never created directly. Choosing Pro here
-  // only means immediately continuing into the same native Stripe
-  // checkout /upgrade/pro uses, scoped to this exact new business. If
-  // checkout creation itself fails for any reason, this still lands the
-  // owner on their new (Free, fully usable) business rather than losing
-  // it — never a dead end.
+  // Plan choice — Native Business Onboarding Pass 3, revised by the
+  // Recurring Pricing Rollout pass. The business is ALWAYS created the
+  // same safe way first (free + pending_review, owner membership already
+  // granted by the RPC above) regardless of which plan was chosen — Pro/
+  // Managed Pro is never activated directly from here, and no Stripe
+  // Checkout Session (legacy or recurring) is created by this action for
+  // a new recurring purchase. `planChoiceRaw === "pro"` means paid INTENT
+  // only (see ProPlanOption's own doc comment in account/business/new/
+  // page.tsx) — the actual Pro-vs-Managed-Pro and Monthly-vs-Annual choice
+  // happens once, on the canonical /upgrade/pro picker, scoped to this
+  // exact new business. When recurring billing isn't configured yet, this
+  // falls back to the legacy $99 checkout so production never breaks —
+  // same safe-fallback behavior /upgrade/pro itself already uses via
+  // isRecurringCheckoutConfigured(). Either way, a checkout-creation
+  // failure still lands the owner on their new (Free, fully usable)
+  // business rather than losing it — never a dead end.
   if (planChoiceRaw === "pro") {
+    if (isRecurringCheckoutConfigured()) {
+      redirect(`/upgrade/pro?business=${businessId}`);
+    }
     const checkout = await createBusinessProCheckoutSession(admin, businessId);
     if ("url" in checkout) redirect(checkout.url);
     redirect(`/account/business/${businessId}?created=1&error=${encodeURIComponent(checkout.error)}`);

@@ -48,16 +48,17 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     label: "Card 1: Findmi Pro",
     eyebrow: "For businesses",
     title: "Findmi Pro",
-    // Admin Join Page Editor pass — synced to match the current live
-    // site_sections override exactly (was stale from an earlier $20/90-day
-    // offer that no longer renders anywhere in code). This fallback only
-    // renders if the live DB row is ever missing, so it must reflect
-    // today's real $99/year offer, never a retired one. ctaLabel now
-    // matches PRO_CTA_LABEL in join/page.tsx — see this pass's report:
-    // the CTA label is admin-editable again (the CTA URL itself stays
-    // server-controlled, see that file's PRO_NATIVE_CTA_URL).
-    price: "$99",
-    priceSuffix: "/year",
+    // Recurring Pricing Rollout pass — this fallback only renders if the
+    // live DB row is ever missing, so it must reflect today's real
+    // recurring offer (Pro starts at $20/month, billed monthly or
+    // annually — see lib/commerce/plans.ts, the actual source of truth
+    // for the charged amount), never the retired $99/one-year one-time
+    // offer. ctaLabel now matches PRO_CTA_LABEL in join/page.tsx — see
+    // this pass's report: the CTA label is admin-editable again (the CTA
+    // URL itself stays server-controlled, see that file's
+    // PRO_NATIVE_CTA_URL).
+    price: "From $20",
+    priceSuffix: "/month",
     // Join Page Conversion Rebuild pass — this general description line is
     // no longer rendered on the Pro card at all (it duplicated the price,
     // which the rebuilt card already states once — see ProCard's own
@@ -65,7 +66,7 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // /admin/site/join's Pro tab) purely so nothing is deleted; harmless
     // either way since it has no public rendering path anymore.
     tagline:
-      "Built for independent businesses, makers, vendors and brands that want to be discovered wherever they show up.\n\n$99 for one year of Findmi Pro.",
+      "Built for independent businesses, makers, vendors and brands that want to be discovered wherever they show up.",
     // Join Page Conversion Rebuild pass — drops "Connect with Findmi
     // events" (Events are open to Free businesses too — this must never
     // read as Pro-exclusive) and "Bookings" (no complete booking system
@@ -395,14 +396,18 @@ export const JOIN_PRO_EXTRA_DEFAULTS = {
   billingLabel: "Understand what's working and grow it.",
   // Join Page Conversion Rebuild pass — new field: the one-line description
   // shown right under the price. Added rather than repurposing an existing
-  // field so `noRenewalNote` below keeps its own literal, unambiguous
-  // meaning ("No automatic renewal.") in its existing spot further down.
+  // field so `noRenewalNote` below keeps its own single, well-defined spot
+  // for a short billing-cadence line further down.
   // Free Tier Entitlement Reset V1 — was "...plus gallery, contact info
   // and more, once you're ready to grow." — gallery/contact info are Free
   // now, so naming them as a reason to upgrade would be false. Restated
   // around only what's still genuinely Pro-only: Performance analytics.
   descriptionLine: "Deeper performance insights into how people discover and engage with your business.",
-  noRenewalNote: "No automatic renewal.",
+  // Recurring Pricing Rollout pass — was "No automatic renewal." (accurate
+  // for the retired $99/one-time offer, false for the current recurring
+  // plans). Interval selection itself happens on /upgrade/pro, not here —
+  // this line only needs to be truthful about billing cadence in general.
+  noRenewalNote: "Billed monthly or annually — you choose after your business is created.",
   // Business Acquisition + Stale Plan Copy Cleanup pass — the highlight
   // box was "Findmi Here" (full schedule) — repositioned to Analytics,
   // reusing the exact same truthful copy already used for this real
@@ -412,13 +417,15 @@ export const JOIN_PRO_EXTRA_DEFAULTS = {
   highlightHeading: "Analytics",
   highlightSubheading: "See what's working and grow it.",
   highlightBody: "Understand how people discover and engage with your business.",
-  // Display copy only — see this pass's own report / the admin field's own
-  // hint. The actual charged amount always comes from
-  // BUSINESS_PRO_INTRO_PRICE_CENTS (businessProCheckout.ts), never from
-  // this text, no matter what an admin types here. Join Page Conversion
-  // Rebuild pass — no longer restates the price (already shown once,
-  // directly above) per that pass's own anti-redundancy instruction.
-  priceFootnote: "One year · No automatic renewal",
+  // Display copy only — the actual charged amount always comes from
+  // lib/commerce/plans.ts (the presentation source of truth) and the real
+  // Stripe Price ID resolved server-side at checkout, never from this
+  // text, no matter what an admin types here. Recurring Pricing Rollout
+  // pass — repurposed from a stale "One year · No automatic renewal" price
+  // restatement into the one place on /join that names Managed Pro, since
+  // this page deliberately doesn't render a second full pricing card for
+  // it (see join/page.tsx's ProCard — no giant pricing table).
+  priceFootnote: "Also available: Managed Pro, from $49/month — let Findmi maintain it for you.",
 };
 
 export interface ResolvedJoinProExtra {

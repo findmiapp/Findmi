@@ -300,7 +300,9 @@ export default async function AddBusinessPage({
                   </>
                 )}
               </div>
-              <p className="mt-1.5 text-xs text-ink/40">$99 for one year of Findmi Pro. No automatic renewal.</p>
+              <p className="mt-1.5 text-xs text-ink/40">
+                Pro starts at $20/month, Managed Pro at $49/month — choose after your business is created.
+              </p>
 
               {/* Make Pro Invite First-Class pass — a first-time vendor
                   with a complimentary code should never have to choose
@@ -382,7 +384,8 @@ export default async function AddBusinessPage({
           </button>
           {!hasInvite && (
             <p className="text-center text-xs text-ink/40">
-              Free plan requires no payment. Pro continues to secure Stripe checkout after your business is created.
+              Free plan requires no payment. Choosing a paid plan creates your business first, then takes you to
+              choose Pro or Managed Pro, monthly or annual.
             </p>
           )}
         </form>
@@ -395,45 +398,46 @@ export default async function AddBusinessPage({
  * extracted so its dominant/quiet visual treatment can be driven by a
  * prop (see the parent's own comment on why: whichever plan the visitor
  * actually wants — explicit ?plan=pro, or the normal no-intent case —
- * gets both the dominant styling AND the pre-selected radio). Content is
- * byte-identical to the plan card that always rendered here before this
- * pass; only the dominant/quiet class sets and defaultChecked now vary
- * with a prop instead of being hardcoded to "always dominant." */
+ * gets both the dominant styling AND the pre-selected radio).
+ *
+ * Recurring Pricing Rollout pass — this is no longer a "Findmi Pro ·
+ * $99/year" card. Architecture decision for this pass: business creation
+ * never chooses between Pro/Managed Pro or Monthly/Annual — that choice
+ * happens once, after creation, on the canonical /upgrade/pro picker
+ * (see createMemberBusiness in ../actions.ts, which redirects there
+ * instead of starting Stripe checkout directly). This radio's `value`
+ * stays "pro" for that exact reason: it's paid INTENT, not a Pro-specific
+ * selection — createMemberBusiness's `planChoiceRaw === "pro"` check is
+ * unchanged, only what happens after it changed. */
 function ProPlanOption({ dominant }: { dominant: boolean }) {
   if (!dominant) {
     return (
       <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-ink/70">Want deeper tools?</p>
+          <p className="text-sm font-semibold text-ink/70">Want more?</p>
           <input type="radio" name="plan_choice" value="pro" className="h-4 w-4 accent-findmi" />
         </div>
-        <p className="flex items-baseline gap-1.5">
-          <span className="text-sm font-bold text-ink">Findmi Pro</span>
-          <span className="text-sm text-ink/45">· $99/year</span>
+        <p className="text-sm font-bold text-ink">Choose a paid plan after creation</p>
+        <p className="text-xs text-ink/60">
+          Create your business first, then choose Pro or Managed Pro with monthly or annual billing.
         </p>
-        {/* Free Tier Entitlement Reset V1 — was "Analytics, full
-            schedule, gallery, contact info and more." Schedule/gallery/
-            contact info are Free capabilities now; only Analytics
-            remains genuinely Pro-only. */}
-        <p className="text-xs text-ink/60">Performance analytics and deeper insights to grow.</p>
       </label>
     );
   }
   return (
     <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Pro</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Choose a paid plan after creation</p>
         <input type="radio" name="plan_choice" value="pro" defaultChecked className="h-4 w-4 accent-findmi" />
       </div>
-      <p className="flex items-baseline gap-1">
-        <span className="font-display text-2xl font-bold tracking-tight text-ink">$99</span>
-        <span className="text-xs font-medium text-ink/45">/ year</span>
+      <p className="text-sm text-ink/60">
+        Create your business first, then choose Pro or Managed Pro with monthly or annual billing.
       </p>
 
       <div className="rounded-2xl bg-findmi-50 p-3">
-        <p className="text-sm font-bold text-ink">Analytics</p>
-        <p className="mt-0.5 text-xs font-semibold text-ink/75">See what&rsquo;s working, and grow it.</p>
-        <p className="mt-1 text-xs text-ink/60">Understand how people discover and engage with your business.</p>
+        <p className="text-sm font-bold text-ink">Analytics, or let Findmi maintain it for you</p>
+        <p className="mt-0.5 text-xs font-semibold text-ink/75">Pro: see what&rsquo;s working and grow it.</p>
+        <p className="mt-1 text-xs text-ink/60">Managed Pro: Findmi keeps your profile updated for you.</p>
       </div>
 
       {/* Free Tier Entitlement Reset V1 — the previous list here (Full

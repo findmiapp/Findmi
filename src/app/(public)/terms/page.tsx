@@ -24,14 +24,19 @@ export default function TermsPage() {
           </p>
         </section>
         <section>
-          <h2 className="text-base font-semibold text-ink">Findmi Pro</h2>
+          <h2 className="text-base font-semibold text-ink">Findmi Pro and Managed Pro</h2>
           <p className="mt-2">
-            Findmi Pro is $99 per year, billed through Stripe. This pricing is retained for as
-            long as your Pro subscription remains continuously active; a lapsed subscription may
-            be re-enrolled at then-current pricing. Pro does not guarantee sales, bookings, or
-            inclusion in any specific event. It provides a Findmi profile, appearance listings,
-            and discovery inclusion as described on our Join page. We may remove content or
-            suspend a profile that violates these terms.
+            Findmi Pro and Findmi Managed Pro are billed through Stripe on a recurring basis, at
+            the monthly or annual interval you select at checkout. Your plan renews automatically
+            at that interval until you cancel it; current pricing for each plan and interval is
+            shown before you check out. Some businesses previously purchased Findmi Pro under an
+            earlier one-time, one-year $99 offer; that purchase remains valid for the period it
+            was purchased for, is not a recurring subscription, and is not automatically renewed
+            or converted to one. Neither plan guarantees sales, bookings, or inclusion in any
+            specific event. Findmi Pro provides a Findmi profile, appearance listings, and
+            discovery inclusion as described on our Join page; Findmi Managed Pro additionally
+            includes Findmi maintaining your profile information within the scope described at
+            checkout. We may remove content or suspend a profile that violates these terms.
           </p>
         </section>
         <section>
