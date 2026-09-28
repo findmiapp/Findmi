@@ -24,8 +24,6 @@ import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import AccountNav from "./AccountNav";
 import AccountErrorBanner from "./AccountErrorBanner";
-import BusinessScopedAction, { PlusGlyph } from "./BusinessScopedAction";
-import AnalyticsAction from "./AnalyticsAction";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
 import { CompactStatus, OwnerModule, SoftZone } from "./dashboard-ui";
 import { Chip } from "./owner-ui";
@@ -250,22 +248,20 @@ export default async function AccountHomePage({
   ).filter((c) => c.subjectType !== "opportunity");
   const inboxPreview = conversations.slice(0, 3);
 
-  const { attention: attentionItems, schedule: scheduleItems } = admin
+  // Mobile Home Composition Correction pass — getAccountCommandCenter
+  // itself is untouched (still computes both attention and the
+  // management-side schedule internally, unchanged), but Home no longer
+  // renders a "Your Schedule" module, so only `attention` is used here
+  // now. The management schedule remains fully available at its own
+  // existing destination, /account/schedule (untouched).
+  const { attention: attentionItems } = admin
     ? await getAccountCommandCenter(admin, {
         businesses: myBusinesses,
         events: myEvents,
         locations: myLocations,
         pendingClaimsCount: myPendingClaims.length,
       })
-    : { attention: [], schedule: [] };
-  // Owner Command Center V4 — the existing getAccountCommandCenter/
-  // getUnifiedSchedule call already returns up to SCHEDULE_DISPLAY_LIMIT
-  // (8) deduplicated upcoming items; V1-V3 only ever showed
-  // scheduleItems[0] as "Next Up," discarding the rest even though the
-  // data was already in hand. "Where I'll Be" is Findmi's strongest
-  // product concept, so it now shows the next few (not just one), same
-  // zero-new-query data, with the full list still one tap away.
-  const upcomingSchedule = scheduleItems.slice(0, 3);
+    : { attention: [] };
 
   const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
   // Updates Information Architecture pass — split by the category
@@ -391,14 +387,18 @@ export default async function AccountHomePage({
           unchanged. */}
       <div className="lg:flex lg:items-start lg:justify-between lg:gap-6">
         <header className="min-w-0">
+          {/* Mobile Home Composition Correction pass — lightened further:
+              the previous compact contextual line ("Here's what's
+              happening across Findmi") is removed outright, same reasoning
+              this header's own earlier pass already applied to the old
+              "Your Findmi" eyebrow — real estate that named the page
+              without contributing information. A plain, light greeting is
+              enough; Sign Out and other account controls live in
+              AccountNav (unchanged, still rendered below), never on this
+              line. */}
           <h1 className="text-sm font-semibold text-ink/70">
             Welcome Back{profile?.display_name ? `, ${profile.display_name}` : ""}
           </h1>
-          {/* Account Command Center V2 — a compact contextual line so the
-              greeting reads as an operating surface, not a generic
-              "welcome" screen, without adding visual weight (one quiet
-              line, same size as the business identity line below it). */}
-          <p className="mt-0.5 text-xs text-ink/40">Here&rsquo;s what&rsquo;s happening across Findmi.</p>
           {singleBusiness && (
             <p className="mt-1 flex items-center gap-2 text-sm text-ink/60">
               <span className="truncate font-semibold text-ink/80">{singleBusiness.name}</span>
@@ -450,16 +450,19 @@ export default async function AccountHomePage({
         </div>
       )}
 
-      {/* Universal Account V1 foundation — recomposed information
-          hierarchy (Goal 4). DOM order IS the priority order at every
-          width now (the previous explicit-grid-placement rail is gone —
-          this account reads as one calm personal surface, not a
-          multi-column operational dashboard, per this pass's own visual
-          rules): PERSONAL UPCOMING -> NEEDS ATTENTION -> PERSONAL
-          COLLECTIONS -> quick actions -> WHAT YOU MANAGE (+ its own
-          Schedule) -> Inbox. Nothing below is a new query — every module
-          here reads data this page (or lib/dashboard.ts/lib/
-          personalGraph.ts) already fetched above. */}
+      {/* Universal Account V1 — recomposed information hierarchy, tightened
+          by the Mobile Home Composition Correction pass. DOM order IS the
+          priority order at every width (single column, no explicit CSS
+          grid placement): COMING UP FOR YOU (personal) -> NEEDS ATTENTION
+          (operational, only when non-empty) -> YOUR COLLECTIONS (personal)
+          -> WHAT YOU'RE MANAGING (management, compact 3-entity preview,
+          only when hasAnyManaged) -> INBOX. The former large quick-action
+          row (Where I'll Be/Analytics) and the "Your Schedule" module are
+          both removed from Home per this pass — Home summarizes, dedicated
+          destinations (each entity's own workspace, /account/schedule)
+          hold the depth. Nothing below is a new query — every module here
+          reads data this page (or lib/dashboard.ts/lib/personalGraph.ts)
+          already fetched above. */}
       <div className="mt-6 flex flex-col gap-5">
         {/* PERSONAL UPCOMING — Goal 3. Deliberately NOT the management
             Schedule (see getPersonalUpcoming's own doc comment): sourced
@@ -539,74 +542,25 @@ export default async function AccountHomePage({
           )}
         </OwnerModule>
 
-        {/* QUICK ACTIONS — Where I'll Be (primary, BusinessScopedAction's
-            own untouched zero/one/many routing) + Analytics (secondary).
-            Universal creation itself already lives globally in
-            QuickCreateMenu (the header "+" — see that component); this
-            row complements it rather than duplicating creation logic,
-            and for a zero-business account it's still the one clear path
-            into starting a business, same as before. Repositioned to sit
-            with the management-oriented section below, since for anyone
-            with a business "Where I'll Be"/"Analytics" are operating
-            actions, not personal ones. */}
-        <div className="flex gap-2">
-          <div className={myBusinesses.length > 0 ? "flex-1" : "w-full"}>
-            <BusinessScopedAction
-              variant="full"
-              size="row"
-              businesses={myBusinesses}
-              tab="findmi-here"
-              icon={<PlusGlyph className="h-4 w-4" />}
-              label="Where I'll Be"
-            />
-          </div>
-          {myBusinesses.length > 0 && (
-            <div className="flex-1">
-              <AnalyticsAction businesses={myBusinesses} icon={<ChartGlyph className="h-4 w-4" />} />
-            </div>
-          )}
-        </div>
-
-        {/* WHAT YOU MANAGE — Goal 4/5. Zero managed entities -> this
-            entire section (and the Schedule module below it) simply
-            doesn't render: no empty "Get Started" card, no reserved
-            management module for someone who manages nothing. The
-            "Where I'll Be" quick action above already covers the one
-            real create-a-business prerequisite for that person, and
-            QuickCreateMenu covers universal creation globally — nothing
-            here duplicates either. */}
+        {/* WHAT YOU MANAGE — Mobile Home Composition Correction pass. Zero
+            managed entities -> this section simply doesn't render: no
+            empty "Get Started" card, no reserved management module for
+            someone who manages nothing. Universal creation lives globally
+            in QuickCreateMenu (untouched) either way.
+            The former large "Where I'll Be"/"Analytics" quick-action row
+            and the "Your Schedule" module are both REMOVED from Home per
+            this pass — same underlying capabilities, still fully reachable
+            from each entity's own specialized workspace and from
+            /account/schedule (both untouched), just no longer occupying
+            major Home real estate. previewLimit={3} caps the default
+            teaser to at most 3 entities regardless of portfolio size (a
+            person managing 1 vs. 15 entities gets the same Home height) —
+            see ManageOnFindmiList's own doc comment for the reveal
+            behavior; the filter tabs only appear once expanded. */}
         {hasAnyManaged && (
-          <>
-            <OwnerModule title="What You're Managing">
-              <ManageOnFindmiList entities={managedEntities} />
-            </OwnerModule>
-
-            {/* Your Schedule — the SAME management-side data/query this
-                page already computed (getAccountCommandCenter's
-                getUnifiedSchedule call, unchanged), just relocated into
-                the management area and relabeled so it's never confused
-                with Coming Up For You above (see this pass's own explicit
-                instruction: Personal Upcoming and management Schedule are
-                different concepts, never the same module renamed). */}
-            <OwnerModule
-              title="Your Schedule"
-              meta={
-                <Link href="/account/schedule" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
-                  Full Schedule →
-                </Link>
-              }
-            >
-              {upcomingSchedule.length === 0 ? (
-                <CompactStatus label="No upcoming schedule. Add where you'll be next so people can find you." />
-              ) : (
-                <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {upcomingSchedule.map((item) => (
-                    <ScheduleCard key={item.key} item={item} />
-                  ))}
-                </div>
-              )}
-            </OwnerModule>
-          </>
+          <OwnerModule title="What You're Managing">
+            <ManageOnFindmiList entities={managedEntities} previewLimit={3} />
+          </OwnerModule>
         )}
 
         {/* INBOX — preserved access, unchanged data (listConversationsForUser),
@@ -854,20 +808,3 @@ function ChevronGlyph({ className }: { className?: string }) {
   );
 }
 
-/** Final Action-Bar Polish follow-up — the Analytics action's own icon.
- * FindMi's curated icon system (NavIcon/NAV_ICON_KEYS, admin-configurable
- * nav items only — see PlusGlyph's own doc comment on why a fixed,
- * code-only usage doesn't belong there) has no chart/trend glyph, and
- * neither does anything else in the app (the only chart-shaped SVG that
- * exists is PerformanceTab's own data-driven trend line, which plots
- * real point data and isn't a fixed icon). Ascending bar chart, same
- * 24x24/currentColor/rounded-stroke language as every other one-off
- * glyph in this file — reads unambiguously as Analytics, not a
- * target/bullseye, not an external-link arrow. No new dependency. */
-function ChartGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M5 19V13M12 19V8M19 19V5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}

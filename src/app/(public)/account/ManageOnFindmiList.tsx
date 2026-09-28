@@ -66,10 +66,26 @@ function initialFilterFromSearchParams(raw: string | null): "all" | ManagedEntit
   return raw === "business" || raw === "event" || raw === "location" ? raw : "all";
 }
 
-export default function ManageOnFindmiList({ entities }: { entities: ManagedEntity[] }) {
+export default function ManageOnFindmiList({
+  entities,
+  previewLimit,
+}: {
+  entities: ManagedEntity[];
+  /** Universal Account V1 mobile composition correction — when set, the
+   * list starts collapsed to the first `previewLimit` entities (filter
+   * tabs hidden, so Home's default state never implies more depth than
+   * it's showing) with a "View All" reveal that switches to exactly the
+   * original always-expanded/filterable behavior. Omitted (the only mode
+   * this component had before this pass) keeps that original behavior
+   * unchanged — this is purely additive, not a rewrite of the existing
+   * filtering/list implementation. */
+  previewLimit?: number;
+}) {
   const searchParams = useSearchParams();
   const [filter, setFilter] = useState<"all" | ManagedEntityKind>(() => initialFilterFromSearchParams(searchParams.get("manage")));
+  const [expanded, setExpanded] = useState(previewLimit == null || entities.length <= previewLimit);
   const visible = filter === "all" ? entities : entities.filter((e) => e.kind === filter);
+  const shown = expanded ? visible : visible.slice(0, previewLimit);
 
   return (
     <>
@@ -80,26 +96,38 @@ export default function ManageOnFindmiList({ entities }: { entities: ManagedEnti
           scrolling required to discover the 4th option); from `sm` up
           there's ample width for the original single row. Same button
           styling/behavior either way — only the container layout
-          changed. */}
-      <div className="mt-2 grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => setFilter(f.key)}
-            className={`w-full whitespace-nowrap rounded-full px-3.5 py-1.5 text-center text-xs font-bold uppercase tracking-wide transition sm:w-auto ${
-              filter === f.key ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+          changed. Hidden entirely in the collapsed preview state — a
+          filter strip implies more depth than a 3-item teaser has. */}
+      {expanded && (
+        <div className="mt-2 grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={`w-full whitespace-nowrap rounded-full px-3.5 py-1.5 text-center text-xs font-bold uppercase tracking-wide transition sm:w-auto ${
+                filter === f.key ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="mt-2 flex flex-col gap-2">
-        {visible.map((e) => (
+        {shown.map((e) => (
           <EntityRow key={`${e.kind}-${e.id}`} entity={e} showType={filter === "all"} />
         ))}
       </div>
+      {!expanded && previewLimit != null && entities.length > previewLimit && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-2 text-xs font-bold text-findmi-700 underline underline-offset-2"
+        >
+          View All ({entities.length}) →
+        </button>
+      )}
     </>
   );
 }
