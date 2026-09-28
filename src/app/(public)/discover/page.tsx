@@ -2,15 +2,16 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import BusinessCard from "@/components/BusinessCard";
-import EventCard from "@/components/EventCard";
+import HomeEventCard from "@/components/HomeEventCard";
 import ProductCard from "@/components/ProductCard";
-import AppearanceFeedCard from "@/components/AppearanceFeedCard";
-import Section, { HorizontalScroller } from "@/components/Section";
+import AppearanceDiscoveryCard from "@/components/discover/AppearanceDiscoveryCard";
+import Section, { HorizontalScroller, RailItem } from "@/components/Section";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import AreaPicker from "@/components/discover/AreaPicker";
 import WhenPicker from "@/components/discover/WhenPicker";
 import CategoryFilterSheet from "@/components/discover/CategoryFilterSheet";
 import {
+  attachEventCategories,
   getConsumerVisibleMarketsWithAreas,
   getEventsDiscovery,
   getFeaturedProducts,
@@ -100,6 +101,15 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
     }),
     getFeaturedProducts(8),
   ]);
+
+  // Discovery Density System V1 — This Weekend now reuses HomeEventCard's
+  // approved immersive grammar (unchanged component), which requires
+  // EventWithCategories rather than the plain FindmiEvent getEventsDiscovery
+  // already returns. attachEventCategories is the existing, already-
+  // established batched extension for exactly this (mirrors attachCategories
+  // for businesses) — one extra query for the whole page, never per-card,
+  // and only runs over the (small, already-limited) eventsSection result.
+  const eventsWithCategories = await attachEventCategories(eventsSection);
 
   const hasNothingCurated =
     happeningSoon.length === 0 && eventsSection.length === 0 && featuredBrands.length === 0 && featuredProducts.length === 0;
@@ -214,15 +224,16 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
               <Section
                 title="Happening Soon"
                 viewAllHref={buildHref("/find", { when: undefined }, { when: toFindWindow(whenKey) })}
+                className="py-4"
               >
                 <DiscoveryRow>
                   {happeningSoon.map((item) => (
-                    <div key={item.id} className="w-72 shrink-0">
-                      <AppearanceFeedCard
+                    <RailItem key={item.id} density="collectible">
+                      <AppearanceDiscoveryCard
                         item={item}
                         analyticsContext={{ pageType: "discover", placement: "happening_soon" }}
                       />
-                    </div>
+                    </RailItem>
                   ))}
                 </DiscoveryRow>
               </Section>
@@ -234,12 +245,13 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
               <Section
                 title={whenKey === "today" ? "Today's Events" : whenKey === "weekend" ? "This Weekend" : "Upcoming Events"}
                 viewAllHref={buildHref("/events", { when: undefined, category: undefined }, { when: toFindWindow(whenKey) })}
+                className="py-4"
               >
                 <DiscoveryRow>
-                  {eventsSection.map((e) => (
-                    <div key={e.id} className="w-64 shrink-0">
-                      <EventCard event={e} analyticsContext={{ pageType: "discover", placement: "events_section" }} />
-                    </div>
+                  {eventsWithCategories.map((e) => (
+                    <RailItem key={e.id} density="immersive">
+                      <HomeEventCard event={e} analyticsContext={{ pageType: "discover", placement: "events_section" }} />
+                    </RailItem>
                   ))}
                 </DiscoveryRow>
               </Section>
@@ -248,12 +260,16 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
 
           {featuredBrands.length > 0 && (
             <div className="-mx-4 sm:-mx-6">
-              <Section title="Featured Brands" viewAllHref={buildHref("/businesses", { when: undefined }, { featured: "1" })}>
+              <Section
+                title="Featured Brands"
+                viewAllHref={buildHref("/businesses", { when: undefined }, { featured: "1" })}
+                className="py-4"
+              >
                 <DiscoveryRow>
                   {featuredBrands.map((b) => (
-                    <div key={b.id} className="w-44 shrink-0">
+                    <RailItem key={b.id} density="discovery">
                       <BusinessCard business={b} analyticsContext={{ pageType: "discover", placement: "featured_brands" }} />
-                    </div>
+                    </RailItem>
                   ))}
                 </DiscoveryRow>
               </Section>
@@ -262,12 +278,12 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
 
           {featuredProducts.length > 0 && (
             <div className="-mx-4 sm:-mx-6">
-              <Section title="Featured Products" viewAllHref="/marketplace">
+              <Section title="Featured Products" viewAllHref="/marketplace" className="py-4">
                 <DiscoveryRow>
                   {featuredProducts.map((p) => (
-                    <div key={p.id} className="w-44 shrink-0">
+                    <RailItem key={p.id} density="collectible">
                       <ProductCard product={p} analyticsContext={{ pageType: "discover", placement: "featured_products" }} />
-                    </div>
+                    </RailItem>
                   ))}
                 </DiscoveryRow>
               </Section>

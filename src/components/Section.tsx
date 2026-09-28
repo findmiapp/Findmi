@@ -67,6 +67,46 @@ export default function Section({
   );
 }
 
+// Discovery Density System V1 — the smallest reusable foundation for the
+// "vertical scroll = between contexts, horizontal scroll = within a
+// context" rule. Three approximate presentation densities, reused
+// wherever a discovery rail nests an entity inside another page's own
+// context (see each density's own real-world calibration below, checked
+// against a ~390px viewport):
+//   immersive   — one dominant item, next one clearly peeking (~80vw).
+//                 Major events/places/editorial moments.
+//   discovery   — businesses/brands/locations inside a rail (not a full
+//                 grid, which LocationDiscoveryCard's own locked baseline
+//                 already owns for /locations) — enough to identify the
+//                 entity, several peek (~64vw).
+//   collectible — products/appearances/small moments — quick scanning,
+//                 image-forward, ~2 visible at once (~48vw).
+// Deliberately three fixed tokens, not a prop-per-page free-for-all — the
+// same three names should mean the same thing everywhere this is reused
+// (Phase 1 scope: only /discover consumes this; future phases on
+// /locations, /businesses, and detail pages reuse the same tokens rather
+// than inventing new ones per page).
+export type RailDensity = "immersive" | "discovery" | "collectible";
+
+const RAIL_ITEM_WIDTH: Record<RailDensity, string> = {
+  // Matches the exact wrapper width the homepage's own HomeEventCard
+  // carousel already ships with (src/app/(public)/page.tsx) — a proven,
+  // already-live "one dominant card, next clearly peeking" ratio, reused
+  // verbatim rather than inventing a slightly different number.
+  immersive: "w-[80vw] max-w-[330px] sm:w-72",
+  discovery: "w-[64vw] max-w-[250px] sm:w-60",
+  collectible: "w-[48vw] max-w-[190px] sm:w-44",
+};
+
+/** One item inside a HorizontalScroller, sized to one of the three
+ * approximate densities above. Purely a width wrapper — every card
+ * component itself (HomeEventCard/BusinessCard/ProductCard/etc.) stays
+ * exactly as it already is; this never restyles a card, only how much
+ * horizontal room its shrink-0 wrapper gives it. */
+export function RailItem({ density, children }: { density: RailDensity; children: React.ReactNode }) {
+  return <div className={`shrink-0 ${RAIL_ITEM_WIDTH[density]}`}>{children}</div>;
+}
+
 export function HorizontalScroller({
   children,
   className = "",
