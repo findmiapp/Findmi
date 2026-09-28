@@ -31,3 +31,12 @@ export function markEventFollowed(eventId: string): void {
   const current = read();
   if (!current.includes(eventId)) write([...current, eventId]);
 }
+
+// Universal Account V1 foundation — the full per-device list, same
+// getSavedSlugs()-style read used by the account sync import
+// (lib/accountSync.ts). Unlike lib/saved.ts's slug lists, this key
+// already stores real event ids (not slugs), so the sync route resolves
+// these by existence check rather than a slug lookup.
+export function getFollowedEventIds(): string[] {
+  return read();
+}

@@ -5,6 +5,7 @@ import {
   getPastAppearancesForBusiness,
   getUpcomingOccurrencesForEvent,
   eventHasAnyOccurrences,
+  getUpcomingAtLocation,
 } from "@/lib/data";
 import { getPendingInvitationsForBusiness } from "@/lib/opportunities";
 import { isBusinessPro, isPlanTierPro } from "@/lib/entitlements";
@@ -741,4 +742,161 @@ export async function getUnifiedPastSchedule(admin: SupabaseClient, input: Unifi
   }
 
   return [...scheduleMap.values()].sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime()).slice(0, limit);
+}
+
+// ── Personal Upcoming (Universal Account V1 foundation) ─────────────────
+// Deliberately separate from getUnifiedSchedule above, not a variant of
+// it: that function answers "what are the entities I MANAGE doing next"
+// and its hrefs point into the owner workspace (/account/business/[id]
+// etc.) — reusing it for a person's personal Saves/Follows would be
+// semantically wrong (see this pass's own instructions) and would also
+// link a non-member to a management route they have no access to. This
+// answers a genuinely different question — "what's coming up that
+// relates to things I personally care about" — sourced ONLY from real
+// account-bound personal relationships (never business_members/
+// event_members/location_members, never analytics_events), and every
+// href here is a PUBLIC route (/event/[slug], /business/[slug]#findmi-here,
+// or whatever getUpcomingAtLocation itself already resolves to).
+
+export interface PersonalUpcomingEventInput {
+  id: string;
+  slug: string;
+  name: string;
+  startAt: string;
+  endAt: string | null;
+  imageUrl: string | null;
+}
+export interface PersonalUpcomingBusinessInput {
+  id: string;
+  slug: string;
+  name: string;
+  imageUrl: string | null;
+}
+export interface PersonalUpcomingLocationInput {
+  id: string;
+  name: string;
+}
+
+export interface PersonalUpcomingInput {
+  /** account_saved_events — a direct, specific expression of interest in
+   * this one event. */
+  savedEvents: PersonalUpcomingEventInput[];
+  /** account_followed_businesses — an ongoing relationship; surfaces
+   * whatever that business does next (its own upcoming appearances). */
+  followedBusinesses: PersonalUpcomingBusinessInput[];
+  /** account_followed_events — same source shape as savedEvents, own
+   * relatedTo label. */
+  followedEvents: PersonalUpcomingEventInput[];
+  /** account_followed_locations — surfaces whatever happens at that
+   * location next (via the same public getUpcomingAtLocation already
+   * used by the location's own public profile page). */
+  followedLocations: PersonalUpcomingLocationInput[];
+}
+
+export interface PersonalUpcomingItem {
+  key: string;
+  startAt: string;
+  endAt: string | null;
+  title: string;
+  where: string | null;
+  /** Same "never collapsed to one label" convention as ScheduleItem —
+   * e.g. ["Saved", "Following Native Rose"] when the same real occurrence
+   * is reached both ways. */
+  relatedTo: string[];
+  href: string;
+  imageUrl: string | null;
+}
+
+/** Bounded, understandable, and deliberately NOT a recommendation engine:
+ * exactly four real relationship types in, real dates out, no "near me"
+ * logic, no geolocation, no inference from analytics. Dedup mirrors
+ * getUnifiedSchedule's own real-id-keyed approach where the underlying
+ * source exposes one (an event occurrence, or an appearance's own
+ * event_occurrence_id/event_id) — the SAME real-world occurrence reached
+ * through both a saved Event and a followed Business's appearance at it
+ * correctly collapses into one item with both relationships listed.
+ *
+ * KNOWN, DELIBERATE LIMITATION: a followed Location's happenings come
+ * from the existing public getUpcomingAtLocation() helper, whose own
+ * item ids are not the real event_occurrence_id (see that function) — a
+ * happening reached both via a followed Location and via a saved/
+ * followed Event for the same real occurrence will not dedupe against
+ * each other, only appear as two entries. Fixing that would mean
+ * changing that shared public helper, out of this pass's scope. */
+export async function getPersonalUpcoming(input: PersonalUpcomingInput, limit: number): Promise<PersonalUpcomingItem[]> {
+  const { savedEvents, followedBusinesses, followedEvents, followedLocations } = input;
+
+  const upcomingMap = new Map<string, PersonalUpcomingItem>();
+  function upsert(key: string, relatedLabel: string, factory: () => Omit<PersonalUpcomingItem, "key" | "relatedTo">) {
+    const existing = upcomingMap.get(key);
+    if (existing) {
+      if (!existing.relatedTo.includes(relatedLabel)) existing.relatedTo.push(relatedLabel);
+      return;
+    }
+    upcomingMap.set(key, { key, relatedTo: [relatedLabel], ...factory() });
+  }
+
+  async function handleEvent(e: PersonalUpcomingEventInput, label: string) {
+    const occurrences = await getUpcomingOccurrencesForEvent(e.id, PER_SOURCE_FETCH_LIMIT);
+    if (occurrences.length > 0) {
+      for (const occ of occurrences) {
+        upsert(`occurrence:${occ.id}`, label, () => ({
+          startAt: occ.start_at,
+          endAt: occ.end_at,
+          title: e.name,
+          where: occ.location ? [occ.location.name, cityState(occ.location.city, occ.location.state)].filter(Boolean).join(" · ") : null,
+          href: `/event/${e.slug}`,
+          imageUrl: e.imageUrl,
+        }));
+      }
+    } else if (e.endAt && new Date(e.endAt).getTime() > Date.now()) {
+      // Non-recurring event with no occurrence rows — its own start_at/
+      // end_at, same fallback principle getUnifiedSchedule already uses.
+      upsert(`event:${e.id}`, label, () => ({
+        startAt: e.startAt,
+        endAt: e.endAt,
+        title: e.name,
+        where: null,
+        href: `/event/${e.slug}`,
+        imageUrl: e.imageUrl,
+      }));
+    }
+  }
+
+  await Promise.all([
+    ...savedEvents.map((e) => handleEvent(e, "Saved")),
+    ...followedEvents.map((e) => handleEvent(e, "Following")),
+    ...followedBusinesses.map(async (b) => {
+      const appearances = await getUpcomingAppearancesForBusiness(b.id, PER_SOURCE_FETCH_LIMIT);
+      for (const a of appearances) {
+        const key = a.event_occurrence_id ? `occurrence:${a.event_occurrence_id}` : a.event_id ? `event:${a.event_id}` : `appearance:${a.id}`;
+        upsert(key, `Following ${b.name}`, () => ({
+          startAt: a.start_at,
+          endAt: a.end_at,
+          title: a.title,
+          where: [a.venue_name, cityState(a.city, a.state)].filter(Boolean).join(" · ") || null,
+          href: `/business/${b.slug}#findmi-here`,
+          imageUrl: a.flyer_image_url ?? b.imageUrl,
+        }));
+      }
+    }),
+    ...followedLocations.map(async (l) => {
+      const happenings = await getUpcomingAtLocation({ id: l.id, name: l.name }, PER_SOURCE_FETCH_LIMIT);
+      for (const h of happenings) {
+        upsert(`location:${h.id}`, `Following ${l.name}`, () => ({
+          startAt: h.start_at,
+          endAt: h.end_at,
+          title: h.title,
+          where: l.name,
+          href: h.href,
+          imageUrl: h.imageUrl,
+        }));
+      }
+    }),
+  ]);
+
+  return [...upcomingMap.values()]
+    .filter((item) => !item.endAt || new Date(item.endAt).getTime() > Date.now())
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+    .slice(0, limit);
 }

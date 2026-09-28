@@ -31,3 +31,10 @@ export function markLocationFollowed(locationId: string): void {
   const current = read();
   if (!current.includes(locationId)) write([...current, locationId]);
 }
+
+// Universal Account V1 foundation — same addition as
+// lib/followedEvents.ts's getFollowedEventIds(): the full per-device list
+// for the account sync import. Stores real location ids, not slugs.
+export function getFollowedLocationIds(): string[] {
+  return read();
+}

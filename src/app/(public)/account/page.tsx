@@ -6,7 +6,14 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isBusinessPro } from "@/lib/entitlements";
 import { listConversationsForUser } from "@/lib/opportunities";
 import { conversationContextLabel } from "@/lib/admin/conversations";
-import { getAccountCommandCenter, type ScheduleItem, type AttentionItem } from "@/lib/dashboard";
+import {
+  getAccountCommandCenter,
+  getPersonalUpcoming,
+  type ScheduleItem,
+  type AttentionItem,
+  type PersonalUpcomingItem,
+} from "@/lib/dashboard";
+import { getPersonalGraphSummary, type PersonalEntityRef } from "@/lib/personalGraph";
 import { getTemporalLabel, formatDateShort } from "@/lib/format";
 import type { EventPublicationStatus } from "@/lib/types";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -52,25 +59,25 @@ async function getProBusinessIdSet(
   return new Set((data ?? []).filter((r) => isBusinessPro(r)).map((r) => r.id));
 }
 
-/** Owner Command Center V4 / Mobile Command Center V2 — a genuine
- * recomposition, not a restyle. Same account model, same tables, same
- * routes/actions as before (nothing here is a new query beyond the
- * existing getAccountCommandCenter/listConversationsForUser calls this
- * page already made, and V2 actively removes a confirmed duplicate one
- * — see the listConversationsForUser call site below) — what changed is
- * the INFORMATION ARCHITECTURE. "Your Findmi" (View Public Page/Share)
- * is folded directly into a compacted identity header for the common
- * single-business case. Mobile DOM order is the mobile priority order:
- * identity -> primary action -> Needs Attention (only when non-empty)
- * -> Today/Coming Up visual rail -> Inbox -> What You're Managing.
- * Desktop places Today/Coming Up + Inbox as the wider main column and
- * Needs Attention + Managing as a self-sized rail, via explicit CSS
- * grid line placement (lg:col-start/lg:row-start) rather than DOM
- * reordering — the same "DOM order = mobile priority, explicit grid
- * placement repositions for desktop" technique Admin's own Command
- * Center proved, reused here as an engineering pattern, not a visual
- * copy: Owner keeps its own warmer rounded-2xl/shadow-sm module
- * language (see dashboard-ui.tsx) rather than Admin's flatter surfaces. */
+/** Universal Account V1 foundation — Account Home recomposed around the
+ * product principle every FindMi identity is a PERSON first (see the
+ * Phase 0 audit + architecture pass this implements): personal content
+ * leads, management is present but subordinate, and disappears entirely
+ * for someone who manages nothing. Same account model, same tables, same
+ * routes/actions as before for every existing module (nothing here
+ * changes getAccountCommandCenter/listConversationsForUser's own data) —
+ * what changed is the INFORMATION ARCHITECTURE and, new this pass, two
+ * genuinely personal (not management) modules sourced from this user's
+ * own account_saved_* / account_followed_* relationships (lib/
+ * personalGraph.ts, lib/dashboard.ts's getPersonalUpcoming).
+ *
+ * DOM order is now simply the priority order at every width (single
+ * column, no explicit CSS grid placement) — identity -> Coming Up For
+ * You (personal) -> Needs Attention (operational, only when non-empty)
+ * -> Your Collections (personal) -> quick actions -> What You're
+ * Managing + its own Schedule (management, only when hasAnyManaged) ->
+ * Inbox. "Your Findmi" (View Public Page/Share) stays folded into the
+ * compacted identity header for the common single-business case. */
 export default async function AccountHomePage({
   searchParams,
 }: {
@@ -92,6 +99,7 @@ export default async function AccountHomePage({
     { data: pendingClaimRows },
     { data: eventMemberships },
     { data: locationMemberships },
+    personalGraph,
   ] = await Promise.all([
     // Progressive Email Verification pass — email_verified_at read in the
     // same query as display_name (no extra round trip).
@@ -124,6 +132,12 @@ export default async function AccountHomePage({
       .from("location_members")
       .select("location_id, locations(name, is_demo, logo_url, cover_image_url)")
       .eq("user_id", user.id),
+    // Universal Account V1 foundation — this person's real, durable
+    // account-bound Saves/Follows (never business_members/event_members/
+    // location_members — those are management, not personal interest;
+    // see getPersonalUpcoming's own doc comment). Feeds both the Personal
+    // Collections teaser and the Personal Upcoming query below.
+    getPersonalGraphSummary(supabase, user.id),
   ]);
 
   type BusinessMembershipRow = {
@@ -263,6 +277,41 @@ export default async function AccountHomePage({
   const awaitingApprovalItems = attentionItems.filter((i) => i.category === "awaiting_approval");
   const hasUpdates = actionRequiredItems.length > 0 || awaitingApprovalItems.length > 0;
 
+  // Universal Account V1 foundation — Personal Upcoming (Goal 3). Sourced
+  // ONLY from this person's real account-bound Saves/Follows (never
+  // business_members/event_members/location_members — see
+  // getPersonalUpcoming's own doc comment for why that would be a
+  // personal-interest fabrication). A genuinely different question from
+  // the management-side "Your Schedule" below.
+  const personalUpcoming = await getPersonalUpcoming(
+    {
+      savedEvents: personalGraph.savedEvents.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, endAt: e.endAt, imageUrl: e.imageUrl })),
+      followedBusinesses: personalGraph.followedBusinesses.map((b) => ({ id: b.id, slug: b.slug, name: b.name, imageUrl: b.imageUrl })),
+      followedEvents: personalGraph.followedEvents.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, endAt: e.endAt, imageUrl: e.imageUrl })),
+      followedLocations: personalGraph.followedLocations.map((l) => ({ id: l.id, name: l.name })),
+    },
+    6
+  );
+
+  // Personal Collections teaser (Goal 4) — a small, truthful mix across
+  // every category this person actually has something in, each tile
+  // linking straight to the real public page (never a fabricated status
+  // or count). Capped well below what /my-world itself shows — this is a
+  // teaser, not a second copy of that page.
+  type CollectionTile = { key: string; name: string; imageUrl: string | null; href: string };
+  const toTiles = (refs: PersonalEntityRef[], hrefFor: (r: PersonalEntityRef) => string, prefix: string): CollectionTile[] =>
+    refs.map((r) => ({ key: `${prefix}:${r.id}`, name: r.name, imageUrl: r.imageUrl, href: hrefFor(r) }));
+  const collectionTiles: CollectionTile[] = [
+    ...toTiles(personalGraph.savedProducts, (r) => `/product/${r.slug}`, "product"),
+    ...toTiles(personalGraph.savedEvents, (r) => `/event/${r.slug}`, "saved-event"),
+    ...toTiles(personalGraph.followedBusinesses, (r) => `/business/${r.slug}`, "followed-business"),
+    ...toTiles(personalGraph.savedBusinesses, (r) => `/business/${r.slug}`, "saved-business"),
+    ...toTiles(personalGraph.savedLocations, (r) => `/location/${r.slug}`, "saved-location"),
+    ...toTiles(personalGraph.followedEvents, (r) => `/event/${r.slug}`, "followed-event"),
+    ...toTiles(personalGraph.followedLocations, (r) => `/location/${r.slug}`, "followed-location"),
+  ].slice(0, 8);
+  const hasAnyCollection = collectionTiles.length > 0;
+
   // Mobile Command Center V2 — imageUrl precedence per the read-only
   // audit's documented recommendation, deliberately DIFFERENT from the
   // schedule rail's own precedence below: a compact management-list row
@@ -401,105 +450,146 @@ export default async function AccountHomePage({
         </div>
       )}
 
-      {/* ACTION ROW — Final Action-Bar Polish pass: the old single
-          full-width CTA consumed too much prime mobile space (real-
-          device QA). Now a compact two-action row: Where I'll Be
-          (primary, Aqua — BusinessScopedAction's own zero/one/many
-          routing, completely untouched) + Analytics (secondary,
-          outlined — AnalyticsAction's own zero/one/many resolver, see
-          that file and businessScope.ts's resolveAnalyticsHref). Zero
-          businesses omits Analytics entirely rather than rendering a
-          disabled control or inventing a fake destination — Where I'll
-          Be alone then takes the full row, same as its own existing
-          zero-business behavior. */}
-      <div className="mt-4 flex gap-2">
-        <div className={myBusinesses.length > 0 ? "flex-1" : "w-full"}>
-          <BusinessScopedAction
-            variant="full"
-            size="row"
-            businesses={myBusinesses}
-            tab="findmi-here"
-            icon={<PlusGlyph className="h-4 w-4" />}
-            label="Where I'll Be"
-          />
-        </div>
-        {myBusinesses.length > 0 && (
-          <div className="flex-1">
-            <AnalyticsAction businesses={myBusinesses} icon={<ChartGlyph className="h-4 w-4" />} />
-          </div>
-        )}
-      </div>
+      {/* Universal Account V1 foundation — recomposed information
+          hierarchy (Goal 4). DOM order IS the priority order at every
+          width now (the previous explicit-grid-placement rail is gone —
+          this account reads as one calm personal surface, not a
+          multi-column operational dashboard, per this pass's own visual
+          rules): PERSONAL UPCOMING -> NEEDS ATTENTION -> PERSONAL
+          COLLECTIONS -> quick actions -> WHAT YOU MANAGE (+ its own
+          Schedule) -> Inbox. Nothing below is a new query — every module
+          here reads data this page (or lib/dashboard.ts/lib/
+          personalGraph.ts) already fetched above. */}
+      <div className="mt-6 flex flex-col gap-5">
+        {/* PERSONAL UPCOMING — Goal 3. Deliberately NOT the management
+            Schedule (see getPersonalUpcoming's own doc comment): sourced
+            only from this person's real Saves/Follows, never from
+            business_members/event_members/location_members. Compact,
+            discovery-oriented empty state — never a giant empty card —
+            when there's genuinely nothing coming up yet. */}
+        <OwnerModule
+          title="Coming Up For You"
+          meta={
+            <Link href="/my-world" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+              Your World →
+            </Link>
+          }
+        >
+          {personalUpcoming.length === 0 ? (
+            <CompactStatus label="Save or follow something to see what's coming up for you here." />
+          ) : (
+            <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {personalUpcoming.map((item) => (
+                <ScheduleCard key={item.key} item={item} />
+              ))}
+            </div>
+          )}
+        </OwnerModule>
 
-      {/* OPERATIONAL GRID — Mobile Command Center V2: mobile DOM order is
-          the mobile priority order (does anything need me -> what's
-          happening now/coming up -> inbox -> what am I managing); desktop
-          places Today/Coming Up + Inbox as the wider main column and
-          Needs Attention + What You're Managing as a self-sized rail via
-          explicit CSS grid line placement, so all four are visible
-          together instead of one long scroll. Updates and What You're
-          Managing are now independent grid children (previously a
-          single shared wrapper) so Updates can move earlier in DOM
-          order without dragging Managing along with it — same
-          col-start-3/row-start technique the Inbox div already used for
-          its own hasAnyManaged-conditional placement. */}
-      <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
-        {/* NEEDS YOUR ATTENTION — Account Command Center V2 renames the
-            visible heading back from "Updates" per this pass's explicit
-            product direction (the account-level twin of Business
-            Overview's own "Needs Attention" module). The underlying
-            nuance the earlier "Updates" rename existed to preserve is
-            unchanged: ACTION REQUIRED (the owner is the next actor)
-            always renders first when present; AWAITING APPROVAL (the
-            owner already acted, FindMi/another party is next) below it —
-            "Test Event is awaiting Findmi review" still reads as awaiting
-            approval, never miscast as something the owner must act on.
-            Same getAccountCommandCenter data as before. Either subsection
-            is omitted entirely when empty — never an empty heading. The
-            whole module is omitted when there are no updates at all: no
-            reserved card for a clear state, and nothing placed ahead of
-            useful schedule content. On mobile this is the first
-            operational content (before Today/Coming Up) whenever non-
-            empty; desktop keeps it pinned to the top of the right-hand
-            rail regardless of DOM order. */}
+        {/* NEEDS YOUR ATTENTION — unchanged data/logic (getAccountCommandCenter),
+            only its position in the page changed. Operational only —
+            omitted entirely when there's nothing genuinely requiring or
+            awaiting action, never a reserved empty card. */}
         {hasUpdates && (
-          <div className="lg:col-start-3 lg:row-start-1">
-            <SoftZone
-              title="Needs Your Attention"
-              meta={<Chip tone="amber">{actionRequiredItems.length + awaitingApprovalItems.length}</Chip>}
-            >
-              <div className="flex flex-col gap-3">
-                {actionRequiredItems.length > 0 && (
-                  <UpdateSubsection
-                    label="Action Required"
-                    items={actionRequiredItems}
-                    countClassName="bg-red-50 text-red-700"
-                  />
-                )}
-                {awaitingApprovalItems.length > 0 && (
-                  <UpdateSubsection
-                    label="Awaiting Approval"
-                    items={awaitingApprovalItems}
-                    countClassName="bg-findmi-50 text-findmi-700"
-                  />
-                )}
-              </div>
-            </SoftZone>
-          </div>
+          <SoftZone
+            title="Needs Your Attention"
+            meta={<Chip tone="amber">{actionRequiredItems.length + awaitingApprovalItems.length}</Chip>}
+          >
+            <div className="flex flex-col gap-3">
+              {actionRequiredItems.length > 0 && (
+                <UpdateSubsection
+                  label="Action Required"
+                  items={actionRequiredItems}
+                  countClassName="bg-red-50 text-red-700"
+                />
+              )}
+              {awaitingApprovalItems.length > 0 && (
+                <UpdateSubsection
+                  label="Awaiting Approval"
+                  items={awaitingApprovalItems}
+                  countClassName="bg-findmi-50 text-findmi-700"
+                />
+              )}
+            </div>
+          </SoftZone>
         )}
 
-        {/* TODAY / COMING UP — a compact visual rail, replacing the old
-            text-only "Where I'll Be" rows. Same upcomingSchedule data
-            (already deduplicated, sorted, and capped by
-            getUnifiedSchedule — no scheduling logic touched here), same
-            per-item href/actionKind/relatedTo semantics — only the
-            presentation changed, to real imagery (item.imageUrl, threaded
-            from existing selects — zero per-card queries) plus the
-            existing getTemporalLabel live/upcoming label. Only rendered
-            once there's SOMETHING managed, same as before. */}
+        {/* PERSONAL COLLECTIONS — Goal 4. A compact, truthful mix across
+            whatever this person has actually saved/followed (real
+            entities, real images, never a fabricated count/status),
+            leading to the full /my-world surface rather than reproducing
+            it here. Same compact-rail visual language as Coming Up For
+            You above, not a new pattern. */}
+        <OwnerModule
+          title="Your Collections"
+          meta={
+            <Link href="/my-world" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+              Your World →
+            </Link>
+          }
+        >
+          {hasAnyCollection ? (
+            <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {collectionTiles.map((tile) => (
+                <CollectionTileCard key={tile.key} tile={tile} />
+              ))}
+            </div>
+          ) : (
+            <CompactStatus label="Save a business, product, event, or location to build your world." />
+          )}
+        </OwnerModule>
+
+        {/* QUICK ACTIONS — Where I'll Be (primary, BusinessScopedAction's
+            own untouched zero/one/many routing) + Analytics (secondary).
+            Universal creation itself already lives globally in
+            QuickCreateMenu (the header "+" — see that component); this
+            row complements it rather than duplicating creation logic,
+            and for a zero-business account it's still the one clear path
+            into starting a business, same as before. Repositioned to sit
+            with the management-oriented section below, since for anyone
+            with a business "Where I'll Be"/"Analytics" are operating
+            actions, not personal ones. */}
+        <div className="flex gap-2">
+          <div className={myBusinesses.length > 0 ? "flex-1" : "w-full"}>
+            <BusinessScopedAction
+              variant="full"
+              size="row"
+              businesses={myBusinesses}
+              tab="findmi-here"
+              icon={<PlusGlyph className="h-4 w-4" />}
+              label="Where I'll Be"
+            />
+          </div>
+          {myBusinesses.length > 0 && (
+            <div className="flex-1">
+              <AnalyticsAction businesses={myBusinesses} icon={<ChartGlyph className="h-4 w-4" />} />
+            </div>
+          )}
+        </div>
+
+        {/* WHAT YOU MANAGE — Goal 4/5. Zero managed entities -> this
+            entire section (and the Schedule module below it) simply
+            doesn't render: no empty "Get Started" card, no reserved
+            management module for someone who manages nothing. The
+            "Where I'll Be" quick action above already covers the one
+            real create-a-business prerequisite for that person, and
+            QuickCreateMenu covers universal creation globally — nothing
+            here duplicates either. */}
         {hasAnyManaged && (
-          <div className="lg:col-start-1 lg:col-span-2 lg:row-start-1">
+          <>
+            <OwnerModule title="What You're Managing">
+              <ManageOnFindmiList entities={managedEntities} />
+            </OwnerModule>
+
+            {/* Your Schedule — the SAME management-side data/query this
+                page already computed (getAccountCommandCenter's
+                getUnifiedSchedule call, unchanged), just relocated into
+                the management area and relabeled so it's never confused
+                with Coming Up For You above (see this pass's own explicit
+                instruction: Personal Upcoming and management Schedule are
+                different concepts, never the same module renamed). */}
             <OwnerModule
-              title="Today / Coming Up"
+              title="Your Schedule"
               meta={
                 <Link href="/account/schedule" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
                   Full Schedule →
@@ -516,76 +606,46 @@ export default async function AccountHomePage({
                 </div>
               )}
             </OwnerModule>
-          </div>
+          </>
         )}
 
-        {/* INBOX — enough context to answer "is there something I need to
-            respond to," never messaging itself. Same canonical
-            listConversationsForUser this page already called. */}
-        <div className={`lg:col-start-1 lg:col-span-2 ${hasAnyManaged ? "lg:row-start-2" : "lg:row-start-1"}`}>
-          <OwnerModule
-            title="Inbox"
-            meta={
-              <Link href="/account/messages" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
-                View Inbox →
-              </Link>
-            }
-          >
-            {inboxPreview.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {inboxPreview.map((c) => (
-                  <Link
-                    key={c.id}
-                    href={`/account/messages/${c.id}`}
-                    className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
-                      {c.otherPartyLabel.slice(0, 1)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
-                      <p className="truncate text-xs text-ink/50">
-                        {conversationContextLabel(c.subjectType)}
-                        {c.lastMessageBody ? ` · ${c.lastMessageBody}` : ""}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</p>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <CompactStatus label="Your Findmi conversations will appear here." />
-            )}
-          </OwnerModule>
-        </div>
-
-        {/* WHAT YOU'RE MANAGING — one unified, filterable list
-            (ManageOnFindmiList, now with real entity imagery + a
-            full-row tap target — see that component's own comments)
-            rather than separate Business/Event/Location cards. Zero
-            managed -> the real prerequisite (Create your Business),
-            never a faked destination. Independent grid child from Needs
-            Attention now, so it stays anchored under wherever Needs
-            Attention landed (or the top of the rail, when there's
-            nothing needing attention). */}
-        <div className={`lg:col-start-3 ${hasUpdates ? "lg:row-start-2" : "lg:row-start-1"}`}>
-          {hasAnyManaged ? (
-            <OwnerModule title="What You're Managing">
-              <ManageOnFindmiList entities={managedEntities} />
-            </OwnerModule>
+        {/* INBOX — preserved access, unchanged data (listConversationsForUser),
+            repositioned to the low-visual-weight operational tail of the
+            page rather than competing with the personal content above. */}
+        <OwnerModule
+          title="Inbox"
+          meta={
+            <Link href="/account/messages" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+              View Inbox →
+            </Link>
+          }
+        >
+          {inboxPreview.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {inboxPreview.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/account/messages/${c.id}`}
+                  className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
+                    {c.otherPartyLabel.slice(0, 1)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
+                    <p className="truncate text-xs text-ink/50">
+                      {conversationContextLabel(c.subjectType)}
+                      {c.lastMessageBody ? ` · ${c.lastMessageBody}` : ""}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</p>
+                </Link>
+              ))}
+            </div>
           ) : (
-            <OwnerModule title="Get Started">
-              <p className="text-sm font-bold text-ink">Have something people should discover?</p>
-              <p className="mt-1 text-xs text-ink/60">List your business, event, or location on Findmi.</p>
-              <Link
-                href="/join"
-                className="mt-3 flex h-11 items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              >
-                Get discovered
-              </Link>
-            </OwnerModule>
+            <CompactStatus label="Your Findmi conversations will appear here." />
           )}
-        </div>
+        </OwnerModule>
       </div>
 
       {myPendingClaims.length > 0 && (
@@ -706,7 +766,13 @@ function UpdateRow({ item }: { item: AttentionItem }) {
  * source of truth for "happening now" — without importing either
  * component or any analytics call. Routes to the exact same item.href
  * every prior text row used; only the presentation changed. */
-function ScheduleCard({ item }: { item: ScheduleItem }) {
+/** Shared by both the management-side Schedule rail and the Personal
+ * Upcoming rail above — both item shapes carry exactly these fields, and
+ * both are read-only "here's what's coming up" cards with no owner
+ * mutation affordance, so one structural type covers either caller
+ * without a duplicated component. */
+type ScheduleCardItem = Pick<ScheduleItem, "key" | "startAt" | "endAt" | "title" | "relatedTo" | "href" | "imageUrl">;
+function ScheduleCard({ item }: { item: ScheduleCardItem | PersonalUpcomingItem }) {
   const { label, live } = getTemporalLabel(item.startAt, item.endAt);
   return (
     <Link
@@ -752,6 +818,31 @@ function ScheduleFallbackGlyph({ className }: { className?: string }) {
       />
       <circle cx="12" cy="10" r="2.4" stroke="currentColor" strokeWidth="1.6" />
     </svg>
+  );
+}
+
+/** Universal Account V1 foundation — one small tile in the Your
+ * Collections rail (Goal 4). Deliberately simpler than ScheduleCard
+ * (no live/temporal badge — a saved/followed thing has no start/end
+ * time of its own) — just a real image and a real name, linking straight
+ * to that entity's own public page. */
+function CollectionTileCard({ tile }: { tile: { name: string; imageUrl: string | null; href: string } }) {
+  return (
+    <Link
+      href={tile.href}
+      className="flex w-[104px] shrink-0 flex-col gap-2 rounded-2xl border border-black/5 bg-white p-2 transition active:scale-[0.98] hover:shadow-md hover:shadow-black/5"
+    >
+      <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-black/[0.04]">
+        {tile.imageUrl ? (
+          <SupabaseImage src={tile.imageUrl} alt={tile.name} fill sizes="104px" className="object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <ScheduleFallbackGlyph className="h-6 w-6 text-black/15" />
+          </div>
+        )}
+      </div>
+      <p className="truncate px-0.5 pb-0.5 text-xs font-bold text-ink">{tile.name}</p>
+    </Link>
   );
 }
 
