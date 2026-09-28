@@ -134,6 +134,8 @@ export default function PerformanceTab({
   followerSummary,
   qrEligibleAppearances,
   qrEligibleProducts,
+  qrEligibleEvents,
+  qrEligibleLocations,
 }: {
   data: OwnerPerformanceData;
   basePath: string;
@@ -158,6 +160,12 @@ export default function PerformanceTab({
    * picker. No new query added here or in page.tsx. */
   qrEligibleAppearances: { id: string; name: string }[];
   qrEligibleProducts: { id: string; name: string }[];
+  /** QR Campaigns V1 — this owner's OWN events/locations (event_members/
+   * location_members — independent of this Business's own membership),
+   * offered as additional central-creation destinations. Already fetched
+   * unconditionally by page.tsx; no new query added here. */
+  qrEligibleEvents: { id: string; name: string }[];
+  qrEligibleLocations: { id: string; name: string }[];
 }) {
   const nonZeroTrendPoints = data.trend.points.filter((p) => p.value > 0);
 
@@ -539,9 +547,13 @@ export default function PerformanceTab({
                   {data.qrCampaigns.length > 0 && (
                     <div className="mt-3 flex flex-col divide-y divide-black/[0.05] border-t border-black/[0.05]">
                       {data.qrCampaigns.map((c) => (
-                        <div key={c.id} className="flex items-center justify-between gap-3 py-2.5">
+                        <Link
+                          key={c.id}
+                          href={`/account/qr/${c.id}`}
+                          className="flex items-center justify-between gap-3 py-2.5 transition hover:bg-black/[0.015]"
+                        >
                           <div className="min-w-0">
-                            <p className="truncate text-[13px] font-semibold text-ink">{c.name}</p>
+                            <p className="truncate text-[13px] font-semibold text-findmi-700">{c.name}</p>
                             {c.placement && <p className="text-[11px] text-ink/40">{c.placement}</p>}
                             {c.actionBreakdown.length > 0 && (
                               <p className="mt-0.5 truncate text-[11px] text-ink/45">
@@ -554,16 +566,20 @@ export default function PerformanceTab({
                             <br />
                             {c.uniqueVisitors.toLocaleString()} visitors
                           </p>
-                        </div>
+                        </Link>
                       ))}
                     </div>
                   )}
                   <div className="mt-3 border-t border-black/[0.05] pt-3">
                     <QrCampaignCreator
-                      businessId={businessId}
-                      businessName={businessName}
-                      appearances={qrEligibleAppearances}
-                      products={qrEligibleProducts}
+                      centralOptions={{
+                        businessId,
+                        businessName,
+                        appearances: qrEligibleAppearances,
+                        products: qrEligibleProducts,
+                        events: qrEligibleEvents,
+                        locations: qrEligibleLocations,
+                      }}
                     />
                   </div>
                 </>
@@ -573,10 +589,14 @@ export default function PerformanceTab({
                     Connect your real-world presence to Findmi and see what happens after the scan.
                   </p>
                   <QrCampaignCreator
-                    businessId={businessId}
-                    businessName={businessName}
-                    appearances={qrEligibleAppearances}
-                    products={qrEligibleProducts}
+                    centralOptions={{
+                      businessId,
+                      businessName,
+                      appearances: qrEligibleAppearances,
+                      products: qrEligibleProducts,
+                      events: qrEligibleEvents,
+                      locations: qrEligibleLocations,
+                    }}
                   />
                 </div>
               )}

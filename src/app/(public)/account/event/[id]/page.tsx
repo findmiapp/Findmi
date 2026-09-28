@@ -12,6 +12,7 @@ import { getPendingApplicationNotesForEvent } from "@/lib/opportunities";
 import MarketAreaFields from "@/components/MarketAreaFields";
 import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
+import { QrCampaignContextualPanel } from "../../business/[id]/QrCampaignCreator";
 import AccountNav from "../../AccountNav";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import EventLocationField from "@/components/account/EventLocationField";
@@ -169,6 +170,30 @@ export default async function ManageEventPage({
   ]);
   if (!result) redirect(errorRedirectUrl("/account", "Event not found."));
   const { event, participants, occurrences } = result;
+
+  // QR Campaigns V1 — this Event's own QR campaigns (independent of any
+  // Business — event_members, not business_members, is the real
+  // authorization boundary here). Free-tier reachable: never gated behind
+  // Pro (see account/business/qr-actions.ts's own doc comment). Product
+  // Correction — a list to append to, never a single slot: this Event can
+  // have multiple campaigns (e.g. separate flyer/table-sign codes) all
+  // pointing at it, each tracked independently.
+  const { data: eventQrCampaignRows } = await admin.from("qr_campaigns").select("id, name").eq("event_id", id);
+  const eventQrCampaignIds = (eventQrCampaignRows ?? []).map((c) => c.id);
+  const { data: eventQrScanRows } =
+    eventQrCampaignIds.length > 0
+      ? await admin.from("analytics_events").select("qr_campaign_id").eq("event_name", "qr_scan").in("qr_campaign_id", eventQrCampaignIds)
+      : { data: [] as { qr_campaign_id: string | null }[] };
+  const eventScansByQrCampaignId = new Map<string, number>();
+  for (const r of eventQrScanRows ?? []) {
+    if (!r.qr_campaign_id) continue;
+    eventScansByQrCampaignId.set(r.qr_campaign_id, (eventScansByQrCampaignId.get(r.qr_campaign_id) ?? 0) + 1);
+  }
+  const eventQrCampaigns = (eventQrCampaignRows ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    scans: eventScansByQrCampaignId.get(c.id) ?? 0,
+  }));
 
   // Event <-> Venue/Location Relational Workflow pass — events has no
   // location_id column of its own (only event_occurrences does), so the
@@ -515,6 +540,18 @@ export default async function ManageEventPage({
                 action={updateMemberEventHandle.bind(null, id)}
                 quiet
               />
+            </div>
+
+            {/* QR Campaigns V1 — contextual creation for this Event. */}
+            <div className="border-t border-black/5 pt-5">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">QR Code</p>
+              <p className="mt-1 text-sm text-ink/50">Print or share a QR that scans straight to this Event.</p>
+              <div className="mt-2.5">
+                <QrCampaignContextualPanel
+                  campaigns={eventQrCampaigns}
+                  fixedTarget={{ target: "event", targetId: id, label: event.name }}
+                />
+              </div>
             </div>
           </div>
         )}

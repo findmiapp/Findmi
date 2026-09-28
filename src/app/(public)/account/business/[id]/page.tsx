@@ -85,6 +85,7 @@ import {
   isOwnerPerformanceRange,
 } from "@/lib/analytics/ownerPerformance";
 import PerformanceTab from "./PerformanceTab";
+import { QrCampaignContextualPanel } from "./QrCampaignCreator";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -427,6 +428,76 @@ export default async function ManageBusinessPage({
   const currentCategoryId = businessCategoryRows?.[0]?.category_id ?? "";
   const galleryImages = (galleryRows ?? []).map((r) => r.url);
   const profileAction = updateBusinessProfile.bind(null, id);
+
+  // QR Campaigns V1 — this Business's own QR campaigns, fetched once,
+  // unconditionally (same convention as appearances/products above), so
+  // every contextual "Create QR Code"/"View QR Code" affordance on a
+  // Product row or Appearance row — regardless of which tab is active —
+  // can show whether a campaign already exists for that specific entity
+  // without a new query per row. Free-tier reachable: this is NOT gated
+  // behind `pro` (see qr-actions.ts's own doc comment on why creation
+  // itself is never plan-gated).
+  const { data: qrCampaignRows } = await admin
+    .from("qr_campaigns")
+    .select("id, name, appearance_id, product_id")
+    .eq("business_id", id);
+  // Product Correction — multiple campaigns per entity are the intended
+  // product model (e.g. "Table Sign" and "Store Window" both pointing at
+  // the same Product), so these are lists to append to, never a single
+  // slot to replace. Scan counts reuse the exact same qr_scan/
+  // qr_campaign_id shape ownerPerformance.ts/qrCampaignDetail.ts already
+  // query — one extra query here, not a new analytics concept.
+  const qrCampaignIds = (qrCampaignRows ?? []).map((c) => c.id);
+  const { data: qrScanRows } =
+    qrCampaignIds.length > 0
+      ? await admin.from("analytics_events").select("qr_campaign_id").eq("event_name", "qr_scan").in("qr_campaign_id", qrCampaignIds)
+      : { data: [] as { qr_campaign_id: string | null }[] };
+  const scansByQrCampaignId = new Map<string, number>();
+  for (const r of qrScanRows ?? []) {
+    if (!r.qr_campaign_id) continue;
+    scansByQrCampaignId.set(r.qr_campaign_id, (scansByQrCampaignId.get(r.qr_campaign_id) ?? 0) + 1);
+  }
+  const qrCampaignsByAppearanceId = new Map<string, { id: string; name: string; scans: number }[]>();
+  const qrCampaignsByProductId = new Map<string, { id: string; name: string; scans: number }[]>();
+  for (const c of qrCampaignRows ?? []) {
+    const scans = scansByQrCampaignId.get(c.id) ?? 0;
+    if (c.appearance_id) {
+      const list = qrCampaignsByAppearanceId.get(c.appearance_id) ?? [];
+      list.push({ id: c.id, name: c.name, scans });
+      qrCampaignsByAppearanceId.set(c.appearance_id, list);
+    }
+    if (c.product_id) {
+      const list = qrCampaignsByProductId.get(c.product_id) ?? [];
+      list.push({ id: c.id, name: c.name, scans });
+      qrCampaignsByProductId.set(c.product_id, list);
+    }
+  }
+
+  // QR Campaigns V1 — the CURRENT USER's own Events/Locations (their real
+  // event_members/location_members rows — independent of this Business's
+  // own membership, see lib/permissions.ts), offered as additional
+  // central-creation destinations on the QR Campaigns panel. Same simple
+  // "my own memberships" query account/page.tsx's dashboard already uses.
+  const [{ data: ownedEventRows }, { data: ownedLocationRows }] = user
+    ? await Promise.all([
+        supabase.from("event_members").select("event_id, events(name)").eq("user_id", user.id),
+        supabase.from("location_members").select("location_id, locations(name)").eq("user_id", user.id),
+      ])
+    : [{ data: null }, { data: null }];
+  type OwnedEventRow = { event_id: string; events: { name: string } | { name: string }[] | null };
+  type OwnedLocationRow = { location_id: string; locations: { name: string } | { name: string }[] | null };
+  const qrEligibleEvents = ((ownedEventRows ?? []) as OwnedEventRow[])
+    .map((r) => {
+      const e = Array.isArray(r.events) ? r.events[0] : r.events;
+      return e ? { id: r.event_id, name: e.name } : null;
+    })
+    .filter((e): e is { id: string; name: string } => Boolean(e));
+  const qrEligibleLocations = ((ownedLocationRows ?? []) as OwnedLocationRow[])
+    .map((r) => {
+      const l = Array.isArray(r.locations) ? r.locations[0] : r.locations;
+      return l ? { id: r.location_id, name: l.name } : null;
+    })
+    .filter((l): l is { id: string; name: string } => Boolean(l));
   const linksAction = updateBusinessLinks.bind(null, id);
   const galleryAction = updateBusinessGallery.bind(null, id);
 
@@ -1391,6 +1462,8 @@ export default async function ManageBusinessPage({
               followerSummary={followerSummary}
               qrEligibleAppearances={appearances.map((a) => ({ id: a.id, name: a.title }))}
               qrEligibleProducts={products.map((p) => ({ id: p.id, name: p.name }))}
+              qrEligibleEvents={qrEligibleEvents}
+              qrEligibleLocations={qrEligibleLocations}
             />
           ) : (
             <UpgradeLockedTab
@@ -1860,6 +1933,18 @@ export default async function ManageBusinessPage({
                             isActive={p.is_active}
                           />
                         </div>
+                        {/* QR Campaigns V1 — contextual creation, Free-tier
+                            reachable (this tab isn't Pro-gated). Every
+                            existing campaign for this Product stays listed
+                            and reopenable, AND the creator stays available
+                            below it — a Product supports multiple campaigns
+                            (Table Sign, Store Window, etc.), never just one. */}
+                        <div className="mt-2">
+                          <QrCampaignContextualPanel
+                            campaigns={qrCampaignsByProductId.get(p.id) ?? []}
+                            fixedTarget={{ target: "product", targetId: p.id, label: p.name }}
+                          />
+                        </div>
                       </li>
                     );
                   })}
@@ -2029,6 +2114,17 @@ export default async function ManageBusinessPage({
                               Remove
                             </button>
                           </form>
+                          {/* QR Campaigns V1 — contextual creation for this
+                              Appearance, Free-tier reachable. Existing
+                              campaigns stay listed AND the creator stays
+                              available — an Appearance supports multiple
+                              campaigns, never just one. */}
+                          <div className="mt-3">
+                            <QrCampaignContextualPanel
+                              campaigns={qrCampaignsByAppearanceId.get(a.id) ?? []}
+                              fixedTarget={{ target: "appearance", targetId: a.id, label: a.title }}
+                            />
+                          </div>
                         </div>
                       </details>
                     </li>

@@ -360,6 +360,20 @@ const QR_ACTION_BREAKDOWN_DEFS: { eventName: AnalyticsEventName; label: string }
   { eventName: "click_contact_channel", label: "Contact & Links" },
 ];
 
+/** QR Campaigns V1 — extracted so both the Business-wide Performance
+ * aggregation above and a single campaign's own detail view (see
+ * lib/analytics/qrCampaignDetail.ts) compute the exact same action-type
+ * breakdown from the exact same vocabulary — never two divergent
+ * QR-attribution implementations. */
+export function buildQrActionBreakdown(actionRows: { event_name: string }[]): OwnerPerformanceBreakdownItem[] {
+  return QR_ACTION_BREAKDOWN_DEFS.map((def) => ({
+    label: def.label,
+    count: actionRows.filter((r) => r.event_name === def.eventName).length,
+  }))
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count);
+}
+
 function isCurrentPeriod(occurredAt: string, bounds: RangeBounds): boolean {
   return bounds.currentStartIso === null || occurredAt >= bounds.currentStartIso;
 }
@@ -688,12 +702,6 @@ export async function getOwnerBusinessPerformance(
   const qrCampaigns: OwnerPerformanceQrCampaign[] = campaigns.map((c) => {
     const campaignScans = currentScanRows.filter((r) => r.qr_campaign_id === c.id);
     const campaignActionRows = currentQrActionRows.filter((r) => r.acquisition_qr_campaign_id === c.id);
-    const actionBreakdown: OwnerPerformanceBreakdownItem[] = QR_ACTION_BREAKDOWN_DEFS.map((def) => ({
-      label: def.label,
-      count: campaignActionRows.filter((r) => r.event_name === def.eventName).length,
-    }))
-      .filter((item) => item.count > 0)
-      .sort((a, b) => b.count - a.count);
     return {
       id: c.id,
       name: c.name,
@@ -701,7 +709,7 @@ export async function getOwnerBusinessPerformance(
       scans: campaignScans.length,
       uniqueVisitors: new Set(campaignScans.map((r) => r.session_id)).size,
       actions: campaignActionRows.length,
-      actionBreakdown,
+      actionBreakdown: buildQrActionBreakdown(campaignActionRows),
     };
   });
 

@@ -31,6 +31,7 @@ import {
 } from "../actions";
 import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
+import { QrCampaignContextualPanel } from "../../business/[id]/QrCampaignCreator";
 
 export const metadata: Metadata = {
   title: "Manage Location",
@@ -114,6 +115,29 @@ export default async function ManageLocationPage({
 
   const location = await getAdminLocationById(id);
   if (!location) redirect(errorRedirectUrl("/account", "Location not found."));
+
+  // QR Campaigns V1 — this Location's own QR campaigns (independent of
+  // any Business — location_members, not business_members, is the real
+  // authorization boundary). Free-tier reachable: never gated behind Pro.
+  // Product Correction — a list to append to, never a single slot: this
+  // Location can have multiple campaigns (front door, window, flyer,
+  // etc.) all pointing at it, each tracked independently.
+  const { data: locationQrCampaignRows } = await admin.from("qr_campaigns").select("id, name").eq("location_id", id);
+  const locationQrCampaignIds = (locationQrCampaignRows ?? []).map((c) => c.id);
+  const { data: locationQrScanRows } =
+    locationQrCampaignIds.length > 0
+      ? await admin.from("analytics_events").select("qr_campaign_id").eq("event_name", "qr_scan").in("qr_campaign_id", locationQrCampaignIds)
+      : { data: [] as { qr_campaign_id: string | null }[] };
+  const locationScansByQrCampaignId = new Map<string, number>();
+  for (const r of locationQrScanRows ?? []) {
+    if (!r.qr_campaign_id) continue;
+    locationScansByQrCampaignId.set(r.qr_campaign_id, (locationScansByQrCampaignId.get(r.qr_campaign_id) ?? 0) + 1);
+  }
+  const locationQrCampaigns = (locationQrCampaignRows ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    scans: locationScansByQrCampaignId.get(c.id) ?? 0,
+  }));
 
   const [marketsWithAreas, pendingMarketRequest, galleryImages, locationHandle, categories] = await Promise.all([
     getActiveMarketsWithAreaOptions(),
@@ -426,6 +450,18 @@ export default async function ManageLocationPage({
                 action={updateMemberLocationHandle.bind(null, id)}
                 quiet
               />
+            </div>
+
+            {/* QR Campaigns V1 — contextual creation for this Location. */}
+            <div className="border-t border-black/5 pt-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">QR Code</p>
+              <p className="mt-1 text-sm text-ink/50">Print or share a QR that scans straight to this Location.</p>
+              <div className="mt-2.5">
+                <QrCampaignContextualPanel
+                  campaigns={locationQrCampaigns}
+                  fixedTarget={{ target: "location", targetId: id, label: location.name }}
+                />
+              </div>
             </div>
           </div>
         )}
