@@ -296,19 +296,20 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
 }
 
 /**
- * Discovery V2 — sparse-result fix (Section 9/12 of this pass's own
- * spec): HorizontalScroller's cards already keep their own intrinsic
- * width (shrink-0, never stretched by flex), but a lone card at the left
- * edge of a page this wide still reads as an accidentally-truncated row.
- * A short, non-scrolling row (<=3 items — never needs a scrollbar
- * anyway) renders as a plain flex-wrap row instead of the scroll
- * container, so it never implies "there's more to swipe to" when there
- * isn't; 4+ items keep the existing, already-proven HorizontalScroller
- * exactly as before. Page-level wrapper only — Section/HorizontalScroller/
- * the cards themselves are untouched.
- */
+ * Discover Rail Behavior Correction pass — the previous threshold here
+ * (">3 items -> HorizontalScroller, else a plain flex-wrap row") was
+ * wrong: at mobile widths, a RailItem's own density width (discovery/
+ * collectible/immersive) never lets 2-3 of them fit on one line, so
+ * flex-wrap silently stacked them vertically — exactly the production
+ * regression this pass fixes (Happening Soon/Featured Brands reading as
+ * a vertical list instead of a horizontal rail). Only a genuinely SINGLE
+ * item skips the scroll container now (nothing to scroll to, and a lone
+ * card at the left edge would otherwise misleadingly look truncated);
+ * 2+ items always get the real, already-proven HorizontalScroller,
+ * regardless of count. Page-level wrapper only — Section/
+ * HorizontalScroller/the cards themselves are untouched. */
 function DiscoveryRow({ children }: { children: ReactNode }) {
   const items = Array.isArray(children) ? children : [children];
-  if (items.length > 3) return <HorizontalScroller>{children}</HorizontalScroller>;
-  return <div className="flex flex-wrap gap-4 px-4 pb-2 sm:px-6">{children}</div>;
+  if (items.length > 1) return <HorizontalScroller>{children}</HorizontalScroller>;
+  return <div className="flex gap-4 px-4 pb-2 sm:px-6">{children}</div>;
 }
