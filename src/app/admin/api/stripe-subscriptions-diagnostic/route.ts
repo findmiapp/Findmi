@@ -4,16 +4,19 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { getSubscriptionStripe, getSubscriptionStripeMode } from "@/lib/commerce/subscriptionStripe";
 import { getSubscriptionPriceId } from "@/lib/commerce/subscriptionPricing";
 
-// TEMPORARY production diagnostic — Stripe Account Identity pass. Answers
-// exactly one question: which Stripe account does
-// STRIPE_SUBSCRIPTIONS_SECRET_KEY actually authenticate as, and can that
-// EXACT client retrieve the currently-configured Pro Monthly Price. Reuses
-// the existing getSubscriptionStripe() client — no second Stripe client is
-// constructed here, and the legacy Explore Staten Island client
-// (lib/commerce/stripe.ts) is never imported/touched. Every call here is
-// read-only (accounts.retrieve, prices.retrieve, and balance.retrieve via
-// the existing getSubscriptionStripeMode helper) — this never creates,
-// updates, or deletes any Stripe object, never touches Checkout.
+// TEMPORARY production diagnostic — Stripe Account Identity + Canonical
+// Price Discovery pass. Answers: which Stripe account does
+// STRIPE_SUBSCRIPTIONS_SECRET_KEY actually authenticate as; can that EXACT
+// client retrieve the currently-configured Pro Monthly Price; and, since
+// that retrieval fails even against the confirmed-correct account, what
+// active Prices/Products does Stripe itself actually expose for this
+// account. Reuses the existing getSubscriptionStripe() client throughout —
+// no second Stripe client is constructed here, and the legacy Explore
+// Staten Island client (lib/commerce/stripe.ts) is never imported/touched.
+// Every call here is read-only (accounts.retrieveCurrent, prices.retrieve,
+// prices.list, products.list, and balance.retrieve via the existing
+// getSubscriptionStripeMode helper) — this never creates, updates, or
+// deletes any Stripe object, never touches Checkout.
 //
 // Protection: lives under /admin/api/..., so src/middleware.ts's existing
 // "/admin/:path*" matcher already gates it behind the founder admin
@@ -86,6 +89,38 @@ export async function GET() {
     } catch (err) {
       result.price = { requestedId: priceId, error: stripeErrorInfo(err) };
     }
+  }
+
+  // Canonical Price Discovery pass — the account/livemode/single-price
+  // checks above proved the client authenticates as the correct account
+  // (acct_1RFMl2Em8KyY8BCU, live) yet still can't retrieve the configured
+  // Price ID. This lists what Stripe itself actually has, read-only, so
+  // the real Price IDs can be identified directly from the account rather
+  // than guessed at. `active: true` / limit 100 only — never creates,
+  // updates, or deletes anything.
+  try {
+    const prices = await stripe.prices.list({ active: true, limit: 100 });
+    result.prices = prices.data.map((price) => ({
+      id: price.id,
+      active: price.active,
+      currency: price.currency,
+      unit_amount: price.unit_amount,
+      recurring_interval: price.recurring?.interval ?? null,
+      product: typeof price.product === "string" ? price.product : (price.product?.id ?? null),
+    }));
+  } catch (err) {
+    result.prices = { error: stripeErrorInfo(err) };
+  }
+
+  try {
+    const products = await stripe.products.list({ active: true, limit: 100 });
+    result.products = products.data.map((product) => ({
+      id: product.id,
+      name: product.name,
+      active: product.active,
+    }));
+  } catch (err) {
+    result.products = { error: stripeErrorInfo(err) };
   }
 
   return NextResponse.json(result);
