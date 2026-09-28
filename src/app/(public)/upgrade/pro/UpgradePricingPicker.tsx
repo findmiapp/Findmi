@@ -46,7 +46,7 @@ function CheckGlyph() {
   );
 }
 
-function IntervalToggle({ interval, onChange, savingsPercent }: { interval: BillingInterval; onChange: (i: BillingInterval) => void; savingsPercent: number }) {
+function IntervalToggle({ interval, onChange }: { interval: BillingInterval; onChange: (i: BillingInterval) => void }) {
   return (
     <div className="flex justify-center">
       <div className="flex w-full max-w-xs rounded-full border border-black/10 bg-mist/50 p-1" role="tablist" aria-label="Billing interval">
@@ -55,7 +55,7 @@ function IntervalToggle({ interval, onChange, savingsPercent }: { interval: Bill
           role="tab"
           aria-selected={interval === "monthly"}
           onClick={() => onChange("monthly")}
-          className={`flex-1 rounded-full py-2 text-xs font-bold uppercase tracking-wide transition ${
+          className={`flex flex-1 items-center justify-center whitespace-nowrap rounded-full py-2 text-xs font-bold uppercase tracking-wide transition ${
             interval === "monthly" ? "bg-findmi text-white shadow-sm" : "text-ink/50 hover:text-ink/70"
           }`}
         >
@@ -66,22 +66,29 @@ function IntervalToggle({ interval, onChange, savingsPercent }: { interval: Bill
           role="tab"
           aria-selected={interval === "annual"}
           onClick={() => onChange("annual")}
-          className={`flex-1 rounded-full py-2 text-xs font-bold uppercase tracking-wide transition ${
+          className={`flex flex-1 items-center justify-center whitespace-nowrap rounded-full py-2 text-xs font-bold uppercase tracking-wide transition ${
             interval === "annual" ? "bg-findmi text-white shadow-sm" : "text-ink/50 hover:text-ink/70"
           }`}
         >
-          Annual · Save up to {savingsPercent}%
+          Annual
         </button>
       </div>
     </div>
   );
 }
 
+/** Copy cleanup pass — the toggle itself no longer states a savings
+ * figure (it wrapped awkwardly on mobile with a plan-agnostic "up to N%"
+ * claim). Now that annual savings are per-plan, exact, and shown here
+ * instead, once selected. Both `annualSavingsPercent` and
+ * `effectiveMonthlyFromAnnual` are the existing plans.ts helpers — no
+ * percentage or effective-monthly value is hardcoded. */
 function PriceDisplay({ plan, interval }: { plan: PlanDefinition; interval: BillingInterval }) {
   const price = getPlanPrice(plan, interval);
   if (!price) return null;
   const suffix = interval === "monthly" ? "/month" : "/year";
   const effectiveMonthlyCents = interval === "annual" ? effectiveMonthlyFromAnnual(plan) : null;
+  const savingsPercent = interval === "annual" ? annualSavingsPercent(plan) : null;
   return (
     <div className="mt-3">
       <p className="flex items-baseline gap-1">
@@ -89,7 +96,10 @@ function PriceDisplay({ plan, interval }: { plan: PlanDefinition; interval: Bill
         <span className="text-sm font-medium text-ink/45">{suffix}</span>
       </p>
       {effectiveMonthlyCents !== null && (
-        <p className="mt-0.5 text-xs text-ink/45">Equivalent to {formatCents(effectiveMonthlyCents)}/month</p>
+        <p className="mt-0.5 text-xs text-ink/45">
+          Equivalent to {formatCents(effectiveMonthlyCents)}/month
+          {savingsPercent !== null ? ` · Save ${savingsPercent}%` : ""}
+        </p>
       )}
     </div>
   );
@@ -163,11 +173,10 @@ function ManagedProPlanCard({ plan, interval, businessId }: { plan: PlanDefiniti
 
 export default function UpgradePricingPicker({ businessId }: { businessId: string }) {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
-  const savingsPercent = Math.max(annualSavingsPercent(PLANS.pro) ?? 0, annualSavingsPercent(PLANS.managed_pro) ?? 0);
 
   return (
     <div>
-      <IntervalToggle interval={billingInterval} onChange={setBillingInterval} savingsPercent={savingsPercent} />
+      <IntervalToggle interval={billingInterval} onChange={setBillingInterval} />
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <ProPlanCard plan={PLANS.pro} interval={billingInterval} businessId={businessId} />
