@@ -211,10 +211,17 @@ export default async function HomePage({
           Weekend links out to /discover. Above-the-Fold Polish pass
           tightened pt-6→pt-4 (this section only — no other homepage
           section spacing changed) so the Bulletin visibly bridges into
-          What's Happening instead of leaving what read as an empty gap. */}
-      <div className="mx-auto max-w-6xl pt-4">
+          What's Happening instead of leaving what read as an empty gap.
+          Final correction pass tightened pt-4→pt-2 (Search→What's
+          Happening gap only) and switched this row from items-end to
+          items-center — "View all" (text-xs) was sitting low against the
+          much larger font-display heading under bottom-edge alignment;
+          centering the two removes the mismatch without touching either
+          one's typography, and the pb-1 hack that previously compensated
+          for it is no longer needed. */}
+      <div className="mx-auto max-w-6xl pt-2">
         <div className="px-4 sm:px-6">
-          <div className="flex items-end justify-between gap-4">
+          <div className="flex items-center justify-between gap-4">
             <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
               {upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
             </h2>
@@ -224,7 +231,7 @@ export default async function HomePage({
                   ? `/events?market=${encodeURIComponent(marketSlug)}${areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`
                   : "/events"
               }
-              className="shrink-0 pb-1 text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
+              className="shrink-0 text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
             >
               View all
             </Link>
