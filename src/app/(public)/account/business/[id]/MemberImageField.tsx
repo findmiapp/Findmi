@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { uploadMemberBusinessImage } from "../actions";
 
 /** Member-facing counterpart to admin's ImageField.tsx — same preview +
@@ -49,7 +49,40 @@ import { uploadMemberBusinessImage } from "../actions";
  * a real one exists) — only its visual weight changes here, to a
  * bordered/backgrounded block with a clear heading, matching the
  * red-banner pattern already used for page-level errors elsewhere in this
- * same Business Manager. */
+ * same Business Manager.
+ *
+ * Launch Stability pass — Native File-Picker Boundary Hardening. A real
+ * production reproduction (Android Chrome, Google Photos as the external
+ * picker) showed the OS-level selection completing successfully — Google
+ * Photos itself confirmed the pick — but returning to the tab produced
+ * zero reaction anywhere in this component: no "Uploading…" state, no
+ * error, nothing. Runtime logs confirmed no Server Action request was
+ * ever made, meaning the native `change` event itself never reached
+ * React. The two most likely contributors, both addressed here:
+ *
+ * (1) The input was triggered via a wrapping <label>, and hidden with
+ *     `className="hidden"` (display:none). Some Android Chrome/WebView
+ *     versions are documented to lose the pending-selection association
+ *     for a display:none file input when an external Activity (a
+ *     separate app, like Google Photos — not an in-page OS dialog) is
+ *     what returns control to the tab. The input is now triggered
+ *     explicitly via a real <button type="button"> calling
+ *     inputRef.current.click(), and hidden via the standard `sr-only`
+ *     technique (clipped/off-screen, not display:none) instead — already
+ *     an established pattern elsewhere in this codebase.
+ * (2) The Business Manager page can have several Appearance rows (each
+ *     its own AppearanceFieldsForm/MemberImageField) mounted
+ *     simultaneously in the DOM even when visually collapsed (a closed
+ *     <details> still mounts its children — it only hides them). This
+ *     component never used a static id, so cross-row targeting wasn't
+ *     possible, but every instance now gets its own useId()-derived id
+ *     for good measure/future-proofing regardless.
+ *
+ * Also new: a `preparing` state, set the instant handleFile receives a
+ * real File — before startTransition/before uploadMemberBusinessImage is
+ * ever called — purely so a real `change` event reaching React is always
+ * visibly distinguishable from the native picker silently doing nothing.
+ * Always cleared in the upload's own finally, so it can never get stuck. */
 export default function MemberImageField({
   businessId,
   label,
@@ -63,8 +96,11 @@ export default function MemberImageField({
   defaultValue: string | null;
   onPendingChange?: (pending: boolean) => void;
 }) {
+  const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState(defaultValue ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -75,16 +111,33 @@ export default function MemberImageField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPending]);
 
+  function openPicker() {
+    // Defensive reset BEFORE opening the picker — if browser/WebView
+    // state was ever left holding a stale value from an earlier attempt
+    // (e.g. one where the change event failed to fire at all), this
+    // guarantees the upcoming selection is treated as new regardless.
+    if (inputRef.current) inputRef.current.value = "";
+    inputRef.current?.click();
+  }
+
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
-    e.target.value = "";
     if (!files || files.length === 0) return;
     if (files.length > 1) {
       setError("Please choose a single image.");
+      e.target.value = "";
       return;
     }
     const file = files[0];
+    // Reset AFTER reading — the File reference above is already held
+    // independently of the input's own value, so this is safe and never
+    // discards it. Guarantees selecting this exact same file again later
+    // still fires a fresh change event.
+    e.target.value = "";
     setError(null);
+    // Proof that the native change event actually reached React, visible
+    // before any network call — see this file's own header comment.
+    setPreparing(true);
     const fd = new FormData();
     fd.set("file", file);
     startTransition(async () => {
@@ -94,9 +147,13 @@ export default function MemberImageField({
         else if (result.url) setUrl(result.url);
       } catch {
         setError("Upload failed. Please try again.");
+      } finally {
+        setPreparing(false);
       }
     });
   }
+
+  const buttonLabel = isPending ? "Uploading…" : preparing ? "Preparing photo…" : url ? "Replace Image" : "Choose Image";
 
   return (
     <div>
@@ -109,17 +166,25 @@ export default function MemberImageField({
           </div>
         )}
         <input type="hidden" name={name} value={url} />
-        <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30">
-          {isPending ? "Uploading…" : url ? "Replace Image" : "Choose Image"}
-          <input
-            type="file"
-            accept="image/*"
-            multiple={false}
-            className="hidden"
-            onChange={handleFile}
-            disabled={isPending}
-          />
-        </label>
+        <button
+          type="button"
+          onClick={openPicker}
+          disabled={isPending}
+          className="inline-flex w-fit items-center gap-2 rounded-full border border-black/10 px-4 py-2 text-xs font-semibold text-ink/70 transition hover:border-ink/30 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {buttonLabel}
+        </button>
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="file"
+          accept="image/*"
+          multiple={false}
+          aria-label={label}
+          className="sr-only"
+          onChange={handleFile}
+          disabled={isPending}
+        />
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
             <p className="text-sm font-semibold text-red-700">Photo couldn&rsquo;t be uploaded</p>
