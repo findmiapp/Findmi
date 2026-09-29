@@ -139,12 +139,24 @@ export default function BusinessEmbedWidget({
         <p className="mt-2.5 line-clamp-2 text-sm leading-snug text-ink/70">{business.short_description}</p>
       )}
 
-      {/* FINDMI HERE — the widget's primary purpose. */}
+      {/* FINDMI HERE — the widget's primary purpose. Heading is clickable
+          (same profileHref/UTM attribution and entity_click analytics the
+          footer's "View on Findmi" link already uses below) — same visual
+          treatment as before (flex/gap/size/weight/color unchanged), just
+          rendered as AnalyticsLink instead of a plain <p> so it's an
+          actual link, with only a subtle hover/focus-visible affordance
+          added for interactivity/accessibility. */}
       <div className="mt-4 border-t border-black/5 pt-3.5">
-        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700">
+        <AnalyticsLink
+          href={profileHref}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 rounded-sm text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition-colors hover:text-findmi-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-findmi-700"
+          trackPayload={{ event_name: "entity_click", ...businessAnalyticsFields, metadata: EMBED_METADATA }}
+        >
           <CalendarGlyph className="h-3.5 w-3.5" />
           Find {business.name} Here
-        </p>
+        </AnalyticsLink>
 
         {appearances.length === 0 ? (
           <div className="mt-2.5 rounded-2xl border border-black/5 bg-black/[0.015] p-4 text-center">
