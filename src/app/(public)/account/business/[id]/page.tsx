@@ -53,6 +53,7 @@ import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
 import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
+import AppearanceEditorDetails from "./AppearanceEditorDetails";
 import EventSearchPicker from "./EventSearchPicker";
 import RemoveAppearanceButton from "./RemoveAppearanceButton";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
@@ -2128,14 +2129,19 @@ export default async function ManageBusinessPage({
             <div className="flex items-center justify-between gap-3">
               <p className="text-body text-muted">This is what customers see on your public Findmi profile.</p>
             </div>
-            <details className="group" open={addHasDraft}>
-              <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
-                <span className="group-open:hidden">
-                  {appearances.length + eventOnlySchedule.length > 0 ? "+ Add Where I'll Be" : "+ Add Your First Stop"}
-                </span>
-                <span className="hidden group-open:inline">Close</span>
-              </summary>
-
+            <AppearanceEditorDetails
+              className="group"
+              initialOpen={addHasDraft}
+              summaryClassName="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden"
+              summary={
+                <>
+                  <span className="group-open:hidden">
+                    {appearances.length + eventOnlySchedule.length > 0 ? "+ Add Where I'll Be" : "+ Add Your First Stop"}
+                  </span>
+                  <span className="hidden group-open:inline">Close</span>
+                </>
+              }
+            >
               {/* ADD COMPOSER — one localized boundary only ("adding
                   something" is a distinct temporary interaction state);
                   search-first, with the manual/independent path tucked
@@ -2153,10 +2159,12 @@ export default async function ManageBusinessPage({
                   <p className="mt-3 text-body text-muted">No upcoming Findmi events available right now.</p>
                 )}
 
-                <details className="mt-4 border-t border-black/[0.07] pt-3" open={addHasDraft}>
-                  <summary className="cursor-pointer text-metadata font-semibold text-accent [&::-webkit-details-marker]:hidden">
-                    Can&rsquo;t find it? Add somewhere else
-                  </summary>
+                <AppearanceEditorDetails
+                  className="mt-4 border-t border-black/[0.07] pt-3"
+                  initialOpen={addHasDraft}
+                  summaryClassName="cursor-pointer text-metadata font-semibold text-accent [&::-webkit-details-marker]:hidden"
+                  summary="Can’t find it? Add somewhere else"
+                >
                   <div className="mt-3">
                     <AppearanceFieldsForm
                       businessId={id}
@@ -2165,9 +2173,9 @@ export default async function ManageBusinessPage({
                       submitLabel="Add to Findmi Here"
                     />
                   </div>
-                </details>
+                </AppearanceEditorDetails>
               </div>
-            </details>
+            </AppearanceEditorDetails>
 
             {appearances.length + eventOnlySchedule.length === 0 && (
               <Panel padded={false}>
@@ -2227,29 +2235,34 @@ export default async function ManageBusinessPage({
                   const isLiveNow = getTemporalLabel(a.start_at, a.end_at).live;
                   return (
                     <li key={a.id} className="px-4 py-3 first:pt-0 last:pb-0">
-                      <details open={isEditing}>
-                        <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
-                          <ScheduleDateBadge iso={a.start_at} live={isLiveNow} />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-body font-semibold text-primary">{a.title}</p>
-                            <p className="mt-0.5 truncate text-metadata text-muted">
-                              {formatTime(a.start_at)}–{formatTime(a.end_at)}
-                              {locationLine && ` · ${locationLine}`}
-                            </p>
-                            <p className="mt-0.5 text-microcopy text-subtle">
-                              {a.event_id ? "Findmi Event" : "Added by you"}
-                              {a.participationStatus && (
-                                <>
-                                  {" · "}
-                                  <span className={a.participationStatus === "approved" ? "" : "font-semibold text-findmi-700"}>
-                                    {PARTICIPATION_LABEL[a.participationStatus]}
-                                  </span>
-                                </>
-                              )}
-                            </p>
-                          </div>
-                          <span className="shrink-0 text-metadata font-semibold text-accent">Edit</span>
-                        </summary>
+                      <AppearanceEditorDetails
+                        initialOpen={isEditing}
+                        summaryClassName="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden"
+                        summary={
+                          <>
+                            <ScheduleDateBadge iso={a.start_at} live={isLiveNow} />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-body font-semibold text-primary">{a.title}</p>
+                              <p className="mt-0.5 truncate text-metadata text-muted">
+                                {formatTime(a.start_at)}–{formatTime(a.end_at)}
+                                {locationLine && ` · ${locationLine}`}
+                              </p>
+                              <p className="mt-0.5 text-microcopy text-subtle">
+                                {a.event_id ? "Findmi Event" : "Added by you"}
+                                {a.participationStatus && (
+                                  <>
+                                    {" · "}
+                                    <span className={a.participationStatus === "approved" ? "" : "font-semibold text-findmi-700"}>
+                                      {PARTICIPATION_LABEL[a.participationStatus]}
+                                    </span>
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-metadata font-semibold text-accent">Edit</span>
+                          </>
+                        }
+                      >
                         <div className="mt-3">
                           <AppearanceFieldsForm
                             businessId={id}
@@ -2276,7 +2289,7 @@ export default async function ManageBusinessPage({
                             />
                           </div>
                         </div>
-                      </details>
+                      </AppearanceEditorDetails>
                     </li>
                   );
                 })}
