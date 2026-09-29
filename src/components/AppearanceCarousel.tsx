@@ -1,25 +1,21 @@
 "use client";
 
-import { useState } from "react";
 import SupabaseImage from "./SupabaseImage";
 import LiveDot from "./LiveDot";
-import AppearanceQuickView, {
-  type AppearanceQuickViewAppearance,
-  type AppearanceQuickViewBusiness,
-} from "./AppearanceQuickView";
+import type { AppearanceQuickViewAppearance, AppearanceQuickViewBusiness } from "./AppearanceQuickView";
 import { cityState, formatAppearanceTime, getTemporalLabel } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
-/** Public Appearance Quick View, Pass 1 — the Business profile's "Upcoming
- * Appearances" horizontal carousel. Replaces the vertical AppearanceCard
- * list that used to render here (that component — and its own tiered
- * Event/link/flyer/GPS click destinations — is untouched and keeps serving
- * every other caller; this is a new, deliberately visual, discovery-
- * oriented card that only ever opens the reusable AppearanceQuickView
- * modal, never navigates immediately). One modal instance is shared by the
- * whole row (keyed by whichever appearance id is open) rather than
- * mounting one per card. */
+/** Public Appearance Quick View — Cards view of the Business profile's
+ * "Findmi Here" section (see AppearanceFindMiHere.tsx, its view-owning
+ * parent). A pure row of visual, discovery-oriented cards: no modal state
+ * of its own (FindMi Here View Modes pass moved that up to
+ * AppearanceFindMiHere so Cards and List share exactly one Quick View
+ * instance) — a card click only calls the `onOpen` callback its parent
+ * gives it. Untouched by any of this: AppearanceCard.tsx (a completely
+ * different component — its own tiered Event/link/flyer/GPS click
+ * destinations still serve every other caller as before). */
 
 export interface AppearanceCarouselAppearance extends AppearanceQuickViewAppearance {
   flyer_image_url: string | null;
@@ -28,37 +24,26 @@ export interface AppearanceCarouselAppearance extends AppearanceQuickViewAppeara
 export default function AppearanceCarousel({
   appearances,
   business,
+  onOpen,
   analyticsContext,
 }: {
   appearances: AppearanceCarouselAppearance[];
   business: AppearanceQuickViewBusiness;
+  onOpen: (id: string) => void;
   analyticsContext?: AnalyticsPlacementContext;
 }) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const openAppearance = appearances.find((a) => a.id === openId) ?? null;
-
   return (
-    <>
-      <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {appearances.map((a) => (
-          <AppearanceCarouselCard
-            key={a.id}
-            appearance={a}
-            business={business}
-            onOpen={() => setOpenId(a.id)}
-            analyticsContext={analyticsContext}
-          />
-        ))}
-      </div>
-      {openAppearance && (
-        <AppearanceQuickView
-          appearance={openAppearance}
+    <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {appearances.map((a) => (
+        <AppearanceCarouselCard
+          key={a.id}
+          appearance={a}
           business={business}
-          onClose={() => setOpenId(null)}
+          onOpen={() => onOpen(a.id)}
           analyticsContext={analyticsContext}
         />
-      )}
-    </>
+      ))}
+    </div>
   );
 }
 
@@ -93,7 +78,14 @@ function AppearanceCarouselCard({
     onOpen();
   }
 
+  // FindMi Here View Modes pass — card artwork priority is now
+  // flyer_image_url > business.cover_image_url > logo-led fallback >
+  // generic fallback (was flyer > logo-led > generic). The small business-
+  // logo identity badge keeps showing whenever a REAL photo is the artwork
+  // (flyer OR cover) — it's only replaced by the logo-led treatment when
+  // there's no photo at all, so the logo is never shown twice.
   const flyerUrl = appearance.flyer_image_url;
+  const photoUrl = flyerUrl ?? business.cover_image_url;
 
   return (
     <button
@@ -103,9 +95,9 @@ function AppearanceCarouselCard({
       className="block w-64 shrink-0 overflow-hidden rounded-2xl border border-black/5 bg-white text-left shadow-sm transition active:scale-[0.98] sm:w-72"
     >
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-mist">
-        {flyerUrl ? (
+        {photoUrl ? (
           <>
-            <SupabaseImage src={flyerUrl} alt="" fill sizes="(min-width: 640px) 288px, 256px" className="object-cover" />
+            <SupabaseImage src={photoUrl} alt="" fill sizes="(min-width: 640px) 288px, 256px" className="object-cover" />
             {business.logo_url && (
               <div className="absolute bottom-2 left-2 h-8 w-8 overflow-hidden rounded-full border-2 border-white bg-white shadow-sm">
                 <SupabaseImage src={business.logo_url} alt="" fill sizes="32px" className="object-cover" />
@@ -133,7 +125,7 @@ function AppearanceCarouselCard({
         </span>
       </div>
       <div className="p-3">
-        {!flyerUrl && (
+        {!photoUrl && (
           <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">{business.name}</p>
         )}
         <p className="mt-0.5 line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">{appearance.title}</p>

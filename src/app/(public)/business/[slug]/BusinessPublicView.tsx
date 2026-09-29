@@ -3,7 +3,7 @@ import SupabaseImage from "@/components/SupabaseImage";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import { toJsonLdScript } from "@/lib/jsonLd";
-import AppearanceCarousel from "@/components/AppearanceCarousel";
+import AppearanceFindMiHere from "@/components/AppearanceFindMiHere";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShopSection from "@/components/BusinessShopSection";
 import Bulletin from "@/components/Bulletin";
@@ -737,28 +737,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             // section in this column, so it carries the "first item"
             // spacing CTA row/Bulletin used to.
             <section id="findmi-here" className="mt-6 scroll-mt-24 lg:mt-0">
-              {/* Heading no longer restates the business name — the
-                  live-context module immediately above already named it
-                  ("Next Up · The Native Rose Pop-Up"), so a heading of
-                  "Find The Native Rose Here" right underneath read as the
-                  same fact a third time (see that module's own note). This
-                  is simply the full schedule the module's first entry is
-                  drawn from. */}
-              <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Here</p>
-              <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Upcoming Appearances</h2>
-              <div className="mt-3">
-                <AppearanceCarousel
-                  appearances={appearances}
-                  business={{
-                    id: business.id,
-                    name: business.name,
-                    slug: business.slug,
-                    logo_url: business.logo_url,
-                    shareUrl: canonicalUrl,
-                  }}
-                  analyticsContext={{ pageType: "business" }}
-                />
-              </div>
+              <AppearanceFindMiHere
+                appearances={appearances}
+                business={{
+                  id: business.id,
+                  name: business.name,
+                  slug: business.slug,
+                  logo_url: business.logo_url,
+                  cover_image_url: business.cover_image_url,
+                  shareUrl: canonicalUrl,
+                }}
+                analyticsContext={{ pageType: "business" }}
+              />
             </section>
           )}
 

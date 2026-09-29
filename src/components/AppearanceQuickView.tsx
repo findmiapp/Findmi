@@ -48,6 +48,12 @@ export interface AppearanceQuickViewBusiness {
   name: string;
   slug: string;
   logo_url: string | null;
+  /** FindMi Here View Modes pass — carried on this shared business shape so
+   * Cards' image-fallback hierarchy (flyer > cover > logo > generic) can
+   * reuse the exact same `business` object List and Quick View already
+   * receive, rather than a second, parallel business prop. Quick View
+   * itself never renders this — it stays metadata-first, no imagery. */
+  cover_image_url: string | null;
   /** Absolute, shareable URL for this business's own public profile.
    * Appearance has no canonical public detail URL of its own yet (see this
    * pass's audit note on Share) — the Quick View shares the parent
