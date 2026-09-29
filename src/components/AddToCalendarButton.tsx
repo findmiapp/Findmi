@@ -80,6 +80,16 @@ export default function AddToCalendarButton({
   layout?: "pill" | "grid" | "glass" | "row";
 }) {
   const [open, setOpen] = useState(false);
+  // TEMPORARY REAL-DEVICE INSTRUMENTATION (Calendar Functional Repair pass,
+  // round 5) — anchor navigation, window.open, and window.location.assign
+  // have all now failed on real Android Chrome AND real iOS Safari, so the
+  // remaining unknown is whether the tap even reaches this component's own
+  // handlers on-device. This records, in on-page state (no console/alert/
+  // DevTools required), whether a pointerdown and a click were each
+  // observed on the Google Calendar option, plus the generated URL — so a
+  // physical-device tap can be diagnosed from what's visibly rendered.
+  // Remove this state and the debug panel below once that's determined.
+  const [debug, setDebug] = useState<{ pointer: boolean; click: boolean; url: string } | null>(null);
   // Bug fix (action-row UX pass): this button sits inside the event page's
   // horizontally-scrollable Tier B action row (overflow-x-auto — see
   // commit 5d9c4f9). Per the CSS overflow spec, setting overflow-x to
@@ -127,23 +137,21 @@ export default function AddToCalendarButton({
   });
   const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
 
-  // Calendar Functional Repair pass, round 4 — rounds 1-3 (anchor
-  // navigation, blur-delay, outside-pointerdown, then an explicit button +
-  // window.open) all failed on real Android Chrome AND real iOS Safari.
-  // Diagnostic pass traced the remaining common surface to window.open
-  // itself: opening a NEW browsing context (a popup/tab) is exactly what
-  // both engines' popup heuristics scrutinize, and it's the one thing this
-  // path did differently from the already-working .ics button (which never
-  // opens a new context at all — it triggers a same-tab download). The
-  // fix removes new-context navigation entirely: same-tab, top-level
-  // navigation via window.location.assign, called directly and
-  // synchronously inside the tap's own click handler, using the
-  // already-built gcalUrl. Does not depend on setOpen(false) running
-  // first or at all — the navigation itself doesn't need the menu closed
-  // to happen.
+  // TEMPORARY REAL-DEVICE INSTRUMENTATION (round 5) — anchor navigation,
+  // window.open, and window.location.assign have each failed on real
+  // Android Chrome and real iOS Safari in turn. Navigation is deliberately
+  // suppressed here so the on-page debug panel below can prove, on the
+  // physical device itself, whether a pointerdown and a click are actually
+  // observed on this option and what URL was generated — rather than
+  // guessing at a fourth navigation mechanism blind. Restore
+  // `window.location.assign(gcalUrl); setOpen(false);` as this function's
+  // only body, and delete the `debug` state and panel, once that's proven.
+  function handleGcalPointerDown() {
+    setDebug((d) => ({ pointer: true, click: d?.click ?? false, url: d?.url ?? "" }));
+  }
+
   function openGoogleCalendar() {
-    window.location.assign(gcalUrl);
-    setOpen(false);
+    setDebug((d) => ({ pointer: d?.pointer ?? false, click: true, url: gcalUrl }));
   }
 
   function downloadIcs() {
@@ -211,6 +219,7 @@ export default function AddToCalendarButton({
         >
           <button
             type="button"
+            onPointerDown={handleGcalPointerDown}
             onClick={openGoogleCalendar}
             className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
           >
@@ -223,6 +232,30 @@ export default function AddToCalendarButton({
           >
             Apple / Outlook (.ics)
           </button>
+        </div>
+      )}
+      {/* TEMPORARY REAL-DEVICE INSTRUMENTATION — see notes above
+          openGoogleCalendar. Fixed + very high z-index so it renders on
+          top of every caller, including the two full-screen Quick View
+          modals (z-50); rendered independently of `open`/`coords` so
+          closing/reopening the dropdown never clears the evidence, and it
+          only ever disappears via its own explicit Dismiss button. */}
+      {debug && (
+        <div className="fixed inset-x-0 bottom-0 z-[9999] max-h-[45vh] overflow-y-auto border-t-4 border-yellow-400 bg-black/95 p-3 font-mono text-[11px] leading-tight text-lime-300 shadow-2xl">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="font-bold text-yellow-300">CALENDAR DEBUG (temporary)</p>
+            <button
+              type="button"
+              onClick={() => setDebug(null)}
+              className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase text-white"
+            >
+              Dismiss
+            </button>
+          </div>
+          <p>Pointer: {debug.pointer ? "YES" : "NO"}</p>
+          <p>Click: {debug.click ? "YES" : "NO"}</p>
+          <p>URL: {debug.url ? `YES (${debug.url.length} chars)` : "NO"}</p>
+          {debug.url && <p className="mt-1 break-all text-white">{debug.url}</p>}
         </div>
       )}
     </div>
