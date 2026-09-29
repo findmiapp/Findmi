@@ -19,7 +19,7 @@ import MessageButton from "@/components/MessageButton";
 import InquireButton from "@/components/InquireButton";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
-import { FeaturedBadge, FoundingMemberBadge, VerifiedBadge } from "@/components/Badge";
+import { FeaturedBadge, VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
 import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
@@ -543,12 +543,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 onto their own compact, wrapping row underneath. Recency
                 "New" badge removed (public presentation pass) — the
                 remaining badges close the space naturally; no empty
-                placeholder when none apply. */}
+                placeholder when none apply.
+                Remove Consumer-Facing Plan Status pass — Founding Member
+                no longer renders here: it's a paid plan/membership status,
+                not a consumer discovery attribute. business.founding_member
+                is untouched as a real field (still used by account/admin/
+                billing/entitlement resolution); only this public badge is
+                removed. Verified and Featured are unrelated to plan status
+                and are preserved exactly as before. */}
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
-            {(business.verified || business.founding_member || business.is_featured) && (
+            {(business.verified || business.is_featured) && (
               <div className="flex flex-wrap items-center gap-1.5">
                 {business.verified && <VerifiedBadge />}
-                {business.founding_member && <FoundingMemberBadge />}
                 {business.is_featured && <FeaturedBadge />}
               </div>
             )}

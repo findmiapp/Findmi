@@ -75,23 +75,20 @@ export default function BusinessLogoCard({
   // component's own badge logic — it's redundant the moment this card is
   // already sitting inside a founder-curated/featured row (Brands We
   // Love), and this component has no way to know it's in a DIFFERENT,
-  // non-curated context where it might not be. Pro Member and Founding
-  // Member are real, context-independent trust signals, so they take
-  // priority over the recency-based New signal.
+  // non-curated context where it might not be.
   //
-  // Pro Member Badge pass — "Verified" no longer occupies this slot at
-  // all (not as a fallback, not swapped for anything else): replaced by
-  // is_pro_member, the public-safe derived signal for plan_tier 'pro' OR
-  // 'pro_seller' (see lib/types.ts's own comment). A free-tier or
-  // unknown/missing plan shows no badge here — never "Free", never a
-  // silent fallback to Verified.
-  const badge = business.is_pro_member
-    ? "Pro Member"
-    : business.founding_member
-      ? "Founding Member"
-      : !business.is_featured && Date.now() - new Date(business.created_at).getTime() < 30 * 24 * 60 * 60 * 1000
-        ? "New"
-        : null;
+  // Remove Consumer-Facing Plan Status pass — Pro Member/Founding Member
+  // no longer render here: paid plan status is a commercial relationship
+  // with FindMi, not a consumer discovery attribute. is_pro_member/
+  // founding_member remain real, unchanged fields (still used by account/
+  // admin/billing/entitlement resolution) — only this public badge
+  // presentation is removed. The one remaining signal, recency-based
+  // "New" (never alongside is_featured), is a truthful non-plan state and
+  // is preserved exactly as before.
+  const badge =
+    !business.is_featured && Date.now() - new Date(business.created_at).getTime() < 30 * 24 * 60 * 60 * 1000
+      ? "New"
+      : null;
 
   return (
     <div ref={impressionRef} className="group relative w-full rounded-3xl border border-black/5 bg-white shadow-sm transition active:scale-[0.98]">

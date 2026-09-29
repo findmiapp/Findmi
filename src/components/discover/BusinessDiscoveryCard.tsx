@@ -22,8 +22,8 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
  * surfaces do.
  *
  * Image-led but compact: a wide (not full-bleed-tall) thumbnail, then one
- * flat content block — name (+ a small inline Pro/Founding/New signal,
- * not a banner over the photo), category · geography, and a "Next Up"
+ * flat content block — name (+ a small inline truthful "New" signal when
+ * applicable, not a banner over the photo), category · geography, and a "Next Up"
  * line using the exact same NextAppearanceHint bulk-fetched by the page
  * (getNextAppearanceHints — zero new queries). No separate "View
  * Profile" CTA line; the whole card is the single tap target, which is
@@ -41,9 +41,9 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
  * compact, image-forward identity card: photo on top, name + city/state
  * below, answering WHO/WHAT KIND/WHERE at a glance — no category text
  * (redundant under a category rail's own heading), no CTA chrome (the
- * whole card is already the tap target), Pro/Founding/New rendered as a
- * small inline pill next to the name rather than a banner over the photo.
- * Reuses this file's existing badge precedence and the same
+ * whole card is already the tap target), no plan-status badge (Remove
+ * Consumer-Facing Plan Status pass — see this file's `badge` below).
+ * Reuses this file's existing badge logic and the same
  * NextAppearanceHint bulk data /businesses already fetches — no new
  * query. Save uses the same generic WantHeartButton overlay
  * LocationDiscoveryCard/ProductCard already use, with `type="business"`
@@ -65,17 +65,18 @@ export default function BusinessDiscoveryCard({
   const image = business.cover_image_url ?? business.logo_url;
   const isLogoOnly = !business.cover_image_url && Boolean(business.logo_url);
 
-  // Same precedence BusinessLogoCard's own badge already uses (Pro
-  // Member > Founding Member > recency-based New, never alongside
-  // is_featured) — only WHERE/HOW prominently it renders changes here,
-  // not what it means or when it appears.
-  const badge = business.is_pro_member
-    ? "Pro Member"
-    : business.founding_member
-      ? "Founding Member"
-      : !business.is_featured && Date.now() - new Date(business.created_at).getTime() < 30 * 24 * 60 * 60 * 1000
-        ? "New"
-        : null;
+  // Remove Consumer-Facing Plan Status pass — paid plan/membership status
+  // (Pro Member, Founding Member) is a commercial relationship with
+  // FindMi, not a consumer discovery attribute, so it's no longer shown
+  // here. is_pro_member/founding_member are untouched as real fields
+  // (still read by account/admin/billing/entitlement resolution) — only
+  // this public badge presentation is removed. The one remaining signal,
+  // "New," is a truthful non-plan state (recent + not already Featured)
+  // and is preserved exactly as before.
+  const badge =
+    !business.is_featured && Date.now() - new Date(business.created_at).getTime() < 30 * 24 * 60 * 60 * 1000
+      ? "New"
+      : null;
 
   const analyticsFields = buildEntityEventFields("business", business.id, { businessId: business.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLAnchorElement>({ event_name: "entity_impression", ...analyticsFields });
