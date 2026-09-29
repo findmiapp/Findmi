@@ -245,23 +245,30 @@ export default async function HomePage({
           after What's Happening and before Brands We Love/the Native Rose
           proof section, per this pass's own preferred hierarchy. Reuses
           LocationDiscoveryCard (variant="full") unmodified — the same card
-          /locations and /discover already render — and getFeaturedLocations
-          (lib/data.ts), which reuses getLocations' own real activityCount/
-          activities computation and simply filters to Locations with at
-          least one real upcoming happening (never a fabricated/empty
-          card). Each card's own `activities` is capped to its single
-          nearest happening here (not in the shared component) so every
-          card in this rail renders the same amount of body content and
-          stays a stable height, regardless of how busy a given Location
-          actually is. */}
+          /locations and /discover already render, including its own
+          existing horizontal activity-rail treatment for `activities` — and
+          getFeaturedLocations (lib/data.ts), which reuses getLocations' own
+          real activityCount/activities computation and simply filters to
+          Locations with at least one real upcoming happening (never a
+          fabricated/empty card).
+          QA Correction pass — this used to slice `activities` down to just
+          1 item per card, so a Location with (say) 3 real upcoming
+          happenings showed only the first with a large empty gap below it.
+          getLocationActivitySummaries already caps this array server-side
+          (ACTIVITY_PREVIEW_ITEMS_PER_LOCATION = 3, one batched query for
+          every Location on the page — no per-card fetch), so passing it
+          through unsliced is enough: LocationDiscoveryCard's own existing
+          activity rail is ALREADY a horizontal, independently-scrollable
+          mini-carousel (never vertical stacking), and its fixed-width
+          items keep the card's own height constant regardless of whether
+          1 or 3 real items are present. */}
       {featuredLocations.length > 0 && (
         <Section title="Featured Locations" subtitle="Places with something happening soon." viewAllHref="/locations">
-
           <HorizontalScroller>
             {featuredLocations.map((location) => (
               <RailItem key={location.id} density="discovery">
                 <LocationDiscoveryCard
-                  location={{ ...location, activities: (location.activities ?? []).slice(0, 1) }}
+                  location={location}
                   analyticsContext={{ pageType: "home", placement: "homepage_featured_locations" }}
                 />
               </RailItem>

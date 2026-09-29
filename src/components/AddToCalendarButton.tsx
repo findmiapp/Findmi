@@ -127,6 +127,28 @@ export default function AddToCalendarButton({
   });
   const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
 
+  // Calendar Functional Repair pass, round 3 — the ICS button below (a
+  // real <button type="button"> whose onClick performs the actual browser
+  // action directly) was never reported broken; only the Google Calendar
+  // <a href target="_blank" rel="noreferrer"> was. Same dropdown, same
+  // z-index/stacking context, same nested-inside-a-fixed-modal placement
+  // either way — the one real difference is the element type and its
+  // reliance on the browser's own default anchor-navigation instead of an
+  // explicit, synchronous action inside a real click handler. That's the
+  // actual root cause: relying on native <a target="_blank"> default
+  // navigation from deep inside nested position:fixed layers (this
+  // dropdown, itself inside AppearanceQuickView/EventOccurrenceQuickView's
+  // own fixed overlay when used there) isn't reliable on real Android
+  // Chrome. Matching the ICS button's already-working shape exactly: a
+  // real button, opening the already-built gcalUrl explicitly via
+  // window.open (a direct, synchronous call inside the tap's own click
+  // handler — a genuine user gesture, so never popup-blocked), then
+  // closing the menu — never a passive href/default-navigation.
+  function openGoogleCalendar() {
+    window.open(gcalUrl, "_blank", "noopener,noreferrer");
+    setOpen(false);
+  }
+
   function downloadIcs() {
     const ics = buildIcs({ title, description, location, startAt, endAt: resolvedEnd });
     const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
@@ -190,15 +212,13 @@ export default function AddToCalendarButton({
           className="fixed z-20 w-48 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
           style={{ top: coords.top, left: coords.left }}
         >
-          <a
-            href={gcalUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => setOpen(false)}
-            className="block px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
+          <button
+            type="button"
+            onClick={openGoogleCalendar}
+            className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
           >
             Google Calendar
-          </a>
+          </button>
           <button
             type="button"
             onClick={downloadIcs}
