@@ -180,23 +180,24 @@ export default async function HomePage({
         </div>
       )}
 
-      {/* Search — behavior/route unchanged; Above-the-Fold Polish pass
-          tightened this wrapper's top padding (pt-5→pt-3) as part of the
-          same combined hero→content spacing correction. */}
-      <div className="mx-auto max-w-6xl px-4 pt-3 sm:px-6">
-        <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
-      </div>
-
       {/* Homepage Bulletin — a single, admin-managed editorial
-          announcement (see /admin/bulletins), directly above "What's
-          Coming Up." Renders nothing (no gap) when none is published.
-          Above-the-Fold Polish pass tightened this wrapper's top padding
-          (pt-5→pt-3) — same combined spacing correction as Search above. */}
+          announcement (see /admin/bulletins). Final Above-the-Fold pass
+          moved this ABOVE Search (was below) per live mobile QA — same
+          component, same data fetch, only its position in this stack
+          changed. Renders nothing (no gap) when none is published. */}
       {bulletin && (
-        <div className="mx-auto max-w-6xl px-4 pt-3 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6">
           <HomepageBulletin bulletin={bulletin} />
         </div>
       )}
+
+      {/* Search — behavior/route/sizing unchanged; only its position
+          (now after the Bulletin, was before) and this local top padding
+          moved, so it reads as related to but distinct from the
+          Bulletin above it. */}
+      <div className="mx-auto max-w-6xl px-4 pt-3 sm:px-6">
+        <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
+      </div>
 
       {/* Public Experience Consolidation pass — "Must Dos" eyebrow removed
           (the heading itself, "What's Happening", already says what this

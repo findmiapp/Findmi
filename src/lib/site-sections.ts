@@ -221,9 +221,10 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // filtering lives at /discover, not reproduced here.
     label: "Featured Events",
     heading: "What's Happening",
-    // Public Experience Consolidation pass — verified not live-overridden
-    // before changing this default.
-    body: "Events, pop-ups and experiences happening around you.",
+    // Above-the-Fold Polish pass — shortened so this fits on one mobile
+    // line instead of two; verified not live-overridden before changing
+    // this default (see Public Experience Consolidation pass's own note).
+    body: "Events, pop-ups and experiences near you.",
     ctaLabel: "View all",
     ctaUrl: "/events",
     order: 20,
