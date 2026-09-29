@@ -13,33 +13,48 @@ import convertHeic from "heic-convert";
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
-// Security Pass 6 — explicit allowlist (unchanged from its original home
-// in lib/admin/upload.ts). image/svg+xml is deliberately excluded — an
-// SVG can carry embedded <script>, and this bucket serves files back
-// publicly with their original content-type.
-const MIME_TO_EXTENSION: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
+/** Byte-offset match helper — shared by the raster-format detector below
+ * and the HEIC container-signature check further down. */
+function at(header: Uint8Array, offset: number, bytes: number[]): boolean {
+  return bytes.every((b, i) => header[offset + i] === b);
+}
 
-/** First few bytes of each allowed format — catches a file whose actual
- * bytes don't match its claimed (client-supplied, spoofable) MIME type. */
-function matchesMagicBytes(header: Uint8Array, mimeType: string): boolean {
-  const at = (offset: number, bytes: number[]) => bytes.every((b, i) => header[offset + i] === b);
-  switch (mimeType) {
-    case "image/jpeg":
-      return at(0, [0xff, 0xd8, 0xff]);
-    case "image/png":
-      return at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    case "image/gif":
-      return at(0, [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) || at(0, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]); // GIF87a / GIF89a
-    case "image/webp":
-      return at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50]); // "RIFF"...."WEBP"
-    default:
-      return false;
+/** Launch Stability pass — Upload Format Detection Correction. A real
+ * production upload (filename "1000089439.webp", browser-reported
+ * image/webp) turned out to be genuine JPEG/JFIF bytes once inspected —
+ * the filename/MIME and the actual payload disagreed, which the previous
+ * MIME-keyed lookup had no way to catch (it trusted file.type as the
+ * SOURCE of the extension, and only used magic bytes as a secondary
+ * confirmation AFTER that lookup already succeeded — so a wrong file.type
+ * rejected a perfectly valid image before the magic-byte check ever ran).
+ *
+ * Every raster format below is now identified authoritatively from its
+ * own actual byte signature — file.type and the filename are never
+ * consulted for these four formats at all. A JPEG mislabeled as .webp is
+ * now correctly accepted and normalized to JPEG (never uploaded/stored
+ * under a false format). This mirrors the same "trust the real bytes,
+ * never the client-supplied hint" discipline the HEIC container-signature
+ * check below already used — this pass just extends it to every format,
+ * closing the one asymmetry that let this incident happen. */
+const RASTER_SIGNATURES: { extension: string; contentType: string; matches: (header: Uint8Array) => boolean }[] = [
+  { extension: "jpg", contentType: "image/jpeg", matches: (h) => at(h, 0, [0xff, 0xd8, 0xff]) },
+  { extension: "png", contentType: "image/png", matches: (h) => at(h, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
+  {
+    extension: "gif",
+    contentType: "image/gif",
+    matches: (h) => at(h, 0, [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) || at(h, 0, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]), // GIF87a / GIF89a
+  },
+  { extension: "webp", contentType: "image/webp", matches: (h) => at(h, 0, [0x52, 0x49, 0x46, 0x46]) && at(h, 8, [0x57, 0x45, 0x42, 0x50]) }, // "RIFF"...."WEBP"
+];
+
+/** Returns the real format (by its own byte signature), or null if the
+ * bytes don't match any supported raster format — the sole authority for
+ * "what kind of image is this," independent of file.type/filename. */
+function detectRasterFormat(header: Uint8Array): { extension: string; contentType: string } | null {
+  for (const sig of RASTER_SIGNATURES) {
+    if (sig.matches(header)) return { extension: sig.extension, contentType: sig.contentType };
   }
+  return null;
 }
 
 // HEIC/HEIF container signature — the ISO-BMFF "ftyp" box's major_brand
@@ -67,24 +82,38 @@ function looksLikeHeicContainer(header: Uint8Array): boolean {
 }
 
 export interface ImageValidationResult {
+  /** The REAL, byte-detected format's extension — never the claimed/
+   * filename one. For an accepted upload, always paired with the
+   * matching contentType below. */
   extension: string;
+  /** The REAL, byte-detected format's content-type. Callers must use
+   * THIS value for the Storage upload — never the original File.type,
+   * which is a client-supplied, spoofable/unreliable hint that can
+   * disagree with the actual bytes (see this pass's own header comment
+   * on RASTER_SIGNATURES). */
+  contentType: string;
   /** Set only when the original upload needed server-side conversion
    * before it's safe to store (currently: HEIC/HEIF -> JPEG). When
-   * present, the caller must upload THIS buffer/contentType instead of
-   * the original File — the original bytes are never valid to store as-
-   * is. Absent for every other format, so existing JPG/PNG/WEBP/GIF
-   * upload behavior is completely unchanged. */
-  converted?: { buffer: Buffer; contentType: string };
+   * present, the caller must upload THIS buffer instead of the original
+   * File — the original bytes are never valid to store as-is. Absent for
+   * every other format, so existing JPG/PNG/WEBP/GIF upload behavior is
+   * unchanged apart from now being detected by real bytes (see above). */
+  converted?: { buffer: Buffer };
 }
 
 /** Validates an uploaded File against FindMi's supported image rules —
- * size, HEIC/HEIF conversion, SVG rejection, MIME allowlist, and a magic-
- * byte check that the file's real bytes match what it claims to be.
- * Returns the safe extension (and, for a converted HEIC/HEIF file, the
- * ready-to-upload JPEG bytes) to store it under on success, or a user-
- * facing error message on failure. Never touches Storage or the
- * database — every caller still owns its own authorization and the
- * actual write. */
+ * size, HEIC/HEIF conversion, SVG rejection, and byte-signature format
+ * detection for JPEG/PNG/WEBP/GIF. Returns the REAL detected extension +
+ * contentType (and, for a converted HEIC/HEIF file, the ready-to-upload
+ * JPEG bytes) on success, or a user-facing error message on failure.
+ * Never touches Storage or the database — every caller still owns its
+ * own authorization and the actual write.
+ *
+ * file.type and file.name are used ONLY as hints for the HEIC/HEIF and
+ * SVG branches below (both still corroborated or superseded by an actual
+ * byte check — see looksLikeHeicContainer and detectRasterFormat) —
+ * never as the basis for what extension/contentType a successfully
+ * validated raster image is stored under. */
 export async function validateImageFile(file: File): Promise<ImageValidationResult | { error: string }> {
   if (file.size === 0) return { error: "No file selected." };
   if (file.size > MAX_UPLOAD_BYTES) return { error: "Image must be under 5MB." };
@@ -92,7 +121,7 @@ export async function validateImageFile(file: File): Promise<ImageValidationResu
   // Read enough of the header up front for the HEIC container-signature
   // check below (32 bytes comfortably covers ftyp + major_brand + a
   // handful of compatible_brands on real-world files) — the same slice
-  // also covers the 16-byte magic-byte checks further down.
+  // also covers every raster format's magic-byte signature further down.
   const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
 
   // HEIC/HEIF (the default format for iPhone camera photos) — the
@@ -106,7 +135,7 @@ export async function validateImageFile(file: File): Promise<ImageValidationResu
     try {
       const inputBuffer = Buffer.from(await file.arrayBuffer());
       const outputBuffer = (await convertHeic({ buffer: inputBuffer, format: "JPEG", quality: 0.85 })) as Buffer;
-      return { extension: "jpg", converted: { buffer: outputBuffer, contentType: "image/jpeg" } };
+      return { extension: "jpg", contentType: "image/jpeg", converted: { buffer: outputBuffer } };
     } catch {
       // Never let a decode failure (corrupt file, an unsupported HEIC
       // variant, a false-positive container match on a non-image file,
@@ -123,14 +152,16 @@ export async function validateImageFile(file: File): Promise<ImageValidationResu
     return { error: "SVG images aren't supported (they can carry embedded scripts)." };
   }
 
-  const extension = MIME_TO_EXTENSION[file.type];
-  if (!extension) {
-    return { error: "Only JPG, PNG, WEBP, or GIF images are supported." };
+  // Launch Stability pass — the real bytes are the sole authority here.
+  // file.type/filename are never consulted for JPEG/PNG/WEBP/GIF: a file
+  // mislabeled .webp whose actual bytes are JPEG is accepted AS JPEG
+  // (see RASTER_SIGNATURES' own header comment); a file whose bytes
+  // don't match any of the four supported formats is rejected outright,
+  // however "image"-like its extension/MIME claims to be.
+  const detected = detectRasterFormat(header);
+  if (!detected) {
+    return { error: "That file doesn't look like a supported image (JPG, PNG, WEBP, or GIF)." };
   }
 
-  if (!matchesMagicBytes(header, file.type)) {
-    return { error: "That file doesn't look like a valid image of the type it claims to be." };
-  }
-
-  return { extension };
+  return detected;
 }

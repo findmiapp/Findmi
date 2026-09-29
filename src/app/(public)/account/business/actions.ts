@@ -117,11 +117,12 @@ export async function uploadMemberBusinessImage(
     const path = `${crypto.randomUUID()}.${validated.extension}`;
 
     // A HEIC/HEIF upload was already converted to JPEG bytes above (see
-    // validateImageFile) — upload THOSE, never the original File, with the
-    // matching contentType. Every other format is uploaded exactly as
-    // before, unchanged.
+    // validateImageFile) — upload THOSE, never the original File. Content
+    // type always comes from validateImageFile's own byte-detected result,
+    // never the original file.type — see that function's own comment on
+    // why the claimed MIME can disagree with the actual bytes.
     const uploadBody = validated.converted?.buffer ?? file;
-    const uploadContentType = validated.converted?.contentType ?? file.type;
+    const uploadContentType = validated.contentType;
 
     const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, uploadBody, {
       contentType: uploadContentType,

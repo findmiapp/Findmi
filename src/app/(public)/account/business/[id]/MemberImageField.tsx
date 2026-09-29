@@ -38,7 +38,18 @@ import { uploadMemberBusinessImage } from "../actions";
  * just the wrong (stale) value, with nothing to show for it. `onPendingChange`
  * lets the parent form disable Save for exactly as long as `isPending` is
  * true, closing that window without touching the upload/storage path
- * itself. */
+ * itself.
+ *
+ * Launch Stability pass — Upload Error Visibility. A real production
+ * upload failure (see imageUploadValidation.ts's own header comment) went
+ * unnoticed on mobile because the only feedback was a single small
+ * text-xs red line easy to miss below the button. The error itself
+ * already carries a specific, useful reason (uploadMemberBusinessImage
+ * always returns one via validateImageFile, never a generic message when
+ * a real one exists) — only its visual weight changes here, to a
+ * bordered/backgrounded block with a clear heading, matching the
+ * red-banner pattern already used for page-level errors elsewhere in this
+ * same Business Manager. */
 export default function MemberImageField({
   businessId,
   label,
@@ -109,7 +120,12 @@ export default function MemberImageField({
             disabled={isPending}
           />
         </label>
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
+            <p className="text-sm font-semibold text-red-700">Photo couldn&rsquo;t be uploaded</p>
+            <p className="mt-0.5 text-xs text-red-600">{error}</p>
+          </div>
+        )}
       </div>
     </div>
   );
