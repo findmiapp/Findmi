@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Event Detail V2 polish pass, item 9 — real event data only (title,
 // start, end, venue/address, description), no paid third-party calendar
@@ -92,8 +92,31 @@ export default function AddToCalendarButton({
   // so the panel's coordinates are computed from the trigger's own
   // bounding rect on open instead of relying on CSS-relative offset.
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const resolvedEnd = endAt ?? new Date(new Date(startAt).getTime() + 2 * 60 * 60 * 1000).toISOString();
+
+  // Calendar Functional Repair pass, round 2 — the previous fix (delaying
+  // the close on blur) was still fragile: it assumed blur always fires
+  // before click on real Android Chrome, which isn't reliably true, so a
+  // tap on Google Calendar/the .ics button could still land on a panel
+  // that had already started closing. Replaced with the standard, robust
+  // "click outside" pattern instead of any focus/blur timing: a real
+  // pointerdown listener on the document only closes the panel when the
+  // event's target is genuinely outside both the trigger and the panel —
+  // a tap ON either option is never treated as "outside," so it can never
+  // race the option's own click. No timers, nothing timing-dependent.
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: PointerEvent) {
+      const target = e.target as Node | null;
+      if (triggerRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
 
   const gcalParams = new URLSearchParams({
     action: "TEMPLATE",
@@ -128,22 +151,7 @@ export default function AddToCalendarButton({
           : "flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink";
 
   return (
-    <div
-      className={layout === "grid" || layout === "row" ? "relative h-full w-full" : "relative"}
-      // Calendar Functional Repair pass — real bug fix: on mobile, blur
-      // fires (and this closed the panel) before the tap's own click event
-      // reached the Google Calendar link or the .ics button inside it, so
-      // both options visibly opened but tapping either silently did
-      // nothing. Same short-delay pattern already established elsewhere in
-      // this codebase for the identical race (see EventLocationField's own
-      // onBlur) — closing is deferred just long enough for a genuine click
-      // inside the panel to land first; a real focus-out still closes it.
-      onBlur={(e) => {
-        const related = e.relatedTarget as Node | null;
-        if (related && e.currentTarget.contains(related)) return;
-        setTimeout(() => setOpen(false), 150);
-      }}
-    >
+    <div className={layout === "grid" || layout === "row" ? "relative h-full w-full" : "relative"}>
       <button
         ref={triggerRef}
         type="button"
@@ -178,6 +186,7 @@ export default function AddToCalendarButton({
       </button>
       {open && coords && (
         <div
+          ref={panelRef}
           className="fixed z-20 w-48 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
           style={{ top: coords.top, left: coords.left }}
         >

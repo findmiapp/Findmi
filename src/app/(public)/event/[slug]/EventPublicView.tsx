@@ -294,19 +294,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
       {/* Item 7 — one coherent details module (title, date/time, venue,
           address) instead of floating loosely in open whitespace below
           the cover. Light containment only: subtle border, restrained
-          radius, no heavy card styling.
-          Public Experience Consolidation pass — id="event-schedule-details"
-          is this scroll target for EventOccurrenceCard's own "make
-          selecting a date feel interactive" fix (see that component): the
-          card that actually reflects a newly-selected occurrence (date/
-          time/venue/Tier A actions all update here) lives above the
-          Upcoming Dates rail, easy to miss on a tall mobile page — tapping
-          a date now scrolls this into view, not just an invisible state
-          change. */}
-      <div
-        id="event-schedule-details"
-        className="scroll-mt-20 rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-5"
-      >
+          radius, no heavy card styling. */}
+      <div className="rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-5">
         {/* Restore Event Follow pass — Follow lives here now: the top
             identity/header area, same prominence Business's own Follow
             button gets beside its logo/name, and visually distinct from
@@ -592,7 +581,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
               regardless of how many cards are currently visible, so the
               date SELECTOR context (Tier A CTAs/Location/roster switching)
               is unaffected either way. */}
-          <UpcomingDatesRail occurrences={upcomingOccurrences} />
+          <UpcomingDatesRail occurrences={upcomingOccurrences} eventName={event.name} />
         </div>
       )}
 
@@ -680,7 +669,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
             the "nothing to browse" guard meant for 0 images. */}
         {images.gallery.length > 0 && (
           <div className="mt-2">
-            <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} />
+            <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} compact />
           </div>
         )}
       </div>

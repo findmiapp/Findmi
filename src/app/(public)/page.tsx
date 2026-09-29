@@ -8,6 +8,7 @@ import Section, { HorizontalScroller, RailItem } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
 import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
+import HomeTimeFilterRail from "@/components/HomeTimeFilterRail";
 import {
   attachEventCategories,
   getCategoriesForDynamicBusinessRow,
@@ -221,29 +222,7 @@ export default async function HomePage({
                 />
               </div>
             )}
-            <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {DISCOVERY_TIME_TABS.map((t) => {
-                const params = new URLSearchParams();
-                if (t.key !== "next") params.set("when", t.key);
-                if (marketSlug) params.set("market", marketSlug);
-                if (marketSlug && areaSlug) params.set("area", areaSlug);
-                const href = `/${params.toString() ? `?${params.toString()}` : ""}`;
-                const active = timeKey === t.key;
-                return (
-                  <Link
-                    key={t.key}
-                    href={href}
-                    scroll={false}
-                    aria-current={active ? "true" : undefined}
-                    className={`flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-2xl border px-3.5 text-sm transition ${
-                      active ? "border-findmi bg-findmi text-white" : "border-black/10 text-ink/70 hover:border-black/20"
-                    }`}
-                  >
-                    {t.label}
-                  </Link>
-                );
-              })}
-            </div>
+            <HomeTimeFilterRail activeKey={timeKey} marketSlug={marketSlug} areaSlug={areaSlug} />
           </div>
         </div>
         {nextEvents.length > 0 && (

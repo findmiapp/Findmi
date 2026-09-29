@@ -48,6 +48,7 @@ export default function ImageGalleryStrip({
   alt,
   unoptimized,
   minCount = 2,
+  compact = false,
 }: {
   images: string[];
   alt: string;
@@ -64,6 +65,14 @@ export default function ImageGalleryStrip({
    * (never the cover) — a single real upload is one genuine photo worth
    * showing, not "nothing to browse." */
   minCount?: number;
+  /** QA Correction pass — mobile-only smaller tiles (h-32/w-32 -> h-20/
+   * w-20, ~37% smaller) for the ONE caller that asked for it (the Event
+   * page's own gallery strip, directly under the cover — never the main
+   * cover image itself, and never Business Gallery/the Event's own About
+   * the Venue strip, which keep their exact current size). Desktop (sm+)
+   * size is unchanged either way. Opt-in and defaults to false so every
+   * other existing caller renders byte-identical to before. */
+  compact?: boolean;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [failedIndices, setFailedIndices] = useState<Set<number>>(new Set());
@@ -77,7 +86,9 @@ export default function ImageGalleryStrip({
             key={`${src}-${i}`}
             type="button"
             onClick={() => setOpenIndex(i)}
-            className="relative h-32 w-32 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-mist transition active:scale-95 sm:h-40 sm:w-40"
+            className={`relative shrink-0 overflow-hidden rounded-lg border border-black/10 bg-mist transition active:scale-95 ${
+              compact ? "h-20 w-20 sm:h-40 sm:w-40" : "h-32 w-32 sm:h-40 sm:w-40"
+            }`}
           >
             {failedIndices.has(i) ? (
               <div className="flex h-full w-full items-center justify-center text-ink/25">
@@ -89,7 +100,7 @@ export default function ImageGalleryStrip({
                 alt={alt}
                 fill
                 unoptimized={unoptimized}
-                sizes="(min-width: 640px) 160px, 128px"
+                sizes={compact ? "(min-width: 640px) 160px, 80px" : "(min-width: 640px) 160px, 128px"}
                 className="object-cover"
                 onError={() => setFailedIndices((prev) => new Set(prev).add(i))}
               />

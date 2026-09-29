@@ -30,14 +30,13 @@ function isExactlyMidnightInZone(iso: string, timezone: string): boolean {
 
 /** One card in the public event page's "Upcoming Dates" row — Recurring
  * Events V2 makes this the occurrence SELECTOR for the whole page (see
- * EventOccurrenceContext), not an independent ticket link. Clicking/
- * tapping only ever changes which occurrence is selected in the shared
- * context; it never navigates. Per-occurrence ticket/RSVP/vendor-apply
- * link resolution (this card's previous click-through behavior) is
- * explicitly deferred to a later "CTA parity" pass — see the pass
- * report. Every date/time renders in the OCCURRENCE'S OWN timezone
- * (occurrence.timezone), never the app's global APP_TIMEZONE or the
- * viewer's device timezone.
+ * EventOccurrenceContext); tapping selects it AND opens a lightweight
+ * occurrence Quick View (see handleSelect below) — it still never
+ * navigates. Per-occurrence ticket/RSVP/vendor-apply link resolution
+ * (this card's previous click-through behavior) is explicitly deferred to
+ * a later "CTA parity" pass — see the pass report. Every date/time renders
+ * in the OCCURRENCE'S OWN timezone (occurrence.timezone), never the app's
+ * global APP_TIMEZONE or the viewer's device timezone.
  *
  * Date/Time Hierarchy Polish pass — "when is this" is the primary
  * consumer question, so the date is now the card's dominant element (a
@@ -49,7 +48,13 @@ function isExactlyMidnightInZone(iso: string, timezone: string): boolean {
  * border/background (that visually competed with the aqua SELECTED
  * treatment); the small Now indicator is the only "happening now" signal
  * now, so selection and temporal status stay legible at the same time. */
-export default function EventOccurrenceCard({ occurrence }: { occurrence: EventOccurrenceWithLocation }) {
+export default function EventOccurrenceCard({
+  occurrence,
+  onOpenQuickView,
+}: {
+  occurrence: EventOccurrenceWithLocation;
+  onOpenQuickView: (id: string) => void;
+}) {
   const { selected, select } = useEventOccurrence();
   const isSelected = selected?.id === occurrence.id;
   const cancelled = occurrence.status === "cancelled";
@@ -87,22 +92,17 @@ export default function EventOccurrenceCard({ occurrence }: { occurrence: EventO
   // formatTimeRangeInZone's own multi-day branch does.
   const timeLabel = `${formatTimeInZone(occurrence.start_at, occurrence.timezone)} – ${formatTimeInZone(occurrence.end_at, occurrence.timezone)}`;
 
-  // Public Experience Consolidation pass — live QA read this card as a
-  // "dead schedule tile": tapping it silently changed which occurrence was
-  // selected, but that change only shows up in the details card/Tier A
-  // actions ABOVE this rail, easy to miss once a visitor has scrolled down
-  // to the dates. There's no single Business/Appearance object for a whole
-  // Event occurrence to plug into AppearanceQuickView (an occurrence can
-  // have several participating businesses, not one) — inventing a fake one
-  // just to open that modal would violate this pass's own "no fabricated
-  // Appearance" rule. So this uses the real, already-correct existing
-  // event behavior instead: selecting still updates the shared context
-  // exactly as before (date/time/venue/Tier A CTAs/roster), and now also
-  // scrolls that real details card into view, so the tap visibly does
-  // something rather than only mutating state nobody's looking at.
+  // QA Correction pass — the previous fix (select + scroll the details
+  // card into view) wasn't the desired final interaction. Tapping now
+  // still selects the occurrence (unchanged — keeps the shared context/
+  // Tier A CTAs/roster in sync exactly as before) and additionally opens
+  // a lightweight occurrence Quick View (EventOccurrenceQuickView, owned
+  // by the parent rail — UpcomingDatesRail — so every card shares one
+  // instance, same pattern as AppearanceFindMiHere's shared Quick View).
+  // The scroll-into-view behavior is removed: the modal supersedes it.
   function handleSelect() {
     select(occurrence.id);
-    document.getElementById("event-schedule-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    onOpenQuickView(occurrence.id);
   }
 
   return (

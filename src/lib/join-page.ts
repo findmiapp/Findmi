@@ -57,7 +57,13 @@ export const JOIN_CARD_DEFAULTS: Record<JoinCardKey, JoinCardDefaults> = {
     // this pass's report: the CTA label is admin-editable again (the CTA
     // URL itself stays server-controlled, see that file's
     // PRO_NATIVE_CTA_URL).
-    price: "From $20",
+    // QA Correction pass — "From $20" wrapped onto its own line
+    // ("From" / "$20/month") at the compact tile's/card's width, reading
+    // as unbalanced against Free's plain "$0". Same real $20/month price,
+    // just without the "From" prefix baked into the string (verified +
+    // corrected the matching live site_sections override — see this
+    // pass's report — so this default and production now match).
+    price: "$20",
     priceSuffix: "/month",
     // Join Page Conversion Rebuild pass — this general description line is
     // no longer rendered on the Pro card at all (it duplicated the price,
