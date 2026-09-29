@@ -81,6 +81,14 @@ export default function HomepageBusinessRow({
         await res.json();
       setCache((prev) => ({ ...prev, [slug]: data.businesses }));
       setHintsCache((prev) => ({ ...prev, [slug]: data.appearanceHints }));
+      // Public Experience Consolidation pass — a curated homepage module
+      // should never advertise an empty state. The chip list itself is
+      // already scoped to categories with real eligible content (see
+      // getCategoriesForDynamicBusinessRow), so a genuinely empty result
+      // here means the underlying data changed between render and click
+      // (a business went out of eligibility) — graceful fallback to All
+      // rather than leaving the visitor on a dead category.
+      if (data.businesses.length === 0) setActiveCategory(null);
     } catch {
       setFailedCategory(slug);
     } finally {

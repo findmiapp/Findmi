@@ -606,7 +606,20 @@ export async function getCategoriesForDynamicBusinessRow(
   if (featuredOnly) query = query.eq("is_featured", true);
   if (marketBusinessIds) query = query.in("id", marketBusinessIds);
   const { data: eligible } = await query;
-  const eligibleIds = new Set((eligible ?? []).map((b) => b.id));
+  let eligibleIds = new Set((eligible ?? []).map((b) => b.id));
+  // Public Experience Consolidation pass — real bug fix, not a new rule:
+  // getHomepageRowBusinesses (the row's own actual fetch) additionally
+  // requires a featured business to have a real upcoming appearance (see
+  // its own "Active Featured Business Promotional Eligibility" note) — this
+  // chip-eligibility check had drifted out of sync with that and only
+  // checked is_featured, so a category could show a chip for a featured
+  // business with nothing currently upcoming, then return zero results
+  // when clicked ("No brands in this category yet."). Mirrors that exact
+  // same intersection rather than re-deriving a second definition of it.
+  if (featuredOnly && eligibleIds.size > 0) {
+    const upcomingIds = await getBusinessIdsWithUpcomingAppearance(Array.from(eligibleIds));
+    eligibleIds = new Set(Array.from(eligibleIds).filter((id) => upcomingIds.has(id)));
+  }
   if (eligibleIds.size === 0) return [];
 
   const { data } = await supabase
@@ -3003,6 +3016,12 @@ export interface LocationActivityPreviewItem {
   imageUrl: string | null;
   startAt: string;
   href: string;
+  /** Public Experience Consolidation pass — which real entity this preview
+   * is, same "set once here, never guessed later" rule LocationHappening's
+   * own `type` field already established. Drives interaction only
+   * (LocationDiscoveryCard's activity rail); href/destination is
+   * unaffected either way. */
+  kind: "event" | "appearance";
 }
 
 /** Some PostgREST/supabase-js versions return a to-one embed as a
@@ -3120,6 +3139,21 @@ export async function getLocations(options: LocationsDiscoveryOptions = {}): Pro
   }));
 }
 
+// Homepage Featured Locations eligibility is intentionally stricter than
+// the plain /locations directory — a merchandising rule for this ONE
+// carousel, not a change to Location visibility anywhere else. getLocations()
+// already computes the real activityCount (event_occurrences.location_id /
+// appearances.location_id, same FK-based relationship getUpcomingAtLocation
+// establishes for the Location's own page), so this reuses it verbatim and
+// just filters + caps to those with at least one real upcoming happening —
+// no parallel query, no fabricated data. Over-fetches a generous batch
+// (rather than adding a DB-level activityCount filter) since eligibility
+// here is small-scale merchandising, not a paginated listing.
+export async function getFeaturedLocations(limit = 8): Promise<LocationWithCategory[]> {
+  const locations = await getLocations({ limit: 60 });
+  return locations.filter((l) => (l.activityCount ?? 0) > 0).slice(0, limit);
+}
+
 // Location Discovery Card V2 — how many of each type to over-fetch PER
 // location before grouping/slicing in JS, same "batched across every
 // location, never one query per card" principle getLocations' own
@@ -3215,6 +3249,7 @@ async function getLocationActivitySummaries(
       imageUrl: e.cover_image_url,
       startAt: row.start_at,
       href: `/event/${e.slug}`,
+      kind: "event",
     });
   }
 
@@ -3237,6 +3272,7 @@ async function getLocationActivitySummaries(
       imageUrl: b.logo_url ?? b.cover_image_url,
       startAt: row.start_at,
       href: `/business/${b.slug}`,
+      kind: "appearance",
     });
   }
 

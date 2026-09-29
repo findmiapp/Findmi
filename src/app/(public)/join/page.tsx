@@ -189,9 +189,17 @@ export default async function JoinPage({
           "View live profile" link below instead, same destination/label
           this section already used before this pass. */}
       <div className="mx-auto max-w-4xl px-6 pt-7 sm:pt-8">
-        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">
+        {/* Public Experience Consolidation pass — this heading used a
+            small, faint, all-caps eyebrow treatment for what's actually
+            this section's real heading (not a label above one), which
+            read as gray-on-gray with no clear hierarchy against the body
+            line under it. Reuses the exact same font-display/size/weight
+            pattern this same page already uses for its other real
+            section headings (see "Your page is only the beginning."
+            below) — a real heading, sentence case, no uppercase. */}
+        <h2 className="text-center font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">
           See what your Findmi can become.
-        </p>
+        </h2>
         <p className="mx-auto mt-1.5 max-w-sm text-center text-sm text-ink/60">
           One page. Your business, products and everywhere you&rsquo;ll be next.
         </p>
@@ -347,13 +355,24 @@ function HeroHeadline({ heading }: { heading: string }) {
  * message this pass requires ("Get Started Free" / "No credit card
  * required") instead of the previous quieter "Start free" / "No card
  * required" framing. */
+// Public Experience Consolidation pass — pricing card geometry fix. The
+// two tiles used ad hoc `min-h-7`/`min-h-8` spacers on individual lines to
+// approximate equal height, which drifted whenever copy line-wrapped
+// differently between the two. Rebuilt as a real flex column per tile
+// (each region — label, price, description, CTA — in the same relative
+// position in both) with the CTA pinned to the bottom via `mt-auto`, so
+// both cards share one height (`items-stretch` on the grid) regardless of
+// how many lines either card's copy takes, with no arbitrary whitespace.
 function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: ResolvedJoinFreeCard }) {
   const proPrice = [proCard.price, proCard.priceSuffix].filter(Boolean).join("");
   return (
-    <div className="mt-6 grid grid-cols-2 gap-2.5">
-      <Link href="#free" className="rounded-2xl border border-findmi/30 bg-findmi-50 p-3.5 transition hover:border-findmi/50">
+    <div className="mt-6 grid grid-cols-2 items-stretch gap-2.5">
+      <Link
+        href="#free"
+        className="flex flex-col rounded-2xl border border-findmi/30 bg-findmi-50 p-3.5 transition hover:border-findmi/50"
+      >
         <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">Get Started Free</p>
-        <div className="mt-1 flex min-h-7 items-center gap-1.5">
+        <div className="mt-1.5 flex items-center gap-1.5">
           <p className="font-display text-lg font-bold tracking-tight text-ink">{free.price}</p>
           <span className="flex flex-col text-[11px] font-medium leading-[1.15] text-ink/50">
             <span>No credit card</span>
@@ -368,17 +387,17 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
             in the full FreeSection below — this top-level tile now leads
             with creation/identity instead, matching the acquisition
             funnel's actual first step (create, don't compare limits). */}
-        <p className="mt-1 min-h-8 text-xs text-ink/60">Create your business page and start showing up</p>
-        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-findmi-700">
+        <p className="mt-1.5 text-xs text-ink/60">Create your business page and start showing up</p>
+        <p className="mt-auto flex items-center gap-1 pt-2 text-xs font-bold text-findmi-700">
           Explore Free <span aria-hidden>→</span>
         </p>
       </Link>
       <Link
         href="#pro"
-        className="rounded-2xl border border-black/10 bg-white p-3.5 transition hover:border-black/20"
+        className="flex flex-col rounded-2xl border border-black/10 bg-white p-3.5 transition hover:border-black/20"
       >
         <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Findmi Pro</p>
-        <div className="mt-1 flex min-h-7 items-center">
+        <div className="mt-1.5 flex items-center">
           <p className="font-display text-lg font-bold tracking-tight text-ink">{proPrice}</p>
         </div>
         {/* Was "Your complete Findmi page + full schedule" — positioned
@@ -386,8 +405,8 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
             Canonical product rule: Free creates and distributes, Pro
             explains/optimizes — Analytics is Pro's real, current
             differentiator (see ProCard's own highlight box below). */}
-        <p className="mt-1 min-h-8 text-xs text-ink/60">Analytics and deeper tools to grow</p>
-        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-ink/70">
+        <p className="mt-1.5 text-xs text-ink/60">Analytics and deeper tools to grow</p>
+        <p className="mt-auto flex items-center gap-1 pt-2 text-xs font-bold text-ink/70">
           Explore Pro <span aria-hidden>→</span>
         </p>
       </Link>
@@ -630,7 +649,7 @@ function WhatYouGetGrid({
 
       <DemoTile label="Products & Services">
         {product ? (
-          <div className="mx-auto max-w-[180px]">
+          <div className="mx-auto w-full max-w-[180px]">
             <ProductCard product={product} />
           </div>
         ) : (
@@ -640,13 +659,22 @@ function WhatYouGetGrid({
 
       <DemoTile label="Findmi Here">
         {appearance ? (
-          <div className="flex items-start gap-2 rounded-xl bg-findmi-50 px-3 py-2.5">
-            <CalendarGlyph className="mt-0.5 h-4 w-4 shrink-0 text-findmi-700" />
-            <p className="text-xs text-ink">
-              <span className="mr-1 font-bold uppercase tracking-wide text-findmi-700">Next Up</span>
-              <span className="font-semibold">{appearance.venue}</span> · {formatDateShort(appearance.startAt)}
-            </p>
-          </div>
+          // Public Experience Consolidation pass — was its own one-off
+          // bg-findmi-50 pill, visually unrelated to GenericTile's shape
+          // just below it (different padding, no icon column, different
+          // background). Same icon+text row as GenericTile now — "Next
+          // Up" + real venue/date is what marks this as populated real
+          // content rather than explanatory placeholder text, not a
+          // different card shape.
+          <GenericTile
+            icon={<CalendarGlyph className="h-5 w-5 text-findmi-700" />}
+            detail={
+              <>
+                <span className="mr-1 font-bold uppercase tracking-wide text-findmi-700">Next Up</span>
+                <span className="font-semibold text-ink">{appearance.venue}</span> · {formatDateShort(appearance.startAt)}
+              </>
+            }
+          />
         ) : (
           <GenericTile icon={<CalendarGlyph className="h-5 w-5 text-findmi-700" />} detail="Where you'll be next." />
         )}
@@ -662,16 +690,23 @@ function WhatYouGetGrid({
   );
 }
 
+// Public Experience Consolidation pass — every tile now shares the exact
+// same outer geometry (rounded-2xl/border/p-3), label placement (same
+// text-[11px] eyebrow, same mb-2), AND a fixed min-height content slot,
+// centered, so the grid reads as one even row regardless of whether a
+// tile's content is a real image-bearing card (CompactCard/ProductCard)
+// or the plain icon+text GenericTile shape — the row heights no longer
+// depend on which specific component happens to render inside.
 function DemoTile({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-black/10 bg-white p-3">
+    <div className="flex h-full flex-col rounded-2xl border border-black/10 bg-white p-3">
       <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
-      {children}
+      <div className="flex min-h-[92px] flex-1 flex-col justify-center">{children}</div>
     </div>
   );
 }
 
-function GenericTile({ icon, detail }: { icon: React.ReactNode; detail: string }) {
+function GenericTile({ icon, detail }: { icon: React.ReactNode; detail: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2.5 rounded-xl bg-mist/40 px-3 py-3">
       <span className="mt-0.5 shrink-0">{icon}</span>

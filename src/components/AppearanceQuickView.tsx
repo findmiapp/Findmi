@@ -240,17 +240,28 @@ export default function AppearanceQuickView({
           {viewBusinessButton}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {directionsHref && (
+        {/* Action Geometry pass — Directions/Calendar/Share used to be
+            three different heights/radii/widths (Directions h-10 flex-1,
+            Add to Calendar an intrinsic-width pill — the "awkward tiny
+            middle button" — Share h-11 flex-1 rounded-full). A fixed
+            3-column grid guarantees equal width regardless of label
+            length; all three now share the exact same h-11/rounded-xl/
+            border/text-xs-bold-uppercase geometry (AddToCalendarButton's
+            and ShareButton's own new "row"/"row" variants, not a
+            one-off style duplicated here). */}
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {directionsHref ? (
             <a
               href={directionsHref}
               target="_blank"
               rel="noreferrer"
-              className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30"
+              className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30"
               onClick={() => trackEvent({ event_name: "click_directions", ...analyticsFields })}
             >
               Directions
             </a>
+          ) : (
+            <div />
           )}
           {/* AddToCalendarButton has no click callback of its own — this
               wraps it rather than modifying a shared component used
@@ -264,11 +275,13 @@ export default function AppearanceQuickView({
               location={[venueLabel, location].filter(Boolean).join(", ") || null}
               startAt={appearance.start_at}
               endAt={appearance.end_at}
+              layout="row"
             />
           </div>
           <ShareButton
             url={business.shareUrl}
             title={`${appearance.title} · ${business.name}`}
+            variant="row"
             track={{ subject_type: "appearance", subject_id: appearance.id, appearance_id: appearance.id, business_id: business.id }}
           />
         </div>

@@ -3,7 +3,7 @@
 import SupabaseImage from "./SupabaseImage";
 import LiveDot from "./LiveDot";
 import type { AppearanceQuickViewAppearance, AppearanceQuickViewBusiness } from "./AppearanceQuickView";
-import { cityState, formatAppearanceTime, getTemporalLabel } from "@/lib/format";
+import { formatAppearanceTime, getTemporalLabel, resolveVenueLabel } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
@@ -59,8 +59,7 @@ function AppearanceCarouselCard({
   analyticsContext?: AnalyticsPlacementContext;
 }) {
   const { label, live } = getTemporalLabel(appearance.start_at, appearance.end_at);
-  const venueLabel = appearance.location?.name ?? appearance.venue_name;
-  const location = cityState(appearance.city, appearance.state);
+  const venueLabel = resolveVenueLabel(appearance);
   const analyticsFields = buildEntityEventFields(
     "appearance",
     appearance.id,
@@ -129,9 +128,7 @@ function AppearanceCarouselCard({
           <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">{business.name}</p>
         )}
         <p className="mt-0.5 line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">{appearance.title}</p>
-        {(venueLabel || location) && (
-          <p className="mt-1 truncate text-xs text-ink/55">{[venueLabel, location].filter(Boolean).join(" · ")}</p>
-        )}
+        {venueLabel && <p className="mt-1 truncate text-xs text-ink/55">{venueLabel}</p>}
         <p className="mt-0.5 truncate text-xs text-ink/45">
           {formatAppearanceTime(appearance.start_at, appearance.end_at, appearance.description)}
         </p>

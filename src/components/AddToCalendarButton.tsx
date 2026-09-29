@@ -70,9 +70,14 @@ export default function AddToCalendarButton({
    * utility row (see EventUtilityActions). Home Event Card Reconstruction
    * pass — "glass" is a compact icon-only translucent/blurred circle for
    * overlaying directly on photography (HomeEventCard's bottom action
-   * dock). The dropdown menu itself is identical across all three —
-   * only the trigger markup changes. */
-  layout?: "pill" | "grid" | "glass";
+   * dock). Public Experience Consolidation pass — "row" is a full-width,
+   * fixed-height (h-11) icon+label control matching Directions/Share's own
+   * geometry exactly, for a 3-across `grid grid-cols-3` action row (see
+   * AppearanceQuickView) where "pill"'s intrinsic width previously made
+   * Add to Calendar the odd, undersized middle button. The dropdown menu
+   * itself is identical across all four — only the trigger markup
+   * changes. */
+  layout?: "pill" | "grid" | "glass" | "row";
 }) {
   const [open, setOpen] = useState(false);
   // Bug fix (action-row UX pass): this button sits inside the event page's
@@ -118,13 +123,25 @@ export default function AddToCalendarButton({
       ? "flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
       : layout === "glass"
         ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-black/40 text-white backdrop-blur-md transition active:scale-95"
-        : "flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink";
+        : layout === "row"
+          ? "flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30"
+          : "flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink";
 
   return (
     <div
-      className={layout === "grid" ? "relative h-full w-full" : "relative"}
+      className={layout === "grid" || layout === "row" ? "relative h-full w-full" : "relative"}
+      // Calendar Functional Repair pass — real bug fix: on mobile, blur
+      // fires (and this closed the panel) before the tap's own click event
+      // reached the Google Calendar link or the .ics button inside it, so
+      // both options visibly opened but tapping either silently did
+      // nothing. Same short-delay pattern already established elsewhere in
+      // this codebase for the identical race (see EventLocationField's own
+      // onBlur) — closing is deferred just long enough for a genuine click
+      // inside the panel to land first; a real focus-out still closes it.
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+        const related = e.relatedTarget as Node | null;
+        if (related && e.currentTarget.contains(related)) return;
+        setTimeout(() => setOpen(false), 150);
       }}
     >
       <button
@@ -147,6 +164,11 @@ export default function AddToCalendarButton({
           </>
         ) : layout === "glass" ? (
           <CalendarPlusGlyph className="h-4 w-4" />
+        ) : layout === "row" ? (
+          <>
+            <CalendarPlusGlyph className="h-3.5 w-3.5" />
+            Calendar
+          </>
         ) : (
           <>
             <CalendarPlusGlyph className="h-3.5 w-3.5" />

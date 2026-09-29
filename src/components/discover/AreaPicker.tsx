@@ -41,6 +41,7 @@ export default function AreaPicker({
   paramName = "market",
   areaParamName = "area",
   fullWidth = false,
+  unselectedLabel = "All Areas",
 }: {
   options: AreaOption[];
   paramName?: string;
@@ -51,6 +52,14 @@ export default function AreaPicker({
    * /businesses, /events, /locations, /find) omits this and keeps the
    * exact same intrinsic-width button as before. */
   fullWidth?: boolean;
+  /** Public Experience Consolidation pass — the trigger's own label when
+   * no Market/Area is selected. Defaults to "All Areas" (every existing
+   * caller keeps that exact copy); the homepage passes "Select Area"
+   * instead, matching this pass's own spec — a presentation-only override,
+   * never touching the underlying ?market=/?area= state or the dialog's
+   * own "All Areas" reset row below (a distinct, permanent "clear filter"
+   * action, not this same label). */
+  unselectedLabel?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -58,7 +67,7 @@ export default function AreaPicker({
   const currentAreaSlug = searchParams.get(areaParamName) ?? "";
   const currentMarket = options.find((o) => o.slug === currentMarketSlug);
   const currentArea = currentMarket?.areas?.find((a) => a.slug === currentAreaSlug);
-  const currentLabel = currentArea?.label ?? currentMarket?.label ?? "All Areas";
+  const currentLabel = currentArea?.label ?? currentMarket?.label ?? unselectedLabel;
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");

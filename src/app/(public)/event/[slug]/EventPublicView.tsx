@@ -294,8 +294,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
       {/* Item 7 — one coherent details module (title, date/time, venue,
           address) instead of floating loosely in open whitespace below
           the cover. Light containment only: subtle border, restrained
-          radius, no heavy card styling. */}
-      <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-6">
+          radius, no heavy card styling.
+          Public Experience Consolidation pass — id="event-schedule-details"
+          is this scroll target for EventOccurrenceCard's own "make
+          selecting a date feel interactive" fix (see that component): the
+          card that actually reflects a newly-selected occurrence (date/
+          time/venue/Tier A actions all update here) lives above the
+          Upcoming Dates rail, easy to miss on a tall mobile page — tapping
+          a date now scrolls this into view, not just an invisible state
+          change. */}
+      <div
+        id="event-schedule-details"
+        className="scroll-mt-20 rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-5"
+      >
         {/* Restore Event Follow pass — Follow lives here now: the top
             identity/header area, same prominence Business's own Follow
             button gets beside its logo/name, and visually distinct from
@@ -568,7 +579,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           has an empty list here and this section renders nothing — its
           single date keeps showing exactly as it always has, above. */}
       {upcomingOccurrences.length > 0 && (
-        <div className="mt-5 -mx-4 sm:mx-0">
+        <div className="mt-4 -mx-4 sm:mx-0">
           <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
             Upcoming Dates
           </p>
@@ -636,8 +647,15 @@ export async function EventPublicView({ slug }: { slug: string }) {
       />
       {/* Item 9: the cover becomes a lightbox/slider trigger through every
           real image (cover + gallery) when at least one exists — see
-          EventCoverLightbox's own note. */}
-      <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6 sm:pt-6">
+          EventCoverLightbox's own note.
+          Public Experience Consolidation pass — Above-the-Fold Density.
+          Live mobile QA showed too much vertical space between the top of
+          the page and Upcoming Dates. Modest spacing tightening only
+          (pt-4/pt-6 -> pt-3/pt-5) — the gallery/thumbnails themselves keep
+          their exact real size (ImageGalleryStrip is shared with Business
+          Gallery; shrinking its tiles here would leak into that unrelated
+          surface, and "do not make images tiny" rules it out anyway). */}
+      <div className="mx-auto max-w-5xl px-4 pt-3 sm:px-6 sm:pt-5">
         <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm sm:aspect-[21/9]">
           {coverAndGallery.length > 0 ? (
             <EventCoverLightbox images={coverAndGallery} alt={event.name} />
@@ -661,13 +679,13 @@ export async function EventPublicView({ slug }: { slug: string }) {
             renders as its own one-item strip rather than being hidden by
             the "nothing to browse" guard meant for 0 images. */}
         {images.gallery.length > 0 && (
-          <div className="mt-2.5">
+          <div className="mt-2">
             <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} />
           </div>
         )}
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+      <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6 sm:py-7">
         {hasOccurrences ? (
           <EventOccurrenceProvider occurrences={upcomingOccurrences}>{scheduleAndDetails}</EventOccurrenceProvider>
         ) : (

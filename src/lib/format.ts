@@ -220,6 +220,31 @@ export function cityState(city?: string | null, state?: string | null): string {
   return [city, state].filter(Boolean).join(", ");
 }
 
+/** Public Experience Consolidation pass — the one shared "where is this"
+ * label for an Appearance card/row/Quick View: a linked FindMi Location's
+ * own name always wins (it's the real, canonical venue identity), then the
+ * appearance's own venue_name, then a real street address, and only when
+ * NONE of those exist does this fall back to plain city/state. Previously
+ * several callers always appended city/state alongside whatever venue name
+ * was known, which buried a real venue identity behind redundant geography
+ * text — this returns exactly one line, in priority order, never a
+ * fabricated fallback. */
+export function resolveVenueLabel(appearance: {
+  location?: { name: string } | null;
+  venue_name?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+}): string | null {
+  return (
+    appearance.location?.name?.trim() ||
+    appearance.venue_name?.trim() ||
+    appearance.address?.trim() ||
+    cityState(appearance.city, appearance.state) ||
+    null
+  );
+}
+
 /** Location V2 — the one shared "city, state ZIP" fragment for a full
  * formatted address (street / city, state ZIP), used alongside cityState
  * wherever a page shows a complete address rather than a compact card
@@ -312,7 +337,7 @@ export type DiscoveryWindow = "now" | "next" | "week" | "weekend" | "month" | "a
  * pass; only genuine Event-discovery surfaces use this. */
 export type DiscoveryTimeKey = "next" | "today" | "week" | "weekend" | "all";
 export const DISCOVERY_TIME_TABS: { key: DiscoveryTimeKey; label: string }[] = [
-  { key: "next", label: "Next Up" },
+  { key: "next", label: "Up Next" },
   { key: "today", label: "Today" },
   { key: "week", label: "This Week" },
   { key: "weekend", label: "This Weekend" },

@@ -4,15 +4,16 @@ import HomeEventCard from "@/components/HomeEventCard";
 import HomeWeather from "@/components/HomeWeather";
 import HomeHero from "@/components/HomeHero";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
-import Section, { HorizontalScroller } from "@/components/Section";
+import Section, { HorizontalScroller, RailItem } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
+import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
 import {
   attachEventCategories,
   getCategoriesForDynamicBusinessRow,
   getConsumerVisibleMarketsWithAreas,
   getFeaturedBusinesses,
-  getHomeCategories,
+  getFeaturedLocations,
   getMarketAreaLabel,
   getNextAppearanceHints,
   getUpcomingEvents,
@@ -25,6 +26,7 @@ import {
   resolveWeatherConfig,
   HOMEPAGE_SECTIONS,
 } from "@/lib/site-sections";
+import { DISCOVERY_TIME_TABS, WINDOW_BY_TIME_KEY, type DiscoveryTimeKey } from "@/lib/format";
 import type { Category } from "@/lib/types";
 import { getWeatherContext } from "@/lib/weather";
 
@@ -44,30 +46,22 @@ const BRANDS_ROW_SUBTITLE_FALLBACK = "Real businesses, worth discovering";
 // Native Rose Showcase section uses (see PROOF_BUSINESS_SLUG there).
 const NATIVE_ROSE_SLUG = "the-native-rose";
 
-// Consumer Home V1 — "Explore What You're Into" light/pastel category
-// treatment. Purely a cyclic presentation array, applied by index — no new
-// business logic, no schema change. All stock Tailwind palette colors
-// (no purple/lime), with FindMi Aqua's own pale tint (bg-findmi-50)
-// included as one of the rotation's colors, matching the brand's existing
-// "pale Aqua tints are soft highlight panels" pattern.
-const CATEGORY_TINTS = [
-  "bg-findmi-50 text-findmi-700",
-  "bg-amber-50 text-amber-800",
-  "bg-rose-50 text-rose-800",
-  "bg-sky-50 text-sky-800",
-  "bg-emerald-50 text-emerald-800",
-  "bg-orange-50 text-orange-800",
-];
-
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ market?: string; area?: string }>;
+  searchParams: Promise<{ market?: string; area?: string; when?: string }>;
 }) {
-  const { market: marketSlug, area: areaSlugRaw } = await searchParams;
+  const { market: marketSlug, area: areaSlugRaw, when: whenRaw } = await searchParams;
   // Market -> Area/Submarket Hierarchy V2 — ?area= is only ever meaningful
   // alongside ?market= (same contract as /businesses and /events).
   const areaSlug = marketSlug ? areaSlugRaw : undefined;
+  // Public Experience Consolidation pass — same canonical time-filter
+  // vocabulary /events already uses (lib/format.ts's DISCOVERY_TIME_TABS/
+  // WINDOW_BY_TIME_KEY), reused verbatim rather than inventing a second
+  // definition. Defaults to "next" (Up Next), same default /events uses.
+  const timeKey: DiscoveryTimeKey = DISCOVERY_TIME_TABS.some((t) => t.key === whenRaw)
+    ? (whenRaw as DiscoveryTimeKey)
+    : "next";
 
   // Visual Regression Correction — back to the single getUpcomingEvents
   // call (occurrence override applied internally) now that Home no longer
@@ -77,13 +71,13 @@ export default async function HomePage({
   // applyOccurrenceOverride, getBusinessesForEvent,
   // getOccurrenceBusinessRosters) are untouched in lib/data.ts — this page
   // simply doesn't need their extra detail anymore.
-  const [categories, nextRaw, heroFallbackBrands, homepageRows, siteSections, markets] = await Promise.all([
-    getHomeCategories(), // BUSINESS categories — category pills + Explore By Category only, never events
-    getUpcomingEvents(10, "anytime", marketSlug, areaSlug),
+  const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations] = await Promise.all([
+    getUpcomingEvents(10, WINDOW_BY_TIME_KEY[timeKey], marketSlug, areaSlug),
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
+    getFeaturedLocations(8), // Public Experience Consolidation pass — Featured Locations carousel
   ]);
 
   const nextEvents = await attachEventCategories(nextRaw);
@@ -115,12 +109,11 @@ export default async function HomePage({
   });
 
   // Founder Site Editor overrides for the structural sections that stay
-  // fixed-position (hero, event discovery heading/copy, explore by
-  // category, closing CTA) — every field falls back to the current
-  // hardcoded default (HOMEPAGE_SECTIONS) when no row/field exists.
+  // fixed-position (hero, event discovery heading/copy, closing CTA) —
+  // every field falls back to the current hardcoded default
+  // (HOMEPAGE_SECTIONS) when no row/field exists.
   const resolve = (key: string) => resolveSection(siteSections, key, HOMEPAGE_SECTIONS[key]);
   const upcomingSec = resolve("featured_events");
-  const exploreSec = resolve("explore_by_category");
   const closingSec = resolve("closing_cta");
   const heroSec = resolve("hero");
   const businessDoorwaySec = resolve("business_doorway");
@@ -186,15 +179,18 @@ export default async function HomePage({
         <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
       </div>
 
-      {/* Homepage Content Priority pass — MUST DOS / WHAT'S HAPPENING is now
-          the first major content row after the opening/search area (was
-          third, after Brands We Love and category pills). Same real
-          chronological event query, event-card geometry/treatment
-          (HomeEventCard), and AreaPicker/Today/This Weekend controls as
-          before — placement only, nothing about this row itself changed. */}
+      {/* Public Experience Consolidation pass — "Must Dos" eyebrow removed
+          (the heading itself, "What's Happening", already says what this
+          is — an eyebrow above it read as a competing claim, not a real
+          product tier). Select Area stays a static, independently-anchored
+          control; the time filters to its right are now the shared
+          DISCOVERY_TIME_TABS/WINDOW_BY_TIME_KEY vocabulary /events already
+          uses (Up Next/Today/This Week/This Weekend/All), as ?when= links
+          on THIS SAME page (server-rendered, no client fetch, no duplicate
+          filtering system) rather than the previous two ad hoc Today/This
+          Weekend links out to /discover. */}
       <div className="mx-auto max-w-6xl pt-6">
         <div className="px-4 sm:px-6">
-          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-findmi-700">Must Dos</p>
           <div className="flex items-end justify-between gap-4">
             <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
               {upcomingSec.heading ?? HOMEPAGE_SECTIONS.featured_events.heading!}
@@ -210,29 +206,44 @@ export default async function HomePage({
               View all
             </Link>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          {upcomingSec.body && <p className="mt-1 text-sm text-ink/60">{upcomingSec.body}</p>}
+          <div className="mt-3 flex items-center gap-2">
             {markets.length > 0 && (
-              <AreaPicker
-                options={markets.map((m) => ({
-                  slug: m.slug,
-                  label: getMarketAreaLabel(m),
-                  areasIncluded: m.areas_included,
-                  areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
-                }))}
-              />
+              <div className="shrink-0">
+                <AreaPicker
+                  unselectedLabel="Select Area"
+                  options={markets.map((m) => ({
+                    slug: m.slug,
+                    label: getMarketAreaLabel(m),
+                    areasIncluded: m.areas_included,
+                    areas: m.areas.map((a) => ({ slug: a.slug, label: a.display_name || a.name, aliases: a.aliases })),
+                  }))}
+                />
+              </div>
             )}
-            <Link
-              href="/discover?when=today"
-              className="flex h-10 shrink-0 items-center justify-center rounded-2xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
-            >
-              Today
-            </Link>
-            <Link
-              href="/discover?when=weekend"
-              className="flex h-10 shrink-0 items-center justify-center rounded-2xl border border-black/10 px-3.5 text-sm text-ink/70 transition hover:border-black/20"
-            >
-              This Weekend
-            </Link>
+            <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {DISCOVERY_TIME_TABS.map((t) => {
+                const params = new URLSearchParams();
+                if (t.key !== "next") params.set("when", t.key);
+                if (marketSlug) params.set("market", marketSlug);
+                if (marketSlug && areaSlug) params.set("area", areaSlug);
+                const href = `/${params.toString() ? `?${params.toString()}` : ""}`;
+                const active = timeKey === t.key;
+                return (
+                  <Link
+                    key={t.key}
+                    href={href}
+                    scroll={false}
+                    aria-current={active ? "true" : undefined}
+                    className={`flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-2xl border px-3.5 text-sm transition ${
+                      active ? "border-findmi bg-findmi text-white" : "border-black/10 text-ink/70 hover:border-black/20"
+                    }`}
+                  >
+                    {t.label}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         </div>
         {nextEvents.length > 0 && (
@@ -250,6 +261,35 @@ export default async function HomePage({
           </div>
         )}
       </div>
+
+      {/* Public Experience Consolidation pass — FEATURED LOCATIONS, right
+          after What's Happening and before Brands We Love/the Native Rose
+          proof section, per this pass's own preferred hierarchy. Reuses
+          LocationDiscoveryCard (variant="full") unmodified — the same card
+          /locations and /discover already render — and getFeaturedLocations
+          (lib/data.ts), which reuses getLocations' own real activityCount/
+          activities computation and simply filters to Locations with at
+          least one real upcoming happening (never a fabricated/empty
+          card). Each card's own `activities` is capped to its single
+          nearest happening here (not in the shared component) so every
+          card in this rail renders the same amount of body content and
+          stays a stable height, regardless of how busy a given Location
+          actually is. */}
+      {featuredLocations.length > 0 && (
+        <Section title="Featured Locations" subtitle="Places with something happening soon." viewAllHref="/locations">
+
+          <HorizontalScroller>
+            {featuredLocations.map((location) => (
+              <RailItem key={location.id} density="discovery">
+                <LocationDiscoveryCard
+                  location={{ ...location, activities: (location.activities ?? []).slice(0, 1) }}
+                  analyticsContext={{ pageType: "home", placement: "homepage_featured_locations" }}
+                />
+              </RailItem>
+            ))}
+          </HorizontalScroller>
+        </Section>
+      )}
 
       {/* Homepage Content Priority pass — NATIVE ROSE DEMO, second major
           row: what a real Findmi business presence looks like. Reuses
@@ -291,27 +331,12 @@ export default async function HomePage({
         />
       )}
 
-      {/* Homepage Content Priority pass — category discovery pushed below
-          the first three real-activity rows (was directly under search).
-          Same real business-category taxonomy (getHomeCategories()),
-          same /businesses?category= links, same compact chip row —
-          placement only. */}
-      {categories.length > 0 && (
-        <div className="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/40">{exploreSec.heading}</p>
-          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {categories.map((c, i) => (
-              <Link
-                key={c.id}
-                href={`/businesses?category=${c.slug}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}${marketSlug && areaSlug ? `&area=${encodeURIComponent(areaSlug)}` : ""}`}
-                className={`flex min-w-[100px] shrink-0 items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition hover:opacity-80 ${CATEGORY_TINTS[i % CATEGORY_TINTS.length]}`}
-              >
-                {c.name}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Public Experience Consolidation pass — "Explore What You're Into"
+          (the founder-editable explore_by_category section + its category
+          pills) removed from the homepage entirely, per this pass's own
+          spec. The underlying shared taxonomy (categories table,
+          getHomeCategories(), the explore_by_category site_sections entry)
+          is untouched — only this homepage module's render is gone. */}
 
       {/* UI + Copy Polish pass — the homepage "Want it" products section
           is temporarily hidden (display only): Product creation,

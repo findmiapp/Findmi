@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import SupabaseImage from "@/components/SupabaseImage";
 import WantHeartButton from "@/components/WantHeartButton";
 import type { LocationActivityPreviewItem, LocationWithCategory } from "@/lib/data";
@@ -221,18 +222,38 @@ export default function LocationDiscoveryCard({
   );
 }
 
-/** Location Discovery Activity Rail — the small, non-interactive mini-card
- * for one activity preview inside the horizontal rail. Deliberately a
- * plain <div>, never a nested <Link>/<a>: the whole LocationDiscoveryCard
- * is already one outer <Link>, and nesting anchors is invalid HTML. Shows
- * only truthful, already-fetched data (thumbnail, title, compact date) —
- * no location/geo text (redundant inside a location's own card), no
- * description, no CTA, no Save control (appearances/occurrences have no
- * save/follow entity type today — inventing one here would be new
- * entitlement architecture, out of this pass's scope). */
+/** Location Discovery Activity Rail — one activity preview inside the
+ * horizontal rail.
+ *
+ * Public Experience Consolidation pass — these previews used to be
+ * non-interactive on purpose (a plain <div>, since the whole
+ * LocationDiscoveryCard is already one outer <Link>, and nesting an <a>
+ * inside an <a> is invalid HTML/breaks the parser). Live QA flagged that
+ * as a dead tap target. Fixed the same way WantHeartButton already
+ * coexists inside this same outer <Link> — a real <button> (not a second
+ * anchor), stopping propagation so it never also triggers the card's own
+ * navigation. Every preview already carries a real destination (`href`,
+ * set once at the query — see getLocationActivitySummaries in
+ * lib/data.ts): `/event/[slug]` for an event-backed item, `/business/[slug]`
+ * for an appearance-backed one. Reusing AppearanceQuickView here isn't
+ * possible without fetching materially more per-item data than this
+ * lightweight preview query fetches (no end_at/description/full address) —
+ * degrading Quick View with incomplete data isn't "existing data is
+ * sufficient," so both kinds navigate to their real, already-correct
+ * destination instead (never Directions, never a dead click). */
 function ActivityMiniCard({ item }: { item: LocationActivityPreviewItem }) {
+  const router = useRouter();
   return (
-    <div className="flex w-32 shrink-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-black/[0.02]">
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        router.push(item.href);
+      }}
+      aria-label={`${item.kind === "event" ? "View Event" : "View Appearance"}: ${item.title}`}
+      className="flex w-32 shrink-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-black/[0.02] text-left transition active:scale-[0.97]"
+    >
       <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-black/5">
         {item.imageUrl ? (
           <SupabaseImage src={item.imageUrl} alt="" fill sizes="128px" className="object-cover" />
@@ -246,7 +267,7 @@ function ActivityMiniCard({ item }: { item: LocationActivityPreviewItem }) {
         <p className="truncate text-[11px] font-semibold leading-tight text-ink">{item.title}</p>
         <p className="truncate text-[10px] text-ink/45">{formatDateShort(item.startAt)}</p>
       </div>
-    </div>
+    </button>
   );
 }
 

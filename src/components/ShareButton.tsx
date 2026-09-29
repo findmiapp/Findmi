@@ -34,8 +34,13 @@ export default function ShareButton({
    * Message/Follow/Save). Same share logic either way — Web Share API
    * with a clipboard-copy fallback — only the resting button markup
    * differs. Default unchanged, so every existing caller (Product,
-   * Event's own EventShareButton) keeps its exact current appearance. */
-  variant?: "default" | "icon";
+   * Event's own EventShareButton) keeps its exact current appearance.
+   * Public Experience Consolidation pass — "row" matches
+   * AddToCalendarButton's own new "row" layout (h-11, rounded-xl, bold
+   * uppercase label) for a 3-across `grid grid-cols-3` action row (see
+   * AppearanceQuickView), where "default"'s rounded-full/text-sm geometry
+   * didn't match Directions/Calendar there. */
+  variant?: "default" | "icon" | "row";
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -80,6 +85,19 @@ export default function ShareButton({
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink transition active:scale-90"
       >
         {shareGlyph}
+      </button>
+    );
+  }
+
+  if (variant === "row") {
+    return (
+      <button
+        type="button"
+        onClick={handleShare}
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30"
+      >
+        {shareGlyph}
+        {copied ? "Copied" : "Share"}
       </button>
     );
   }

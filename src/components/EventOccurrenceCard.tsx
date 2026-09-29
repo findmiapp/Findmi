@@ -87,10 +87,28 @@ export default function EventOccurrenceCard({ occurrence }: { occurrence: EventO
   // formatTimeRangeInZone's own multi-day branch does.
   const timeLabel = `${formatTimeInZone(occurrence.start_at, occurrence.timezone)} – ${formatTimeInZone(occurrence.end_at, occurrence.timezone)}`;
 
+  // Public Experience Consolidation pass — live QA read this card as a
+  // "dead schedule tile": tapping it silently changed which occurrence was
+  // selected, but that change only shows up in the details card/Tier A
+  // actions ABOVE this rail, easy to miss once a visitor has scrolled down
+  // to the dates. There's no single Business/Appearance object for a whole
+  // Event occurrence to plug into AppearanceQuickView (an occurrence can
+  // have several participating businesses, not one) — inventing a fake one
+  // just to open that modal would violate this pass's own "no fabricated
+  // Appearance" rule. So this uses the real, already-correct existing
+  // event behavior instead: selecting still updates the shared context
+  // exactly as before (date/time/venue/Tier A CTAs/roster), and now also
+  // scrolls that real details card into view, so the tap visibly does
+  // something rather than only mutating state nobody's looking at.
+  function handleSelect() {
+    select(occurrence.id);
+    document.getElementById("event-schedule-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <button
       type="button"
-      onClick={() => select(occurrence.id)}
+      onClick={handleSelect}
       aria-pressed={isSelected}
       className={`flex w-44 shrink-0 flex-col gap-1 rounded-2xl border p-3 text-left transition ${
         cancelled

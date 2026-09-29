@@ -187,7 +187,9 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     label: "Business Acquisition Line",
     heading: "Have a business or brand?",
     body: "Get discovered on Findmi.",
-    ctaLabel: "Get discovered →",
+    // Public Experience Consolidation pass — verified no live site_sections
+    // override exists for this key before changing the default.
+    ctaLabel: "Put it on FindMi →",
     ctaUrl: "/join",
     order: 45,
     fields: ["heading", "body", "cta"],
@@ -219,7 +221,9 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // filtering lives at /discover, not reproduced here.
     label: "Featured Events",
     heading: "What's Happening",
-    body: "Markets, pop-ups, and festivals coming up",
+    // Public Experience Consolidation pass — verified not live-overridden
+    // before changing this default.
+    body: "Events, pop-ups and experiences happening around you.",
     ctaLabel: "View all",
     ctaUrl: "/events",
     order: 20,

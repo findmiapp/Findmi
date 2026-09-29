@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import type { TrackEventPayload } from "@/lib/analytics/track";
 
@@ -120,9 +121,31 @@ export function HorizontalScroller({
    * Every other caller passes nothing and renders exactly as before. */
   className?: string;
 }) {
+  // Public Experience Consolidation pass — live mobile QA showed this rail
+  // could initially render already scrolled a little, with a clipped
+  // "previous" card visible at the left edge instead of the first real
+  // card sitting flush against the padding. Two real, non-cosmetic
+  // causes, both addressed here rather than papering over it with an
+  // arbitrary offset: (1) `overflow-anchor` is `auto` by default, so a
+  // post-hydration layout shift anywhere in this row (an image finishing
+  // layout, a client-only badge mounting) can make the browser silently
+  // adjust scrollLeft to "anchor" whichever child it picked, not
+  // necessarily the first one; (2) some mobile browsers restore a
+  // scrollable element's last scroll offset on back-navigation/bfcache
+  // independently of window scroll restoration. `overflow-anchor: none`
+  // disables the first; an explicit scrollLeft reset on mount (a real
+  // effect using the DOM's own scroll API, not a padding/margin hack)
+  // guarantees the second never leaves a stale offset on a fresh mount.
+  // Swipe/scroll behavior itself is completely untouched.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollTo({ left: 0 });
+  }, []);
+
   return (
     <div
-      className={`flex gap-4 overflow-x-auto px-4 pb-2 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}
+      ref={ref}
+      className={`flex gap-4 overflow-x-auto px-4 pb-2 [overflow-anchor:none] sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}
     >
       {children}
     </div>
