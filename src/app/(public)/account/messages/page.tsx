@@ -89,16 +89,16 @@ export default async function InboxPage({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
 
-      <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Inbox</h1>
-      <p className="mt-1.5 text-sm text-ink/50">Customers, organizers and opportunities that need your attention.</p>
+      <h1 className="font-display text-page-title font-bold text-primary">Inbox</h1>
+      <p className="mt-1.5 text-body text-muted">Customers, organizers and opportunities that need your attention.</p>
 
       <div className="mt-5 flex gap-1.5">
         {(["all", "customers", "opportunities"] as const).map((f) => (
           <Link
             key={f}
             href={f === "all" ? "/account/messages" : `/account/messages?filter=${f}`}
-            className={`rounded-full px-3.5 py-2 text-xs font-bold uppercase tracking-wide transition ${
-              filter === f ? "bg-ink text-white" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
+            className={`rounded-full px-3.5 py-2 text-label font-bold uppercase transition ${
+              filter === f ? "bg-ink text-white" : "bg-black/[0.04] text-muted hover:bg-black/[0.07]"
             }`}
           >
             {/* Query value stays "customers" (no filter/route contract
@@ -112,7 +112,7 @@ export default async function InboxPage({
 
       <div className="mt-6">
         {totalCount === 0 ? (
-          <p className="text-sm text-ink/50">
+          <p className="text-body text-muted">
             {filter === "opportunities" ? "No opportunities right now." : filter === "customers" ? "No messages yet." : "Nothing here yet."}
           </p>
         ) : (
@@ -122,13 +122,13 @@ export default async function InboxPage({
                 <li key={c.id} className="py-3 first:pt-0 last:pb-0">
                   <Link href={`/account/messages/${c.id}`} className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
-                      <p className="mt-0.5 truncate text-xs text-ink/50">
+                      <p className="truncate text-body font-semibold text-primary">{c.otherPartyLabel}</p>
+                      <p className="mt-0.5 truncate text-metadata text-muted">
                         {[conversationContextLabel(c.subjectType), c.myEntityLabel, c.productName].filter(Boolean).join(" · ")}
                       </p>
-                      <p className="mt-0.5 truncate text-xs text-ink/60">{c.lastMessageBody || "No messages yet"}</p>
+                      <p className="mt-0.5 truncate text-metadata text-muted">{c.lastMessageBody || "No messages yet"}</p>
                     </div>
-                    <span className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</span>
+                    <span className="shrink-0 text-microcopy text-subtle">{formatDateShort(c.lastActivityAt)}</span>
                   </Link>
                 </li>
               ))}
@@ -138,15 +138,15 @@ export default async function InboxPage({
                 <li key={o.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-ink">{o.eventName}</p>
-                      <p className="mt-0.5 truncate text-xs text-ink/50">
+                      <p className="truncate text-body font-semibold text-primary">{o.eventName}</p>
+                      <p className="mt-0.5 truncate text-metadata text-muted">
                         {o.type === "event_invitation" ? "Event invitation" : "Event application"} · {o.businessName}
                       </p>
-                      {o.occurrenceStartAt && <p className="mt-0.5 text-xs text-ink/60">{formatDateShort(o.occurrenceStartAt)}</p>}
+                      {o.occurrenceStartAt && <p className="mt-0.5 text-metadata text-muted">{formatDateShort(o.occurrenceStartAt)}</p>}
                     </div>
                     <span
-                      className={`shrink-0 text-[11px] font-semibold uppercase tracking-wide ${
-                        o.status === "pending" ? "text-findmi-700" : "text-ink/40"
+                      className={`shrink-0 text-label font-semibold uppercase ${
+                        o.status === "pending" ? "text-accent" : "text-subtle"
                       }`}
                     >
                       {o.status === "pending" ? "Pending" : o.status === "accepted" ? "Approved" : o.status === "declined" ? "Declined" : "Withdrawn"}
@@ -155,12 +155,12 @@ export default async function InboxPage({
                   {o.type === "event_invitation" && o.status === "pending" && (
                     <div className="mt-2 flex items-center gap-4">
                       <form action={respondToEventInvitation.bind(null, o.businessId, o.id, "accepted")}>
-                        <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                        <button type="submit" className="text-metadata font-semibold text-accent hover:underline">
                           Accept
                         </button>
                       </form>
                       <form action={respondToEventInvitation.bind(null, o.businessId, o.id, "declined")}>
-                        <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                        <button type="submit" className="text-metadata font-semibold text-muted hover:underline">
                           Decline
                         </button>
                       </form>

@@ -105,8 +105,8 @@ export default function ManageOnFindmiList({
               key={f.key}
               type="button"
               onClick={() => setFilter(f.key)}
-              className={`w-full whitespace-nowrap rounded-full px-3.5 py-1.5 text-center text-xs font-bold uppercase tracking-wide transition sm:w-auto ${
-                filter === f.key ? "bg-findmi text-white" : "border border-black/10 text-ink/60 hover:border-black/20"
+              className={`w-full whitespace-nowrap rounded-full px-3.5 py-1.5 text-center text-label font-bold uppercase transition sm:w-auto ${
+                filter === f.key ? "bg-findmi text-white" : "border border-black/10 text-muted hover:border-black/20"
               }`}
             >
               {f.label}
@@ -123,7 +123,7 @@ export default function ManageOnFindmiList({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 text-xs font-bold text-findmi-700 underline underline-offset-2"
+          className="mt-2 text-metadata font-bold text-accent underline underline-offset-2"
         >
           View All ({entities.length}) →
         </button>
@@ -157,7 +157,7 @@ function EntityRow({ entity, showType }: { entity: ManagedEntity; showType: bool
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold text-ink">{entity.name}</p>
+        <p className="truncate text-card-title font-bold text-primary">{entity.name}</p>
         {(showType || activePills.length > 0) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-1">
             {showType && <StatusPill tone="type">{TYPE_LABEL_BY_KIND[entity.kind]}</StatusPill>}
@@ -169,7 +169,7 @@ function EntityRow({ entity, showType }: { entity: ManagedEntity; showType: bool
           </div>
         )}
       </div>
-      <span className="shrink-0 text-[11px] font-bold text-findmi-700">{entity.cta} →</span>
+      <span className="shrink-0 text-microcopy font-bold text-accent">{entity.cta} →</span>
     </Link>
   );
 }
@@ -177,8 +177,8 @@ function EntityRow({ entity, showType }: { entity: ManagedEntity; showType: bool
 function StatusPill({ tone, children }: { tone: "warning" | "pro" | "type"; children: ReactNode }) {
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-        tone === "pro" ? "bg-findmi-50 text-findmi-700" : tone === "type" ? "bg-black/[0.06] text-ink/50" : "bg-amber-100 text-amber-800"
+      className={`rounded-full px-2 py-0.5 text-label font-bold uppercase ${
+        tone === "pro" ? "bg-findmi-50 text-findmi-700" : tone === "type" ? "bg-black/[0.06] text-muted" : "bg-amber-100 text-amber-800"
       }`}
     >
       {children}

@@ -34,7 +34,7 @@ export type { BusinessOption };
 // outcome is exactly what the live QA asked for: complete buttons plus a
 // peek of the next one, never squeezed/wrapped text.
 const ACTION_BUTTON_CLASS =
-  "flex h-10 w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 bg-white px-3.5 text-xs font-bold text-ink transition hover:border-findmi/40 hover:bg-findmi-50 active:scale-[0.98]";
+  "flex h-10 w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 bg-white px-3.5 text-button font-bold text-primary transition hover:border-findmi/40 hover:bg-findmi-50 active:scale-[0.98]";
 
 /** Small circular "+" badge used inside every create/add action button —
  * filled Findmi aqua, plus centered inside — distinct from the outer
@@ -176,10 +176,10 @@ export default function BusinessScopedAction({
         : "bg-findmi text-white hover:bg-findmi-600";
     const fullClass =
       size === "row"
-        ? `flex h-12 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl px-3 text-center text-xs font-bold uppercase transition active:scale-[0.99] ${toneClass}`
+        ? `flex h-12 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl px-3 text-center text-button font-bold uppercase transition active:scale-[0.99] ${toneClass}`
         : size === "compact"
-          ? `flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-center text-sm font-bold uppercase transition active:scale-[0.99] ${toneClass}`
-          : `flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-center text-sm font-bold uppercase transition active:scale-[0.99] ${toneClass}`;
+          ? `flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-center text-button font-bold uppercase transition active:scale-[0.99] ${toneClass}`
+          : `flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-center text-button font-bold uppercase transition active:scale-[0.99] ${toneClass}`;
     if (businesses.length === 0) {
       return (
         <Link href={zeroHref} className={fullClass}>
@@ -208,7 +208,7 @@ export default function BusinessScopedAction({
   }
 
   if (variant === "link") {
-    const linkClass = "inline-flex items-center gap-1.5 text-xs font-semibold text-ink/50 transition hover:text-findmi-700";
+    const linkClass = "inline-flex items-center gap-1.5 text-metadata font-semibold text-muted transition hover:text-findmi-700";
     if (businesses.length === 0) {
       return (
         <Link href={zeroHref} className={linkClass}>
@@ -289,14 +289,14 @@ function ChooserList({
 }) {
   return (
     <>
-      <p className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
+      <p className="px-2 py-1 text-label font-bold text-subtle">{label}</p>
       <div className="flex flex-col">
         {businesses.map((b) => (
           <Link
             key={b.id}
             href={`/account/business/${b.id}?tab=${tab}`}
             onClick={onSelect}
-            className="truncate rounded-xl px-2 py-2 text-left text-sm font-semibold text-ink transition hover:bg-black/[0.03]"
+            className="truncate rounded-xl px-2 py-2 text-left text-body font-semibold text-primary transition hover:bg-black/[0.03]"
           >
             {b.name}
           </Link>
@@ -406,10 +406,10 @@ function CardContent({
     <div className="flex items-start gap-3 transition active:scale-[0.99]">
       <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi text-white shadow-sm">{icon}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-700">{eyebrow}</p>
-        <p className="mt-0.5 text-sm font-bold text-ink">{headline}</p>
-        {description && <p className="mt-0.5 text-xs text-ink/60">{description}</p>}
-        {cta && <p className="mt-1.5 text-xs font-bold text-findmi-700">{cta}</p>}
+        <p className="text-label font-bold text-accent">{eyebrow}</p>
+        <p className="mt-0.5 text-card-title font-bold text-primary">{headline}</p>
+        {description && <p className="mt-0.5 text-body text-muted">{description}</p>}
+        {cta && <p className="mt-1.5 text-metadata font-bold text-accent">{cta}</p>}
       </div>
     </div>
   );

@@ -16,9 +16,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const inputClass =
-  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
+  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
 export default async function ProfilePage({
   searchParams,
@@ -42,15 +42,15 @@ export default async function ProfilePage({
       <AccountNav />
 
       <div className="mx-auto max-w-md">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi account</p>
-        <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Profile</h1>
-        <p className="mt-2 text-sm text-ink/50">{user.email}</p>
+        <p className="text-label font-bold uppercase text-accent">Your Findmi account</p>
+        <h1 className="mt-1 font-display text-page-title font-bold text-primary">Profile</h1>
+        <p className="mt-2 text-body text-muted">{user.email}</p>
 
         {error && (
-          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>
         )}
         {saved && !error && (
-          <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
             Profile updated.
           </p>
         )}
@@ -58,7 +58,7 @@ export default async function ProfilePage({
         <div className="mt-4 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <form action={updateProfile} className="flex flex-col gap-4">
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Display name</span>
+              <span className="mb-1.5 block text-body font-medium text-primary">Display name</span>
               <input
                 type="text"
                 name="display_name"
@@ -67,7 +67,7 @@ export default async function ProfilePage({
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Cell Number</span>
+              <span className="mb-1.5 block text-body font-medium text-primary">Cell Number</span>
               <input
                 type="tel"
                 name="phone"
@@ -77,14 +77,14 @@ export default async function ProfilePage({
                 autoComplete="tel"
                 className={inputClass}
               />
-              <span className="mt-1 block text-xs text-ink/45">
+              <span className="mt-1 block text-metadata text-subtle">
                 {profile?.phone
                   ? "Used for important account updates, never shared publicly."
                   : "Add a cell number for important account updates, never shared publicly."}
               </span>
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Short bio (optional)</span>
+              <span className="mb-1.5 block text-body font-medium text-primary">Short bio (optional)</span>
               <textarea
                 name="bio"
                 defaultValue={profile?.bio ?? ""}
@@ -94,7 +94,7 @@ export default async function ProfilePage({
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Location (optional)</span>
+              <span className="mb-1.5 block text-body font-medium text-primary">Location (optional)</span>
               <input
                 type="text"
                 name="location_label"
@@ -103,7 +103,7 @@ export default async function ProfilePage({
                 maxLength={80}
                 className={inputClass}
               />
-              <span className="mt-1 block text-xs text-ink/45">A general area only, never an exact address.</span>
+              <span className="mt-1 block text-metadata text-subtle">A general area only, never an exact address.</span>
             </label>
             <button type="submit" className={`mt-1 ${primaryButtonClass}`}>
               Save Changes
@@ -112,7 +112,7 @@ export default async function ProfilePage({
         </div>
 
         <div className="mt-6 text-center">
-          <SignOutConfirm action={signOut} className="text-xs font-semibold text-ink/40 hover:text-ink/70">
+          <SignOutConfirm action={signOut} className="text-metadata font-semibold text-subtle hover:text-muted">
             Sign Out
           </SignOutConfirm>
         </div>

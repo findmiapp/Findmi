@@ -39,7 +39,7 @@ const SECONDARY_LINKS = [
 ];
 
 const menuItemClass =
-  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-ink transition hover:bg-black/[0.04]";
+  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-body font-semibold text-primary transition hover:bg-black/[0.04]";
 
 export default function AccountNav() {
   const pathname = usePathname();
@@ -114,7 +114,7 @@ export default function AccountNav() {
               }`}
             >
               {tab.icon}
-              <span className="whitespace-nowrap text-[12px] font-bold">{tab.label}</span>
+              <span className="whitespace-nowrap text-metadata font-semibold">{tab.label}</span>
             </Link>
           );
         })}
@@ -130,7 +130,7 @@ export default function AccountNav() {
             onClick={() => setMoreOpen((o) => !o)}
             aria-haspopup="menu"
             aria-expanded={moreOpen}
-            className="flex items-center gap-1 text-[12px] font-semibold text-ink/45 transition hover:text-ink"
+            className="flex items-center gap-1 text-metadata font-semibold text-muted transition hover:text-ink"
           >
             More
             <ChevronGlyph className={`h-3 w-3 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
@@ -151,7 +151,7 @@ export default function AccountNav() {
                   this page) rather than a new decision; Business/Event/
                   Location route straight to their existing canonical
                   creation pages. */}
-              <p className="px-2.5 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+              <p className="px-2.5 pb-1 pt-1 text-label font-bold text-subtle">
                 Create on Findmi
               </p>
               <BusinessScopedMenuItem
@@ -204,7 +204,7 @@ export default function AccountNav() {
                   href={l.href}
                   role="menuitem"
                   onClick={closeMore}
-                  className="block rounded-lg px-2.5 py-2 text-sm font-semibold text-ink transition hover:bg-black/[0.04]"
+                  className="block rounded-lg px-2.5 py-2 text-body font-semibold text-primary transition hover:bg-black/[0.04]"
                 >
                   {l.label}
                 </Link>
@@ -219,7 +219,7 @@ export default function AccountNav() {
             opacity) so it stays visually secondary to core navigation. */}
         <SignOutConfirm
           action={signOut}
-          className="shrink-0 text-[12px] font-semibold text-ink/30 transition hover:text-ink/60"
+          className="shrink-0 text-metadata font-semibold text-subtle transition hover:text-ink/60"
         >
           Sign Out
         </SignOutConfirm>

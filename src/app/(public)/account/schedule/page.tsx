@@ -123,8 +123,8 @@ export default async function AccountSchedulePage({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
 
-      <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Schedule</h1>
-      <p className="mt-1.5 text-sm text-ink/50">Manage everywhere you&rsquo;ll be.</p>
+      <h1 className="font-display text-page-title font-bold text-primary">Schedule</h1>
+      <p className="mt-1.5 text-body text-muted">Manage everywhere you&rsquo;ll be.</p>
 
       <div className="mt-4">
         <BusinessScopedAction
@@ -139,16 +139,16 @@ export default async function AccountSchedulePage({
       <div className="mt-5 flex gap-1.5">
         <Link
           href="/account/schedule?section=upcoming"
-          className={`rounded-full px-3.5 py-2 text-xs font-bold uppercase tracking-wide transition ${
-            section === "upcoming" ? "bg-ink text-white" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
+          className={`rounded-full px-3.5 py-2 text-label font-bold uppercase transition ${
+            section === "upcoming" ? "bg-ink text-white" : "bg-black/[0.04] text-muted hover:bg-black/[0.07]"
           }`}
         >
           Upcoming
         </Link>
         <Link
           href="/account/schedule?section=past"
-          className={`rounded-full px-3.5 py-2 text-xs font-bold uppercase tracking-wide transition ${
-            section === "past" ? "bg-ink text-white" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
+          className={`rounded-full px-3.5 py-2 text-label font-bold uppercase transition ${
+            section === "past" ? "bg-ink text-white" : "bg-black/[0.04] text-muted hover:bg-black/[0.07]"
           }`}
         >
           Past
@@ -157,7 +157,7 @@ export default async function AccountSchedulePage({
 
       <div className="mt-4 flex flex-col gap-3">
         {rows.length === 0 ? (
-          <p className="rounded-2xl border border-black/5 bg-white p-6 text-center text-sm text-ink/50">
+          <p className="rounded-2xl border border-black/5 bg-white p-6 text-center text-body text-muted">
             {section === "upcoming" ? "Nothing on your schedule yet." : "No past appearances yet."}
           </p>
         ) : (
@@ -172,17 +172,17 @@ export default async function AccountSchedulePage({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
-                      <span className="shrink-0 rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">
+                      <p className="truncate text-body font-semibold text-primary">{item.title}</p>
+                      <span className="shrink-0 rounded-full bg-black/[0.06] px-2 py-0.5 text-label font-bold uppercase text-muted">
                         {item.actionKind === "event" ? "Findmi Event" : item.actionKind === "business_appearance" ? "Added by you" : "At a venue you manage"}
                       </span>
                     </div>
-                    <p className="mt-0.5 text-xs text-ink/60">
+                    <p className="mt-0.5 text-metadata text-muted">
                       {formatDateShort(item.startAt)} · {formatTime(item.startAt)}
                       {item.endAt ? `–${formatTime(item.endAt)}` : ""}
                     </p>
-                    {item.where && <p className="mt-0.5 text-xs text-ink/50">{item.where}</p>}
-                    <p className="mt-0.5 text-xs font-semibold text-findmi-700">{item.relatedTo.join(" · ")}</p>
+                    {item.where && <p className="mt-0.5 text-metadata text-muted">{item.where}</p>}
+                    <p className="mt-0.5 text-metadata font-semibold text-accent">{item.relatedTo.join(" · ")}</p>
                   </div>
                   {/* Launch V2 Pass 1.1, Section 6 — context-correct action:
                       only a real owner Appearance is ever edited inline
@@ -193,7 +193,7 @@ export default async function AccountSchedulePage({
                   {item.actionKind !== "business_appearance" && (
                     <Link
                       href={item.href}
-                      className="shrink-0 rounded-full border border-black/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+                      className="shrink-0 rounded-full border border-black/15 px-3 py-1.5 text-label font-bold uppercase text-primary transition hover:border-black/30"
                     >
                       {actionLabel(item)}
                     </Link>
@@ -203,7 +203,7 @@ export default async function AccountSchedulePage({
                 {section === "upcoming" && item.actionKind === "business_appearance" && item.appearanceId && item.appearanceBusinessId && (
                   <div className="mt-2 flex items-center gap-3">
                     <details className="flex-1">
-                      <summary className="cursor-pointer text-xs font-semibold text-findmi-700">Edit</summary>
+                      <summary className="cursor-pointer text-metadata font-semibold text-accent">Edit</summary>
                       <div className="mt-3">
                         <AppearanceFieldsForm
                           businessId={item.appearanceBusinessId}
@@ -226,7 +226,7 @@ export default async function AccountSchedulePage({
                       </div>
                     </details>
                     <form action={removeOwnerAppearance.bind(null, item.appearanceBusinessId, item.appearanceId)}>
-                      <button type="submit" className="shrink-0 text-xs font-semibold text-red-600 hover:underline">
+                      <button type="submit" className="shrink-0 text-metadata font-semibold text-red-600 hover:underline">
                         Remove
                       </button>
                     </form>
@@ -239,7 +239,7 @@ export default async function AccountSchedulePage({
       </div>
 
       {section === "past" && (
-        <p className="mt-4 text-xs text-ink/40">
+        <p className="mt-4 text-metadata text-subtle">
           Past organized Events aren&rsquo;t included here yet. View an Event&rsquo;s own dates from its Event Manager.
         </p>
       )}

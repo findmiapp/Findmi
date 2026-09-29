@@ -115,9 +115,9 @@ export const dynamic = "force-dynamic";
 const LEGACY_BUSINESS_CATEGORY_SLUGS = new Set(["markets-pop-ups", "packaged-goods"]);
 
 const inputClass =
-  "w-full rounded-lg border border-black/10 bg-white px-3 py-2.5 text-[14px] text-ink placeholder:text-ink/35 focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/15";
+  "w-full rounded-lg border border-black/10 bg-white px-3 py-2.5 text-input text-primary placeholder:text-subtle focus:border-findmi/50 focus:outline-none focus:ring-2 focus:ring-findmi/15";
 const primaryButtonClass =
-  "flex h-10 w-full items-center justify-center rounded-lg bg-findmi text-[13px] font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]";
+  "flex h-10 w-full items-center justify-center rounded-lg bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99]";
 const cardClass = "rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5";
 
 // Owner Shell V3 — job-oriented primary navigation (replaces the old
@@ -1198,7 +1198,7 @@ export default async function ManageBusinessPage({
           impersonation: the founder's own admin session is the actor
           throughout (see lib/permissions.ts's requireMembership). */}
       {isAdminElevated && (
-        <div className="mb-3 flex max-w-md items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-xs">
+        <div className="mb-3 flex max-w-md items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-metadata">
           <span className="truncate font-semibold text-amber-800">Admin mode · Managing {business.name}</span>
           <Link href={`/admin/businesses/${id}`} className="shrink-0 font-bold text-amber-800 underline underline-offset-2 hover:text-amber-900">
             Exit
@@ -1232,13 +1232,13 @@ export default async function ManageBusinessPage({
                 className="h-9 w-9 shrink-0 rounded-lg border border-black/[0.06] object-cover"
               />
             ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-findmi-50 font-display text-sm font-bold text-findmi-700">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-findmi-50 font-display text-metadata font-bold text-accent">
                 {business.name.charAt(0).toUpperCase()}
               </div>
             )}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h1 className="truncate font-display text-[17px] font-bold leading-tight tracking-tight text-ink">{business.name}</h1>
+                <h1 className="truncate font-display text-section-title font-bold text-primary">{business.name}</h1>
                 <Chip tone={pro ? "aqua" : "neutral"}>{pro ? "Pro" : "Free"}</Chip>
                 {/* Owner Shell V3 — persistent Business switcher. Never shown
                     for exactly one managed Business, or for a pure admin-
@@ -1254,13 +1254,13 @@ export default async function ManageBusinessPage({
                       <ChevronGlyph className="h-4 w-4 transition-transform group-open:rotate-180" />
                     </summary>
                     <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-black/[0.07] bg-white p-1.5 shadow-lg">
-                      <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Switch Business</p>
+                      <p className="px-2 py-1 text-label font-bold uppercase text-subtle">Switch Business</p>
                       {managedBusinesses.map((b) => (
                         <Link
                           key={b.id}
                           href={`/account/business/${b.id}?tab=${switcherTab}`}
-                          className={`block truncate rounded-lg px-2.5 py-2 text-sm font-semibold transition hover:bg-black/[0.03] ${
-                            b.id === id ? "text-findmi-700" : "text-ink"
+                          className={`block truncate rounded-lg px-2.5 py-2 text-body font-semibold transition hover:bg-black/[0.03] ${
+                            b.id === id ? "text-accent" : "text-primary"
                           }`}
                         >
                           {b.name}
@@ -1275,18 +1275,18 @@ export default async function ManageBusinessPage({
                   isn't room for a long Business name AND two real buttons
                   on one row, so mobile gets plain links on their own quiet
                   line instead of a squeezed/truncated header. */}
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-ink/40 sm:hidden">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-metadata text-subtle sm:hidden">
                 {businessGeographyLabel && <span className="truncate">{businessGeographyLabel}</span>}
                 {business.slug && (
-                  <Link href={`/business/${business.slug}`} className="font-semibold text-ink/55">
+                  <Link href={`/business/${business.slug}`} className="font-semibold text-muted">
                     View Profile
                   </Link>
                 )}
-                <Link href={`${basePath}?tab=settings`} className="font-semibold text-ink/55">
+                <Link href={`${basePath}?tab=settings`} className="font-semibold text-muted">
                   Settings
                 </Link>
               </div>
-              {businessGeographyLabel && <p className="hidden truncate text-[12px] text-ink/40 sm:block">{businessGeographyLabel}</p>}
+              {businessGeographyLabel && <p className="hidden truncate text-metadata text-subtle sm:block">{businessGeographyLabel}</p>}
             </div>
           </div>
           <div className="hidden shrink-0 items-center gap-2 sm:flex">
@@ -1325,8 +1325,8 @@ export default async function ManageBusinessPage({
                   key={t.key}
                   href={`${basePath}?tab=${t.key}`}
                   aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-bold transition ${
-                    active ? "bg-findmi text-white shadow-sm" : "text-ink/55 hover:bg-black/[0.03] hover:text-ink"
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-button font-semibold transition ${
+                    active ? "bg-findmi text-white shadow-sm" : "text-muted hover:bg-black/[0.03] hover:text-primary"
                   }`}
                 >
                   <NavIcon name={t.icon} className="h-4 w-4 shrink-0" />
@@ -1344,10 +1344,10 @@ export default async function ManageBusinessPage({
             secondary Settings/Inquiries/Orders tabs). */}
         <div className="min-w-0">
         {error && (
-          <p className="mb-4 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+          <p className="mb-4 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>
         )}
         {saved && !error && (
-          <p className="mb-4 max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+          <p className="mb-4 max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
             Saved.
           </p>
         )}
@@ -1372,7 +1372,7 @@ export default async function ManageBusinessPage({
         {activeTab === "overview" && (
           <div className="flex flex-col gap-5">
             {created && (
-              <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+              <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
                 Business created! You can start building your profile below.
               </p>
             )}
@@ -1385,17 +1385,17 @@ export default async function ManageBusinessPage({
                 state shown early. */}
             {proPayment === "success" &&
               (pro ? (
-                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
                   Payment received. Findmi Pro is active, and full Pro tools are unlocked below.
                 </p>
               ) : (
-                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
                   Payment received. We&rsquo;re activating Pro, which usually only takes a moment. Refresh this page
                   shortly if it doesn&rsquo;t update automatically.
                 </p>
               ))}
             {proPayment === "cancelled" && (
-              <p className="max-w-2xl rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
+              <p className="max-w-2xl rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-body text-muted">
                 Checkout was canceled. Your business is still Free. You can upgrade to Pro anytime.
               </p>
             )}
@@ -1409,28 +1409,28 @@ export default async function ManageBusinessPage({
                 confirms it. */}
             {subscriptionCheckout === "success" &&
               (pro ? (
-                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
                   Your Findmi subscription is active.
                 </p>
               ) : (
-                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+                <p className="max-w-2xl rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
                   Your payment was received. We&rsquo;re activating your Findmi subscription, which usually only
                   takes a moment. Refresh this page shortly if it doesn&rsquo;t update automatically.
                 </p>
               ))}
             {subscriptionCheckout === "cancelled" && (
-              <p className="max-w-2xl rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-sm text-ink/60">
+              <p className="max-w-2xl rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3 text-body text-muted">
                 Checkout canceled. You were not charged.
               </p>
             )}
 
             {business.publication_status === "pending_review" && (
               <div className="flex max-w-2xl items-center justify-between gap-3 rounded-lg bg-amber-50 px-3.5 py-2.5">
-                <p className="text-[13px] text-amber-900">
+                <p className="text-body text-amber-900">
                   <span className="font-bold">Pending Review</span>: visible to you now, live in discovery after Findmi reviews it.
                 </p>
                 {business.slug && (
-                  <Link href={`/business/${business.slug}`} className="shrink-0 text-[12px] font-bold text-amber-800 underline underline-offset-2">
+                  <Link href={`/business/${business.slug}`} className="shrink-0 text-metadata font-bold text-amber-800 underline underline-offset-2">
                     Preview →
                   </Link>
                 )}
@@ -1532,7 +1532,7 @@ export default async function ManageBusinessPage({
             Location's own manager page, same as before this pass. */}
         {activeTab === "qr" && (
           <div className="flex flex-col gap-4 lg:max-w-2xl">
-            <p className="text-[13px] text-ink/50">
+            <p className="text-body text-muted">
               Create and manage trackable QR codes for your business, products, appearances, events and locations.
             </p>
 
@@ -1551,7 +1551,7 @@ export default async function ManageBusinessPage({
               <SectionEyebrow>Existing Campaigns</SectionEyebrow>
               {businessQrCampaigns.length === 0 ? (
                 <div className="mt-2 rounded-lg border border-dashed border-black/10 px-4 py-3">
-                  <p className="text-[12.5px] text-ink/45">No QR campaigns yet — create one above.</p>
+                  <p className="text-metadata text-subtle">No QR campaigns yet — create one above.</p>
                 </div>
               ) : (
                 <div className="mt-2 flex flex-col divide-y divide-black/[0.05] rounded-lg border border-black/[0.06] bg-white">
@@ -1562,13 +1562,13 @@ export default async function ManageBusinessPage({
                       className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-black/[0.015]"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-[13px] font-semibold text-ink">{c.name}</p>
-                        <p className="mt-0.5 truncate text-[11px] text-ink/45">
+                        <p className="truncate text-card-title font-semibold text-primary">{c.name}</p>
+                        <p className="mt-0.5 truncate text-metadata text-subtle">
                           {c.destinationLabel}
-                          {!c.isActive && <span className="ml-1.5 font-semibold text-ink/35">· Inactive</span>}
+                          {!c.isActive && <span className="ml-1.5 font-semibold text-subtle">· Inactive</span>}
                         </p>
                       </div>
-                      <span className="shrink-0 text-right text-[11px] text-ink/50">{c.scans.toLocaleString()} scans</span>
+                      <span className="shrink-0 text-right text-microcopy text-muted">{c.scans.toLocaleString()} scans</span>
                     </Link>
                   ))}
                 </div>
@@ -1580,14 +1580,14 @@ export default async function ManageBusinessPage({
         {/* ── Profile ──────────────────────────────────────────────── */}
         {activeTab === "profile" && (
           <div className="flex flex-col gap-4 lg:max-w-5xl">
-          <Panel title="Business Identity" meta={<span className="text-[11px] text-ink/40">What customers see</span>}>
+          <Panel title="Business Identity" meta={<span className="text-metadata text-subtle">What customers see</span>}>
             <form action={profileAction} className="flex flex-col gap-4">
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
+                <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
                 <input type="text" name="name" required defaultValue={business.name} className={inputClass} />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">Category</span>
+                <span className="mb-1.5 block text-body font-medium text-primary">Category</span>
                 <select name="category_id" required defaultValue={currentCategoryId} className={inputClass}>
                   <option value="" disabled>
                     Choose a category…
@@ -1600,7 +1600,7 @@ export default async function ManageBusinessPage({
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">Short description</span>
+                <span className="mb-1.5 block text-body font-medium text-primary">Short description</span>
                 <textarea
                   name="short_description"
                   rows={3}
@@ -1623,18 +1623,18 @@ export default async function ManageBusinessPage({
                   in ../actions.ts is what actually authorizes the write
                   for both tiers — this is just presentation following
                   that. */}
-              <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Location</p>
+              <p className="mt-2 text-label font-bold uppercase text-subtle">Location</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">City</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">City</span>
                   <input type="text" name="city" defaultValue={business.city ?? ""} className={inputClass} />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">State</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">State</span>
                   <input type="text" name="state" defaultValue={business.state ?? ""} className={inputClass} />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">ZIP Code</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">ZIP Code</span>
                   <input type="text" name="postal_code" defaultValue={business.postal_code ?? ""} className={inputClass} />
                 </label>
               </div>
@@ -1656,9 +1656,9 @@ export default async function ManageBusinessPage({
                   out of the Links & Contact tab (Website/Instagram used
                   to live there, entirely Pro-gated) since Profile is now
                   their one home for every tier. */}
-              <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
+              <p className="mt-2 text-label font-bold uppercase text-subtle">About</p>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">About / full description</span>
+                <span className="mb-1.5 block text-body font-medium text-primary">About / full description</span>
                 <textarea
                   name="description"
                   rows={5}
@@ -1668,7 +1668,7 @@ export default async function ManageBusinessPage({
               </label>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Website</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">Website</span>
                   <input
                     type="url"
                     name="website_url"
@@ -1678,7 +1678,7 @@ export default async function ManageBusinessPage({
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Instagram</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">Instagram</span>
                   <input
                     type="url"
                     name="instagram_url"
@@ -1696,7 +1696,7 @@ export default async function ManageBusinessPage({
                   presentation-follows-authorization pattern as
                   city/state/ZIP/About above. */}
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">Country</span>
+                <span className="mb-1.5 block text-body font-medium text-primary">Country</span>
                 <input type="text" name="country" defaultValue={business.country ?? ""} className={inputClass} />
               </label>
 
@@ -1739,17 +1739,17 @@ export default async function ManageBusinessPage({
                     grid). */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
+                    <span className="mb-1.5 block text-body font-medium text-primary">Email</span>
                     <input type="email" name="email" defaultValue={business.email ?? ""} className={inputClass} />
                   </label>
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Phone</span>
+                    <span className="mb-1.5 block text-body font-medium text-primary">Phone</span>
                     <input type="tel" name="phone" defaultValue={business.phone ?? ""} className={inputClass} />
                   </label>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Facebook</span>
+                    <span className="mb-1.5 block text-body font-medium text-primary">Facebook</span>
                     <input
                       type="url"
                       name="facebook_url"
@@ -1759,7 +1759,7 @@ export default async function ManageBusinessPage({
                     />
                   </label>
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">TikTok</span>
+                    <span className="mb-1.5 block text-body font-medium text-primary">TikTok</span>
                     <input
                       type="url"
                       name="tiktok_url"
@@ -1770,15 +1770,15 @@ export default async function ManageBusinessPage({
                   </label>
                 </div>
 
-                <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink/40">Announcement</p>
+                <p className="mt-2 text-label font-bold uppercase text-subtle">Announcement</p>
                 <div className="rounded-2xl border border-black/10 p-4">
-                  <label className="flex items-center gap-2 text-sm font-medium text-ink">
+                  <label className="flex items-center gap-2 text-body font-medium text-primary">
                     <input type="checkbox" name="bulletin_enabled" defaultChecked={business.bulletin_enabled} />
                     Show announcement
                   </label>
                   <div className="mt-3 flex flex-col gap-3">
                     <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement label</span>
+                      <span className="mb-1.5 block text-body font-medium text-primary">Announcement label</span>
                       <input
                         type="text"
                         name="bulletin_label"
@@ -1788,7 +1788,7 @@ export default async function ManageBusinessPage({
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement heading</span>
+                      <span className="mb-1.5 block text-body font-medium text-primary">Announcement heading</span>
                       <input
                         type="text"
                         name="bulletin_heading"
@@ -1797,7 +1797,7 @@ export default async function ManageBusinessPage({
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement message</span>
+                      <span className="mb-1.5 block text-body font-medium text-primary">Announcement message</span>
                       <textarea
                         name="bulletin_body"
                         rows={3}
@@ -1806,7 +1806,7 @@ export default async function ManageBusinessPage({
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-ink">Announcement link (optional)</span>
+                      <span className="mb-1.5 block text-body font-medium text-primary">Announcement link (optional)</span>
                       <input
                         type="text"
                         name="bulletin_url"
@@ -1874,18 +1874,18 @@ export default async function ManageBusinessPage({
         {activeTab === "products" && (
             <div className="flex flex-col gap-4 lg:max-w-5xl">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[13px] text-ink/50">
+                <p className="text-body text-muted">
                   {products.length > 0 ? `${products.length} in your catalog` : "Show customers what you make, sell or offer."}
                 </p>
               </div>
               <details className="group" open={addProductHasDraft}>
-                <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-[13px] font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
+                <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
                   <span className="group-open:hidden">{products.length > 0 ? "+ Add Product" : "+ Add Your First Product"}</span>
                   <span className="hidden group-open:inline">Close</span>
                 </summary>
 
                 <div className={`mt-3 ${cardClass}`}>
-                  <p className="text-[13px] font-bold text-ink">Add Product</p>
+                  <p className="text-card-title font-bold text-primary">Add Product</p>
                   <div className="mt-3">
                     <ProductFieldsForm
                       businessId={id}
@@ -1935,8 +1935,8 @@ export default async function ManageBusinessPage({
                               <div className="hidden h-10 w-10 shrink-0 rounded-lg bg-black/[0.03] sm:block" />
                             )}
                             <div className="min-w-0 flex-1 sm:flex-none">
-                              <p className="truncate text-sm font-semibold text-ink">{p.name}</p>
-                              <p className="mt-0.5 truncate text-xs text-ink/50 sm:hidden">
+                              <p className="truncate text-body font-semibold text-primary">{p.name}</p>
+                              <p className="mt-0.5 truncate text-metadata text-muted sm:hidden">
                                 {priceLine && (
                                   <>
                                     {priceLine}
@@ -1946,24 +1946,24 @@ export default async function ManageBusinessPage({
                                 <span className={PRODUCT_STATUS_TONE_CLASS[status.tone]}>{status.label}</span>
                               </p>
                             </div>
-                            <p className="hidden truncate text-sm text-ink/60 sm:block">{priceLine ?? "—"}</p>
-                            <p className={`hidden truncate text-xs sm:block ${PRODUCT_STATUS_TONE_CLASS[status.tone]}`}>{status.label}</p>
-                            <span className="shrink-0 text-xs font-semibold text-findmi-700 sm:text-right">Edit</span>
+                            <p className="hidden truncate text-body text-muted sm:block">{priceLine ?? "—"}</p>
+                            <p className={`hidden truncate text-metadata sm:block ${PRODUCT_STATUS_TONE_CLASS[status.tone]}`}>{status.label}</p>
+                            <span className="shrink-0 text-metadata font-semibold text-accent sm:text-right">Edit</span>
                           </summary>
                           <div className="mt-3 flex flex-col gap-3">
                             {p.moderationStatus === "pending_review" && (
-                              <p className="text-xs text-ink/50">
+                              <p className="text-metadata text-muted">
                                 This product will appear publicly after Findmi approves it.
                               </p>
                             )}
                             {p.hasPendingChanges && (
-                              <p className="text-xs text-ink/50">
+                              <p className="text-metadata text-muted">
                                 Your submitted changes are waiting on Findmi&rsquo;s approval. The version above
                                 stays publicly visible until then.
                               </p>
                             )}
                             {p.moderationStatus === "rejected" && (
-                              <p className="text-xs text-ink/50">
+                              <p className="text-metadata text-muted">
                                 Findmi didn&rsquo;t approve this product. Edit and resubmit it for another review.
                               </p>
                             )}
@@ -1977,8 +1977,8 @@ export default async function ManageBusinessPage({
                                 into a plain divider section — one composer
                                 boundary (the Edit form itself), not two. */}
                             <div className="border-t border-black/10 pt-3">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">Marketplace</p>
-                              <p className="mt-1 text-xs text-ink/60">
+                              <p className="text-label font-semibold uppercase text-subtle">Marketplace</p>
+                              <p className="mt-1 text-metadata text-muted">
                                 {p.marketplaceStatus === "catalog_only" && "Shown on your Findmi business profile only."}
                                 {p.marketplaceStatus === "submitted" && "Submitted, awaiting Findmi's decision."}
                                 {p.marketplaceStatus === "approved" &&
@@ -1990,27 +1990,27 @@ export default async function ManageBusinessPage({
                               </p>
                               {(p.marketplaceStatus === "catalog_only" || p.marketplaceStatus === "rejected") && (
                                 <form action={submitProductToMarketplace.bind(null, id, p.id)} className="mt-2">
-                                  <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                                  <button type="submit" className="text-metadata font-semibold text-accent hover:underline">
                                     {p.marketplaceStatus === "rejected" ? "Resubmit to Marketplace" : "Submit to Marketplace"}
                                   </button>
                                 </form>
                               )}
                               {p.marketplaceStatus === "submitted" && (
                                 <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-2">
-                                  <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                                  <button type="submit" className="text-metadata font-semibold text-muted hover:underline">
                                     Cancel Submission
                                   </button>
                                 </form>
                               )}
                               {p.marketplaceStatus === "rejected" && (
                                 <form action={returnProductToCatalog.bind(null, id, p.id)} className="mt-1">
-                                  <button type="submit" className="text-xs font-semibold text-ink/40 hover:underline">
+                                  <button type="submit" className="text-metadata font-semibold text-subtle hover:underline">
                                     Return to catalog only
                                   </button>
                                 </form>
                               )}
                               {(p.marketplaceStatus === "approved" || p.marketplaceStatus === "paused") && (
-                                <p className="mt-1 text-xs text-ink/40">
+                                <p className="mt-1 text-metadata text-subtle">
                                   Marketplace placement is managed by Findmi and can&rsquo;t be changed here.
                                 </p>
                               )}
@@ -2078,10 +2078,10 @@ export default async function ManageBusinessPage({
                 genuinely has upcoming activity but happens to have no
                 `appearances` row shouldn't read as "nothing scheduled." */}
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[13px] text-ink/50">This is what customers see on your public Findmi profile.</p>
+              <p className="text-body text-muted">This is what customers see on your public Findmi profile.</p>
             </div>
             <details className="group" open={addHasDraft}>
-              <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-[13px] font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
+              <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
                 <span className="group-open:hidden">
                   {appearances.length + eventOnlySchedule.length > 0 ? "+ Add Where I'll Be" : "+ Add Your First Stop"}
                 </span>
@@ -2095,18 +2095,18 @@ export default async function ManageBusinessPage({
                   doesn't permanently occupy the page. Neither path is
                   framed as OPTION 1/2 or as inferior to the other. */}
               <div className={`mt-3 ${cardClass}`}>
-                <p className="text-[13px] font-bold text-ink">Add Where I&rsquo;ll Be</p>
+                <p className="text-card-title font-bold text-primary">Add Where I&rsquo;ll Be</p>
 
                 {requestOptions.length > 0 ? (
                   <form action={addFromEvent} className="mt-3">
                     <EventSearchPicker options={requestOptions} />
                   </form>
                 ) : (
-                  <p className="mt-3 text-sm text-ink/50">No upcoming Findmi events available right now.</p>
+                  <p className="mt-3 text-body text-muted">No upcoming Findmi events available right now.</p>
                 )}
 
                 <details className="mt-4 border-t border-black/[0.07] pt-3" open={addHasDraft}>
-                  <summary className="cursor-pointer text-xs font-semibold text-findmi-700 [&::-webkit-details-marker]:hidden">
+                  <summary className="cursor-pointer text-metadata font-semibold text-accent [&::-webkit-details-marker]:hidden">
                     Can&rsquo;t find it? Add somewhere else
                   </summary>
                   <div className="mt-3">
@@ -2183,12 +2183,12 @@ export default async function ManageBusinessPage({
                         <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
                           <ScheduleDateBadge iso={a.start_at} live={isLiveNow} />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-ink">{a.title}</p>
-                            <p className="mt-0.5 truncate text-xs text-ink/50">
+                            <p className="truncate text-body font-semibold text-primary">{a.title}</p>
+                            <p className="mt-0.5 truncate text-metadata text-muted">
                               {formatTime(a.start_at)}–{formatTime(a.end_at)}
                               {locationLine && ` · ${locationLine}`}
                             </p>
-                            <p className="mt-0.5 text-[11px] text-ink/40">
+                            <p className="mt-0.5 text-microcopy text-subtle">
                               {a.event_id ? "Findmi Event" : "Added by you"}
                               {a.participationStatus && (
                                 <>
@@ -2200,7 +2200,7 @@ export default async function ManageBusinessPage({
                               )}
                             </p>
                           </div>
-                          <span className="shrink-0 text-xs font-semibold text-findmi-700">Edit</span>
+                          <span className="shrink-0 text-metadata font-semibold text-accent">Edit</span>
                         </summary>
                         <div className="mt-3">
                           <AppearanceFieldsForm
@@ -2212,7 +2212,7 @@ export default async function ManageBusinessPage({
                           <form action={removeOwnerAppearance.bind(null, id, a.id)} className="mt-3">
                             <button
                               type="submit"
-                              className="text-xs font-medium text-red-700/70 transition hover:text-red-700 hover:underline"
+                              className="text-metadata font-medium text-red-700/70 transition hover:text-red-700 hover:underline"
                             >
                               Remove
                             </button>
@@ -2243,16 +2243,16 @@ export default async function ManageBusinessPage({
                   <li key={e.key} className="flex items-center gap-3 px-4 py-3 first:pt-0 last:pb-0">
                     <ScheduleDateBadge iso={e.startAt} live={getTemporalLabel(e.startAt, e.endAt).live} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-ink">{e.title}</p>
-                      <p className="mt-0.5 truncate text-xs text-ink/50">
+                      <p className="truncate text-body font-semibold text-primary">{e.title}</p>
+                      <p className="mt-0.5 truncate text-metadata text-muted">
                         {formatTime(e.startAt)}
                         {e.endAt && `–${formatTime(e.endAt)}`}
                         {e.where && ` · ${e.where}`}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-ink/40">Findmi Event · Confirmed</p>
+                      <p className="mt-0.5 text-microcopy text-subtle">Findmi Event · Confirmed</p>
                     </div>
                     {e.href && (
-                      <Link href={e.href} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+                      <Link href={e.href} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
                         View Event
                       </Link>
                     )}
@@ -2271,7 +2271,7 @@ export default async function ManageBusinessPage({
             {scheduleHasMore && (
               <Link
                 href={scheduleLoadMoreHref}
-                className="text-center text-xs font-semibold text-findmi-700 hover:underline"
+                className="text-center text-metadata font-semibold text-accent hover:underline"
               >
                 Load more
               </Link>
@@ -2288,17 +2288,17 @@ export default async function ManageBusinessPage({
         {activeTab === "settings" && (
           <div className="flex flex-col gap-4 lg:max-w-2xl">
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Plan &amp; Status</p>
+            <p className="text-label font-bold uppercase text-subtle">Plan &amp; Status</p>
             <span
-              className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                pro ? "bg-findmi text-white" : isExpiredPro ? "bg-amber-100 text-amber-800" : "bg-black/[0.06] text-ink/60"
+              className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-label font-bold uppercase ${
+                pro ? "bg-findmi text-white" : isExpiredPro ? "bg-amber-100 text-amber-800" : "bg-black/[0.06] text-muted"
               }`}
             >
               {pro ? "Pro" : isExpiredPro ? "Pro expired" : "Free"} Plan
             </span>
 
             {pro ? (
-              <p className="mt-3 text-sm text-ink/60">
+              <p className="mt-3 text-body text-muted">
                 Findmi Pro is active{planExpiresAtLabel ? `, expires ${planExpiresAtLabel}` : ""}. Performance
                 analytics for your business are unlocked.
               </p>
@@ -2317,10 +2317,10 @@ export default async function ManageBusinessPage({
                         Your full profile/products/gallery/contact/schedule
                         are Free-tier features now and were never removed by
                         expiration — only Performance analytics locks again. */}
-                    <p className="text-sm font-bold text-ink">
+                    <p className="text-card-title font-bold text-primary">
                       Your Findmi Pro plan expired{planExpiresAtLabel ? ` on ${planExpiresAtLabel}` : ""}
                     </p>
-                    <p className="mt-1 text-sm text-ink/60">
+                    <p className="mt-1 text-body text-muted">
                       Renew Pro to restore Performance analytics. Your business profile, products, gallery, contact
                       info, and complete upcoming schedule all stay exactly as they are; nothing was removed.
                     </p>
@@ -2333,8 +2333,8 @@ export default async function ManageBusinessPage({
                         complete upcoming schedule") is retired: every one of
                         those is a Free feature now. Pro's real remaining
                         differentiator is Performance/Analytics. */}
-                    <p className="text-sm font-bold text-ink">Understand what&rsquo;s working, and grow it</p>
-                    <p className="mt-1 text-sm text-ink/60">
+                    <p className="text-card-title font-bold text-primary">Understand what&rsquo;s working, and grow it</p>
+                    <p className="mt-1 text-body text-muted">
                       Upgrade to Pro for Performance analytics: how people discover and engage with your business.
                     </p>
                   </>
@@ -2357,7 +2357,7 @@ export default async function ManageBusinessPage({
                         plan_tier, so it correctly allows this repurchase. */}
                     <Link
                       href={`/upgrade/pro?business=${id}`}
-                      className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                      className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-label font-bold uppercase text-white transition hover:bg-findmi-600"
                     >
                       {isExpiredPro ? "Renew Pro" : "Upgrade to Pro"}
                     </Link>
@@ -2396,43 +2396,43 @@ export default async function ManageBusinessPage({
               entitlement), and Where I'll Be (actual appearance geography,
               covered in its own destination) are never conflated. */}
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Based In</p>
-            <p className="mt-1.5 text-sm text-ink">{[business.city, business.state].filter(Boolean).join(", ") || "Not set"}</p>
-            <p className="mt-2 text-xs text-ink/45">Your business&rsquo;s home address, separate from your Findmi area below.</p>
+            <p className="text-label font-bold uppercase text-subtle">Based In</p>
+            <p className="mt-1.5 text-body text-primary">{[business.city, business.state].filter(Boolean).join(", ") || "Not set"}</p>
+            <p className="mt-2 text-metadata text-subtle">Your business&rsquo;s home address, separate from your Findmi area below.</p>
           </div>
 
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area</p>
+            <p className="text-label font-bold uppercase text-subtle">Findmi Area</p>
             {primaryMarket ? (
-              <p className="mt-1.5 text-sm font-semibold text-ink">{primaryMarket.marketName}</p>
+              <p className="mt-1.5 text-body font-semibold text-primary">{primaryMarket.marketName}</p>
             ) : pendingMarketRequest ? (
               <>
-                <p className="mt-1.5 text-sm font-semibold text-amber-700">
+                <p className="mt-1.5 text-body font-semibold text-amber-700">
                   Findmi area pending review: {pendingMarketRequest.requestedText}
                 </p>
-                <p className="mt-2 text-xs text-ink/45">
+                <p className="mt-2 text-metadata text-subtle">
                   Findmi is reviewing your requested area. Your business is live in the meantime, but won&rsquo;t
                   appear in general area-based discovery until this is approved.
                 </p>
               </>
             ) : (
               <>
-                <p className="mt-1.5 text-sm font-semibold text-ink/60">No Findmi area selected yet</p>
-                <p className="mt-2 text-xs text-ink/45">
+                <p className="mt-1.5 text-body font-semibold text-muted">No Findmi area selected yet</p>
+                <p className="mt-2 text-metadata text-subtle">
                   Your Findmi area determines where your business receives general discovery. Where you&rsquo;ll be
                   (events and pop-ups) can still happen anywhere.
                 </p>
-                <p className="mt-2 text-xs text-ink/40">Contact Findmi to update this.</p>
+                <p className="mt-2 text-metadata text-subtle">Contact Findmi to update this.</p>
               </>
             )}
           </div>
 
           {additionalMarkets.length > 0 && (
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Additional Findmi Areas</p>
+              <p className="text-label font-bold uppercase text-subtle">Additional Findmi Areas</p>
               <ul className="mt-1.5 flex flex-col gap-1">
                 {additionalMarkets.map((m) => (
-                  <li key={m.id} className="text-sm text-ink">
+                  <li key={m.id} className="text-body text-primary">
                     {m.marketName}
                   </li>
                 ))}
@@ -2441,15 +2441,15 @@ export default async function ManageBusinessPage({
           )}
 
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Area Allowance</p>
-            <p className="mt-1.5 text-sm text-ink">
+            <p className="text-label font-bold uppercase text-subtle">Findmi Area Allowance</p>
+            <p className="mt-1.5 text-body text-primary">
               {marketLimit === null
                 ? `${activeMarketCount} active area${activeMarketCount === 1 ? "" : "s"} / Unlimited`
                 : `${activeMarketCount} active / ${marketLimit} allowed`}{" "}
               on your current plan
             </p>
             {overMarketAllowance && (
-              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-amber-700">Over allowance</p>
+              <p className="mt-1 text-label font-bold uppercase text-amber-700">Over allowance</p>
             )}
           </div>
 
@@ -2458,8 +2458,8 @@ export default async function ManageBusinessPage({
               referral_partners row) ── */}
           {referralPartner && (
             <div className={cardClass}>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Referral Program</p>
-              <p className="mt-1 text-sm text-ink/60">
+              <p className="text-label font-bold uppercase text-subtle">Referral Program</p>
+              <p className="mt-1 text-body text-muted">
                 Share your code, and you&rsquo;ll earn a commission when a business you refer upgrades to paid Findmi
                 Pro.
               </p>
@@ -2470,51 +2470,51 @@ export default async function ManageBusinessPage({
                     const referralLink = `${getPublicOrigin()}/join?ref=${code}`;
                     return (
                       <div key={code} className="rounded-2xl bg-findmi-50 p-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Referral Code</p>
+                        <p className="text-label font-bold uppercase text-accent">Your Referral Code</p>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <p className="font-mono text-sm font-semibold text-ink">{code}</p>
+                          <p className="font-mono text-body font-semibold text-primary">{code}</p>
                           <CopyButton
                             value={code}
                             label="Copy Code"
-                            className="shrink-0 rounded-xl bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                            className="shrink-0 rounded-xl bg-white px-3 py-1 text-label font-bold uppercase text-accent transition hover:bg-white/70"
                           />
                         </div>
-                        <p className="mt-2 break-all font-mono text-xs text-ink/70">{referralLink}</p>
+                        <p className="mt-2 break-all font-mono text-metadata text-secondary">{referralLink}</p>
                         <CopyButton
                           value={referralLink}
                           label="Copy Link"
-                          className="mt-2 shrink-0 rounded-xl bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-white/70"
+                          className="mt-2 shrink-0 rounded-xl bg-white px-3 py-1 text-label font-bold uppercase text-accent transition hover:bg-white/70"
                         />
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <p className="mt-4 text-sm text-ink/50">No active referral code yet. Check back soon.</p>
+                <p className="mt-4 text-body text-muted">No active referral code yet. Check back soon.</p>
               )}
 
-              <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+              <dl className="mt-4 grid grid-cols-2 gap-4 text-body sm:grid-cols-3">
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Referred</dt>
-                  <dd className="mt-1 text-ink">{referralPartner.referralCount}</dd>
+                  <dt className="text-label font-semibold uppercase text-muted">Referred</dt>
+                  <dd className="mt-1 text-primary">{referralPartner.referralCount}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Free / Paid Pro</dt>
-                  <dd className="mt-1 text-ink">
+                  <dt className="text-label font-semibold uppercase text-muted">Free / Paid Pro</dt>
+                  <dd className="mt-1 text-primary">
                     {referralPartner.freeReferralCount} / {referralPartner.paidReferralCount}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Total Earned</dt>
-                  <dd className="mt-1 text-ink">${(referralPartner.earnedCommissionCents / 100).toFixed(2)}</dd>
+                  <dt className="text-label font-semibold uppercase text-muted">Total Earned</dt>
+                  <dd className="mt-1 text-primary">${(referralPartner.earnedCommissionCents / 100).toFixed(2)}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Total Paid</dt>
-                  <dd className="mt-1 text-ink">${(referralPartner.paidCommissionCents / 100).toFixed(2)}</dd>
+                  <dt className="text-label font-semibold uppercase text-muted">Total Paid</dt>
+                  <dd className="mt-1 text-primary">${(referralPartner.paidCommissionCents / 100).toFixed(2)}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/50">Available Balance</dt>
-                  <dd className="mt-1 font-semibold text-findmi-700">
+                  <dt className="text-label font-semibold uppercase text-muted">Available Balance</dt>
+                  <dd className="mt-1 font-semibold text-accent">
                     ${(referralPartner.availableCommissionCents / 100).toFixed(2)}
                   </dd>
                 </div>
@@ -2525,7 +2525,7 @@ export default async function ManageBusinessPage({
                   <button
                     type="submit"
                     disabled={referralPartner.availableCommissionCents <= 0}
-                    className="flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex h-11 w-full items-center justify-center rounded-2xl bg-findmi text-label font-bold uppercase text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Request Payout
                     {referralPartner.availableCommissionCents > 0
@@ -2534,7 +2534,7 @@ export default async function ManageBusinessPage({
                   </button>
                 </form>
               )}
-              <p className="mt-2 text-xs text-ink/40">
+              <p className="mt-2 text-metadata text-subtle">
                 Payouts are reviewed and paid out manually by Findmi. No automatic transfers.
               </p>
             </div>
@@ -2547,18 +2547,18 @@ export default async function ManageBusinessPage({
               V3 — the old in-tab copy was a duplicate, see the redirect
               above). ── */}
           <div className={cardClass}>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">More</p>
+            <p className="text-label font-bold uppercase text-subtle">More</p>
             <div className="mt-3 flex flex-col gap-2">
               <Link
                 href={`${basePath}?tab=inquiries`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-sm font-semibold text-ink transition hover:border-black/20"
+                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-body font-semibold text-primary transition hover:border-black/20"
               >
                 Customer Inquiries
                 <span className="shrink-0 text-ink/30">→</span>
               </Link>
               <Link
                 href="/account/messages?filter=opportunities"
-                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-sm font-semibold text-ink transition hover:border-black/20"
+                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-body font-semibold text-primary transition hover:border-black/20"
               >
                 Event Invitations &amp; Applications
                 <span className="shrink-0 text-ink/30">→</span>
@@ -2610,8 +2610,8 @@ export default async function ManageBusinessPage({
               href="/account/messages"
               className="flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
             >
-              <span className="text-sm font-semibold text-ink">View customer conversations in your Inbox</span>
-              <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700">Open Inbox →</span>
+              <span className="text-body font-semibold text-primary">View customer conversations in your Inbox</span>
+              <span className="shrink-0 text-label font-bold uppercase text-accent">Open Inbox →</span>
             </Link>
           </div>
         )}
@@ -2644,8 +2644,8 @@ export default async function ManageBusinessPage({
                         orderStatus === s.key ? "border-findmi bg-findmi-50" : "border-black/5 bg-white hover:border-black/10"
                       }`}
                     >
-                      <p className="font-display text-xl font-bold tracking-tight text-ink">{s.count}</p>
-                      <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-ink/50">{s.label}</p>
+                      <p className="font-display text-stat font-bold text-primary tabular-nums">{s.count}</p>
+                      <p className="mt-0.5 text-label font-bold uppercase text-muted">{s.label}</p>
                     </Link>
                   ))}
                 </div>
@@ -2653,8 +2653,8 @@ export default async function ManageBusinessPage({
                 <div className="flex flex-wrap gap-1.5">
                   <Link
                     href={`${basePath}?tab=orders`}
-                    className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
-                      !orderStatus ? "bg-ink text-white" : "bg-black/[0.05] text-ink/60 hover:bg-black/[0.08]"
+                    className={`rounded-full px-3 py-1.5 text-label font-bold uppercase ${
+                      !orderStatus ? "bg-ink text-white" : "bg-black/[0.05] text-muted hover:bg-black/[0.08]"
                     }`}
                   >
                     All
@@ -2663,8 +2663,8 @@ export default async function ManageBusinessPage({
                     <Link
                       key={s}
                       href={`${basePath}?tab=orders&order_status=${s}`}
-                      className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
-                        orderStatus === s ? "bg-ink text-white" : "bg-black/[0.05] text-ink/60 hover:bg-black/[0.08]"
+                      className={`rounded-full px-3 py-1.5 text-label font-bold uppercase ${
+                        orderStatus === s ? "bg-ink text-white" : "bg-black/[0.05] text-muted hover:bg-black/[0.08]"
                       }`}
                     >
                       {s === "open" ? "Confirmed" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -2673,7 +2673,7 @@ export default async function ManageBusinessPage({
                 </div>
 
                 {orderList.length === 0 ? (
-                  <p className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-ink/50">No orders yet.</p>
+                  <p className="rounded-2xl border border-black/5 bg-white p-4 text-body text-muted">No orders yet.</p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {orderList.map((o) => (
@@ -2684,20 +2684,20 @@ export default async function ManageBusinessPage({
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            <p className="truncate text-sm font-semibold text-ink">#{o.orderNumber}</p>
-                            <span className="shrink-0 rounded-full bg-black/[0.05] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/55">
+                            <p className="truncate text-body font-semibold text-primary">#{o.orderNumber}</p>
+                            <span className="shrink-0 rounded-full bg-black/[0.05] px-2 py-0.5 text-label font-bold uppercase text-muted">
                               {ORDER_STATUS_LABELS[o.status]}
                             </span>
                           </div>
-                          <p className="mt-0.5 truncate text-xs text-ink/50">
+                          <p className="mt-0.5 truncate text-metadata text-muted">
                             {o.customerName || o.customerEmail} · {formatDateShort(o.createdAt)}
                           </p>
-                          <p className="mt-0.5 truncate text-xs text-ink/45">
+                          <p className="mt-0.5 truncate text-metadata text-subtle">
                             {o.itemCount} item{o.itemCount === 1 ? "" : "s"} · {o.quantityTotal} qty ·{" "}
                             {o.fulfillmentMethods.map((m) => FULFILLMENT_LABELS[m]).join(", ")}
                           </p>
                         </div>
-                        <p className="shrink-0 text-sm font-bold text-ink">${o.businessSubtotal.toFixed(2)}</p>
+                        <p className="shrink-0 text-body font-bold text-primary">${o.businessSubtotal.toFixed(2)}</p>
                       </Link>
                     ))}
                   </div>
@@ -2709,25 +2709,25 @@ export default async function ManageBusinessPage({
               <div className={cardClass}>
                 <Link
                   href={`${basePath}?tab=orders${orderStatus ? `&order_status=${orderStatus}` : ""}`}
-                  className="text-xs font-semibold text-ink/50 hover:text-ink"
+                  className="text-metadata font-semibold text-muted hover:text-primary"
                 >
                   ← All orders
                 </Link>
 
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-ink">Order #{openOrder.orderNumber}</p>
-                  <span className="rounded-full bg-black/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/55">
+                  <p className="text-body font-semibold text-primary">Order #{openOrder.orderNumber}</p>
+                  <span className="rounded-full bg-black/[0.05] px-2.5 py-1 text-label font-bold uppercase text-muted">
                     {ORDER_STATUS_LABELS[openOrder.status]}
                   </span>
                 </div>
-                <p className="mt-0.5 text-xs text-ink/45">
+                <p className="mt-0.5 text-metadata text-subtle">
                   {formatDateShort(openOrder.createdAt)} · Payment: {openOrder.paymentStatus}
                 </p>
 
                 <div className="mt-3 rounded-2xl bg-black/[0.02] p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Customer</p>
-                  <p className="mt-1 text-sm text-ink">{openOrder.customerName || "—"}</p>
-                  <p className="text-xs text-ink/55">
+                  <p className="text-label font-bold uppercase text-subtle">Customer</p>
+                  <p className="mt-1 text-body text-primary">{openOrder.customerName || "—"}</p>
+                  <p className="text-metadata text-muted">
                     {[openOrder.customerEmail, openOrder.customerPhone].filter(Boolean).join(" · ")}
                   </p>
                 </div>
@@ -2742,19 +2742,19 @@ export default async function ManageBusinessPage({
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-ink">{item.productName}</p>
-                          <p className="text-xs text-ink/55">
+                          <p className="truncate text-body font-semibold text-primary">{item.productName}</p>
+                          <p className="text-metadata text-muted">
                             Qty {item.quantity} × ${item.unitPrice.toFixed(2)} = ${item.lineMerchandiseTotal.toFixed(2)}
                           </p>
-                          <p className="mt-0.5 text-xs text-ink/45">{FULFILLMENT_LABELS[item.fulfillmentMethod]}</p>
+                          <p className="mt-0.5 text-metadata text-subtle">{FULFILLMENT_LABELS[item.fulfillmentMethod]}</p>
                           {item.refundedAmount > 0 && (
-                            <p className="mt-0.5 text-xs text-red-600">${item.refundedAmount.toFixed(2)} refunded</p>
+                            <p className="mt-0.5 text-metadata text-red-600">${item.refundedAmount.toFixed(2)} refunded</p>
                           )}
                         </div>
                       </div>
 
                       {item.eventContext && (
-                        <div className="mt-2.5 rounded-xl bg-findmi-50 p-2.5 text-xs text-findmi-700">
+                        <div className="mt-2.5 rounded-xl bg-findmi-50 p-2.5 text-metadata text-accent">
                           <p className="font-semibold">{item.eventContext.eventName}</p>
                           <p className="mt-0.5">
                             {formatAppearanceDateRange(item.eventContext.startAt, item.eventContext.endAt, item.eventContext.description)}
@@ -2774,7 +2774,7 @@ export default async function ManageBusinessPage({
                         <select
                           name="fulfillment_status"
                           defaultValue={item.fulfillmentStatus}
-                          className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink"
+                          className="rounded-xl border border-black/10 bg-white px-3 py-2 text-input text-primary"
                         >
                           {(["new", "confirmed", "ready", "fulfilled", "cancelled"] as const).map((s) => (
                             <option key={s} value={s}>
@@ -2792,17 +2792,17 @@ export default async function ManageBusinessPage({
                         />
                         <button
                           type="submit"
-                          className="rounded-xl bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                          className="rounded-xl bg-findmi px-4 py-2 text-label font-bold uppercase text-white transition hover:bg-findmi-600"
                         >
                           Save
                         </button>
                       </form>
-                      <p className="mt-1.5 text-[11px] text-ink/35">Only visible to you and Findmi admin, never shown to the customer.</p>
+                      <p className="mt-1.5 text-microcopy text-subtle">Only visible to you and Findmi admin, never shown to the customer.</p>
                     </div>
                   ))}
                 </div>
 
-                <p className="mt-3 text-right text-sm font-bold text-ink">Your total: ${openOrder.businessSubtotal.toFixed(2)}</p>
+                <p className="mt-3 text-right text-body font-bold text-primary">Your total: ${openOrder.businessSubtotal.toFixed(2)}</p>
               </div>
             )}
           </div>
@@ -2848,8 +2848,8 @@ function UpgradeLockedTab({
 }) {
   return (
     <div className={cardClass}>
-      <p className="mt-1 text-sm text-ink/60">{description}</p>
-      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink/40">Available with Findmi Pro</p>
+      <p className="mt-1 text-body text-muted">{description}</p>
+      <p className="mt-3 text-label font-semibold uppercase text-subtle">Available with Findmi Pro</p>
       {isAdminElevated ? (
         // Admin Manage-As V1 — starting a Stripe checkout or redeeming a
         // Pro Invite is identity-sensitive/financial (see Step 4 of this
@@ -2883,10 +2883,10 @@ function UpgradeLockedTab({
 function AdminElevatedActionNotice({ businessId }: { businessId: string }) {
   return (
     <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-      <p className="text-xs font-semibold text-amber-800">Exit Admin Mode to perform this account-specific action.</p>
+      <p className="text-metadata font-semibold text-amber-800">Exit Admin Mode to perform this account-specific action.</p>
       <Link
         href={`/admin/businesses/${businessId}`}
-        className="mt-1.5 inline-block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+        className="mt-1.5 inline-block text-metadata font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
       >
         Exit Admin Mode
       </Link>
@@ -2927,9 +2927,9 @@ function productDisplayStatus(p: {
 }
 
 const PRODUCT_STATUS_TONE_CLASS: Record<ReturnType<typeof productDisplayStatus>["tone"], string> = {
-  quiet: "text-ink/50",
-  positive: "text-findmi-700 font-semibold",
-  attention: "text-findmi-700 font-semibold",
+  quiet: "text-muted",
+  positive: "text-accent font-semibold",
+  attention: "text-accent font-semibold",
   negative: "text-red-700/80 font-semibold",
 };
 
@@ -2947,20 +2947,20 @@ function DashboardAppearanceRow({ appearance, showDate }: { appearance: Dashboar
       {appearance.temporal.live ? (
         <span className="flex w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-findmi py-1.5 text-white">
           <LiveDotSmall />
-          <span className="text-[7px] font-extrabold uppercase tracking-wide">Now</span>
+          <span className="text-label font-bold uppercase">Now</span>
         </span>
       ) : (
         <ScheduleDateBadge iso={appearance.startAt} />
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-ink">{appearance.title}</p>
-        <p className="mt-0.5 truncate text-xs text-ink/50">
+        <p className="truncate text-body font-semibold text-primary">{appearance.title}</p>
+        <p className="mt-0.5 truncate text-metadata text-muted">
           {showDate ? `${formatDateShort(appearance.startAt)} · ` : ""}
           {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
           {locationLine && ` · ${locationLine}`}
         </p>
         {appearance.eventName && (
-          <p className="mt-0.5 truncate text-[11px] text-ink/40">
+          <p className="mt-0.5 truncate text-microcopy text-subtle">
             Part of{" "}
             {appearance.eventHref ? (
               <Link href={appearance.eventHref} className="underline underline-offset-2">
@@ -2972,7 +2972,7 @@ function DashboardAppearanceRow({ appearance, showDate }: { appearance: Dashboar
           </p>
         )}
       </div>
-      <Link href={appearance.editHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+      <Link href={appearance.editHref} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
         Manage
       </Link>
     </li>
@@ -3003,13 +3003,13 @@ function ComingUpRow({ appearance }: { appearance: DashboardAppearance }) {
     <li className="flex items-center gap-3 px-4 py-2.5 first:pt-3 last:pb-3">
       <ScheduleDateBadge iso={appearance.startAt} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-ink">{appearance.title}</p>
-        <p className="mt-0.5 truncate text-xs text-ink/50">
+        <p className="truncate text-body font-semibold text-primary">{appearance.title}</p>
+        <p className="mt-0.5 truncate text-metadata text-muted">
           {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
           {venueLine && ` · ${venueLine}`}
         </p>
         {appearance.eventName && (
-          <p className="mt-0.5 truncate text-[11px] text-ink/40">
+          <p className="mt-0.5 truncate text-microcopy text-subtle">
             Part of{" "}
             {appearance.eventHref ? (
               <Link href={appearance.eventHref} className="underline underline-offset-2">
@@ -3021,7 +3021,7 @@ function ComingUpRow({ appearance }: { appearance: DashboardAppearance }) {
           </p>
         )}
       </div>
-      <Link href={appearance.editHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+      <Link href={appearance.editHref} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
         Manage
       </Link>
     </li>
@@ -3048,17 +3048,17 @@ function ScheduleDateBadge({ iso, live }: { iso: string; live?: boolean }) {
     return (
       <span className="flex w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-findmi py-1.5 text-white">
         <LiveDotSmall />
-        <span className="text-[7px] font-extrabold uppercase tracking-wide">Now</span>
+        <span className="text-label font-bold uppercase">Now</span>
       </span>
     );
   }
   const d = new Date(iso);
   return (
     <span className="flex w-11 shrink-0 flex-col items-center justify-center rounded-lg bg-black/[0.04] py-1.5">
-      <span className="text-[9px] font-bold uppercase tracking-wide text-ink/45">
+      <span className="text-label font-bold uppercase text-subtle">
         {d.toLocaleDateString("en-US", { month: "short" })}
       </span>
-      <span className="font-display text-sm font-bold leading-none text-ink">{d.getDate()}</span>
+      <span className="font-display text-body font-bold leading-none text-primary">{d.getDate()}</span>
     </span>
   );
 }

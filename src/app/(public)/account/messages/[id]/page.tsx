@@ -92,25 +92,25 @@ export default async function ConversationPage({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
 
-      <Link href="/account/messages" className="text-xs font-semibold text-ink/40 hover:text-ink/70">
+      <Link href="/account/messages" className="text-metadata font-semibold text-subtle hover:text-muted">
         ← Inbox
       </Link>
-      <h1 className="mt-1.5 font-display text-2xl font-bold tracking-tight text-ink">{title}</h1>
+      <h1 className="mt-1.5 font-display text-page-title font-bold text-primary">{title}</h1>
       {/* Unify Site-Wide Communications pass — a guest inquiry has no
           Findmi account to reply from (Phase 12's own "smallest safe V1"
           limitation), so their contact info is surfaced here instead —
           the way an authorized manager actually follows up. */}
       {thread.guestEmail && (
-        <p className="mt-1 text-xs text-ink/45">
+        <p className="mt-1 text-metadata text-subtle">
           Guest contact: {thread.guestEmail}
           {thread.guestPhone && ` · ${thread.guestPhone}`}
         </p>
       )}
 
-      {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-metadata text-red-600">{error}</p>}
 
       <div className="mt-6 flex flex-col gap-3">
-        {timeline.length === 0 && <p className="text-sm text-ink/50">No messages yet.</p>}
+        {timeline.length === 0 && <p className="text-body text-muted">No messages yet.</p>}
         {timeline.map((item) =>
           item.kind === "message" ? (
             <MessageBubble key={item.message.id} message={item.message} />
@@ -130,7 +130,7 @@ export default async function ConversationPage({
         {myParties.length > 0 ? (
           <ReplyComposer conversationId={id} parties={myParties} />
         ) : (
-          <p className="text-xs text-ink/40">You can view this conversation, but none of your current identities can reply here.</p>
+          <p className="text-metadata text-subtle">You can view this conversation, but none of your current identities can reply here.</p>
         )}
       </div>
     </div>
@@ -139,17 +139,17 @@ export default async function ConversationPage({
 
 function MessageBubble({ message }: { message: ConversationMessageItem }) {
   if (message.kind === "system") {
-    return <p className="text-center text-[11px] font-semibold uppercase tracking-wide text-ink/35">{message.body}</p>;
+    return <p className="text-center text-label font-semibold uppercase text-subtle">{message.body}</p>;
   }
   return (
     <div className={`max-w-[85%] rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm ${message.kind === "note" ? "bg-findmi-50/40" : ""}`}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-bold text-ink">{message.senderLabel ?? "Findmi Member"}</p>
-        <p className="shrink-0 text-[10px] text-ink/35">
+        <p className="text-metadata font-bold text-primary">{message.senderLabel ?? "Findmi Member"}</p>
+        <p className="shrink-0 text-microcopy text-subtle">
           {formatDateShort(message.createdAt)} · {formatTime(message.createdAt)}
         </p>
       </div>
-      <p className="mt-1.5 whitespace-pre-line text-sm text-ink/75">{message.body}</p>
+      <p className="mt-1.5 whitespace-pre-line text-body text-secondary">{message.body}</p>
     </div>
   );
 }
@@ -185,33 +185,33 @@ function OpportunityCardView({
   return (
     <div className="rounded-2xl border border-findmi/20 bg-findmi-50/50 p-3.5">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">
+        <p className="text-label font-bold uppercase text-accent">
           {isInvitation ? "Event Invitation" : "Event Application"}
         </p>
         <span
-          className={`shrink-0 text-[10px] font-bold uppercase tracking-wide ${
-            opportunity.status === "pending" ? "text-findmi-700" : "text-ink/40"
+          className={`shrink-0 text-label font-bold uppercase ${
+            opportunity.status === "pending" ? "text-accent" : "text-subtle"
           }`}
         >
           {OPPORTUNITY_STATUS_LABEL[opportunity.status] ?? opportunity.status}
         </span>
       </div>
-      <p className="mt-1 text-sm font-semibold text-ink">
+      <p className="mt-1 text-body font-semibold text-primary">
         {opportunity.businessName} {isInvitation ? "invited to" : "applied to"} {opportunity.eventName}
       </p>
-      {opportunity.occurrenceStartAt && <p className="mt-0.5 text-xs text-ink/50">{formatDateShort(opportunity.occurrenceStartAt)}</p>}
+      {opportunity.occurrenceStartAt && <p className="mt-0.5 text-metadata text-muted">{formatDateShort(opportunity.occurrenceStartAt)}</p>}
 
       {canRespond && (
         <div className="mt-2.5 flex items-center gap-4">
           {isInvitation ? (
             <>
               <form action={respondToInvitationInThread.bind(null, conversationId, opportunity.id, opportunity.businessId, "accepted")}>
-                <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                <button type="submit" className="text-metadata font-semibold text-accent hover:underline">
                   Accept
                 </button>
               </form>
               <form action={respondToInvitationInThread.bind(null, conversationId, opportunity.id, opportunity.businessId, "declined")}>
-                <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                <button type="submit" className="text-metadata font-semibold text-muted hover:underline">
                   Decline
                 </button>
               </form>
@@ -219,12 +219,12 @@ function OpportunityCardView({
           ) : (
             <>
               <form action={respondToApplicationInThread.bind(null, conversationId, opportunity.eventId, opportunity.businessId, "approved")}>
-                <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                <button type="submit" className="text-metadata font-semibold text-accent hover:underline">
                   Approve
                 </button>
               </form>
               <form action={respondToApplicationInThread.bind(null, conversationId, opportunity.eventId, opportunity.businessId, "declined")}>
-                <button type="submit" className="text-xs font-semibold text-ink/50 hover:underline">
+                <button type="submit" className="text-metadata font-semibold text-muted hover:underline">
                   Decline
                 </button>
               </form>

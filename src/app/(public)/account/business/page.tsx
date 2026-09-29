@@ -48,8 +48,8 @@ export default async function AccountBusinessPage() {
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Business</h1>
-          <p className="mt-1.5 text-sm text-ink/50">Which business do you want to manage?</p>
+          <h1 className="font-display text-page-title font-bold text-primary">Business</h1>
+          <p className="mt-1.5 text-body text-muted">Which business do you want to manage?</p>
         </div>
         {/* Account Create Navigation Hotfix — this page only ever renders
             its own list when there are 2+ managed businesses (see
@@ -60,7 +60,7 @@ export default async function AccountBusinessPage() {
             other Business creation entry point already uses. */}
         <Link
           href="/account/business/new"
-          className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700"
+          className="shrink-0 text-label font-bold uppercase text-accent"
         >
           + Add Business
         </Link>
@@ -73,8 +73,8 @@ export default async function AccountBusinessPage() {
             href={`/account/business/${b.id}`}
             className="flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
           >
-            <p className="truncate text-sm font-semibold text-ink">{b.name}</p>
-            <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700">Manage →</span>
+            <p className="truncate text-body font-semibold text-primary">{b.name}</p>
+            <span className="shrink-0 text-label font-bold uppercase text-accent">Manage →</span>
           </Link>
         ))}
       </div>

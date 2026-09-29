@@ -396,14 +396,14 @@ export default async function AccountHomePage({
               enough; Sign Out and other account controls live in
               AccountNav (unchanged, still rendered below), never on this
               line. */}
-          <h1 className="text-sm font-semibold text-ink/70">
+          <h1 className="text-body font-semibold text-secondary">
             Welcome Back{profile?.display_name ? `, ${profile.display_name}` : ""}
           </h1>
           {singleBusiness && (
-            <p className="mt-1 flex items-center gap-2 text-sm text-ink/60">
-              <span className="truncate font-semibold text-ink/80">{singleBusiness.name}</span>
+            <p className="mt-1 flex items-center gap-2 text-body text-muted">
+              <span className="truncate font-semibold text-primary">{singleBusiness.name}</span>
               {singleBusiness.pendingReview && (
-                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-label font-bold uppercase text-amber-800">
                   Pending Review
                 </span>
               )}
@@ -415,7 +415,7 @@ export default async function AccountHomePage({
           <div className="mt-3 flex shrink-0 gap-2 lg:mt-0">
             <Link
               href={`/business/${singleBusiness.slug}`}
-              className="flex h-9 items-center justify-center rounded-xl border border-black/10 px-3.5 text-xs font-bold text-ink transition hover:border-black/20"
+              className="flex h-9 items-center justify-center rounded-xl border border-black/10 px-3.5 text-button font-bold text-primary transition hover:border-black/20"
             >
               View Public Page
             </Link>
@@ -430,20 +430,20 @@ export default async function AccountHomePage({
 
       {error && <AccountErrorBanner error={error} />}
       {eventManagementGranted === "1" && !error && (
-        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">
           Event Management access activated. You can now add an Event below.
         </p>
       )}
 
       {!profile?.email_verified_at && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-body text-amber-800">
           <p>
             <span className="font-semibold">Verify your email.</span> You can keep building your Findmi profile now.
             Verification is required for certain ownership actions, like claiming a listing.
           </p>
           <Link
             href="/account/verify-email"
-            className="shrink-0 rounded-xl border border-amber-300 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide text-amber-800 transition hover:bg-amber-100"
+            className="shrink-0 rounded-xl border border-amber-300 px-3.5 py-1.5 text-label font-bold uppercase text-amber-800 transition hover:bg-amber-100"
           >
             Verify Email
           </Link>
@@ -473,7 +473,7 @@ export default async function AccountHomePage({
         <OwnerModule
           title="Coming Up For You"
           meta={
-            <Link href="/my-world" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+            <Link href="/my-world" className="text-metadata font-bold text-accent underline underline-offset-2">
               Your World →
             </Link>
           }
@@ -526,7 +526,7 @@ export default async function AccountHomePage({
         <OwnerModule
           title="Your Collections"
           meta={
-            <Link href="/my-world" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+            <Link href="/my-world" className="text-metadata font-bold text-accent underline underline-offset-2">
               Your World →
             </Link>
           }
@@ -569,7 +569,7 @@ export default async function AccountHomePage({
         <OwnerModule
           title="Inbox"
           meta={
-            <Link href="/account/messages" className="text-xs font-bold text-findmi-700 underline underline-offset-2">
+            <Link href="/account/messages" className="text-metadata font-bold text-accent underline underline-offset-2">
               View Inbox →
             </Link>
           }
@@ -582,17 +582,17 @@ export default async function AccountHomePage({
                   href={`/account/messages/${c.id}`}
                   className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-xs font-bold uppercase text-findmi-700">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-metadata font-bold uppercase text-accent">
                     {c.otherPartyLabel.slice(0, 1)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-ink">{c.otherPartyLabel}</p>
-                    <p className="truncate text-xs text-ink/50">
+                    <p className="truncate text-body font-semibold text-primary">{c.otherPartyLabel}</p>
+                    <p className="truncate text-metadata text-muted">
                       {conversationContextLabel(c.subjectType)}
                       {c.lastMessageBody ? ` · ${c.lastMessageBody}` : ""}
                     </p>
                   </div>
-                  <p className="shrink-0 text-[11px] text-ink/40">{formatDateShort(c.lastActivityAt)}</p>
+                  <p className="shrink-0 text-microcopy text-subtle">{formatDateShort(c.lastActivityAt)}</p>
                 </Link>
               ))}
             </div>
@@ -604,7 +604,7 @@ export default async function AccountHomePage({
 
       {myPendingClaims.length > 0 && (
         <section id="pending-claims" className="mt-6">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Pending Claims</h2>
+          <h2 className="text-label font-bold uppercase text-subtle">Pending Claims</h2>
           <div className="mt-2 flex flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0 lg:grid-cols-3">
             {myPendingClaims.map((c) => (
               <div
@@ -612,13 +612,13 @@ export default async function AccountHomePage({
                 className="flex flex-col gap-3 rounded-2xl border border-findmi/20 bg-findmi-50/50 p-4 shadow-sm"
               >
                 <Link href={`/business/${c.slug}`} className="flex flex-col gap-1">
-                  <p className="text-sm font-bold text-ink">{c.name}</p>
-                  <p className="text-xs font-semibold text-findmi-700">Claim under review</p>
-                  <p className="text-xs text-ink/50">Typically reviewed within 48–72 hours.</p>
+                  <p className="text-card-title font-bold text-primary">{c.name}</p>
+                  <p className="text-metadata font-semibold text-accent">Claim under review</p>
+                  <p className="text-metadata text-muted">Typically reviewed within 48–72 hours.</p>
                 </Link>
                 <Link
                   href="/join"
-                  className="flex h-9 w-fit items-center justify-center rounded-xl bg-findmi px-4 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                  className="flex h-9 w-fit items-center justify-center rounded-xl bg-findmi px-4 text-label font-bold uppercase text-white transition hover:bg-findmi-600"
                 >
                   Upgrade to Pro
                 </Link>
@@ -630,11 +630,11 @@ export default async function AccountHomePage({
 
       {/* Footer utility links — demoted, unchanged destinations. */}
       <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-black/5 pt-4">
-        <Link href="/find" className="text-xs font-semibold text-ink/50 underline underline-offset-2 hover:text-ink">
+        <Link href="/find" className="text-metadata font-semibold text-muted underline underline-offset-2 hover:text-primary">
           Explore what&rsquo;s happening on Findmi →
         </Link>
         <details className="group">
-          <summary className="w-fit cursor-pointer text-xs font-semibold text-ink/45 underline underline-offset-2 transition hover:text-ink/70 [&::-webkit-details-marker]:hidden">
+          <summary className="w-fit cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 transition hover:text-secondary [&::-webkit-details-marker]:hidden">
             Redeem invite code
           </summary>
           <form action={goToRedeemCode} className="mt-2 flex max-w-sm flex-col gap-2 sm:flex-row">
@@ -644,11 +644,11 @@ export default async function AccountHomePage({
               name="code"
               required
               placeholder="Enter code"
-              className="w-full min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+              className="w-full min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
             />
             <button
               type="submit"
-              className="shrink-0 rounded-xl border border-black/15 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/30"
+              className="shrink-0 rounded-xl border border-black/15 px-4 py-2.5 text-button font-bold uppercase text-primary transition hover:border-black/30"
             >
               Apply
             </button>
@@ -677,8 +677,8 @@ function UpdateSubsection({
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${countClassName}`}>{items.length}</span>
+        <p className="text-label font-bold uppercase text-subtle">{label}</p>
+        <span className={`rounded-full px-2 py-0.5 text-metadata font-bold ${countClassName}`}>{items.length}</span>
       </div>
       <div className="mt-1.5 flex flex-col gap-1.5">
         {items.map((item) => (
@@ -701,8 +701,8 @@ function UpdateRow({ item }: { item: AttentionItem }) {
   return (
     <Link href={item.href} className="flex items-start gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]">
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-ink">{item.title}</span>
-        {item.subtitle && <span className="mt-0.5 block text-xs text-ink/50">{item.subtitle}</span>}
+        <span className="block text-body font-semibold text-primary">{item.title}</span>
+        {item.subtitle && <span className="mt-0.5 block text-metadata text-muted">{item.subtitle}</span>}
       </span>
       <ChevronGlyph className="mt-0.5 h-4 w-4 shrink-0 text-ink/30" />
     </Link>
@@ -744,8 +744,8 @@ function ScheduleCard({ item }: { item: ScheduleCardItem | PersonalUpcomingItem 
           </div>
         )}
         <span
-          className={`absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
-            live ? "bg-red-600 text-white" : "bg-white/90 text-ink/70"
+          className={`absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-label font-bold uppercase ${
+            live ? "bg-red-600 text-white" : "bg-white/90 text-secondary"
           }`}
         >
           {live && <LiveDot className="text-white" />}
@@ -753,8 +753,8 @@ function ScheduleCard({ item }: { item: ScheduleCardItem | PersonalUpcomingItem 
         </span>
       </div>
       <div className="min-w-0 px-0.5 pb-0.5">
-        <p className="truncate text-xs font-bold text-ink">{item.title}</p>
-        <p className="truncate text-[11px] text-ink/45">{item.relatedTo.join(" · ")}</p>
+        <p className="truncate text-metadata font-bold text-primary">{item.title}</p>
+        <p className="truncate text-microcopy text-subtle">{item.relatedTo.join(" · ")}</p>
       </div>
     </Link>
   );
@@ -795,7 +795,7 @@ function CollectionTileCard({ tile }: { tile: { name: string; imageUrl: string |
           </div>
         )}
       </div>
-      <p className="truncate px-0.5 pb-0.5 text-xs font-bold text-ink">{tile.name}</p>
+      <p className="truncate px-0.5 pb-0.5 text-metadata font-bold text-primary">{tile.name}</p>
     </Link>
   );
 }

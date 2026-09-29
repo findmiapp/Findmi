@@ -100,13 +100,13 @@ export default function QrCampaignCreator(
   if (created) {
     return (
       <div className="rounded-xl border border-black/[0.06] bg-black/[0.015] p-3.5">
-        <p className="text-[13px] font-bold text-ink">{created.name}</p>
+        <p className="text-card-title font-bold text-primary">{created.name}</p>
         <div
           className="mx-auto mt-3 h-40 w-40 [&_svg]:h-full [&_svg]:w-full"
           dangerouslySetInnerHTML={{ __html: created.qrSvg }}
         />
-        <p className="mt-3 truncate text-center text-[11px] text-ink/45">{created.qrUrl}</p>
-        <p className="mt-1 text-center text-[11px] text-ink/40">Points to {created.destinationPath}</p>
+        <p className="mt-3 truncate text-center text-microcopy text-subtle">{created.qrUrl}</p>
+        <p className="mt-1 text-center text-microcopy text-subtle">Points to {created.destinationPath}</p>
         <div className="mt-3 flex flex-wrap justify-center gap-2">
           <CopyButton value={created.qrUrl} label="Copy Link" className={secondaryButtonClass("sm")} />
           <a
@@ -132,7 +132,7 @@ export default function QrCampaignCreator(
         </div>
         {/* Goal 1 — this QR always remains retrievable; leaving this
             screen never loses it. */}
-        <p className="mt-2 text-center text-[10.5px] text-ink/35">You can always reopen this QR from View Details.</p>
+        <p className="mt-2 text-center text-microcopy text-subtle">You can always reopen this QR from View Details.</p>
       </div>
     );
   }
@@ -156,28 +156,28 @@ export default function QrCampaignCreator(
     <div className="rounded-xl border border-black/[0.06] bg-black/[0.015] p-3.5">
       <div className="flex flex-col gap-3">
         <label className="block">
-          <span className="mb-1.5 block text-[11px] font-semibold text-ink/60">Campaign Name</span>
+          <span className="mb-1.5 block text-microcopy font-semibold text-muted">Campaign Name</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={fixedTarget ? `e.g. ${fixedTarget.label} Table Sign` : `e.g. ${centralOptions?.businessName} — Market Table`}
             autoFocus
-            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
           />
         </label>
 
         {fixedTarget ? (
           <div>
-            <span className="mb-1 block text-[11px] font-semibold text-ink/60">Destination</span>
-            <p className="text-sm font-semibold text-ink">{fixedTarget.label}</p>
-            <p className="text-[11px] text-ink/45">{TARGET_LABELS[fixedTarget.target]}</p>
+            <span className="mb-1 block text-microcopy font-semibold text-muted">Destination</span>
+            <p className="text-body font-semibold text-primary">{fixedTarget.label}</p>
+            <p className="text-microcopy text-subtle">{TARGET_LABELS[fixedTarget.target]}</p>
           </div>
         ) : (
           centralOptions && (
             <>
               <div>
-                <span className="mb-1.5 block text-[11px] font-semibold text-ink/60">Where should it go?</span>
+                <span className="mb-1.5 block text-microcopy font-semibold text-muted">Where should it go?</span>
                 <div className="flex flex-wrap gap-1.5">
                   {(
                     [
@@ -195,10 +195,10 @@ export default function QrCampaignCreator(
                         setTarget(opt.value);
                         setEntityId("");
                       }}
-                      className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
+                      className={`rounded-full border px-3 py-1.5 text-microcopy font-semibold transition ${
                         target === opt.value
-                          ? "border-findmi bg-findmi-50 text-findmi-700"
-                          : "border-black/10 bg-white text-ink/60 hover:border-black/20"
+                          ? "border-findmi bg-findmi-50 text-accent"
+                          : "border-black/10 bg-white text-muted hover:border-black/20"
                       }`}
                     >
                       {opt.label}
@@ -209,11 +209,11 @@ export default function QrCampaignCreator(
 
               {needsEntity && (
                 <label className="block">
-                  <span className="mb-1.5 block text-[11px] font-semibold text-ink/60">{TARGET_LABELS[target]}</span>
+                  <span className="mb-1.5 block text-microcopy font-semibold text-muted">{TARGET_LABELS[target]}</span>
                   <select
                     value={entityId}
                     onChange={(e) => setEntityId(e.target.value)}
-                    className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none"
+                    className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-input text-primary focus:border-ink/30 focus:outline-none"
                   >
                     <option value="">Choose one…</option>
                     {entityOptions.map((o) => (
@@ -228,14 +228,14 @@ export default function QrCampaignCreator(
           )
         )}
 
-        {error && <p className="text-[12px] text-red-600">{error}</p>}
+        {error && <p className="text-metadata text-red-600">{error}</p>}
 
         <div className="flex gap-2">
           <button
             type="button"
             onClick={submit}
             disabled={submitting || !canSubmit}
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-findmi px-4 text-[13px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold uppercase text-white transition hover:bg-findmi-600 disabled:opacity-60"
           >
             {submitting ? "Creating…" : "Create QR Code"}
           </button>
@@ -267,7 +267,7 @@ export function QrCampaignContextualPanel({
     <div className="flex flex-col gap-2">
       {campaigns.length > 0 && (
         <div>
-          <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-ink/35">QR Campaigns</p>
+          <p className="mb-1 text-label font-bold uppercase text-subtle">QR Campaigns</p>
           <div className="flex flex-col divide-y divide-black/[0.05] rounded-lg border border-black/[0.06] bg-white">
             {campaigns.map((c) => (
               <Link
@@ -275,10 +275,10 @@ export function QrCampaignContextualPanel({
                 href={`/account/qr/${c.id}`}
                 className="flex items-center justify-between gap-3 px-3 py-2 transition hover:bg-black/[0.015]"
               >
-                <span className="min-w-0 truncate text-[12.5px] font-semibold text-ink">{c.name}</span>
-                <span className="flex shrink-0 items-center gap-2 text-[11px] text-ink/45">
+                <span className="min-w-0 truncate text-metadata font-semibold text-primary">{c.name}</span>
+                <span className="flex shrink-0 items-center gap-2 text-microcopy text-subtle">
                   {c.scans.toLocaleString()} scans
-                  <span className="font-bold text-findmi-700">View →</span>
+                  <span className="font-bold text-accent">View →</span>
                 </span>
               </Link>
             ))}

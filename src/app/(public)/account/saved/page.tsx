@@ -82,14 +82,14 @@ export default async function AccountSavedPage() {
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <AccountNav />
 
-      <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Saved</h1>
-      <p className="mt-1.5 text-sm text-ink/50">Businesses, events, products, and locations you&rsquo;ve saved to your account.</p>
+      <h1 className="font-display text-page-title font-bold text-primary">Saved</h1>
+      <p className="mt-1.5 text-body text-muted">Businesses, events, products, and locations you&rsquo;ve saved to your account.</p>
 
       {empty ? (
         <div className="mt-8 rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm">
-          <p className="text-sm font-semibold text-ink">Nothing saved yet</p>
-          <p className="mt-1 text-sm text-ink/50">
-            <Link href="/discover" className="font-medium text-findmi-700 underline underline-offset-2">
+          <p className="text-body font-semibold text-primary">Nothing saved yet</p>
+          <p className="mt-1 text-body text-muted">
+            <Link href="/discover" className="font-medium text-accent underline underline-offset-2">
               Start exploring
             </Link>{" "}
             and tap the bookmark on anything you want to come back to.
@@ -107,7 +107,7 @@ export default async function AccountSavedPage() {
 
           {events.length > 0 && (
             <div className="mt-10">
-              <h2 className="text-base font-semibold tracking-tight text-ink">Events</h2>
+              <h2 className="font-display text-section-title font-semibold text-primary">Events</h2>
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {events.map((e) => (
                   <CompactCard
@@ -126,7 +126,7 @@ export default async function AccountSavedPage() {
 
           {products.length > 0 && (
             <div className="mt-10">
-              <h2 className="text-base font-semibold tracking-tight text-ink">Products</h2>
+              <h2 className="font-display text-section-title font-semibold text-primary">Products</h2>
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {products.map((p) => (
                   <ProductCard key={p.id} product={p} />
@@ -137,7 +137,7 @@ export default async function AccountSavedPage() {
 
           {locations.length > 0 && (
             <div className="mt-10">
-              <h2 className="text-base font-semibold tracking-tight text-ink">Locations</h2>
+              <h2 className="font-display text-section-title font-semibold text-primary">Locations</h2>
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {locations.map((l) => (
                   <LocationCard key={l.id} location={l} />

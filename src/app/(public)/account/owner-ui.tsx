@@ -37,7 +37,7 @@ export function Panel({
     <section className={`rounded-xl border border-black/[0.07] bg-white ${className}`}>
       {title && (
         <div className={`flex items-center justify-between gap-3 border-b border-black/[0.06] ${padded ? "px-4 py-3" : "px-4 py-2.5"}`}>
-          <h2 className="text-[13px] font-bold text-ink">{title}</h2>
+          <h2 className="font-display text-section-title font-semibold text-primary">{title}</h2>
           {meta}
         </div>
       )}
@@ -64,9 +64,9 @@ export function Row({
     <>
       <span className="flex min-w-0 shrink items-center gap-2">
         {icon && <span className="shrink-0 text-ink/35">{icon}</span>}
-        <span className={`truncate text-[13px] ${tone === "quiet" ? "text-ink/50" : "font-medium text-ink"}`}>{label}</span>
+        <span className={`truncate text-body ${tone === "quiet" ? "text-muted" : "font-medium text-primary"}`}>{label}</span>
       </span>
-      {value && <span className="max-w-[55%] shrink-0 text-right text-[13px] font-semibold text-ink/70">{value}</span>}
+      {value && <span className="max-w-[55%] shrink-0 text-right text-body font-semibold text-secondary">{value}</span>}
     </>
   );
   if (href) {
@@ -89,10 +89,10 @@ export function RowList({ children }: { children: ReactNode }) {
 export function Stat({ value, label, tone = "default" }: { value: ReactNode; label: string; tone?: "default" | "up" | "down" }) {
   return (
     <div>
-      <p className="font-display text-[1.75rem] font-bold leading-none tracking-tight text-ink tabular-nums">{value}</p>
-      <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink/40">{label}</p>
+      <p className="font-display text-stat-lg font-bold leading-none text-primary tabular-nums">{value}</p>
+      <p className="mt-1.5 text-label font-semibold uppercase text-subtle">{label}</p>
       {tone !== "default" && (
-        <p className={`mt-0.5 text-[11px] font-bold ${tone === "up" ? "text-findmi-700" : "text-ink/35"}`}>
+        <p className={`mt-0.5 text-microcopy font-bold ${tone === "up" ? "text-accent" : "text-subtle"}`}>
           {tone === "up" ? "↑" : "↓"}
         </p>
       )}
@@ -114,7 +114,7 @@ export function StatusDot({ tone = "quiet", label }: { tone?: "live" | "positive
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT_TONE[tone]}`} />
-      <span className="text-[13px] text-ink/60">{label}</span>
+      <span className="text-body text-muted">{label}</span>
     </span>
   );
 }
@@ -128,7 +128,7 @@ const CHIP_TONE: Record<string, string> = {
 };
 export function Chip({ tone = "neutral", children }: { tone?: "aqua" | "aquaSoft" | "amber" | "neutral"; children: ReactNode }) {
   return (
-    <span className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${CHIP_TONE[tone]}`}>
+    <span className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-label font-bold uppercase ${CHIP_TONE[tone]}`}>
       {children}
     </span>
   );
@@ -139,9 +139,9 @@ export function Chip({ tone = "neutral", children }: { tone?: "aqua" | "aquaSoft
 export function EmptyLine({ children, action }: { children: ReactNode; action?: { href: string; label: string } }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <p className="text-[13px] text-ink/45">{children}</p>
+      <p className="text-body text-muted">{children}</p>
       {action && (
-        <Link href={action.href} className="shrink-0 text-[12px] font-bold text-findmi-700">
+        <Link href={action.href} className="shrink-0 text-metadata font-bold text-accent">
           {action.label}
         </Link>
       )}
@@ -154,9 +154,9 @@ export function EmptyLine({ children, action }: { children: ReactNode; action?: 
 export function SectionEyebrow({ children, action }: { children: ReactNode; action?: { href: string; label: string } }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-ink/35">{children}</p>
+      <p className="text-label font-bold uppercase text-subtle">{children}</p>
       {action && (
-        <Link href={action.href} className="text-[11px] font-bold text-findmi-700">
+        <Link href={action.href} className="text-microcopy font-bold text-accent">
           {action.label}
         </Link>
       )}
@@ -169,13 +169,13 @@ export function SectionEyebrow({ children, action }: { children: ReactNode; acti
 //    these two, never a bespoke one-off class string. ─────────────────
 export function primaryButtonClass(size: "sm" | "md" = "md") {
   return size === "sm"
-    ? "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-findmi px-3 text-[12px] font-bold text-white transition hover:bg-findmi-600 active:scale-[0.98]"
-    : "inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-findmi px-4 text-[13px] font-bold text-white transition hover:bg-findmi-600 active:scale-[0.98]";
+    ? "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-findmi px-3 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.98]"
+    : "inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.98]";
 }
 export function secondaryButtonClass(size: "sm" | "md" = "md") {
   return size === "sm"
-    ? "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 px-3 text-[12px] font-semibold text-ink transition hover:border-black/20"
-    : "inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-black/10 px-4 text-[13px] font-semibold text-ink transition hover:border-black/20";
+    ? "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 px-3 text-button font-semibold text-primary transition hover:border-black/20"
+    : "inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-black/10 px-4 text-button font-semibold text-primary transition hover:border-black/20";
 }
 
 // ── Performance Command Center pass — three additive primitives, built
@@ -208,14 +208,22 @@ export function PerformanceMetric({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <p className="truncate text-[10.5px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
+      <p className="truncate text-label font-bold uppercase text-subtle">{label}</p>
+      {/* This page's single largest number — deliberately kept larger than
+          the text-stat-lg token (calibrated against Stat's own supporting-
+          number scale above): reusing stat-lg here would shrink the KPI
+          strip's headline figures (33.6px desktop today) down to 28px,
+          which is a real regression, not a typography-system fix. Left as
+          its own literal size rather than inventing a new token mid-
+          rollout for one caller — everything else about it (font-display,
+          bold, tabular-nums) already matches the Numeric/Stat role. */}
       <p className="font-display text-[1.85rem] font-bold leading-none tracking-tight text-ink tabular-nums sm:text-[2.1rem]">
         {value}
       </p>
       {comparison ? (
-        <p className={`text-[11.5px] font-semibold ${comparisonTone === "up" ? "text-findmi-700" : "text-ink/45"}`}>{comparison}</p>
+        <p className={`text-microcopy font-semibold ${comparisonTone === "up" ? "text-accent" : "text-subtle"}`}>{comparison}</p>
       ) : (
-        helpText && <p className="text-[11.5px] text-ink/40">{helpText}</p>
+        helpText && <p className="text-microcopy text-subtle">{helpText}</p>
       )}
     </div>
   );
@@ -248,13 +256,13 @@ export function ShareBar({
           value drop to its own line as a whole unit instead — never
           truncated, never overflowing. */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-        <span className="min-w-0 truncate text-[13px] font-medium text-ink">{label}</span>
-        <span className="shrink-0 text-[13px] font-semibold text-ink/70">{value}</span>
+        <span className="min-w-0 truncate text-body font-medium text-primary">{label}</span>
+        <span className="shrink-0 text-body font-semibold text-secondary">{value}</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.05]">
         <div className="h-full rounded-full bg-findmi" style={{ width: `${widthPercent}%` }} />
       </div>
-      {sublabel && <span className="text-[11px] text-ink/40">{sublabel}</span>}
+      {sublabel && <span className="text-microcopy text-subtle">{sublabel}</span>}
     </div>
   );
 }
@@ -286,8 +294,8 @@ export function RankedPerformanceRow({
   const content = (
     <>
       <span
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-          rank === 1 ? "bg-findmi text-white" : "bg-black/[0.05] text-ink/50"
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-microcopy font-bold ${
+          rank === 1 ? "bg-findmi text-white" : "bg-black/[0.05] text-muted"
         }`}
       >
         {rank}
@@ -298,9 +306,9 @@ export function RankedPerformanceRow({
             to a long metric string (e.g. every one of Products' 5
             metrics active at once) must never force horizontal overflow
             on a narrow phone; each line degrades independently instead. */}
-        <span className="block truncate text-[13px] font-semibold text-ink">{title}</span>
-        {metricLine && <span className="mt-0.5 block truncate text-[11.5px] font-semibold text-ink/55">{metricLine}</span>}
-        {subtitle && <span className="mt-0.5 block truncate text-[11px] text-ink/40">{subtitle}</span>}
+        <span className="block truncate text-card-title font-semibold text-primary">{title}</span>
+        {metricLine && <span className="mt-0.5 block truncate text-microcopy font-semibold text-muted">{metricLine}</span>}
+        {subtitle && <span className="mt-0.5 block truncate text-microcopy text-subtle">{subtitle}</span>}
         <span className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-black/[0.05]">
           <span className="block h-full rounded-full bg-findmi/60" style={{ width: `${widthPercent}%` }} />
         </span>

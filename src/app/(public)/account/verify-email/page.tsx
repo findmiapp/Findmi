@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
 /**
  * Progressive Email Verification pass — a small, dedicated verification
@@ -79,12 +79,12 @@ export default async function VerifyEmailPage({
       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-findmi-50">
         <MailGlyph />
       </div>
-      <p className="mt-4 text-xs font-bold uppercase tracking-wide text-findmi-700">Account security</p>
-      <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Verify your email</h1>
+      <p className="mt-4 text-label font-bold uppercase text-accent">Account security</p>
+      <h1 className="mt-1 font-display text-page-title font-bold text-primary">Verify your email</h1>
 
       {alreadyVerified ? (
         <>
-          <p className="mt-3 text-sm text-ink/60">
+          <p className="mt-3 text-body text-muted">
             {user.email} is verified. You&rsquo;re all set for ownership actions like claiming a listing.
           </p>
           <Link href={next} className={`mt-6 ${primaryButtonClass}`}>
@@ -93,14 +93,14 @@ export default async function VerifyEmailPage({
         </>
       ) : (
         <>
-          <p className="mt-3 text-sm text-ink/60">
-            We&rsquo;ll send a verification link to <span className="font-semibold text-ink">{user.email}</span>.
+          <p className="mt-3 text-body text-muted">
+            We&rsquo;ll send a verification link to <span className="font-semibold text-primary">{user.email}</span>.
             Verification is required for certain ownership actions, like claiming an existing listing, but it&rsquo;s
             never required to keep building your Findmi profile.
           </p>
 
           {error && (
-            <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+            <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>
           )}
 
           {!sent ? (
@@ -112,20 +112,20 @@ export default async function VerifyEmailPage({
             </form>
           ) : (
             <>
-              <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+              <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">
                 Verification link sent. Open that email on this device and tap the link to verify your account.
                 You&rsquo;ll be brought right back here, signed in.
               </p>
               <form action={requestEmailVerification} className="mt-3">
                 <input type="hidden" name="next" value={next} />
-                <button type="submit" className="text-sm font-semibold text-ink/50 transition hover:text-ink">
+                <button type="submit" className="text-body font-semibold text-muted transition hover:text-primary">
                   Resend email
                 </button>
               </form>
             </>
           )}
 
-          <Link href={next} className="mt-6 block text-center text-sm font-semibold text-ink/50 transition hover:text-ink">
+          <Link href={next} className="mt-6 block text-center text-body font-semibold text-muted transition hover:text-primary">
             Do this later
           </Link>
         </>

@@ -53,7 +53,7 @@ export default function QrCampaignDetailView({
 }) {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 px-4 py-6">
-      <Link href={backHref} className="w-fit text-[12px] font-semibold text-ink/50 hover:text-ink/70">
+      <Link href={backHref} className="w-fit text-metadata font-semibold text-muted hover:text-secondary">
         ← Back
       </Link>
 
@@ -63,20 +63,20 @@ export default function QrCampaignDetailView({
               screen — no competing headline above it. */}
           <div className="h-52 w-52 [&_svg]:h-full [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: qrSvg }} />
           <div className="text-center">
-            <p className="font-display text-lg font-bold tracking-tight text-ink">{name}</p>
-            <p className="mt-0.5 flex items-center justify-center gap-1.5 text-[12px] text-ink/45">
+            <p className="font-display text-section-title-lg font-bold text-primary">{name}</p>
+            <p className="mt-0.5 flex items-center justify-center gap-1.5 text-metadata text-subtle">
               <StatusDot tone={isActive ? "positive" : "quiet"} label={isActive ? "Active" : "Inactive"} />
             </p>
           </div>
         </div>
 
         <div className="flex flex-col gap-1 px-5 py-4">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-ink/35">Destination</p>
-          <p className="text-sm font-semibold text-ink">{destinationLabel}</p>
-          <p className="text-[12px] text-ink/45">
+          <p className="text-label font-bold uppercase text-subtle">Destination</p>
+          <p className="text-body font-semibold text-primary">{destinationLabel}</p>
+          <p className="text-metadata text-subtle">
             {DESTINATION_TYPE_LABELS[destinationType]} · {destinationPath}
           </p>
-          <p className="mt-2 truncate text-[11px] text-ink/40">{qrUrl}</p>
+          <p className="mt-2 truncate text-microcopy text-subtle">{qrUrl}</p>
         </div>
 
         <div className="flex flex-wrap gap-2 px-5 pb-5">
@@ -99,20 +99,20 @@ export default function QrCampaignDetailView({
           <Stat value={pro ? stats.actions.toLocaleString() : "—"} label="Actions" />
         </div>
         {!pro && (
-          <p className="mt-3 text-[12px] text-ink/40">
+          <p className="mt-3 text-metadata text-subtle">
             Unique visitors and downstream actions are a Pro feature.{" "}
-            <Link href="/account" className="font-semibold text-findmi-700">
+            <Link href="/account" className="font-semibold text-accent">
               Upgrade to see full attribution →
             </Link>
           </p>
         )}
         {pro && stats.actionBreakdown.length > 0 && (
           <div className="mt-3 flex flex-col gap-1.5 border-t border-black/[0.06] pt-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-ink/35">From this QR</p>
+            <p className="text-label font-bold uppercase text-subtle">From this QR</p>
             {stats.actionBreakdown.map((a) => (
-              <div key={a.label} className="flex items-center justify-between text-[13px]">
-                <span className="text-ink/70">{a.label}</span>
-                <span className="font-semibold text-ink">{a.count.toLocaleString()}</span>
+              <div key={a.label} className="flex items-center justify-between text-body">
+                <span className="text-secondary">{a.label}</span>
+                <span className="font-semibold text-primary">{a.count.toLocaleString()}</span>
               </div>
             ))}
           </div>

@@ -55,7 +55,7 @@ export default function ReplyComposer({
         <select
           value={actingKey}
           onChange={(e) => setActingKey(e.target.value)}
-          className="w-fit rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs text-ink focus:border-ink/30 focus:outline-none"
+          className="w-fit rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-metadata text-primary focus:border-ink/30 focus:outline-none"
         >
           {parties.map((p) => (
             <option key={`${p.entityType}:${p.entityId ?? ""}`} value={`${p.entityType}:${p.entityId ?? ""}`}>
@@ -69,13 +69,13 @@ export default function ReplyComposer({
         onChange={(e) => setBody(e.target.value)}
         rows={2}
         placeholder="Write a reply…"
-        className="w-full resize-none rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+        className="w-full resize-none rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-metadata text-red-600">{error}</p>}
       <button
         type="submit"
         disabled={submitting || !body.trim()}
-        className="ml-auto flex h-10 items-center justify-center rounded-2xl bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
+        className="ml-auto flex h-10 items-center justify-center rounded-2xl bg-findmi px-5 text-button font-bold uppercase text-white transition hover:bg-findmi-600 disabled:opacity-60"
       >
         {submitting ? "…" : "Send"}
       </button>

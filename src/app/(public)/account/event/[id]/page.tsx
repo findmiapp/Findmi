@@ -45,9 +45,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const inputClass =
-  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
+  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-11 items-center justify-center rounded-2xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-11 items-center justify-center rounded-2xl bg-findmi px-4 text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
 // Event Manager V3 — replaces the old eight-tab inventory (Overview /
 // Event Details / Dates / Location / Findmi Area / Gallery / Businesses /
@@ -358,10 +358,10 @@ export default async function ManageEventPage({
 
       {isAdminElevated && (
         <div className="mx-auto mb-4 max-w-md rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-bold text-amber-800">Admin mode: you are managing {event.name} with elevated access.</p>
+          <p className="text-body font-bold text-amber-800">Admin mode: you are managing {event.name} with elevated access.</p>
           <Link
             href={`/admin/events/${id}`}
-            className="mt-1.5 inline-block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+            className="mt-1.5 inline-block text-metadata font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
           >
             Exit Admin Mode
           </Link>
@@ -370,32 +370,32 @@ export default async function ManageEventPage({
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Event Manager</p>
-          <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{event.name}</h1>
+          <p className="text-label font-bold uppercase text-accent">Event Manager</p>
+          <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">{event.name}</h1>
         </div>
         {publicHref ? (
           <Link
             href={publicHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-full border border-black/10 px-3.5 py-2 text-xs font-semibold text-ink/60 transition hover:border-black/20 hover:text-ink"
+            className="rounded-full border border-black/10 px-3.5 py-2 text-metadata font-semibold text-muted transition hover:border-black/20 hover:text-primary"
           >
             View Public Event ↗
           </Link>
         ) : isRejected ? (
-          <span className="rounded-full bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-700" title="Needs changes before it can be resubmitted">
+          <span className="rounded-full bg-red-50 px-3.5 py-2 text-metadata font-semibold text-red-700" title="Needs changes before it can be resubmitted">
             Needs Changes
           </span>
         ) : (
-          <span className="rounded-full bg-black/[0.06] px-3.5 py-2 text-xs font-semibold text-ink/40" title="Pending Findmi review">
+          <span className="rounded-full bg-black/[0.06] px-3.5 py-2 text-metadata font-semibold text-subtle" title="Pending Findmi review">
             In Review
           </span>
         )}
       </div>
 
-      {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>}
       {saved && !error && (
-        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">Saved.</p>
+        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-accent">Saved.</p>
       )}
 
       <div className="mt-5">
@@ -411,14 +411,14 @@ export default async function ManageEventPage({
           <div className="flex flex-col gap-5">
             {isRejected && (
               <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-                <span className="rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-red-700">
+                <span className="rounded-full bg-red-100 px-2.5 py-1 text-label font-bold uppercase text-red-700">
                   Needs Changes
                 </span>
-                <p className="mt-2 text-sm text-ink/70">
+                <p className="mt-2 text-body text-secondary">
                   This event wasn&rsquo;t approved yet. You can update it and submit it for review again.
                 </p>
                 <form action={submitForReviewAction} className="mt-3">
-                  <button type="submit" className="rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
+                  <button type="submit" className="rounded-full bg-findmi px-4 py-2 text-label font-bold uppercase text-white transition hover:bg-findmi-600">
                     Submit for Review
                   </button>
                 </form>
@@ -427,31 +427,31 @@ export default async function ManageEventPage({
 
             {event.is_demo && !isRejected && (
               <div className="rounded-2xl border border-black/10 bg-black/[0.02] p-4">
-                <span className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/60">
+                <span className="rounded-full bg-black/[0.06] px-2.5 py-1 text-label font-bold uppercase text-muted">
                   In Review
                 </span>
-                <p className="mt-2 text-sm text-ink/70">Keep building your listing while Findmi reviews it.</p>
+                <p className="mt-2 text-body text-secondary">Keep building your listing while Findmi reviews it.</p>
               </div>
             )}
 
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Next up</p>
+              <p className="text-label font-bold uppercase text-subtle">Next up</p>
               {nextUp ? (
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-ink">
+                    <p className="truncate text-body font-semibold text-primary">
                       {new Date(nextUp.startAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
                     </p>
-                    {nextUp.locationName && <p className="truncate text-xs text-ink/50">{nextUp.locationName}</p>}
+                    {nextUp.locationName && <p className="truncate text-metadata text-muted">{nextUp.locationName}</p>}
                   </div>
-                  <Link href={appendQuery(`/account/event/${id}`, { tab: "dates" })} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+                  <Link href={appendQuery(`/account/event/${id}`, { tab: "dates" })} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
                     See all
                   </Link>
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-ink/50">
+                <p className="mt-2 text-body text-muted">
                   No upcoming dates.{" "}
-                  <Link href={appendQuery(`/account/event/${id}`, { tab: "dates" })} className="font-semibold text-findmi-700 hover:underline">
+                  <Link href={appendQuery(`/account/event/${id}`, { tab: "dates" })} className="font-semibold text-accent hover:underline">
                     Add a date
                   </Link>
                 </p>
@@ -460,13 +460,13 @@ export default async function ManageEventPage({
 
             {pendingParticipants.length > 0 && (
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Needs your attention</p>
+                <p className="text-label font-bold uppercase text-subtle">Needs your attention</p>
                 <Link
                   href={appendQuery(`/account/event/${id}`, { tab: "participants" })}
-                  className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-black/10 px-3.5 py-2.5 text-sm text-ink/70 transition hover:border-black/20"
+                  className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-black/10 px-3.5 py-2.5 text-body text-secondary transition hover:border-black/20"
                 >
                   {pendingParticipants.length} pending business{pendingParticipants.length === 1 ? "" : "es"}
-                  <span className="shrink-0 text-xs font-semibold text-findmi-700">Review →</span>
+                  <span className="shrink-0 text-metadata font-semibold text-accent">Review →</span>
                 </Link>
               </div>
             )}
@@ -484,11 +484,11 @@ export default async function ManageEventPage({
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-findmi text-white">
                     <CheckGlyph className="h-3 w-3" />
                   </span>
-                  <p className="text-sm font-semibold text-ink">Listing essentials complete</p>
+                  <p className="text-body font-semibold text-primary">Listing essentials complete</p>
                 </div>
               ) : (
                 <>
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Finish Your Event</p>
+                  <p className="text-label font-bold uppercase text-subtle">Finish Your Event</p>
                   <div className="mt-3 flex flex-col gap-2">
                     {essentialItems.map((item) => (
                       <Link
@@ -496,10 +496,10 @@ export default async function ManageEventPage({
                         href={appendQuery(`/account/event/${id}`, { tab: item.tab })}
                         className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 px-3.5 py-2.5 transition hover:border-black/20"
                       >
-                        <span className="text-sm font-medium text-ink">{item.label}</span>
+                        <span className="text-body font-medium text-primary">{item.label}</span>
                         <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                            item.complete ? "bg-findmi-50 text-findmi-700" : "bg-amber-100 text-amber-800"
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-label font-bold uppercase ${
+                            item.complete ? "bg-findmi-50 text-accent" : "bg-amber-100 text-amber-800"
                           }`}
                         >
                           {item.complete ? "Complete" : "Needs attention"}
@@ -515,13 +515,13 @@ export default async function ManageEventPage({
                   essentials-complete above. */}
               {participants.length === 0 && (
                 <div className="mt-3 border-t border-black/10 pt-3">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Grow Your Listing</p>
+                  <p className="text-label font-bold uppercase text-subtle">Grow Your Listing</p>
                   <Link
                     href={appendQuery(`/account/event/${id}`, { tab: "participants" })}
-                    className="mt-1.5 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-black/15 px-3.5 py-2.5 text-sm text-ink/70 transition hover:border-black/25"
+                    className="mt-1.5 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-black/15 px-3.5 py-2.5 text-body text-secondary transition hover:border-black/25"
                   >
                     Add participating businesses
-                    <span className="shrink-0 text-xs font-semibold text-findmi-700">Optional →</span>
+                    <span className="shrink-0 text-metadata font-semibold text-accent">Optional →</span>
                   </Link>
                 </div>
               )}
@@ -544,8 +544,8 @@ export default async function ManageEventPage({
 
             {/* QR Campaigns V1 — contextual creation for this Event. */}
             <div className="border-t border-black/5 pt-5">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">QR Code</p>
-              <p className="mt-1 text-sm text-ink/50">Print or share a QR that scans straight to this Event.</p>
+              <p className="text-label font-bold uppercase text-subtle">QR Code</p>
+              <p className="mt-1 text-body text-muted">Print or share a QR that scans straight to this Event.</p>
               <div className="mt-2.5">
                 <QrCampaignContextualPanel
                   campaigns={eventQrCampaigns}
@@ -565,16 +565,16 @@ export default async function ManageEventPage({
           <div className="flex flex-col gap-6">
             <form action={updateMemberEventDetails.bind(null, id)} className="flex flex-col gap-4">
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Identity</p>
+                <p className="text-label font-bold uppercase text-subtle">Identity</p>
                 <label className="mt-2 block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Event name</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">Event name</span>
                   <input type="text" name="name" required defaultValue={event.name} className={inputClass} />
                 </label>
                 <div className="mt-3">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Categories</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">Categories</span>
                   <div className="flex flex-col gap-1.5">
                     {categories.map((c) => (
-                      <label key={c.id} className="flex items-center gap-2 text-sm text-ink/70">
+                      <label key={c.id} className="flex items-center gap-2 text-body text-secondary">
                         <input
                           type="checkbox"
                           name="category_ids"
@@ -590,29 +590,29 @@ export default async function ManageEventPage({
               </div>
 
               <div className="border-t border-black/5 pt-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">About</p>
+                <p className="text-label font-bold uppercase text-subtle">About</p>
                 <label className="mt-2 block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">Description</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">Description</span>
                   <textarea name="description" rows={4} defaultValue={event.description ?? ""} className={inputClass} />
                 </label>
               </div>
 
               <div className="border-t border-black/5 pt-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Photos</p>
+                <p className="text-label font-bold uppercase text-subtle">Photos</p>
                 <div className="mt-2">
                   <MemberEventImageField eventId={id} label="Cover Image" name="cover_image_url" defaultValue={event.cover_image_url} />
                 </div>
               </div>
 
               <div className="border-t border-black/5 pt-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Organizer</p>
+                <p className="text-label font-bold uppercase text-subtle">Organizer</p>
                 <div className="mt-2 grid grid-cols-2 gap-4">
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Organizer name</span>
+                    <span className="mb-1.5 block text-body font-medium text-primary">Organizer name</span>
                     <input type="text" name="organizer_name" defaultValue={event.organizer_name ?? ""} className={inputClass} />
                   </label>
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">Organizer email</span>
+                    <span className="mb-1.5 block text-body font-medium text-primary">Organizer email</span>
                     <input type="email" name="organizer_email" defaultValue={event.organizer_email ?? ""} className={inputClass} />
                   </label>
                 </div>
@@ -620,8 +620,8 @@ export default async function ManageEventPage({
 
               <div className="border-t border-black/5 pt-4">
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-ink">
-                    Website / Link <span className="font-normal text-ink/40">(optional)</span>
+                  <span className="mb-1.5 block text-body font-medium text-primary">
+                    Website / Link <span className="font-normal text-subtle">(optional)</span>
                   </span>
                   <input type="url" name="external_url" defaultValue={event.external_url ?? ""} placeholder="https://" className={inputClass} />
                 </label>
@@ -639,13 +639,13 @@ export default async function ManageEventPage({
                 V3's About+Photos / Gallery split. */}
             <form action={updateMemberEventImages.bind(null, id)} className="flex flex-col gap-5 border-t border-black/5 pt-6">
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Event Gallery</p>
+                <p className="text-label font-bold uppercase text-subtle">Event Gallery</p>
                 <div className="mt-2">
                   <MemberEventGalleryField eventId={id} name="gallery_image_url" initialUrls={result.galleryImages} />
                 </div>
               </div>
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">About the Venue: Gallery</p>
+                <p className="text-label font-bold uppercase text-subtle">About the Venue: Gallery</p>
                 <div className="mt-2">
                   <MemberEventGalleryField eventId={id} name="venue_image_url" initialUrls={result.venueImages} />
                 </div>
@@ -658,11 +658,11 @@ export default async function ManageEventPage({
             {/* Discovery settings (Findmi Area) — visually secondary,
                 closed by default. Unchanged geography architecture. */}
             <details className="border-t border-black/5 pt-6">
-              <summary className="cursor-pointer text-xs font-bold uppercase tracking-wide text-ink/40 [&::-webkit-details-marker]:hidden">
+              <summary className="cursor-pointer text-label font-bold uppercase text-subtle [&::-webkit-details-marker]:hidden">
                 Discovery settings
               </summary>
               <div className="mt-3">
-                <p className="text-sm text-ink/60">
+                <p className="text-body text-muted">
                   {selectedMarket
                     ? `Findmi area: ${selectedMarket.name}${
                         event.market_area_id
@@ -688,15 +688,15 @@ export default async function ManageEventPage({
                     noSpecificAreaLabel="No specific area"
                   />
                   <details className="group -mt-1">
-                    <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+                    <summary className="cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 [&::-webkit-details-marker]:hidden">
                       Don&rsquo;t see your Findmi area?
                     </summary>
                     <div className="mt-2 rounded-xl border border-black/10 bg-mist/30 p-3.5">
                       <label className="block">
-                        <span className="mb-1.5 block text-xs font-medium text-ink/70">Tell us where</span>
+                        <span className="mb-1.5 block text-metadata font-medium text-secondary">Tell us where</span>
                         <input type="text" name="requested_market_text" placeholder="e.g. Austin, TX" className={inputClass} />
                       </label>
-                      <p className="mt-1.5 text-xs text-ink/45">
+                      <p className="mt-1.5 text-metadata text-subtle">
                         Findmi will review it. Leave the Findmi area above set to &ldquo;No Findmi area selected&rdquo; when
                         using this.
                       </p>
@@ -727,25 +727,25 @@ export default async function ManageEventPage({
         {tab === "dates" && (
           <div className="flex flex-col gap-6">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Schedule</p>
+              <p className="text-label font-bold uppercase text-subtle">Schedule</p>
               <ul className="mt-3 flex flex-col divide-y divide-black/[0.06]">
                 <li className="py-3 first:pt-0">
                   <details className="group">
                     <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink">{primarySchedule.dateLabel}</p>
-                        <p className="truncate text-xs text-ink/50">
+                        <p className="truncate text-body font-semibold text-primary">{primarySchedule.dateLabel}</p>
+                        <p className="truncate text-metadata text-muted">
                           {primarySchedule.timeLabel}
                           {primaryLocationName ? ` · ${primaryLocationName}` : ""}
                         </p>
                       </div>
-                      <span className="shrink-0 text-xs font-semibold text-ink/50 group-hover:text-ink">Edit</span>
+                      <span className="shrink-0 text-metadata font-semibold text-muted group-hover:text-primary">Edit</span>
                     </summary>
                     <div className="mt-3 flex flex-col gap-4 rounded-2xl border border-black/10 p-4">
                       <form action={updateMemberEventPrimaryDate.bind(null, id)} className="flex flex-col gap-3">
                         <div className="grid grid-cols-2 gap-3">
                           <label className="block">
-                            <span className="mb-1.5 block text-xs font-medium text-ink/70">Starts</span>
+                            <span className="mb-1.5 block text-metadata font-medium text-secondary">Starts</span>
                             <input
                               type="datetime-local"
                               name="start_at"
@@ -755,7 +755,7 @@ export default async function ManageEventPage({
                             />
                           </label>
                           <label className="block">
-                            <span className="mb-1.5 block text-xs font-medium text-ink/70">Ends</span>
+                            <span className="mb-1.5 block text-metadata font-medium text-secondary">Ends</span>
                             <input
                               type="datetime-local"
                               name="end_at"
@@ -771,7 +771,7 @@ export default async function ManageEventPage({
                       </form>
 
                       <form action={updateMemberEventLocation.bind(null, id)} className="flex flex-col gap-3 border-t border-black/10 pt-4">
-                        <p className="text-xs font-medium text-ink/60">
+                        <p className="text-metadata font-medium text-muted">
                           Location: search for an existing Findmi Location, or enter your venue manually if it isn&rsquo;t on Findmi yet.
                         </p>
                         <EventLocationField
@@ -849,10 +849,10 @@ export default async function ManageEventPage({
             <details className="group">
               <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
                 <div className="min-w-0">
-                  <p className="font-display text-base font-bold tracking-tight text-ink">Businesses</p>
-                  <p className="mt-1 text-sm text-ink/60">Invite an existing Findmi business to participate.</p>
+                  <p className="font-display text-card-title font-bold text-primary">Businesses</p>
+                  <p className="mt-1 text-body text-muted">Invite an existing Findmi business to participate.</p>
                 </div>
-                <span className="flex h-9 shrink-0 items-center gap-1 rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition group-hover:bg-findmi-600">
+                <span className="flex h-9 shrink-0 items-center gap-1 rounded-xl bg-findmi px-4 text-label font-bold uppercase text-white transition group-hover:bg-findmi-600">
                   <span className="group-open:hidden">+ Invite</span>
                   <span className="hidden group-open:inline">Close</span>
                 </span>
@@ -868,13 +868,13 @@ export default async function ManageEventPage({
 
             {pendingParticipants.length > 0 && (
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="text-sm text-amber-800">
+                <p className="text-body text-amber-800">
                   {pendingParticipants.length} pending application{pendingParticipants.length === 1 ? "" : "s"}/invitation
                   {pendingParticipants.length === 1 ? "" : "s"} awaiting a response.
                 </p>
                 <Link
                   href="/account/messages?filter=opportunities"
-                  className="shrink-0 text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+                  className="shrink-0 text-metadata font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
                 >
                   View in Inbox
                 </Link>
@@ -882,17 +882,17 @@ export default async function ManageEventPage({
             )}
 
             <div className="border-t border-black/5 pt-6">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Roster</p>
+              <p className="text-label font-bold uppercase text-subtle">Roster</p>
               {participants.length === 0 ? (
-                <p className="mt-2 text-sm text-ink/50">No participating businesses yet.</p>
+                <p className="mt-2 text-body text-muted">No participating businesses yet.</p>
               ) : (
                 <ul className="mt-3 flex flex-col divide-y divide-black/[0.06]">
                   {participants.map((p) => (
                     <li key={p.business_id} className="py-3 first:pt-0 last:pb-0">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-ink">{p.business_name}</p>
-                          <p className="text-xs text-ink/50">
+                          <p className="truncate text-body font-semibold text-primary">{p.business_name}</p>
+                          <p className="text-metadata text-muted">
                             {PARTICIPATION_LABEL[p.status]}
                             {effectiveScheduleDates.length > 1 && p.participation_scope && (
                               <span> · {p.participation_scope === "all_dates" ? "All dates" : "Selected dates"}</span>
@@ -902,20 +902,20 @@ export default async function ManageEventPage({
                         <div className="flex shrink-0 items-center gap-3">
                           {(p.status === "applied" || p.status === "pending" || p.status === "invited") && (
                             <form action={updateParticipatingBusinessStatus.bind(null, id, p.business_id, "approved")}>
-                              <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                              <button type="submit" className="text-metadata font-semibold text-accent hover:underline">
                                 Approve
                               </button>
                             </form>
                           )}
                           {p.status !== "declined" && (
                             <form action={updateParticipatingBusinessStatus.bind(null, id, p.business_id, "declined")}>
-                              <button type="submit" className="text-xs font-semibold text-ink/50 hover:text-ink">
+                              <button type="submit" className="text-metadata font-semibold text-muted hover:text-primary">
                                 Decline
                               </button>
                             </form>
                           )}
                           <form action={removeParticipatingBusiness.bind(null, id, p.business_id)}>
-                            <button type="submit" className="text-xs font-semibold text-red-600 hover:text-red-700">
+                            <button type="submit" className="text-metadata font-semibold text-red-600 hover:text-red-700">
                               Remove
                             </button>
                           </form>
@@ -942,7 +942,7 @@ export default async function ManageEventPage({
                           present while the application is still pending
                           (that lookup is scoped to status='pending'). */}
                       {pendingApplicationNotes.get(p.business_id) && (
-                        <p className="mt-2 rounded-xl bg-mist/40 px-3 py-2 text-xs text-ink/70">
+                        <p className="mt-2 rounded-xl bg-mist/40 px-3 py-2 text-metadata text-secondary">
                           &ldquo;{pendingApplicationNotes.get(p.business_id)}&rdquo;
                         </p>
                       )}

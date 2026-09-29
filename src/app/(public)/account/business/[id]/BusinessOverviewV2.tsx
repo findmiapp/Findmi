@@ -158,19 +158,19 @@ export default function BusinessOverviewV2({
                   className="h-12 w-12 shrink-0 rounded-xl border-2 border-white/80 bg-white object-cover shadow-sm"
                 />
               ) : (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-white/80 bg-white font-display text-base font-bold text-findmi-700 shadow-sm">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-white/80 bg-white font-display text-card-title font-bold text-accent shadow-sm">
                   {business.name.charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <h2 className="truncate font-display text-lg font-bold tracking-tight text-white drop-shadow-sm">{business.name}</h2>
+                  <h2 className="truncate font-display text-section-title-lg font-bold text-white drop-shadow-sm">{business.name}</h2>
                   <Chip tone={pro ? "aqua" : isExpiredPro ? "amber" : "neutral"}>
                     {pro ? "Pro" : isExpiredPro ? "Pro Expired" : "Free"}
                   </Chip>
                   {showSwitcher && <BusinessSwitcher businessId={businessId} managedBusinesses={managedBusinesses} switcherTab={switcherTab} light />}
                 </div>
-                <p className="mt-0.5 truncate text-[12.5px] text-white/80">
+                <p className="mt-0.5 truncate text-metadata text-white/80">
                   {[categoryLabel, geographyLabel].filter(Boolean).join(" · ") || "Add your category and area in Profile"}
                 </p>
               </div>
@@ -187,19 +187,19 @@ export default function BusinessOverviewV2({
                 className="h-12 w-12 shrink-0 rounded-xl border border-black/[0.06] object-cover"
               />
             ) : (
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-findmi-50 font-display text-base font-bold text-findmi-700">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-findmi-50 font-display text-card-title font-bold text-accent">
                 {business.name.charAt(0).toUpperCase()}
               </div>
             )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <h2 className="truncate font-display text-lg font-bold tracking-tight text-ink">{business.name}</h2>
+                <h2 className="truncate font-display text-section-title-lg font-bold text-primary">{business.name}</h2>
                 <Chip tone={pro ? "aqua" : isExpiredPro ? "amber" : "neutral"}>
                   {pro ? "Pro" : isExpiredPro ? "Pro Expired" : "Free"}
                 </Chip>
                 {showSwitcher && <BusinessSwitcher businessId={businessId} managedBusinesses={managedBusinesses} switcherTab={switcherTab} />}
               </div>
-              <p className="mt-0.5 truncate text-[12.5px] text-ink/50">
+              <p className="mt-0.5 truncate text-metadata text-muted">
                 {[categoryLabel, geographyLabel].filter(Boolean).join(" · ") || "Add your category and area in Profile"}
               </p>
             </div>
@@ -208,7 +208,7 @@ export default function BusinessOverviewV2({
 
         {business.publicationStatus === "pending_review" && (
           <div className="border-t border-amber-100 bg-amber-50 px-4 py-2">
-            <p className="text-[12px] font-semibold text-amber-900">
+            <p className="text-metadata font-semibold text-amber-900">
               Pending Review — visible to you now, live in discovery after Findmi reviews it.
             </p>
           </div>
@@ -218,11 +218,11 @@ export default function BusinessOverviewV2({
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-black/[0.06] px-4 py-3">
           <div className="flex flex-wrap items-center gap-3">
             {business.slug && (
-              <Link href={`/business/${business.slug}`} className="text-[12px] font-bold text-findmi-700">
+              <Link href={`/business/${business.slug}`} className="text-metadata font-bold text-accent">
                 View Public Profile →
               </Link>
             )}
-            <Link href={`${basePath}?tab=settings`} className="text-[12px] font-semibold text-ink/55 hover:text-ink">
+            <Link href={`${basePath}?tab=settings`} className="text-metadata font-semibold text-muted hover:text-primary">
               Settings
             </Link>
           </div>
@@ -251,15 +251,15 @@ export default function BusinessOverviewV2({
 
         {pro && discoverySources && discoverySources.length > 0 && (
           <div className="border-t border-black/[0.06] px-4 py-3">
-            <p className="text-[10.5px] font-bold uppercase tracking-wide text-ink/40">How People Find You</p>
+            <p className="text-label font-bold uppercase text-subtle">How People Find You</p>
             <div className="mt-2 flex flex-col gap-2">
               {discoverySources.slice(0, 4).map((s) => {
                 const share = totalDiscoveryImpressions > 0 ? Math.round((s.impressions / totalDiscoveryImpressions) * 100) : 0;
                 return (
                   <div key={s.label} className="flex flex-col gap-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink/70">{s.label}</span>
-                      <span className="shrink-0 text-[11px] font-semibold text-ink/50">{share}%</span>
+                      <span className="min-w-0 flex-1 truncate text-metadata font-medium text-secondary">{s.label}</span>
+                      <span className="shrink-0 text-microcopy font-semibold text-muted">{share}%</span>
                     </div>
                     <span className="h-1.5 rounded-full bg-black/[0.05]">
                       <span className="block h-1.5 rounded-full bg-findmi" style={{ width: `${share}%` }} />
@@ -272,11 +272,11 @@ export default function BusinessOverviewV2({
         )}
 
         <div className="flex items-center justify-between border-t border-black/[0.06] px-4 py-2">
-          <p className="text-[11px] text-ink/35">
+          <p className="text-microcopy text-subtle">
             {pulseRangeLabel ?? "All time"}
             {pro ? " vs. previous period" : ""}
           </p>
-          <Link href={`${basePath}?tab=performance`} className="text-[11px] font-bold text-findmi-700">
+          <Link href={`${basePath}?tab=performance`} className="text-microcopy font-bold text-accent">
             {pro ? "Full analytics →" : "Unlock full analytics →"}
           </Link>
         </div>
@@ -288,14 +288,14 @@ export default function BusinessOverviewV2({
       {needsAttention.length > 0 && (
         <div className="rounded-xl bg-black/[0.025] p-3.5">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-ink/45">Needs Attention</p>
+            <p className="text-label font-bold uppercase text-subtle">Needs Attention</p>
             <Chip tone="amber">{needsAttention.length}</Chip>
           </div>
           <ul className="mt-2 flex flex-col divide-y divide-black/[0.05]">
             {needsAttention.map((item) => (
               <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
-                <p className="min-w-0 text-[12.5px] text-ink/70">{item.message}</p>
-                <Link href={item.actionHref} className="shrink-0 text-[11px] font-bold text-findmi-700">
+                <p className="min-w-0 text-metadata text-secondary">{item.message}</p>
+                <Link href={item.actionHref} className="shrink-0 text-microcopy font-bold text-accent">
                   {item.actionLabel}
                 </Link>
               </li>
@@ -315,9 +315,9 @@ export default function BusinessOverviewV2({
             ))}
           </div>
         ) : (
-          <p className="mt-1.5 text-[12.5px] text-ink/45">
+          <p className="mt-1.5 text-metadata text-subtle">
             Nothing scheduled yet ·{" "}
-            <Link href={`${basePath}?tab=findmi-here`} className="font-bold text-findmi-700">
+            <Link href={`${basePath}?tab=findmi-here`} className="font-bold text-accent">
               + Add Where I&rsquo;ll Be
             </Link>
           </p>
@@ -337,13 +337,13 @@ export default function BusinessOverviewV2({
                   <QrGlyph className="h-4 w-4 text-findmi-700" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold text-ink">{c.name}</p>
-                  <p className="truncate text-[11px] text-ink/45">
+                  <p className="truncate text-card-title font-semibold text-primary">{c.name}</p>
+                  <p className="truncate text-microcopy text-subtle">
                     {c.destinationLabel}
-                    {!c.isActive && <span className="ml-1.5 font-semibold text-ink/35">· Inactive</span>}
+                    {!c.isActive && <span className="ml-1.5 font-semibold text-subtle">· Inactive</span>}
                   </p>
                 </div>
-                <span className="shrink-0 text-[11px] text-ink/50">
+                <span className="shrink-0 text-microcopy text-muted">
                   {c.scans.toLocaleString()} scan{c.scans === 1 ? "" : "s"}
                 </span>
               </Link>
@@ -369,10 +369,10 @@ export default function BusinessOverviewV2({
                     <SupabaseImage src={p.imageUrl} alt={p.name} fill sizes="160px" className="object-cover" />
                   </div>
                   <div className="p-2">
-                    <p className="truncate text-[12px] font-semibold text-ink">{p.name}</p>
+                    <p className="truncate text-metadata font-semibold text-primary">{p.name}</p>
                     <div className="mt-0.5 flex items-center justify-between gap-1">
-                      <span className="text-[11px] text-ink/55">{p.priceLabel ?? ""}</span>
-                      {!p.isActive && <span className="text-[10px] font-semibold text-ink/35">Inactive</span>}
+                      <span className="text-microcopy text-muted">{p.priceLabel ?? ""}</span>
+                      {!p.isActive && <span className="text-label font-semibold text-subtle">Inactive</span>}
                     </div>
                   </div>
                 </Link>
@@ -386,10 +386,10 @@ export default function BusinessOverviewV2({
                     <TagGlyph className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-semibold text-ink">{p.name}</p>
+                    <p className="truncate text-metadata font-semibold text-primary">{p.name}</p>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-ink/55">{p.priceLabel ?? ""}</span>
-                      {!p.isActive && <span className="text-[10px] font-semibold text-ink/35">Inactive</span>}
+                      <span className="text-microcopy text-muted">{p.priceLabel ?? ""}</span>
+                      {!p.isActive && <span className="text-label font-semibold text-subtle">Inactive</span>}
                     </div>
                   </div>
                 </Link>
@@ -404,8 +404,8 @@ export default function BusinessOverviewV2({
       {recentOrders.length > 0 && (
         <div className="rounded-xl bg-black/[0.025] p-3.5">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-ink/45">Recent Orders</p>
-            <Link href={`${basePath}?tab=orders`} className="text-[11px] font-bold text-findmi-700">
+            <p className="text-label font-bold uppercase text-subtle">Recent Orders</p>
+            <Link href={`${basePath}?tab=orders`} className="text-microcopy font-bold text-accent">
               View All →
             </Link>
           </div>
@@ -417,10 +417,10 @@ export default function BusinessOverviewV2({
                   className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-[12.5px] font-semibold text-ink">
-                      #{o.orderNumber} <span className="font-normal text-ink/45">· {o.itemCount} item{o.itemCount === 1 ? "" : "s"}</span>
+                    <p className="truncate text-metadata font-semibold text-primary">
+                      #{o.orderNumber} <span className="font-normal text-subtle">· {o.itemCount} item{o.itemCount === 1 ? "" : "s"}</span>
                     </p>
-                    <p className="text-[11px] text-ink/45">{formatDateShort(o.createdAt)}</p>
+                    <p className="text-microcopy text-subtle">{formatDateShort(o.createdAt)}</p>
                   </div>
                   <Chip tone={o.status === "new" ? "amber" : "neutral"}>{ORDER_STATUS_LABELS[o.status]}</Chip>
                 </Link>
@@ -436,8 +436,8 @@ export default function BusinessOverviewV2({
 function SectionHeading({ title, href }: { title: string; href: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <p className="text-[13px] font-bold text-ink">{title}</p>
-      <Link href={href} className="text-[11px] font-bold text-findmi-700">
+      <p className="text-card-title font-bold text-primary">{title}</p>
+      <Link href={href} className="text-microcopy font-bold text-accent">
         View All →
       </Link>
     </div>
@@ -450,14 +450,14 @@ function PulseColumn({ label, metric, pro }: { label: string; metric: OverviewPu
   const down = showChange && metric.changeLabel!.startsWith("-");
   return (
     <div className="min-w-0 px-1 py-3 text-center sm:px-3">
-      <p className="font-display text-lg font-bold leading-none tracking-tight text-ink tabular-nums sm:text-xl">
+      <p className="font-display text-stat font-bold leading-none text-primary tabular-nums">
         {metric.value.toLocaleString()}
       </p>
-      <p className="mt-1 text-[9px] font-semibold uppercase leading-[1.15] tracking-normal text-ink/40 sm:text-[10px] sm:tracking-wide">
+      <p className="mt-1 text-label font-semibold uppercase leading-[1.15] text-subtle">
         {label}
       </p>
       {showChange && (
-        <p className={`mt-0.5 truncate text-[10px] font-bold ${up ? "text-findmi-700" : down ? "text-ink/45" : "text-ink/35"}`}>
+        <p className={`mt-0.5 truncate text-label font-bold ${up ? "text-accent" : "text-subtle"}`}>
           {up ? "↑" : down ? "↓" : ""}
           {metric.changeLabel}
         </p>
@@ -481,15 +481,15 @@ function AppearanceCard({ appearance }: { appearance: DashboardAppearance }) {
         <DateBadge iso={appearance.startAt} live={appearance.temporal.live} />
       </div>
       <div className="p-2">
-        <p className="truncate text-[12.5px] font-semibold text-ink">{appearance.title}</p>
-        {locationLine && <p className="truncate text-[11px] text-ink/50">{locationLine}</p>}
-        <p className="mt-0.5 flex items-center justify-between gap-1 text-[11px] text-ink/45">
+        <p className="truncate text-metadata font-semibold text-primary">{appearance.title}</p>
+        {locationLine && <p className="truncate text-microcopy text-muted">{locationLine}</p>}
+        <p className="mt-0.5 flex items-center justify-between gap-1 text-microcopy text-subtle">
           <span className="truncate">
             {formatTime(appearance.startAt)}–{formatTime(appearance.endAt)}
           </span>
           <span
-            className={`shrink-0 text-[10px] font-bold ${
-              appearance.participationStatus && appearance.participationStatus !== "approved" ? "text-amber-700" : "text-findmi-700"
+            className={`shrink-0 text-label font-bold ${
+              appearance.participationStatus && appearance.participationStatus !== "approved" ? "text-amber-700" : "text-accent"
             }`}
           >
             {appearance.statusLabel}
@@ -528,13 +528,13 @@ function BusinessSwitcher({
         <ChevronGlyph className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
       </summary>
       <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-black/[0.07] bg-white p-1.5 text-left shadow-lg">
-        <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/40">Switch Business</p>
+        <p className="px-2 py-1 text-label font-bold uppercase text-subtle">Switch Business</p>
         {managedBusinesses.map((b) => (
           <Link
             key={b.id}
             href={`/account/business/${b.id}?tab=${switcherTab}`}
-            className={`block truncate rounded-lg px-2.5 py-2 text-sm font-semibold transition hover:bg-black/[0.03] ${
-              b.id === businessId ? "text-findmi-700" : "text-ink"
+            className={`block truncate rounded-lg px-2.5 py-2 text-body font-semibold transition hover:bg-black/[0.03] ${
+              b.id === businessId ? "text-accent" : "text-primary"
             }`}
           >
             {b.name}
@@ -556,17 +556,17 @@ function DateBadge({ iso, live }: { iso: string; live?: boolean }) {
     return (
       <span className="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-findmi px-1.5 py-1 text-white shadow-sm">
         <span className="h-1.5 w-1.5 rounded-full bg-white" />
-        <span className="text-[9px] font-extrabold uppercase tracking-wide">Now</span>
+        <span className="text-label font-bold uppercase">Now</span>
       </span>
     );
   }
   const d = new Date(iso);
   return (
     <span className="absolute left-2 top-2 flex flex-col items-center rounded-md bg-white/95 px-1.5 py-1 shadow-sm backdrop-blur">
-      <span className="text-[8px] font-bold uppercase leading-none tracking-wide text-ink/50">
+      <span className="text-label font-bold uppercase leading-none text-muted">
         {d.toLocaleDateString("en-US", { month: "short" })}
       </span>
-      <span className="font-display text-[13px] font-bold leading-none text-ink">{d.getDate()}</span>
+      <span className="font-display text-card-title font-bold leading-none text-primary">{d.getDate()}</span>
     </span>
   );
 }

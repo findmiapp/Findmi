@@ -13,9 +13,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const inputClass =
-  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
+  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
 /** Multi-Entity Self-Service V1, Stage 3 — native Location (venue) creation
  * entry point. FREE for every signed-in user — no Business Pro, no Event
@@ -62,14 +62,14 @@ export default async function AddLocationPage({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Your Findmi</p>
-      <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add a Venue</h1>
-      <p className="mt-2 text-sm text-ink/60">
+      <p className="text-label font-bold uppercase text-accent">Your Findmi</p>
+      <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add a Venue</h1>
+      <p className="mt-2 text-body text-muted">
         You&rsquo;ll own and manage it right away in your Location Manager, free, with no separate Venue fee, ever.
       </p>
 
       {error && (
-        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">
           <p>{error}</p>
           {duplicateSlug && (
             <Link href={`/location/${duplicateSlug}`} className="mt-1.5 inline-block font-semibold underline underline-offset-2">
@@ -82,7 +82,7 @@ export default async function AddLocationPage({
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberLocation} className="flex flex-col gap-4">
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">Venue name</span>
+            <span className="mb-1.5 block text-body font-medium text-primary">Venue name</span>
             <input
               type="text"
               name="name"
@@ -94,7 +94,7 @@ export default async function AddLocationPage({
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">Address</span>
+            <span className="mb-1.5 block text-body font-medium text-primary">Address</span>
             <input type="text" name="address" defaultValue={submittedAddress ?? ""} className={inputClass} />
           </label>
 
@@ -114,7 +114,7 @@ export default async function AddLocationPage({
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Venue
           </button>
-          <p className="text-center text-xs text-ink/40">Free, no separate Venue fee, ever.</p>
+          <p className="text-center text-metadata text-subtle">Free, no separate Venue fee, ever.</p>
         </form>
       </div>
     </div>

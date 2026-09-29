@@ -16,9 +16,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const inputClass =
-  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
+  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none";
 const primaryButtonClass =
-  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+  "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
 /** Native Business Onboarding Pass 2 — the smallest native "can't find
  * your business, add it" entry point. Minimal fields only (see this
@@ -110,14 +110,14 @@ export default async function AddBusinessPage({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-      <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">My Findmi</p>
-      <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Add a Business</h1>
+      <p className="text-label font-bold uppercase text-accent">My Findmi</p>
+      <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add a Business</h1>
       {hasInvite ? (
-        <p className="mt-2 text-sm text-ink/60">
+        <p className="mt-2 text-body text-muted">
           You&rsquo;ll own and manage it right away, and Findmi will review it before it appears in discovery.
         </p>
       ) : (
-        <p className="mt-2 text-sm text-ink/60">
+        <p className="mt-2 text-body text-muted">
           Get started free, no credit card required. You&rsquo;ll own and manage your business right away, and
           Findmi will review it before it appears in discovery. Pro is available anytime below if you want more.
         </p>
@@ -125,22 +125,22 @@ export default async function AddBusinessPage({
 
       {duplicateSlug ? (
         <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
-          <p className="text-sm font-semibold text-ink">
+          <p className="text-body font-semibold text-primary">
             {error ?? "We found a business that looks like a match."}
           </p>
-          <p className="mt-1.5 text-sm text-ink/70">
+          <p className="mt-1.5 text-body text-secondary">
             {duplicateName ?? "An existing business"} may already be on Findmi. If this is your business, claim it
             instead of creating a duplicate listing.
           </p>
           <Link
             href={`/business/${duplicateSlug}`}
-            className="mt-3 flex h-11 items-center justify-center rounded-full bg-ink px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-ink/85"
+            className="mt-3 flex h-11 items-center justify-center rounded-full bg-ink px-4 text-label font-bold uppercase text-white transition hover:bg-ink/85"
           >
             View {duplicateName ?? "this business"} &amp; Claim It
           </Link>
-          <p className="mt-3 text-xs text-ink/50">
+          <p className="mt-3 text-metadata text-muted">
             Not the same business?{" "}
-            <a href="#add-business-form" className="font-semibold text-ink underline underline-offset-2">
+            <a href="#add-business-form" className="font-semibold text-primary underline underline-offset-2">
               Continue creating a new one below
             </a>
             .
@@ -148,14 +148,14 @@ export default async function AddBusinessPage({
         </div>
       ) : (
         error && (
-          <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+          <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>
         )
       )}
 
       <div id="add-business-form" className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberBusiness} className="flex flex-col gap-4">
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">Business name</span>
+            <span className="mb-1.5 block text-body font-medium text-primary">Business name</span>
             <input
               type="text"
               name="name"
@@ -167,7 +167,7 @@ export default async function AddBusinessPage({
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">Primary category</span>
+            <span className="mb-1.5 block text-body font-medium text-primary">Primary category</span>
             <select name="category_id" required defaultValue={submittedCategoryId ?? ""} className={inputClass}>
               <option value="" disabled>
                 Choose a category…
@@ -195,8 +195,8 @@ export default async function AddBusinessPage({
           />
 
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">
-              Website <span className="font-normal text-ink/40">(optional)</span>
+            <span className="mb-1.5 block text-body font-medium text-primary">
+              Website <span className="font-normal text-subtle">(optional)</span>
             </span>
             <input
               type="url"
@@ -207,8 +207,8 @@ export default async function AddBusinessPage({
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">
-              Instagram <span className="font-normal text-ink/40">(optional)</span>
+            <span className="mb-1.5 block text-body font-medium text-primary">
+              Instagram <span className="font-normal text-subtle">(optional)</span>
             </span>
             <input
               type="url"
@@ -254,8 +254,8 @@ export default async function AddBusinessPage({
             <>
               <input type="hidden" name="invite" value={invite} />
               <div className="rounded-2xl border border-findmi/30 bg-findmi-50 p-4">
-                <p className="text-sm font-bold text-findmi-700">Your Findmi Pro invite is ready.</p>
-                <p className="mt-1.5 text-sm text-findmi-700">
+                <p className="text-body font-bold text-accent">Your Findmi Pro invite is ready.</p>
+                <p className="mt-1.5 text-body text-accent">
                   First, add the business you want to use with Findmi below. We&rsquo;ll apply your complimentary Pro
                   access to it automatically once it&rsquo;s created. No payment required.
                 </p>
@@ -273,7 +273,7 @@ export default async function AddBusinessPage({
                   visitor arrived specifically to weigh the two — nothing
                   about defaultChecked/plan_choice/Stripe routing changed,
                   this is the label text only. */}
-              <span className="mb-1.5 block text-sm font-medium text-ink">
+              <span className="mb-1.5 block text-body font-medium text-primary">
                 {wantsPro ? "Choose your plan" : "Get started"}
               </span>
               {/* P0 Safe-to-Share Acquisition pass — the dominant/quiet
@@ -300,7 +300,7 @@ export default async function AddBusinessPage({
                   </>
                 )}
               </div>
-              <p className="mt-1.5 text-xs text-ink/40">
+              <p className="mt-1.5 text-metadata text-subtle">
                 Pro starts at $20/month, Managed Pro at $49/month — choose after your business is created.
               </p>
 
@@ -323,16 +323,16 @@ export default async function AddBusinessPage({
                   the primary Free/Pro choice above, not a third
                   competing option. */}
               <details className="group mt-3">
-                <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+                <summary className="cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 [&::-webkit-details-marker]:hidden">
                   Have a Pro Invite Code?
                 </summary>
                 <input
                   type="text"
                   name="invite"
                   placeholder="Enter Invite Code"
-                  className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+                  className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
                 />
-                <p className="mt-1.5 text-xs text-ink/40">
+                <p className="mt-1.5 text-metadata text-subtle">
                   A valid code applies complimentary Pro after your business is created. No payment required.
                 </p>
               </details>
@@ -351,7 +351,7 @@ export default async function AddBusinessPage({
               but still editable — the same field serves both the
               preserved-link case and manual entry. */}
           <details className="group mt-1" open={Boolean(ref)}>
-            <summary className="cursor-pointer text-xs font-semibold text-ink/50 underline underline-offset-2 [&::-webkit-details-marker]:hidden">
+            <summary className="cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 [&::-webkit-details-marker]:hidden">
               Have a Referral Code?
             </summary>
             <input
@@ -359,9 +359,9 @@ export default async function AddBusinessPage({
               name="ref"
               defaultValue={ref ?? ""}
               placeholder="Enter Referral Code"
-              className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
+              className="mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-input text-primary placeholder:text-subtle focus:border-ink/30 focus:outline-none"
             />
-            <p className="mt-1.5 text-xs text-ink/40">
+            <p className="mt-1.5 text-metadata text-subtle">
               A valid referral code may reduce the price of Findmi Pro if you upgrade.
             </p>
           </details>
@@ -374,7 +374,7 @@ export default async function AddBusinessPage({
               defaultChecked={Boolean(submittedAuthorized)}
               className="mt-0.5 h-4 w-4 shrink-0 accent-findmi"
             />
-            <span className="text-sm text-ink/70">
+            <span className="text-body text-secondary">
               I confirm that I am authorized to create and manage this business on Findmi.
             </span>
           </label>
@@ -383,7 +383,7 @@ export default async function AddBusinessPage({
             Create My Business
           </button>
           {!hasInvite && (
-            <p className="text-center text-xs text-ink/40">
+            <p className="text-center text-metadata text-subtle">
               Free plan requires no payment. Choosing a paid plan creates your business first, then takes you to
               choose Pro or Managed Pro, monthly or annual.
             </p>
@@ -414,11 +414,11 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
     return (
       <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-ink/70">Want more?</p>
+          <p className="text-body font-semibold text-secondary">Want more?</p>
           <input type="radio" name="plan_choice" value="pro" className="h-4 w-4 accent-findmi" />
         </div>
-        <p className="text-sm font-bold text-ink">Choose a paid plan after creation</p>
-        <p className="text-xs text-ink/60">
+        <p className="text-body font-bold text-primary">Choose a paid plan after creation</p>
+        <p className="text-metadata text-muted">
           Create your business first, then choose Pro or Managed Pro with monthly or annual billing.
         </p>
       </label>
@@ -427,17 +427,17 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
   return (
     <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Choose a paid plan after creation</p>
+        <p className="text-label font-bold uppercase text-accent">Choose a paid plan after creation</p>
         <input type="radio" name="plan_choice" value="pro" defaultChecked className="h-4 w-4 accent-findmi" />
       </div>
-      <p className="text-sm text-ink/60">
+      <p className="text-body text-muted">
         Create your business first, then choose Pro or Managed Pro with monthly or annual billing.
       </p>
 
       <div className="rounded-2xl bg-findmi-50 p-3">
-        <p className="text-sm font-bold text-ink">Analytics, or let Findmi maintain it for you</p>
-        <p className="mt-0.5 text-xs font-semibold text-ink/75">Pro: see what&rsquo;s working and grow it.</p>
-        <p className="mt-1 text-xs text-ink/60">Managed Pro: Findmi keeps your profile updated for you.</p>
+        <p className="text-body font-bold text-primary">Analytics, or let Findmi maintain it for you</p>
+        <p className="mt-0.5 text-metadata font-semibold text-secondary">Pro: see what&rsquo;s working and grow it.</p>
+        <p className="mt-1 text-metadata text-muted">Managed Pro: Findmi keeps your profile updated for you.</p>
       </div>
 
       {/* Free Tier Entitlement Reset V1 — the previous list here (Full
@@ -448,7 +448,7 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
           lib/entitlements.ts / PerformanceTab.tsx — plus Customer
           Inquiries, a separate, still-gated feature unaffected by this
           pass (see BusinessPublicView.tsx's own canInquire check). */}
-      <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
+      <ul className="flex flex-col gap-1.5 text-metadata text-muted">
         <PlanBullet>Performance analytics</PlanBullet>
         <PlanBullet>Discovery source &amp; QR attribution</PlanBullet>
         <PlanBullet>Follower insights</PlanBullet>
@@ -474,36 +474,36 @@ function FreePlanOption({ dominant }: { dominant: boolean }) {
     return (
       <label className="flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-black/10 bg-mist/40 p-4 transition has-[:checked]:border-findmi has-[:checked]:bg-findmi-50 has-[:checked]:ring-1 has-[:checked]:ring-findmi/40">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-ink/70">Prefer to start free?</p>
+          <p className="text-body font-semibold text-secondary">Prefer to start free?</p>
           <input type="radio" name="plan_choice" value="free" className="h-4 w-4 accent-findmi" />
         </div>
         <p className="flex items-baseline gap-1.5">
-          <span className="text-sm font-bold text-ink">Findmi Free</span>
-          <span className="text-sm text-ink/45">· $0 · No credit card required</span>
+          <span className="text-body font-bold text-primary">Findmi Free</span>
+          <span className="text-body text-subtle">· $0 · No credit card required</span>
         </p>
         {/* Free Tier Entitlement Reset V1 — was "...show your next 3
             appearances." Free's public profile shows the complete
             schedule now, not just 3. */}
-        <p className="text-xs text-ink/60">Create your Findmi page and show your complete upcoming schedule.</p>
-        <p className="mt-1 text-xs text-ink/45">Upgrade anytime for Analytics and more.</p>
+        <p className="text-metadata text-muted">Create your Findmi page and show your complete upcoming schedule.</p>
+        <p className="mt-1 text-metadata text-subtle">Upgrade anytime for Analytics and more.</p>
       </label>
     );
   }
   return (
     <label className="relative flex cursor-pointer flex-col gap-2.5 rounded-3xl border border-findmi/40 bg-white p-4 shadow-[0_4px_20px_rgba(20,176,188,0.12)] transition has-[:checked]:ring-2 has-[:checked]:ring-findmi sm:p-5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Get Started Free</p>
+        <p className="text-label font-bold uppercase text-accent">Get Started Free</p>
         <input type="radio" name="plan_choice" value="free" defaultChecked className="h-4 w-4 accent-findmi" />
       </div>
       <p className="flex items-baseline gap-1.5">
-        <span className="font-display text-2xl font-bold tracking-tight text-ink">$0</span>
-        <span className="text-xs font-medium text-ink/45">No credit card required</span>
+        <span className="font-display text-display font-bold text-primary">$0</span>
+        <span className="text-metadata font-medium text-subtle">No credit card required</span>
       </p>
 
       <div className="rounded-2xl bg-findmi-50 p-3">
-        <p className="text-sm font-bold text-ink">Your Findmi page, live today</p>
-        <p className="mt-0.5 text-xs font-semibold text-ink/75">Show customers who you are and where you&rsquo;ll be next.</p>
-        <p className="mt-1 text-xs text-ink/60">Create your business page now. Upgrade anytime, no pressure.</p>
+        <p className="text-body font-bold text-primary">Your Findmi page, live today</p>
+        <p className="mt-0.5 text-metadata font-semibold text-secondary">Show customers who you are and where you&rsquo;ll be next.</p>
+        <p className="mt-1 text-metadata text-muted">Create your business page now. Upgrade anytime, no pressure.</p>
       </div>
 
       {/* Free Tier Entitlement Reset V1 — was "Next 3 upcoming
@@ -511,7 +511,7 @@ function FreePlanOption({ dominant }: { dominant: boolean }) {
           Free capabilities now. Products &amp; Gallery and Contact &amp;
           Social added — also genuinely Free now, previously omitted here
           entirely. */}
-      <ul className="flex flex-col gap-1.5 text-xs text-ink/55">
+      <ul className="flex flex-col gap-1.5 text-metadata text-muted">
         <PlanBullet>Business profile, products &amp; gallery</PlanBullet>
         <PlanBullet>Contact info &amp; social links</PlanBullet>
         <PlanBullet>Complete upcoming appearance schedule</PlanBullet>

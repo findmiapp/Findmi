@@ -19,12 +19,12 @@ export default function OwnerHeader({ isAdmin }: { isAdmin: boolean }) {
           {isAdmin && (
             <Link
               href="/admin"
-              className="rounded-md border border-black/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-ink/55 transition hover:border-black/20 hover:text-ink"
+              className="rounded-md border border-black/10 px-2.5 py-1 text-label font-bold text-muted transition hover:border-black/20 hover:text-ink"
             >
               Admin
             </Link>
           )}
-          <Link href="/find" className="text-[12px] font-semibold text-ink/45 transition hover:text-ink">
+          <Link href="/find" className="text-metadata font-semibold text-muted transition hover:text-ink">
             Discover
           </Link>
         </div>

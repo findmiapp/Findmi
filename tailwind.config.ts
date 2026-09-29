@@ -133,8 +133,17 @@ const config: Config = {
       textColor: {
         primary: "#111111", // = text-ink
         secondary: "rgb(17 17 17 / 0.7)", // = text-ink/70
-        muted: "rgb(17 17 17 / 0.5)", // = text-ink/50
-        subtle: "rgb(17 17 17 / 0.35)", // = text-ink/35
+        // Account Rollout pass — muted/subtle darkened slightly from their
+        // Performance-proof values (ink/50, ink/35) after mobile visual
+        // review found some muted/subtle text (click-rate lines, chart
+        // dates, helper captions, appearance metadata) reading as too
+        // pale on a real phone. This is the one deliberate, smallest-
+        // necessary token adjustment: the hierarchy (primary > secondary >
+        // muted > subtle) and every existing `text-muted`/`text-subtle`
+        // call site (Performance included) are unchanged in intent — only
+        // the two lightest steps got a real but modest readability bump.
+        muted: "rgb(17 17 17 / 0.58)", // was 0.5 = text-ink/50
+        subtle: "rgb(17 17 17 / 0.45)", // was 0.35 = text-ink/35
         accent: "#0C6F77", // = text-findmi-700
       },
       borderRadius: {
