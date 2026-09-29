@@ -127,25 +127,22 @@ export default function AddToCalendarButton({
   });
   const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
 
-  // Calendar Functional Repair pass, round 3 — the ICS button below (a
-  // real <button type="button"> whose onClick performs the actual browser
-  // action directly) was never reported broken; only the Google Calendar
-  // <a href target="_blank" rel="noreferrer"> was. Same dropdown, same
-  // z-index/stacking context, same nested-inside-a-fixed-modal placement
-  // either way — the one real difference is the element type and its
-  // reliance on the browser's own default anchor-navigation instead of an
-  // explicit, synchronous action inside a real click handler. That's the
-  // actual root cause: relying on native <a target="_blank"> default
-  // navigation from deep inside nested position:fixed layers (this
-  // dropdown, itself inside AppearanceQuickView/EventOccurrenceQuickView's
-  // own fixed overlay when used there) isn't reliable on real Android
-  // Chrome. Matching the ICS button's already-working shape exactly: a
-  // real button, opening the already-built gcalUrl explicitly via
-  // window.open (a direct, synchronous call inside the tap's own click
-  // handler — a genuine user gesture, so never popup-blocked), then
-  // closing the menu — never a passive href/default-navigation.
+  // Calendar Functional Repair pass, round 4 — rounds 1-3 (anchor
+  // navigation, blur-delay, outside-pointerdown, then an explicit button +
+  // window.open) all failed on real Android Chrome AND real iOS Safari.
+  // Diagnostic pass traced the remaining common surface to window.open
+  // itself: opening a NEW browsing context (a popup/tab) is exactly what
+  // both engines' popup heuristics scrutinize, and it's the one thing this
+  // path did differently from the already-working .ics button (which never
+  // opens a new context at all — it triggers a same-tab download). The
+  // fix removes new-context navigation entirely: same-tab, top-level
+  // navigation via window.location.assign, called directly and
+  // synchronously inside the tap's own click handler, using the
+  // already-built gcalUrl. Does not depend on setOpen(false) running
+  // first or at all — the navigation itself doesn't need the menu closed
+  // to happen.
   function openGoogleCalendar() {
-    window.open(gcalUrl, "_blank", "noopener,noreferrer");
+    window.location.assign(gcalUrl);
     setOpen(false);
   }
 
