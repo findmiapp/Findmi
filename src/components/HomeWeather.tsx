@@ -1,14 +1,17 @@
 import type { WeatherCondition, WeatherContextData } from "@/lib/weather";
 
-/** Compact single-row local context module between Hero and Search
- * (Homepage Local Weather Context V1). Understated on purpose: thin
- * bottom border, no card, no gradient, no illustration — small icon +
- * temperature + city on one side, date + local time on the other, both
- * `whitespace-nowrap` internally but free to wrap onto their own line at
- * narrow widths via the flex container. Renders nothing if weather is
- * fully unavailable (see lib/weather.ts's fail-soft contract) or if the
- * founder has turned the module off — never an error, never a blank gap
- * with a border. */
+/** Compact single-row local context module, above the Hero (Homepage
+ * Local Weather Context V1; Above-the-Fold Polish pass inverted it to a
+ * dark ink strip). Understated on purpose: no card, no gradient, no
+ * illustration — small icon + temperature + city on one side, date +
+ * local time on the other, both `whitespace-nowrap` internally but free
+ * to wrap onto their own line at narrow widths via the flex container.
+ * The dark treatment (ink background, white/soft-white text, aqua icon
+ * accent) reads as a deliberate live/context strip distinct from the
+ * white page beneath it — same FindMi Aqua/ink pairing used elsewhere,
+ * not a new palette. Renders nothing if weather is fully unavailable
+ * (see lib/weather.ts's fail-soft contract) or if the founder has turned
+ * the module off — never an error, never a blank gap. */
 export default function HomeWeather({ context }: { context: WeatherContextData | null }) {
   if (!context) return null;
   const { cityLabel, timeZone, conditions } = context;
@@ -35,19 +38,19 @@ export default function HomeWeather({ context }: { context: WeatherContextData |
   }
 
   return (
-    <section className="border-b border-black/5 bg-white px-4 py-2.5 sm:px-6">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink/60 sm:text-sm">
+    <section className="bg-ink px-4 py-2 sm:px-6">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/65 sm:text-sm">
         {conditions ? (
-          <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-ink">
-            <WeatherGlyph condition={conditions.condition} className="h-4 w-4 shrink-0 text-findmi-600" />
-            {conditions.tempF}°<span className="font-normal text-ink/35">·</span>
+          <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-white">
+            <WeatherGlyph condition={conditions.condition} className="h-4 w-4 shrink-0 text-findmi" />
+            {conditions.tempF}°<span className="font-normal text-white/30">·</span>
             {cityLabel}
           </span>
         ) : (
-          <span className="whitespace-nowrap font-semibold text-ink">{cityLabel}</span>
+          <span className="whitespace-nowrap font-semibold text-white">{cityLabel}</span>
         )}
-        <span className="whitespace-nowrap">
-          {datePart} <span className="text-ink/35">·</span> {timePart}
+        <span className="whitespace-nowrap text-white/65">
+          {datePart} <span className="text-white/30">·</span> {timePart}
         </span>
       </div>
     </section>

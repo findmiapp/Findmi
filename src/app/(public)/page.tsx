@@ -161,10 +161,13 @@ export default async function HomePage({
           page never hardcodes it. */}
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Business Acquisition doorway — unchanged content/behavior,
-          directly beneath the hero, before the search entry. */}
+      {/* Business Acquisition doorway — content/behavior unchanged; a
+          Above-the-Fold Polish pass tightened this to a compact utility
+          line (py-1.5, was pb-1/pt-3) so it reads as one quiet row
+          between the hero and Search rather than its own spaced-out
+          section. */}
       {businessDoorwaySec.visible && (
-        <div className="mx-auto max-w-6xl px-4 pb-1 pt-3 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 py-1.5 sm:px-6">
           <Link
             href={businessDoorwaySec.ctaUrl ?? "/join"}
             className="inline-flex flex-wrap items-baseline gap-1 text-sm text-ink/50 transition hover:text-ink/70"
@@ -177,17 +180,20 @@ export default async function HomePage({
         </div>
       )}
 
-      {/* Search — unchanged: the existing homepage search field, same
-          /api/homepage-search route. */}
-      <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
+      {/* Search — behavior/route unchanged; Above-the-Fold Polish pass
+          tightened this wrapper's top padding (pt-5→pt-3) as part of the
+          same combined hero→content spacing correction. */}
+      <div className="mx-auto max-w-6xl px-4 pt-3 sm:px-6">
         <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
       </div>
 
       {/* Homepage Bulletin — a single, admin-managed editorial
           announcement (see /admin/bulletins), directly above "What's
-          Coming Up." Renders nothing (no gap) when none is published. */}
+          Coming Up." Renders nothing (no gap) when none is published.
+          Above-the-Fold Polish pass tightened this wrapper's top padding
+          (pt-5→pt-3) — same combined spacing correction as Search above. */}
       {bulletin && (
-        <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 pt-3 sm:px-6">
           <HomepageBulletin bulletin={bulletin} />
         </div>
       )}
@@ -201,8 +207,11 @@ export default async function HomePage({
           uses (Up Next/Today/This Week/This Weekend/All), as ?when= links
           on THIS SAME page (server-rendered, no client fetch, no duplicate
           filtering system) rather than the previous two ad hoc Today/This
-          Weekend links out to /discover. */}
-      <div className="mx-auto max-w-6xl pt-6">
+          Weekend links out to /discover. Above-the-Fold Polish pass
+          tightened pt-6→pt-4 (this section only — no other homepage
+          section spacing changed) so the Bulletin visibly bridges into
+          What's Happening instead of leaving what read as an empty gap. */}
+      <div className="mx-auto max-w-6xl pt-4">
         <div className="px-4 sm:px-6">
           <div className="flex items-end justify-between gap-4">
             <h2 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">

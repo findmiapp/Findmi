@@ -126,8 +126,12 @@ export default function HomeHero({
             padding and the headline-to-description gap below were tightened,
             per explicit instruction — the mobile hero was taking excessive
             vertical space before a visitor reached search, not that its
-            content or composition were wrong. */}
-        <div className="px-6 pb-2 pt-4 sm:hidden">
+            content or composition were wrong.
+            Above-the-Fold Polish pass — pb-2→pb-1 (8px→4px): only this
+            outer bottom padding moved again, to shorten the accumulated
+            gap into the Business CTA line below; concept/imagery/copy
+            untouched. */}
+        <div className="px-6 pb-1 pt-4 sm:hidden">
           <div>
             <h1 className="max-w-[90%] font-display text-[clamp(1.7rem,8.2vw,2rem)] font-bold leading-[0.97] tracking-tight text-ink">
               {headingContent}

@@ -110,7 +110,7 @@ export default function SearchBar({
     <div ref={containerRef} className="relative w-full">
       <form
         onSubmit={handleSubmit}
-        className="flex w-full items-center gap-2 rounded-full border border-black/10 bg-white py-1.5 pl-4 pr-1.5 shadow-sm transition focus-within:border-ink/25"
+        className="flex w-full items-center gap-2 rounded-full border border-black/10 bg-white py-1 pl-4 pr-1 shadow-sm transition focus-within:border-ink/25"
       >
         <input
           value={q}
@@ -133,9 +133,9 @@ export default function SearchBar({
         <button
           type="submit"
           aria-label="Search"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-findmi text-white transition hover:bg-findmi-600"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi text-white transition hover:bg-findmi-600"
         >
-          <SearchGlyph className="h-5 w-5" />
+          <SearchGlyph className="h-[18px] w-[18px]" />
         </button>
       </form>
 
