@@ -1085,7 +1085,11 @@ export async function getProductsForBusiness(businessId: string): Promise<Produc
 }
 
 export interface AppearanceWithEventSlug extends Appearance {
-  event: { slug: string } | null;
+  // Appearance Quick View pass — `name` added (optional: getPastAppearancesForBusiness's
+  // own query below still only selects `slug`, so its rows never populate this) for
+  // the Quick View modal's "Part of [Event Name]" relationship, alongside the
+  // slug every existing caller already relies on.
+  event: { slug: string; name?: string } | null;
   // Public Graph Integrity Pass 1 — the linked first-class Location, when
   // appearance.location_id points at one. Bounded FK join on the same
   // appearances query (no second query, no N+1) — null whenever the
@@ -1198,7 +1202,7 @@ export async function getUpcomingAppearancesForBusiness(
   // distinct appearances exist just past that raw cutoff.
   const { data } = await supabase
     .from("appearances")
-    .select("*, event:events(slug), location:locations(id, name, slug)")
+    .select("*, event:events(slug, name), location:locations(id, name, slug)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .gt("end_at", nowIso)
@@ -1206,9 +1210,10 @@ export async function getUpcomingAppearancesForBusiness(
     .limit(limit * 2);
 
   type JoinedLocation = { id: string; name: string; slug: string };
+  type JoinedEvent = { slug: string; name: string };
   type RawRow = Appearance &
     DedupableAppearance & {
-      event: { slug: string } | { slug: string }[] | null;
+      event: JoinedEvent | JoinedEvent[] | null;
       location: JoinedLocation | JoinedLocation[] | null;
     };
   const rows = ((data ?? []) as never[]).map((row: unknown) => {

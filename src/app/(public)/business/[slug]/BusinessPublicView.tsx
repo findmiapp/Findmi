@@ -3,7 +3,7 @@ import SupabaseImage from "@/components/SupabaseImage";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import { toJsonLdScript } from "@/lib/jsonLd";
-import AppearanceCard from "@/components/AppearanceCard";
+import AppearanceCarousel from "@/components/AppearanceCarousel";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShopSection from "@/components/BusinessShopSection";
 import Bulletin from "@/components/Bulletin";
@@ -745,42 +745,19 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                   is simply the full schedule the module's first entry is
                   drawn from. */}
               <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Here</p>
-              <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Upcoming</h2>
-              <div className="mt-3 flex flex-col gap-2">
-                {appearances.slice(0, 3).map((a) => (
-                  <AppearanceCard
-                    key={a.id}
-                    appearance={a}
-                    eventSlug={a.event?.slug}
-                    analyticsContext={{ pageType: "business" }}
-                  />
-                ))}
-                {appearances.length > 3 && (
-                  // Business Profile V2 — same zero-JS <details> disclosure
-                  // (native, keyboard-accessible, no client component
-                  // needed for a business with 15-20+ Appearances), but
-                  // with the standardized stem-less chevron (matching
-                  // AppearanceCard/BusinessLogoCard/ProductCard elsewhere)
-                  // that actually rotates open/closed instead of vanishing,
-                  // and a count so "how many more" is clear before opening.
-                  <details className="group">
-                    <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 rounded-xl border border-black/10 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/30 [&::-webkit-details-marker]:hidden">
-                      <span className="group-open:hidden">Show {appearances.length - 3} More</span>
-                      <span className="hidden group-open:inline">Show Less</span>
-                      <ChevronGlyph className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-open:rotate-90" />
-                    </summary>
-                    <div className="mt-2 flex flex-col gap-2">
-                      {appearances.slice(3).map((a) => (
-                        <AppearanceCard
-                          key={a.id}
-                          appearance={a}
-                          eventSlug={a.event?.slug}
-                          analyticsContext={{ pageType: "business" }}
-                        />
-                      ))}
-                    </div>
-                  </details>
-                )}
+              <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">Upcoming Appearances</h2>
+              <div className="mt-3">
+                <AppearanceCarousel
+                  appearances={appearances}
+                  business={{
+                    id: business.id,
+                    name: business.name,
+                    slug: business.slug,
+                    logo_url: business.logo_url,
+                    shareUrl: canonicalUrl,
+                  }}
+                  analyticsContext={{ pageType: "business" }}
+                />
               </div>
             </section>
           )}
@@ -1152,14 +1129,6 @@ function MailGlyph({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" strokeWidth="1.6" />
       <path d="M4.5 7l7.5 6 7.5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ChevronGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
