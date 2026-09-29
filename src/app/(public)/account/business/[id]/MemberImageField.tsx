@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { uploadMemberBusinessImage } from "../actions";
 
 /** Member-facing counterpart to admin's ImageField.tsx — same preview +
@@ -28,21 +28,41 @@ import { uploadMemberBusinessImage } from "../actions";
  * transition, React surfaces that to the nearest Error Boundary, and
  * this app has no error.tsx anywhere, so it took down the whole page
  * with Next.js's generic production crash screen instead of just
- * failing this one upload. */
+ * failing this one upload.
+ *
+ * Launch Stability pass — Save-During-Upload race fix. The parent
+ * Appearance form has no way to know an upload is still in flight (the
+ * hidden `name` input only updates once `setUrl` runs, after the upload
+ * resolves), so clicking Save mid-upload silently submitted whatever
+ * flyer_image_url value existed BEFORE this selection — not an error,
+ * just the wrong (stale) value, with nothing to show for it. `onPendingChange`
+ * lets the parent form disable Save for exactly as long as `isPending` is
+ * true, closing that window without touching the upload/storage path
+ * itself. */
 export default function MemberImageField({
   businessId,
   label,
   name,
   defaultValue,
+  onPendingChange,
 }: {
   businessId: string;
   label: string;
   name: string;
   defaultValue: string | null;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const [url, setUrl] = useState(defaultValue ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    onPendingChange?.(isPending);
+    // onPendingChange is a setState function passed fresh from the parent
+    // on every render — depending on it too would re-fire this effect
+    // every render for no reason; only a real isPending transition matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPending]);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;

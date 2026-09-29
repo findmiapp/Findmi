@@ -21,6 +21,7 @@ import MemberEventGalleryField from "./MemberEventGalleryField";
 import BulkDatesComposer from "./BulkDatesComposer";
 import EventScheduleList, { type ScheduleOccurrence } from "./EventScheduleList";
 import AddParticipantSearch from "./AddParticipantSearch";
+import RemoveParticipantButton from "./RemoveParticipantButton";
 import {
   removeParticipatingBusiness,
   submitEventForReview,
@@ -914,11 +915,11 @@ export default async function ManageEventPage({
                               </button>
                             </form>
                           )}
-                          <form action={removeParticipatingBusiness.bind(null, id, p.business_id)}>
-                            <button type="submit" className="text-metadata font-semibold text-red-600 hover:text-red-700">
-                              Remove
-                            </button>
-                          </form>
+                          <RemoveParticipantButton
+                            action={removeParticipatingBusiness.bind(null, id, p.business_id)}
+                            businessName={p.business_name}
+                            eventName={event.name}
+                          />
                         </div>
                       </div>
                       {/* Multi-Date Business Participation Pass 2B — scope

@@ -277,7 +277,34 @@ export default function EventScheduleList({ eventId, occurrences }: { eventId: s
                     <button type="button" onClick={() => setEditingId(occ.id)} className="text-xs font-semibold text-ink/50 hover:text-ink">
                       Edit
                     </button>
-                    <form action={removeMemberEventDate.bind(null, eventId, occ.id)}>
+                    <form
+                      action={removeMemberEventDate.bind(null, eventId, occ.id)}
+                      onSubmit={(e) => {
+                        // Launch Stability pass — Destructive Action Safety
+                        // (P0). This is a hard delete of the occurrence row
+                        // (removeMemberEventDate), and it cancels every
+                        // vendor's official-participation Appearance for
+                        // this date first (cancelOfficialOccurrenceAppearances)
+                        // — the confirmation names both consequences, not a
+                        // vague "are you sure?".
+                        const when = [occ.dateLabel, occ.timeLabel].filter(Boolean).join(" · ");
+                        const where = occ.location_name ?? occ.venue_name;
+                        const message = [
+                          "Remove this date?",
+                          "",
+                          when,
+                          where ?? null,
+                          "",
+                          "This permanently deletes this date from the Event schedule.",
+                          "Any businesses confirmed to participate on this date will have their appearance removed too.",
+                        ]
+                          .filter((line) => line !== null)
+                          .join("\n");
+                        if (!window.confirm(message)) {
+                          e.preventDefault();
+                        }
+                      }}
+                    >
                       <button type="submit" className="text-xs font-semibold text-red-600 hover:text-red-700">
                         Remove
                       </button>

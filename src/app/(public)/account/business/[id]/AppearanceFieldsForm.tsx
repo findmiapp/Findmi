@@ -49,26 +49,38 @@ export default function AppearanceFieldsForm({
   submitLabel: string;
 }) {
   const [timeError, setTimeError] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
   const venueNameRef = useRef<HTMLInputElement>(null);
+  const addressRef = useRef<HTMLInputElement>(null);
   const cityRef = useRef<HTMLInputElement>(null);
   const stateRef = useRef<HTMLInputElement>(null);
 
   // Picking an existing Findmi Location fills the plain text fields below
-  // from its own real name/city/state — a convenience snapshot, never the
-  // source of truth once location_id is set (see getUpcomingAtLocation's
-  // FK-first matching). Address isn't returned by the account search
-  // endpoint (only name/city/state), so it's left for the visitor to add
-  // if they want it; the Location link itself is what makes this
-  // appearance findable from that Location's own page either way.
+  // from its own real name/city/state/address — a convenience snapshot,
+  // never the source of truth once location_id is set (see
+  // getUpcomingAtLocation's FK-first matching). Launch Stability pass —
+  // `address` IS returned by the account search endpoint (it was already
+  // there in AccountSearchResult; the field just wasn't being read here),
+  // so it's now hydrated the same as venue_name/city/state instead of
+  // requiring the visitor to retype a canonical Location's own address.
   function handleLocationSelect(location: AccountSearchResult | null) {
     if (!location) return;
     if (venueNameRef.current) venueNameRef.current.value = location.label;
+    if (addressRef.current && location.address) addressRef.current.value = location.address;
     const [city, state] = (location.sublabel ?? "").split(",").map((s) => s.trim());
     if (cityRef.current && city) cityRef.current.value = city;
     if (stateRef.current && state) stateRef.current.value = state;
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    // Launch Stability pass — Save-During-Upload race fix. MemberImageField
+    // reports its own upload-pending state up via onPendingChange; blocking
+    // submit here (not just disabling the button) also covers Enter-to-
+    // submit and any other non-click submission path.
+    if (imageUploading) {
+      e.preventDefault();
+      return;
+    }
     const form = e.currentTarget;
     const date = (form.elements.namedItem("date") as HTMLInputElement | null)?.value;
     const startTime = (form.elements.namedItem("start_time") as HTMLInputElement | null)?.value;
@@ -139,7 +151,14 @@ export default function AppearanceFieldsForm({
           placeholder="Venue Name"
           className={inputClass}
         />
-        <input type="text" name="address" defaultValue={defaultValues.address} placeholder="Address" className={inputClass} />
+        <input
+          ref={addressRef}
+          type="text"
+          name="address"
+          defaultValue={defaultValues.address}
+          placeholder="Address"
+          className={inputClass}
+        />
         <div className="grid grid-cols-2 gap-2">
           <input ref={cityRef} type="text" name="city" defaultValue={defaultValues.city} placeholder="City" className={inputClass} />
           <input ref={stateRef} type="text" name="state" defaultValue={defaultValues.state} placeholder="State" className={inputClass} />
@@ -157,10 +176,13 @@ export default function AppearanceFieldsForm({
         label="Photo (optional)"
         name="flyer_image_url"
         defaultValue={defaultValues.flyer_image_url}
+        onPendingChange={setImageUploading}
       />
+      {imageUploading && <p className="text-xs text-ink/50">Waiting for your photo to finish uploading…</p>}
       <button
         type="submit"
-        className="mt-1 w-fit rounded-2xl bg-findmi px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        disabled={imageUploading}
+        className="mt-1 w-fit rounded-2xl bg-findmi px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {submitLabel}
       </button>

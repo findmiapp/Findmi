@@ -7,10 +7,26 @@ export interface EventPickerOption {
   name: string;
   dateLabel?: string;
   venueLabel?: string;
+  /** Launch Stability pass — Participation/Re-Application Safety (P1).
+   * This business's own event_businesses/event_occurrence_businesses
+   * status for this option, if any row exists yet. null means "never
+   * applied/invited" — an ordinary, unremarkable option. A non-null status
+   * (especially 'declined') must never render identically to a fresh,
+   * never-touched option, and re-applying to a 'declined' occurrence must
+   * never happen silently — see the "Selected" state below. */
+  status?: "invited" | "applied" | "pending" | "approved" | "declined" | null;
 }
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
+
+const STATUS_LABEL: Record<NonNullable<EventPickerOption["status"]>, string> = {
+  invited: "Invited",
+  applied: "Application pending",
+  pending: "Application pending",
+  approved: "Approved",
+  declined: "Previously declined",
+};
 
 /**
  * Owner Action UX pass — replaces the plain native <select> (which
@@ -50,15 +66,23 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
   }, [query, options]);
 
   if (selected) {
+    const isDeclined = selected.status === "declined";
     return (
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-findmi/25 bg-findmi-50 px-3.5 py-3">
+        <div
+          className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 ${
+            isDeclined ? "border-amber-300 bg-amber-50" : "border-findmi/25 bg-findmi-50"
+          }`}
+        >
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">Selected</p>
+            <p className={`text-[10px] font-bold uppercase tracking-wide ${isDeclined ? "text-amber-800" : "text-findmi-700"}`}>
+              Selected
+            </p>
             <p className="truncate text-sm font-bold text-ink">{selected.name}</p>
             {(selected.dateLabel || selected.venueLabel) && (
               <p className="truncate text-xs text-ink/60">{[selected.dateLabel, selected.venueLabel].filter(Boolean).join(" · ")}</p>
             )}
+            {selected.status && <p className="mt-0.5 text-xs font-semibold text-ink/60">{STATUS_LABEL[selected.status]}</p>}
           </div>
           <button
             type="button"
@@ -69,6 +93,20 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
           </button>
           <input type="hidden" name="target" value={selected.value} />
         </div>
+
+        {/* Launch Stability pass — a real decline must never be silently
+            reset. addAppearanceFromEvent (../actions.ts) intentionally
+            resets a 'declined' row back to 'applied' when re-applied to
+            (existing, tested behavior — not changed here), so the owner
+            must see that consequence stated plainly before Apply can fire,
+            not discover it after the fact. */}
+        {isDeclined && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            You previously declined this date. Applying again will change your status back to{" "}
+            <span className="font-semibold">Application pending</span> and re-notify the organizer — it will not be
+            automatically approved.
+          </p>
+        )}
 
         <label className="block">
           <span className="mb-1 block text-xs font-medium text-ink/60">
@@ -114,7 +152,18 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
               }}
               className="flex w-full flex-col items-start gap-0.5 py-2.5 text-left transition hover:bg-black/[0.02]"
             >
-              <span className="text-sm font-semibold text-ink">{o.name}</span>
+              <span className="flex w-full items-center gap-2">
+                <span className="text-sm font-semibold text-ink">{o.name}</span>
+                {o.status && (
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                      o.status === "declined" ? "bg-amber-100 text-amber-800" : "bg-black/[0.06] text-ink/60"
+                    }`}
+                  >
+                    {STATUS_LABEL[o.status]}
+                  </span>
+                )}
+              </span>
               {(o.dateLabel || o.venueLabel) && (
                 <span className="text-xs text-ink/50">{[o.dateLabel, o.venueLabel].filter(Boolean).join(" · ")}</span>
               )}

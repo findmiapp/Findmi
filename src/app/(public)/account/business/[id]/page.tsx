@@ -54,6 +54,7 @@ import MemberGalleryField from "./MemberGalleryField";
 import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
 import EventSearchPicker from "./EventSearchPicker";
+import RemoveAppearanceButton from "./RemoveAppearanceButton";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
 import {
   formatAppearanceDateRange,
@@ -98,6 +99,33 @@ const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
   approved: "Approved",
   declined: "Declined",
 };
+
+/** Launch Stability pass — QR Appearance Label Disambiguation (P2). Bare
+ * a.title alone (the previous label at every QR-picker call site below)
+ * renders every recurring appearance — e.g. several "A Cup of Love" dates
+ * at the same or different venues — as identical, indistinguishable
+ * <option> text, unusable for national/recurring activations (see the QR
+ * audit). Every field read here is already fetched by the same
+ * appearances query every caller already reads from — presentation-only,
+ * no new query. Date is always included (mandatory). Venue/city is
+ * appended only while the whole label stays reasonably short for a native
+ * <select>, which can't wrap or truncate its own option text — falls back
+ * to "Title — Date · City" (dropping venue name/state) once the fuller
+ * form would run long. */
+function buildAppearanceQrLabel(a: {
+  title: string;
+  start_at: string;
+  venue_name: string | null;
+  city: string | null;
+  state: string | null;
+}): string {
+  const date = formatDateShort(a.start_at);
+  const full = [a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+  const withFull = `${a.title} — ${date}${full ? ` · ${full}` : ""}`;
+  if (withFull.length <= 60) return withFull;
+  const short = a.city ?? a.venue_name;
+  return `${a.title} — ${date}${short ? ` · ${short}` : ""}`;
+}
 
 export const metadata: Metadata = {
   title: "Manage Business",
@@ -658,6 +686,12 @@ export default async function ManageBusinessPage({
     flyer_image_url: string | null;
     event_id: string | null;
     event_occurrence_id: string | null;
+    // Launch Stability pass — needed so the Remove confirmation can
+    // correctly warn only when removing this appearance would actually
+    // trigger reverseSyncEventParticipation's roster withdrawal (source ===
+    // "official_participation" AND event_id set — see that function's own
+    // scoping rules in lib/appearance-event-sync.ts).
+    source: string | null;
     participationStatus: EventParticipationStatus | null;
     // Location Connections pass — the real Findmi Location this
     // standalone appearance is linked to, if any (embedded via the FK for
@@ -669,7 +703,13 @@ export default async function ManageBusinessPage({
   // (rather than one pre-joined label string) so the searchable Event
   // picker (EventSearchPicker.tsx) can filter/display each independently,
   // per that pass's own "Event Name / Date/time / Venue" requirement.
-  let requestOptions: { value: string; name: string; dateLabel?: string; venueLabel?: string }[] = [];
+  let requestOptions: {
+    value: string;
+    name: string;
+    dateLabel?: string;
+    venueLabel?: string;
+    status: EventParticipationStatus | null;
+  }[] = [];
   // Where I'll Be Schedule Scale Bound pass — see below.
   let scheduleHasMore = false;
   const SCHEDULE_PAGE_SIZE = 25;
@@ -729,7 +769,7 @@ export default async function ManageBusinessPage({
       admin
         .from("appearances")
         .select(
-          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, location:locations(id, name, city)"
+          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, source, location:locations(id, name, city)"
         )
         .eq("business_id", id)
         .neq("status", "canceled")
@@ -801,6 +841,13 @@ export default async function ManageBusinessPage({
             name: ev.name,
             dateLabel: `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeInZone(occ.start_at, occ.timezone)}`,
             venueLabel,
+            // Launch Stability pass — this business's own participation
+            // status for this exact occurrence, if any exists yet (from the
+            // same event_occurrence_businesses read already used above for
+            // the schedule list's badges). A prior 'declined' status must
+            // be visible here, not indistinguishable from a fresh option —
+            // see EventSearchPicker's own handling.
+            status: statusByOccurrence.get(occ.id) ?? null,
           });
         }
       } else {
@@ -811,6 +858,7 @@ export default async function ManageBusinessPage({
           name: ev.name,
           dateLabel: `${formatDateShort(ev.start_at)} · ${formatTime(ev.start_at)}`,
           venueLabel,
+          status: statusByEvent.get(ev.id) ?? null,
         });
       }
     }
@@ -1165,7 +1213,7 @@ export default async function ManageBusinessPage({
   const overviewQrCentralOptions = {
     businessId: id,
     businessName: business.name,
-    appearances: appearances.map((a) => ({ id: a.id, name: a.title })),
+    appearances: appearances.map((a) => ({ id: a.id, name: buildAppearanceQrLabel(a) })),
     products: products.map((p) => ({ id: p.id, name: p.name })),
     events: qrEligibleEvents,
     locations: qrEligibleLocations,
@@ -1499,7 +1547,7 @@ export default async function ManageBusinessPage({
               businessName={business.name}
               businessSlug={business.slug ?? null}
               followerSummary={followerSummary}
-              qrEligibleAppearances={appearances.map((a) => ({ id: a.id, name: a.title }))}
+              qrEligibleAppearances={appearances.map((a) => ({ id: a.id, name: buildAppearanceQrLabel(a) }))}
               qrEligibleProducts={products.map((p) => ({ id: p.id, name: p.name }))}
               qrEligibleEvents={qrEligibleEvents}
               qrEligibleLocations={qrEligibleLocations}
@@ -1540,7 +1588,7 @@ export default async function ManageBusinessPage({
               centralOptions={{
                 businessId: id,
                 businessName: business.name,
-                appearances: appearances.map((a) => ({ id: a.id, name: a.title })),
+                appearances: appearances.map((a) => ({ id: a.id, name: buildAppearanceQrLabel(a) })),
                 products: products.map((p) => ({ id: p.id, name: p.name })),
                 events: qrEligibleEvents,
                 locations: qrEligibleLocations,
@@ -2209,14 +2257,13 @@ export default async function ManageBusinessPage({
                             defaultValues={editDefaultValues}
                             submitLabel="Save"
                           />
-                          <form action={removeOwnerAppearance.bind(null, id, a.id)} className="mt-3">
-                            <button
-                              type="submit"
-                              className="text-metadata font-medium text-red-700/70 transition hover:text-red-700 hover:underline"
-                            >
-                              Remove
-                            </button>
-                          </form>
+                          <RemoveAppearanceButton
+                            action={removeOwnerAppearance.bind(null, id, a.id)}
+                            title={a.title}
+                            dateLabel={formatDateShort(a.start_at)}
+                            venueLabel={locationLine || null}
+                            isOfficialParticipation={a.source === "official_participation" && Boolean(a.event_id)}
+                          />
                           {/* QR Campaigns V1 — contextual creation for this
                               Appearance, Free-tier reachable. Existing
                               campaigns stay listed AND the creator stays
