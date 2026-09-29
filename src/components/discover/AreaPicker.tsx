@@ -76,12 +76,21 @@ export default function AreaPicker({
   // empty (RequestAreaPanel already covers the empty-search case below).
   const [forceShowRequest, setForceShowRequest] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    inputRef.current?.focus();
+    // Mobile Keyboard Correction pass — this used to focus the search
+    // input on open, which immediately raised the mobile keyboard and
+    // hid most of the Area list behind it before a visitor could even
+    // see their choices. Initial focus goes to Close instead (a real,
+    // non-text control, satisfying the same "focus moves into the
+    // dialog on open" accessibility expectation) — the input only gets
+    // focus, and the keyboard only opens, when someone explicitly taps
+    // it, exactly like any other text field.
+    closeButtonRef.current?.focus();
     return () => {
       document.body.style.overflow = prev;
     };
@@ -161,6 +170,7 @@ export default function AreaPicker({
             <div className="flex items-center justify-between border-b border-black/5 p-4">
               <h2 className="font-display text-lg font-bold tracking-tight text-ink">Find your area</h2>
               <button
+                ref={closeButtonRef}
                 type="button"
                 onClick={closeAndReset}
                 aria-label="Close"

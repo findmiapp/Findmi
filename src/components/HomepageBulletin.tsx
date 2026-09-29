@@ -22,6 +22,8 @@ export default function HomepageBulletin({ bulletin }: { bulletin: ResolvedHomep
 
   const isExternal = bulletin.href ? /^https?:\/\//i.test(bulletin.href) : false;
 
+  const showCta = Boolean(bulletin.href && bulletin.ctaText);
+
   const content = (
     <>
       {bulletin.thumbnailUrl && (
@@ -29,6 +31,11 @@ export default function HomepageBulletin({ bulletin }: { bulletin: ResolvedHomep
           <SupabaseImage src={bulletin.thumbnailUrl} alt="" fill sizes="48px" className="object-cover" />
         </div>
       )}
+      {/* Mobile UX Correction pass — "Learn more ›" no longer gets its own
+          right-hand column (it reserved too much width, compressed the
+          headline, and read as a table row rather than an editorial
+          strip). It now lives in the meta row instead, so the editorial
+          content uses essentially the full width after the thumbnail. */}
       <div className="min-w-0 flex-1">
         {bulletin.eyebrow && (
           <p className="flex items-center gap-1.5 text-label uppercase text-findmi-700">
@@ -47,13 +54,17 @@ export default function HomepageBulletin({ bulletin }: { bulletin: ResolvedHomep
         {bulletin.supportingText && (
           <p className="mt-0.5 text-metadata leading-snug text-ink/60 line-clamp-2">{bulletin.supportingText}</p>
         )}
-        {bulletin.metaText && <p className="mt-0.5 text-microcopy text-ink/40">{bulletin.metaText}</p>}
+        {(bulletin.metaText || showCta) && (
+          <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+            {bulletin.metaText && <p className="text-microcopy text-ink/40">{bulletin.metaText}</p>}
+            {showCta && (
+              <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold text-findmi-700">
+                {bulletin.ctaText} ›
+              </span>
+            )}
+          </div>
+        )}
       </div>
-      {bulletin.href && bulletin.ctaText && (
-        <span className="ml-0.5 max-w-[4.5rem] shrink-0 self-center text-right text-[10px] font-bold uppercase leading-tight text-findmi-700">
-          {bulletin.ctaText} ›
-        </span>
-      )}
     </>
   );
 
