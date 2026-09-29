@@ -4,6 +4,13 @@
 
 html {
   -webkit-tap-highlight-color: transparent;
+  /* Typography Foundation pass — --font-display used to come from its own
+     next/font call in layout.tsx (identical { subsets: ["latin"] } Inter,
+     confirmed via a production build to already generate the exact same
+     value as --font-inter). Now a plain alias of the one remaining call,
+     so `font-display` keeps resolving to exactly the same Inter it always
+     did, with one fewer font-loader call site. */
+  --font-display: var(--font-inter);
 }
 
 /* The original FindMi site's headings read more open than Tailwind's

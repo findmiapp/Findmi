@@ -13,8 +13,16 @@ import "./globals.css";
 // already wired through every heading via font-display) rather than
 // touching each component's classes; see globals.css for the accompanying
 // letter-spacing softening.
+//
+// Typography Foundation pass — previously loaded via two separate next/font
+// calls (--font-inter and --font-display), each requesting the identical
+// { subsets: ["latin"] } Inter. Confirmed via a production build that both
+// already resolved to the byte-identical generated value
+// ("Inter","Inter Fallback"), so the second call bought nothing visually —
+// only a second font-loader call site. Now loaded once; --font-display is
+// aliased to the same variable in globals.css, so `font-sans` and
+// `font-display` both keep resolving to exactly the same Inter as before.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const displayFont = Inter({ subsets: ["latin"], variable: "--font-display" });
 
 // `||` (not `??`) so an env var that's *set but blank* — e.g. left empty in
 // a hosting dashboard — still falls back instead of producing an invalid URL.
@@ -49,7 +57,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${displayFont.variable}`}>
+    <html lang="en" className={inter.variable}>
       <body className="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
         {children}
       </body>

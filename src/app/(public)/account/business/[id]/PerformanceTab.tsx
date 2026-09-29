@@ -62,8 +62,8 @@ function compactMetricLine(parts: { count: number; word: string }[]): string {
 function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="border-b border-black/[0.06] px-4 py-3">
-      <h2 className="text-[13px] font-bold text-ink">{title}</h2>
-      {subtitle && <p className="mt-0.5 text-[11.5px] text-ink/45">{subtitle}</p>}
+      <h2 className="font-display text-section-title font-semibold text-primary">{title}</h2>
+      {subtitle && <p className="mt-0.5 text-metadata text-muted">{subtitle}</p>}
     </div>
   );
 }
@@ -80,8 +80,8 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 function SectionWaiting({ title, body }: { title?: string; body: string }) {
   return (
     <div className="py-1">
-      {title && <p className="text-[13px] font-semibold text-ink/70">{title}</p>}
-      <p className={`text-[12px] leading-relaxed text-ink/45 ${title ? "mt-1" : ""}`}>{body}</p>
+      {title && <p className="text-card-title font-semibold text-secondary">{title}</p>}
+      <p className={`text-helper text-muted ${title ? "mt-1" : ""}`}>{body}</p>
     </div>
   );
 }
@@ -204,8 +204,8 @@ export default function PerformanceTab({
       <Panel>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0">
-            <h1 className="font-display text-[19px] font-bold tracking-tight text-ink">Performance</h1>
-            <p className="mt-0.5 text-[13px] text-ink/50">Understand how people discover and engage with {businessName}.</p>
+            <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Performance</h1>
+            <p className="mt-0.5 text-body text-muted">Understand how people discover and engage with {businessName}.</p>
           </div>
           <div className="flex shrink-0 gap-0.5 self-start rounded-lg bg-black/[0.04] p-0.5">
             {RANGE_TABS.map((r) => {
@@ -215,7 +215,7 @@ export default function PerformanceTab({
                   key={r.value}
                   href={`${basePath}?tab=performance&range=${r.value}`}
                   aria-current={active ? "true" : undefined}
-                  className={`rounded-md px-2.5 py-1.5 text-[11px] font-bold transition ${
+                  className={`rounded-md px-2.5 py-1.5 text-metadata font-semibold transition ${
                     active ? "bg-findmi text-white shadow-sm" : "text-ink/45 hover:text-ink/70"
                   }`}
                 >
@@ -263,8 +263,8 @@ export default function PerformanceTab({
         // section-level waiting states below ever render here.
         <Panel padded={false}>
           <div className="px-4 py-5">
-            <p className="text-[15px] font-bold text-ink">Your performance starts here</p>
-            <p className="mt-1.5 text-[13px] text-ink/55">
+            <p className="text-card-title-lg font-bold text-primary">Your performance starts here</p>
+            <p className="mt-1.5 text-body text-secondary">
               As people discover {businessName}, view your profile and take action, your performance will appear here.
             </p>
             <div className="mt-4 flex flex-wrap gap-2 border-t border-black/[0.06] pt-4">
@@ -339,7 +339,7 @@ export default function PerformanceTab({
                             {plural(s.impressions, "impression")}
                             {s.clicks > 0 && ` · ${plural(s.clicks, "click")}`}
                             {" · "}
-                            <span className="font-bold text-findmi-700">{sharePercent}% of discovery</span>
+                            <span className="font-bold text-accent tabular-nums">{sharePercent}% of discovery</span>
                           </span>
                         }
                         share={totalDiscoveryImpressions > 0 ? s.impressions / totalDiscoveryImpressions : 0}
@@ -508,18 +508,18 @@ export default function PerformanceTab({
                             <SupabaseImage src={p.avatar_url} alt={p.display_name ?? p.username} fill sizes="44px" className="object-cover" />
                           )}
                         </div>
-                        <p className="w-full truncate text-[10.5px] font-medium text-ink/70">{p.display_name || `@${p.username}`}</p>
+                        <p className="w-full truncate text-microcopy font-medium text-secondary">{p.display_name || `@${p.username}`}</p>
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-[12.5px] text-ink/50">
+                  <p className="text-body text-muted">
                     {followerSummary.totalCount.toLocaleString()} {followerSummary.totalCount === 1 ? "person follows" : "people follow"}{" "}
                     {businessName}. Public profiles will appear here once they&rsquo;re set.
                   </p>
                 )}
                 {followerSummary.totalCount > 0 && (followerSummary.accountCount > 0 || followerSummary.legacyCount > 0) && (
-                  <p className="mt-3 border-t border-black/[0.05] pt-2.5 text-[11px] text-ink/40">
+                  <p className="mt-3 border-t border-black/[0.05] pt-2.5 text-microcopy text-subtle">
                     {followerSummary.accountCount.toLocaleString()} with a Findmi account
                     {followerSummary.legacyCount > 0 && ` · ${followerSummary.legacyCount.toLocaleString()} email-only`}
                   </p>
@@ -553,15 +553,15 @@ export default function PerformanceTab({
                           className="flex items-center justify-between gap-3 py-2.5 transition hover:bg-black/[0.015]"
                         >
                           <div className="min-w-0">
-                            <p className="truncate text-[13px] font-semibold text-findmi-700">{c.name}</p>
-                            {c.placement && <p className="text-[11px] text-ink/40">{c.placement}</p>}
+                            <p className="truncate text-card-title font-semibold text-accent">{c.name}</p>
+                            {c.placement && <p className="text-microcopy text-subtle">{c.placement}</p>}
                             {c.actionBreakdown.length > 0 && (
-                              <p className="mt-0.5 truncate text-[11px] text-ink/45">
+                              <p className="mt-0.5 truncate text-microcopy text-muted">
                                 {c.actionBreakdown.map((a) => `${a.label} ${a.count}`).join(" · ")}
                               </p>
                             )}
                           </div>
-                          <p className="shrink-0 text-right text-[11px] text-ink/50">
+                          <p className="shrink-0 text-right text-microcopy text-muted tabular-nums">
                             {c.scans.toLocaleString()} scans
                             <br />
                             {c.uniqueVisitors.toLocaleString()} visitors
@@ -585,7 +585,7 @@ export default function PerformanceTab({
                 </>
               ) : (
                 <div className="flex flex-col gap-3">
-                  <p className="text-[12.5px] text-ink/50">
+                  <p className="text-body text-muted">
                     Connect your real-world presence to Findmi and see what happens after the scan.
                   </p>
                   <QrCampaignCreator
@@ -637,7 +637,7 @@ function TrendChart({ points }: { points: { label: string; value: number }[] }) 
           <circle key={i} cx={c.x} cy={c.y} r={points[i].value > 0 ? 3 : 0} className="fill-findmi" />
         ))}
       </svg>
-      <div className="mt-1.5 flex justify-between text-[10px] font-medium text-ink/35">
+      <div className="mt-1.5 flex justify-between text-microcopy font-medium text-subtle">
         <span>{points[0]?.label}</span>
         {points.length > 1 && <span>{points[points.length - 1]?.label}</span>}
       </div>
