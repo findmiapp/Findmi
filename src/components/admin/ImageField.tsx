@@ -11,12 +11,22 @@ export default function ImageField({
   label,
   name,
   defaultValue,
+  onChange,
 }: {
   label: string;
   name: string;
   defaultValue?: string | null;
+  /** Optional — lets a parent that renders a live preview (e.g.
+   * BulletinForm) track the current URL too, instead of only the input
+   * this already renders. Every existing caller omits this and is
+   * unaffected. */
+  onChange?: (url: string) => void;
 }) {
-  const [url, setUrl] = useState(defaultValue ?? "");
+  const [url, setUrlState] = useState(defaultValue ?? "");
+  const setUrl = (value: string) => {
+    setUrlState(value);
+    onChange?.(value);
+  };
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 

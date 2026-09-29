@@ -64,6 +64,7 @@ export const MORE_GROUPS: NavGroup[] = [
         hint: "All platform communications: inquiries, direct messages, and sales",
       },
       { href: "/admin/site", label: "Site Editor", hint: "Site content & settings" },
+      { href: "/admin/bulletins", label: "Homepage Bulletins", hint: "Editorial homepage announcement" },
     ],
   },
   {

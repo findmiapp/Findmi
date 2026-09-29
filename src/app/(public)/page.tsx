@@ -3,6 +3,7 @@ import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
 import HomeWeather from "@/components/HomeWeather";
 import HomeHero from "@/components/HomeHero";
+import HomepageBulletin from "@/components/HomepageBulletin";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import Section, { HorizontalScroller, RailItem } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
@@ -19,6 +20,7 @@ import {
   getNextAppearanceHints,
   getUpcomingEvents,
 } from "@/lib/data";
+import { getPublishedHomepageBulletin } from "@/lib/homepage-bulletins";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
 import {
   getSiteSections,
@@ -72,13 +74,14 @@ export default async function HomePage({
   // applyOccurrenceOverride, getBusinessesForEvent,
   // getOccurrenceBusinessRosters) are untouched in lib/data.ts — this page
   // simply doesn't need their extra detail anymore.
-  const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations] = await Promise.all([
+  const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations, bulletin] = await Promise.all([
     getUpcomingEvents(10, WINDOW_BY_TIME_KEY[timeKey], marketSlug, areaSlug),
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
     getFeaturedLocations(8), // Public Experience Consolidation pass — Featured Locations carousel
+    getPublishedHomepageBulletin(), // Homepage Bulletin — the single published editorial announcement, or null
   ]);
 
   const nextEvents = await attachEventCategories(nextRaw);
@@ -179,6 +182,15 @@ export default async function HomePage({
       <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
         <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
       </div>
+
+      {/* Homepage Bulletin — a single, admin-managed editorial
+          announcement (see /admin/bulletins), directly above "What's
+          Coming Up." Renders nothing (no gap) when none is published. */}
+      {bulletin && (
+        <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6">
+          <HomepageBulletin bulletin={bulletin} />
+        </div>
+      )}
 
       {/* Public Experience Consolidation pass — "Must Dos" eyebrow removed
           (the heading itself, "What's Happening", already says what this

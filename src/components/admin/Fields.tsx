@@ -32,6 +32,7 @@ export function TextField({
   required,
   hint,
   type = "text",
+  onChange,
 }: {
   label: string;
   name: string;
@@ -40,6 +41,11 @@ export function TextField({
   required?: boolean;
   hint?: string;
   type?: "text" | "email" | "tel" | "url" | "password" | "date";
+  /** Optional — lets a parent that renders a live preview (e.g.
+   * BulletinForm) track this field's current value too. The input stays
+   * uncontrolled (defaultValue) for plain form posting; every existing
+   * caller omits this and is unaffected. */
+  onChange?: (value: string) => void;
 }) {
   return (
     <Wrap label={label} hint={hint}>
@@ -49,6 +55,7 @@ export function TextField({
         defaultValue={defaultValue ?? ""}
         placeholder={placeholder}
         required={required}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
         className={inputClass}
       />
     </Wrap>
@@ -116,12 +123,15 @@ export function TextareaField({
   defaultValue,
   rows = 4,
   hint,
+  onChange,
 }: {
   label: string;
   name: string;
   defaultValue?: string | null;
   rows?: number;
   hint?: string;
+  /** Optional — same live-preview mirroring as TextField's onChange. */
+  onChange?: (value: string) => void;
 }) {
   return (
     <Wrap label={label} hint={hint}>
@@ -129,6 +139,7 @@ export function TextareaField({
         name={name}
         defaultValue={defaultValue ?? ""}
         rows={rows}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
         className={`${inputClass} resize-y`}
       />
     </Wrap>
