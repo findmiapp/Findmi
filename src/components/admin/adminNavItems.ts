@@ -29,6 +29,12 @@ export const PRIMARY: NavItem[] = [
   { href: "/admin/businesses", label: "Businesses", icon: "storefront" },
   { href: "/admin/events", label: "Events", icon: "calendar" },
   { href: "/admin/appearances", label: "Appearances", icon: "pin" },
+  // FindMi Activations Pass 1 — real-world experiences FindMi produces/
+  // curates (starting with FindMi Showroom: SoHo), a first-class Admin
+  // area of its own rather than a sub-item under Events — see the frozen
+  // architecture audit + amendment for why Activations is a distinct
+  // domain object, never a duplicate of Events/Appearances.
+  { href: "/admin/activations", label: "Activations", icon: "target" },
   { href: "/admin/claims", label: "Claims", icon: "bookmark" },
   { href: "/admin/users", label: "Users", icon: "person" },
 ];

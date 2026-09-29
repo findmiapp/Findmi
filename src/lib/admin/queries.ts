@@ -652,6 +652,22 @@ export async function getAdminLocationById(id: string): Promise<AdminLocation | 
   return (data as AdminLocation) ?? null;
 }
 
+/** Looks up just the one location a form already has selected (Activation
+ * Venue's optional Location link), for seeding a RelationField's initial
+ * value — same shape as getEventOptionById above. */
+export async function getLocationOptionById(id: string | null): Promise<SelectOption | null> {
+  if (!id) return null;
+  const supabase = getAdminSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase.from("locations").select("id, name, city, state").eq("id", id).maybeSingle();
+  if (!data) return null;
+  return {
+    value: data.id,
+    label: data.name,
+    sublabel: [data.city, data.state].filter(Boolean).join(", ") || undefined,
+  };
+}
+
 // ---------------------------------------------------------------------
 // Appearances
 // ---------------------------------------------------------------------
@@ -898,7 +914,7 @@ export async function isProductSlugTaken(slug: string, excludeId?: string): Prom
  * Server Action, together with lib/slug's ensureUniqueSlug, so a saved
  * slug is never blank and never collides with an existing row. */
 export async function isSlugTaken(
-  table: "businesses" | "events" | "locations" | "people" | "markets",
+  table: "businesses" | "events" | "locations" | "people" | "markets" | "activations",
   slug: string,
   excludeId?: string
 ): Promise<boolean> {
