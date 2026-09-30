@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { getBusinessesByIds, getHomepageRowBusinesses, getUpcomingAppearanceHints } from "@/lib/data";
+import {
+  getBusinessesByIds,
+  getBusinessGalleryImagesMap,
+  getHomepageRowBusinesses,
+  getUpcomingAppearanceHints,
+} from "@/lib/data";
 import type { HomepageRow } from "@/lib/homepage-rows";
 
 export const dynamic = "force-dynamic";
@@ -49,8 +54,16 @@ export async function GET(request: NextRequest) {
   if (typedRow.mode === "curated") {
     const curated = await getBusinessesByIds(typedRow.curated_ids);
     const filtered = category ? curated.filter((b) => b.categories.some((c) => c.slug === category)) : curated;
-    const appearanceHints = Object.fromEntries(await getUpcomingAppearanceHints(filtered.map((b) => b.id)));
-    return NextResponse.json({ businesses: filtered, appearanceHints });
+    const filteredIds = filtered.map((b) => b.id);
+    const [appearanceHintsMap, galleriesMap] = await Promise.all([
+      getUpcomingAppearanceHints(filteredIds),
+      getBusinessGalleryImagesMap(filteredIds),
+    ]);
+    return NextResponse.json({
+      businesses: filtered,
+      appearanceHints: Object.fromEntries(appearanceHintsMap),
+      businessGalleries: Object.fromEntries(galleriesMap),
+    });
   }
 
   const businesses = await getHomepageRowBusinesses({
@@ -62,6 +75,15 @@ export async function GET(request: NextRequest) {
   // Bulk-fetched here too (not per card) so BusinessLogoCard's appearance
   // module keeps working after a live category-chip re-fetch, not just on
   // the initial server-rendered load (visual polish pass item 2).
-  const appearanceHints = Object.fromEntries(await getUpcomingAppearanceHints(businesses.map((b) => b.id)));
-  return NextResponse.json({ businesses, appearanceHints });
+  // Gallery-Image Fallback experiment — same bulk-fetched-once discipline.
+  const businessIds = businesses.map((b) => b.id);
+  const [appearanceHintsMap, galleriesMap] = await Promise.all([
+    getUpcomingAppearanceHints(businessIds),
+    getBusinessGalleryImagesMap(businessIds),
+  ]);
+  return NextResponse.json({
+    businesses,
+    appearanceHints: Object.fromEntries(appearanceHintsMap),
+    businessGalleries: Object.fromEntries(galleriesMap),
+  });
 }

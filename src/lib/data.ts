@@ -1073,6 +1073,39 @@ export async function getBusinessGalleryImages(businessId: string): Promise<stri
   return (data ?? []).map((row) => row.url);
 }
 
+// Business Preview Card — Gallery-Image Fallback experiment. Same
+// over-fetch-then-group-in-JS discipline as getUpcomingAppearanceHints
+// (one bulk query across every business on the page, never one per card).
+const BUSINESS_GALLERY_FETCH_PER_BUSINESS = 8;
+const BUSINESS_GALLERY_ITEMS_PER_BUSINESS = 6;
+
+/** Bulk sibling of getBusinessGalleryImages — for BusinessLogoCard's
+ * appearance mini-cards, which need SEVERAL businesses' galleries at once
+ * (a homepage row, a category rail) rather than one detail page's own
+ * business. Read-only and purely presentational: this never writes to
+ * business_images, and nothing it returns is persisted onto any
+ * appearance/event row — see AppearanceMiniCard's own fallback precedence
+ * comment for how the result is used at render time. */
+export async function getBusinessGalleryImagesMap(businessIds: string[]): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  const supabase = getSupabase();
+  if (!supabase || businessIds.length === 0) return result;
+
+  const { data } = await supabase
+    .from("business_images")
+    .select("business_id, url")
+    .in("business_id", businessIds)
+    .order("display_order", { ascending: true, nullsFirst: false })
+    .limit(BUSINESS_GALLERY_FETCH_PER_BUSINESS * businessIds.length);
+
+  for (const row of (data ?? []) as { business_id: string; url: string }[]) {
+    const list = result.get(row.business_id) ?? [];
+    if (list.length < BUSINESS_GALLERY_ITEMS_PER_BUSINESS) list.push(row.url);
+    result.set(row.business_id, list);
+  }
+  return result;
+}
+
 // Product Marketplace Distribution pass — getProductsForBusiness and
 // getProductBySlug below are deliberately NEVER filtered on
 // marketplace_status: a business's own profile/storefront and a Product's

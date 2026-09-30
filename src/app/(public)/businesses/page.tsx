@@ -11,6 +11,7 @@ import SortSelect from "@/components/discover/SortSelect";
 import Section, { HorizontalScroller } from "@/components/Section";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 import {
+  getBusinessGalleryImagesMap,
   getCategories,
   getCategoriesForDynamicBusinessRow,
   getConsumerVisibleMarketsWithAreas,
@@ -126,6 +127,11 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   // Results Mode grid) is untouched and keeps reading browseAppearanceHints/
   // appearanceHints (singular) exactly as before this pass.
   let featuredUpcomingHints = new Map<string, NextAppearanceHint[]>();
+  // Gallery-Image Fallback experiment — bulk-fetched for the same
+  // featuredBusinesses set featuredUpcomingHints already covers (the only
+  // BusinessLogoCard call site on this page with an appearance module),
+  // never per-card.
+  let featuredGalleryImages = new Map<string, string[]>();
   if (isBrowseMode) {
     const [featuredResult, eligibleCategories, homeCategories] = await Promise.all([
       searchBusinesses({
@@ -157,7 +163,10 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     categoryRails = rails.filter((r) => r.businesses.length > 0);
     const browseIds = [...featuredBusinesses, ...categoryRails.flatMap((r) => r.businesses)].map((b) => b.id);
     browseAppearanceHints = await getNextAppearanceHints(browseIds);
-    featuredUpcomingHints = await getUpcomingAppearanceHints(featuredBusinesses.map((b) => b.id));
+    [featuredUpcomingHints, featuredGalleryImages] = await Promise.all([
+      getUpcomingAppearanceHints(featuredBusinesses.map((b) => b.id)),
+      getBusinessGalleryImagesMap(featuredBusinesses.map((b) => b.id)),
+    ]);
   }
 
   // Every filter round-trips through real URL search params (Discovery/
@@ -332,6 +341,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                         <BusinessLogoCard
                           business={b}
                           upcomingAppearances={featuredUpcomingHints.get(b.id)}
+                          galleryImages={featuredGalleryImages.get(b.id)}
                           analyticsContext={{ pageType: "businesses", placement: "featured_rail" }}
                         />
                       </div>

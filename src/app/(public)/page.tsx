@@ -12,6 +12,7 @@ import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
 import HomeTimeFilterRail from "@/components/HomeTimeFilterRail";
 import {
   attachEventCategories,
+  getBusinessGalleryImagesMap,
   getCategoriesForDynamicBusinessRow,
   getConsumerVisibleMarketsWithAreas,
   getFeaturedBusinesses,
@@ -450,9 +451,13 @@ async function HomepageRowSection({
     const rowCategories = isDynamic
       ? await getCategoriesForDynamicBusinessRow(row.featured_only, marketSlug, areaSlug)
       : dedupeCategories(resolved.items.flatMap((b) => b.categories));
-    const appearanceHints = Object.fromEntries(
-      await getUpcomingAppearanceHints(resolved.items.map((b) => b.id))
-    );
+    const businessIds = resolved.items.map((b) => b.id);
+    const [appearanceHintsMap, businessGalleriesMap] = await Promise.all([
+      getUpcomingAppearanceHints(businessIds),
+      getBusinessGalleryImagesMap(businessIds),
+    ]);
+    const appearanceHints = Object.fromEntries(appearanceHintsMap);
+    const businessGalleries = Object.fromEntries(businessGalleriesMap);
     const viewAllHref = (() => {
       if (!isDynamic) return "/businesses";
       const p = new URLSearchParams();
@@ -490,6 +495,7 @@ async function HomepageRowSection({
           initialItems={resolved.items}
           categories={rowCategories}
           appearanceHints={appearanceHints}
+          businessGalleries={businessGalleries}
           marketSlug={isDynamic ? marketSlug : undefined}
         />
       </Section>

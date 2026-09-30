@@ -70,12 +70,22 @@ export default function BusinessLogoCard({
    * of which still work fine without it — a clean identity card is a
    * perfectly good state, never a placeholder). */
   upcomingAppearances,
+  /** Gallery-Image Fallback experiment — the business's own existing
+   * gallery (business_images), bulk-fetched by the caller (lib/data.ts's
+   * getBusinessGalleryImagesMap, same batched-query discipline as
+   * upcomingAppearances) so an image-less occurrence mini-card can borrow
+   * real business photography instead of the plain aqua/logo placeholder.
+   * Purely a read-time display choice — never written onto the
+   * appearance/event record itself. Omitted or empty behaves exactly as
+   * before this pass (the designed fallback). */
+  galleryImages,
   analyticsContext,
 }: {
   business: BusinessWithCategories;
   ctaLabel?: string;
   ctaHref?: string;
   upcomingAppearances?: NextAppearanceHint[];
+  galleryImages?: string[];
   analyticsContext?: AnalyticsPlacementContext;
 }) {
   // Only one category is ever shown — the schema has no subcategory field
@@ -93,6 +103,23 @@ export default function BusinessLogoCard({
   const href = ctaHref ?? `/business/${business.slug}`;
   const appearancesHref = `/business/${business.slug}#findmi-here`;
   const upcoming = upcomingAppearances ?? [];
+
+  // Gallery-Image Fallback experiment — deterministic, render-time-only
+  // rotation across the business's own gallery: only an appearance that
+  // has NO real image of its own consumes/advances a gallery slot, so an
+  // appearance with a real image is untouched and never shifts what the
+  // OTHER image-less appearances show. Stable across renders (no Math.
+  // random) and naturally repeats the same single image when the gallery
+  // only has one, or falls through to null (the existing designed
+  // fallback) once the gallery itself is empty.
+  const gallery = galleryImages ?? [];
+  let galleryCursor = 0;
+  const galleryFallbackFor = (item: NextAppearanceHint): string | null => {
+    if (item.imageUrl || gallery.length === 0) return null;
+    const url = gallery[galleryCursor % gallery.length];
+    galleryCursor += 1;
+    return url;
+  };
 
   const analyticsFields = buildEntityEventFields("business", business.id, { businessId: business.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLDivElement>({ event_name: "entity_impression", ...analyticsFields });
@@ -238,6 +265,7 @@ export default function BusinessLogoCard({
                   size="wide"
                   fallbackHref={appearancesHref}
                   businessLogoUrl={business.logo_url}
+                  galleryFallbackUrl={galleryFallbackFor(upcoming[0])}
                 />
               </div>
             ) : (
@@ -249,6 +277,7 @@ export default function BusinessLogoCard({
                     size="compact"
                     fallbackHref={appearancesHref}
                     businessLogoUrl={business.logo_url}
+                    galleryFallbackUrl={galleryFallbackFor(item)}
                   />
                 ))}
               </div>
@@ -302,6 +331,7 @@ function AppearanceMiniCard({
   size,
   fallbackHref,
   businessLogoUrl,
+  galleryFallbackUrl,
 }: {
   item: NextAppearanceHint;
   size: "wide" | "compact";
@@ -310,6 +340,14 @@ function AppearanceMiniCard({
    * watermark inside the designed fallback below, never as a substitute
    * photo and never repeated to imply photography that doesn't exist. */
   businessLogoUrl: string | null;
+  /** Gallery-Image Fallback experiment — a real business_images URL,
+   * already resolved by BusinessLogoCard's deterministic rotation (null
+   * when this item has its own real image, the gallery is empty, or the
+   * caller didn't wire galleryImages at all). Rendered with the exact same
+   * container/object-fit as a genuine occurrence image below — the viewer
+   * should never be able to tell it apart visually from real event/flyer
+   * art; only the precedence order (real image first) keeps it honest. */
+  galleryFallbackUrl: string | null;
 }) {
   const href = item.href ?? fallbackHref;
   const wide = size === "wide";
@@ -335,6 +373,19 @@ function AppearanceMiniCard({
         {item.imageUrl ? (
           <SupabaseImage
             src={item.imageUrl}
+            alt=""
+            fill
+            sizes={wide ? "(min-width: 768px) 360px, 80vw" : "112px"}
+            className="object-cover"
+          />
+        ) : galleryFallbackUrl ? (
+          // Gallery-Image Fallback experiment — the business's own existing
+          // gallery photo, same container/object-fit as a real occurrence
+          // image. Presentational only: this is never written back onto
+          // the appearance record, so a real image added later takes over
+          // automatically with no cleanup needed.
+          <SupabaseImage
+            src={galleryFallbackUrl}
             alt=""
             fill
             sizes={wide ? "(min-width: 768px) 360px, 80vw" : "112px"}

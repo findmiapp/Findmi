@@ -36,6 +36,7 @@ export default function HomepageBusinessRow({
   initialItems,
   categories,
   appearanceHints,
+  businessGalleries,
   marketSlug,
 }: {
   rowId: string;
@@ -48,6 +49,11 @@ export default function HomepageBusinessRow({
    * Business Card Redesign pass — plural per business (was a single
    * hint), via lib/data.ts's getUpcomingAppearanceHints. */
   appearanceHints: Record<string, NextAppearanceHint[]>;
+  /** Gallery-Image Fallback experiment — same bulk-fetched-once-per-row
+   * shape as appearanceHints (lib/data.ts's getBusinessGalleryImagesMap).
+   * A business with no gallery images just has no entry, so
+   * BusinessLogoCard falls through to its existing designed fallback. */
+  businessGalleries: Record<string, string[]>;
   marketSlug?: string;
   /** Analytics Phase 2A — Discovery Page Builder attribution. `pinnedIds`
    * stays correct even after a client-side category re-fetch: origin is
@@ -61,11 +67,13 @@ export default function HomepageBusinessRow({
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, BusinessWithCategories[]>>({});
   const [hintsCache, setHintsCache] = useState<Record<string, Record<string, NextAppearanceHint[]>>>({});
+  const [galleriesCache, setGalleriesCache] = useState<Record<string, Record<string, string[]>>>({});
   const [loading, setLoading] = useState(false);
   const [failedCategory, setFailedCategory] = useState<string | null>(null);
 
   const items = activeCategory ? (cache[activeCategory] ?? []) : initialItems;
   const hints = activeCategory ? (hintsCache[activeCategory] ?? {}) : appearanceHints;
+  const galleries = activeCategory ? (galleriesCache[activeCategory] ?? {}) : businessGalleries;
   const failed = activeCategory !== null && failedCategory === activeCategory;
 
   async function loadCategory(slug: string) {
@@ -79,10 +87,14 @@ export default function HomepageBusinessRow({
         { cache: "no-store" }
       );
       if (!res.ok) throw new Error(`homepage-business-row ${res.status}`);
-      const data: { businesses: BusinessWithCategories[]; appearanceHints: Record<string, NextAppearanceHint[]> } =
-        await res.json();
+      const data: {
+        businesses: BusinessWithCategories[];
+        appearanceHints: Record<string, NextAppearanceHint[]>;
+        businessGalleries?: Record<string, string[]>;
+      } = await res.json();
       setCache((prev) => ({ ...prev, [slug]: data.businesses }));
       setHintsCache((prev) => ({ ...prev, [slug]: data.appearanceHints }));
+      setGalleriesCache((prev) => ({ ...prev, [slug]: data.businessGalleries ?? {} }));
       // Public Experience Consolidation pass — a curated homepage module
       // should never advertise an empty state. The chip list itself is
       // already scoped to categories with real eligible content (see
@@ -165,6 +177,7 @@ export default function HomepageBusinessRow({
               <BusinessLogoCard
                 business={b}
                 upcomingAppearances={hints[b.id]}
+                galleryImages={galleries[b.id]}
                 analyticsContext={{
                   pageType: "home",
                   placement: "homepage_row",
