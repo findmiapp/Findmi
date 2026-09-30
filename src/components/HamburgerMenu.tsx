@@ -168,7 +168,7 @@ export default function HamburgerMenu({
                   itself (max-h-[45vh]) rather than growing the drawer, so
                   the existing nav underneath is never pushed out of
                   reach. */}
-              <DrawerUtilityStrip onNavigate={close} />
+              <DrawerUtilityStrip onNavigate={close} authenticated={authenticated} />
               <DrawerSearch onNavigate={close} />
 
               {/* Nav body — flex-1 + min-h-0 (belt-and-suspenders with
