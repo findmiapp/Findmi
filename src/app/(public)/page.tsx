@@ -272,14 +272,28 @@ export default async function HomePage({
         )}
       </div>
 
-      {/* Public Experience Consolidation pass — FEATURED LOCATIONS, right
-          after What's Happening and before Brands We Love/the Native Rose
-          proof section, per this pass's own preferred hierarchy. Reuses
-          LocationDiscoveryCard (variant="full") unmodified — the same card
-          /locations and /discover already render, including its own
-          existing horizontal activity-rail treatment for `activities` — and
-          getFeaturedLocations (lib/data.ts), which reuses getLocations' own
-          real activityCount/activities computation and simply filters to
+      {/* Homepage Section Reorder pass — BRANDS WE LOVE, second major row,
+          right after What's Happening. Same existing row/component,
+          completely untouched logic and geometry (protected width fix) —
+          placement only. */}
+      {brandsRowIndex !== -1 && (
+        <HomepageRowSection
+          row={homepageRows[brandsRowIndex]}
+          resolved={resolvedRows[brandsRowIndex]}
+          marketSlug={marketSlug}
+          areaSlug={areaSlug}
+          isBrandsRow
+        />
+      )}
+
+      {/* Public Experience Consolidation pass — FEATURED LOCATIONS, third
+          major row (Homepage Section Reorder pass — now after Brands We
+          Love, was before it). Reuses LocationDiscoveryCard (variant="full")
+          unmodified — the same card /locations and /discover already
+          render, including its own existing horizontal activity-rail
+          treatment for `activities` — and getFeaturedLocations
+          (lib/data.ts), which reuses getLocations' own real
+          activityCount/activities computation and simply filters to
           Locations with at least one real upcoming happening (never a
           fabricated/empty card).
           QA Correction pass — this used to slice `activities` down to just
@@ -308,17 +322,30 @@ export default async function HomePage({
         </Section>
       )}
 
-      {/* Homepage Content Priority pass — NATIVE ROSE DEMO, second major
-          row: what a real Findmi business presence looks like. Reuses
-          BusinessShowcaseCarousel unmodified (same real screenshots,
-          same component /join already uses) rather than a new UI — see
-          that component's own comment. Copy also reused verbatim from
-          /join's own Native Rose Showcase section. */}
-      <div className="mx-auto max-w-4xl px-4 pt-10 sm:px-6 sm:pt-12">
-        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">
-          See what your Findmi can become.
-        </p>
-        <p className="mx-auto mt-1.5 max-w-sm text-center text-sm text-ink/60">
+      {/* Homepage Content Priority pass — NATIVE ROSE DEMO, fourth and
+          final major row (Homepage Section Reorder pass — now after
+          Featured Locations, was second): what a real Findmi business
+          presence looks like. Reuses BusinessShowcaseCarousel unmodified
+          (same real screenshots, same component /join already uses)
+          rather than a new UI — see that component's own comment.
+          Supporting copy also reused verbatim from /join's own Native Rose
+          Showcase section.
+          Heading Alignment pass — the intro heading/copy above the
+          carousel used to render as a centered, small gray uppercase
+          eyebrow, reading as decoration rather than a real section title.
+          Restyled (left-aligned, same h2/subtitle typography tokens
+          Section.tsx's own title/subtitle already use elsewhere on this
+          page — Brands We Love, Featured Locations) so it reads as the
+          same kind of major section heading, not a separate visual
+          language. Top padding brought down from pt-10/sm:pt-12 to
+          pt-6/sm:pt-8 to match the ~py-6 rhythm between the Section-based
+          rows above, now that this block sits directly after one instead
+          of after What's Happening. Carousel and "View live profile" CTA
+          below are unchanged (still centered) — only the intro block's
+          presentation changed. */}
+      <div className="mx-auto max-w-4xl px-4 pt-6 sm:px-6 sm:pt-8">
+        <h2 className="text-lg font-semibold tracking-tight text-ink">See What Your Findmi Can Become</h2>
+        <p className="mt-1 max-w-md text-sm text-ink/55">
           One page. Your business, products and everywhere you&rsquo;ll be next.
         </p>
         <div className="mt-4">
@@ -333,20 +360,6 @@ export default async function HomePage({
           </a>
         </div>
       </div>
-
-      {/* Homepage Content Priority pass — BRANDS WE LOVE, third major row
-          (was second, before What's Happening). Same existing row/
-          component, completely untouched logic and geometry (protected
-          width fix) — placement only. */}
-      {brandsRowIndex !== -1 && (
-        <HomepageRowSection
-          row={homepageRows[brandsRowIndex]}
-          resolved={resolvedRows[brandsRowIndex]}
-          marketSlug={marketSlug}
-          areaSlug={areaSlug}
-          isBrandsRow
-        />
-      )}
 
       {/* Public Experience Consolidation pass — "Explore What You're Into"
           (the founder-editable explore_by_category section + its category
