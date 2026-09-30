@@ -71,17 +71,38 @@ export default async function CheckEmailPage({
         </form>
       </div>
 
-      {/* Signup Repair pass — shown unconditionally, on every visit to this
-          page, regardless of whether the submitted email was new or
-          already had a confirmed account (see signup/actions.ts's
-          user_already_exists handling, which now lands here too, on
-          purpose). Never varies by outcome, so it reveals nothing about
-          account existence — same non-revealing-by-design posture as
-          this page's own resend form above. */}
+      {/* Signup Repair pass, extended by the Auth Returning-User +
+          Onboarding Shell Correction pass — shown unconditionally, on
+          every visit to this page, regardless of whether the submitted
+          email was new or already had a confirmed account (see signup/
+          actions.ts's user_already_exists handling, which lands here
+          too, on purpose). Never varies by outcome, so it reveals
+          nothing about account existence.
+
+          That pass's own live QA asked for a distinguishable "looks like
+          you already have an account" screen, reached only when Supabase
+          actually reports the email as already registered. That was
+          deliberately NOT built: the only way to reach it would be a
+          different redirect target based on signUp()'s own server
+          response to a public, unauthenticated form submission — which
+          is itself a real account-enumeration oracle (anyone could probe
+          any email against /signup and read the account's existence off
+          which page they land on), not a UX-only change. Instead, both
+          "Log in" and "Forgot your password?" are added here, identically,
+          to EVERY visitor regardless of outcome — a returning user gets a
+          real way forward without this page ever confirming, one way or
+          the other, whether their email matched an account. */}
       <p className="mt-6 text-center text-sm text-ink/50">
         Already have an account?{" "}
         <Link href={`/login?next=${encodeURIComponent(safeNext)}`} className="font-semibold text-ink hover:underline">
           Log in
+        </Link>{" "}
+        &middot;{" "}
+        <Link
+          href={`/forgot-password?next=${encodeURIComponent(safeNext)}`}
+          className="font-semibold text-ink hover:underline"
+        >
+          Forgot your password?
         </Link>
       </p>
     </div>

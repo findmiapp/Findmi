@@ -44,7 +44,10 @@ export default async function LoginPage({
             <input type="password" name="password" required autoComplete="current-password" className={inputClass} />
           </label>
           <div className="-mt-1 text-right">
-            <Link href="/forgot-password" className="text-xs font-semibold text-ink/50 hover:text-ink">
+            <Link
+              href={`/forgot-password?next=${encodeURIComponent(safeNext)}`}
+              className="text-xs font-semibold text-ink/50 hover:text-ink"
+            >
               Forgot password?
             </Link>
           </div>

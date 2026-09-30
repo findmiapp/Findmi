@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 import { updatePassword } from "./actions";
 
 export const metadata: Metadata = {
@@ -14,23 +15,31 @@ const inputClass =
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
+/** Auth Returning-User + Onboarding Shell Correction pass — `next`
+ * (e.g. /join/start?intent=passbook) arrives here via forgot-password/
+ * actions.ts's recovery redirectTo (itself resolved through the existing
+ * /auth/callback `type=recovery` branch, unchanged). Round-tripped as a
+ * hidden field so updatePassword() (actions.ts) can send the visitor on
+ * to where they actually meant to go, instead of always /account. */
 export default async function ResetPasswordPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
+  const safeNext = getSafeRedirect(next);
 
   // This page only renders with a real recovery session already
   // established — /auth/callback is the only path that gets a visitor
   // here with one. Reached directly with no session (e.g. a stale
   // bookmark, or the recovery exchange failed and something still
-  // linked here) → straight to /login, never a form that can't work.
+  // linked here) → straight to /login (carrying next along too), never
+  // a form that can't work.
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(`/login?next=${encodeURIComponent(safeNext)}`);
 
   return (
     <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
@@ -43,6 +52,7 @@ export default async function ResetPasswordPage({
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={updatePassword} className="flex flex-col gap-4">
+          <input type="hidden" name="next" value={safeNext} />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">New password</span>
             <input

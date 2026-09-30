@@ -39,12 +39,26 @@ export default function SiteChrome({
 }) {
   const pathname = usePathname();
   const isOwner = pathname === "/account" || pathname.startsWith("/account/");
-  // /Join Visual Convergence pass — the universal onboarding entry screen
-  // only (exact path match, never its subroutes: /join/start, /join/
-  // passbook, /join/welcome, and /join/business all keep the normal
-  // public header untouched, since only /join's own presentation was
-  // flagged as noisy in live QA).
-  const isOnboardingEntry = pathname === "/join";
+  // /Join Visual Convergence pass, extended by the Auth Returning-User +
+  // Onboarding Shell Correction pass — the focused pre-authentication
+  // auth/onboarding journey: the universal entry screen plus every
+  // account-creation/login/recovery screen a visitor in that journey can
+  // land on. Exact path matches only, never prefixes/subroutes — /join's
+  // own subroutes (/join/start, /join/passbook, /join/welcome,
+  // /join/business) are deliberately NOT included here (unchanged from
+  // the prior pass: only /join's own presentation was ever flagged as
+  // noisy) and keep the normal public header, same as every other
+  // authenticated/account route.
+  const AUTH_JOURNEY_ROUTES = new Set([
+    "/join",
+    "/signup",
+    "/signup/check-email",
+    "/signup/confirm-failed",
+    "/login",
+    "/forgot-password",
+    "/reset-password",
+  ]);
+  const isOnboardingEntry = AUTH_JOURNEY_ROUTES.has(pathname);
 
   if (isOwner) {
     return (

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 import { requestPasswordReset } from "./actions";
 
 export const metadata: Metadata = {
@@ -13,12 +14,20 @@ const inputClass =
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
 
+/** Auth Returning-User + Onboarding Shell Correction pass — `next` now
+ * rides through this whole flow the same way /login already carries it:
+ * accepted here, round-tripped as a hidden field, embedded into the
+ * recovery redirectTo (see actions.ts) so /reset-password knows where to
+ * send a visitor after they set a new password. Previously this page
+ * always ended at the hardcoded /account regardless of where the visitor
+ * actually came from (e.g. /join/start?intent=passbook). */
 export default async function ForgotPasswordPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; error?: string }>;
+  searchParams: Promise<{ sent?: string; error?: string; next?: string }>;
 }) {
-  const { sent, error } = await searchParams;
+  const { sent, error, next } = await searchParams;
+  const safeNext = getSafeRedirect(next);
 
   return (
     <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
@@ -44,6 +53,7 @@ export default async function ForgotPasswordPage({
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={requestPasswordReset} className="flex flex-col gap-4">
+          <input type="hidden" name="next" value={safeNext} />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink">Email</span>
             <input type="email" name="email" required autoComplete="email" className={inputClass} />
@@ -55,7 +65,7 @@ export default async function ForgotPasswordPage({
       </div>
 
       <p className="mt-6 text-center text-sm text-ink/50">
-        <Link href="/login" className="font-semibold text-ink hover:underline">
+        <Link href={`/login?next=${encodeURIComponent(safeNext)}`} className="font-semibold text-ink hover:underline">
           Back to log in
         </Link>
       </p>
