@@ -88,18 +88,48 @@ export async function signUp(formData: FormData) {
     // which are already generic. Real detail stays server-side only, in
     // the same console.error({...}) shape lib/commerce/membershipCheckout.ts
     // already uses for this kind of failure — no new logging system.
-    console.error("[signup] auth.signUp failed", { error: error.message });
-    // GoTrue's own rate limit (status 429 — e.g. a near-duplicate submit
-    // for the same email) is a real, non-enumerating distinction: it
-    // reveals nothing about whether the account exists, only that the
-    // request was too soon. Telling the user to wait instead of implying
-    // the account wasn't created avoids the exact confusion a duplicate
-    // submit produces — everything else still falls through to the
-    // generic message.
-    const message =
-      error.status === 429
-        ? "Too many attempts. Please wait a moment and try again."
-        : "Could not create your account. Please try again.";
+    console.error("[signup] auth.signUp failed", { error: error.message, code: error.code, status: error.status });
+
+    // Signup Repair pass — live QA root cause (confirmed via GoTrue logs):
+    // supabase.auth.signUp() returns a real, typed 422 "user_already_exists"
+    // when the submitted email already has a CONFIRMED account — every
+    // failure here used to fall into the generic "Could not create your
+    // account" bucket below, which is actively misleading for this one:
+    // retrying never works, because nothing was ever wrong with the
+    // request. This must never become a distinct-looking error message
+    // either (that IS the enumeration signal the comment above already
+    // warns about) — instead it's routed into the EXACT SAME
+    // /signup/check-email screen a brand-new signup lands on. A genuinely
+    // new email still gets its real confirmation email; an existing,
+    // already-confirmed visitor sees an identical page (which now also
+    // carries a plain "Already have an account? Log in" link — see that
+    // page) and is never told, one way or the other, whether their email
+    // matched an account.
+    if (error.code === "user_already_exists") {
+      redirect(`/signup/check-email?next=${encodeURIComponent(next)}`);
+    }
+
+    // A real, user-correctable, non-enumerating signal — Supabase's own
+    // password policy (e.g. leaked-password protection) rejecting a
+    // password that already passed this action's own length check above.
+    // Safe to name specifically: it reveals nothing about account
+    // existence, only about the password just typed.
+    if (error.code === "weak_password") {
+      redirect(errorRedirectUrlWithFields("/signup", "Choose a stronger password.", preserved));
+    }
+
+    // GoTrue's own rate limit (status 429, or these specific typed codes —
+    // e.g. a near-duplicate submit for the same email) is a real,
+    // non-enumerating distinction: it reveals nothing about whether the
+    // account exists, only that the request was too soon. Telling the
+    // user to wait instead of implying the account wasn't created avoids
+    // the exact confusion a duplicate submit produces — everything else
+    // still falls through to the generic message.
+    const isRateLimited =
+      error.status === 429 || error.code === "over_request_rate_limit" || error.code === "over_email_send_rate_limit";
+    const message = isRateLimited
+      ? "Too many attempts. Please wait a moment and try again."
+      : "Could not create your account. Please try again.";
     redirect(errorRedirectUrlWithFields("/signup", message, preserved));
   }
 

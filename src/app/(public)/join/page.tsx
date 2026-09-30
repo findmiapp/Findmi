@@ -17,14 +17,31 @@ import NavIcon from "@/components/NavIcon";
  * this page read as a marketing landing page (giant headline, long
  * paragraph, three checkmark rows, business treated as a footer link).
  * Rebuilt around one question — "why create a FindMi account?" — as a
- * compact entry screen: a short title/subhead, two INFORMATIONAL value
- * cards (Passbook, Business), and the Create Free Account CTA. Neither
- * card navigates anywhere — actual path selection still only happens
- * after account creation, at /join/start (untouched). The focused
+ * compact entry screen: a short title/subhead, two value cards
+ * (Passbook, Business — see the Signup Repair + Join Card Intent
+ * micro-pass note below for what tapping one now does), and the Create
+ * Free Account CTA. The focused
  * onboarding header (logo + back, no search/bag/create/hamburger) is
  * handled by SiteChrome swapping in OnboardingHeader for this exact
  * route — see that component's own comment; MobileHeader/NavDesktop/
  * HamburgerMenu themselves are untouched.
+ *
+ * Signup Repair + Join Card Intent micro-pass — live QA found these two
+ * cards LOOKED tappable but did nothing. They're now full Links, but
+ * still never create a business or classify the account: each just
+ * carries a non-binding, temporary `intent` through the exact same real
+ * signup flow the neutral "Create free account" button already uses.
+ * Encoded as the onboarding destination itself
+ * (`next=/join/start?intent=passbook`, not a second query param on
+ * /signup) — getSafeRedirect() already reconstructs a `next` value's own
+ * pathname+search+hash verbatim (see its own implementation), so this
+ * needs no change to it, to /auth/callback, or to signup/actions.ts's
+ * `next` handling: intent just rides inside the one value that already
+ * flows untouched through signup -> email verification -> /auth/callback
+ * -> the final redirect. /join/start reads `intent` as an ordinary query
+ * param on its OWN real URL once the visitor actually lands there — no
+ * invented nested-redirect parsing. No account_type/role/consumer/
+ * business flag is ever written anywhere.
  */
 export const metadata: Metadata = {
   title: "Join Findmi",
@@ -52,16 +69,20 @@ export default async function JoinPage({
 
       <div className="mt-6 flex flex-col gap-3">
         <ValueCard
+          href={`/signup?next=${encodeURIComponent("/join/start?intent=passbook")}`}
           icon={<NavIcon name="bookmark" className="h-5 w-5 text-findmi-700" />}
           iconBg="bg-findmi-50"
           border="border-findmi/30"
+          hoverBorder="hover:border-findmi/60"
           title="Build your digital passbook"
           description="Discover what you love, save what you want to do, and document the places, products and experiences that become part of your world."
         />
         <ValueCard
+          href={`/signup?next=${encodeURIComponent("/join/start?intent=business")}`}
           icon={<NavIcon name="storefront" className="h-5 w-5 text-ink/70" />}
           iconBg="bg-mist/60"
           border="border-black/10"
+          hoverBorder="hover:border-black/20"
           title="Add or claim your brand"
           description="Create or claim your business presence, add products, publish where you're showing up and manage your presence on Findmi."
         />
@@ -85,27 +106,50 @@ export default async function JoinPage({
   );
 }
 
-/** Informational only — neither card is a Link/button, by design: this
- * page never forks the visitor down a path (see this page's own doc
- * comment). Just explains what the one free account includes. */
+/** Each card is a single, fully-tappable Link carrying a non-binding
+ * onboarding `intent` (see this page's own doc comment) — never a form
+ * or a fork with its own confirm step, and never anything that creates a
+ * business or classifies the account. Same approved card geometry/colors
+ * as before (border/iconBg are passed in unchanged per card); the only
+ * addition is the chevron affordance and the Link semantics/focus ring
+ * needed to make the whole card behave like the tappable control it
+ * already looked like. */
 function ValueCard({
+  href,
   icon,
   iconBg,
   border,
+  hoverBorder,
   title,
   description,
 }: {
+  href: string;
   icon: React.ReactNode;
   iconBg: string;
   border: string;
+  hoverBorder: string;
   title: string;
   description: string;
 }) {
   return (
-    <div className={`rounded-3xl border ${border} bg-white p-4 sm:p-5`}>
-      <span className={`flex h-10 w-10 items-center justify-center rounded-full ${iconBg}`}>{icon}</span>
-      <p className="mt-3 font-display text-base font-bold tracking-tight text-ink">{title}</p>
-      <p className="mt-1 text-sm text-ink/60">{description}</p>
-    </div>
+    <Link
+      href={href}
+      className={`flex items-start gap-3 rounded-3xl border ${border} bg-white p-4 transition ${hoverBorder} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/50 sm:p-5`}
+    >
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconBg}`}>{icon}</span>
+      <span className="flex-1">
+        <span className="block font-display text-base font-bold tracking-tight text-ink">{title}</span>
+        <span className="mt-1 block text-sm text-ink/60">{description}</span>
+      </span>
+      <ChevronGlyph className="mt-1 h-4 w-4 shrink-0 text-ink/30" />
+    </Link>
+  );
+}
+
+function ChevronGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <path d="M7.5 5l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

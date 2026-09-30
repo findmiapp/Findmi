@@ -27,8 +27,27 @@ const STEPS = ["Account", "Personalize", "Done"];
  * /signup?next=/join/start or /login?next=/join/start; a visitor who
  * somehow lands here signed out is bounced back through the same real
  * auth pages, never a fake client-only session.
+ *
+ * Signup Repair + Join Card Intent micro-pass — an optional `?intent=`
+ * (passbook|business) may ride in on this page's own URL, carried here
+ * from one of /join's two value cards via the `next` query string (see
+ * that page's own doc comment on the exact mechanism — nothing new reads
+ * or writes it beyond this one query param). It only adds a small,
+ * non-binding "Suggested for you" badge to the matching card below —
+ * convenience, never identity: both cards stay fully clickable/
+ * switchable, nothing is preselected in a way that blocks the other
+ * choice, "Skip for now" is untouched, and nothing is persisted anywhere
+ * (no account_type/role/consumer/business column, no schema change).
+ * Any value other than exactly "passbook"/"business" is ignored.
  */
-export default async function JoinStartPage() {
+export default async function JoinStartPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ intent?: string }>;
+}) {
+  const { intent: rawIntent } = await searchParams;
+  const intent = rawIntent === "passbook" || rawIntent === "business" ? rawIntent : null;
+
   const supabase = await getServerSupabase();
   const {
     data: { user },
@@ -49,6 +68,7 @@ export default async function JoinStartPage() {
           href="/join/passbook"
           className="flex flex-col rounded-3xl border border-findmi/40 bg-white p-5 shadow-[0_4px_20px_rgba(20,176,188,0.10)] transition hover:border-findmi/60"
         >
+          {intent === "passbook" && <SuggestedBadge />}
           <p className="font-display text-lg font-bold tracking-tight text-ink">Build my Digital Passbook</p>
           <p className="mt-1 text-sm text-ink/60">
             Discover businesses and events, save what you love, and keep track of everywhere you go.
@@ -62,6 +82,7 @@ export default async function JoinStartPage() {
           href="/account/business/new"
           className="flex flex-col rounded-3xl border border-black/10 bg-white p-5 transition hover:border-black/20"
         >
+          {intent === "business" && <SuggestedBadge />}
           <p className="font-display text-lg font-bold tracking-tight text-ink">Add my business</p>
           <p className="mt-1 text-sm text-ink/60">
             Show customers who you are, what you offer, and where you&rsquo;ll be next.
@@ -78,5 +99,13 @@ export default async function JoinStartPage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+function SuggestedBadge() {
+  return (
+    <span className="mb-2 inline-flex w-fit items-center rounded-full bg-findmi-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700">
+      Suggested for you
+    </span>
   );
 }

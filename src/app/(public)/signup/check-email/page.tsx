@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 import { resendConfirmation } from "../actions";
 
@@ -58,6 +59,20 @@ export default async function CheckEmailPage({
           </button>
         </form>
       </div>
+
+      {/* Signup Repair pass — shown unconditionally, on every visit to this
+          page, regardless of whether the submitted email was new or
+          already had a confirmed account (see signup/actions.ts's
+          user_already_exists handling, which now lands here too, on
+          purpose). Never varies by outcome, so it reveals nothing about
+          account existence — same non-revealing-by-design posture as
+          this page's own resend form above. */}
+      <p className="mt-6 text-center text-sm text-ink/50">
+        Already have an account?{" "}
+        <Link href={`/login?next=${encodeURIComponent(safeNext)}`} className="font-semibold text-ink hover:underline">
+          Log in
+        </Link>
+      </p>
     </div>
   );
 }
