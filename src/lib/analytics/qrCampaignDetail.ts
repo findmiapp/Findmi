@@ -9,18 +9,25 @@
 // than a second, parallel QR-attribution implementation.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildQrActionBreakdown, OWNER_ACTION_EVENT_NAMES, type OwnerPerformanceBreakdownItem } from "./ownerPerformance";
+import type { QrCampaignStatus, QrDestinationType as V2DestinationType } from "../qr-v2";
 
 export interface QrCampaignRow {
   id: string;
   name: string;
   code: string;
   is_active: boolean;
+  /** QR V2 Foundation — the forward-looking lifecycle authority. */
+  status: QrCampaignStatus;
   placement: string | null;
   destination_path: string;
+  destination_type: V2DestinationType | null;
+  destination_id: string | null;
+  destination_url: string | null;
   business_id: string | null;
   appearance_id: string | null;
   product_id: string | null;
   event_id: string | null;
+  event_occurrence_id: string | null;
   location_id: string | null;
 }
 
@@ -41,7 +48,9 @@ export type QrDestinationType = "business" | "appearance" | "product" | "event" 
 export async function getQrCampaignRow(admin: SupabaseClient, campaignId: string): Promise<QrCampaignRow | null> {
   const { data } = await admin
     .from("qr_campaigns")
-    .select("id, name, code, is_active, placement, destination_path, business_id, appearance_id, product_id, event_id, location_id")
+    .select(
+      "id, name, code, is_active, status, placement, destination_path, destination_type, destination_id, destination_url, business_id, appearance_id, product_id, event_id, event_occurrence_id, location_id"
+    )
     .eq("id", campaignId)
     .maybeSingle();
   return (data as QrCampaignRow | null) ?? null;
@@ -106,4 +115,38 @@ export async function getQrCampaignDestination(
   }
   const { data } = await admin.from("businesses").select("name").eq("id", row.business_id ?? "").maybeSingle();
   return { type: "business", label: data?.name ?? "Business" };
+}
+
+/** QR V2 Foundation/Pass 2 — the REAL redirect destination's human label
+ * (distinct from getQrCampaignDestination above, which actually describes
+ * CONTEXT — "what this QR is about" — a V1 naming choice kept as-is for
+ * compatibility). Structured V2 fields first, legacy destination_path
+ * fallback otherwise — same precedence resolveQrDestination uses for the
+ * actual redirect, just resolving a label instead of a URL. */
+export async function getQrCampaignDestinationSummary(
+  admin: SupabaseClient,
+  row: Pick<QrCampaignRow, "destination_type" | "destination_id" | "destination_url" | "destination_path">
+): Promise<string> {
+  if (row.destination_type === "business" && row.destination_id) {
+    const { data } = await admin.from("businesses").select("name").eq("id", row.destination_id).maybeSingle();
+    return data?.name ? `${data.name} on FindMi` : "Business profile";
+  }
+  if (row.destination_type === "product" && row.destination_id) {
+    const { data } = await admin.from("products").select("name").eq("id", row.destination_id).maybeSingle();
+    return data?.name ?? "Product page";
+  }
+  if (row.destination_type === "event" && row.destination_id) {
+    const { data } = await admin.from("events").select("name").eq("id", row.destination_id).maybeSingle();
+    return data?.name ?? "Event page";
+  }
+  if (row.destination_type === "location" && row.destination_id) {
+    const { data } = await admin.from("locations").select("name").eq("id", row.destination_id).maybeSingle();
+    return data?.name ?? "Location page";
+  }
+  if (row.destination_type === "custom") return row.destination_url ?? "Custom link";
+  if (row.destination_path.startsWith("/business/")) return row.destination_path.includes("#") ? "Business profile (FindMi Here)" : "Business profile";
+  if (row.destination_path.startsWith("/product/")) return "Product page";
+  if (row.destination_path.startsWith("/event/")) return "Event page";
+  if (row.destination_path.startsWith("/location/")) return "Location page";
+  return row.destination_path;
 }

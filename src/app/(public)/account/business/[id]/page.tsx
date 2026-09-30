@@ -1581,9 +1581,20 @@ export default async function ManageBusinessPage({
             Location's own manager page, same as before this pass. */}
         {activeTab === "qr" && (
           <div className="flex flex-col gap-4 lg:max-w-2xl">
-            <p className="text-body text-muted">
-              Create and manage trackable QR codes for your business, products, appearances, events and locations.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-body text-muted">
+                Create and manage trackable QR codes for your business, products, appearances, events and locations.
+              </p>
+              {/* QR Campaigns V2 Pass 2 — the polished Campaign Manager
+                  (lifecycle, independent destination, Intelligent Creator)
+                  lives at its own dedicated route rather than being inlined
+                  into this already very large page. Everything below this
+                  link is untouched and stays fully functional as a quick-
+                  create/quick-list surface. */}
+              <Link href={`/account/business/${id}/qr`} className="shrink-0 text-metadata font-bold text-accent">
+                Open Campaign Manager →
+              </Link>
+            </div>
 
             <QrCampaignCreator
               centralOptions={{

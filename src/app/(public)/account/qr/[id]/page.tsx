@@ -5,7 +5,13 @@ import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireBusinessMember, requireEventMember, requireLocationMember } from "@/lib/permissions";
 import { isBusinessPro } from "@/lib/entitlements";
 import { getPublicOrigin } from "@/lib/site-url";
-import { getQrCampaignRow, getQrCampaignStats, getQrCampaignDestination } from "@/lib/analytics/qrCampaignDetail";
+import {
+  getQrCampaignRow,
+  getQrCampaignStats,
+  getQrCampaignDestination,
+  getQrCampaignDestinationSummary,
+} from "@/lib/analytics/qrCampaignDetail";
+import { getBusinessQrCreatorOptions } from "@/lib/qr-manager";
 import QrCampaignDetailView from "./QrCampaignDetailView";
 
 export const dynamic = "force-dynamic";
@@ -56,9 +62,16 @@ export default async function QrCampaignDetailPage({ params }: { params: Promise
     redirect(errorRedirectUrl("/account", message));
   }
 
-  const [stats, destination] = await Promise.all([
+  const [stats, destination, destinationSummary, destinationOptions] = await Promise.all([
     getQrCampaignStats(admin, id),
     getQrCampaignDestination(admin, row),
+    getQrCampaignDestinationSummary(admin, row),
+    // Edit's destination picker (Products/Events/Locations) is only ever
+    // meaningful for a Business-scoped campaign — see updateQrCampaign's
+    // own guard. Legacy Event/Location-only campaigns (business_id null)
+    // still fully DISPLAY here; only destination editing is unavailable
+    // for them in this pass.
+    row.business_id ? getBusinessQrCreatorOptions(admin, row.business_id) : Promise.resolve(null),
   ]);
 
   // Regenerated from the persisted, immutable code — never a new one
@@ -68,14 +81,22 @@ export default async function QrCampaignDetailPage({ params }: { params: Promise
 
   return (
     <QrCampaignDetailView
+      id={row.id}
       name={row.name}
       qrSvg={qrSvg}
       qrUrl={qrUrl}
       code={row.code}
-      isActive={row.is_active}
-      destinationPath={row.destination_path}
+      status={row.status}
+      placement={row.placement}
       destinationType={destination.type}
       destinationLabel={destination.label}
+      destinationSummary={destinationSummary}
+      currentDestinationType={row.destination_type}
+      currentDestinationId={row.destination_id}
+      currentDestinationUrl={row.destination_url}
+      editableDestinationOptions={
+        destinationOptions ? { products: destinationOptions.products, events: destinationOptions.events, locations: destinationOptions.locations } : null
+      }
       stats={stats}
       pro={pro}
       backHref={backHref}
