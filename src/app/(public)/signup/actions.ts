@@ -92,21 +92,19 @@ export async function signUp(formData: FormData) {
 
     // Signup Repair pass — live QA root cause (confirmed via GoTrue logs):
     // supabase.auth.signUp() returns a real, typed 422 "user_already_exists"
-    // when the submitted email already has a CONFIRMED account — every
-    // failure here used to fall into the generic "Could not create your
-    // account" bucket below, which is actively misleading for this one:
-    // retrying never works, because nothing was ever wrong with the
-    // request. This must never become a distinct-looking error message
-    // either (that IS the enumeration signal the comment above already
-    // warns about) — instead it's routed into the EXACT SAME
-    // /signup/check-email screen a brand-new signup lands on. A genuinely
-    // new email still gets its real confirmation email; an existing,
-    // already-confirmed visitor sees an identical page (which now also
-    // carries a plain "Already have an account? Log in" link — see that
-    // page) and is never told, one way or the other, whether their email
-    // matched an account.
+    // when the submitted email already has a CONFIRMED account.
+    //
+    // Existing Email Signup UX — Final Correction pass supersedes this
+    // branch's earlier behavior (which routed here to the same enumeration-
+    // safe /signup/check-email screen a brand-new signup lands on). That
+    // is now an explicit, accepted product decision: FindMi trades some
+    // account-enumeration resistance for clearer returning-user UX on
+    // THIS ONE outcome. Routes to a dedicated "account already exists"
+    // screen (Log In / Reset Password) instead — see that page's own doc
+    // comment for the full reasoning and the exact, narrow disclosure
+    // boundary (only "this email is already registered," nothing else).
     if (error.code === "user_already_exists") {
-      redirect(`/signup/check-email?next=${encodeURIComponent(next)}`);
+      redirect(`/signup/account-exists?next=${encodeURIComponent(next)}`);
     }
 
     // A real, user-correctable, non-enumerating signal — Supabase's own

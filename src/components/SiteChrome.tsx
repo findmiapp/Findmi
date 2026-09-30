@@ -54,6 +54,7 @@ export default function SiteChrome({
     "/signup",
     "/signup/check-email",
     "/signup/confirm-failed",
+    "/signup/account-exists",
     "/login",
     "/forgot-password",
     "/reset-password",
