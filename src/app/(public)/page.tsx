@@ -46,6 +46,18 @@ export const revalidate = 60;
 const BRANDS_ROW_HEADING_FALLBACK = "Brands We Love";
 const BRANDS_ROW_SUBTITLE_FALLBACK = "Real businesses, worth discovering";
 
+// Homepage Section Header Typography Consistency pass — the exact
+// effective title/description classes the "What's Happening" heading
+// already uses below (font-display text-2xl/3xl font-bold + text-sm/60
+// body), reused verbatim as Section's scoped titleClassName/
+// subtitleClassName override for the homepage's other major sections
+// (Brands We Love, Featured Locations) and the profile-preview intro
+// block, so all four read as peer-level section headings on this page.
+// Section.tsx's own defaults are untouched — every other page's Section
+// usage keeps today's smaller text-lg/text-sm treatment exactly as-is.
+const HOMEPAGE_SECTION_TITLE_CLASS = "font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl";
+const HOMEPAGE_SECTION_SUBTITLE_CLASS = "mt-1 text-sm text-ink/60";
+
 // Homepage Content Priority pass — same real example business /join's own
 // Native Rose Showcase section uses (see PROOF_BUSINESS_SLUG there).
 const NATIVE_ROSE_SLUG = "the-native-rose";
@@ -308,7 +320,13 @@ export default async function HomePage({
           items keep the card's own height constant regardless of whether
           1 or 3 real items are present. */}
       {featuredLocations.length > 0 && (
-        <Section title="Featured Locations" subtitle="Places with something happening soon." viewAllHref="/locations">
+        <Section
+          title="Featured Locations"
+          subtitle="Places with something happening soon."
+          viewAllHref="/locations"
+          titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
+          subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
+        >
           <HorizontalScroller>
             {featuredLocations.map((location) => (
               <RailItem key={location.id} density="discovery">
@@ -333,19 +351,23 @@ export default async function HomePage({
           Heading Alignment pass — the intro heading/copy above the
           carousel used to render as a centered, small gray uppercase
           eyebrow, reading as decoration rather than a real section title.
-          Restyled (left-aligned, same h2/subtitle typography tokens
-          Section.tsx's own title/subtitle already use elsewhere on this
-          page — Brands We Love, Featured Locations) so it reads as the
-          same kind of major section heading, not a separate visual
-          language. Top padding brought down from pt-10/sm:pt-12 to
-          pt-6/sm:pt-8 to match the ~py-6 rhythm between the Section-based
-          rows above, now that this block sits directly after one instead
-          of after What's Happening. Carousel and "View live profile" CTA
-          below are unchanged (still centered) — only the intro block's
-          presentation changed. */}
+          Restyled (left-aligned) so it reads as a real section heading,
+          not a separate visual language.
+          Homepage Section Header Typography Consistency pass — that first
+          restyle still landed noticeably smaller/lighter than "What's
+          Happening" above it (Section.tsx's own default text-lg/text-sm
+          treatment, not What's Happening's larger font-display text-2xl/
+          3xl font-bold + text-sm/60 body). Now uses the same
+          HOMEPAGE_SECTION_TITLE_CLASS/HOMEPAGE_SECTION_SUBTITLE_CLASS
+          constants passed to Brands We Love/Featured Locations' own
+          Section calls above, so all four read as peer-scale headings.
+          Top padding stays pt-6/sm:pt-8 to match the ~py-6 rhythm between
+          the Section-based rows above. Carousel and "View live profile"
+          CTA below are unchanged (still centered) — only the intro
+          block's typography changed. */}
       <div className="mx-auto max-w-4xl px-4 pt-6 sm:px-6 sm:pt-8">
-        <h2 className="text-lg font-semibold tracking-tight text-ink">See What Your Findmi Can Become</h2>
-        <p className="mt-1 max-w-md text-sm text-ink/55">
+        <h2 className={HOMEPAGE_SECTION_TITLE_CLASS}>See What Your Findmi Can Become</h2>
+        <p className={`${HOMEPAGE_SECTION_SUBTITLE_CLASS} max-w-md`}>
           One page. Your business, products and everywhere you&rsquo;ll be next.
         </p>
         <div className="mt-4">
@@ -489,6 +511,8 @@ async function HomepageRowSection({
         // are completely untouched — this is a label only.
         eyebrow={isBrandsRow ? "Showing Up" : undefined}
         viewAllHref={viewAllHref}
+        titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
+        subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
         impressionPayload={{
           event_name: "discovery_section_impression",
           discovery_page_id: row.page_id,

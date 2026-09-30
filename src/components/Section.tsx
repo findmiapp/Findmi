@@ -12,6 +12,8 @@ export default function Section({
   viewAllHref,
   children,
   className = "py-6",
+  titleClassName = "text-lg font-semibold tracking-tight text-ink",
+  subtitleClassName = "mt-1 text-sm text-ink/55",
   impressionPayload,
 }: {
   title: string;
@@ -31,6 +33,19 @@ export default function Section({
    * to pass a tighter value, scoped to /businesses' own Browse Mode
    * rails only. */
   className?: string;
+  /** Homepage Section Header Typography Consistency pass — replaces
+   * (never appends to) the title's own default classes, same
+   * opt-in-only pattern `className` above already established. Every
+   * existing caller across the app (event/location/saved/about/admin
+   * pages, etc.) omits this and keeps today's exact text-lg/semibold
+   * title unchanged; only the homepage's own Brands We Love/Featured
+   * Locations Section calls pass the larger What's Happening-matching
+   * treatment, so this stays scoped to those two sections rather than
+   * resizing every other page's section headings. */
+  titleClassName?: string;
+  /** Same opt-in-only override pattern as titleClassName, for the
+   * subtitle paragraph. */
+  subtitleClassName?: string;
   /** Analytics Phase 2A — set only by a Discovery Page Builder-driven
    * section (a homepage_rows row); every other Section caller (every
    * plain discovery route's own rails) omits this and fires nothing.
@@ -51,7 +66,7 @@ export default function Section({
       <div className="mb-3 px-4 sm:px-6">
         {eyebrow && <p className="mb-1 text-xs font-bold uppercase tracking-wide text-findmi-700">{eyebrow}</p>}
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
+          <h2 className={titleClassName}>{title}</h2>
           {viewAllHref && (
             <Link
               href={viewAllHref}
@@ -61,7 +76,7 @@ export default function Section({
             </Link>
           )}
         </div>
-        {subtitle && <p className="mt-1 text-sm text-ink/55">{subtitle}</p>}
+        {subtitle && <p className={subtitleClassName}>{subtitle}</p>}
       </div>
       {children}
     </section>
