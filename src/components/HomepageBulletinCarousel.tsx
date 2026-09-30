@@ -11,6 +11,9 @@ import type { ResolvedHomepageBulletin } from "@/lib/homepage-bulletins";
  * crossfade itself takes). */
 const ROTATE_INTERVAL_MS = 3000;
 const TRANSITION_MS = 300;
+/** Minimum horizontal travel (px) before a touch gesture counts as a
+ * swipe — small finger jitter/taps never navigate. */
+const SWIPE_THRESHOLD_PX = 45;
 
 /** Wraps the exact, unchanged HomepageBulletin card design in a small
  * rotation shell — the carousel swaps which resolved Bulletin is passed
@@ -25,6 +28,11 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
   const [resetTick, setResetTick] = useState(0);
   const [animateIn, setAnimateIn] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Set true for a brief window right after a recognized swipe so the
+  // synthetic click a touch-drag can still produce never opens the
+  // Bulletin's own link — swipes must never double as a destination tap.
+  const justSwipedRef = useRef(false);
 
   // Auto-rotate. Depends on resetTick so a manual nav (which bumps it)
   // tears down and restarts this interval instead of stacking a second
@@ -57,14 +65,55 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
     setResetTick((t) => t + 1);
   }
 
+  // Mobile swipe — an ADDITIONAL way to trigger the same goTo() manual
+  // navigation (so it restarts the rotation timer exactly like Previous/
+  // Next/dots already do); no separate timer or drag-physics engine.
+  // Deliberately never calls preventDefault so native vertical scrolling
+  // is untouched — the gesture is classified only at the end, from the
+  // full start-to-finish delta, and touch-pan-y below just stops the
+  // browser from treating small horizontal jitter as a cancel-worthy pan.
+  function handlePointerDown(e: React.PointerEvent) {
+    if (e.pointerType !== "touch") return;
+    touchStartRef.current = { x: e.clientX, y: e.clientY };
+  }
+
+  function handlePointerUp(e: React.PointerEvent) {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const deltaX = e.clientX - start.x;
+    const deltaY = e.clientY - start.y;
+    if (Math.abs(deltaX) > SWIPE_THRESHOLD_PX && Math.abs(deltaX) > Math.abs(deltaY)) {
+      justSwipedRef.current = true;
+      setTimeout(() => {
+        justSwipedRef.current = false;
+      }, 400);
+      goTo(deltaX < 0 ? index + 1 : index - 1);
+    }
+  }
+
+  function handlePointerCancel() {
+    touchStartRef.current = null;
+  }
+
   return (
     <div
       ref={containerRef}
+      className="touch-pan-y"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={(e) => {
         if (!containerRef.current?.contains(e.relatedTarget as Node)) setPaused(false);
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onClickCapture={(e) => {
+        if (justSwipedRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
       }}
     >
       <div className="overflow-hidden">
