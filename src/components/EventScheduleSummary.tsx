@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { cityState, cityStateZip, formatDateRangeInZone } from "@/lib/format";
+import { cityStateZip, formatDateRangeInZone } from "@/lib/format";
 import { useEventOccurrence, type OccurrenceScheduleState } from "./EventOccurrenceContext";
+import EventLocationCard from "./EventLocationCard";
 import LiveDot from "./LiveDot";
 
 const STATE_LABEL: Record<Exclude<OccurrenceScheduleState, "none">, string> = {
@@ -66,21 +66,7 @@ export default function EventScheduleSummary() {
         </span>
       </div>
       {location ? (
-        <Link
-          href={`/location/${location.slug}`}
-          className="flex items-start gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 transition hover:border-findmi/40 hover:bg-findmi-50"
-        >
-          <PinGlyph className="mt-0.5 h-4 w-4 shrink-0 text-findmi-700" />
-          <span className="min-w-0">
-            <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40">Location</span>
-            <span className="block break-words font-semibold text-findmi-700">{location.name}</span>
-            {(location.address || cityState(location.city, location.state)) && (
-              <span className="block break-words text-xs text-ink/55">
-                {[location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")}
-              </span>
-            )}
-          </span>
-        </Link>
+        <EventLocationCard location={location} />
       ) : (
         manualVenueLine && (
           <div className="flex items-center gap-2">

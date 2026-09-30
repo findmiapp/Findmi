@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
@@ -12,6 +13,7 @@ import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import EventFollowButton from "@/components/EventFollowButton";
+import EventLocationCard from "@/components/EventLocationCard";
 import FeaturedEventHeroOverlay from "@/components/FeaturedEventHeroOverlay";
 import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
@@ -152,7 +154,16 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // explicitly included the Primary Date, and legacy NULL-scope rows) —
   // see updateParticipatingBusinessStatus/resolveEventApplicationDecision
   // for how that status is derived.
-  const realOccurrenceIds = upcomingOccurrences.filter((o) => !isPrimaryDateId(o.id)).map((o) => o.id);
+  // Event Page Visual Correction pass — the synthesized Primary Date entry
+  // (the whole event's own start_at/end_at span, shaped identically to a
+  // real occurrence for the selection/roster-keying logic below) must
+  // never appear as a displayed date CARD — it reads as a redundant
+  // "event-range" card alongside the real per-date ones. Filtered out
+  // ONLY for the rail passed to UpcomingDatesRail below; every other use
+  // of upcomingOccurrences (EventOccurrenceProvider's selection context,
+  // roster keying, Message's own date list) is unchanged.
+  const realOccurrences = upcomingOccurrences.filter((o) => !isPrimaryDateId(o.id));
+  const realOccurrenceIds = realOccurrences.map((o) => o.id);
   const rostersByOccurrence = hasOccurrences ? await getOccurrenceBusinessRosters(realOccurrenceIds) : {};
   const primaryEntry = upcomingOccurrences.find((o) => isPrimaryDateId(o.id));
   if (primaryEntry) {
@@ -183,16 +194,22 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // it's empty and the branded fallback below renders instead.
   const coverAndGallery = [event.cover_image_url, ...images.gallery].filter((v): v is string => Boolean(v));
 
-  // Premium Featured Event Hero pass — attribution reuses the Event's own
-  // existing event_businesses.featured flag (already fetched above as
-  // `businesses`, already used to sub-order "Who You'll Find Here") rather
-  // than inventing a new organizer->Business relationship. Status reuses
-  // the nearest still-scheduled occurrence's real start/end when one
-  // exists (a recurring event's own start_at/end_at can be stale once
-  // occurrences exist) — same getTemporalLabel() every other live-status
-  // pill in this codebase (BusinessPublicView/HomeEventCard/HappeningCard)
-  // already computes from, never a hardcoded/guessed status.
-  const heroAttribution = businesses.find((b) => b.featured)?.name ?? null;
+  // Event Page Visual Correction pass — the host Business byline reuses
+  // the Event's own existing event_businesses.featured flag (already
+  // fetched above as `businesses`, already used to sub-order "Who You'll
+  // Find Here") rather than inventing a new organizer->Business
+  // relationship. When no row is explicitly marked featured but exactly
+  // one approved Business participates, that Business is unambiguously
+  // the host — a real reading of existing participation data, not an
+  // invented one. Two or more un-featured participants stay attribution-
+  // less rather than guessing. Used for both the hero byline and the
+  // "Hosted By" card near the bottom of the page.
+  const hostBusiness = businesses.find((b) => b.featured) ?? (businesses.length === 1 ? businesses[0] : null);
+  // Status reuses the nearest still-scheduled occurrence's real start/end
+  // when one exists (a recurring event's own start_at/end_at can be stale
+  // once occurrences exist) — same getTemporalLabel() every other
+  // live-status pill in this codebase (BusinessPublicView/HomeEventCard/
+  // HappeningCard) already computes from, never a hardcoded/guessed status.
   const heroTemporalSource = upcomingOccurrences[0] ?? { start_at: event.start_at, end_at: event.end_at };
   const heroTemporal = getTemporalLabel(heroTemporalSource.start_at, heroTemporalSource.end_at ?? undefined);
 
@@ -337,17 +354,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
               <span className="font-medium text-ink/80">{formatDateRange(event.start_at, event.end_at)}</span>
             </div>
             {matchedLocation ? (
-              <Link
-                href={`/location/${matchedLocation.slug}`}
-                className="flex items-start gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 transition hover:border-findmi/40 hover:bg-findmi-50"
-              >
-                <PinGlyph className="mt-0.5 h-4 w-4 shrink-0 text-findmi-700" />
-                <span className="min-w-0">
-                  <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40">Location</span>
-                  <span className="block break-words font-semibold text-findmi-700">{matchedLocation.name}</span>
-                  {venueLine && <span className="block break-words text-xs text-ink/55">{venueLine}</span>}
-                </span>
-              </Link>
+              <EventLocationCard location={matchedLocation} />
             ) : (
               venueLine && (
                 <div className="flex items-center gap-2">
@@ -592,18 +599,22 @@ export async function EventPublicView({ slug }: { slug: string }) {
         </div>
       )}
 
-      {/* Event Occurrences foundation — "Upcoming Dates" carousel, now the
-          occurrence SELECTOR (Recurring Events V2) rather than merely
-          informational, shown only when this event has real
+      {/* Event Occurrences foundation — "Dates & Lineup" carousel (renamed
+          from "Upcoming Dates" in the Event Page Visual Correction pass),
+          now the occurrence SELECTOR (Recurring Events V2) rather than
+          merely informational, shown only when this event has real
           event_occurrences rows still to come (including
           cancelled-but-not-yet-past ones, badged accordingly and still
           selectable for transparency). A legacy event with none simply
           has an empty list here and this section renders nothing — its
-          single date keeps showing exactly as it always has, above. */}
-      {upcomingOccurrences.length > 0 && (
+          single date keeps showing exactly as it always has, above.
+          Renders realOccurrences (the synthesized Primary Date excluded)
+          so this rail is REAL event_occurrences only — see that
+          variable's own comment. */}
+      {realOccurrences.length > 0 && (
         <div className="mt-4 -mx-4 sm:mx-0">
           <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
-            Upcoming Dates
+            Dates &amp; Lineup
           </p>
           {/* Public Upcoming Dates Mobile UX pass — ONE horizontal rail:
               "View all N" (UpcomingDatesRail's own compact trigger) is the
@@ -614,7 +625,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
               regardless of how many cards are currently visible, so the
               date SELECTOR context (Tier A CTAs/Location/roster switching)
               is unaffected either way. */}
-          <UpcomingDatesRail occurrences={upcomingOccurrences} eventName={event.name} />
+          <UpcomingDatesRail occurrences={realOccurrences} eventName={event.name} />
         </div>
       )}
 
@@ -629,7 +640,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
           event keeps the exact original event_businesses roster below,
           untouched. */}
       {hasOccurrences ? (
-        <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} eventName={event.name} />
+        <EventOccurrenceBusinessRoster
+          rostersByOccurrence={rostersByOccurrence}
+          eventName={event.name}
+          eventLevelBusinesses={businesses}
+        />
       ) : (
         <section className="mt-5">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">
@@ -653,22 +668,18 @@ export async function EventPublicView({ slug }: { slug: string }) {
         page_type="event"
         page_path={`/event/${event.slug}`}
       />
-      {/* Premium Featured Event Hero pass — one immersive full-bleed
-          composition (image + cinematic bottom gradient + overlaid
-          category/title/attribution/status/short description) replaces
-          the old cover-image-plus-thumbnail-strip-plus-separate-white-card
-          top section. The thumbnail strip that used to live directly
-          below the cover is gone — those same images.gallery images now
-          render further down the page (see the Gallery section below,
-          after Description), so the hero reads as ONE photographic
-          moment, not a database record with a filmstrip under it.
-          EventCoverLightbox is reused completely unchanged for the actual
-          image + tap-to-zoom-through-everything behavior; the overlay is
-          `pointer-events-none` so that tap target still spans the whole
-          hero, including the text. Taller/more immersive on mobile
-          (4:5) than the old 16:9 strip, widening back out on larger
-          viewports where more horizontal room is available. */}
-      <div className="relative aspect-[4/5] w-full overflow-hidden border-b border-black/5 bg-ink sm:aspect-[21/9] sm:rounded-b-3xl">
+      {/* Event Page Visual Correction pass — the hero stays immersive
+          (full-bleed image + gradient + overlay) but must NOT consume
+          the whole first mobile viewport: the earlier 4:5 aspect ratio
+          pushed RSVP/actions entirely below the fold on a normal phone.
+          A viewport-relative height (not an aspect ratio) with min/max
+          clamps keeps the hero's mobile height proportional to the
+          device rather than to its own width, so the action row below
+          reliably starts within/near the first screen regardless of
+          phone size. Desktop keeps the original cinematic 21/9 strip —
+          this correction is mobile-only. EventCoverLightbox/gradient/
+          category/title/status/analytics are otherwise unchanged. */}
+      <div className="relative h-[42vh] max-h-[400px] min-h-[260px] w-full overflow-hidden border-b border-black/5 bg-ink sm:h-auto sm:aspect-[21/9] sm:rounded-b-3xl">
         {coverAndGallery.length > 0 ? (
           <EventCoverLightbox images={coverAndGallery} alt={event.name} />
         ) : (
@@ -679,7 +690,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <FeaturedEventHeroOverlay
           category={category?.name ?? null}
           title={event.name}
-          attribution={heroAttribution}
+          attribution={hostBusiness?.name ?? null}
+          attributionHref={hostBusiness ? `/business/${hostBusiness.slug}` : undefined}
           statusLabel={heroTemporal.live ? "Happening Now" : null}
           isLive={heroTemporal.live}
           description={event.description}
@@ -746,14 +758,43 @@ export async function EventPublicView({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* Run By — no organizer->Business/Person relationship exists on
-            events today, so this stays plain text — never a fabricated
-            profile link (see the pass report). */}
-        {hasOrganizer && (
+        {/* Event Page Visual Correction pass — "Hosted By" is now a real
+            linked Business object card whenever hostBusiness resolved
+            (same event_businesses.featured/sole-participant reasoning as
+            the hero byline — see that variable's own comment). A plain-
+            text organizer_name with no matching Business (e.g. a named
+            individual, not a FindMi Business) keeps the original Run By
+            text exactly as before — never dropped, never a fabricated
+            link. */}
+        {hostBusiness ? (
           <section className="mt-8">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Run By</p>
-            <p className="mt-1 text-base font-semibold text-ink">{event.organizer_name}</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Hosted By</p>
+            <Link
+              href={`/business/${hostBusiness.slug}`}
+              className="mt-2 flex items-center gap-3 rounded-xl border border-black/10 bg-white p-3 transition hover:border-findmi/40 hover:bg-findmi-50"
+            >
+              <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-black/5">
+                {hostBusiness.logo_url ? (
+                  <Image src={hostBusiness.logo_url} alt="" fill unoptimized sizes="44px" className="object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm font-bold uppercase text-ink/30">
+                    {hostBusiness.name.charAt(0)}
+                  </div>
+                )}
+              </div>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold text-ink">{hostBusiness.name}</span>
+                <span className="text-xs font-semibold text-findmi-700">View Brand ›</span>
+              </span>
+            </Link>
           </section>
+        ) : (
+          hasOrganizer && (
+            <section className="mt-8">
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Run By</p>
+              <p className="mt-1 text-base font-semibold text-ink">{event.organizer_name}</p>
+            </section>
+          )
         )}
 
         {/* Claim foundation pass — deliberately last, small, and muted. */}

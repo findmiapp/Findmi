@@ -18,14 +18,27 @@ import { useEventOccurrence } from "./EventOccurrenceContext";
 export default function EventOccurrenceBusinessRoster({
   rostersByOccurrence,
   eventName,
+  eventLevelBusinesses,
 }: {
   rostersByOccurrence: Record<string, EventBusinessListing[]>;
   eventName: string;
+  /** Event Page Visual Correction pass — the Event's own overall
+   * event_businesses roster (already fetched once, server-side, for
+   * every other use of "Who You'll Find Here" on this page). A real
+   * occurrence with no event_occurrence_businesses rows of its own falls
+   * back to this instead of a blanket "coming soon" — a business approved
+   * at the event level (all_dates/legacy participation scopes) IS a
+   * genuine participant of every date, this just surfaces that existing
+   * relationship rather than inventing occurrence-level rows that don't
+   * exist. Only ever used as a fallback: an occurrence with its OWN real
+   * roster rows still shows exactly those, unchanged. */
+  eventLevelBusinesses: EventBusinessListing[];
 }) {
   const { selected } = useEventOccurrence();
   if (!selected) return null;
 
-  const businesses = rostersByOccurrence[selected.id] ?? [];
+  const occurrenceBusinesses = rostersByOccurrence[selected.id] ?? [];
+  const businesses = occurrenceBusinesses.length > 0 ? occurrenceBusinesses : eventLevelBusinesses;
 
   return (
     <section className="mt-5">
