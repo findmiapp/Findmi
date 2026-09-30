@@ -34,7 +34,13 @@ export interface FeaturedEventHeroOverlayProps {
    * status itself. Null renders no pill at all. */
   statusLabel: string | null;
   isLive: boolean;
-  description: string | null;
+  /** Event Page Final Compression pass — no longer rendered anywhere (the
+   * hero no longer shows a description excerpt at all; the single
+   * description presentation lives in the page body below the actions).
+   * Optional so a caller that still passes it (FeaturedEventCard passes
+   * `null` for its own compact teaser, which never rendered this anyway)
+   * keeps compiling without a second edit. */
+  description?: string | null;
   /** Compact = Business/Location teaser card sizing; false = the Event
    * page's own full immersive hero. */
   compact?: boolean;
@@ -51,7 +57,6 @@ export default function FeaturedEventHeroOverlay({
   attributionHref,
   statusLabel,
   isLive,
-  description,
   compact = false,
   titleTag = "h2",
 }: FeaturedEventHeroOverlayProps) {
@@ -113,9 +118,6 @@ export default function FeaturedEventHeroOverlay({
             {isLive && <LiveDot className="animate-happening-now-glow rounded-full text-red-500" />}
             {statusLabel}
           </span>
-        )}
-        {description && !compact && (
-          <p className="mt-1.5 max-w-xl text-body text-white/85 line-clamp-2">{description}</p>
         )}
       </div>
     </div>

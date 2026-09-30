@@ -357,6 +357,60 @@ export async function EventPublicView({ slug }: { slug: string }) {
     />
   );
 
+  // Event Page Final Compression pass — the occurrence date rail and
+  // "Who You'll Find Here" are built once as their own variables (not
+  // duplicated in source) because this pass renders them in ONE of TWO
+  // different positions depending on whether the event actually has real
+  // occurrences to show — see showOccurrenceCluster/scheduleAndDetails
+  // below. Both blocks are exactly what already existed before this
+  // pass, just extracted so they can be placed conditionally. The rail
+  // itself is still self-guarded (renders nothing with zero real
+  // occurrences), and the roster ternary is still the exact original
+  // hasOccurrences branch — only each block's POSITION on the page
+  // changes, never its own internal logic.
+  const showOccurrenceCluster = realOccurrences.length > 0;
+  const datesAndLineupSection = realOccurrences.length > 0 && (
+    <div className="mt-3 -mx-4 sm:mx-0">
+      <p className="mb-2 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
+        Upcoming Dates &amp; Lineup
+      </p>
+      {/* Public Upcoming Dates Mobile UX pass — ONE horizontal rail:
+          "View all N" (UpcomingDatesRail's own compact trigger) is the
+          final scrollable item in the SAME rail, never a second
+          line/section beneath the carousel. Bounded initial render is
+          preserved (see that component's own doc comment); every
+          occurrence is still passed to EventOccurrenceProvider above
+          regardless of how many cards are currently visible, so the
+          date SELECTOR context (Tier A CTAs/Location/roster switching)
+          is unaffected either way. */}
+      <UpcomingDatesRail
+        occurrences={realOccurrences}
+        eventName={event.name}
+        eventId={event.id}
+        canonicalLocation={canonicalLocation}
+        coverImageUrl={coverAndGallery[0] ?? null}
+        ticketsEnabled={event.tickets_enabled}
+        ticketsUrl={event.tickets_url}
+        rsvpEnabled={event.rsvp_enabled}
+        rsvp={rsvpForm}
+        vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
+        vendorApplication={vendorAppForm}
+        rostersByOccurrence={rostersByOccurrence}
+      />
+    </div>
+  );
+  const whoYoullFindHere = hasOccurrences ? (
+    <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} eventName={event.name} />
+  ) : (
+    <section className="mt-5">
+      <h2 className="font-display text-lg font-bold tracking-tight text-ink">Who You&rsquo;ll Find Here</h2>
+      <p className="mt-1 text-sm text-ink/55">
+        {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
+      </p>
+      <EventBusinessRoster businesses={businesses} eventName={event.name} />
+    </section>
+  );
+
   // Recurring Events V2 — for an event WITH occurrence rows, occurrence
   // scheduling becomes public scheduling truth: the details card's date/
   // time/location and the Directions/Add to Calendar actions read the
@@ -607,6 +661,24 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
       </div>
 
+      {/* Event Page Final Compression pass — when the event has real
+          occurrences to show, Upcoming Dates & Lineup and Who You'll Find
+          Here move up to sit directly beneath the actions (the occurrence
+          experience is more actionable than the description/gallery and
+          should be reachable sooner) — both are the exact same blocks
+          built once above (datesAndLineupSection/whoYoullFindHere), just
+          rendered in this earlier position instead of after the gallery.
+          An event with no real occurrences renders nothing here
+          (datesAndLineupSection is self-guarded; the roster is rendered
+          in its original later position below instead) — never an empty
+          "Upcoming Dates & Lineup" section. */}
+      {showOccurrenceCluster && (
+        <>
+          {datesAndLineupSection}
+          {whoYoullFindHere}
+        </>
+      )}
+
       {/* Event Page Visual Convergence pass — the approved reference runs
           the description directly after logistics/actions with no large
           section heading at all on mobile (a big "ABOUT THIS EVENT" label
@@ -638,72 +710,14 @@ export async function EventPublicView({ slug }: { slug: string }) {
         </div>
       )}
 
-      {/* Event Occurrences foundation — "Dates & Lineup" carousel (renamed
-          from "Upcoming Dates" in the Event Page Visual Correction pass),
-          now the occurrence SELECTOR (Recurring Events V2) rather than
-          merely informational, shown only when this event has real
-          event_occurrences rows still to come (including
-          cancelled-but-not-yet-past ones, badged accordingly and still
-          selectable for transparency). A legacy event with none simply
-          has an empty list here and this section renders nothing — its
-          single date keeps showing exactly as it always has, above.
-          Renders realOccurrences (the synthesized Primary Date excluded)
-          so this rail is REAL event_occurrences only — see that
-          variable's own comment. */}
-      {realOccurrences.length > 0 && (
-        <div className="mt-3 -mx-4 sm:mx-0">
-          <p className="mb-2 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
-            Dates &amp; Lineup
-          </p>
-          {/* Public Upcoming Dates Mobile UX pass — ONE horizontal rail:
-              "View all N" (UpcomingDatesRail's own compact trigger) is the
-              final scrollable item in the SAME rail, never a second
-              line/section beneath the carousel. Bounded initial render is
-              preserved (see that component's own doc comment); every
-              occurrence is still passed to EventOccurrenceProvider above
-              regardless of how many cards are currently visible, so the
-              date SELECTOR context (Tier A CTAs/Location/roster switching)
-              is unaffected either way. */}
-          <UpcomingDatesRail
-            occurrences={realOccurrences}
-            eventName={event.name}
-            eventId={event.id}
-            canonicalLocation={canonicalLocation}
-            coverImageUrl={coverAndGallery[0] ?? null}
-            ticketsEnabled={event.tickets_enabled}
-            ticketsUrl={event.tickets_url}
-            rsvpEnabled={event.rsvp_enabled}
-            rsvp={rsvpForm}
-            vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
-            vendorApplication={vendorAppForm}
-            rostersByOccurrence={rostersByOccurrence}
-          />
-        </div>
-      )}
-
-      {/* Premium Featured Event Hero pass — "About This Event" moved up
-          to right after the actions/utility row (see the Description
-          block above, before Upcoming Dates), so this roster no longer
-          needs to sit immediately before it. Recurring Events V2: for an
-          event WITH occurrence rows, the SELECTED occurrence's own
-          event_occurrence_businesses roster is authoritative
-          (EventOccurrenceBusinessRoster reads it via the shared context)
-          — never event_businesses, never a fallback to it. A legacy
-          event keeps the exact original event_businesses roster below,
-          untouched. */}
-      {hasOccurrences ? (
-        <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} eventName={event.name} />
-      ) : (
-        <section className="mt-5">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">
-            Who You&rsquo;ll Find Here
-          </h2>
-          <p className="mt-1 text-sm text-ink/55">
-            {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
-          </p>
-          <EventBusinessRoster businesses={businesses} eventName={event.name} />
-        </section>
-      )}
+      {/* Event Page Final Compression pass — an event with NO real
+          occurrences (a legacy one-time event, or a recurring event with
+          none currently upcoming) keeps the original ordering: Who You'll
+          Find Here stays here, after the description/gallery, exactly as
+          before this pass. showOccurrenceCluster's own block above
+          already rendered it earlier for every event that actually has
+          something to show in Upcoming Dates & Lineup. */}
+      {!showOccurrenceCluster && whoYoullFindHere}
     </>
   );
 
@@ -741,7 +755,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
           attributionHref={hostBusiness ? `/business/${hostBusiness.slug}` : undefined}
           statusLabel={heroTemporal.live ? "Happening Now" : null}
           isLive={heroTemporal.live}
-          description={event.description}
           titleTag="h1"
         />
         <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-30" />
