@@ -3,7 +3,8 @@
 import type { ReactNode } from "react";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import AddToCalendarButton from "./AddToCalendarButton";
-import { cityState } from "@/lib/format";
+import type { EventLocationCardLocation } from "./EventLocationCard";
+import { cityState, cityStateZip } from "@/lib/format";
 import { trackEvent, type TrackEventPayload } from "@/lib/analytics/track";
 
 const GRID_COLS: Record<number, string> = {
@@ -90,7 +91,25 @@ function DirectionsGlyph({ className }: { className?: string }) {
  * composition (RSVP alone above; Directions alongside Save/Calendar/
  * Share below, not beside RSVP). Same mapQuery/href computation
  * EventScheduleCtas used to do, same click_directions analytics
- * payload. */
+ * payload.
+ *
+ * Final Mobile Visual Convergence pass — root-caused why Directions was
+ * silently absent on a real recurring event (illy's Cup of Love
+ * included): this only ever read the SELECTED OCCURRENCE's own linked
+ * Location (selected.location, from event_occurrences.location_id), never
+ * the Event-level canonicalLocation EventPublicView.tsx already resolves
+ * (the nearest occurrence WITH a linked Location, or the legacy exact-
+ * venue-match fallback — see that variable's own comment). A recurring
+ * event can easily have every occurrence's own location_id unset while
+ * still having a perfectly real, resolvable Location for the event as a
+ * whole — that's exactly the illy case. `canonicalLocation` is passed
+ * down as a fallback, never a replacement: the selected occurrence's own
+ * Location still wins whenever it has one. When NEITHER resolves, this
+ * now also falls back to the occurrence's own manual venue text fields
+ * (venue_name/address/city/state/postal_code — the same fields
+ * EventScheduleSummary's own manualVenueLine fallback already reads) to
+ * build a Maps query, so Directions still works for a founder-typed venue
+ * with no FindMi Location relationship at all — same data, no new system. */
 export default function EventUtilityActions({
   eventId,
   eventName,
@@ -99,6 +118,7 @@ export default function EventUtilityActions({
   save,
   share,
   directionsEnabled,
+  canonicalLocation,
 }: {
   eventId: string;
   eventName: string;
@@ -107,17 +127,27 @@ export default function EventUtilityActions({
   save: ReactNode;
   share: ReactNode;
   directionsEnabled: boolean;
+  /** Always a real Location row in practice (EventPublicView.tsx's own
+   * canonicalLocation, which always carries its real `id`) — narrowed to
+   * `& { id: string }` here only so `location?.id` below type-checks
+   * against the union with the occurrence's own `selected.location`. */
+  canonicalLocation: (EventLocationCardLocation & { id: string }) | null;
 }) {
   const { selected, selectedState } = useEventOccurrence();
   const canShowCalendar = Boolean(selected) && selectedState !== "cancelled";
 
-  const location = selected?.location ?? null;
+  const location = selected?.location ?? canonicalLocation ?? null;
+  const manualVenueLine = selected
+    ? [selected.venue_name, selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   const locationLine = location
     ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(" · ")
-    : null;
+    : manualVenueLine || null;
   const mapQuery = location
     ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
-    : null;
+    : manualVenueLine || null;
   const directionsHref =
     directionsEnabled && selected && selectedState !== "cancelled" && mapQuery
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`

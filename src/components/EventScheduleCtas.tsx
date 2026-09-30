@@ -94,8 +94,8 @@ export default function EventScheduleCtas({
           label={label}
           className={
             weight === "solid"
-              ? "flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              : "flex h-12 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+              ? "flex h-[54px] flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              : "flex h-[54px] flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
           }
           track={{
             event_name: eventName,

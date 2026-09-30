@@ -74,6 +74,24 @@ export default function EventBusinessRoster({
     );
   }
 
+  // Final Mobile Visual Convergence pass (Goal 5) — a single confirmed
+  // business was rendering THREE times on the page: once in its own
+  // "Featured Vendors" rail (if flagged featured), again as the sole item
+  // in "View All Vendors by Category" below it, and again under Hosted By
+  // (a different, intentionally-kept relationship — see that section's
+  // own comment). The Featured rail and the full A-Z roster both exist to
+  // help a visitor browse a real lineup; with exactly one business,
+  // there's nothing to browse and no category filter to show — just the
+  // one confirmed business, once, as a compact card. Two or more
+  // businesses keep the full existing behavior below untouched.
+  if (businesses.length === 1) {
+    return (
+      <div className="mt-4">
+        <RosterListItem business={businesses[0]} />
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4">
       {/* Featured Vendors — a horizontal swipeable rail, not a stacked

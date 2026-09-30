@@ -2,7 +2,7 @@
 
 import { cityStateZip, formatDateRangeInZone } from "@/lib/format";
 import { useEventOccurrence, type OccurrenceScheduleState } from "./EventOccurrenceContext";
-import EventLocationCard from "./EventLocationCard";
+import EventLocationCard, { type EventLocationCardLocation } from "./EventLocationCard";
 import LiveDot from "./LiveDot";
 
 const STATE_LABEL: Record<Exclude<OccurrenceScheduleState, "none">, string> = {
@@ -17,8 +17,22 @@ const STATE_LABEL: Record<Exclude<OccurrenceScheduleState, "none">, string> = {
  * event's own start_at/end_at/venue fields, which stop being public
  * scheduling truth the moment occurrence rows exist), so this can never
  * show a stale parent date while occurrences exist. Renders in the
- * selected occurrence's own timezone. */
-export default function EventScheduleSummary() {
+ * selected occurrence's own timezone.
+ *
+ * Final Mobile Visual Convergence pass — `canonicalLocation` is a new
+ * fallback prop (EventPublicView.tsx's own already-resolved Location for
+ * the event as a whole — the nearest occurrence WITH a linked Location,
+ * or the legacy exact-venue-match). The selected occurrence's own
+ * location_id still wins whenever it has one; this only fills in the
+ * common case where the selected occurrence itself has no location_id
+ * but the event unambiguously has a real Location anyway — without it,
+ * the top logistics module silently fell back to plain manual-venue text
+ * even when a genuine FindMi Location was already known. */
+export default function EventScheduleSummary({
+  canonicalLocation,
+}: {
+  canonicalLocation: EventLocationCardLocation | null;
+}) {
   const { selected, selectedState } = useEventOccurrence();
 
   if (!selected || selectedState === "none") {
@@ -29,11 +43,12 @@ export default function EventScheduleSummary() {
   // location_id) always renders as a clickable /location/[slug] card, per
   // this pass's own spec ("must render as a clickable Location
   // relationship... never show only plain venue text when a canonical
-  // Location exists"). No location_id falls back to this occurrence's own
-  // manual venue fields (added alongside location_id — see
-  // resolveOccurrenceVenue in account/event/actions.ts) as plain text,
-  // same as a legacy event's own venue_name/address always has.
-  const location = selected.location;
+  // Location exists"). No location_id falls back to the event's own
+  // canonicalLocation, then to this occurrence's own manual venue fields
+  // (added alongside location_id — see resolveOccurrenceVenue in
+  // account/event/actions.ts) as plain text, same as a legacy event's own
+  // venue_name/address always has.
+  const location = selected.location ?? canonicalLocation;
   const manualVenueLine = [selected.venue_name, selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)]
     .filter(Boolean)
     .join(" · ");

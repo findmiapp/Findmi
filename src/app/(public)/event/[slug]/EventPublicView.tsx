@@ -395,7 +395,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
         )}
 
         {hasOccurrences ? (
-          <EventScheduleSummary />
+          <EventScheduleSummary canonicalLocation={canonicalLocation} />
         ) : (
           <div className="mt-3 flex flex-col gap-2 text-sm text-ink/65">
             <div className="flex items-center gap-2">
@@ -453,8 +453,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 label={action.label}
                 className={
                   action.weight === "solid"
-                    ? "flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-12 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    ? "flex h-[54px] flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    : "flex h-[54px] flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
                 }
                 track={{
                   event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
@@ -540,6 +540,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           save={saveAction}
           share={shareAction}
           directionsEnabled={event.directions_enabled}
+          canonicalLocation={canonicalLocation}
         />
       ) : (
         <UtilityActionGrid
@@ -771,18 +772,26 @@ export async function EventPublicView({ slug }: { slug: string }) {
         {hasVenueDetails && (
           <section className="mt-8">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">About the Venue</h2>
-            <div className="mt-3 flex flex-col gap-1 text-sm text-ink/70">
-              {event.venue_name && <p className="font-semibold text-ink">{event.venue_name}</p>}
-              {(event.address || location) && <p>{[event.address, location].filter(Boolean).join(", ")}</p>}
-              {canonicalLocation && (
-                <Link
-                  href={`/location/${canonicalLocation.slug}`}
-                  className="mt-1 inline-block w-fit text-xs font-semibold text-findmi-700 underline underline-offset-2"
-                >
-                  View Location ↗
-                </Link>
-              )}
-            </div>
+            {/* Final Mobile Visual Convergence pass — a real linked
+                Location now renders as the same compact, visual
+                EventLocationCard the top logistics module uses (thumbnail/
+                logo, name, address, chevron, link to the real Location
+                page) instead of duplicating a plain-text name/address block
+                plus a separate "View Location" link. Reuses the shared
+                component rather than building parallel Location UI. No
+                canonicalLocation (a founder-typed venue with no matching
+                FindMi Location) keeps the original plain-text fallback
+                exactly as before. */}
+            {canonicalLocation ? (
+              <div className="mt-3">
+                <EventLocationCard location={canonicalLocation} />
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-col gap-1 text-sm text-ink/70">
+                {event.venue_name && <p className="font-semibold text-ink">{event.venue_name}</p>}
+                {(event.address || location) && <p>{[event.address, location].filter(Boolean).join(", ")}</p>}
+              </div>
+            )}
             {images.venue.length > 0 && (
               <div className="mt-3">
                 <ImageGalleryStrip images={images.venue} alt={event.venue_name ?? "Venue"} />
