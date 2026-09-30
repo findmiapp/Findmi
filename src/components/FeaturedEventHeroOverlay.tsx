@@ -31,17 +31,26 @@ export interface FeaturedEventHeroOverlayProps {
   attributionHref?: string;
   /** Pre-resolved copy (e.g. "Happening Now") from the caller's own
    * getTemporalLabel() read — this component never computes or guesses
-   * status itself. Null renders no pill at all. */
+   * status itself. Null renders no pill at all.
+   * Event Top Hierarchy Final Micro-pass — only ever rendered for the
+   * COMPACT Business/Location teaser card now; the Event page's own full
+   * hero no longer shows a live-status pill at all (that signal moved
+   * back to the white logistics card below it — see
+   * EventScheduleSummary — so there's exactly one HAPPENING NOW
+   * presentation on the page, not two). */
   statusLabel: string | null;
   isLive: boolean;
-  /** Event Hero / Logistics Final Micro-pass — one compact "date · venue"
-   * metadata line for the currently relevant real occurrence (e.g.
-   * "SEP 30 · HUDSON YARDS"), rendered between the byline and the status
-   * pill. Pre-resolved by the caller (EventPublicView.tsx) from data it
-   * already has — this component never computes a date/location itself.
-   * Null/omitted (the Business/Location teaser card never passes it)
-   * renders nothing. */
-  occurrenceMeta?: string | null;
+  /** Event Top Hierarchy Final Micro-pass — the best already-resolved
+   * Location name for this Event (its host/featured Location, or the
+   * legacy exact-venue-match — the same canonicalLocation
+   * EventPublicView.tsx already resolves for every other Location
+   * reference on the page), rendered directly beneath the title and
+   * above the "by {attribution}" byline. Replaces the previous pass's
+   * "date · venue" occurrenceMeta line — the hero no longer shows any
+   * temporal metadata at all. Plain text, never a link (the whole hero
+   * has no Location page to send someone to — see "About the Venue"
+   * further down the page for that). Null/omitted renders nothing. */
+  venueLabel?: string | null;
   /** Event Page Final Compression pass — no longer rendered anywhere (the
    * hero no longer shows a description excerpt at all; the single
    * description presentation lives in the page body below the actions).
@@ -63,7 +72,7 @@ export default function FeaturedEventHeroOverlay({
   title,
   attribution,
   attributionHref,
-  occurrenceMeta,
+  venueLabel,
   statusLabel,
   isLive,
   compact = false,
@@ -92,6 +101,9 @@ export default function FeaturedEventHeroOverlay({
         >
           {title}
         </TitleTag>
+        {venueLabel && !compact && (
+          <p className="text-body-lg font-semibold text-white/90 line-clamp-2">{venueLabel}</p>
+        )}
         {attribution &&
           (attributionHref ? (
             <Link
@@ -103,28 +115,16 @@ export default function FeaturedEventHeroOverlay({
           ) : (
             <p className="text-metadata font-medium text-white/70">by {attribution}</p>
           ))}
-        {occurrenceMeta && (
-          <p className="truncate text-metadata font-medium uppercase tracking-wide text-white/80">{occurrenceMeta}</p>
-        )}
-        {/* Final Event Experience Polish pass — the Event page's own full
-            hero (compact=false) swaps the old solid red "HAPPENING NOW"
-            pill for a premium dark/glass treatment (translucent black,
-            thin translucent white border, backdrop blur) — it read as too
-            visually aggressive, especially over red-heavy event
-            photography. The live SIGNAL stays the small glowing red dot
-            (same LiveDot + animate-happening-now-glow halo convention
-            EventScheduleSummary/HomeEventCard already use), not the pill
-            fill. The compact Business/Location Featured Event teaser card
-            is deliberately untouched — its own solid-red badge is a
-            different page's existing treatment, out of scope here. */}
-        {statusLabel && (
+        {/* Event Top Hierarchy Final Micro-pass — the live-status pill now
+            renders ONLY for the compact Business/Location teaser card
+            (unchanged, untouched treatment). The Event page's own full
+            hero (compact=false) no longer shows HAPPENING NOW at all —
+            that single presentation lives in the white logistics card
+            below the hero now (EventScheduleSummary). */}
+        {compact && statusLabel && (
           <span
             className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-              compact
-                ? isLive
-                  ? "bg-red-500/90 text-white"
-                  : "bg-white/15 text-white backdrop-blur-sm"
-                : "border border-white/15 bg-black/55 text-white backdrop-blur-sm"
+              isLive ? "bg-red-500/90 text-white" : "bg-white/15 text-white backdrop-blur-sm"
             }`}
           >
             {isLive && <LiveDot className="animate-happening-now-glow rounded-full text-red-500" />}

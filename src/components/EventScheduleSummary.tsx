@@ -4,6 +4,7 @@ import Link from "next/link";
 import { cityState, cityStateZip, formatDateShortInZone, formatTimeInZone } from "@/lib/format";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
+import LiveDot from "./LiveDot";
 
 /** The recurring-event hero's date/time/location block — Recurring
  * Events V2. Reads the shared selectedOccurrence context (never the
@@ -31,12 +32,17 @@ import type { EventLocationCardLocation } from "./EventLocationCard";
  *
  * Event Hero / Logistics Final Micro-pass — date and time now read as
  * ONE compact schedule line ("date · time"), not two ends of a
- * justify-between row, and the live "Happening Now" signal is gone from
- * this card entirely — the hero above already communicates it (see its
- * own new compact occurrence metadata line + glass status pill). A
- * genuinely cancelled selected occurrence still surfaces that here
- * (never hidden just because live status was removed — cancellation is
- * a different, still-necessary signal). */
+ * justify-between row.
+ *
+ * Event Top Hierarchy Final Micro-pass — "Happening Now" is back on this
+ * card (the hero no longer shows any live-status pill at all — see
+ * FeaturedEventHeroOverlay — so this is now the ONE live-status
+ * presentation on the page), directly beneath the schedule line: a small
+ * glowing red dot + red text, never a large pill. A genuinely cancelled
+ * selected occurrence shows its own compact tag in the same spot instead
+ * (mutually exclusive with Happening Now — never both). A thin divider
+ * separates that top "when/status" group from the venue/address group
+ * beneath it, only when there's real venue content to separate from. */
 export default function EventScheduleSummary({
   canonicalLocation,
 }: {
@@ -70,18 +76,28 @@ export default function EventScheduleSummary({
     ? `${firstStartTime} – ${firstEndTime}`
     : `${formatTimeInZone(selected.start_at, selected.timezone)} – ${formatTimeInZone(selected.end_at, selected.timezone)}`;
 
+  const hasVenueContent = Boolean(location || manualVenueLine);
+
   return (
     <div className="mt-3 flex flex-col gap-1 text-sm">
       <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
         <span className="font-bold text-ink">{dateRangeLabel}</span>
         <span className="text-ink/30">·</span>
-        <span className="text-ink/55">{timeLabel}</span>
+        <span className="font-medium text-ink/75">{timeLabel}</span>
       </p>
-      {selectedState === "cancelled" && (
+      {selectedState === "cancelled" ? (
         <span className="inline-flex w-fit items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
           Cancelled
         </span>
+      ) : (
+        selectedState === "current" && (
+          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-red-600">
+            <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
+            Happening Now
+          </span>
+        )
       )}
+      {hasVenueContent && <div className="border-t border-black/[0.06]" />}
       {location ? (
         <Link href={`/location/${location.slug}`} className="group w-fit">
           <span className="flex items-center gap-1 font-semibold text-ink transition group-hover:text-findmi-700">

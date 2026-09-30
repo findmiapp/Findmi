@@ -41,7 +41,7 @@ import {
   getOccurrenceBusinessRosters,
   isPrimaryDateId,
 } from "@/lib/data";
-import { cityStateZip, formatDateRange, formatDayOfMonthInZone, formatMonthAbbrevInZone, getTemporalLabel } from "@/lib/format";
+import { cityStateZip, formatDateRange, getTemporalLabel } from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -262,25 +262,14 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const heroTemporalSource = upcomingOccurrences[0] ?? { start_at: event.start_at, end_at: event.end_at };
   const heroTemporal = getTemporalLabel(heroTemporalSource.start_at, heroTemporalSource.end_at ?? undefined);
 
-  // Event Hero / Logistics Final Micro-pass — one compact "date · venue"
-  // metadata line under the hero byline. Picks the same currently-happening
-  // -> nearest-upcoming REAL occurrence EventOccurrenceContext selects
-  // client-side, computed here server-side from realOccurrences (never the
-  // synthesized whole-event-range entry — see that variable's own
-  // comment), so the hero never needs to wait for hydration. A legacy
-  // event with no real occurrences falls back to the Event's own existing
-  // start_at/end_at via the same formatDateRange() every other legacy
-  // date line on this page already uses — no new data, no new query.
-  const heroNow = Date.now();
-  const heroOccurrence =
-    realOccurrences.find(
-      (o) => o.status === "scheduled" && new Date(o.start_at).getTime() <= heroNow && new Date(o.end_at).getTime() > heroNow
-    ) ?? realOccurrences.find((o) => o.status === "scheduled" && new Date(o.start_at).getTime() > heroNow) ?? null;
-  const heroMetaDate = heroOccurrence
-    ? `${formatMonthAbbrevInZone(heroOccurrence.start_at, heroOccurrence.timezone)} ${formatDayOfMonthInZone(heroOccurrence.start_at, heroOccurrence.timezone)}`
-    : formatDateRange(event.start_at, event.end_at);
-  const heroMetaLocation = (heroOccurrence ? (heroOccurrence.location ?? canonicalLocation) : canonicalLocation)?.name ?? null;
-  const heroMeta = [heroMetaDate, heroMetaLocation].filter(Boolean).join(" · ");
+  // Event Top Hierarchy Final Micro-pass — the hero no longer shows any
+  // temporal metadata (that reverted to the white logistics card below
+  // it); it now shows only the best already-resolved Location name,
+  // directly beneath the title. canonicalLocation is the exact same
+  // already-resolved Location every other Location reference on this
+  // page uses (the nearest occurrence with a linked Location, or the
+  // legacy exact-venue-match) — no new query, no new field.
+  const heroVenueLabel = canonicalLocation?.name ?? null;
 
   const vendorDeadlinePassed = event.vendor_application_deadline
     ? new Date(event.vendor_application_deadline) < new Date()
@@ -773,7 +762,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           title={event.name}
           attribution={hostBusiness?.name ?? null}
           attributionHref={hostBusiness ? `/business/${hostBusiness.slug}` : undefined}
-          occurrenceMeta={heroMeta || null}
+          venueLabel={heroVenueLabel}
           statusLabel={heroTemporal.live ? "Happening Now" : null}
           isLive={heroTemporal.live}
           titleTag="h1"
