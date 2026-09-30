@@ -9,7 +9,7 @@ import type { ResolvedHomepageBulletin } from "@/lib/homepage-bulletins";
  * advances once every ROTATE_INTERVAL_MS, and each swap animates over
  * TRANSITION_MS (NOT "rotates every 300ms" — that's just how long the
  * crossfade itself takes). */
-const ROTATE_INTERVAL_MS = 2000;
+const ROTATE_INTERVAL_MS = 3000;
 const TRANSITION_MS = 300;
 
 /** Wraps the exact, unchanged HomepageBulletin card design in a small
