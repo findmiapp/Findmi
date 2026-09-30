@@ -20,11 +20,10 @@ import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessR
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
 import EventScheduleCtas from "@/components/EventScheduleCtas";
-import EventUtilityActions, { UtilityActionGrid } from "@/components/EventUtilityActions";
+import EventUtilityActions, { DirectionsGridCell, UtilityActionGrid } from "@/components/EventUtilityActions";
 import EventScheduleSummary from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
-import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import FormAction from "@/components/FormAction";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ProductCard from "@/components/ProductCard";
@@ -75,6 +74,44 @@ async function resolveCanonicalUrl(eventId: string, slug: string): Promise<strin
   return `${getPublicOrigin()}/${handle ?? `event/${slug}`}`;
 }
 
+interface AppearanceHostBusiness {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+}
+
+/** Event Page Visual Convergence pass — root-caused why the hero byline/
+ * Hosted By card were coming up empty for events (illy's Cup of Love
+ * included) whose real Business<->Event link lives on an `appearances`
+ * row (business_id + event_id — the FindMi Here relationship a business
+ * owner actually created) rather than an event_businesses roster row
+ * (the separate "who's confirmed at this event" concept — see
+ * getBusinessesForEvent). Both are genuine, existing relationships;
+ * neither is invented here. Only returns a business when exactly ONE
+ * distinct Business has a non-cancelled Appearance linked to this Event —
+ * two or more stays attribution-less rather than guessing which one is
+ * "the" host. */
+async function resolveAppearanceHostBusiness(eventId: string): Promise<AppearanceHostBusiness | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("appearances")
+    .select("business:businesses(id, name, slug, logo_url)")
+    .eq("event_id", eventId)
+    .neq("status", "canceled")
+    .limit(10);
+  if (!data) return null;
+
+  type JoinedBusiness = AppearanceHostBusiness;
+  const byId = new Map<string, JoinedBusiness>();
+  for (const row of data) {
+    const b = Array.isArray(row.business) ? row.business[0] : row.business;
+    if (b) byId.set(b.id, b as JoinedBusiness);
+  }
+  return byId.size === 1 ? Array.from(byId.values())[0] : null;
+}
+
 export async function generateEventMetadata(slug: string): Promise<Metadata> {
   const event = await getEventBySlug(slug);
   if (!event) return { title: "Event not found" };
@@ -98,7 +135,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation] =
+  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness] =
     await Promise.all([
       getBusinessesForEvent(event.id),
       attachEventCategories([event]),
@@ -118,6 +155,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // fallback now; see canonicalLocation below, which prefers the real
       // occurrence-linked relationship whenever one exists.
       event.venue_name ? findLocationByExactVenue(event.venue_name, event.address) : Promise.resolve(null),
+      // Event Page Visual Convergence pass — see resolveAppearanceHostBusiness's
+      // own comment for why this second signal is needed alongside
+      // event_businesses.featured below.
+      resolveAppearanceHostBusiness(event.id),
     ]);
   // Multi-Date Business Participation Pass 2B — Primary Date Integrity.
   // Only ever synthesizes/includes the Primary Date entry when this Event
@@ -194,17 +235,25 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // it's empty and the branded fallback below renders instead.
   const coverAndGallery = [event.cover_image_url, ...images.gallery].filter((v): v is string => Boolean(v));
 
-  // Event Page Visual Correction pass — the host Business byline reuses
-  // the Event's own existing event_businesses.featured flag (already
-  // fetched above as `businesses`, already used to sub-order "Who You'll
-  // Find Here") rather than inventing a new organizer->Business
-  // relationship. When no row is explicitly marked featured but exactly
-  // one approved Business participates, that Business is unambiguously
-  // the host — a real reading of existing participation data, not an
-  // invented one. Two or more un-featured participants stay attribution-
-  // less rather than guessing. Used for both the hero byline and the
-  // "Hosted By" card near the bottom of the page.
-  const hostBusiness = businesses.find((b) => b.featured) ?? (businesses.length === 1 ? businesses[0] : null);
+  // Event Page Visual Convergence pass — the host Business now checks
+  // THREE existing signals, in order, before giving up:
+  //   1. event_businesses.featured — an explicit founder/roster flag
+  //      (already fetched above as `businesses`).
+  //   2. A Business's own Appearance linked to this Event
+  //      (appearances.event_id) — the FindMi Here relationship a real
+  //      business owner creates, which root-caused why illy's own "by
+  //      illy" byline was empty: that business never got an
+  //      event_businesses roster row, only an Appearance one. See
+  //      resolveAppearanceHostBusiness's own comment.
+  //   3. Exactly one approved event_businesses participant with no
+  //      explicit featured flag — unambiguous by elimination.
+  // Never invents a relationship: each tier is a real existing FK, and an
+  // ambiguous case (2+ un-featured participants, 2+ distinct Appearance
+  // businesses) stays attribution-less rather than guessing. Used for
+  // both the hero byline and the "Hosted By" card near the bottom of the
+  // page.
+  const hostBusiness =
+    businesses.find((b) => b.featured) ?? appearanceHostBusiness ?? (businesses.length === 1 ? businesses[0] : null);
   // Status reuses the nearest still-scheduled occurrence's real start/end
   // when one exists (a recurring event's own start_at/end_at can be stale
   // once occurrences exist) — same getTemporalLabel() every other
@@ -370,29 +419,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
       {/* Tier A — the strongest, organizer-configured actions, PRIMARY
           EVENT ACTION per the public composition hierarchy (Public
           Experience V5: identity -> when -> where -> primary action ->
-          relationship content). Moved ahead of the Message/Directions/
-          Apply-to-Vend row below — Tickets/RSVP is what most visitors
-          actually came to do, so it belongs first, not after a row of
-          secondary actions. For a recurring event, the selected
+          relationship content). For a recurring event, the selected
           occurrence's own RSVP/ticket/vendor-apply override (if any) wins
           over the parent's resolved action — see EventScheduleCtas; a
           legacy event keeps the exact original server-resolved customCtas
           rendering below (minus Apply to Vend, in the secondary row below
-          instead — see legacyTierACtas). */}
-      {/* Event CTA Layout pass — RSVP/Get Tickets/Apply to Vend (Tier A)
-          and Directions now share ONE flex row (`[ RSVP ] [ DIRECTIONS ]`
-          on mobile) instead of stacking on separate lines: Directions
-          used to render in its own row down in the secondary/contextual
-          block below. Each button is flex-1, so 2 buttons split the row
-          evenly and 1 or 3 still degrade sensibly. flex-wrap keeps every
-          action reachable at 360px by wrapping instead of a horizontal
-          scroll or squeeze.
-          Recurring events: EventScheduleCtas owns its own wrapping div
-          and self-guards on emptiness (Tier A + Directions both depend on
-          client-only selected-occurrence state — see its own doc comment
-          for why that decision can't live here). Legacy events: this
-          Server Component already knows legacyTierACtas/showDirections
-          synchronously, so the wrapping div is gated inline instead. */}
+          instead — see legacyTierACtas).
+          Event Page Visual Convergence pass — Directions moved OUT of
+          this row into the compact Tier B grid below (alongside Save/
+          Calendar/Share), matching the approved reference: RSVP/Tickets
+          alone here (the visually LARGEST action), not sharing a row with
+          a same-size Directions button. Each button is flex-1, so 1 or 2
+          Tier A actions still degrade sensibly; flex-wrap keeps every
+          action reachable at 360px. */}
       {hasOccurrences ? (
         <EventScheduleCtas
           eventId={event.id}
@@ -402,11 +441,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
           rsvp={rsvpForm}
           vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
           vendorApplication={vendorAppForm}
-          directionsEnabled={event.directions_enabled}
         />
       ) : (
-        (legacyTierACtas.length > 0 || showDirections) && (
-          <div className="mt-4 flex flex-wrap items-stretch gap-2.5">
+        legacyTierACtas.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-stretch gap-2.5">
             {legacyTierACtas.map((action) => (
               <FormAction
                 key={action.label}
@@ -426,18 +464,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 }}
               />
             ))}
-            {showDirections && (
-              <AnalyticsLink
-                href={directionsHref!}
-                target="_blank"
-                rel="noreferrer"
-                className="flex h-12 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-                trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
-              >
-                <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
-                Directions
-              </AnalyticsLink>
-            )}
           </div>
         )
       )}
@@ -507,11 +533,13 @@ export async function EventPublicView({ slug }: { slug: string }) {
           server-side, so the grid renders directly. */}
       {hasOccurrences ? (
         <EventUtilityActions
+          eventId={event.id}
           eventName={event.name}
           description={event.description}
           message={messageAction}
           save={saveAction}
           share={shareAction}
+          directionsEnabled={event.directions_enabled}
         />
       ) : (
         <UtilityActionGrid
@@ -528,6 +556,13 @@ export async function EventPublicView({ slug }: { slug: string }) {
               layout="grid"
             />,
             shareAction,
+            showDirections ? (
+              <DirectionsGridCell
+                key="directions"
+                href={directionsHref!}
+                trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
+              />
+            ) : null,
           ].filter((item): item is ReactElement => Boolean(item))}
         />
       )}
@@ -567,18 +602,21 @@ export async function EventPublicView({ slug }: { slug: string }) {
 
       {/* Item 8 — optional Bulletin, same shared component as Business
           Profile, right after the utility row and before About. */}
-      <div className="mt-3">
+      <div className="mt-2">
         <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
       </div>
 
-      {/* Premium Featured Event Hero pass — Description moved up here
-          (right after actions/logistics), collapsed by default via
-          ReadMoreText, same single description field events have always
-          had (no separate short/long) — never duplicated elsewhere. */}
+      {/* Event Page Visual Convergence pass — the approved reference runs
+          the description directly after logistics/actions with no large
+          section heading at all on mobile (a big "ABOUT THIS EVENT" label
+          + generous margins was exactly the kind of vertical cost Dates &
+          Lineup was buried under). Heading now hidden below sm: — desktop
+          keeps it, where there's width/height to spare. Same single
+          description field, same collapsed-by-default ReadMoreText. */}
       {event.description && (
-        <section className="mt-5">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
-          <div className="mt-3 max-w-2xl">
+        <section className="mt-3">
+          <h2 className="hidden font-display text-lg font-bold tracking-tight text-ink sm:block">About This Event</h2>
+          <div className="mt-0 max-w-2xl sm:mt-3">
             <ReadMoreText text={event.description} />
           </div>
         </section>
@@ -592,7 +630,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           lightbox). Same real images.gallery, same ImageGalleryStrip,
           unchanged minCount={1}/compact — only the position moved. */}
       {images.gallery.length > 0 && (
-        <div className="mt-5 -mx-4 sm:mx-0">
+        <div className="mt-3 -mx-4 sm:mx-0">
           <div className="px-4 sm:px-0">
             <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} compact />
           </div>
@@ -612,8 +650,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
           so this rail is REAL event_occurrences only — see that
           variable's own comment. */}
       {realOccurrences.length > 0 && (
-        <div className="mt-4 -mx-4 sm:mx-0">
-          <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
+        <div className="mt-3 -mx-4 sm:mx-0">
+          <p className="mb-2 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
             Dates &amp; Lineup
           </p>
           {/* Public Upcoming Dates Mobile UX pass — ONE horizontal rail:
@@ -640,11 +678,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           event keeps the exact original event_businesses roster below,
           untouched. */}
       {hasOccurrences ? (
-        <EventOccurrenceBusinessRoster
-          rostersByOccurrence={rostersByOccurrence}
-          eventName={event.name}
-          eventLevelBusinesses={businesses}
-        />
+        <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} eventName={event.name} />
       ) : (
         <section className="mt-5">
           <h2 className="font-display text-lg font-bold tracking-tight text-ink">
@@ -668,18 +702,17 @@ export async function EventPublicView({ slug }: { slug: string }) {
         page_type="event"
         page_path={`/event/${event.slug}`}
       />
-      {/* Event Page Visual Correction pass — the hero stays immersive
-          (full-bleed image + gradient + overlay) but must NOT consume
-          the whole first mobile viewport: the earlier 4:5 aspect ratio
-          pushed RSVP/actions entirely below the fold on a normal phone.
-          A viewport-relative height (not an aspect ratio) with min/max
-          clamps keeps the hero's mobile height proportional to the
-          device rather than to its own width, so the action row below
-          reliably starts within/near the first screen regardless of
-          phone size. Desktop keeps the original cinematic 21/9 strip —
-          this correction is mobile-only. EventCoverLightbox/gradient/
-          category/title/status/analytics are otherwise unchanged. */}
-      <div className="relative h-[42vh] max-h-[400px] min-h-[260px] w-full overflow-hidden border-b border-black/5 bg-ink sm:h-auto sm:aspect-[21/9] sm:rounded-b-3xl">
+      {/* Event Page Visual Convergence pass — tightened further (42vh/400px
+          -> 36vh/340px) against the approved reference: the hero stays
+          immersive (full-bleed image + gradient + overlay) but must leave
+          RSVP/actions reachable within/near the first mobile viewport,
+          not just "not the whole screen." A viewport-relative height (not
+          an aspect ratio) with min/max clamps keeps the hero's mobile
+          height proportional to the device rather than to its own width.
+          Desktop keeps the original cinematic 21/9 strip — this
+          correction is mobile-only. EventCoverLightbox/gradient/category/
+          title/status/analytics are otherwise unchanged. */}
+      <div className="relative h-[36vh] max-h-[340px] min-h-[220px] w-full overflow-hidden border-b border-black/5 bg-ink sm:h-auto sm:aspect-[21/9] sm:rounded-b-3xl">
         {coverAndGallery.length > 0 ? (
           <EventCoverLightbox images={coverAndGallery} alt={event.name} />
         ) : (
@@ -700,7 +733,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-30" />
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6 sm:py-7">
+      <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6 sm:py-7">
         {hasOccurrences ? (
           <EventOccurrenceProvider occurrences={upcomingOccurrences}>{scheduleAndDetails}</EventOccurrenceProvider>
         ) : (
@@ -825,18 +858,6 @@ function PinGlyph({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-// Action-row UX pass — small navigation/directions arrow for the
-// Directions pill, matching the Save/Add to Calendar icons in this same
-// row exactly (h-3.5 w-3.5, strokeWidth 1.8, currentColor so it inherits
-// the pill's muted text-ink/60 / hover:text-ink treatment).
-function DirectionsGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M12 2L4.5 20.5l.9.9L12 18l6.6 3.4.9-.9L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
     </svg>
   );
 }

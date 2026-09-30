@@ -14,31 +14,26 @@ import { useEventOccurrence } from "./EventOccurrenceContext";
  * and passed down keyed by occurrence id; this just looks up the
  * currently selected key. Reuses the existing EventBusinessRoster
  * component (featured section, category filter pills, business cards)
- * unchanged — only the data feeding it differs from the legacy path. */
+ * unchanged — only the data feeding it differs from the legacy path.
+ *
+ * Event Page Visual Convergence pass — deliberately does NOT fall back
+ * to the Event's own event-wide roster when this occurrence has none:
+ * that would claim a business is confirmed for a specific date the
+ * occurrence relationship never actually says it is. The Event's real
+ * host Business (event_businesses.featured, or the sole participant) is
+ * surfaced separately via the page's own "Hosted By" card instead — this
+ * section stays strictly "what does THIS occurrence's own roster say." */
 export default function EventOccurrenceBusinessRoster({
   rostersByOccurrence,
   eventName,
-  eventLevelBusinesses,
 }: {
   rostersByOccurrence: Record<string, EventBusinessListing[]>;
   eventName: string;
-  /** Event Page Visual Correction pass — the Event's own overall
-   * event_businesses roster (already fetched once, server-side, for
-   * every other use of "Who You'll Find Here" on this page). A real
-   * occurrence with no event_occurrence_businesses rows of its own falls
-   * back to this instead of a blanket "coming soon" — a business approved
-   * at the event level (all_dates/legacy participation scopes) IS a
-   * genuine participant of every date, this just surfaces that existing
-   * relationship rather than inventing occurrence-level rows that don't
-   * exist. Only ever used as a fallback: an occurrence with its OWN real
-   * roster rows still shows exactly those, unchanged. */
-  eventLevelBusinesses: EventBusinessListing[];
 }) {
   const { selected } = useEventOccurrence();
   if (!selected) return null;
 
-  const occurrenceBusinesses = rostersByOccurrence[selected.id] ?? [];
-  const businesses = occurrenceBusinesses.length > 0 ? occurrenceBusinesses : eventLevelBusinesses;
+  const businesses = rostersByOccurrence[selected.id] ?? [];
 
   return (
     <section className="mt-5">

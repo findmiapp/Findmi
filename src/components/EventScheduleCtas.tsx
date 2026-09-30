@@ -4,8 +4,6 @@ import type { ResolvedForm } from "@/lib/forms";
 import { validateCustomDestination } from "@/lib/navigation";
 import FormAction from "./FormAction";
 import { useEventOccurrence } from "./EventOccurrenceContext";
-import { cityState } from "@/lib/format";
-import { trackEvent } from "@/lib/analytics/track";
 
 type ResolvedAction = Pick<ResolvedForm, "url" | "displayMode">;
 
@@ -37,17 +35,18 @@ function resolveAction(override: string | null | undefined, parent: ResolvedActi
  * occurrence override. Renders nothing while the selected occurrence is
  * cancelled, or while there's no selection at all ("No upcoming dates
  * announced"). */
-/** Event CTA Layout pass — renders Tier A (RSVP/Get Tickets/Apply to Vend)
- * AND Directions together as ONE self-guarded flex row (`[ RSVP ]
- * [ DIRECTIONS ]` on mobile), rather than two separately-rendered pieces
- * the caller wraps in its own div. Both halves depend on the selected
- * occurrence (a client-only, post-hydration value via useEventOccurrence),
- * so this component owns the single "is there anything at all to show"
- * decision itself — the caller (EventPublicView, a Server Component)
- * can't know that in advance, and wrapping an always-rendered flex div
- * around two pieces that might both independently return null would
- * leave a stray empty div (a small but real layout bug). flex-1 on every
- * button is what lets 1, 2, or 3 of them split the row's width evenly. */
+/** Event Page Visual Convergence pass — Directions moved OUT of this row
+ * and into the compact Tier B action grid (see EventUtilityActions),
+ * alongside Save/Add to Calendar/Share, matching the approved reference's
+ * composition: RSVP/Tickets/Apply to Vend alone on their own (largest)
+ * row, with Directions/Save/Calendar/Share as a separate row of compact,
+ * equally-sized icon-over-label controls directly beneath it. This
+ * component now renders ONLY Tier A — one self-guarded flex row, still
+ * depending on the selected occurrence (client-only, post-hydration via
+ * useEventOccurrence), since the caller (a Server Component) can't know
+ * in advance whether any Tier A action exists for the current selection.
+ * flex-1 on every button is what lets 1, 2, or 3 of them split the row's
+ * width evenly. */
 export default function EventScheduleCtas({
   eventId,
   ticketsEnabled,
@@ -56,7 +55,6 @@ export default function EventScheduleCtas({
   rsvp,
   vendorApplicationsEnabled,
   vendorApplication,
-  directionsEnabled,
 }: {
   /** Analytics attribution only. */
   eventId: string;
@@ -66,7 +64,6 @@ export default function EventScheduleCtas({
   rsvp: ResolvedAction | null;
   vendorApplicationsEnabled: boolean;
   vendorApplication: ResolvedAction | null;
-  directionsEnabled: boolean;
 }) {
   const { selected, selectedState } = useEventOccurrence();
   if (!selected || selectedState === "cancelled") return null;
@@ -85,21 +82,10 @@ export default function EventScheduleCtas({
   if (rsvpAction) actions.push({ label: "RSVP", action: rsvpAction, weight: "solid", eventName: "click_rsvp" });
   if (vendorAction) actions.push({ label: "Apply to Vend", action: vendorAction, weight: "outline", eventName: "click_apply_to_vend" });
 
-  // Same resolution EventUtilityActions.tsx's Add to Calendar item uses,
-  // duplicated here rather than imported so this component can make
-  // its own single "render anything at all" decision without composing
-  // two components each capable of independently returning null.
-  const location = selected.location;
-  const mapQuery = location
-    ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
-    : null;
-  const directionsHref =
-    directionsEnabled && mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : null;
-
-  if (actions.length === 0 && !directionsHref) return null;
+  if (actions.length === 0) return null;
 
   return (
-    <div className="mt-4 flex flex-wrap items-stretch gap-2.5">
+    <div className="mt-3 flex flex-wrap items-stretch gap-2.5">
       {actions.map(({ label, action, weight, eventName }) => (
         <FormAction
           key={label}
@@ -121,37 +107,6 @@ export default function EventScheduleCtas({
           }}
         />
       ))}
-      {directionsHref && (
-        <a
-          href={directionsHref}
-          target="_blank"
-          rel="noreferrer"
-          className="flex h-12 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-          onClick={() =>
-            trackEvent({
-              event_name: "click_directions",
-              subject_type: "event_occurrence",
-              subject_id: selected.id,
-              event_id: eventId,
-              event_occurrence_id: selected.id,
-              location_id: location?.id,
-            })
-          }
-        >
-          <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
-          Directions
-        </a>
-      )}
     </div>
-  );
-}
-
-// Same glyph/sizing convention as EventScheduleActions' own Directions
-// link (h-3.5 w-3.5, strokeWidth 1.8, currentColor).
-function DirectionsGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M12 2L4.5 20.5l.9.9L12 18l6.6 3.4.9-.9L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
   );
 }
