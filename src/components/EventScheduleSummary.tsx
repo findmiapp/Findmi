@@ -1,16 +1,10 @@
 "use client";
 
-import { cityStateZip, formatDateRangeInZone } from "@/lib/format";
-import { useEventOccurrence, type OccurrenceScheduleState } from "./EventOccurrenceContext";
-import EventLocationCard, { type EventLocationCardLocation } from "./EventLocationCard";
+import Link from "next/link";
+import { cityState, cityStateZip, formatDateShortInZone, formatTimeInZone } from "@/lib/format";
+import { useEventOccurrence } from "./EventOccurrenceContext";
+import type { EventLocationCardLocation } from "./EventLocationCard";
 import LiveDot from "./LiveDot";
-
-const STATE_LABEL: Record<Exclude<OccurrenceScheduleState, "none">, string> = {
-  current: "Happening Now",
-  next: "Next Event",
-  selected: "Selected Date",
-  cancelled: "Cancelled",
-};
 
 /** The recurring-event hero's date/time/location block — Recurring
  * Events V2. Reads ONLY the shared selectedOccurrence (never the parent
@@ -19,15 +13,26 @@ const STATE_LABEL: Record<Exclude<OccurrenceScheduleState, "none">, string> = {
  * show a stale parent date while occurrences exist. Renders in the
  * selected occurrence's own timezone.
  *
- * Final Mobile Visual Convergence pass — `canonicalLocation` is a new
- * fallback prop (EventPublicView.tsx's own already-resolved Location for
- * the event as a whole — the nearest occurrence WITH a linked Location,
- * or the legacy exact-venue-match). The selected occurrence's own
- * location_id still wins whenever it has one; this only fills in the
- * common case where the selected occurrence itself has no location_id
- * but the event unambiguously has a real Location anyway — without it,
- * the top logistics module silently fell back to plain manual-venue text
- * even when a genuine FindMi Location was already known. */
+ * `canonicalLocation` is EventPublicView.tsx's own already-resolved
+ * Location for the event as a whole (the nearest occurrence WITH a
+ * linked Location, or the legacy exact-venue-match) — a fallback for when
+ * the selected occurrence itself has no location_id of its own but the
+ * event unambiguously has a real Location anyway. The occurrence's own
+ * location still wins whenever it has one.
+ *
+ * Final Event Experience Polish pass — rebuilt for mobile density:
+ * DATE (boldest line) / TIME (muted, directly beneath) / VENUE NAME
+ * (a clickable link to the real Location page when one resolves) /
+ * ADDRESS (muted), as one compact stack — no "LOCATION" eyebrow, no
+ * large Location thumbnail (that richer treatment stays exactly where it
+ * already lives — EventLocationCard on "About the Venue" further down
+ * the page, and on Location pages themselves; this is a compact
+ * text-only variant for the top logistics module only). The old
+ * full-width "Happening Now"/"Next Event"/"Selected Date" pill above the
+ * date is gone too — the hero already carries that signal prominently; a
+ * genuinely live occurrence instead gets one small inline dot + label,
+ * and a cancelled occurrence keeps a small inline tag, both far lighter
+ * than the old pill row. */
 export default function EventScheduleSummary({
   canonicalLocation,
 }: {
@@ -39,80 +44,53 @@ export default function EventScheduleSummary({
     return <p className="mt-3 text-sm font-medium text-ink/50">No upcoming dates announced</p>;
   }
 
-  // Event Manager Location UX pass — a real linked Location (occurrence.
-  // location_id) always renders as a clickable /location/[slug] card, per
-  // this pass's own spec ("must render as a clickable Location
-  // relationship... never show only plain venue text when a canonical
-  // Location exists"). No location_id falls back to the event's own
-  // canonicalLocation, then to this occurrence's own manual venue fields
-  // (added alongside location_id — see resolveOccurrenceVenue in
-  // account/event/actions.ts) as plain text, same as a legacy event's own
-  // venue_name/address always has.
   const location = selected.location ?? canonicalLocation;
+  const addressLine = location ? [location.address, cityState(location.city, location.state)].filter(Boolean).join(", ") : "";
   const manualVenueLine = [selected.venue_name, selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)]
     .filter(Boolean)
     .join(" · ");
 
+  const sameDay = formatDateShortInZone(selected.start_at, selected.timezone) === formatDateShortInZone(selected.end_at, selected.timezone);
+  const dateLabel = sameDay
+    ? formatDateShortInZone(selected.start_at, selected.timezone)
+    : `${formatDateShortInZone(selected.start_at, selected.timezone)} – ${formatDateShortInZone(selected.end_at, selected.timezone)}`;
+  const timeLabel = `${formatTimeInZone(selected.start_at, selected.timezone)} – ${formatTimeInZone(selected.end_at, selected.timezone)}`;
+
   return (
-    <div className="mt-3 flex flex-col gap-2 text-sm text-ink/65">
-      <span
-        className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-          selectedState === "cancelled"
-            ? "bg-red-50 text-red-700"
-            : selectedState === "current"
-              ? "bg-findmi text-white"
-              : "bg-black/[0.06] text-ink/60"
-        }`}
-      >
-        {/* Full pill = aqua + white text; the live signal itself is the
-            dot — red, pulsing, with the shared animate-happening-now-glow
-            halo — not the pill background. The compact Upcoming Dates NOW
-            tile (EventOccurrenceCard) keeps its own red-fill treatment;
-            this is the opposite convention, deliberately, per this pass. */}
-        {selectedState === "current" && (
-          <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
-        )}
-        {STATE_LABEL[selectedState]}
-      </span>
-      <div className="flex items-center gap-2">
-        <CalendarGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-        <span className="font-medium text-ink/80">
-          {formatDateRangeInZone(selected.start_at, selected.end_at, selected.timezone)}
+    <div className="mt-3 flex flex-col gap-0.5 text-sm">
+      <p className="font-bold text-ink">{dateLabel}</p>
+      {selectedState === "cancelled" ? (
+        <span className="mt-0.5 inline-flex w-fit items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
+          Cancelled
         </span>
-      </div>
-      {location ? (
-        <EventLocationCard location={location} />
       ) : (
-        manualVenueLine && (
-          <div className="flex items-center gap-2">
-            <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-            <span>{manualVenueLine}</span>
-          </div>
-        )
+        <p className="text-ink/55">{timeLabel}</p>
+      )}
+      {selectedState === "current" && (
+        <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-red-600">
+          <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
+          Happening Now
+        </span>
+      )}
+      {location ? (
+        <Link href={`/location/${location.slug}`} className="group mt-1 w-fit">
+          <span className="flex items-center gap-1 font-semibold text-ink transition group-hover:text-findmi-700">
+            {location.name}
+            <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/30 transition group-hover:text-findmi-700" />
+          </span>
+          {addressLine && <span className="block text-xs text-ink/50">{addressLine}</span>}
+        </Link>
+      ) : (
+        manualVenueLine && <p className="mt-1 text-xs text-ink/55">{manualVenueLine}</p>
       )}
     </div>
   );
 }
 
-function CalendarGlyph({ className }: { className?: string }) {
+function ChevronGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function PinGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

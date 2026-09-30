@@ -177,8 +177,12 @@ function RosterCard({ business }: { business: EventBusinessListing }) {
 
 /** Compact, image-led roster row — Public Experience V5 (see the grid's
  * own comment above). A real logo/cover thumbnail keeps this from reading
- * as a plain directory row, at a fraction of BusinessLogoCard's height. */
-function RosterListItem({ business }: { business: EventBusinessListing }) {
+ * as a plain directory row, at a fraction of BusinessLogoCard's height.
+ * Exported so the occurrence Quick View modal (EventOccurrenceQuickView)
+ * can reuse the exact same compact business row for its own optional
+ * single-business display — Final Event Experience Polish pass — rather
+ * than building a second, near-identical implementation. */
+export function RosterListItem({ business }: { business: EventBusinessListing }) {
   const meta = [business.categories[0]?.name, cityState(business.city, business.state)].filter(Boolean).join(" · ");
   const thumb = business.logo_url ?? business.cover_image_url;
 

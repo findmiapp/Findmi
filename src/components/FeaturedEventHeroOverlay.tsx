@@ -1,4 +1,5 @@
 import Link from "next/link";
+import LiveDot from "./LiveDot";
 
 /** Premium Featured Event Hero — the shared gradient+text overlay used by
  * both the Event page's own immersive hero (variant the page itself,
@@ -88,13 +89,28 @@ export default function FeaturedEventHeroOverlay({
           ) : (
             <p className="text-metadata font-medium text-white/70">by {attribution}</p>
           ))}
+        {/* Final Event Experience Polish pass — the Event page's own full
+            hero (compact=false) swaps the old solid red "HAPPENING NOW"
+            pill for a premium dark/glass treatment (translucent black,
+            thin translucent white border, backdrop blur) — it read as too
+            visually aggressive, especially over red-heavy event
+            photography. The live SIGNAL stays the small glowing red dot
+            (same LiveDot + animate-happening-now-glow halo convention
+            EventScheduleSummary/HomeEventCard already use), not the pill
+            fill. The compact Business/Location Featured Event teaser card
+            is deliberately untouched — its own solid-red badge is a
+            different page's existing treatment, out of scope here. */}
         {statusLabel && (
           <span
             className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-              isLive ? "bg-red-500/90 text-white" : "bg-white/15 text-white backdrop-blur-sm"
+              compact
+                ? isLive
+                  ? "bg-red-500/90 text-white"
+                  : "bg-white/15 text-white backdrop-blur-sm"
+                : "border border-white/15 bg-black/55 text-white backdrop-blur-sm"
             }`}
           >
-            {isLive && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-white" />}
+            {isLive && <LiveDot className="animate-happening-now-glow rounded-full text-red-500" />}
             {statusLabel}
           </span>
         )}

@@ -2,13 +2,14 @@
 
 import type { EventOccurrenceWithLocation } from "@/lib/data";
 import {
-  cityState,
   formatDateShortInZone,
   formatDayOfMonthInZone,
   formatMonthAbbrevInZone,
   formatTimeInZone,
+  resolveVenueLabel,
 } from "@/lib/format";
 import { useEventOccurrence } from "./EventOccurrenceContext";
+import type { EventLocationCardLocation } from "./EventLocationCard";
 import LiveDot from "./LiveDot";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -41,24 +42,43 @@ function isExactlyMidnightInZone(iso: string, timezone: string): boolean {
  * Date/Time Hierarchy Polish pass — "when is this" is the primary
  * consumer question, so the date is now the card's dominant element (a
  * real heading-weight line, never the small/gray month+day the old
- * left-side icon tile used), with the time directly beneath it and a
- * compact "Now" indicator — reusing the exact dot+red-text "Happening
- * Now" language AppearanceFeedCard already established, never a filled
- * block — displacing neither. Live status no longer tints the card's own
- * border/background (that visually competed with the aqua SELECTED
- * treatment); the small Now indicator is the only "happening now" signal
- * now, so selection and temporal status stay legible at the same time. */
+ * left-side icon tile used), with the time directly beneath it.
+ *
+ * Final Event Experience Polish pass — rebuilt information hierarchy:
+ * DATE (boldest) -> TIME (muted, directly beneath) -> VENUE (muted, up
+ * to two lines, never aggressively truncated to an ugly ellipsis-mid-
+ * word string) -> STATUS (always last/lowest — a small glowing red dot +
+ * "HAPPENING NOW", never bare "Now", and only when genuinely live) —
+ * NOW no longer sits in the middle of the card breaking vertical
+ * alignment across cards. `canonicalLocation` (the event's own already-
+ * resolved fallback Location, passed down from EventPublicView.tsx via
+ * UpcomingDatesRail) fills the venue line when this specific occurrence
+ * has no location of its own but the event unambiguously has a real
+ * Location anyway — same fallback EventScheduleSummary/EventUtilityActions
+ * already apply, via the same shared resolveVenueLabel() helper
+ * AppearanceFindMiHere's own Quick View already uses, rather than a new
+ * venue-text formula. Selected treatment is intentionally restrained — a
+ * thin aqua border and a light aqua tint, no ring, no shadow — elegant
+ * over loud. */
 export default function EventOccurrenceCard({
   occurrence,
+  canonicalLocation,
   onOpenQuickView,
 }: {
   occurrence: EventOccurrenceWithLocation;
+  canonicalLocation: EventLocationCardLocation | null;
   onOpenQuickView: (id: string) => void;
 }) {
   const { selected, select } = useEventOccurrence();
   const isSelected = selected?.id === occurrence.id;
   const cancelled = occurrence.status === "cancelled";
-  const location = cityState(occurrence.location?.city, occurrence.location?.state);
+  const venueLabel = resolveVenueLabel({
+    location: occurrence.location ?? canonicalLocation,
+    venue_name: occurrence.venue_name,
+    address: occurrence.address,
+    city: occurrence.city,
+    state: occurrence.state,
+  });
 
   const now = Date.now();
   const live = !cancelled && new Date(occurrence.start_at).getTime() <= now && new Date(occurrence.end_at).getTime() > now;
@@ -110,13 +130,13 @@ export default function EventOccurrenceCard({
       type="button"
       onClick={handleSelect}
       aria-pressed={isSelected}
-      className={`flex w-44 shrink-0 flex-col gap-1 rounded-2xl border p-3 text-left transition ${
+      className={`flex w-44 shrink-0 flex-col gap-0.5 rounded-2xl border p-3 text-left transition ${
         cancelled
           ? isSelected
             ? "border-red-300 bg-red-50/60"
             : "border-black/5 bg-black/[0.02] opacity-70"
           : isSelected
-            ? "border-findmi bg-findmi-50 ring-1 ring-findmi"
+            ? "border-findmi bg-findmi-50"
             : "border-black/5 bg-white hover:border-black/20"
       }`}
     >
@@ -124,18 +144,14 @@ export default function EventOccurrenceCard({
       {cancelled ? (
         <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Cancelled</p>
       ) : (
-        <p className="text-xs font-medium text-ink/70">{timeLabel}</p>
+        <p className="text-xs font-medium text-ink/55">{timeLabel}</p>
       )}
+      {venueLabel && <p className="line-clamp-2 text-xs leading-snug text-ink/45">{venueLabel}</p>}
       {live && (
-        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
-          <LiveDot className="text-red-600" />
-          Now
+        <span className="mt-0.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+          <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
+          Happening Now
         </span>
-      )}
-      {(occurrence.location?.name || location) && (
-        <p className="truncate text-xs text-ink/45">
-          {[occurrence.location?.name, location].filter(Boolean).join(" · ")}
-        </p>
       )}
     </button>
   );

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { EventOccurrenceWithLocation } from "@/lib/data";
+import type { EventBusinessListing, EventOccurrenceWithLocation } from "@/lib/data";
+import type { ResolvedForm } from "@/lib/forms";
 import { HorizontalScroller } from "./Section";
 import EventOccurrenceCard from "./EventOccurrenceCard";
 import EventOccurrenceQuickView from "./EventOccurrenceQuickView";
+import type { EventLocationCardLocation } from "./EventLocationCard";
 
 const VISIBLE_COUNT = 10;
 
@@ -25,13 +27,44 @@ const VISIBLE_COUNT = 10;
  * EventOccurrenceQuickView instance for every card in the rail (same
  * "one shared Quick View, owned by the parent" pattern
  * AppearanceFindMiHere already established for Appearance cards), so
- * opening one occurrence's modal from any card never duplicates it. */
+ * opening one occurrence's modal from any card never duplicates it.
+ *
+ * Final Event Experience Polish pass — this is now also the thread-
+ * through point for everything the upgraded Quick View needs but can't
+ * compute itself: the event's own already-resolved canonicalLocation
+ * (Location fallback), the SAME Tier A action-resolution props
+ * EventScheduleCtas already consumes up on the main page (so the modal's
+ * primary CTA reuses that exact resolver rather than a second one), the
+ * event's own cover image (for the modal's cover), and the already-
+ * fetched occurrence business rosters (so an occurrence's confirmed
+ * businesses can show in the modal with zero new queries). All of this
+ * was already computed once, server-side, in EventPublicView.tsx. */
 export default function UpcomingDatesRail({
   occurrences,
   eventName,
+  eventId,
+  canonicalLocation,
+  coverImageUrl,
+  ticketsEnabled,
+  ticketsUrl,
+  rsvpEnabled,
+  rsvp,
+  vendorApplicationsEnabled,
+  vendorApplication,
+  rostersByOccurrence,
 }: {
   occurrences: EventOccurrenceWithLocation[];
   eventName: string;
+  eventId: string;
+  canonicalLocation: EventLocationCardLocation | null;
+  coverImageUrl: string | null;
+  ticketsEnabled: boolean;
+  ticketsUrl: string | null;
+  rsvpEnabled: boolean;
+  rsvp: ResolvedForm | null;
+  vendorApplicationsEnabled: boolean;
+  vendorApplication: ResolvedForm | null;
+  rostersByOccurrence: Record<string, EventBusinessListing[]>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -43,7 +76,7 @@ export default function UpcomingDatesRail({
     <>
       <HorizontalScroller className="pt-2">
         {visible.map((occ) => (
-          <EventOccurrenceCard key={occ.id} occurrence={occ} onOpenQuickView={setOpenId} />
+          <EventOccurrenceCard key={occ.id} occurrence={occ} canonicalLocation={canonicalLocation} onOpenQuickView={setOpenId} />
         ))}
         {hasMore && !expanded && (
           <button
@@ -57,7 +90,21 @@ export default function UpcomingDatesRail({
         )}
       </HorizontalScroller>
       {openOccurrence && (
-        <EventOccurrenceQuickView occurrence={openOccurrence} eventName={eventName} onClose={() => setOpenId(null)} />
+        <EventOccurrenceQuickView
+          occurrence={openOccurrence}
+          eventName={eventName}
+          eventId={eventId}
+          canonicalLocation={canonicalLocation}
+          coverImageUrl={coverImageUrl}
+          ticketsEnabled={ticketsEnabled}
+          ticketsUrl={ticketsUrl}
+          rsvpEnabled={rsvpEnabled}
+          rsvp={rsvp}
+          vendorApplicationsEnabled={vendorApplicationsEnabled}
+          vendorApplication={vendorApplication}
+          businesses={rostersByOccurrence[openOccurrence.id] ?? []}
+          onClose={() => setOpenId(null)}
+        />
       )}
     </>
   );

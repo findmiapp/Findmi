@@ -453,8 +453,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 label={action.label}
                 className={
                   action.weight === "solid"
-                    ? "flex h-[54px] flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-[54px] flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    ? "flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    : "flex h-12 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
                 }
                 track={{
                   event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
@@ -664,7 +664,20 @@ export async function EventPublicView({ slug }: { slug: string }) {
               regardless of how many cards are currently visible, so the
               date SELECTOR context (Tier A CTAs/Location/roster switching)
               is unaffected either way. */}
-          <UpcomingDatesRail occurrences={realOccurrences} eventName={event.name} />
+          <UpcomingDatesRail
+            occurrences={realOccurrences}
+            eventName={event.name}
+            eventId={event.id}
+            canonicalLocation={canonicalLocation}
+            coverImageUrl={coverAndGallery[0] ?? null}
+            ticketsEnabled={event.tickets_enabled}
+            ticketsUrl={event.tickets_url}
+            rsvpEnabled={event.rsvp_enabled}
+            rsvp={rsvpForm}
+            vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
+            vendorApplication={vendorAppForm}
+            rostersByOccurrence={rostersByOccurrence}
+          />
         </div>
       )}
 
@@ -735,8 +748,25 @@ export async function EventPublicView({ slug }: { slug: string }) {
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6 sm:py-7">
+        {/* Final Event Experience Polish pass — root-caused why the
+            default occurrence selection (and therefore the top logistics
+            module, the Dates & Lineup rail's selected card, and Who
+            You'll Find Here) could silently resolve to the SYNTHESIZED
+            whole-event-range entry (see getEffectiveEventSchedule's own
+            "Primary Date Integrity" comment) instead of a real per-day
+            occurrence: the synthetic entry's own start_at/end_at spans
+            the entire event, so it trivially satisfies resolveDefault()'s
+            "currently happening" check and got selected ahead of the real
+            Sep 30 occurrence whenever the event's overall window
+            (Sep 29 - Oct 1) was still open. The rail itself already
+            excludes the synthetic entry (realOccurrences), but the
+            PROVIDER still considered it a selectable candidate — the
+            mismatch this pass fixes. The provider now receives
+            realOccurrences only, so only a genuine event_occurrences row
+            can ever be selected — current -> next -> none, never the
+            synthesized range. */}
         {hasOccurrences ? (
-          <EventOccurrenceProvider occurrences={upcomingOccurrences}>{scheduleAndDetails}</EventOccurrenceProvider>
+          <EventOccurrenceProvider occurrences={realOccurrences}>{scheduleAndDetails}</EventOccurrenceProvider>
         ) : (
           scheduleAndDetails
         )}
