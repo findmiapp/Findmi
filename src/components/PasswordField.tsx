@@ -18,12 +18,24 @@ export default function PasswordField({
   autoComplete,
   minLength,
   required = true,
+  value,
+  onChange,
+  onBlur,
 }: {
   name: string;
   label: string;
   autoComplete?: string;
   minLength?: number;
   required?: boolean;
+  /** Signup/Email Confirmation Hardening pass — optional controlled-input
+   * props, added for real-time password validation (SignupForm.tsx needs
+   * to observe the typed value to show a live "requirements met"
+   * indicator and a live confirm-password match check). Left undefined,
+   * this input is exactly as uncontrolled as before — no other caller
+   * needs to change. */
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
 }) {
   const [visible, setVisible] = useState(false);
 
@@ -37,6 +49,9 @@ export default function PasswordField({
           required={required}
           minLength={minLength}
           autoComplete={autoComplete}
+          value={value}
+          onChange={onChange}
+          onBlur={onBlur}
           className={inputClass}
         />
         <button

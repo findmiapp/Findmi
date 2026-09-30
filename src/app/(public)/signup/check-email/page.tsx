@@ -27,8 +27,19 @@ export default async function CheckEmailPage({
       </div>
       <p className="mt-4 text-xs font-bold uppercase tracking-wide text-findmi-700">Almost there</p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-ink">Check your email</h1>
+      {/* Signup/Email Confirmation Hardening pass — this line used to
+          unconditionally claim a confirmation email was sent. It wasn't:
+          an already-confirmed existing account can also land here (see
+          signup/actions.ts's user_already_exists handling), and GoTrue
+          genuinely sends nothing in that case (verified against
+          production auth logs — no mail.send event for that path).
+          Rephrased to never promise a send happened, while never
+          revealing account existence either — this exact wording renders
+          identically for a brand-new signup and an already-confirmed
+          existing account, so it stays enumeration-safe. */}
       <p className="mt-3 text-sm text-ink/60">
-        Check your email and open the confirmation link to finish setting up your account.
+        If this address needs to be confirmed, you&rsquo;ll receive an email with a link to finish setting up your
+        account.
       </p>
 
       {resent && !error && (
