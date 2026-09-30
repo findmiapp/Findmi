@@ -1,9 +1,13 @@
 // Homepage Bulletin — data layer. See migration
 // 20260929010000_homepage_bulletins.sql. Same founder-control philosophy
-// as homepage_rows/discovery_pages: a real, admin-editable table, "at
-// most one published" enforced both app-side (publishBulletin below) and
-// by a DB partial unique index, no public route reads anything but the
-// currently published row.
+// as homepage_rows/discovery_pages: a real, admin-editable table.
+//
+// Homepage Bulletin Carousel pass (20260930010000_homepage_bulletins_
+// multi_publish.sql) removed the "at most one published" DB constraint —
+// any number of bulletins can be published simultaneously now, ordered
+// by display_order (admin Move Up/Move Down) then created_at as a
+// deterministic tiebreaker. The public homepage renders all of them via
+// HomepageBulletinCarousel.
 //
 // Deliberately object-agnostic: destination_type/destination_id resolve
 // against whichever FindMi object the founder picked (Business/Event/
@@ -29,6 +33,7 @@ export interface HomepageBulletin {
   destination_id: string | null;
   destination_url: string | null;
   is_published: boolean;
+  display_order: number;
   created_at: string;
   updated_at: string;
 }
@@ -98,28 +103,42 @@ function toResolved(bulletin: HomepageBulletin, href: string | null): ResolvedHo
 }
 
 /** Public homepage read — the anon client, gated by the "Public read
- * published homepage bulletins" RLS policy, so this can only ever return
- * the single published row (or none). */
-export async function getPublishedHomepageBulletin(): Promise<ResolvedHomepageBulletin | null> {
+ * published homepage bulletins" RLS policy. Returns every currently
+ * published Bulletin, ordered by display_order (admin-controlled) then
+ * created_at desc as a deterministic tiebreaker for equal orders —
+ * HomepageBulletinCarousel decides whether that's rendered statically
+ * (1 result) or as a rotating carousel (2+). */
+export async function getPublishedHomepageBulletins(): Promise<ResolvedHomepageBulletin[]> {
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) return [];
   const { data } = await supabase
     .from("homepage_bulletins")
     .select("*")
     .eq("is_published", true)
-    .limit(1)
-    .maybeSingle();
-  if (!data) return null;
-  const bulletin = data as HomepageBulletin;
-  const href = await resolveDestinationHref(bulletin, supabase);
-  return toResolved(bulletin, href);
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: false });
+  const rows = (data ?? []) as HomepageBulletin[];
+  return Promise.all(
+    rows.map(async (bulletin) => {
+      const href = await resolveDestinationHref(bulletin, supabase);
+      return toResolved(bulletin, href);
+    })
+  );
 }
 
-/** Admin list — every saved Bulletin, newest first. */
+/** Admin list — every saved Bulletin. Published ones sort by
+ * display_order (the same order the public carousel uses) so the manager
+ * reads as a preview of on-site order; hidden/draft ones trail, newest
+ * first. */
 export async function getAdminBulletins(): Promise<HomepageBulletin[]> {
   const supabase = getAdminSupabase();
   if (!supabase) return [];
-  const { data } = await supabase.from("homepage_bulletins").select("*").order("created_at", { ascending: false });
+  const { data } = await supabase
+    .from("homepage_bulletins")
+    .select("*")
+    .order("is_published", { ascending: false })
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: false });
   return (data ?? []) as HomepageBulletin[];
 }
 

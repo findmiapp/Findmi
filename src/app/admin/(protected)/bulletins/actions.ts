@@ -85,22 +85,15 @@ export async function saveBulletin(id: string, formData: FormData) {
   redirect(`/admin/bulletins/${id}?saved=1`);
 }
 
-/** At most one published Bulletin (V1 requirement) — every other
- * currently-published row is unpublished FIRST, then this one is
- * published, so there is never a moment with two rows published and the
- * two-step order can never itself violate the table's own partial unique
- * index on is_published (see the migration). */
+/** Homepage Bulletin Carousel pass — publishing is now an independent
+ * per-row toggle (the DB partial unique index that used to enforce "at
+ * most one published" was dropped in
+ * 20260930010000_homepage_bulletins_multi_publish.sql). Publishing this
+ * Bulletin no longer unpublishes any other row. */
 export async function publishBulletin(id: string) {
   await requireAdmin();
   const supabase = getAdminSupabase();
   if (!supabase) redirect(`/admin/bulletins/${id}?error=${encodeURIComponent("Storage isn't configured on the server.")}`);
-
-  const { error: unpublishError } = await supabase
-    .from("homepage_bulletins")
-    .update({ is_published: false })
-    .eq("is_published", true)
-    .neq("id", id);
-  if (unpublishError) redirect(`/admin/bulletins/${id}?error=${encodeURIComponent(unpublishError.message)}`);
 
   const { error } = await supabase.from("homepage_bulletins").update({ is_published: true }).eq("id", id);
   if (error) redirect(`/admin/bulletins/${id}?error=${encodeURIComponent(error.message)}`);
@@ -123,4 +116,52 @@ export async function unpublishBulletin(id: string) {
   revalidatePath("/admin/bulletins");
   revalidatePath(`/admin/bulletins/${id}`);
   redirect(`/admin/bulletins/${id}?saved=unpublished`);
+}
+
+/** Carousel display order — Move Up/Down on the admin list. Only
+ * display_order among PUBLISHED rows ever affects the public carousel
+ * (see the partial index in 20260930010000_homepage_bulletins_multi_
+ * publish.sql), so reordering is scoped to the target's own group
+ * (published-with-published, hidden-with-hidden) — moving a hidden draft
+ * up/down can never shuffle the live carousel's order. Re-normalizes that
+ * group's display_order to its position (0, 1, 2, …) after swapping the
+ * target with its neighbor — simplest correct mechanism for this row
+ * count, no drag-and-drop needed. */
+export async function moveBulletin(id: string, direction: "up" | "down") {
+  await requireAdmin();
+  const supabase = getAdminSupabase();
+  if (!supabase) redirect(`/admin/bulletins?error=${encodeURIComponent("Storage isn't configured on the server.")}`);
+
+  const { data: target, error: targetError } = await supabase
+    .from("homepage_bulletins")
+    .select("is_published")
+    .eq("id", id)
+    .maybeSingle();
+  if (targetError || !target) redirect(`/admin/bulletins?error=${encodeURIComponent(targetError?.message ?? "Bulletin not found.")}`);
+
+  const { data, error: listError } = await supabase
+    .from("homepage_bulletins")
+    .select("id")
+    .eq("is_published", target.is_published)
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true });
+  if (listError || !data) redirect(`/admin/bulletins?error=${encodeURIComponent(listError?.message ?? "Could not reorder Bulletins.")}`);
+
+  const ids = data.map((row) => row.id as string);
+  const index = ids.indexOf(id);
+  const swapWith = direction === "up" ? index - 1 : index + 1;
+  if (index === -1 || swapWith < 0 || swapWith >= ids.length) redirect("/admin/bulletins");
+
+  [ids[index], ids[swapWith]] = [ids[swapWith], ids[index]];
+
+  const results = await Promise.all(
+    ids.map((rowId, i) => supabase.from("homepage_bulletins").update({ display_order: i }).eq("id", rowId))
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) redirect(`/admin/bulletins?error=${encodeURIComponent(failed.error.message)}`);
+
+  revalidatePath("/");
+  revalidatePath("/admin/bulletins");
+  redirect("/admin/bulletins");
 }

@@ -3,7 +3,7 @@ import HomepageBusinessRow from "@/components/HomepageBusinessRow";
 import HomeEventCard from "@/components/HomeEventCard";
 import HomeWeather from "@/components/HomeWeather";
 import HomeHero from "@/components/HomeHero";
-import HomepageBulletin from "@/components/HomepageBulletin";
+import HomepageBulletinCarousel from "@/components/HomepageBulletinCarousel";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import Section, { HorizontalScroller, RailItem } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
@@ -20,7 +20,7 @@ import {
   getNextAppearanceHints,
   getUpcomingEvents,
 } from "@/lib/data";
-import { getPublishedHomepageBulletin } from "@/lib/homepage-bulletins";
+import { getPublishedHomepageBulletins } from "@/lib/homepage-bulletins";
 import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
 import {
   getSiteSections,
@@ -74,14 +74,14 @@ export default async function HomePage({
   // applyOccurrenceOverride, getBusinessesForEvent,
   // getOccurrenceBusinessRosters) are untouched in lib/data.ts — this page
   // simply doesn't need their extra detail anymore.
-  const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations, bulletin] = await Promise.all([
+  const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations, bulletins] = await Promise.all([
     getUpcomingEvents(10, WINDOW_BY_TIME_KEY[timeKey], marketSlug, areaSlug),
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
     getSiteSections("homepage"), // one query for every fixed-section override — see lib/site-sections.ts
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
     getFeaturedLocations(8), // Public Experience Consolidation pass — Featured Locations carousel
-    getPublishedHomepageBulletin(), // Homepage Bulletin — the single published editorial announcement, or null
+    getPublishedHomepageBulletins(), // Homepage Bulletin Carousel — every published editorial announcement, ordered for display
   ]);
 
   const nextEvents = await attachEventCategories(nextRaw);
@@ -180,14 +180,15 @@ export default async function HomePage({
         </div>
       )}
 
-      {/* Homepage Bulletin — a single, admin-managed editorial
-          announcement (see /admin/bulletins). Final Above-the-Fold pass
+      {/* Homepage Bulletin Carousel — one or more admin-managed editorial
+          announcements (see /admin/bulletins). Final Above-the-Fold pass
           moved this ABOVE Search (was below) per live mobile QA — same
-          component, same data fetch, only its position in this stack
-          changed. Renders nothing (no gap) when none is published. */}
-      {bulletin && (
+          position in this stack, same HomepageBulletin card design;
+          HomepageBulletinCarousel only owns rotation when 2+ are
+          published. Renders nothing (no gap) when none is published. */}
+      {bulletins.length > 0 && (
         <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6">
-          <HomepageBulletin bulletin={bulletin} />
+          <HomepageBulletinCarousel bulletins={bulletins} />
         </div>
       )}
 

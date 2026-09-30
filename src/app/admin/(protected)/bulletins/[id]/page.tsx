@@ -44,7 +44,7 @@ export default async function BulletinEditorPage({
             bulletin.is_published ? "bg-findmi-50 text-findmi-700" : "bg-black/5 text-ink/45"
           }`}
         >
-          {bulletin.is_published ? "Published" : "Unpublished"}
+          {bulletin.is_published ? "Published" : "Hidden"}
         </span>
       </div>
 
@@ -52,9 +52,9 @@ export default async function BulletinEditorPage({
       {saved && !error && (
         <p className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           {saved === "published"
-            ? "Published — this is now the live Bulletin on the homepage."
+            ? "Published — this Bulletin is now live on the homepage."
             : saved === "unpublished"
-              ? "Unpublished — the homepage will show no Bulletin unless another one is published."
+              ? "Hidden — this Bulletin no longer appears on the homepage."
               : "Saved."}
         </p>
       )}
