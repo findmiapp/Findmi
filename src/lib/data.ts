@@ -2652,6 +2652,21 @@ export interface NextAppearanceHint {
    * show; getNextAppearanceHints' existing callers that only read
    * {venue, startAt, href} are unaffected by this additive field. */
   imageUrl: string | null;
+  /** Business Preview Card polish pass — plain existing columns already on
+   * every appearances row (event-backed or standalone), added with no new
+   * join/N+1 risk so occurrence mini-cards can show real date/time/venue
+   * context instead of just a title. Only populated by the plural
+   * getUpcomingAppearanceHints resolver below; getNextAppearanceHints'
+   * existing callers are unaffected and simply see these as undefined. */
+  venueName?: string | null;
+  city?: string | null;
+  state?: string | null;
+  /** Same plain existing column format.ts's isTimeUnknown/
+   * formatAppearanceTime already read on every other Appearance surface
+   * (see Appearance Import hardening pass) — carried through here so the
+   * mini-card's date/time line can correctly show "Time TBD" instead of
+   * fabricating a real-looking time from the importer's noon placeholder. */
+  description?: string | null;
 }
 
 /** Bulk "next real appearance" per business — powers business cards'
@@ -2741,7 +2756,9 @@ export async function getUpcomingAppearanceHints(
 
   const { data } = await supabase
     .from("appearances")
-    .select("business_id, title, start_at, flyer_image_url, event:events(slug, is_demo, name, cover_image_url)")
+    .select(
+      "business_id, title, start_at, flyer_image_url, venue_name, city, state, description, event:events(slug, is_demo, name, cover_image_url)"
+    )
     .in("business_id", businessIds)
     .neq("status", "canceled")
     .gt("end_at", new Date().toISOString())
@@ -2755,6 +2772,10 @@ export async function getUpcomingAppearanceHints(
       title: string;
       start_at: string;
       flyer_image_url: string | null;
+      venue_name: string | null;
+      city: string | null;
+      state: string | null;
+      description: string | null;
       event:
         | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }
         | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }[]
@@ -2767,6 +2788,10 @@ export async function getUpcomingAppearanceHints(
       startAt: r.start_at,
       href: event && !event.is_demo ? `/event/${event.slug}` : null,
       imageUrl: (event && !event.is_demo ? event.cover_image_url : null) ?? r.flyer_image_url ?? null,
+      venueName: r.venue_name ?? null,
+      city: r.city ?? null,
+      state: r.state ?? null,
+      description: r.description ?? null,
     });
     byBusiness.set(r.business_id, list);
   }

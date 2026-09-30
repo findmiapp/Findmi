@@ -2,9 +2,11 @@
 
 import SupabaseImage from "./SupabaseImage";
 import Link from "next/link";
+import FollowButton from "./FollowButton";
+import WantHeartButton from "./WantHeartButton";
 import type { BusinessWithCategories } from "@/lib/types";
 import type { NextAppearanceHint } from "@/lib/data";
-import { cityState, formatDateShort } from "@/lib/format";
+import { cityState, formatDateShort, formatTime, isTimeUnknown } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics/track";
 import { useViewportImpression } from "@/lib/analytics/useViewportImpression";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
@@ -79,7 +81,12 @@ export default function BusinessLogoCard({
   // Only one category is ever shown — the schema has no subcategory field
   // (see the implementation report), so this never fabricates a second
   // taxonomy level just to fill the "category • category" pattern.
-  const meta = [business.categories[0]?.name, cityState(business.city, business.state)].filter(Boolean).join(" · ");
+  //
+  // Preview Card Polish pass item 4 — kept as two separate values (not one
+  // joined "meta" string) so the category can truncate independently of
+  // the city/state, which must never be cut off. See the render below.
+  const category = business.categories[0]?.name ?? null;
+  const locationLabel = cityState(business.city, business.state);
   const hasLogo = Boolean(business.logo_url);
   const hasCover = Boolean(business.cover_image_url);
   const overlap = hasLogo && hasCover;
@@ -178,9 +185,35 @@ export default function BusinessLogoCard({
         )}
       </div>
 
-      <div className={`relative flex flex-col gap-1 rounded-b-3xl p-3.5 ${overlap ? "pt-8" : "pt-3"}`}>
+      <div className="relative flex flex-col gap-1 rounded-b-3xl p-3.5">
+        {/* Preview Card Polish pass item 3 — Follow + Save, reusing the
+            exact production components (no duplicate state systems). This
+            row is deliberately right-aligned and sits ABOVE the business
+            name: the overlapping logo tile (absolutely positioned against
+            the cover section above, left-5/w-20) pokes down at most 28px
+            into this block on the left — since this row is right-aligned
+            it never collides with it horizontally, and its own height
+            gives the name below all the vertical clearance the old
+            overlap-only pt-8 hack used to provide by itself, so that hack
+            is retired in favor of this real content doing the same job. */}
+        <div className="relative z-20 flex h-9 items-center justify-end gap-1.5">
+          <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
+          <WantHeartButton
+            type="business"
+            slug={business.slug}
+            id={business.id}
+            className="h-9 w-9 shrink-0 !bg-findmi-50 !text-findmi-700"
+          />
+        </div>
+
         <p className="line-clamp-1 font-display text-base font-bold tracking-tight text-ink">{business.name}</p>
-        {meta && <p className="line-clamp-1 text-xs font-medium text-ink/55">{meta}</p>}
+        {(category || locationLabel) && (
+          <div className="flex min-w-0 items-center gap-1 text-xs font-medium text-ink/55">
+            {category && <span className="min-w-0 flex-1 truncate">{category}</span>}
+            {category && locationLabel && <span className="shrink-0">·</span>}
+            {locationLabel && <span className="shrink-0 whitespace-nowrap">{locationLabel}</span>}
+          </div>
+        )}
 
         {/* Business Card Redesign pass — a business with nothing upcoming
             gets no module at all (never an empty container/fake entry).
@@ -200,12 +233,23 @@ export default function BusinessLogoCard({
 
             {upcoming.length === 1 ? (
               <div className="mt-2">
-                <AppearanceMiniCard item={upcoming[0]} size="wide" fallbackHref={appearancesHref} />
+                <AppearanceMiniCard
+                  item={upcoming[0]}
+                  size="wide"
+                  fallbackHref={appearancesHref}
+                  businessLogoUrl={business.logo_url}
+                />
               </div>
             ) : (
               <div className="mt-2 flex gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {upcoming.map((item, i) => (
-                  <AppearanceMiniCard key={i} item={item} size="compact" fallbackHref={appearancesHref} />
+                  <AppearanceMiniCard
+                    key={i}
+                    item={item}
+                    size="compact"
+                    fallbackHref={appearancesHref}
+                    businessLogoUrl={business.logo_url}
+                  />
                 ))}
               </div>
             )}
@@ -232,9 +276,19 @@ export default function BusinessLogoCard({
 /** Business Card Redesign pass — the one mini-card grammar shared by both
  * the single-appearance ("wide") and multiple-appearance ("compact")
  * states: same rounded tile, same image-then-title-then-date stack, same
- * real image-fallback rules. `size` only changes proportions (aspect
- * ratio, width, text size) — never the structure — so "single is the
- * same card, just wider" holds literally, not just in spirit.
+ * real image-fallback rules. `size` only changes proportions (width, text
+ * size) — never the structure — so "single is the same card, just wider"
+ * holds literally, not just in spirit.
+ *
+ * Preview Card Polish pass item 2 — the image area and text block below
+ * it now use FIXED pixel heights (h-24 / h-16) instead of the old
+ * aspect-ratio classes (aspect-[21/9] wide vs aspect-[4/3] compact), which
+ * produced different absolute pixel heights at their different absolute
+ * widths — the direct cause of "wide" (single-appearance) cards rendering
+ * taller than "compact" (multi-appearance) ones. Both variants also now
+ * share the same vertical padding (py-2) so the two states are pixel-
+ * identical in total height regardless of how many lines of real text a
+ * given item actually has (the text block is overflow-hidden).
  *
  * Real destination only: the related Event's page when event-backed and
  * real (never a demo event, never a fabricated /appearance/[id] route);
@@ -247,13 +301,28 @@ function AppearanceMiniCard({
   item,
   size,
   fallbackHref,
+  businessLogoUrl,
 }: {
   item: NextAppearanceHint;
   size: "wide" | "compact";
   fallbackHref: string;
+  /** Preview Card Polish pass item 1 — only used as a subtle, low-opacity
+   * watermark inside the designed fallback below, never as a substitute
+   * photo and never repeated to imply photography that doesn't exist. */
+  businessLogoUrl: string | null;
 }) {
   const href = item.href ?? fallbackHref;
   const wide = size === "wide";
+  // Preview Card Polish pass item 5 — only real, already-fetched fields;
+  // a line is omitted entirely (not shown blank) when the underlying data
+  // doesn't exist, never fabricated. isTimeUnknown/formatTime are the same
+  // Appearance-time helpers AppearanceCard already uses, so an importer
+  // "Time TBD" placeholder (see format.ts) never renders as a fake exact
+  // time here either.
+  const dateTime = isTimeUnknown(item.description)
+    ? formatDateShort(item.startAt)
+    : `${formatDateShort(item.startAt)} · ${formatTime(item.startAt)}`;
+  const venueLine = [item.venueName, cityState(item.city, item.state)].filter(Boolean).join(" · ");
 
   return (
     <Link
@@ -262,7 +331,7 @@ function AppearanceMiniCard({
         wide ? "w-full" : "w-28"
       }`}
     >
-      <div className={`relative w-full overflow-hidden bg-black/5 ${wide ? "aspect-[21/9]" : "aspect-[4/3]"}`}>
+      <div className="relative h-24 w-full shrink-0 overflow-hidden bg-black/5">
         {item.imageUrl ? (
           <SupabaseImage
             src={item.imageUrl}
@@ -272,16 +341,32 @@ function AppearanceMiniCard({
             className="object-cover"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-ink">
-            <CalendarGlyph className="h-4 w-4 text-white/30" />
+          // Preview Card Polish pass item 1 — a designed FindMi fallback,
+          // never a black rectangle: a soft aqua surface, the business's
+          // own logo faintly watermarked behind (when one exists — real
+          // identity data, not invented art), and a restrained calendar
+          // glyph. Real appearance imagery always wins when it exists;
+          // this only renders when it genuinely doesn't.
+          <div className="relative flex h-full w-full items-center justify-center bg-findmi-50">
+            {businessLogoUrl && (
+              <div className="absolute inset-0 flex items-center justify-center opacity-[0.14]">
+                <div className="relative h-14 w-14">
+                  <SupabaseImage src={businessLogoUrl} alt="" fill sizes="56px" className="object-contain" />
+                </div>
+              </div>
+            )}
+            <CalendarGlyph className="relative h-5 w-5 text-findmi-600/70" />
           </div>
         )}
       </div>
-      <div className={`flex flex-col gap-0 ${wide ? "px-3 py-2" : "px-1.5 py-1.5"}`}>
+      <div className={`flex h-16 flex-col justify-center gap-0.5 overflow-hidden ${wide ? "px-3 py-2" : "px-2 py-2"}`}>
         <p className={`truncate font-semibold leading-tight text-ink ${wide ? "text-sm" : "text-[11px]"}`}>
           {item.venue}
         </p>
-        <p className={`truncate text-ink/45 ${wide ? "text-xs" : "text-[10px]"}`}>{formatDateShort(item.startAt)}</p>
+        <p className={`truncate leading-tight text-ink/50 ${wide ? "text-xs" : "text-[10px]"}`}>{dateTime}</p>
+        {venueLine && (
+          <p className={`truncate leading-tight text-ink/40 ${wide ? "text-[11px]" : "text-[9px]"}`}>{venueLine}</p>
+        )}
       </div>
     </Link>
   );
