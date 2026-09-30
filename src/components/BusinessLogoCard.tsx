@@ -26,12 +26,24 @@ import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/an
 // Visual polish pass rebuild: the card is no longer one big <Link> —
 // it's a <div> with a stretched, invisible Link covering the whole card
 // (item 3's default View Profile / ctaHref action), plus an optional
-// NEXT UP link (item 2) nested inside it at a higher z-index so it can
-// point somewhere different (the real event) without illegal nested
-// <a> tags. Both are plain absolutely/relatively positioned Links in one
-// stacking context — the NEXT UP link's z-20 simply wins over the
+// appearance-preview module (item 2) nested inside it at a higher
+// z-index so its own links can point somewhere different (a real event,
+// or the business's own appearances section) without illegal nested
+// <a> tags. All of these are plain absolutely/relatively positioned
+// Links in one stacking context — each one's z-20 simply wins over the
 // stretched link's z-10 within its own small footprint; everywhere else
-// on the card still goes to the main href.
+// on the card still goes to `href`.
+//
+// Business Card Redesign pass — the single "Next Up" pill is replaced by
+// a fuller appearance-preview module (still the SAME real, bulk-fetched
+// appearance data via lib/data.ts's getUpcomingAppearanceHints — never a
+// second/competing "upcoming" definition, never invented content):
+// exactly one eligible upcoming appearance renders as one wide preview
+// card; two or more render as a horizontal rail of compact preview
+// cards, same AppearanceMiniCard grammar either way (see its own
+// comment). Zero eligible appearances renders no module at all — a clean
+// identity/discovery card, same as before this pass, now also showing a
+// real business.short_description line when one exists (never invented).
 export default function BusinessLogoCard({
   business,
   /** UI cleanup pass item 6 (prior pass): this card is now also reused for
@@ -39,24 +51,29 @@ export default function BusinessLogoCard({
    * brand preview, both of which want their own CTA copy/destination
    * instead of the Brands We Love default — accepted here rather than
    * hardcoded so neither caller has to fork the card. Defaults preserve
-   * exactly what Brands We Love already showed. */
-  ctaLabel = "View Profile",
+   * what Brands We Love already showed. Business Card Redesign pass —
+   * default copy updated from "View Profile" to "View Brand" (consumer
+   * discovery-card terminology; the destination itself is unchanged). */
+  ctaLabel = "View Brand",
   ctaHref,
-  /** Compact "NEXT UP" signal — visual polish pass item 2. Bulk-fetched by
-   * the caller (lib/data.ts's getNextAppearanceHints — the same existing
-   * appearances architecture /businesses already uses for its own card
-   * hint) to avoid N+1 querying per card in a row. Only ever real,
-   * already-scheduled data; omitted entirely (not fabricated) when a
-   * business has nothing upcoming, or when a caller doesn't pass it at
-   * all (Discover More Like This / event roster don't wire this up this
-   * pass — see the report). */
-  nextAppearance,
+  /** Business Card Redesign pass — plural (was a single `nextAppearance`
+   * hint). Bulk-fetched by the caller (lib/data.ts's
+   * getUpcomingAppearanceHints — the same existing appearances
+   * architecture, extended to return several per business instead of
+   * just the soonest one) to avoid N+1 querying per card in a row. Only
+   * ever real, already-scheduled appearances; omitted entirely (not
+   * fabricated) when a business has nothing upcoming, or when a caller
+   * doesn't wire this up at all (e.g. the event roster's brand preview,
+   * and the business profile's own "Discover More Like This" rail, both
+   * of which still work fine without it — a clean identity card is a
+   * perfectly good state, never a placeholder). */
+  upcomingAppearances,
   analyticsContext,
 }: {
   business: BusinessWithCategories;
   ctaLabel?: string;
   ctaHref?: string;
-  nextAppearance?: NextAppearanceHint | null;
+  upcomingAppearances?: NextAppearanceHint[];
   analyticsContext?: AnalyticsPlacementContext;
 }) {
   // Only one category is ever shown — the schema has no subcategory field
@@ -67,6 +84,8 @@ export default function BusinessLogoCard({
   const hasCover = Boolean(business.cover_image_url);
   const overlap = hasLogo && hasCover;
   const href = ctaHref ?? `/business/${business.slug}`;
+  const appearancesHref = `/business/${business.slug}#findmi-here`;
+  const upcoming = upcomingAppearances ?? [];
 
   const analyticsFields = buildEntityEventFields("business", business.id, { businessId: business.id }, analyticsContext);
   const impressionRef = useViewportImpression<HTMLDivElement>({ event_name: "entity_impression", ...analyticsFields });
@@ -163,22 +182,43 @@ export default function BusinessLogoCard({
         <p className="line-clamp-1 font-display text-base font-bold tracking-tight text-ink">{business.name}</p>
         {meta && <p className="line-clamp-1 text-xs font-medium text-ink/55">{meta}</p>}
 
-        {/* NEXT UP — z-20 beats the stretched link's z-10 within this
-            module's own footprint only; everywhere else on the card still
-            goes to `href`. Compact (one row), never fabricated. */}
-        {nextAppearance &&
-          (nextAppearance.href ? (
+        {/* Business Card Redesign pass — a business with nothing upcoming
+            gets no module at all (never an empty container/fake entry).
+            Only real, truthful body content here: the business's own
+            short_description, when one actually exists — never invented
+            copy, never a placeholder tagline. */}
+        {upcoming.length === 0 && business.short_description && (
+          <p className="line-clamp-2 text-xs text-ink/60">{business.short_description}</p>
+        )}
+
+        {upcoming.length > 0 && (
+          <div className="relative z-20 mt-1.5 rounded-2xl bg-findmi-50 p-2.5">
+            <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700">
+              <CalendarGlyph className="h-3.5 w-3.5 shrink-0" />
+              {upcoming.length === 1 ? "1 Upcoming Appearance" : `${upcoming.length} Upcoming Appearances`}
+            </p>
+
+            {upcoming.length === 1 ? (
+              <div className="mt-2">
+                <AppearanceMiniCard item={upcoming[0]} size="wide" fallbackHref={appearancesHref} />
+              </div>
+            ) : (
+              <div className="mt-2 flex gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {upcoming.map((item, i) => (
+                  <AppearanceMiniCard key={i} item={item} size="compact" fallbackHref={appearancesHref} />
+                ))}
+              </div>
+            )}
+
             <Link
-              href={nextAppearance.href}
-              className="relative z-20 mt-1 flex items-center gap-1.5 rounded-lg bg-findmi-50 px-2 py-1.5 transition hover:bg-findmi-100"
+              href={upcoming.length === 1 ? (upcoming[0].href ?? appearancesHref) : appearancesHref}
+              className="relative z-20 mt-2 flex items-center gap-0.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700"
             >
-              <NextUpLabel venue={nextAppearance.venue} startAt={nextAppearance.startAt} />
+              {upcoming.length === 1 ? "View appearance" : "See all appearances"}
+              <ChevronGlyph className="h-2.5 w-2.5" />
             </Link>
-          ) : (
-            <div className="relative mt-1 flex items-center gap-1.5 rounded-lg bg-findmi-50 px-2 py-1.5">
-              <NextUpLabel venue={nextAppearance.venue} startAt={nextAppearance.startAt} />
-            </div>
-          ))}
+          </div>
+        )}
 
         <p className="mt-1 flex items-center gap-0.5 text-xs font-bold uppercase tracking-wide text-findmi-700">
           {ctaLabel}
@@ -189,15 +229,61 @@ export default function BusinessLogoCard({
   );
 }
 
-function NextUpLabel({ venue, startAt }: { venue: string; startAt: string }) {
+/** Business Card Redesign pass — the one mini-card grammar shared by both
+ * the single-appearance ("wide") and multiple-appearance ("compact")
+ * states: same rounded tile, same image-then-title-then-date stack, same
+ * real image-fallback rules. `size` only changes proportions (aspect
+ * ratio, width, text size) — never the structure — so "single is the
+ * same card, just wider" holds literally, not just in spirit.
+ *
+ * Real destination only: the related Event's page when event-backed and
+ * real (never a demo event, never a fabricated /appearance/[id] route);
+ * otherwise the business's own real, already-existing appearances
+ * section (`fallbackHref`, `/business/[slug]#findmi-here`) — never a
+ * dead, non-interactive preview. A plain sibling <Link> at z-20 (not
+ * nested inside the card's own stretched <Link>), same non-nesting
+ * pattern this card's CTA/appearance links already use. */
+function AppearanceMiniCard({
+  item,
+  size,
+  fallbackHref,
+}: {
+  item: NextAppearanceHint;
+  size: "wide" | "compact";
+  fallbackHref: string;
+}) {
+  const href = item.href ?? fallbackHref;
+  const wide = size === "wide";
+
   return (
-    <>
-      <CalendarGlyph className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
-      <span className="min-w-0 flex-1 truncate text-xs text-ink">
-        <span className="mr-1.5 font-bold uppercase tracking-wide text-findmi-700">Next Up</span>
-        <span className="font-semibold">{venue}</span> · {formatDateShort(startAt)}
-      </span>
-    </>
+    <Link
+      href={href}
+      className={`relative z-20 flex shrink-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-white transition active:scale-[0.97] ${
+        wide ? "w-full" : "w-28"
+      }`}
+    >
+      <div className={`relative w-full overflow-hidden bg-black/5 ${wide ? "aspect-[21/9]" : "aspect-[4/3]"}`}>
+        {item.imageUrl ? (
+          <SupabaseImage
+            src={item.imageUrl}
+            alt=""
+            fill
+            sizes={wide ? "(min-width: 768px) 360px, 80vw" : "112px"}
+            className="object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-ink">
+            <CalendarGlyph className="h-4 w-4 text-white/30" />
+          </div>
+        )}
+      </div>
+      <div className={`flex flex-col gap-0 ${wide ? "px-3 py-2" : "px-1.5 py-1.5"}`}>
+        <p className={`truncate font-semibold leading-tight text-ink ${wide ? "text-sm" : "text-[11px]"}`}>
+          {item.venue}
+        </p>
+        <p className={`truncate text-ink/45 ${wide ? "text-xs" : "text-[10px]"}`}>{formatDateShort(item.startAt)}</p>
+      </div>
+    </Link>
   );
 }
 

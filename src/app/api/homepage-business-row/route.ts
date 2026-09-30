@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { getBusinessesByIds, getHomepageRowBusinesses, getNextAppearanceHints } from "@/lib/data";
+import { getBusinessesByIds, getHomepageRowBusinesses, getUpcomingAppearanceHints } from "@/lib/data";
 import type { HomepageRow } from "@/lib/homepage-rows";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   if (typedRow.mode === "curated") {
     const curated = await getBusinessesByIds(typedRow.curated_ids);
     const filtered = category ? curated.filter((b) => b.categories.some((c) => c.slug === category)) : curated;
-    const appearanceHints = Object.fromEntries(await getNextAppearanceHints(filtered.map((b) => b.id)));
+    const appearanceHints = Object.fromEntries(await getUpcomingAppearanceHints(filtered.map((b) => b.id)));
     return NextResponse.json({ businesses: filtered, appearanceHints });
   }
 
@@ -59,9 +59,9 @@ export async function GET(request: NextRequest) {
     limit: typedRow.item_limit,
     marketSlug,
   });
-  // Bulk-fetched here too (not per card) so BusinessLogoCard's NEXT UP
+  // Bulk-fetched here too (not per card) so BusinessLogoCard's appearance
   // module keeps working after a live category-chip re-fetch, not just on
   // the initial server-rendered load (visual polish pass item 2).
-  const appearanceHints = Object.fromEntries(await getNextAppearanceHints(businesses.map((b) => b.id)));
+  const appearanceHints = Object.fromEntries(await getUpcomingAppearanceHints(businesses.map((b) => b.id)));
   return NextResponse.json({ businesses, appearanceHints });
 }

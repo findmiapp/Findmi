@@ -2645,6 +2645,13 @@ export interface NextAppearanceHint {
    * "NEXT UP" module (visual polish pass, item 2); existing callers that
    * only destructure {venue, startAt} are unaffected. */
   href: string | null;
+  /** Business Card Redesign pass — the related event's own cover image
+   * when event-backed and real, else the appearance's own flyer image,
+   * else null (never fabricated/placeholder art). Added so
+   * BusinessLogoCard's appearance-preview module has a real photo to
+   * show; getNextAppearanceHints' existing callers that only read
+   * {venue, startAt, href} are unaffected by this additive field. */
+  imageUrl: string | null;
 }
 
 /** Bulk "next real appearance" per business — powers business cards'
@@ -2658,7 +2665,7 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
   // Same active-duration principle as events — see getHomeAppearanceBulletins.
   const { data } = await supabase
     .from("appearances")
-    .select("business_id, title, start_at, event:events(slug, is_demo, name)")
+    .select("business_id, title, start_at, flyer_image_url, event:events(slug, is_demo, name, cover_image_url)")
     .in("business_id", businessIds)
     .neq("status", "canceled")
     .gt("end_at", new Date().toISOString())
@@ -2668,7 +2675,11 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
       business_id: string;
       title: string;
       start_at: string;
-      event: { slug: string; is_demo: boolean; name: string } | { slug: string; is_demo: boolean; name: string }[] | null;
+      flyer_image_url: string | null;
+      event:
+        | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }
+        | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }[]
+        | null;
     };
     if (hints.has(r.business_id)) continue;
     const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
@@ -2695,9 +2706,76 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
       venue: r.title || event?.name || "",
       startAt: r.start_at,
       href: event && !event.is_demo ? `/event/${event.slug}` : null,
+      imageUrl: (event && !event.is_demo ? event.cover_image_url : null) ?? r.flyer_image_url ?? null,
     });
   }
   return hints;
+}
+
+// Business Card Redesign pass — same over-fetch-then-group-and-slice-in-JS
+// discipline getLocationActivitySummaries' own ACTIVITY_PREVIEW_FETCH_PER_
+// LOCATION/ACTIVITY_PREVIEW_ITEMS_PER_LOCATION pair already established:
+// one bulk query across every business on the page (never one per card),
+// over-fetching a generous multiple of the final per-business cap before
+// grouping/slicing to the soonest N per business in JS.
+const UPCOMING_APPEARANCE_FETCH_PER_BUSINESS = 8;
+const UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS = 4;
+
+/** Bulk "upcoming appearances" (plural) per business — BusinessLogoCard's
+ * appearance-preview module (single wide card when there's exactly one,
+ * horizontal rail when there are several). Reuses the exact same
+ * eligibility rule getNextAppearanceHints already uses (not canceled,
+ * end_at in the future) and the exact same table — never a second,
+ * competing definition of "upcoming." Ordering is plain `start_at`
+ * ascending: an appearance already in progress (start_at in the past,
+ * end_at still in the future) sorts first for free, exactly matching
+ * "happening now, then nearest upcoming, then chronological" with no
+ * separate "is this live right now" branch needed. */
+export async function getUpcomingAppearanceHints(
+  businessIds: string[],
+  limitPerBusiness: number = UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS
+): Promise<Map<string, NextAppearanceHint[]>> {
+  const result = new Map<string, NextAppearanceHint[]>();
+  const supabase = getSupabase();
+  if (!supabase || businessIds.length === 0) return result;
+
+  const { data } = await supabase
+    .from("appearances")
+    .select("business_id, title, start_at, flyer_image_url, event:events(slug, is_demo, name, cover_image_url)")
+    .in("business_id", businessIds)
+    .neq("status", "canceled")
+    .gt("end_at", new Date().toISOString())
+    .order("start_at", { ascending: true })
+    .limit(UPCOMING_APPEARANCE_FETCH_PER_BUSINESS * businessIds.length);
+
+  const byBusiness = new Map<string, NextAppearanceHint[]>();
+  for (const row of (data ?? []) as never[]) {
+    const r = row as {
+      business_id: string;
+      title: string;
+      start_at: string;
+      flyer_image_url: string | null;
+      event:
+        | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }
+        | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }[]
+        | null;
+    };
+    const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
+    const list = byBusiness.get(r.business_id) ?? [];
+    list.push({
+      venue: r.title || event?.name || "",
+      startAt: r.start_at,
+      href: event && !event.is_demo ? `/event/${event.slug}` : null,
+      imageUrl: (event && !event.is_demo ? event.cover_image_url : null) ?? r.flyer_image_url ?? null,
+    });
+    byBusiness.set(r.business_id, list);
+  }
+
+  for (const id of businessIds) {
+    const list = (byBusiness.get(id) ?? []).slice(0, limitPerBusiness);
+    if (list.length > 0) result.set(id, list);
+  }
+  return result;
 }
 
 export interface MarketplaceProduct extends Product {

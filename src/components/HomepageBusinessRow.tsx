@@ -43,9 +43,11 @@ export default function HomepageBusinessRow({
   categories: Category[];
   /** Bulk-fetched server-side, one call per row (visual polish pass item
    * 2) — never one query per card. Keyed by business id; a business with
-   * nothing upcoming just has no entry, so BusinessLogoCard's NEXT UP
-   * module correctly omits itself rather than fabricating anything. */
-  appearanceHints: Record<string, NextAppearanceHint>;
+   * nothing upcoming just has no entry, so BusinessLogoCard's appearance
+   * module correctly omits itself rather than fabricating anything.
+   * Business Card Redesign pass — plural per business (was a single
+   * hint), via lib/data.ts's getUpcomingAppearanceHints. */
+  appearanceHints: Record<string, NextAppearanceHint[]>;
   marketSlug?: string;
   /** Analytics Phase 2A — Discovery Page Builder attribution. `pinnedIds`
    * stays correct even after a client-side category re-fetch: origin is
@@ -58,7 +60,7 @@ export default function HomepageBusinessRow({
 }) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, BusinessWithCategories[]>>({});
-  const [hintsCache, setHintsCache] = useState<Record<string, Record<string, NextAppearanceHint>>>({});
+  const [hintsCache, setHintsCache] = useState<Record<string, Record<string, NextAppearanceHint[]>>>({});
   const [loading, setLoading] = useState(false);
   const [failedCategory, setFailedCategory] = useState<string | null>(null);
 
@@ -77,7 +79,7 @@ export default function HomepageBusinessRow({
         { cache: "no-store" }
       );
       if (!res.ok) throw new Error(`homepage-business-row ${res.status}`);
-      const data: { businesses: BusinessWithCategories[]; appearanceHints: Record<string, NextAppearanceHint> } =
+      const data: { businesses: BusinessWithCategories[]; appearanceHints: Record<string, NextAppearanceHint[]> } =
         await res.json();
       setCache((prev) => ({ ...prev, [slug]: data.businesses }));
       setHintsCache((prev) => ({ ...prev, [slug]: data.appearanceHints }));
@@ -162,7 +164,7 @@ export default function HomepageBusinessRow({
             <div key={b.id} className="w-[76vw] max-w-[340px] shrink-0 sm:w-96">
               <BusinessLogoCard
                 business={b}
-                nextAppearance={hints[b.id]}
+                upcomingAppearances={hints[b.id]}
                 analyticsContext={{
                   pageType: "home",
                   placement: "homepage_row",

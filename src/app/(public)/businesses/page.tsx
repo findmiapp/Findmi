@@ -17,6 +17,7 @@ import {
   getHomeCategories,
   getMarketAreaLabel,
   getNextAppearanceHints,
+  getUpcomingAppearanceHints,
   searchBusinesses,
   type BusinessSort,
   type NextAppearanceHint,
@@ -119,6 +120,12 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
   let featuredBusinesses: BusinessWithCategories[] = [];
   let categoryRails: { category: Category; businesses: BusinessWithCategories[] }[] = [];
   let browseAppearanceHints = new Map<string, NextAppearanceHint>();
+  // Business Card Redesign pass — BusinessLogoCard (the Featured on
+  // Findmi rail only, below) needs the plural upcoming-appearances shape;
+  // BusinessDiscoveryCard's own "Next Up" (category rails + the flat
+  // Results Mode grid) is untouched and keeps reading browseAppearanceHints/
+  // appearanceHints (singular) exactly as before this pass.
+  let featuredUpcomingHints = new Map<string, NextAppearanceHint[]>();
   if (isBrowseMode) {
     const [featuredResult, eligibleCategories, homeCategories] = await Promise.all([
       searchBusinesses({
@@ -150,6 +157,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
     categoryRails = rails.filter((r) => r.businesses.length > 0);
     const browseIds = [...featuredBusinesses, ...categoryRails.flatMap((r) => r.businesses)].map((b) => b.id);
     browseAppearanceHints = await getNextAppearanceHints(browseIds);
+    featuredUpcomingHints = await getUpcomingAppearanceHints(featuredBusinesses.map((b) => b.id));
   }
 
   // Every filter round-trips through real URL search params (Discovery/
@@ -323,7 +331,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
                       <div key={b.id} className="w-[62vw] max-w-[280px] shrink-0 sm:w-72">
                         <BusinessLogoCard
                           business={b}
-                          nextAppearance={browseAppearanceHints.get(b.id)}
+                          upcomingAppearances={featuredUpcomingHints.get(b.id)}
                           analyticsContext={{ pageType: "businesses", placement: "featured_rail" }}
                         />
                       </div>

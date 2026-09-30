@@ -17,7 +17,7 @@ import {
   getFeaturedBusinesses,
   getFeaturedLocations,
   getMarketAreaLabel,
-  getNextAppearanceHints,
+  getUpcomingAppearanceHints,
   getUpcomingEvents,
 } from "@/lib/data";
 import { getPublishedHomepageBulletins } from "@/lib/homepage-bulletins";
@@ -451,7 +451,7 @@ async function HomepageRowSection({
       ? await getCategoriesForDynamicBusinessRow(row.featured_only, marketSlug, areaSlug)
       : dedupeCategories(resolved.items.flatMap((b) => b.categories));
     const appearanceHints = Object.fromEntries(
-      await getNextAppearanceHints(resolved.items.map((b) => b.id))
+      await getUpcomingAppearanceHints(resolved.items.map((b) => b.id))
     );
     const viewAllHref = (() => {
       if (!isDynamic) return "/businesses";
