@@ -202,7 +202,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
           ) : (
             <p className="text-sm text-ink/50">
               Nothing to surface yet. Check back soon, or{" "}
-              <Link href="/join" className="font-medium text-ink underline underline-offset-2">
+              <Link href="/join/business" className="font-medium text-ink underline underline-offset-2">
                 be the first to join
               </Link>
               .

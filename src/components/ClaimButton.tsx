@@ -231,7 +231,7 @@ export default function ClaimButton({
                 rather than the owner-only /upgrade/pro handoff — a payment
                 must never imply or expedite claim approval. */}
             <Link
-              href="/join"
+              href="/join/business"
               className="mt-2 flex h-9 items-center justify-center rounded-xl bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
             >
               Upgrade to Pro

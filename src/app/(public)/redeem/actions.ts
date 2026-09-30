@@ -213,7 +213,7 @@ export async function redeemProInvite(code: string, formData: FormData) {
  * server-side rather than trusting that alone, redirecting back to
  * wherever the visitor submitted from (return_to) unchanged rather than
  * navigating to a meaningless /redeem/ path. return_to is a same-origin
- * hidden field this action's own callers set to "/join"/"/account", but
+ * hidden field this action's own callers set to "/join/business"/"/account", but
  * it still goes through getSafeRedirect (same as every other
  * client-supplied redirect target in this app — see lib/auth/
  * safe-redirect.ts) rather than being redirected to directly, since a

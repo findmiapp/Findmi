@@ -176,11 +176,11 @@ export default async function RedeemInvitePage({
               here would never help. */}
           {invalidReason === "not_found" ? (
             <div className="mt-6 text-left">
-              <ProInviteCodeEntry returnTo="/join" heading="Enter your invite code" />
+              <ProInviteCodeEntry returnTo="/join/business" heading="Enter your invite code" />
             </div>
           ) : (
             <Link
-              href="/join"
+              href="/join/business"
               className="mt-6 inline-flex h-11 items-center justify-center rounded-full border border-black/10 px-5 text-xs font-bold uppercase tracking-wide text-ink transition hover:border-black/20"
             >
               Back to Join Findmi

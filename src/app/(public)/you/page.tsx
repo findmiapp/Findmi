@@ -38,7 +38,7 @@ export default function YouPage() {
       <div className="mt-10 rounded-2xl bg-black/[0.03] p-5">
         <p className="text-sm font-semibold text-ink">Have a business people should find?</p>
         <Link
-          href="/join"
+          href="/join/business"
           className="mt-3 inline-block rounded-full bg-findmi px-5 py-2.5 text-sm font-bold text-white transition hover:bg-findmi-600"
         >
           Join Findmi

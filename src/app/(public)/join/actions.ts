@@ -19,7 +19,7 @@ export async function startMembershipCheckout(formData: FormData) {
   });
 
   if ("error" in result) {
-    redirect(`/join?error=${encodeURIComponent(result.error)}&plan=${encodeURIComponent(planSlug)}`);
+    redirect(`/join/business?error=${encodeURIComponent(result.error)}&plan=${encodeURIComponent(planSlug)}`);
   }
   redirect(result.url);
 }

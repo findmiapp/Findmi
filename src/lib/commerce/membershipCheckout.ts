@@ -108,7 +108,7 @@ export async function createMembershipCheckoutSession(input: {
         metadata: { findmi_membership_id: membership.id },
         subscription_data: { metadata: { findmi_membership_id: membership.id } },
         success_url: `${siteUrl}/join/success?membership_id=${membership.id}&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${siteUrl}/join?cancelled=1`,
+        cancel_url: `${siteUrl}/join/business?cancelled=1`,
       }),
       supabase.from("membership_markets").insert(marketIds.map((market_id) => ({ membership_id: membership.id, market_id }))),
     ]);

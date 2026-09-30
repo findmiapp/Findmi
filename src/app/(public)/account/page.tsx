@@ -617,7 +617,7 @@ export default async function AccountHomePage({
                   <p className="text-metadata text-muted">Typically reviewed within 48–72 hours.</p>
                 </Link>
                 <Link
-                  href="/join"
+                  href="/join/business"
                   className="flex h-9 w-fit items-center justify-center rounded-xl bg-findmi px-4 text-label font-bold uppercase text-white transition hover:bg-findmi-600"
                 >
                   Upgrade to Pro

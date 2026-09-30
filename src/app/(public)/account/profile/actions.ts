@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { normalizeUsPhone } from "@/lib/phone";
+import { getSafeRedirect } from "@/lib/auth/safe-redirect";
 
 export async function updateProfile(formData: FormData) {
   const supabase = await getServerSupabase();
@@ -14,6 +15,20 @@ export async function updateProfile(formData: FormData) {
   // Server Action re-checks independently, same discipline
   // requireAdminSupabase() established for the founder admin surface.
   if (!user) redirect("/login");
+
+  // Join / Universal Onboarding pass — two optional, backward-compatible
+  // fields. Left blank (every existing caller — the plain /account/profile
+  // form), `from`/`next` default to this action's original, hardcoded
+  // /account/profile behavior. /join/passbook is the one caller that sets
+  // both: `from` sends a validation error back to /join/passbook instead
+  // of /account/profile, and `next` sends a successful save on to
+  // /join/welcome instead. Both still go through getSafeRedirect, same as
+  // every other client-supplied redirect target in this app, since a
+  // hidden form field is still visitor-controllable.
+  const fromRaw = String(formData.get("from") ?? "").trim();
+  const from = fromRaw ? getSafeRedirect(fromRaw) : "/account/profile";
+  const nextRaw = String(formData.get("next") ?? "").trim();
+  const next = nextRaw ? getSafeRedirect(nextRaw) : "/account/profile?saved=1";
 
   const displayNameRaw = String(formData.get("display_name") ?? "").trim();
 
@@ -27,18 +42,18 @@ export async function updateProfile(formData: FormData) {
   if (phoneRaw) {
     phone = normalizeUsPhone(phoneRaw);
     if (!phone) {
-      redirect(`/account/profile?error=${encodeURIComponent("Enter a valid U.S. or Canada cell number.")}`);
+      redirect(`${from}?error=${encodeURIComponent("Enter a valid U.S. or Canada cell number.")}`);
     }
   }
 
   const bioRaw = String(formData.get("bio") ?? "").trim();
   if (bioRaw.length > 280) {
-    redirect(`/account/profile?error=${encodeURIComponent("Bio must be 280 characters or fewer.")}`);
+    redirect(`${from}?error=${encodeURIComponent("Bio must be 280 characters or fewer.")}`);
   }
 
   const locationRaw = String(formData.get("location_label") ?? "").trim();
   if (locationRaw.length > 80) {
-    redirect(`/account/profile?error=${encodeURIComponent("Location must be 80 characters or fewer.")}`);
+    redirect(`${from}?error=${encodeURIComponent("Location must be 80 characters or fewer.")}`);
   }
 
   const patch: Record<string, unknown> = {
@@ -53,10 +68,10 @@ export async function updateProfile(formData: FormData) {
   // value.
 
   const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
-  if (error) redirect(`/account/profile?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`${from}?error=${encodeURIComponent(error.message)}`);
 
   revalidatePath("/account/profile");
-  redirect("/account/profile?saved=1");
+  redirect(next);
 }
 
 export async function signOut() {

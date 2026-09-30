@@ -190,7 +190,7 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     // Public Experience Consolidation pass — verified no live site_sections
     // override exists for this key before changing the default.
     ctaLabel: "Put it on FindMi →",
-    ctaUrl: "/join",
+    ctaUrl: "/join/business",
     order: 45,
     fields: ["heading", "body", "cta"],
     // No longer pinned "always first" — it renders further down the page
@@ -297,7 +297,7 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     heading: "Ready to be found?",
     body: "Findmi gives your business one presence for discovery, products, appearances, events, and staying connected with customers who follow you. We help with setup, so joining doesn't feel like another platform you have to build and maintain from scratch.",
     ctaLabel: "Join Findmi",
-    ctaUrl: "/join",
+    ctaUrl: "/join/business",
     order: 80,
     fields: ["eyebrow", "heading", "body", "cta"],
   },
@@ -332,7 +332,7 @@ export const HOMEPAGE_SECTIONS: Record<string, SectionDefaults> = {
     heading: "More visibility.\nMore customers.\nMore growth.",
     body: "List your business, promote events, sell products, and connect with your community.",
     ctaLabel: "Join Findmi →",
-    ctaUrl: "/join",
+    ctaUrl: "/join/business",
     order: 110,
     fields: ["eyebrow", "heading", "body", "cta"],
   },

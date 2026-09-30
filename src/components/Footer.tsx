@@ -35,7 +35,7 @@ export default function Footer() {
                 Business
               </p>
               <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                <li><Link href="/join" className="hover:text-ink">Join Findmi</Link></li>
+                <li><Link href="/join/business" className="hover:text-ink">Join Findmi</Link></li>
                 <li><Link href="/about" className="hover:text-ink">About</Link></li>
               </ul>
             </div>
@@ -54,7 +54,7 @@ export default function Footer() {
         {/* Mobile: compact secondary links only — bottom nav handles primary. */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink/55 md:hidden">
           <Link href="/about" className="hover:text-ink">About</Link>
-          <Link href="/join" className="hover:text-ink">For Business</Link>
+          <Link href="/join/business" className="hover:text-ink">For Business</Link>
           <Link href="/privacy" className="hover:text-ink">Privacy</Link>
           <Link href="/terms" className="hover:text-ink">Terms</Link>
         </div>

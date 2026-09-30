@@ -67,7 +67,7 @@ export function UnverifiedPanel() {
         wrong, reach out and we&rsquo;ll sort it out.
       </p>
       <Link
-        href="/join"
+        href="/join/business"
         className="mt-8 rounded-full bg-findmi px-6 py-3.5 text-center text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
       >
         Back to Findmi

@@ -28,7 +28,7 @@ export async function savePlans(formData: FormData) {
   }
 
   revalidatePath("/admin/plans");
-  revalidatePath("/join");
+  revalidatePath("/join/business");
   redirect("/admin/plans?saved=1");
 }
 

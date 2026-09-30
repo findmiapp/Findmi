@@ -8,7 +8,13 @@ import { JOIN_CARD_KEYS, type JoinCardKey } from "@/lib/join-page";
 
 const PAGE_KEY = "join";
 const BASE_PATH = "/admin/site/join";
-const PUBLIC_PATH = "/join";
+// Join / Universal Onboarding pass — the business-acquisition page this
+// editor manages (page_key "join", unchanged) now renders at /join/business,
+// not bare /join (that's the new universal account-creation entry point —
+// see src/app/(public)/join/page.tsx). Only this constant (used for
+// revalidatePath/preview below) moved; the CMS key and all section data are
+// untouched.
+const PUBLIC_PATH = "/join/business";
 
 // Every section below belongs to exactly one admin tab (see page.tsx's
 // TABS) — the redirect after saving must land back on that same tab, not

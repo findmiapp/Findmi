@@ -205,7 +205,7 @@ export const FALLBACK_NAV_ITEMS: ResolvedNavItem[] = [
     highlight: false,
     audience: "everyone",
     children: [
-      { id: "fallback-fb-join", label: "Join Findmi", href: "/join", external: false, icon: null, highlight: true, audience: "everyone", children: [] },
+      { id: "fallback-fb-join", label: "Join Findmi", href: "/join/business", external: false, icon: null, highlight: true, audience: "everyone", children: [] },
     ],
   },
   { id: "fallback-about", label: "About", href: "/about", external: false, icon: null, highlight: false, audience: "everyone", children: [] },

@@ -125,7 +125,7 @@ export default async function AddEventPage({
           <Link href="/account/business/new" className={`mt-5 ${primaryButtonClass}`}>
             Add a Business
           </Link>
-          <Link href="/join" className="mt-3 flex h-11 w-full items-center justify-center text-metadata font-semibold text-muted transition hover:text-primary">
+          <Link href="/join/business" className="mt-3 flex h-11 w-full items-center justify-center text-metadata font-semibold text-muted transition hover:text-primary">
             Learn about Findmi Pro
           </Link>
         </div>

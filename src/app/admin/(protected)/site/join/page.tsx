@@ -96,8 +96,8 @@ export default async function JoinSiteEditorPage({
       <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Join Page</h1>
       <p className="mt-1 text-sm text-ink/50">
         Edit everything shown on the public{" "}
-        <a href="/join" target="_blank" rel="noreferrer" className="font-medium text-findmi-700 hover:underline">
-          /join
+        <a href="/join/business" target="_blank" rel="noreferrer" className="font-medium text-findmi-700 hover:underline">
+          /join/business
         </a>{" "}
         page — changes go live within a minute, no code change or deploy needed. Every field already shows what&rsquo;s
         currently live; clear a field back to empty and save to reset just that field to Findmi&rsquo;s default.

@@ -174,7 +174,7 @@ export default async function JoinSalesPage({
       </div>
 
       <div className="mt-6 text-center">
-        <Link href="/join" className="text-xs font-semibold text-ink/40 hover:text-ink/70">
+        <Link href="/join/business" className="text-xs font-semibold text-ink/40 hover:text-ink/70">
           ← Back to Join Findmi
         </Link>
       </div>
