@@ -4,6 +4,7 @@
 // live in the sibling Server Actions file (requireAdminSupabase()), same
 // split every other admin entity in this codebase already uses.
 import { getAdminSupabase } from "./supabase-admin";
+import type { QrCampaignStatus, QrDestinationType } from "@/lib/qr-v2";
 
 export interface QrCampaign {
   id: string;
@@ -17,8 +18,16 @@ export interface QrCampaign {
   product_id: string | null;
   destination_path: string;
   placement: string | null;
+  /** Prior product decision: redundant long-term next to name+placement.
+   * Kept for compatibility only — never read for new decisions. */
   campaign_label: string | null;
   is_active: boolean;
+  /** QR V2 Foundation — the forward-looking lifecycle authority; kept in
+   * lockstep with is_active by every write path (see actions.ts). */
+  status: QrCampaignStatus;
+  destination_type: QrDestinationType | null;
+  destination_id: string | null;
+  destination_url: string | null;
   created_at: string;
   updated_at: string;
 }

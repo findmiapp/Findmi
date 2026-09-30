@@ -3,7 +3,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { establishQrAcquisitionIfAbsent, resolveSessionId } from "@/lib/analytics/session";
 import { isRateLimited } from "@/lib/analytics/rateLimit";
 import { insertAnalyticsEvent } from "@/lib/analytics/serverTrack";
-import { isSafeQrDestinationPath } from "@/lib/analytics/qrCode";
+import { resolveQrDestination, type QrDestinationType } from "@/lib/qr-v2";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,14 @@ interface QrCampaignRow {
   destination_path: string;
   placement: string | null;
   is_active: boolean;
+  /** QR V2 Foundation — status is the forward-looking lifecycle
+   * authority (see the migration); is_active is kept in lockstep by
+   * every write path (setQrCampaignActive et al.) and is no longer read
+   * here, so there is exactly one gate, never two that could disagree. */
+  status: string;
+  destination_type: QrDestinationType | null;
+  destination_id: string | null;
+  destination_url: string | null;
 }
 
 /** Deterministic primary-subject precedence for a QR scan's own
@@ -69,16 +77,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { data: campaign } = await admin
     .from("qr_campaigns")
-    .select("id, business_id, event_id, event_occurrence_id, appearance_id, location_id, product_id, destination_path, placement, is_active")
+    .select(
+      "id, business_id, event_id, event_occurrence_id, appearance_id, location_id, product_id, destination_path, placement, is_active, status, destination_type, destination_id, destination_url"
+    )
     .eq("code", code)
     .maybeSingle();
 
-  // Inactive AND unknown codes are indistinguishable to the visitor —
-  // never confirm/deny a code's existence in the response.
-  if (!campaign || !(campaign as QrCampaignRow).is_active) return failsafe();
+  // Paused/archived AND unknown codes are all indistinguishable to the
+  // visitor — never confirm/deny a code's existence or lifecycle state
+  // in the response. Paused/archived campaigns, their code, and their
+  // scan history all remain fully intact in the database; this route
+  // simply declines to resolve/redirect them, exactly like an unknown
+  // code, and reactivates nothing.
+  if (!campaign || (campaign as QrCampaignRow).status !== "active") return failsafe();
 
   const row = campaign as QrCampaignRow;
-  if (!isSafeQrDestinationPath(row.destination_path)) return failsafe();
+  // Legacy campaigns (destination_type null) resolve via destination_path;
+  // V2 campaigns resolve via destination_type/destination_id/
+  // destination_url — see resolveQrDestination's own doc comment.
+  const destination = await resolveQrDestination(admin, row);
+  if (!destination) return failsafe();
 
   const primary = resolvePrimarySubject(row);
   const sessionId = await resolveSessionId();
@@ -111,5 +129,5 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
   }
 
-  return NextResponse.redirect(new URL(row.destination_path, request.url));
+  return NextResponse.redirect(new URL(destination, request.url));
 }

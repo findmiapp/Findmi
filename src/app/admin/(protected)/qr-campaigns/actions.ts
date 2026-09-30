@@ -64,7 +64,15 @@ export async function createQrCampaign(formData: FormData) {
 export async function setQrCampaignActive(id: string, formData: FormData) {
   const supabase = await requireAdminSupabase();
   const isActive = bool(formData, "is_active");
-  await supabase.from("qr_campaigns").update({ is_active: isActive, updated_at: new Date().toISOString() }).eq("id", id);
+  // QR V2 Foundation — status is the forward-looking lifecycle authority
+  // (see the migration); this toggle still only ever produces active/
+  // paused (never archived), same as it always has, but now keeps status
+  // in lockstep with is_active so the two can never disagree — /q/[code]
+  // reads status alone.
+  await supabase
+    .from("qr_campaigns")
+    .update({ is_active: isActive, status: isActive ? "active" : "paused", updated_at: new Date().toISOString() })
+    .eq("id", id);
   revalidatePath(LIST_PATH);
   redirect(LIST_PATH);
 }

@@ -19,8 +19,54 @@
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireBusinessMember, requireEventMember, requireLocationMember } from "@/lib/permissions";
 import { generateQrCode, isSafeQrDestinationPath } from "@/lib/analytics/qrCode";
+import { getBusinessQrEligibleEvents, getBusinessQrEligibleLocations } from "@/lib/qr-v2";
 import { getPublicOrigin } from "@/lib/site-url";
 import QRCode from "qrcode";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/** QR V2 Foundation — Owner Event Scoping Fix. Direct event_members
+ * ownership (unchanged, tried first) is no longer the ONLY path: a
+ * caller acting on behalf of a Business they really manage is also
+ * authorized when that Business legitimately participates in the Event
+ * (event_businesses/event_occurrence_businesses/Appearance linkage —
+ * see getBusinessQrEligibleEvents). `businessId` is only ever a
+ * fallback, and is itself re-verified via requireBusinessMember before
+ * it's trusted for anything — never a bare client-submitted claim. */
+async function isAuthorizedForEventQr(admin: SupabaseClient, eventId: string, businessId?: string): Promise<boolean> {
+  try {
+    await requireEventMember(eventId);
+    return true;
+  } catch {
+    // Fall through to the business-participation path below.
+  }
+  if (!businessId) return false;
+  try {
+    await requireBusinessMember(businessId);
+  } catch {
+    return false;
+  }
+  const eligible = await getBusinessQrEligibleEvents(admin, businessId);
+  return eligible.some((e) => e.id === eventId);
+}
+
+/** QR V2 Foundation — Owner Location Scoping Fix. Same shape as
+ * isAuthorizedForEventQr above, for location_members/Location. */
+async function isAuthorizedForLocationQr(admin: SupabaseClient, locationId: string, businessId?: string): Promise<boolean> {
+  try {
+    await requireLocationMember(locationId);
+    return true;
+  } catch {
+    // Fall through to the business-participation path below.
+  }
+  if (!businessId) return false;
+  try {
+    await requireBusinessMember(businessId);
+  } catch {
+    return false;
+  }
+  const eligible = await getBusinessQrEligibleLocations(admin, businessId);
+  return eligible.some((l) => l.id === locationId);
+}
 
 export type QrCampaignTarget = "business" | "appearance" | "product" | "event" | "location";
 
@@ -54,6 +100,14 @@ export async function createOwnerQrCampaign(input: {
   name: string;
   target: QrCampaignTarget;
   targetId: string;
+  /** QR V2 Foundation — Owner Event/Location Scoping Fix. For "event"/
+   * "location" targets only: the Business the caller is acting on behalf
+   * of, so authorization can ALSO succeed via that Business's real
+   * participation (see isAuthorizedForEventQr/isAuthorizedForLocationQr)
+   * rather than only direct event_members/location_members ownership.
+   * Every existing caller omits this and is completely unaffected — the
+   * direct-membership path is tried first and unchanged either way. */
+  businessId?: string;
 }): Promise<CreateResult> {
   const name = input.name.trim().slice(0, 120);
   if (!name) return { ok: false, error: "Enter a name for this QR code." };
@@ -109,9 +163,9 @@ export async function createOwnerQrCampaign(input: {
   } else if (input.target === "event") {
     // Event ownership is independent of business ownership (event_members,
     // not business_members) — see lib/permissions.ts's requireEventMember.
-    try {
-      await requireEventMember(input.targetId);
-    } catch {
+    // QR V2 Foundation — also authorized via legitimate Business
+    // participation in this Event (see isAuthorizedForEventQr above).
+    if (!(await isAuthorizedForEventQr(admin, input.targetId, input.businessId))) {
       return { ok: false, error: "You don't have access to this event." };
     }
     const { data: event } = await admin.from("events").select("id, slug").eq("id", input.targetId).maybeSingle();
@@ -120,10 +174,9 @@ export async function createOwnerQrCampaign(input: {
     destinationPath = `/event/${event.slug}`;
   } else {
     // "location" — also independent of business ownership
-    // (location_members, not business_members).
-    try {
-      await requireLocationMember(input.targetId);
-    } catch {
+    // (location_members, not business_members). QR V2 Foundation — also
+    // authorized via legitimate Business participation at this Location.
+    if (!(await isAuthorizedForLocationQr(admin, input.targetId, input.businessId))) {
       return { ok: false, error: "You don't have access to this location." };
     }
     const { data: location } = await admin.from("locations").select("id, slug").eq("id", input.targetId).maybeSingle();
