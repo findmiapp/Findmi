@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import OwnerHeader from "./OwnerHeader";
+import OnboardingHeader from "./OnboardingHeader";
 
 /** Owner Command Center V4.1 — root cause fix for the "three stacked
  * navigation systems" problem: (public)/layout.tsx is the ONE shared
@@ -38,11 +39,27 @@ export default function SiteChrome({
 }) {
   const pathname = usePathname();
   const isOwner = pathname === "/account" || pathname.startsWith("/account/");
+  // /Join Visual Convergence pass — the universal onboarding entry screen
+  // only (exact path match, never its subroutes: /join/start, /join/
+  // passbook, /join/welcome, and /join/business all keep the normal
+  // public header untouched, since only /join's own presentation was
+  // flagged as noisy in live QA).
+  const isOnboardingEntry = pathname === "/join";
 
   if (isOwner) {
     return (
       <>
         <OwnerHeader isAdmin={isAdmin} />
+        <div className="flex-1">{children}</div>
+        {footer}
+      </>
+    );
+  }
+
+  if (isOnboardingEntry) {
+    return (
+      <>
+        <OnboardingHeader />
         <div className="flex-1">{children}</div>
         {footer}
       </>
