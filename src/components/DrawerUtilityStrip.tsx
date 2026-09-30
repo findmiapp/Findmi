@@ -5,7 +5,9 @@ import CartBadge from "./CartBadge";
 import SignOutConfirm from "./SignOutConfirm";
 import { signOut } from "@/app/(public)/account/profile/actions";
 
-const pillClass =
+/** Exported so the drawer's bottom auth row (HamburgerMenu.tsx) shares
+ * the exact same pill geometry — Mobile Drawer Bottom Auth Cleanup pass. */
+export const pillClass =
   "flex h-9 flex-1 shrink-0 items-center justify-center whitespace-nowrap rounded-xl text-[11px] font-bold uppercase tracking-wide transition active:scale-95";
 
 /**

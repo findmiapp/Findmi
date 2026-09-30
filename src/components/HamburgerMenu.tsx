@@ -6,10 +6,34 @@ import Link from "next/link";
 import Logo from "./Logo";
 import NavIcon from "./NavIcon";
 import SignOutConfirm from "./SignOutConfirm";
-import DrawerUtilityStrip from "./DrawerUtilityStrip";
+import DrawerUtilityStrip, { pillClass } from "./DrawerUtilityStrip";
 import DrawerSearch from "./DrawerSearch";
 import type { ResolvedNavItem } from "@/lib/navigation";
 import { signOut } from "@/app/(public)/account/profile/actions";
+
+// Mobile Drawer Bottom Auth Cleanup pass — Log In/Join for Free now have
+// a dedicated two-up row at the bottom of the drawer (below, mirroring
+// the top DrawerUtilityStrip), so the SAME destinations must not also
+// show up a second time as ordinary stacked nav_items rows (live QA
+// found both a stacked "Log In"/"Join for Free" pair from the regular
+// nav list AND a redundant "Join Findmi" child under "For Business").
+// Matched by href — these are real routes, not labels a founder might
+// reword — same convention NavLink's own isMessages check already uses.
+// This is a presentational dedup local to the drawer's own rendering,
+// never a change to the founder-editable audience system itself
+// (filterNavItemsForAudience in lib/navigation.ts remains the one real
+// filtering mechanism) — any other business/nav_items row (List Your
+// Business, Create an Event, List a Location, etc.) is untouched.
+const ACQUISITION_HREFS = new Set(["/login", "/join"]);
+
+function stripAcquisitionItems(items: ResolvedNavItem[]): ResolvedNavItem[] {
+  return items
+    .filter((item) => !ACQUISITION_HREFS.has(item.href ?? ""))
+    .map((item) => ({
+      ...item,
+      children: item.children.filter((child) => !ACQUISITION_HREFS.has(child.href ?? "")),
+    }));
+}
 
 // Header hamburger trigger + mobile nav drawer (2026 navigation pass,
 // extended in the live-QA follow-up pass with one level of expandable
@@ -21,10 +45,12 @@ import { signOut } from "@/app/(public)/account/profile/actions";
 // separate authenticated menu tree (Your Findmi/Manage/Discover/Create):
 // every one of those destinations is now a real, founder-editable
 // nav_items row with its own `audience`, rendered by the exact same
-// NavEntry loop for every viewer. The ONE thing that stays hardcoded
-// here is Sign Out — it's a Server Action, not a link, so it can't be a
-// nav_items row; it renders only when authenticated, clearly separated
-// at the bottom. The global aqua + QuickCreate control (unchanged,
+// NavEntry loop for every viewer. The things that stay hardcoded here
+// are the top DrawerUtilityStrip and bottom auth row (Log In/Join for
+// Free/Account/Sign Out) — see stripAcquisitionItems's own comment
+// above for why the regular nav list never duplicates them. Sign Out
+// itself is a Server Action, not a link, so it could never be a
+// nav_items row regardless. The global aqua + QuickCreate control (unchanged,
 // still in MobileHeader) remains the one authenticated Create mechanism
 // — this drawer deliberately has no Create section of its own any more.
 //
@@ -50,6 +76,9 @@ export default function HamburgerMenu({
   authenticated: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // Log In/Join Findmi are rendered exclusively via the dedicated bottom
+  // auth row now — see stripAcquisitionItems's own comment above.
+  const visibleItems = stripAcquisitionItems(items);
   // Every parent group starts expanded (still collapsible via its own
   // toggle) — a grouping row like "Your Findmi" or "Manage" exists for
   // scannability, not to add a second tap in front of Account/Messages/
@@ -57,7 +86,7 @@ export default function HamburgerMenu({
   // this component mounted with; nav_items essentially never changes
   // mid-session, so this never needs to react to `items` changing later.
   const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(items.filter((item) => item.children.length > 0).map((item) => item.id))
+    () => new Set(visibleItems.filter((item) => item.children.length > 0).map((item) => item.id))
   );
   const [mounted, setMounted] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -177,8 +206,8 @@ export default function HamburgerMenu({
                   this scroll internally instead of ever being able to
                   push the drawer's own box taller than the viewport. */}
               <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
-                {items.length > 0 ? (
-                  items.map((item) => (
+                {visibleItems.length > 0 ? (
+                  visibleItems.map((item) => (
                     <NavEntry
                       key={item.id}
                       item={item}
@@ -191,8 +220,8 @@ export default function HamburgerMenu({
                   // Defensive only — getVisibleNavItems() already
                   // guarantees a non-empty tree (falling back to
                   // FALLBACK_NAV_ITEMS itself whenever nav_items resolves
-                  // to nothing), so `items` reaching here should never
-                  // actually be empty. Still: a drawer that opens to a
+                  // to nothing), so `visibleItems` reaching here should
+                  // never actually be empty. Still: a drawer that opens to a
                   // blank body is exactly the failure mode this pass
                   // exists to rule out, so it never silently renders
                   // nothing — it always leaves a real way back to the
@@ -206,21 +235,54 @@ export default function HamburgerMenu({
                   </Link>
                 )}
 
-                {/* Sign Out is the one destination that can never be a
-                    nav_items row (it's a Server Action, not a link) — it
-                    stays hardcoded, authenticated-only, clearly separated
-                    at the very bottom. */}
-                {authenticated && (
-                  <div className="mt-3 border-t border-black/5 pt-2">
-                    <SignOutConfirm
-                      action={signOut}
-                      ariaLabel="Sign out"
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-ink/50 transition hover:bg-black/[0.03]"
-                    >
-                      Sign Out
-                    </SignOutConfirm>
-                  </div>
-                )}
+                {/* Mobile Drawer Bottom Auth Cleanup pass — one 2-up row,
+                    geometry matching the top DrawerUtilityStrip (same
+                    pillClass): logged out -> Log In / Join for Free
+                    (Log In/Join Findmi are stripped out of the regular
+                    nav list above so neither shows twice); logged in ->
+                    Account / Sign Out. Sign Out is the one destination
+                    that can never be a nav_items row (it's a Server
+                    Action, not a link) — it reuses the exact same
+                    signOut Server Action + SignOutConfirm dialog the top
+                    utility row already uses, never a second
+                    implementation. */}
+                <div className="mt-3 flex items-center gap-2 border-t border-black/5 pt-3">
+                  {authenticated ? (
+                    <>
+                      <Link
+                        href="/account"
+                        onClick={close}
+                        className={`${pillClass} border border-findmi/30 bg-findmi-50 text-findmi-700 hover:bg-findmi-100`}
+                      >
+                        Account
+                      </Link>
+                      <SignOutConfirm
+                        action={signOut}
+                        ariaLabel="Sign out"
+                        className={`${pillClass} border border-black/10 text-ink/60 hover:bg-black/[0.03]`}
+                      >
+                        Sign Out
+                      </SignOutConfirm>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        href="/login"
+                        onClick={close}
+                        className={`${pillClass} border border-black/10 text-ink/70 hover:bg-black/[0.03]`}
+                      >
+                        Log In
+                      </Link>
+                      <Link
+                        href="/join"
+                        onClick={close}
+                        className={`${pillClass} flex-[1.3] bg-findmi text-white hover:bg-findmi-600`}
+                      >
+                        Join for Free
+                      </Link>
+                    </>
+                  )}
+                </div>
               </nav>
             </div>
           </>,
