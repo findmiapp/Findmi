@@ -273,6 +273,12 @@ export interface Business {
   // (existing Pause). NULL = not archived/not trashed.
   archived_at?: string | null;
   trashed_at?: string | null;
+  // Featured Event System — an optional manual override of which Event
+  // this Business's public "Featured Event" hero shows (null = automatic
+  // selection; see lib/featured-event.ts). Never a copy of the Event's own
+  // content — just a pointer, validated against this Business's real
+  // event_businesses participation at resolution time.
+  featured_event_id?: string | null;
 }
 
 export interface Market {
@@ -823,6 +829,12 @@ export interface FindmiLocation {
   // not trashed.
   archived_at?: string | null;
   trashed_at?: string | null;
+  // Featured Event System — an optional manual override of which Event
+  // this Location's public "Featured Event" hero shows (null = automatic
+  // selection; see lib/featured-event.ts). Never a copy of the Event's own
+  // content — just a pointer, validated against a real occurrence at this
+  // Location at resolution time.
+  featured_event_id?: string | null;
 }
 
 export type LocationWeekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";

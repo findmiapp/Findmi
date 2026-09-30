@@ -19,6 +19,7 @@ import CategorySubcategoryField from "@/components/admin/CategorySubcategoryFiel
 import LocationHoursField from "@/components/admin/LocationHoursField";
 import MemberLocationImageField from "./MemberLocationImageField";
 import MemberLocationGalleryField from "./MemberLocationGalleryField";
+import FeaturedEventControl from "./FeaturedEventControl";
 import {
   assignExistingEventOccurrencesToLocation,
   updateMemberLocationCategory,
@@ -723,6 +724,11 @@ export default async function ManageLocationPage({
                 </button>
               </form>
             </div>
+
+            {/* Featured Event System — only rendered once this Location has
+                at least one Event with a real occurrence here to choose
+                from (FeaturedEventControl returns null otherwise). */}
+            <FeaturedEventControl locationId={id} currentFeaturedEventId={location.featured_event_id ?? null} />
 
             {/* Location / Address — read-only, same "managed by Findmi"
                 boundary as name; no lat/long ever exposed. */}

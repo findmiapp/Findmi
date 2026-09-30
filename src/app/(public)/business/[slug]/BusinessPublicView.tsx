@@ -13,6 +13,7 @@ import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ShareButton from "@/components/ShareButton";
 import ClaimButton from "@/components/ClaimButton";
+import FeaturedEventCard from "@/components/FeaturedEventCard";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import MessageButton from "@/components/MessageButton";
@@ -41,6 +42,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSupabase } from "@/lib/supabase";
 import { isBusinessPro } from "@/lib/entitlements";
+import { resolveFeaturedEventForBusiness } from "@/lib/featured-event";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -227,11 +229,16 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Appearance creation/management (Command Center's own aggregation
   // queries this same table with no such limit), storage, event rosters,
   // or /find, and still doesn't.
-  const [products, appearances, people, galleryImages] = await Promise.all([
+  const [products, appearances, people, galleryImages, featuredEvent] = await Promise.all([
     getProductsForBusiness(business.id),
     getUpcomingAppearancesForBusiness(business.id),
     getPeopleForBusiness(business.id),
     getBusinessGalleryImages(business.id),
+    // Featured Event System — null when this Business has no eligible
+    // Event to show (a business whose only upcoming presence is a
+    // standalone, non-Event Appearance keeps the existing text-only
+    // "Next Up" module below instead).
+    resolveFeaturedEventForBusiness(business.id, business.featured_event_id ?? null),
   ]);
 
   // Action Hierarchy pass — Business's strongest CTA should be "find this
@@ -603,48 +610,73 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           data as before, no new query. Renders nothing for a business with
           no upcoming appearances (see the right rail's own Inquire-becomes-
           primary behavior for that state instead). */}
-      {nextAppearance && nextTemporal && (
+      {/* Premium Featured Event Hero pass — when this Business has an
+          eligible Event (manually featured, or the nearest live/upcoming
+          Event-linked Appearance), show the full-bleed image hero instead
+          of the older text-only card below. A business whose only
+          upcoming presence is a standalone, non-Event Appearance (or
+          whose manual override has become ineligible) keeps that
+          existing module untouched — never a dead/empty state. */}
+      {featuredEvent ? (
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div
-            className={`mt-5 max-w-xl rounded-2xl border p-4 sm:p-5 ${
-              nextTemporal.live ? "border-red-100 bg-red-50/70" : "border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-            }`}
-          >
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                nextTemporal.live ? "bg-red-600 text-white" : "bg-findmi-50 text-findmi-700"
-              }`}
-            >
-              {nextTemporal.live && <LiveDot className="text-white" />}
-              {nextTemporal.live ? "Here Now" : `Next Up · ${nextTemporal.label}`}
-            </span>
-            <p className="mt-2 font-display text-lg font-bold tracking-tight text-ink">{nextAppearance.title}</p>
-            {nextTimeLine && <p className="mt-0.5 text-sm text-ink/60">{nextTimeLine}</p>}
-            {nextVenueLabel && <p className="mt-0.5 text-sm text-ink/60">{nextVenueLabel}</p>}
-            {(nextViewLabel || nextDirectionsHref) && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {nextViewLabel && nextAppearanceHref && (
-                  <Link
-                    href={nextAppearanceHref}
-                    className="flex h-9 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                  >
-                    {nextViewLabel}
-                  </Link>
-                )}
-                {nextDirectionsHref && (
-                  <a
-                    href={nextDirectionsHref}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-black/10 px-4 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
-                  >
-                    Directions
-                  </a>
-                )}
-              </div>
-            )}
+          <div className="mt-5 max-w-xl">
+            <FeaturedEventCard
+              href={`/event/${featuredEvent.event.slug}`}
+              imageUrl={featuredEvent.event.cover_image_url}
+              imageAlt={featuredEvent.event.name}
+              category={featuredEvent.category}
+              title={featuredEvent.event.name}
+              attribution={featuredEvent.attribution}
+              statusLabel={featuredEvent.statusLabel}
+              isLive={featuredEvent.isLive}
+            />
           </div>
         </div>
+      ) : (
+        nextAppearance &&
+        nextTemporal && (
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <div
+              className={`mt-5 max-w-xl rounded-2xl border p-4 sm:p-5 ${
+                nextTemporal.live ? "border-red-100 bg-red-50/70" : "border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+              }`}
+            >
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                  nextTemporal.live ? "bg-red-600 text-white" : "bg-findmi-50 text-findmi-700"
+                }`}
+              >
+                {nextTemporal.live && <LiveDot className="text-white" />}
+                {nextTemporal.live ? "Here Now" : `Next Up · ${nextTemporal.label}`}
+              </span>
+              <p className="mt-2 font-display text-lg font-bold tracking-tight text-ink">{nextAppearance.title}</p>
+              {nextTimeLine && <p className="mt-0.5 text-sm text-ink/60">{nextTimeLine}</p>}
+              {nextVenueLabel && <p className="mt-0.5 text-sm text-ink/60">{nextVenueLabel}</p>}
+              {(nextViewLabel || nextDirectionsHref) && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {nextViewLabel && nextAppearanceHref && (
+                    <Link
+                      href={nextAppearanceHref}
+                      className="flex h-9 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+                    >
+                      {nextViewLabel}
+                    </Link>
+                  )}
+                  {nextDirectionsHref && (
+                    <a
+                      href={nextDirectionsHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-black/10 px-4 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+                    >
+                      Directions
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
       )}
 
       <div className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-10">

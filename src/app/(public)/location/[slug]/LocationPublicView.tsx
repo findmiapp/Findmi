@@ -15,6 +15,8 @@ import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
 import { HappeningFeatureCard, HappeningRow } from "@/components/HappeningCard";
 import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation } from "@/lib/data";
+import { resolveFeaturedEventForLocation } from "@/lib/featured-event";
+import FeaturedEventCard from "@/components/FeaturedEventCard";
 import { cityStateZip } from "@/lib/format";
 import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, isOpenNow } from "@/lib/locationHours";
 import { getPublicHandleForEntity } from "@/lib/handles";
@@ -58,10 +60,14 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const [happenings, galleryImages, showMessageButton] = await Promise.all([
+  const [happenings, galleryImages, showMessageButton, featuredEvent] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),
     getLocationGalleryImages(location.id),
     shouldShowMessageButton("location", location.id),
+    // Featured Event System — null when this Location has no eligible
+    // Event (e.g. only standalone Appearances upcoming); "Coming Up
+    // Here" below is unaffected either way.
+    resolveFeaturedEventForLocation({ id: location.id, name: location.name }, location.featured_event_id ?? null),
   ]);
   const fullAddress = [location.address, cityStateZip(location.city, location.state, location.postal_code)]
     .filter(Boolean)
@@ -271,6 +277,29 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       </div>
 
       <div className="px-4 sm:px-0">
+        {/* Premium Featured Event Hero pass — an eligible Event this
+            Location is hosting (manually featured, or automatically the
+            nearest real occurrence here) gets the full-bleed image
+            treatment, above "Coming Up Here" — that section's own
+            compact schedule list is untouched and still enumerates every
+            happening, including this same Event if it's also the
+            nearest one. Renders nothing when there's no eligible Event
+            (a Location with only standalone Appearances upcoming). */}
+        {featuredEvent && (
+          <section className="mt-5 max-w-xl">
+            <FeaturedEventCard
+              href={`/event/${featuredEvent.event.slug}`}
+              imageUrl={featuredEvent.event.cover_image_url}
+              imageAlt={featuredEvent.event.name}
+              category={featuredEvent.category}
+              title={featuredEvent.event.name}
+              attribution={featuredEvent.attribution}
+              statusLabel={featuredEvent.statusLabel}
+              isLive={featuredEvent.isLive}
+            />
+          </section>
+        )}
+
         {/* Coming Up Here comes FIRST now — "what happens here" is the
             primary reason to visit a Location page, so it belongs
             immediately below identity/actions rather than after About/

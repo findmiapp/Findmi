@@ -4,7 +4,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
-import { CategoryPill } from "@/components/Badge";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
 import InquireButton from "@/components/InquireButton";
@@ -13,6 +12,7 @@ import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import EventFollowButton from "@/components/EventFollowButton";
+import FeaturedEventHeroOverlay from "@/components/FeaturedEventHeroOverlay";
 import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
@@ -26,6 +26,7 @@ import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import FormAction from "@/components/FormAction";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ProductCard from "@/components/ProductCard";
+import ReadMoreText from "@/components/ReadMoreText";
 import { HorizontalScroller } from "@/components/Section";
 import {
   attachEventCategories,
@@ -39,7 +40,7 @@ import {
   getOccurrenceBusinessRosters,
   isPrimaryDateId,
 } from "@/lib/data";
-import { cityStateZip, formatDateRange } from "@/lib/format";
+import { cityStateZip, formatDateRange, getTemporalLabel } from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -182,6 +183,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // it's empty and the branded fallback below renders instead.
   const coverAndGallery = [event.cover_image_url, ...images.gallery].filter((v): v is string => Boolean(v));
 
+  // Premium Featured Event Hero pass — attribution reuses the Event's own
+  // existing event_businesses.featured flag (already fetched above as
+  // `businesses`, already used to sub-order "Who You'll Find Here") rather
+  // than inventing a new organizer->Business relationship. Status reuses
+  // the nearest still-scheduled occurrence's real start/end when one
+  // exists (a recurring event's own start_at/end_at can be stale once
+  // occurrences exist) — same getTemporalLabel() every other live-status
+  // pill in this codebase (BusinessPublicView/HomeEventCard/HappeningCard)
+  // already computes from, never a hardcoded/guessed status.
+  const heroAttribution = businesses.find((b) => b.featured)?.name ?? null;
+  const heroTemporalSource = upcomingOccurrences[0] ?? { start_at: event.start_at, end_at: event.end_at };
+  const heroTemporal = getTemporalLabel(heroTemporalSource.start_at, heroTemporalSource.end_at ?? undefined);
+
   const vendorDeadlinePassed = event.vendor_application_deadline
     ? new Date(event.vendor_application_deadline) < new Date()
     : false;
@@ -296,32 +310,23 @@ export async function EventPublicView({ slug }: { slug: string }) {
           the cover. Light containment only: subtle border, restrained
           radius, no heavy card styling. */}
       <div className="rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-5">
-        {/* Restore Event Follow pass — Follow lives here now: the top
-            identity/header area, same prominence Business's own Follow
-            button gets beside its logo/name, and visually distinct from
-            both the Tier A booking actions (RSVP/Tickets/Vendor Apply)
-            below and the Tier B utility row (Save/Directions/Share) —
-            never confused with either. Previously just a "#follow" jump
-            link down to a buried, non-toggling email-capture section;
-            that section and link are both removed below in favor of this
-            one real Follow/Following control. event.follow_enabled is
-            the same existing founder-configurable gate the old jump link
-            already respected — unchanged here, just relocated. */}
-        <div className="flex items-start justify-between gap-3">
-          {category ? (
-            <div className="mb-2">
-              <CategoryPill>{category.name}</CategoryPill>
-            </div>
-          ) : (
-            <span />
-          )}
-          {showFollow && (
-            <div className="shrink-0">
-              <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} size="compact" />
-            </div>
-          )}
-        </div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{event.name}</h1>
+        {/* Restore Event Follow pass — Follow lives here now: the top of
+            the details card, visually distinct from both the Tier A
+            booking actions (RSVP/Tickets/Vendor Apply) below and the
+            Tier B utility row (Save/Directions/Share) — never confused
+            with either. event.follow_enabled is the same existing
+            founder-configurable gate it always respected.
+            Premium Featured Event Hero pass — category pill and the
+            event's h1 title moved into the new full-bleed hero above
+            (FeaturedEventHeroOverlay); showing them a second time here
+            would just duplicate the hero. Follow keeps its own row so
+            this card doesn't open with dead whitespace when Follow is
+            off. */}
+        {showFollow && (
+          <div className="flex justify-end">
+            <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} size="compact" />
+          </div>
+        )}
 
         {hasOccurrences ? (
           <EventScheduleSummary />
@@ -559,6 +564,34 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
       </div>
 
+      {/* Premium Featured Event Hero pass — Description moved up here
+          (right after actions/logistics), collapsed by default via
+          ReadMoreText, same single description field events have always
+          had (no separate short/long) — never duplicated elsewhere. */}
+      {event.description && (
+        <section className="mt-5">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
+          <div className="mt-3 max-w-2xl">
+            <ReadMoreText text={event.description} />
+          </div>
+        </section>
+      )}
+
+      {/* Premium Featured Event Hero pass — supporting gallery images now
+          live here, below the core event info/description, rather than as
+          a thumbnail strip between the cover and the event identity (that
+          strip is gone — the hero above is the primary image, tap-to-zoom
+          reaches every one of these same images too via its own
+          lightbox). Same real images.gallery, same ImageGalleryStrip,
+          unchanged minCount={1}/compact — only the position moved. */}
+      {images.gallery.length > 0 && (
+        <div className="mt-5 -mx-4 sm:mx-0">
+          <div className="px-4 sm:px-0">
+            <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} compact />
+          </div>
+        </div>
+      )}
+
       {/* Event Occurrences foundation — "Upcoming Dates" carousel, now the
           occurrence SELECTOR (Recurring Events V2) rather than merely
           informational, shown only when this event has real
@@ -585,12 +618,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
         </div>
       )}
 
-      {/* Who You'll Find Here now comes BEFORE About This Event — About
-          must always render immediately after it (or, when it doesn't
-          render at all, About simply moves up with no gap, since this is
-          plain unconditional JSX order, not a founder-configurable
-          section list). Recurring Events V2: for an event WITH
-          occurrence rows, the SELECTED occurrence's own
+      {/* Premium Featured Event Hero pass — "About This Event" moved up
+          to right after the actions/utility row (see the Description
+          block above, before Upcoming Dates), so this roster no longer
+          needs to sit immediately before it. Recurring Events V2: for an
+          event WITH occurrence rows, the SELECTED occurrence's own
           event_occurrence_businesses roster is authoritative
           (EventOccurrenceBusinessRoster reads it via the shared context)
           — never event_businesses, never a fallback to it. A legacy
@@ -609,19 +641,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
           <EventBusinessRoster businesses={businesses} eventName={event.name} />
         </section>
       )}
-
-      {/* Events only have one description field today (no separate
-          short/long), so this is the single "About This Event" section
-          rather than duplicating the same text twice. Always immediately
-          after Who You'll Find Here — see the comment above. */}
-      {event.description && (
-        <section className="mt-5">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Event</h2>
-          <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
-            {event.description}
-          </p>
-        </section>
-      )}
     </>
   );
 
@@ -634,44 +653,39 @@ export async function EventPublicView({ slug }: { slug: string }) {
         page_type="event"
         page_path={`/event/${event.slug}`}
       />
-      {/* Item 9: the cover becomes a lightbox/slider trigger through every
-          real image (cover + gallery) when at least one exists — see
-          EventCoverLightbox's own note.
-          Public Experience Consolidation pass — Above-the-Fold Density.
-          Live mobile QA showed too much vertical space between the top of
-          the page and Upcoming Dates. Modest spacing tightening only
-          (pt-4/pt-6 -> pt-3/pt-5) — the gallery/thumbnails themselves keep
-          their exact real size (ImageGalleryStrip is shared with Business
-          Gallery; shrinking its tiles here would leak into that unrelated
-          surface, and "do not make images tiny" rules it out anyway). */}
-      <div className="mx-auto max-w-5xl px-4 pt-3 sm:px-6 sm:pt-5">
-        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm sm:aspect-[21/9]">
-          {coverAndGallery.length > 0 ? (
-            <EventCoverLightbox images={coverAndGallery} alt={event.name} />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-ink">
-              <CalendarGlyph className="h-12 w-12 text-white/15" />
-            </div>
-          )}
-          <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-10" />
-        </div>
-
-        {/* Item 9 — compact gallery preview strip. Event Gallery
-            Duplication fix — this must show ONLY the event's real
-            gallery images (images.gallery), never coverAndGallery: that
-            array exists for the hero lightbox above (cover + gallery,
-            so swiping through the hero reaches every real image), and
-            passing it here too meant the cover rendered a second time as
-            its own thumbnail — one real gallery upload looked like two
-            identical-looking tiles. minCount={1} (default is 2 for every
-            other ImageGalleryStrip caller) so a single real upload still
-            renders as its own one-item strip rather than being hidden by
-            the "nothing to browse" guard meant for 0 images. */}
-        {images.gallery.length > 0 && (
-          <div className="mt-2">
-            <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} compact />
+      {/* Premium Featured Event Hero pass — one immersive full-bleed
+          composition (image + cinematic bottom gradient + overlaid
+          category/title/attribution/status/short description) replaces
+          the old cover-image-plus-thumbnail-strip-plus-separate-white-card
+          top section. The thumbnail strip that used to live directly
+          below the cover is gone — those same images.gallery images now
+          render further down the page (see the Gallery section below,
+          after Description), so the hero reads as ONE photographic
+          moment, not a database record with a filmstrip under it.
+          EventCoverLightbox is reused completely unchanged for the actual
+          image + tap-to-zoom-through-everything behavior; the overlay is
+          `pointer-events-none` so that tap target still spans the whole
+          hero, including the text. Taller/more immersive on mobile
+          (4:5) than the old 16:9 strip, widening back out on larger
+          viewports where more horizontal room is available. */}
+      <div className="relative aspect-[4/5] w-full overflow-hidden border-b border-black/5 bg-ink sm:aspect-[21/9] sm:rounded-b-3xl">
+        {coverAndGallery.length > 0 ? (
+          <EventCoverLightbox images={coverAndGallery} alt={event.name} />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-ink">
+            <CalendarGlyph className="h-12 w-12 text-white/15" />
           </div>
         )}
+        <FeaturedEventHeroOverlay
+          category={category?.name ?? null}
+          title={event.name}
+          attribution={heroAttribution}
+          statusLabel={heroTemporal.live ? "Happening Now" : null}
+          isLive={heroTemporal.live}
+          description={event.description}
+          titleTag="h1"
+        />
+        <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-30" />
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6 sm:py-7">

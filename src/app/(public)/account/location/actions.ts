@@ -607,3 +607,44 @@ export async function updateMemberLocationHours(locationId: string, formData: Fo
   if (location && !location.is_demo) revalidatePath(`/location/${location.slug}`);
   redirect(appendQuery(redirectPath, { saved: "1" }));
 }
+
+// ── Featured Event System — owner override ──────────────────────────────
+//
+// locations.featured_event_id is only ever a pointer (never a copy of the
+// Event's own content — see lib/featured-event.ts, which re-resolves the
+// real row on every public read and silently falls back to automatic
+// selection if this pointer ever becomes stale/ineligible). This action's
+// only job is validating that pointer before writing it: the chosen Event
+// must have a real event_occurrences row at this Location — never an
+// arbitrary Event id from the client.
+
+/** Sets or clears (empty `event_id`) this Location's manual Featured
+ * Event override. */
+export async function setLocationFeaturedEvent(locationId: string, formData: FormData) {
+  const redirectPath = `/account/location/${locationId}?tab=profile`;
+  const admin = await requireLocationManager(locationId, redirectPath);
+
+  const eventId = str(formData, "event_id");
+  if (eventId) {
+    const { data: occurrence } = await admin
+      .from("event_occurrences")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("location_id", locationId)
+      .limit(1)
+      .maybeSingle();
+    if (!occurrence) redirect(appendQuery(redirectPath, { error: "You can only feature an Event that occurs at this Location." }));
+  }
+
+  const { data: location, error } = await admin
+    .from("locations")
+    .update({ featured_event_id: eventId })
+    .eq("id", locationId)
+    .select("slug, is_demo")
+    .maybeSingle();
+  if (error) redirect(appendQuery(redirectPath, { error: error.message }));
+
+  revalidatePath(redirectPath);
+  if (location && !location.is_demo) revalidatePath(`/location/${location.slug}`);
+  redirect(appendQuery(redirectPath, { saved: "1" }));
+}

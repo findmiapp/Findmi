@@ -1969,3 +1969,38 @@ export async function returnProductToCatalog(businessId: string, productId: stri
   revalidatePath(redirectPath);
   redirect(appendQuery(redirectPath, { marketplace_updated: "1" }));
 }
+
+// ── Featured Event System — owner override ──────────────────────────────
+//
+// businesses.featured_event_id is only ever a pointer (never a copy of
+// the Event's own content — see lib/featured-event.ts, which re-resolves
+// the real row on every public read and silently falls back to automatic
+// selection if this pointer ever becomes stale/ineligible). This action's
+// only job is validating that pointer before writing it: the chosen Event
+// must be one this Business is already an approved event_businesses
+// participant of — never an arbitrary Event id from the client.
+
+/** Sets or clears (empty `event_id`) this Business's manual Featured
+ * Event override. */
+export async function setFeaturedEvent(businessId: string, formData: FormData) {
+  const redirectPath = `/account/business/${businessId}?tab=profile`;
+  const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
+
+  const eventId = str(formData, "event_id");
+  if (eventId) {
+    const { data: participation } = await admin
+      .from("event_businesses")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("business_id", businessId)
+      .eq("status", "approved")
+      .maybeSingle();
+    if (!participation) redirect(appendQuery(redirectPath, { error: "You can only feature an Event you're an approved participant of." }));
+  }
+
+  await admin.from("businesses").update({ featured_event_id: eventId }).eq("id", businessId);
+
+  revalidatePath(redirectPath);
+  if (business.slug) revalidatePath(`/business/${business.slug}`);
+  redirect(appendQuery(redirectPath, { saved: "1" }));
+}

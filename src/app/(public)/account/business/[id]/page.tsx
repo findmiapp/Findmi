@@ -55,6 +55,7 @@ import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
 import AppearanceEditorDetails from "./AppearanceEditorDetails";
 import EventSearchPicker from "./EventSearchPicker";
+import FeaturedEventControl from "./FeaturedEventControl";
 import RemoveAppearanceButton from "./RemoveAppearanceButton";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
 import {
@@ -428,7 +429,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, accepts_inquiries, inquiry_topics, market_area_id"
+        "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, accepts_inquiries, inquiry_topics, market_area_id, featured_event_id"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -1765,6 +1766,12 @@ export default async function ManageBusinessPage({
               </button>
             </form>
           </Panel>
+
+          {/* Featured Event System — FeaturedEventControl owns its own
+              Panel wrapper and renders nothing at all (not even an empty
+              panel) when this Business has no approved Event
+              participation to choose from yet. */}
+          <FeaturedEventControl businessId={id} currentFeaturedEventId={business.featured_event_id ?? null} />
 
           {/* ── Gallery + Links & Contact (Owner Shell V3 — consolidated
               into Profile). Free Tier Entitlement Reset V1 — no longer
