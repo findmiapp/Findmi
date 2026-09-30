@@ -34,6 +34,14 @@ export interface FeaturedEventHeroOverlayProps {
    * status itself. Null renders no pill at all. */
   statusLabel: string | null;
   isLive: boolean;
+  /** Event Hero / Logistics Final Micro-pass — one compact "date · venue"
+   * metadata line for the currently relevant real occurrence (e.g.
+   * "SEP 30 · HUDSON YARDS"), rendered between the byline and the status
+   * pill. Pre-resolved by the caller (EventPublicView.tsx) from data it
+   * already has — this component never computes a date/location itself.
+   * Null/omitted (the Business/Location teaser card never passes it)
+   * renders nothing. */
+  occurrenceMeta?: string | null;
   /** Event Page Final Compression pass — no longer rendered anywhere (the
    * hero no longer shows a description excerpt at all; the single
    * description presentation lives in the page body below the actions).
@@ -55,6 +63,7 @@ export default function FeaturedEventHeroOverlay({
   title,
   attribution,
   attributionHref,
+  occurrenceMeta,
   statusLabel,
   isLive,
   compact = false,
@@ -94,6 +103,9 @@ export default function FeaturedEventHeroOverlay({
           ) : (
             <p className="text-metadata font-medium text-white/70">by {attribution}</p>
           ))}
+        {occurrenceMeta && (
+          <p className="truncate text-metadata font-medium uppercase tracking-wide text-white/80">{occurrenceMeta}</p>
+        )}
         {/* Final Event Experience Polish pass — the Event page's own full
             hero (compact=false) swaps the old solid red "HAPPENING NOW"
             pill for a premium dark/glass treatment (translucent black,

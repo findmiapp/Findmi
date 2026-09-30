@@ -4,7 +4,6 @@ import Link from "next/link";
 import { cityState, cityStateZip, formatDateShortInZone, formatTimeInZone } from "@/lib/format";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
-import LiveDot from "./LiveDot";
 
 /** The recurring-event hero's date/time/location block — Recurring
  * Events V2. Reads the shared selectedOccurrence context (never the
@@ -18,21 +17,26 @@ import LiveDot from "./LiveDot";
  * event unambiguously has a real Location anyway. The occurrence's own
  * location still wins whenever it has one.
  *
- * Event Page Final Compression pass — the top row now shows the EVENT'S
- * OWN overall date range (earliest real occurrence's start -> latest
- * real occurrence's end, from the shared context's own `occurrences`
- * list — already the real, effective schedule this page fetched once;
- * no new data) rather than repeating the currently selected occurrence's
- * single date. The specific-date experience (which date is selected,
- * that date's own status/venue/RSVP/lineup) lives in the Dates & Lineup
- * rail, which this pass moves to sit directly beneath the actions below
- * this card. Time is shown only when every real occurrence genuinely
- * shares the same local start/end time-of-day — inventing one universal
- * time for a schedule that doesn't actually share one would misrepresent
- * it, so a non-uniform schedule instead shows the SELECTED occurrence's
- * own real time (still accurate, just specific to that date). Status
- * (Happening Now / Cancelled) and venue stay tied to the SELECTED
- * occurrence, same as before. */
+ * Event Page Final Compression pass — the top row shows the EVENT'S OWN
+ * overall date range (earliest real occurrence's start -> latest real
+ * occurrence's end, from the shared context's own `occurrences` list —
+ * already the real, effective schedule this page fetched once; no new
+ * data) rather than repeating the currently selected occurrence's single
+ * date. Time is shown only when every real occurrence genuinely shares
+ * the same local start/end time-of-day — inventing one universal time
+ * for a schedule that doesn't actually share one would misrepresent it,
+ * so a non-uniform schedule instead shows the SELECTED occurrence's own
+ * real time (still accurate, just specific to that date). Venue stays
+ * tied to the SELECTED occurrence, same as before.
+ *
+ * Event Hero / Logistics Final Micro-pass — date and time now read as
+ * ONE compact schedule line ("date · time"), not two ends of a
+ * justify-between row, and the live "Happening Now" signal is gone from
+ * this card entirely — the hero above already communicates it (see its
+ * own new compact occurrence metadata line + glass status pill). A
+ * genuinely cancelled selected occurrence still surfaces that here
+ * (never hidden just because live status was removed — cancellation is
+ * a different, still-necessary signal). */
 export default function EventScheduleSummary({
   canonicalLocation,
 }: {
@@ -68,21 +72,15 @@ export default function EventScheduleSummary({
 
   return (
     <div className="mt-3 flex flex-col gap-1 text-sm">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-        <p className="font-bold text-ink">{dateRangeLabel}</p>
-        <p className="shrink-0 text-right text-ink/55">{timeLabel}</p>
-      </div>
-      {selectedState === "cancelled" ? (
+      <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+        <span className="font-bold text-ink">{dateRangeLabel}</span>
+        <span className="text-ink/30">·</span>
+        <span className="text-ink/55">{timeLabel}</span>
+      </p>
+      {selectedState === "cancelled" && (
         <span className="inline-flex w-fit items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
           Cancelled
         </span>
-      ) : (
-        selectedState === "current" && (
-          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-red-600">
-            <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
-            Happening Now
-          </span>
-        )
       )}
       {location ? (
         <Link href={`/location/${location.slug}`} className="group w-fit">
