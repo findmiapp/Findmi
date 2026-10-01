@@ -45,6 +45,7 @@ export default function UpcomingDatesRail({
   eventId,
   canonicalLocation,
   coverImageUrl,
+  galleryImages,
   ticketsEnabled,
   ticketsUrl,
   rsvpEnabled,
@@ -58,6 +59,13 @@ export default function UpcomingDatesRail({
   eventId: string;
   canonicalLocation: EventLocationCardLocation | null;
   coverImageUrl: string | null;
+  /** Location + Event Moment Continuity pass — the Event's own gallery
+   * (event_images), already fetched once by EventPublicView.tsx for its
+   * own cover lightbox; threaded through purely so each occurrence card
+   * can deterministically vary its image when the Event has no cover of
+   * its own, or when several occurrence cards would otherwise all repeat
+   * it. No new query. */
+  galleryImages: string[];
   ticketsEnabled: boolean;
   ticketsUrl: string | null;
   rsvpEnabled: boolean;
@@ -76,7 +84,14 @@ export default function UpcomingDatesRail({
     <>
       <HorizontalScroller className="pt-2">
         {visible.map((occ) => (
-          <EventOccurrenceCard key={occ.id} occurrence={occ} canonicalLocation={canonicalLocation} onOpenQuickView={setOpenId} />
+          <EventOccurrenceCard
+            key={occ.id}
+            occurrence={occ}
+            canonicalLocation={canonicalLocation}
+            coverImageUrl={coverImageUrl}
+            galleryImages={galleryImages}
+            onOpenQuickView={setOpenId}
+          />
         ))}
         {hasMore && !expanded && (
           <button

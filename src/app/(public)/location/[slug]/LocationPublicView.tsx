@@ -17,9 +17,8 @@ import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ReadMoreText from "@/components/ReadMoreText";
 import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
-import { LocationUpcomingCard } from "@/components/HappeningCard";
 import FeaturedLocationHappeningCard from "@/components/FeaturedLocationHappeningCard";
-import { HorizontalScroller, RailItem } from "@/components/Section";
+import LocationHappeningCollection from "@/components/LocationHappeningCollection";
 import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation, type LocationHappening } from "@/lib/data";
 import { cityStateZip, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, isOpenNow } from "@/lib/locationHours";
@@ -112,7 +111,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // Resolution is pure/in-memory off the happenings array already fetched
   // above — see resolveFeaturedLocationHappening's own note.
   const featuredHappening = resolveFeaturedLocationHappening(happenings, location.featured_event_id ?? null);
-  const remainderHappenings = featuredHappening ? happenings.filter((h) => h.id !== featuredHappening.id) : happenings;
   const featuredLive = featuredHappening ? getTemporalLabel(featuredHappening.start_at, featuredHappening.end_at).live : false;
   const fullAddress = [location.address, cityStateZip(location.city, location.state, location.postal_code)]
     .filter(Boolean)
@@ -194,17 +192,21 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           "environmental photography" treatment), rounded only at the
           bottom corners there; the original contained, rounded-on-every-
           side landscape treatment (matching Business/Product) is
-          untouched from sm+ up. Taller aspect ratio at mobile for a
-          stronger, more dominant first impression. No fabricated imagery:
-          a Location with no cover/gallery at all just gets the same
-          branded dark placeholder it always has. Tappable zoom + a real
-          "current / total" count badge when more than one photo exists
-          (cover + location_images, both already fetched for this render —
-          no new query), reusing EventCoverLightbox (a generic
-          images/alt primitive, not actually Event-specific) rather than
-          building a second gallery/lightbox system. */}
+          untouched from sm+ up. No fabricated imagery: a Location with
+          no cover/gallery at all just gets the same branded dark
+          placeholder it always has. Tappable zoom + a real "current /
+          total" count badge when more than one photo exists (cover +
+          location_images, both already fetched for this render — no new
+          query), reusing EventCoverLightbox (a generic images/alt
+          primitive, not actually Event-specific) rather than building a
+          second gallery/lightbox system.
+          Location + Event Moment Continuity pass — modest mobile height
+          bump (aspect-[4/3] -> aspect-[5/4]) so the environmental photo
+          has more presence before the overlapping logo/identity content;
+          still image-first, still edge-to-edge, still a modest crop, not
+          a takeover hero. Desktop (sm:aspect-[21/9]) is untouched. */}
       <div className="sm:px-0 sm:pt-6">
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-b-3xl bg-mist shadow-sm sm:aspect-[21/9] sm:rounded-3xl sm:border sm:border-black/5">
+        <div className="relative aspect-[5/4] w-full overflow-hidden rounded-b-3xl bg-mist shadow-sm sm:aspect-[21/9] sm:rounded-3xl sm:border sm:border-black/5">
           {heroImages.length > 0 ? (
             <EventCoverLightbox images={heroImages} alt={location.name} />
           ) : (
@@ -362,23 +364,23 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </nav>
       </div>
 
-      {remainderHappenings.length > 0 && (
-        <section className="mt-5">
-          <div className="px-4 sm:px-0">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Coming Up Here</h2>
-            <p className="mt-1 text-sm text-ink/55">
-              {remainderHappenings.length} upcoming{remainderHappenings.every((h) => h.type === "event") ? " events" : ""}
-            </p>
-          </div>
-          <div className="mt-3">
-            <HorizontalScroller>
-              {remainderHappenings.map((h) => (
-                <RailItem key={h.id} density="discovery">
-                  <LocationUpcomingCard item={h} />
-                </RailItem>
-              ))}
-            </HorizontalScroller>
-          </div>
+      {/* What's Happening Here collection (Location + Event Moment
+          Continuity pass) — replaces the old "Coming Up Here" remainder-
+          only rail. This is the COMPLETE upcoming schedule, including the
+          featured happening shown editorially above: the Featured module
+          is emphasis, this collection is the full record — same product
+          behavior Business's own Featured Appearance + FindMi Here
+          collection already establishes (that appearance stays listed in
+          FindMi Here too). Cards/List toggle, additive Location-only
+          implementation (see LocationHappeningCollection's own note on
+          why it doesn't reuse Business's Appearance components directly).
+          Renders nothing when there's nothing upcoming — the Featured
+          section's own empty-state line above already covers that
+          truthfully; a second identical message here would be
+          redundant. */}
+      {happenings.length > 0 && (
+        <section className="mt-6 px-4 sm:px-0">
+          <LocationHappeningCollection happenings={happenings} />
         </section>
       )}
 

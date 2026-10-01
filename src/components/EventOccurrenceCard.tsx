@@ -8,9 +8,11 @@ import {
   formatTimeInZone,
   resolveVenueLabel,
 } from "@/lib/format";
+import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
 import LiveDot from "./LiveDot";
+import SupabaseImage from "./SupabaseImage";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -59,14 +61,35 @@ function isExactlyMidnightInZone(iso: string, timezone: string): boolean {
  * AppearanceFindMiHere's own Quick View already uses, rather than a new
  * venue-text formula. Selected treatment is intentionally restrained — a
  * thin aqua border and a light aqua tint, no ring, no shadow — elegant
- * over loud. */
+ * over loud.
+ *
+ * Location + Event Moment Continuity pass — adds a photographic image
+ * band above the existing date/time/venue text, matching the same
+ * real-world-moment card family Business's FindMi Here cards and
+ * Location's own moment cards already use. Occurrences have no image
+ * field of their own, so this uses the Event's own cover first, then a
+ * deterministic (never random) pick from the Event's own gallery — via
+ * the same generic resolveAppearanceDisplayImage resolver Business/
+ * Location already share — so multiple occurrence cards for the same
+ * Event don't all repeat the identical cover photo. Every existing
+ * behavior (selection, live determination, cancelled styling, the
+ * Quick View open-on-tap) is completely unchanged. */
 export default function EventOccurrenceCard({
   occurrence,
   canonicalLocation,
+  coverImageUrl,
+  galleryImages,
   onOpenQuickView,
 }: {
   occurrence: EventOccurrenceWithLocation;
   canonicalLocation: EventLocationCardLocation | null;
+  /** The Event's own cover_image_url — already resolved/fetched once by
+   * EventPublicView.tsx, never a new query here. */
+  coverImageUrl: string | null;
+  /** The Event's own gallery (event_images), already fetched once by
+   * EventPublicView.tsx for its own cover lightbox — reused here purely
+   * for deterministic per-occurrence image variation. */
+  galleryImages: string[];
   onOpenQuickView: (id: string) => void;
 }) {
   const { selected, select } = useEventOccurrence();
@@ -111,6 +134,12 @@ export default function EventOccurrenceCard({
   // never needs to fall back to a combined date+time string the way
   // formatTimeRangeInZone's own multi-day branch does.
   const timeLabel = `${formatTimeInZone(occurrence.start_at, occurrence.timezone)} – ${formatTimeInZone(occurrence.end_at, occurrence.timezone)}`;
+  const imageUrl = resolveAppearanceDisplayImage({
+    appearanceId: occurrence.id,
+    specificImageUrl: coverImageUrl,
+    galleryImages,
+    businessCoverUrl: null,
+  });
 
   // QA Correction pass — the previous fix (select + scroll the details
   // card into view) wasn't the desired final interaction. Tapping now
@@ -130,7 +159,7 @@ export default function EventOccurrenceCard({
       type="button"
       onClick={handleSelect}
       aria-pressed={isSelected}
-      className={`flex w-44 shrink-0 flex-col gap-0.5 rounded-2xl border p-3 text-left transition ${
+      className={`flex w-40 shrink-0 flex-col overflow-hidden rounded-2xl border text-left transition ${
         cancelled
           ? isSelected
             ? "border-red-300 bg-red-50/60"
@@ -140,19 +169,39 @@ export default function EventOccurrenceCard({
             : "border-black/5 bg-white hover:border-black/20"
       }`}
     >
-      <p className="text-sm font-bold uppercase leading-tight text-ink">{dateLabel}</p>
-      {cancelled ? (
-        <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Cancelled</p>
-      ) : (
-        <p className="text-xs font-medium text-ink/55">{timeLabel}</p>
-      )}
-      {venueLabel && <p className="line-clamp-2 text-xs leading-snug text-ink/45">{venueLabel}</p>}
-      {live && (
-        <span className="mt-0.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
-          <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
-          Happening Now
-        </span>
-      )}
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-mist">
+        {imageUrl ? (
+          <SupabaseImage src={imageUrl} alt="" fill sizes="160px" className="object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-ink">
+            <CalendarGlyph className="h-6 w-6 text-white/25" />
+          </div>
+        )}
+        {live && (
+          <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+            <LiveDot className="text-white" />
+            Happening Now
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-0.5 p-2.5">
+        <p className="text-sm font-bold uppercase leading-tight text-ink">{dateLabel}</p>
+        {cancelled ? (
+          <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Cancelled</p>
+        ) : (
+          <p className="text-xs font-medium text-ink/55">{timeLabel}</p>
+        )}
+        {venueLabel && <p className="line-clamp-2 text-xs leading-snug text-ink/45">{venueLabel}</p>}
+      </div>
     </button>
+  );
+}
+
+function CalendarGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
 }
