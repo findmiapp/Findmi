@@ -7,36 +7,37 @@ import type { EventLocationCardLocation } from "./EventLocationCard";
 import { cityState, cityStateZip } from "@/lib/format";
 import { trackEvent, type TrackEventPayload } from "@/lib/analytics/track";
 
-const GRID_COLS: Record<number, string> = {
-  1: "grid-cols-1",
-  2: "grid-cols-2",
-  3: "grid-cols-3",
-  4: "grid-cols-4",
-  5: "grid-cols-5",
-};
-
 /** Event Detail Action Bar Correction pass, tightened in the Event Page
  * Visual Convergence pass — shared shell for the Event page's Tier B
- * utility row (Message/Save/Add to Calendar/Share/Directions). Column
- * count is DERIVED from how many items are actually passed, never fixed
- * — a missing action (no Message configured, no selected occurrence for
- * Add to Calendar/Directions) reflows the remaining actions to fill the
- * row evenly instead of leaving an empty cell. Each item is expected to
- * fill its own cell (its component's own `layout="grid"` prop, or the
- * equivalent manually-styled Directions cell, handles that). Cell height
- * shrunk 58px -> 50px and the row's own top margin tightened (mobile
- * density correction) — RSVP/Tickets/Apply to Vend directly above this
- * stays visually the LARGEST action; this row reads as compact, equally-
- * sized icon-over-label controls beneath it. */
+ * utility row (Message/Save/Add to Calendar/Share/Get Here). Each item is
+ * expected to fill its own cell (its component's own `layout="grid"`
+ * prop, or the equivalent manually-styled Get Here cell, handles that).
+ *
+ * Event Action UX pass — converted from a CSS grid (equal-width columns,
+ * which on mobile meant every action got compressed to fit all 4-5 in the
+ * viewport at once) to a single horizontally-scrollable rail: fixed-width
+ * cells that never shrink or wrap, so touch targets stay comfortable
+ * regardless of how many actions are present. A missing action (no
+ * Message configured, no selected occurrence for Add to Calendar/Get
+ * Here) simply removes one cell from the row rather than reflowing
+ * column widths — there's no shared column grid left to reflow. On a
+ * wide-enough viewport (desktop) all items already fit without
+ * overflowing, so nothing ever needs to scroll there — same component,
+ * no breakpoint-specific layout. Negative-margin bleed + re-inset
+ * padding (same pattern the Overflow-utilities row below already uses)
+ * keeps this from ever causing page-level horizontal scroll; scrollbar
+ * hidden via the same utility classes used elsewhere on this page. */
 export function UtilityActionGrid({ items }: { items: ReactNode[] }) {
   if (items.length === 0) return null;
   return (
-    <div className={`mt-2 grid gap-2 ${GRID_COLS[items.length] ?? "grid-cols-4"}`}>
-      {items.map((item, i) => (
-        <div key={i} className="h-[50px]">
-          {item}
-        </div>
-      ))}
+    <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex w-max gap-2">
+        {items.map((item, i) => (
+          <div key={i} className="h-[50px] w-20 shrink-0">
+            {item}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -64,7 +65,7 @@ export function DirectionsGridCell({ href, trackPayload }: { href: string; track
       className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
     >
       <DirectionsGlyph className="h-4 w-4" />
-      <span className="text-[11px] font-semibold uppercase tracking-wide">Directions</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wide">Get Here</span>
     </a>
   );
 }

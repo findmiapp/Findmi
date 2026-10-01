@@ -1,5 +1,6 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isAdminSession } from "@/lib/admin/auth";
@@ -13,31 +14,67 @@ import {
 } from "@/lib/data";
 import { resolveAppearanceHostBusiness } from "./EventPublicView";
 
-// Journal Live Capture pass — "Document this experience" on an Event's
-// public page. Authorized-admin-only: this is the ONE entry point that
-// creates a brand-new journal_entries row outside the normal self-serve
-// Create flow, so both layers of this codebase's existing admin
-// authorization apply — isAdminSession() (gates that this is a real
-// founder session at all) AND a real signed-in Supabase consumer session
-// (requireUser(), reused from the exact same check every Journal Server
-// Action already performs) — because journal_entries.user_id is a real,
-// NOT NULL foreign key to auth.users, same as every entry created through
-// the normal Create wizard. An admin-password session alone carries no
-// Supabase user identity to own a new row with (see requireOwnEntry's own
-// comment in my-world/journal/actions.ts for the parallel reasoning on the
-// EDIT side of this same gap). The founder's own real Findmi account —
-// the same one that already owns every existing Journal entry, including
-// the live Babylist one — is expected to already be signed in for this
-// flow; if it isn't, this returns a clear, actionable error rather than
-// silently failing or guessing an owner.
-async function requireCaptureAuthorizedUser() {
-  if (!(await isAdminSession())) throw new Error("Not authorized.");
+// Event Action UX + Universal Journal CTA pass — "Document Your
+// Experience" is now a standard consumer-facing action on every public
+// Event, not an admin-only utility (the previous Journal Live Capture
+// pass's own isAdminSession()-gated entry point). Authorization is just
+// "a real signed-in Findmi account" (requireUser(), the same check every
+// other Journal Server Action already performs) — because
+// journal_entries.user_id is a real, NOT NULL foreign key to auth.users,
+// same as every entry created through the normal Create wizard. Whether
+// THIS session also happens to hold an admin cookie only changes two
+// things now: author_label (still "Findmi" for an admin's own capture,
+// exactly as the prior pass set it; null — the normal Create flow's own
+// default — for an ordinary consumer) and which existing editor the
+// caller sends the user to afterward (/admin/journal/[id]/capture for an
+// admin, the already-built consumer /my-world/journal/[id]/edit for
+// everyone else) — never whether the action itself is allowed.
+async function requireUser() {
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Sign in to your Findmi account to start capturing.");
+  if (!user) throw new Error("Sign in to document this experience.");
   return user;
+}
+
+async function findExistingEntryForEventUser(
+  eventId: string,
+  userId: string,
+  admin: SupabaseClient
+): Promise<{ id: string; status: "draft" | "published" } | null> {
+  const { data } = await admin
+    .from("journal_entries")
+    .select("id, status, journal_entry_connections!inner(event_id)")
+    .eq("user_id", userId)
+    .eq("journal_entry_connections.event_id", eventId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const row = data?.[0];
+  return row ? { id: row.id, status: row.status as "draft" | "published" } : null;
+}
+
+export type EventJournalCtaState = { kind: "none" } | { kind: "draft"; id: string } | { kind: "published"; id: string };
+
+/** Read-only — drives the Journal CTA's own copy on the Event page itself
+ * (Document Your Experience / Continue Your Journal Entry / View Your
+ * Journal Entry). One extra query for an authenticated viewer, the exact
+ * same shape startOrResumeEventJournalEntry's own lookup below already
+ * runs (shared via findExistingEntryForEventUser) — never a second,
+ * divergent check. A signed-out visitor (or a signed-in one the service-
+ * role client can't reach) always gets "none" — the same default CTA a
+ * brand-new account would see, never a guess at future state. */
+export async function getEventJournalCtaState(eventId: string): Promise<EventJournalCtaState> {
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { kind: "none" };
+  const admin = getAdminSupabase();
+  if (!admin) return { kind: "none" };
+  const existing = await findExistingEntryForEventUser(eventId, user.id, admin);
+  if (!existing) return { kind: "none" };
+  return existing.status === "published" ? { kind: "published", id: existing.id } : { kind: "draft", id: existing.id };
 }
 
 /** No new occurrence/business-resolution logic — this mirrors, field for
@@ -68,19 +105,21 @@ async function resolveDeterministicEventContext(eventId: string, event: Paramete
   };
 }
 
-/** Create-or-resume — the core requirement. Looks for an existing DRAFT
- * (never a published entry — a published one is done, not a live capture
- * in progress) already connected to this event, owned by the same real
- * user this request resolves to. Finds one -> returns it unchanged,
- * touching nothing. Finds none -> creates exactly one, with deterministic
- * context only, author_label fixed to "Findmi" for this admin capture
- * path specifically (per instruction — not for the normal consumer Create
- * flow, which is untouched). No new table, no new status, no schema
- * change: the same journal_entries/journal_entry_connections rows the
- * rest of Journal already reads/writes. */
-export async function startOrResumeEventJournalCapture(eventSlug: string): Promise<{ id: string } | { error: string }> {
+export type EventJournalEntryResult = { id: string; status: "draft" | "published"; isAdmin: boolean } | { error: string };
+
+/** Create-or-resume — the core requirement, now for ANY authenticated
+ * user. Looks for an existing entry already connected to this event,
+ * owned by the caller. A PUBLISHED entry is returned as-is (never
+ * resumed into drafting, never duplicated — it's done). A DRAFT is
+ * reopened unchanged. Neither found -> creates exactly one new draft,
+ * deterministic context only, author_label "Findmi" only when the caller
+ * also holds an admin session (see this file's header note) — null (the
+ * normal Create flow's own default) otherwise. No new table, no new
+ * status, no schema change. */
+export async function startOrResumeEventJournalEntry(eventSlug: string): Promise<EventJournalEntryResult> {
   try {
-    const user = await requireCaptureAuthorizedUser();
+    const user = await requireUser();
+    const isAdmin = await isAdminSession();
 
     const event = await getEventBySlug(eventSlug);
     if (!event) return { error: "That event couldn't be found." };
@@ -88,16 +127,8 @@ export async function startOrResumeEventJournalCapture(eventSlug: string): Promi
     const admin = getAdminSupabase();
     if (!admin) return { error: "Server isn't configured." };
 
-    const { data: existingDrafts } = await admin
-      .from("journal_entries")
-      .select("id, journal_entry_connections!inner(event_id)")
-      .eq("user_id", user.id)
-      .eq("status", "draft")
-      .eq("journal_entry_connections.event_id", event.id)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const existing = existingDrafts?.[0];
-    if (existing) return { id: existing.id };
+    const existing = await findExistingEntryForEventUser(event.id, user.id, admin);
+    if (existing) return { id: existing.id, status: existing.status, isAdmin };
 
     const { hostBusinessId, locationId, entryDate } = await resolveDeterministicEventContext(event.id, event);
 
@@ -108,7 +139,7 @@ export async function startOrResumeEventJournalCapture(eventSlug: string): Promi
         title: event.name,
         entry_date: entryDate,
         location_id: locationId,
-        author_label: "Findmi",
+        author_label: isAdmin ? "Findmi" : null,
       })
       .select("id")
       .single();
@@ -121,7 +152,7 @@ export async function startOrResumeEventJournalCapture(eventSlug: string): Promi
     const { error: connectionError } = await admin.from("journal_entry_connections").insert(connectionRows);
     if (connectionError) return { error: connectionError.message };
 
-    return { id: newEntry.id };
+    return { id: newEntry.id, status: "draft", isAdmin };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't start capturing this experience." };
   }

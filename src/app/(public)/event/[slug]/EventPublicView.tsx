@@ -4,8 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
-import DocumentExperienceButton from "@/components/journal/DocumentExperienceButton";
-import { isAdminSession } from "@/lib/admin/auth";
+import DocumentExperienceCta from "@/components/journal/DocumentExperienceCta";
+import { getEventJournalCtaState } from "./journalCaptureActions";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
@@ -137,7 +137,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, isAdmin] =
+  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, journalCtaState] =
     await Promise.all([
       getBusinessesForEvent(event.id),
       attachEventCategories([event]),
@@ -161,11 +161,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // own comment for why this second signal is needed alongside
       // event_businesses.featured below.
       resolveAppearanceHostBusiness(event.id),
-      // Journal Live Capture pass — server-verified once here, reused for
-      // both the "Document this experience" entry point's visibility and
-      // nothing else; the actual mutation it triggers re-verifies this
-      // independently server-side (see journalCaptureActions.ts).
-      isAdminSession(),
+      // Event Action UX + Universal Journal CTA pass — drives the
+      // Journal CTA's own copy for the current viewer (none/draft/
+      // published); a signed-out visitor always resolves to "none" (see
+      // getEventJournalCtaState's own comment). The CTA itself always
+      // renders regardless of this value — only its copy changes.
+      getEventJournalCtaState(event.id),
     ]);
   // Multi-Date Business Participation Pass 2B — Primary Date Integrity.
   // Only ever synthesizes/includes the Primary Date entry when this Event
@@ -539,6 +540,14 @@ export async function EventPublicView({ slug }: { slug: string }) {
         )
       )}
 
+      {/* Event Action UX + Universal Journal CTA pass — the strongest
+          FindMi-owned experience CTA, directly beneath the organizer's
+          own primary action (RSVP/Tickets/the legacy equivalent above),
+          before any other secondary row. Permanent and universal — every
+          viewer sees it; see DocumentExperienceCta's own comment for why
+          it carries no visibility gate. */}
+      <DocumentExperienceCta eventSlug={event.slug} state={journalCtaState} />
+
       {/* Contextual actions (Event + Location Action Row Consistency pass)
           — Website/Call use the same compact h-9/rounded-xl/px-3/text-xs
           button geometry as the Location page's own secondary actions,
@@ -644,16 +653,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
           strict 4-slot Message/Save/Calendar/Share module above. Kept as
           their own self-guarded, horizontally scrollable row (only
           rendered when at least one exists) rather than stretching the
-          module to 5-6 uneven columns.
-          Journal Live Capture pass — "Document this experience" joins this
-          same row rather than a new one: it's exactly this row's own
-          "lower-frequency, doesn't belong in the strict 4-slot grid"
-          category, just admin-only instead of visitor-facing. Gate reuses
-          isAdminSession() (same check AdminEditButton/the Journal pencil
-          already use) computed once above; an ordinary visitor never sees
-          this row at all unless Contact/Event Details already would have
-          shown it anyway. */}
-      {(showContact || event.external_url || isAdmin) && (
+          module to 5-6 uneven columns. Event Action UX + Universal
+          Journal CTA pass — the admin-only Document-this-experience entry
+          point that used to live here is gone; it's now DocumentExperienceCta
+          above, universal and no longer tied to this row at all. */}
+      {(showContact || event.external_url) && (
         <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex w-max items-center gap-2">
             {showContact && (
@@ -676,7 +680,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 Event Details
               </a>
             )}
-            {isAdmin && <DocumentExperienceButton eventSlug={event.slug} />}
           </div>
         </div>
       )}
