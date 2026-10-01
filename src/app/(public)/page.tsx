@@ -184,33 +184,50 @@ export default async function HomePage({
           page never hardcodes it. */}
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Homepage Join CTA pass — replaces the old single-line "Have a
-          business or brand? Put it on FindMi →" business-acquisition
-          doorway (previously founder-editable via
-          site_sections.business_doorway; that key/its admin field are
-          untouched, just no longer read here) with a compact dual-sided
-          Join message: FindMi is for people discovering things they love
-          AND the brands/businesses that want to be discovered — one
-          universal Join flow (/join) either way, no separate consumer/
-          business entry points. "JOIN FINDMI FREE" renders visually
-          uppercase via the `uppercase` utility on properly-cased text
-          ("Join Findmi Free"), matching this app's brand-casing rule
-          (capital F only) the same way every other all-caps button label
-          already does. */}
-      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6">
-        <p className="font-display text-xl font-bold leading-snug tracking-tight text-ink sm:text-2xl">
-          Find what you love.
-          <br />
-          Get discovered by people who will.
+      {/* Dual-Audience Join Doorway pass — the previous single-CTA "Join
+          Findmi Free" block (large 2-line headline + full aqua pill
+          button) read as a second hero, pushing the Happening Now
+          bulletin further down the mobile viewport than it should sit.
+          Replaced with a compact two-path doorway: one short headline,
+          two small side-by-side cards (Passbook / Business), one small
+          supporting line — materially less vertical weight, and it now
+          actually names the two real paths into Findmi instead of one
+          generic button.
+          Destinations reuse the EXACT existing onboarding-intent
+          mechanism /join's own two ValueCards already use
+          (/signup?next=/join/start?intent=passbook|business) — see that
+          page's own "Signup Repair + Join Card Intent" doc comment: a
+          non-binding `intent` riding inside the signup flow's existing
+          `next` redirect, never a new route, never a new account_type/
+          role flag. These cards go straight to that destination (not to
+          /join itself, which would just re-present the same choice).
+          ChevronGlyph is the same local glyph the Join/Native-Rose CTAs
+          above already use — no new icon. */}
+      <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
+        <p className="font-display text-base font-bold leading-snug tracking-tight text-ink sm:text-lg">
+          Find what you love. Get discovered.
         </p>
-        <Link
-          href="/join"
-          className="mt-3.5 inline-flex h-11 items-center gap-1.5 rounded-2xl bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-        >
-          Join Findmi Free
-          <ChevronGlyph className="h-3 w-3" />
-        </Link>
-        <p className="mt-2.5 text-xs text-ink/50">For people, brands &amp; businesses · No credit card required</p>
+        <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+          <Link
+            href={`/signup?next=${encodeURIComponent("/join/start?intent=passbook")}`}
+            className="rounded-2xl border border-findmi/25 bg-findmi-50 p-2.5 transition hover:border-findmi/50 sm:p-3"
+          >
+            <p className="line-clamp-2 text-[11px] font-bold uppercase leading-snug tracking-wide text-ink sm:text-xs">
+              Start Your Passbook <ChevronGlyph className="ml-0.5 inline-block h-2.5 w-2.5 align-middle text-ink/40" />
+            </p>
+            <p className="mt-1 text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences each day.</p>
+          </Link>
+          <Link
+            href={`/signup?next=${encodeURIComponent("/join/start?intent=business")}`}
+            className="rounded-2xl border border-black/10 bg-white p-2.5 transition hover:border-black/20 sm:p-3"
+          >
+            <p className="line-clamp-2 text-[11px] font-bold uppercase leading-snug tracking-wide text-ink sm:text-xs">
+              Add Brand / Location <ChevronGlyph className="ml-0.5 inline-block h-2.5 w-2.5 align-middle text-ink/40" />
+            </p>
+            <p className="mt-1 text-[10px] leading-snug text-ink/55 sm:text-[11px]">Put your brand, business or place on Findmi.</p>
+          </Link>
+        </div>
+        <p className="mt-2 text-xs text-ink/50">Get started free · No credit card required</p>
       </div>
 
       {/* Homepage Bulletin Carousel — one or more admin-managed editorial
