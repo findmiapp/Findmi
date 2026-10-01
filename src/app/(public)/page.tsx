@@ -5,10 +5,10 @@ import HomeWeather from "@/components/HomeWeather";
 import HomeHero from "@/components/HomeHero";
 import HomepageBulletinCarousel from "@/components/HomepageBulletinCarousel";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
-import Section, { HorizontalScroller, RailItem } from "@/components/Section";
+import Section, { HorizontalScroller } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
-import LocationDiscoveryCard from "@/components/discover/LocationDiscoveryCard";
+import FeaturedLocationCard from "@/components/discover/FeaturedLocationCard";
 import HomeTimeFilterRail from "@/components/HomeTimeFilterRail";
 import {
   attachEventCategories,
@@ -309,27 +309,25 @@ export default async function HomePage({
         />
       )}
 
-      {/* Public Experience Consolidation pass — FEATURED LOCATIONS, third
-          major row (Homepage Section Reorder pass — now after Brands We
-          Love, was before it). Reuses LocationDiscoveryCard (variant="full")
-          unmodified — the same card /locations and /discover already
-          render, including its own existing horizontal activity-rail
-          treatment for `activities` — and getFeaturedLocations
-          (lib/data.ts), which reuses getLocations' own real
-          activityCount/activities computation and simply filters to
-          Locations with at least one real upcoming happening (never a
-          fabricated/empty card).
-          QA Correction pass — this used to slice `activities` down to just
-          1 item per card, so a Location with (say) 3 real upcoming
-          happenings showed only the first with a large empty gap below it.
-          getLocationActivitySummaries already caps this array server-side
-          (ACTIVITY_PREVIEW_ITEMS_PER_LOCATION = 3, one batched query for
-          every Location on the page — no per-card fetch), so passing it
-          through unsliced is enough: LocationDiscoveryCard's own existing
-          activity rail is ALREADY a horizontal, independently-scrollable
-          mini-carousel (never vertical stacking), and its fixed-width
-          items keep the card's own height constant regardless of whether
-          1 or 3 real items are present. */}
+      {/* Horizontal Location Carousel pass — FEATURED LOCATIONS, third major
+          row. Same data path as before (getFeaturedLocations/lib/data.ts —
+          still filters to Locations with at least one real upcoming
+          happening; untouched), but a new dedicated card
+          (FeaturedLocationCard) and a bespoke outer rail instead of the
+          generic Section.tsx HorizontalScroller/RailItem — this section's
+          card is now a SHORT, WIDE, horizontally-split [location photo |
+          events rail] shape, not the tall vertical grid card
+          LocationDiscoveryCard still owns unmodified for /locations and
+          /discover. Deliberately not built on RailItem's fixed vw-based
+          density tokens: those size a card as a fraction of the VIEWPORT
+          (tuned for a uniform vertical card), where this rail instead
+          targets a fraction of the CONTAINER for the common multi-event
+          case (flex-[0_0_90%], shrinking on larger breakpoints) while
+          letting a one-event card size to its own content instead — see
+          FeaturedLocationCard's own note on why. The peek of the next
+          Location card this leaves at the right edge is the rail's own
+          swipe affordance; pagination dots were never part of this rail
+          and still aren't added. */}
       {featuredLocations.length > 0 && (
         <Section
           title="Featured Locations"
@@ -338,16 +336,15 @@ export default async function HomePage({
           titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
           subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
         >
-          <HorizontalScroller>
+          <div className="flex gap-4 overflow-x-auto px-4 pb-2 snap-x snap-mandatory [overflow-anchor:none] sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {featuredLocations.map((location) => (
-              <RailItem key={location.id} density="discovery">
-                <LocationDiscoveryCard
-                  location={location}
-                  analyticsContext={{ pageType: "home", placement: "homepage_featured_locations" }}
-                />
-              </RailItem>
+              <FeaturedLocationCard
+                key={location.id}
+                location={location}
+                analyticsContext={{ pageType: "home", placement: "homepage_featured_locations" }}
+              />
             ))}
-          </HorizontalScroller>
+          </div>
         </Section>
       )}
 
