@@ -62,10 +62,12 @@ export default function FeaturedLocationCard({
   return (
     <div
       ref={impressionRef}
-      // Outer carousel geometry — ~90% of the rail on mobile (a deliberate
-      // sliver of the next Location still peeks), narrowing at larger
-      // breakpoints where more of the rail is visible at once anyway.
-      className="flex shrink-0 snap-start flex-col overflow-hidden rounded-3xl border border-black/5 bg-white shadow-sm flex-[0_0_90%] max-w-[640px] sm:flex-[0_0_60%] lg:flex-[0_0_44%]"
+      // Outer carousel geometry — ~93% of the rail on mobile (bumped from
+      // 90%, giving the two content panels a little more breathing room)
+      // while a deliberate sliver of the next Location still peeks;
+      // narrowing at larger breakpoints where more of the rail is visible
+      // at once anyway.
+      className="flex shrink-0 snap-start flex-col overflow-hidden rounded-3xl border border-black/5 bg-white shadow-sm flex-[0_0_93%] max-w-[640px] sm:flex-[0_0_60%] lg:flex-[0_0_44%]"
     >
       {/* BODY — the two content panels, side by side. */}
       <div className="flex h-48 sm:h-52">
@@ -106,12 +108,14 @@ export default function FeaturedLocationCard({
           </div>
         </Link>
 
-        {/* RIGHT — "Events Happening Here." A single substantial vertical
-            preview for exactly one real happening; a compact "1 full +
-            partial next" horizontal rail of the same vertical card shape
-            for 2+. */}
+        {/* RIGHT — "Happening Here" (shortened from "Events Happening
+            Here" so the heading fits on one line at ~390px and the
+            reclaimed vertical room goes to the event title below instead).
+            A single substantial vertical preview for exactly one real
+            happening; a compact "1 full + partial next" horizontal rail
+            of the same vertical card shape for 2+. */}
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 bg-white p-2.5 sm:p-3">
-          <h4 className="shrink-0 font-display text-sm font-bold tracking-tight text-ink">Events Happening Here</h4>
+          <h4 className="shrink-0 font-display text-sm font-bold tracking-tight text-ink">Happening Here</h4>
           {activities.length === 0 ? (
             // Defensive only — getFeaturedLocations already filters to
             // activityCount > 0, so this is normally unreachable; kept
@@ -192,7 +196,12 @@ function EventFeaturePreview({ item }: { item: LocationActivityPreviewItem }) {
         )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col justify-center gap-0.5 px-2 py-1.5">
-        <p className="truncate text-sm font-bold leading-snug text-ink">{item.title}</p>
+        {/* Shorter "Happening Here" heading above (was "Events Happening
+            Here") reclaims the vertical room a legitimate title needs —
+            up to 2 lines now, never truncated to a fragment, instead of
+            the previous single-line `truncate` that could still clip a
+            longer title. */}
+        <p className="line-clamp-2 text-sm font-bold leading-snug text-ink">{item.title}</p>
         <p className="flex items-center gap-1 whitespace-nowrap text-xs text-ink/55">
           <CalendarGlyph className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">
