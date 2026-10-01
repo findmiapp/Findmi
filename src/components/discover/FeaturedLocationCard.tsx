@@ -186,7 +186,15 @@ function EventFeaturePreview({ item }: { item: LocationActivityPreviewItem }) {
       aria-label={`View ${item.kind === "event" ? "Event" : "Appearance"}: ${item.title}`}
       className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-black/5 bg-black/[0.02] transition active:scale-[0.98]"
     >
-      <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden bg-black/5">
+      {/* aspect-[2/1] (was [16/9]) — a modest ~10px shorter image at this
+          panel's real mobile width, reclaimed for the title block below
+          so a genuine 2-line title (line-clamp-2) has room to render
+          completely instead of being sliced by the date/time row. Within
+          a fixed card-height budget, the title can only gain room by the
+          image giving a little back — this is the minimal version of
+          that trade that still reads as a real event photo, not a
+          cropped sliver. */}
+      <div className="relative aspect-[2/1] w-full shrink-0 overflow-hidden bg-black/5">
         {item.imageUrl ? (
           <SupabaseImage src={item.imageUrl} alt="" fill sizes="220px" className="object-cover" />
         ) : (
