@@ -10,6 +10,7 @@ import SearchBar from "@/components/SearchBar";
 import AreaPicker from "@/components/discover/AreaPicker";
 import FeaturedLocationCard from "@/components/discover/FeaturedLocationCard";
 import HomeTimeFilterRail from "@/components/HomeTimeFilterRail";
+import NavIcon from "@/components/NavIcon";
 import {
   attachEventCategories,
   getBusinessGalleryImagesMap,
@@ -184,15 +185,26 @@ export default async function HomePage({
           page never hardcodes it. */}
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Dual-Audience Join Doorway pass — the previous single-CTA "Join
-          Findmi Free" block (large 2-line headline + full aqua pill
-          button) read as a second hero, pushing the Happening Now
-          bulletin further down the mobile viewport than it should sit.
-          Replaced with a compact two-path doorway: one short headline,
-          two small side-by-side cards (Passbook / Business), one small
-          supporting line — materially less vertical weight, and it now
-          actually names the two real paths into Findmi instead of one
-          generic button.
+      {/* Homepage Bulletin Carousel — one or more admin-managed editorial
+          announcements (see /admin/bulletins). Final Above-the-Fold pass
+          moved this ABOVE Search (was below) per live mobile QA — same
+          position in this stack, same HomepageBulletin card design;
+          HomepageBulletinCarousel only owns rotation when 2+ are
+          published. Renders nothing (no gap) when none is published.
+          Start-Here CTA Polish pass — moved ABOVE the onboarding doorway
+          below (was below it): editorial/live content should lead,
+          onboarding is secondary. Component itself, its query, carousel
+          behavior and conditional rendering are untouched — ordering
+          only. */}
+      {bulletins.length > 0 && (
+        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+          <HomepageBulletinCarousel bulletins={bulletins} />
+        </div>
+      )}
+
+      {/* Dual-Audience Join Doorway pass — a compact two-path onboarding
+          block: one short headline, two small side-by-side cards
+          (Passbook / Business), one small supporting line.
           Destinations reuse the EXACT existing onboarding-intent
           mechanism /join's own two ValueCards already use
           (/signup?next=/join/start?intent=passbook|business) — see that
@@ -202,45 +214,54 @@ export default async function HomePage({
           role flag. These cards go straight to that destination (not to
           /join itself, which would just re-present the same choice).
           ChevronGlyph is the same local glyph the Join/Native-Rose CTAs
-          above already use — no new icon. */}
+          below already use. NavIcon's "bookmark"/"storefront" are the
+          exact same two icons /join/page.tsx's own ValueCards already
+          use for these same two destinations — no new icon dependency.
+          Start-Here CTA Polish pass — added the small aqua eyebrow (same
+          text-findmi-700 eyebrow treatment Section.tsx's own `eyebrow`
+          prop renders for "Showing Up" above Brands We Love); both cards
+          now share one neutral white/bordered/shadow-sm treatment (the
+          same FeaturedLocationHappeningCard convention) instead of
+          Passbook's previous pale-aqua tint, which read as "selected";
+          each card's icon+title+chevron is now one `flex items-center`
+          row with `min-w-0 truncate` on the title so it can never wrap
+          to a second line regardless of copy length; supporting lines
+          shortened to one line each. */}
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
-        <p className="font-display text-base font-bold leading-snug tracking-tight text-ink sm:text-lg">
+        <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
+        <p className="mt-1 font-display text-base font-bold leading-snug tracking-tight text-ink sm:text-lg">
           Find what you love. Get discovered.
         </p>
         <div className="mt-2.5 grid grid-cols-2 gap-2.5">
           <Link
             href={`/signup?next=${encodeURIComponent("/join/start?intent=passbook")}`}
-            className="rounded-2xl border border-findmi/25 bg-findmi-50 p-2.5 transition hover:border-findmi/50 sm:p-3"
+            className="rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
           >
-            <p className="line-clamp-2 text-[11px] font-bold uppercase leading-snug tracking-wide text-ink sm:text-xs">
-              Start Your Passbook <ChevronGlyph className="ml-0.5 inline-block h-2.5 w-2.5 align-middle text-ink/40" />
-            </p>
-            <p className="mt-1 text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences each day.</p>
+            <div className="flex items-center gap-1">
+              <NavIcon name="bookmark" className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+              <p className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase leading-snug text-ink sm:text-[11px]">
+                Start Your Passbook
+              </p>
+              <ChevronGlyph className="h-2.5 w-2.5 shrink-0 text-ink/40" />
+            </div>
+            <p className="mt-1 truncate text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences.</p>
           </Link>
           <Link
             href={`/signup?next=${encodeURIComponent("/join/start?intent=business")}`}
-            className="rounded-2xl border border-black/10 bg-white p-2.5 transition hover:border-black/20 sm:p-3"
+            className="rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
           >
-            <p className="line-clamp-2 text-[11px] font-bold uppercase leading-snug tracking-wide text-ink sm:text-xs">
-              Add Brand / Location <ChevronGlyph className="ml-0.5 inline-block h-2.5 w-2.5 align-middle text-ink/40" />
-            </p>
-            <p className="mt-1 text-[10px] leading-snug text-ink/55 sm:text-[11px]">Put your brand, business or place on Findmi.</p>
+            <div className="flex items-center gap-1">
+              <NavIcon name="storefront" className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
+              <p className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase leading-snug text-ink sm:text-[11px]">
+                Add Brand / Location
+              </p>
+              <ChevronGlyph className="h-2.5 w-2.5 shrink-0 text-ink/40" />
+            </div>
+            <p className="mt-1 truncate text-[10px] leading-snug text-ink/55 sm:text-[11px]">Get discovered on Findmi.</p>
           </Link>
         </div>
-        <p className="mt-2 text-xs text-ink/50">Get started free · No credit card required</p>
+        <p className="mt-2 truncate text-xs text-ink/50">Free to get started · No credit card required</p>
       </div>
-
-      {/* Homepage Bulletin Carousel — one or more admin-managed editorial
-          announcements (see /admin/bulletins). Final Above-the-Fold pass
-          moved this ABOVE Search (was below) per live mobile QA — same
-          position in this stack, same HomepageBulletin card design;
-          HomepageBulletinCarousel only owns rotation when 2+ are
-          published. Renders nothing (no gap) when none is published. */}
-      {bulletins.length > 0 && (
-        <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6">
-          <HomepageBulletinCarousel bulletins={bulletins} />
-        </div>
-      )}
 
       {/* Search — behavior/route/sizing unchanged; only its position
           (now after the Bulletin, was before) and this local top padding
