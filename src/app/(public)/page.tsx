@@ -366,9 +366,9 @@ export default async function HomePage({
           CTA below are unchanged (still centered) — only the intro
           block's typography changed. */}
       <div className="mx-auto max-w-4xl px-4 pt-6 sm:px-6 sm:pt-8">
-        <h2 className={HOMEPAGE_SECTION_TITLE_CLASS}>See What Your Findmi Can Become</h2>
+        <h2 className={HOMEPAGE_SECTION_TITLE_CLASS}>See Your Business on Findmi</h2>
         <p className={`${HOMEPAGE_SECTION_SUBTITLE_CLASS} max-w-md`}>
-          One page. Your business, products and everywhere you&rsquo;ll be next.
+          Your profile brings together who you are, what you offer and where you&rsquo;ll be next.
         </p>
         <div className="mt-4">
           <BusinessShowcaseCarousel />
