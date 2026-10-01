@@ -81,16 +81,6 @@ export default function AddToCalendarButton({
   layout?: "pill" | "grid" | "glass" | "row";
 }) {
   const [open, setOpen] = useState(false);
-  // TEMPORARY REAL-DEVICE INSTRUMENTATION (Calendar Functional Repair pass,
-  // round 5) — anchor navigation, window.open, and window.location.assign
-  // have all now failed on real Android Chrome AND real iOS Safari, so the
-  // remaining unknown is whether the tap even reaches this component's own
-  // handlers on-device. This records, in on-page state (no console/alert/
-  // DevTools required), whether a pointerdown and a click were each
-  // observed on the Google Calendar option, plus the generated URL — so a
-  // physical-device tap can be diagnosed from what's visibly rendered.
-  // Remove this state and the debug panel below once that's determined.
-  const [debug, setDebug] = useState<{ pointer: boolean; click: boolean; url: string } | null>(null);
   // Bug fix (action-row UX pass): this button sits inside the event page's
   // horizontally-scrollable Tier B action row (overflow-x-auto — see
   // commit 5d9c4f9). Per the CSS overflow spec, setting overflow-x to
@@ -107,28 +97,20 @@ export default function AddToCalendarButton({
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const resolvedEnd = endAt ?? new Date(new Date(startAt).getTime() + 2 * 60 * 60 * 1000).toISOString();
 
-  // Calendar Functional Repair pass, round 6 (ROOT CAUSE FOUND) — the
-  // on-device "Pointer: YES, Click: NO" evidence traced to this panel
-  // being a normal (non-portaled) DOM descendant of HomeEventCard's own
-  // card wrapper, which has `active:scale-[0.98]` + `overflow-hidden`.
-  // Per the CSS spec, :active applies to every ANCESTOR of whatever
-  // element is actually being pressed, not just the pressed element
-  // itself — so pressing "Google Calendar" inside this panel also
-  // engages HomeEventCard's own `:active` transform for the duration of
-  // that press. A `transform` on an ancestor makes IT the containing
-  // block for any `position: fixed` descendant (instead of the
-  // viewport), so this panel's viewport-relative `coords` get
-  // reinterpreted relative to that transformed, overflow-hidden card
-  // the instant the press lands — shifting/clipping the panel out from
-  // under the finger between pointerdown and pointerup. pointerdown
-  // still fires correctly (hit-tested before the restyle), but the
-  // click that follows lands somewhere else (or nowhere), which is
-  // exactly the observed symptom. Portaling to document.body — the
-  // same escape-the-ancestor technique LocationFollowButton's own modal
-  // already uses — removes this panel from that DOM subtree entirely,
-  // so no ancestor transform/overflow can ever touch its containing
-  // block again. `mounted` avoids an SSR document-undefined crash,
-  // matching LocationFollowButton's pattern exactly.
+  // Calendar Functional Repair pass — this dropdown is portaled to
+  // document.body rather than rendered as a normal DOM descendant of its
+  // caller. On the homepage, HomeEventCard's own card wrapper has
+  // `active:scale-[0.98]` + `overflow-hidden`; CSS `:active` applies to
+  // every ancestor of whatever element is pressed, so tapping an option
+  // here also engages that ancestor's `:active` transform for the
+  // duration of the press. A `transform` on an ancestor makes IT the
+  // containing block for any `position: fixed` descendant (instead of
+  // the viewport), which would otherwise shift/clip this panel's
+  // viewport-relative `coords` mid-tap. Portaling — the same escape-the-
+  // ancestor technique LocationFollowButton's own modal already uses —
+  // removes this panel from any such ancestor's DOM subtree entirely, so
+  // its containing block is always the viewport. `mounted` avoids an SSR
+  // document-undefined crash, matching LocationFollowButton's pattern.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -163,21 +145,9 @@ export default function AddToCalendarButton({
   });
   const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
 
-  // TEMPORARY REAL-DEVICE INSTRUMENTATION (round 5) — anchor navigation,
-  // window.open, and window.location.assign have each failed on real
-  // Android Chrome and real iOS Safari in turn. Navigation is deliberately
-  // suppressed here so the on-page debug panel below can prove, on the
-  // physical device itself, whether a pointerdown and a click are actually
-  // observed on this option and what URL was generated — rather than
-  // guessing at a fourth navigation mechanism blind. Restore
-  // `window.location.assign(gcalUrl); setOpen(false);` as this function's
-  // only body, and delete the `debug` state and panel, once that's proven.
-  function handleGcalPointerDown() {
-    setDebug((d) => ({ pointer: true, click: d?.click ?? false, url: d?.url ?? "" }));
-  }
-
   function openGoogleCalendar() {
-    setDebug((d) => ({ pointer: d?.pointer ?? false, click: true, url: gcalUrl }));
+    window.location.assign(gcalUrl);
+    setOpen(false);
   }
 
   function downloadIcs() {
@@ -248,7 +218,6 @@ export default function AddToCalendarButton({
           >
             <button
               type="button"
-              onPointerDown={handleGcalPointerDown}
               onClick={openGoogleCalendar}
               className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
             >
@@ -264,37 +233,6 @@ export default function AddToCalendarButton({
           </div>,
           document.body
         )}
-      {/* TEMPORARY REAL-DEVICE INSTRUMENTATION — see notes above
-          openGoogleCalendar. Fixed + very high z-index so it renders on
-          top of every caller, including the two full-screen Quick View
-          modals (z-50); rendered independently of `open`/`coords` so
-          closing/reopening the dropdown never clears the evidence, and it
-          only ever disappears via its own explicit Dismiss button.
-          pointer-events-none (round 6) — this panel can mount mid-gesture
-          (handleGcalPointerDown sets it on the Google Calendar option's
-          OWN pointerdown), and being fixed/full-width/z-[9999] it could
-          otherwise sit on top of and swallow the very click it's trying
-          to observe on a card low enough in the viewport for the two to
-          overlap. It only needs to be seen, not tapped, except for its
-          own Dismiss button, which opts back into pointer-events. */}
-      {debug && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[9999] max-h-[45vh] overflow-y-auto border-t-4 border-yellow-400 bg-black/95 p-3 font-mono text-[11px] leading-tight text-lime-300 shadow-2xl">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <p className="font-bold text-yellow-300">CALENDAR DEBUG (temporary)</p>
-            <button
-              type="button"
-              onClick={() => setDebug(null)}
-              className="pointer-events-auto shrink-0 rounded bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase text-white"
-            >
-              Dismiss
-            </button>
-          </div>
-          <p>Pointer: {debug.pointer ? "YES" : "NO"}</p>
-          <p>Click: {debug.click ? "YES" : "NO"}</p>
-          <p>URL: {debug.url ? `YES (${debug.url.length} chars)` : "NO"}</p>
-          {debug.url && <p className="mt-1 break-all text-white">{debug.url}</p>}
-        </div>
-      )}
     </div>
   );
 }
