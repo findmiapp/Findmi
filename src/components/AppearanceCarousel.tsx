@@ -4,6 +4,7 @@ import SupabaseImage from "./SupabaseImage";
 import LiveDot from "./LiveDot";
 import type { AppearanceQuickViewAppearance, AppearanceQuickViewBusiness } from "./AppearanceQuickView";
 import { formatAppearanceTime, getTemporalLabel, resolveVenueLabel } from "@/lib/format";
+import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 import { trackEvent } from "@/lib/analytics/track";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
 
@@ -24,11 +25,16 @@ export interface AppearanceCarouselAppearance extends AppearanceQuickViewAppeara
 export default function AppearanceCarousel({
   appearances,
   business,
+  galleryImages,
   onOpen,
   analyticsContext,
 }: {
   appearances: AppearanceCarouselAppearance[];
   business: AppearanceQuickViewBusiness;
+  /** Image Fallback Refinement pass — this Business's own existing
+   * gallery, already fetched by the page; see resolveAppearanceDisplayImage
+   * for the exact precedence this feeds into. */
+  galleryImages: string[];
   onOpen: (id: string) => void;
   analyticsContext?: AnalyticsPlacementContext;
 }) {
@@ -39,6 +45,7 @@ export default function AppearanceCarousel({
           key={a.id}
           appearance={a}
           business={business}
+          galleryImages={galleryImages}
           onOpen={() => onOpen(a.id)}
           analyticsContext={analyticsContext}
         />
@@ -50,11 +57,13 @@ export default function AppearanceCarousel({
 function AppearanceCarouselCard({
   appearance,
   business,
+  galleryImages,
   onOpen,
   analyticsContext,
 }: {
   appearance: AppearanceCarouselAppearance;
   business: AppearanceQuickViewBusiness;
+  galleryImages: string[];
   onOpen: () => void;
   analyticsContext?: AnalyticsPlacementContext;
 }) {
@@ -77,14 +86,24 @@ function AppearanceCarouselCard({
     onOpen();
   }
 
-  // FindMi Here View Modes pass — card artwork priority is now
-  // flyer_image_url > business.cover_image_url > logo-led fallback >
-  // generic fallback (was flyer > logo-led > generic). The small business-
-  // logo identity badge keeps showing whenever a REAL photo is the artwork
-  // (flyer OR cover) — it's only replaced by the logo-led treatment when
-  // there's no photo at all, so the logo is never shown twice.
-  const flyerUrl = appearance.flyer_image_url;
-  const photoUrl = flyerUrl ?? business.cover_image_url;
+  // Image Fallback Refinement pass — card artwork priority is now the
+  // most specific real image already attached to this appearance (its
+  // own flyer, else its linked Event's own cover when event-backed —
+  // never swapped out for gallery art), else a deterministic pick from
+  // this Business's own gallery (so repeated image-less appearances on
+  // the same profile spread across real photos instead of all showing
+  // the business cover), else the business cover, else the logo-led
+  // fallback, else the generic glyph. The small business-logo identity
+  // badge keeps showing whenever a REAL photo is the artwork (any of the
+  // first three tiers) — it's only replaced by the logo-led treatment
+  // when there's no photo at all, so the logo is never shown twice.
+  const specificImageUrl = appearance.flyer_image_url ?? appearance.event?.cover_image_url ?? null;
+  const photoUrl = resolveAppearanceDisplayImage({
+    appearanceId: appearance.id,
+    specificImageUrl,
+    galleryImages,
+    businessCoverUrl: business.cover_image_url,
+  });
 
   return (
     <button

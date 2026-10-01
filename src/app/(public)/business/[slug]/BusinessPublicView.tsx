@@ -42,6 +42,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSupabase } from "@/lib/supabase";
 import { isBusinessPro } from "@/lib/entitlements";
+import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -271,14 +272,23 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     ? getTemporalLabel(featuredAppearance.start_at, featuredAppearance.end_at)
     : null;
   const featuredIsEvent = Boolean(featuredAppearance?.event?.slug);
-  // Image precedence (LOCKED — see this pass's own spec): the appearance's
-  // own flyer image, else the linked Event's own cover image when event-
-  // backed, else this Business's own cover image, else FeaturedAppearanceCard's
-  // own safe neutral fallback. Never the rotating business-gallery fallback
-  // BusinessLogoCard's discovery cards use — that experiment is scoped to
-  // discovery rails, not this profile.
+  // Image Fallback Refinement pass — precedence is now: the most specific
+  // real image already attached to this appearance (its own flyer image,
+  // else its linked Event's own cover image when event-backed — never
+  // swapped out, so illy's real "A Cup of Love" photo is untouched), else
+  // a deterministic pick from this Business's own gallery (spreads
+  // image-less appearances across real photos instead of repeating the
+  // cover on every one), else the Business's own cover image, else
+  // FeaturedAppearanceCard's own safe neutral fallback. No new query:
+  // `galleryImages` is the same getBusinessGalleryImages result already
+  // fetched above for the Gallery section.
   const featuredImageUrl = featuredAppearance
-    ? (featuredAppearance.flyer_image_url ?? featuredAppearance.event?.cover_image_url ?? business.cover_image_url ?? null)
+    ? resolveAppearanceDisplayImage({
+        appearanceId: featuredAppearance.id,
+        specificImageUrl: featuredAppearance.flyer_image_url ?? featuredAppearance.event?.cover_image_url ?? null,
+        galleryImages,
+        businessCoverUrl: business.cover_image_url,
+      })
     : null;
   // Real destination only — event > location > in-page anchor, the exact
   // same precedence AppearanceCard's own click target already uses. Never
@@ -646,18 +656,28 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           structures depending on provenance a visitor never sees).
           FeaturedAppearanceCard is now the ONE unified presentation for
           whichever single Appearance resolveFeaturedAppearance above
-          resolves, event-backed or standalone alike. */}
+          resolves, event-backed or standalone alike.
+          Featured Appearance Heading pass — "Featured Appearance" used to
+          render as overlay text inside the card itself. It now sits
+          outside/above the card as a real section label, using the exact
+          same text-xs/font-bold/uppercase/tracking-wide/text-findmi-700
+          treatment the "Findmi Here" eyebrow below already uses (see
+          AppearanceFindMiHere.tsx), so both read as the same kind of
+          section label rather than one being card chrome. */}
       {featuredAppearance && (
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mt-5 max-w-xl">
-            <FeaturedAppearanceCard
-              title={featuredAppearance.title}
-              imageUrl={featuredImageUrl}
-              viewDetailsHref={featuredHref ?? "#findmi-here"}
-              directionsHref={featuredDirectionsHref}
-              dateTimeLine={featuredDateTimeLine}
-              venueLine={featuredVenueLine}
-            />
+            <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Featured Appearance</p>
+            <div className="mt-2">
+              <FeaturedAppearanceCard
+                title={featuredAppearance.title}
+                imageUrl={featuredImageUrl}
+                viewDetailsHref={featuredHref ?? "#findmi-here"}
+                directionsHref={featuredDirectionsHref}
+                dateTimeLine={featuredDateTimeLine}
+                venueLine={featuredVenueLine}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -762,6 +782,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                   cover_image_url: business.cover_image_url,
                   shareUrl: canonicalUrl,
                 }}
+                galleryImages={galleryImages}
                 analyticsContext={{ pageType: "business" }}
               />
             </section>

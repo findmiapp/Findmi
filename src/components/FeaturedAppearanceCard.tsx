@@ -17,7 +17,14 @@ import Link from "next/link";
  *
  * The photo itself is one Link (tapping it reaches the same destination as
  * View Details); the two buttons below are plain siblings, never nested
- * inside that Link. */
+ * inside that Link.
+ *
+ * Featured Appearance Heading pass — the "FEATURED APPEARANCE" eyebrow
+ * used to render as overlay text inside this card, above the title. It
+ * now lives OUTSIDE this component entirely (BusinessPublicView.tsx
+ * renders it directly above, using the same section-label treatment
+ * "Findmi Here" already uses) so it reads as a real page section heading
+ * rather than card chrome — this component starts straight at the title. */
 export default function FeaturedAppearanceCard({
   title,
   imageUrl,
@@ -60,7 +67,6 @@ export default function FeaturedAppearanceCard({
               "linear-gradient(to top, rgba(0,0,0,0.90) 0%, rgba(0,0,0,0.70) 28%, rgba(0,0,0,0.28) 58%, rgba(0,0,0,0) 85%)",
           }}
         >
-          <span className="text-label font-bold uppercase tracking-wide text-white/80">Featured Appearance</span>
           <h2 className="font-display text-card-title-lg font-bold tracking-tight text-white line-clamp-2">{title}</h2>
           {dateTimeLine && <p className="text-metadata font-medium text-white/90">{dateTimeLine}</p>}
           {venueLine && <p className="text-metadata font-medium text-white/70 line-clamp-1">{venueLine}</p>}

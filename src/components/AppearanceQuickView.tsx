@@ -40,7 +40,12 @@ export interface AppearanceQuickViewAppearance {
   event_id: string | null;
   location_id: string | null;
   location?: { name: string; slug: string } | null;
-  event?: { slug: string; name?: string } | null;
+  // Image Fallback Refinement pass — `cover_image_url` added (optional:
+  // only callers that select it, e.g. getUpcomingAppearancesForBusiness,
+  // populate it) so AppearanceCarousel's card artwork can use a real
+  // event-backed appearance's own cover photo as its most-specific real
+  // image, same precedence FeaturedAppearanceCard already uses.
+  event?: { slug: string; name?: string; cover_image_url?: string | null } | null;
 }
 
 export interface AppearanceQuickViewBusiness {

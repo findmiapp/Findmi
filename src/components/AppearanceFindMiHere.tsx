@@ -24,10 +24,17 @@ type ViewMode = "cards" | "list"; // future: | "map"
 export default function AppearanceFindMiHere({
   appearances,
   business,
+  galleryImages,
   analyticsContext,
 }: {
   appearances: AppearanceCarouselAppearance[];
   business: AppearanceQuickViewBusiness;
+  /** Image Fallback Refinement pass — this Business's own existing
+   * gallery (business_images), already fetched by the caller — passed
+   * through to AppearanceCarousel (Cards view only; List never shows
+   * imagery) so an image-less appearance card can deterministically pick
+   * a real gallery photo instead of all repeating the business cover. */
+  galleryImages: string[];
   analyticsContext?: AnalyticsPlacementContext;
 }) {
   const [view, setView] = useState<ViewMode>("cards");
@@ -63,7 +70,13 @@ export default function AppearanceFindMiHere({
 
       <div className="mt-3">
         {view === "cards" ? (
-          <AppearanceCarousel appearances={appearances} business={business} onOpen={setOpenId} analyticsContext={analyticsContext} />
+          <AppearanceCarousel
+            appearances={appearances}
+            business={business}
+            galleryImages={galleryImages}
+            onOpen={setOpenId}
+            analyticsContext={analyticsContext}
+          />
         ) : (
           <AppearanceList appearances={appearances} business={business} onOpen={setOpenId} analyticsContext={analyticsContext} />
         )}
