@@ -80,10 +80,16 @@ export default function EventScheduleSummary({
 
   return (
     <div className="mt-3 flex flex-col gap-1 text-sm">
-      <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-        <span className="font-bold text-ink">{dateRangeLabel}</span>
+      {/* Small Public UI Polish pass — WHEN promoted from a plain text-sm
+          line (same weight-class as ordinary body copy) to the same
+          semantic section-title/card-title scale already used for major
+          page moments elsewhere (see FeaturedEventHeroOverlay/
+          FeaturedAppearanceCard). flex-wrap already handles a genuinely
+          long date/time combination gracefully; no truncation added. */}
+      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="text-section-title sm:text-section-title-lg font-bold text-ink">{dateRangeLabel}</span>
         <span className="text-ink/30">·</span>
-        <span className="font-medium text-ink/75">{timeLabel}</span>
+        <span className="text-card-title sm:text-card-title-lg font-semibold text-ink/75">{timeLabel}</span>
       </p>
       {selectedState === "cancelled" ? (
         <span className="inline-flex w-fit items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">

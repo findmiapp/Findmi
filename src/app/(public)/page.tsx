@@ -374,9 +374,17 @@ export default async function HomePage({
           <BusinessShowcaseCarousel />
         </div>
         <div className="mt-3 flex justify-center">
+          {/* Small Public UI Polish pass — was a bare text link, reading as
+              visually unfinished in the whitespace above the black JOIN
+              FINDMI card. Now the same pale-Aqua "soft highlight panel"
+              pill treatment used elsewhere (border-findmi/30 + bg-findmi-50
+              + text-findmi-700 — see CLAUDE.md's design-system notes on
+              that combination), so it reads as a real, compact secondary
+              CTA without competing with the black card beneath it. Same
+              destination/behavior, unchanged. */}
           <a
             href={`/business/${NATIVE_ROSE_SLUG}`}
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
+            className="inline-flex items-center gap-1.5 rounded-full border border-findmi/30 bg-findmi-50 px-4 py-2 text-sm font-semibold text-findmi-700 transition hover:border-findmi/50 hover:bg-findmi-100"
           >
             View live profile <span aria-hidden>→</span>
           </a>

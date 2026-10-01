@@ -659,15 +659,19 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           resolves, event-backed or standalone alike.
           Featured Appearance Heading pass — "Featured Appearance" used to
           render as overlay text inside the card itself. It now sits
-          outside/above the card as a real section label, using the exact
-          same text-xs/font-bold/uppercase/tracking-wide/text-findmi-700
-          treatment the "Findmi Here" eyebrow below already uses (see
-          AppearanceFindMiHere.tsx), so both read as the same kind of
-          section label rather than one being card chrome. */}
+          outside/above the card as a real section label.
+          Small Public UI Polish pass — that eyebrow-only treatment
+          (text-xs/uppercase/text-findmi-700) still read noticeably weaker
+          than this profile's other major section headings (FindMi Here's
+          own "Upcoming Appearances" h2, Gallery's h2), both of which use
+          the font-display/text-lg/font-bold/tracking-tight/text-ink
+          convention. Converged onto that same convention so Featured
+          Appearance carries the same visual authority as its peers,
+          instead of merely being bolded. */}
       {featuredAppearance && (
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mt-5 max-w-xl">
-            <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Featured Appearance</p>
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Featured Appearance</h2>
             <div className="mt-2">
               <FeaturedAppearanceCard
                 title={featuredAppearance.title}

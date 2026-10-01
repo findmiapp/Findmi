@@ -240,7 +240,15 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       <div className="px-4 sm:px-0">
         <div className="max-w-xl">
           {location.logo_url && (
-            <div className="relative -mt-14 h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-16 sm:h-32 sm:w-32">
+            // Small Public UI Polish pass — border-paper (#F8F8F6) is the
+            // same color as the page's own bg-paper background, so the
+            // tile had no visible edge at all against it — a white/light
+            // logo (e.g. Hudson Yards) disappeared entirely. border-white
+            // keeps the clean white frame against the logo itself, and a
+            // subtle ring gives the tile a real edge against the page,
+            // regardless of whether the logo artwork is light or
+            // colorful. Overlap geometry/size/shadow unchanged.
+            <div className="relative -mt-14 h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-sm ring-1 ring-black/[0.08] sm:-mt-16 sm:h-32 sm:w-32">
               <SupabaseImage src={location.logo_url} alt={location.name} fill sizes="128px" className="object-cover" />
             </div>
           )}

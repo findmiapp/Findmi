@@ -3,7 +3,7 @@
 import SupabaseImage from "./SupabaseImage";
 import LiveDot from "./LiveDot";
 import type { AppearanceQuickViewAppearance, AppearanceQuickViewBusiness } from "./AppearanceQuickView";
-import { formatAppearanceTime, getTemporalLabel, resolveVenueLabel } from "@/lib/format";
+import { formatAppearanceDateRange, getTemporalLabel, resolveVenueLabel } from "@/lib/format";
 import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 import { trackEvent } from "@/lib/analytics/track";
 import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
@@ -117,8 +117,13 @@ function AppearanceCarouselCard({
           <>
             <SupabaseImage src={photoUrl} alt="" fill sizes="(min-width: 640px) 288px, 256px" className="object-cover" />
             {business.logo_url && (
-              <div className="absolute bottom-2 left-2 h-8 w-8 overflow-hidden rounded-full border-2 border-white bg-white shadow-sm">
-                <SupabaseImage src={business.logo_url} alt="" fill sizes="32px" className="object-cover" />
+              // Small Public UI Polish pass — was h-8/w-8 (32px), reading
+              // as a tiny status badge rather than brand identity on a
+              // ~390px card. Bumped moderately (44px) to clearly read as
+              // "this belongs to [Business]"; card-local only, not a
+              // change to SupabaseImage or any shared logo component.
+              <div className="absolute bottom-2 left-2 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow-sm">
+                <SupabaseImage src={business.logo_url} alt="" fill sizes="44px" className="object-cover" />
               </div>
             )}
           </>
@@ -148,8 +153,15 @@ function AppearanceCarouselCard({
         )}
         <p className="mt-0.5 line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">{appearance.title}</p>
         {venueLabel && <p className="mt-1 truncate text-xs text-ink/55">{venueLabel}</p>}
+        {/* Small Public UI Polish pass — was time-only ("7:00 PM – 11:00
+            PM"), relying entirely on the floating image badge (TOMORROW /
+            WED · OCT 7) for the actual calendar date. Now repeats the real
+            date using the same already-fetched start_at/end_at/description
+            this card already has (no new query) via the existing
+            formatAppearanceDateRange helper, lighter/secondary to the
+            title, same as before. */}
         <p className="mt-0.5 truncate text-xs text-ink/45">
-          {formatAppearanceTime(appearance.start_at, appearance.end_at, appearance.description)}
+          {formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}
         </p>
       </div>
     </button>
