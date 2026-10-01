@@ -24,6 +24,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // --- Journal V1 — the same consumer Supabase Auth gate as /account,
+  // scoped narrowly to /my-world/journal (creating/managing/listing one's
+  // OWN entries) rather than all of /my-world, which stays exactly as it
+  // already was (a guest-visible, client-rendered page). The public,
+  // potentially-anonymous-readable single-entry route (/journal/[id]) is
+  // deliberately NOT covered here — its own RLS-backed read already
+  // decides what a given visitor may see. ---
+  if (pathname.startsWith("/my-world/journal")) {
+    const { supabase, response } = getMiddlewareSupabase(request);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("next", getSafeRedirect(pathname + request.nextUrl.search));
+      return NextResponse.redirect(loginUrl);
+    }
+    return response;
+  }
+
   // --- Consumer /account (Supabase Auth) — new in this pass ---
   if (pathname.startsWith("/account")) {
     const { supabase, response } = getMiddlewareSupabase(request);
@@ -54,5 +74,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/account/:path*"],
+  matcher: ["/admin/:path*", "/account/:path*", "/my-world/journal/:path*"],
 };

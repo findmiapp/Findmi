@@ -87,5 +87,51 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Journal V1 — "products" and "events", same shape/safety conventions as
+  // businesses/locations above (bounded to 20, is_demo/publication-gated to
+  // only what's genuinely publicly visible, no full-table dump). Additive:
+  // every existing entity branch above is untouched.
+  if (entity === "products") {
+    const { data } = await admin
+      .from("products")
+      .select("id, name, slug, image_url, is_active, business:businesses(name, slug, is_demo, publication_status)")
+      .eq("is_active", true)
+      .ilike("name", term)
+      .order("name")
+      .limit(20);
+    return NextResponse.json({
+      results: (data ?? [])
+        .map((p) => {
+          const business = Array.isArray(p.business) ? (p.business[0] ?? null) : p.business;
+          if (!business || business.is_demo || business.publication_status !== "live") return null;
+          return {
+            value: p.id,
+            label: p.name,
+            sublabel: business.name,
+            image_url: p.image_url,
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null),
+    });
+  }
+
+  if (entity === "events") {
+    const { data } = await admin
+      .from("events")
+      .select("id, name, slug, cover_image_url, start_at, city, state, is_demo")
+      .eq("is_demo", false)
+      .ilike("name", term)
+      .order("start_at", { ascending: false })
+      .limit(20);
+    return NextResponse.json({
+      results: (data ?? []).map((e) => ({
+        value: e.id,
+        label: e.name,
+        sublabel: [e.city, e.state].filter(Boolean).join(", ") || undefined,
+        image_url: e.cover_image_url,
+      })),
+    });
+  }
+
   return NextResponse.json({ results: [] }, { status: 400 });
 }

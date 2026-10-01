@@ -185,6 +185,19 @@ export default function MyWorldPage() {
           : "Everything you've wanted, wanted to do, followed, and saved, kept right on this device."}
       </p>
 
+      {/* Journal V1 — a minimal, natural entry point only; the full My
+          World dashboard (Activity/Lists/Places/Brands/Journal together)
+          is future work, not this pass's job. Journal lives at its own
+          direct route either way, so this link is additive, not a
+          dependency this page's existing Want/Following/Saved sections
+          rely on. */}
+      <Link
+        href="/my-world/journal"
+        className="mt-4 inline-flex h-10 items-center justify-center rounded-xl border border-black/10 px-4 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+      >
+        Journal
+      </Link>
+
       {loading ? null : empty ? (
         <p className="mt-10 text-sm text-ink/50">
           Nothing here yet.{" "}
