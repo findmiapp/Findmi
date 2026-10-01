@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJournalEntryWithRelations } from "@/lib/journal";
 import JournalOwnerActions from "@/components/journal/JournalOwnerActions";
+import JournalPhotoGallery from "@/components/journal/JournalPhotoGallery";
+import ReadMoreText from "@/components/ReadMoreText";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +18,14 @@ export const dynamic = "force-dynamic";
  * is indistinguishable here (both resolve to null -> notFound()), which is
  * the correct, non-leaking behavior. No video, no comments, no reaction
  * counts, no public creator profile — this is the entry itself: photos,
- * the owner's own notes, and the real Findmi objects it's connected to. */
+ * the owner's own notes, and the real Findmi objects it's connected to.
+ *
+ * Visual convergence pass — same data/authorization as before; this file
+ * only changes composition: an editorial photo gallery (JournalPhotoGallery)
+ * instead of a uniform grid, grouped connected objects, a truthful "Visit
+ * Details" section that no longer silently drops a time when there's no
+ * Location, and owner controls moved into their own de-emphasized
+ * component (JournalOwnerActions). */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const result = await getJournalEntryWithRelations(id);
@@ -47,6 +57,11 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const connectedCount = businesses.length + products.length + events.length;
   const connectionsHeading = events.length > 0 ? "Connected to This Experience" : "Places, Brands & Products";
 
+  const mapsQuery = location
+    ? encodeURIComponent([location.name, location.address, [location.city, location.state].filter(Boolean).join(", ")].filter(Boolean).join(", "))
+    : null;
+  const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}` : null;
+
   return (
     <div className="mx-auto max-w-2xl pb-14">
       {/* Hero */}
@@ -59,16 +74,20 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </div>
         )}
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4 pt-20 sm:p-6"
+          className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4 pt-16 sm:p-6"
           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 35%, rgba(0,0,0,0) 85%)" }}
         >
           <p className="text-[10px] font-bold uppercase tracking-wide text-white/60">Journal Entry</p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{entry.title}</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-white line-clamp-2 sm:text-3xl">{entry.title}</h1>
           <p className="text-sm font-medium text-white/80">
             {dateLabel}
             {location ? ` · ${location.name}` : ""}
           </p>
-          {media.length > 0 && <p className="text-xs text-white/60">{media.length} photo{media.length === 1 ? "" : "s"}</p>}
+          {media.length > 0 && (
+            <p className="text-xs text-white/60">
+              {media.length} photo{media.length === 1 ? "" : "s"}
+            </p>
+          )}
         </div>
       </div>
 
@@ -81,61 +100,92 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
 
         {entry.notes && (
           <section className="mt-6 max-w-xl">
-            <p className="whitespace-pre-line text-sm leading-relaxed text-ink/80">{entry.notes}</p>
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Visit</h2>
+            <div className="mt-2">
+              <ReadMoreText text={entry.notes} />
+            </div>
           </section>
         )}
 
         {gallery.length > 0 && (
           <section className="mt-6">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {gallery.map((m) => (
-                <div key={m.id} className="relative aspect-square overflow-hidden rounded-xl bg-mist">
-                  {m.url && <Image src={m.url} alt={m.caption ?? ""} fill unoptimized sizes="(min-width: 640px) 33vw, 50vw" className="object-cover" />}
-                </div>
-              ))}
-            </div>
+            <JournalPhotoGallery items={gallery.map((m) => ({ id: m.id, url: m.url, caption: m.caption, category: null }))} />
           </section>
         )}
 
         {connectedCount > 0 && (
           <section className="mt-8">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">{connectionsHeading}</h2>
-            <div className="mt-3 flex flex-col gap-2">
-              {businesses.map((b) => (
-                <ConnectedRow key={`business-${b.id}`} href={`/business/${b.slug}`} imageUrl={b.logo_url} name={b.name} meta="Business" />
-              ))}
-              {products.map((p) => (
-                <ConnectedRow
-                  key={`product-${p.id}`}
-                  href={`/product/${p.slug}`}
-                  imageUrl={p.image_url}
-                  name={p.name}
-                  meta={p.business?.name ?? "Product"}
-                />
-              ))}
-              {events.map((e) => (
-                <ConnectedRow
-                  key={`event-${e.id}`}
-                  href={`/event/${e.slug}`}
-                  imageUrl={e.cover_image_url}
-                  name={e.name}
-                  meta={new Date(e.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                />
-              ))}
+            <div className="mt-3 flex flex-col gap-4">
+              {businesses.length > 0 && (
+                <ConnectedGroup label="Businesses">
+                  {businesses.map((b) => (
+                    <ConnectedRow key={`business-${b.id}`} href={`/business/${b.slug}`} imageUrl={b.logo_url} name={b.name} />
+                  ))}
+                </ConnectedGroup>
+              )}
+              {products.length > 0 && (
+                <ConnectedGroup label="Products">
+                  {products.map((p) => (
+                    <ConnectedRow key={`product-${p.id}`} href={`/product/${p.slug}`} imageUrl={p.image_url} name={p.name} meta={p.business?.name} />
+                  ))}
+                </ConnectedGroup>
+              )}
+              {events.length > 0 && (
+                <ConnectedGroup label="Events">
+                  {events.map((e) => (
+                    <ConnectedRow
+                      key={`event-${e.id}`}
+                      href={`/event/${e.slug}`}
+                      imageUrl={e.cover_image_url}
+                      name={e.name}
+                      meta={new Date(e.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    />
+                  ))}
+                </ConnectedGroup>
+              )}
             </div>
           </section>
         )}
 
-        {location && (
+        {(location || timeLabel) && (
           <section className="mt-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Details</h2>
-            <div className="mt-3 flex flex-col gap-1 text-sm text-ink/70">
-              <p>{dateLabel}{timeLabel ? ` · ${timeLabel}` : ""}</p>
-              <ConnectedRow href={`/location/${location.slug}`} imageUrl={location.logo_url ?? location.cover_image_url} name={location.name} meta={[location.city, location.state].filter(Boolean).join(", ")} />
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Visit Details</h2>
+            <div className="mt-3 flex flex-col gap-2">
+              <p className="text-sm text-ink/70">
+                {dateLabel}
+                {timeLabel ? ` · ${timeLabel}` : ""}
+              </p>
+              {location && (
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <ConnectedRow href={`/location/${location.slug}`} imageUrl={location.logo_url ?? location.cover_image_url} name={location.name} meta={[location.city, location.state].filter(Boolean).join(", ")} />
+                  </div>
+                  {directionsHref && (
+                    <a
+                      href={directionsHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-10 shrink-0 items-center justify-center rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    >
+                      Directions
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         )}
       </div>
+    </div>
+  );
+}
+
+function ConnectedGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">{label}</p>
+      <div className="flex flex-col gap-2">{children}</div>
     </div>
   );
 }
