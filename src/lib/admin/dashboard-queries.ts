@@ -26,12 +26,21 @@ export interface DashboardNeedsAttention {
    * pending_review view admin/onboarding already offers. */
   pendingOnboardingReview: number;
   /** Onboarding UX Polish pass — businesses.publication_status=
-   * 'pending_review' AND is_demo=false — the same real, non-demo pending
-   * count admin/businesses's own Pending Review filter already uses
-   * (getAdminBusinesses's published='pending_review' branch). This is
-   * new member-created/claimed businesses awaiting founder review, a
-   * DIFFERENT queue from pendingOnboardingReview above (the legacy
-   * memberships/Tally onboarding table). */
+   * 'pending_review' AND is_demo=false AND trashed_at IS NULL — the same
+   * real, non-demo, non-trashed pending count admin/businesses's own
+   * Pending Review filter already uses (getAdminBusinesses's
+   * published='pending_review' branch). This is new member-created/
+   * claimed businesses awaiting founder review, a DIFFERENT queue from
+   * pendingOnboardingReview above (the legacy memberships/Tally
+   * onboarding table).
+   *
+   * Admin Integrity Repair pass — the trashed_at exclusion is new here:
+   * Admin Content Lifecycle V2 (cd34eed) added it to the Business
+   * Manager's own pending_review query but never updated this count, so
+   * a business sitting in Trash while still publication_status=
+   * 'pending_review' (e.g. "Test Biz") inflated this count while the
+   * Business Manager's own Pending Review view correctly showed nothing
+   * — the two surfaces must share one definition. */
   pendingBusinessReviews: number;
   /** Product Moderation pass — products.moderation_status=
    * 'pending_review' OR an already-live product with a standing
@@ -45,10 +54,14 @@ export interface DashboardNeedsAttention {
    * Same queue admin/products' ?status=marketplace_review filter uses. */
   pendingMarketplaceReviews: number;
   /** Event Rejection State pass — events.publication_status='pending_review'
-   * — same needsReview=true filter admin/events offers (getAdminEvents).
-   * Independent of is_demo, which stays the actual public-visibility gate;
-   * a permanent seed/demo event stays publication_status='live' (the
-   * column default) so it's never counted here. */
+   * AND trashed_at IS NULL — same needsReview=true filter admin/events
+   * offers (getAdminEvents). Independent of is_demo, which stays the
+   * actual public-visibility gate; a permanent seed/demo event stays
+   * publication_status='live' (the column default) so it's never counted
+   * here. Admin Integrity Repair pass — trashed_at exclusion added here
+   * for the same reason as pendingBusinessReviews above (see its own
+   * comment): getAdminEvents's own pending_review query already excludes
+   * trashed rows. */
   pendingEventReviews: number;
   /** Admin Where I'll Be Review Inbox pass — appearances.admin_reviewed_at
    * IS NULL, for real (non-demo) businesses. Deliberately named
@@ -141,7 +154,8 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
       .from("businesses")
       .select("id", { count: "exact", head: true })
       .eq("is_demo", false)
-      .eq("publication_status", "pending_review"),
+      .eq("publication_status", "pending_review")
+      .is("trashed_at", null),
     supabase
       .from("products")
       .select("id", { count: "exact", head: true })
@@ -155,7 +169,11 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
     // Event Rejection State pass — was a two-query is_demo+event_members
     // inference (countPendingEventReviews); now a plain publication_status
     // count, same shape as pendingBusinessReviews right above.
-    supabase.from("events").select("id", { count: "exact", head: true }).eq("publication_status", "pending_review"),
+    supabase
+      .from("events")
+      .select("id", { count: "exact", head: true })
+      .eq("publication_status", "pending_review")
+      .is("trashed_at", null),
     supabase
       .from("appearances")
       .select("id, businesses!inner(is_demo)", { count: "exact", head: true })

@@ -85,6 +85,24 @@ export interface BusinessListFilters {
    * Products V1: Archive/Trash must never be the thing you see by
    * default. */
   lifecycle?: "active" | "paused" | "archived" | "trashed";
+  /** Admin Integrity Repair pass — Business Manager previously had no
+   * sort control at all (every view was hardcoded `.order("name")`), so
+   * a newly-created business could land anywhere in an alphabetical
+   * list with no way to surface it. "newest" is the default view asks
+   * for (admin operationally needs to see new businesses first);
+   * "updated"/"az"/"oldest" cover the other asked-for options. `id` is
+   * the secondary tie-break for every option (not just created_at/
+   * updated_at ties) so two rows with an identical primary sort value
+   * never render in a browser-dependent order. */
+  sort?: "newest" | "updated" | "az" | "oldest";
+}
+
+function applySort<Q extends { order: (c: string, o: { ascending: boolean }) => Q }>(query: Q, sort: BusinessListFilters["sort"]): Q {
+  if (sort === "updated") return query.order("updated_at", { ascending: false }).order("id", { ascending: true });
+  if (sort === "az") return query.order("name", { ascending: true }).order("id", { ascending: true });
+  if (sort === "oldest") return query.order("created_at", { ascending: true }).order("id", { ascending: true });
+  // "newest" (explicit or default)
+  return query.order("created_at", { ascending: false }).order("id", { ascending: true });
 }
 
 function applyLifecycleFilter<
@@ -113,21 +131,25 @@ export async function getAdminBusinesses(filters: BusinessListFilters = {}): Pro
     let query = supabase
       .from("businesses")
       .select("*, business_categories!inner(category_id)")
-      .eq("business_categories.category_id", filters.categoryId)
-      .order("name");
+      .eq("business_categories.category_id", filters.categoryId);
     if (filters.q) {
       const term = `%${filters.q}%`;
       query = query.or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`);
     }
     if (filters.published === "public") query = query.eq("is_demo", false);
     if (filters.published === "demo") query = query.eq("is_demo", true);
-    if (filters.published === "pending_review") query = query.eq("is_demo", false).eq("publication_status", "pending_review");
+    // Admin Integrity Repair pass — added the same trashed_at exclusion
+    // the no-category branch below already has, so "pending_review"
+    // means the same thing (and agrees with the Dashboard's count)
+    // regardless of whether a category filter is also applied.
+    if (filters.published === "pending_review") query = query.eq("is_demo", false).eq("publication_status", "pending_review").is("trashed_at", null);
     else query = applyLifecycleFilter(query, filters.lifecycle);
+    query = applySort(query, filters.sort);
     const { data } = await query;
     return ((data ?? []) as unknown as AdminBusiness[]) ?? [];
   }
 
-  let query = supabase.from("businesses").select("*").order("name");
+  let query = supabase.from("businesses").select("*");
   if (filters.q) {
     const term = `%${filters.q}%`;
     query = query.or(`name.ilike.${term},slug.ilike.${term},city.ilike.${term}`);
@@ -139,6 +161,7 @@ export async function getAdminBusinesses(filters: BusinessListFilters = {}): Pro
   } else {
     query = applyLifecycleFilter(query, filters.lifecycle);
   }
+  query = applySort(query, filters.sort);
   const { data } = await query;
   return (data as AdminBusiness[]) ?? [];
 }
@@ -709,9 +732,38 @@ export interface AppearanceListFilters {
 // the immediate need; current real volume is far below this ceiling).
 const APPEARANCE_LIST_LIMIT = 500;
 
-export async function getAdminAppearances(filters: AppearanceListFilters = {}): Promise<AdminAppearanceRow[]> {
+/** Admin Integrity Repair pass — `getAdminAppearances` previously
+ * discarded the Supabase `error` entirely (`const { data } = await
+ * query...`), so a genuine query failure (a bad embed, a stale schema
+ * cache, a transient Supabase error) looked identical to a real "0
+ * results" — the admin page had no way to tell "the database is
+ * empty" from "the database didn't answer." `failed: true` is that
+ * missing signal: the caller (appearances/page.tsx) renders an explicit
+ * error state instead of "0 results" whenever this is true, and `[]` is
+ * paired with it so every existing caller that only reads `appearances`
+ * keeps working. Logged server-side only (logAdminQueryError), same
+ * "never put the raw database error in front of a browser" discipline
+ * lib/data.ts's own logPublicQueryError already established for public
+ * queries — this is that same pattern's admin-side counterpart. */
+export interface AdminAppearancesResult {
+  appearances: AdminAppearanceRow[];
+  /** True when the query itself failed (or the admin client isn't
+   * configured) — never true just because zero rows matched the
+   * filters. */
+  failed: boolean;
+}
+
+function logAdminQueryError(context: string, error: { message: string; code?: string } | null): void {
+  if (!error) return;
+  console.error(`[admin-data] ${context} failed`, { message: error.message, code: error.code });
+}
+
+export async function getAdminAppearances(filters: AppearanceListFilters = {}): Promise<AdminAppearancesResult> {
   const supabase = getAdminSupabase();
-  if (!supabase) return [];
+  if (!supabase) {
+    logAdminQueryError("getAdminAppearances", { message: "Admin Supabase client isn't configured." });
+    return { appearances: [], failed: true };
+  }
   let query = supabase
     .from("appearances")
     .select(
@@ -743,11 +795,12 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
   // questions (when it was added vs. when it happens). Reviewed/All keep
   // the existing start_at-based order unchanged.
   const unreviewedInbox = filters.reviewed === "unreviewed";
-  const { data } = await query
+  const { data, error } = await query
     .order(unreviewedInbox ? "created_at" : "start_at", { ascending: unreviewedInbox ? false : filters.when === "upcoming" })
     .limit(APPEARANCE_LIST_LIMIT);
+  logAdminQueryError("getAdminAppearances", error);
   const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
-  return ((data ?? []) as never[]).map((row: unknown) => {
+  const appearances = ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as AdminAppearanceRow & {
       business: AdminAppearanceRow["business"] | AdminAppearanceRow["business"][];
       event:
@@ -769,6 +822,7 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
       market_area: one(r.market_area),
     };
   });
+  return { appearances, failed: Boolean(error) };
 }
 
 export async function getAdminAppearanceById(id: string): Promise<AdminAppearance | null> {

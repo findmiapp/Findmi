@@ -28,6 +28,8 @@ export default function BusinessesFilterBar({
   initialCategory,
   initialPublished,
   initialLifecycle,
+  initialSort,
+  sortOptions,
   children,
 }: {
   categories: Category[];
@@ -40,6 +42,10 @@ export default function BusinessesFilterBar({
    * in-place search/category change (this component's own client-side
    * navigate()) doesn't silently drop back to the default tab. */
   initialLifecycle?: string;
+  /** Admin Integrity Repair pass — same "carried through, never reset by
+   * an unrelated filter change" treatment as initialLifecycle above. */
+  initialSort: string;
+  sortOptions: readonly { value: string; label: string }[];
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -61,15 +67,17 @@ export default function BusinessesFilterBar({
     setQ(initialQ);
   }, [initialQ]);
 
-  function navigate(next: { q?: string; category?: string; published?: string }) {
+  function navigate(next: { q?: string; category?: string; published?: string; sort?: string }) {
     const params = new URLSearchParams();
     const nextQ = next.q ?? q;
     const nextCategory = next.category ?? initialCategory;
     const nextPublished = next.published ?? initialPublished;
+    const nextSort = next.sort ?? initialSort;
     if (nextQ.trim()) params.set("q", nextQ.trim());
     if (nextCategory) params.set("category", nextCategory);
     if (nextPublished) params.set("published", nextPublished);
     if (initialLifecycle) params.set("lifecycle", initialLifecycle);
+    if (nextSort && nextSort !== "newest") params.set("sort", nextSort);
     const qs = params.toString();
     startTransition(() => {
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -131,6 +139,24 @@ export default function BusinessesFilterBar({
             <option value="public">Public only</option>
             <option value="pending_review">Pending Review only</option>
             <option value="demo">Demo/hidden only</option>
+          </select>
+          {/* Admin Integrity Repair pass — Newest is the default (see
+              getAdminBusinesses's own applySort), always rendered so the
+              active sort is never ambiguous; preserved across search/
+              category/published changes via navigate()'s own nextSort
+              fallback above, same treatment every other control here
+              already gets. */}
+          <select
+            value={initialSort}
+            onChange={(e) => navigate({ sort: e.target.value })}
+            className={selectClass}
+            aria-label="Sort"
+          >
+            {sortOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                Sort: {o.label}
+              </option>
+            ))}
           </select>
           {hasActiveFilters && (
             <button

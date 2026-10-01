@@ -20,24 +20,26 @@ export default async function AdminAppearancesPage({
   searchParams: Promise<{ q?: string; when?: string; business?: string; linkage?: string; reviewed?: string; imported?: string }>;
 }) {
   const { q, when, business, linkage, reviewed, imported } = await searchParams;
-  // Admin Where I'll Be Review Inbox pass — Unreviewed is now the real
-  // default (was "Upcoming" reads only). Reviewed/All keep the existing
-  // "Upcoming" default from the prior Organization pass unchanged; the
-  // Unreviewed inbox itself defaults to "all" timing (not just upcoming)
-  // when `when` isn't explicitly set, since this is an inbox of recently
-  // ADDED records — a business could add a standalone entry for a date
-  // that's already passed, and it still deserves acknowledgement. An
-  // explicit ?when= always wins regardless of view.
+  // Admin Where I'll Be Review Inbox pass — Unreviewed is the real
+  // default. Review state (Unreviewed/Reviewed/All) and date (Upcoming/
+  // Past/All Dates) are two independent dimensions.
+  //
+  // Admin Integrity Repair pass — date filtering previously defaulted
+  // differently depending on which review state was active (the
+  // Unreviewed inbox silently fell back to "all" dates, Reviewed/All
+  // fell back to "upcoming"), so switching only the review-state pill
+  // could silently change which dates were included too — "All" review
+  // state looked broader than it actually was. `whenFilter` now has
+  // exactly one rule, independent of `reviewedFilter`: an explicit
+  // `?when=` always wins; otherwise it defaults to "upcoming" (the
+  // product-preferred default for every view). The select below always
+  // renders this resolved value, so the active date state is never
+  // ambiguous.
   const reviewedFilter = reviewed === "reviewed" || reviewed === "all" ? reviewed : "unreviewed";
-  const whenFilter =
-    when === "past" || when === "all" || when === "upcoming"
-      ? when
-      : reviewedFilter === "unreviewed"
-        ? "all"
-        : "upcoming";
+  const whenFilter = when === "past" || when === "all" || when === "upcoming" ? when : "upcoming";
   const linkageFilter = linkage === "event" || linkage === "standalone" ? linkage : undefined;
 
-  const [appearances, initialBusiness] = await Promise.all([
+  const [{ appearances, failed }, initialBusiness] = await Promise.all([
     getAdminAppearances({ q, when: whenFilter, businessId: business, linkage: linkageFilter, reviewed: reviewedFilter }),
     getBusinessOptionById(business ?? null),
   ]);
@@ -129,11 +131,19 @@ export default async function AdminAppearancesPage({
             placeholder="Filter by business…"
           />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Admin Integrity Repair pass — a plain text label (this select
+              had none before) plus always rendering the actually-resolved
+              `whenFilter` (never the raw, possibly-absent `when` param) is
+              what makes the active date state unambiguous — a visitor
+              can't land here with the select silently out of sync with
+              what was actually queried. "All Dates" (not "All") so it's
+              never confused with the review-state pill's own "All". */}
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink/40">Date</span>
           <select name="when" defaultValue={whenFilter} className={selectClass}>
             <option value="upcoming">Upcoming</option>
             <option value="past">Past</option>
-            <option value="all">All</option>
+            <option value="all">All Dates</option>
           </select>
           <select name="linkage" defaultValue={linkage ?? ""} className={selectClass}>
             <option value="">Event-linked & Standalone</option>
@@ -149,11 +159,27 @@ export default async function AdminAppearancesPage({
         </div>
       </form>
 
-      <p className="mt-4 text-xs text-ink/40">
-        {appearances.length >= 500
-          ? "Showing the first 500 matching results — narrow with search or filters to see more."
-          : `${appearances.length} result${appearances.length === 1 ? "" : "s"}.`}
-      </p>
+      {/* Admin Integrity Repair pass — a failed query must never render
+          as "0 results": that reads identically to a genuinely empty
+          view and previously made a real query failure indistinguishable
+          from "there's nothing here." `failed` (see getAdminAppearances'
+          own doc comment) is a distinct signal from an empty
+          `appearances` array — SUCCESS-with-zero-rows still renders the
+          normal "0 results" line below, only a genuine failure renders
+          this banner instead. */}
+      {failed ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Couldn&rsquo;t load Where You&rsquo;ll Be for this view — the database didn&rsquo;t return a result. This is
+          not the same as &ldquo;no matching records&rdquo;; try reloading or adjusting filters, and check server logs
+          if it persists.
+        </p>
+      ) : (
+        <p className="mt-4 text-xs text-ink/40">
+          {appearances.length >= 500
+            ? "Showing the first 500 matching results — narrow with search or filters to see more."
+            : `${appearances.length} result${appearances.length === 1 ? "" : "s"}.`}
+        </p>
+      )}
 
       {/* Admin Where I'll Be Review Inbox pass — AppearanceReviewList is
           keyed off the actual id set so its internal selection state
