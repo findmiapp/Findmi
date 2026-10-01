@@ -214,19 +214,39 @@ export default async function HomePage({
           role flag. These cards go straight to that destination (not to
           /join itself, which would just re-present the same choice).
           ChevronGlyph is the same local glyph the Join/Native-Rose CTAs
-          below already use. NavIcon's "bookmark"/"storefront" are the
-          exact same two icons /join/page.tsx's own ValueCards already
-          use for these same two destinations — no new icon dependency.
+          below already use.
           Start-Here CTA Polish pass — added the small aqua eyebrow (same
           text-findmi-700 eyebrow treatment Section.tsx's own `eyebrow`
           prop renders for "Showing Up" above Brands We Love); both cards
-          now share one neutral white/bordered/shadow-sm treatment (the
-          same FeaturedLocationHappeningCard convention) instead of
-          Passbook's previous pale-aqua tint, which read as "selected";
-          each card's icon+title+chevron is now one `flex items-center`
-          row with `min-w-0 truncate` on the title so it can never wrap
-          to a second line regardless of copy length; supporting lines
-          shortened to one line each. */}
+          share one neutral white/bordered/shadow-sm treatment (the same
+          FeaturedLocationHappeningCard convention) instead of Passbook's
+          previous pale-aqua tint, which read as "selected".
+          Start-Here CTA Icon Micro-Polish pass — live mobile QA showed
+          the small inline icon + uppercase title truncating ("START YOUR
+          PASSBO…", "ADD BRAND / LOCATI…"). Copy shortened (Create
+          Passbook / Add Business) and titles switched to normal case (no
+          `uppercase`/`tracking-wide`, which was costing real width for no
+          reason) so they fit without truncation — the title's own <p> no
+          longer carries a `truncate` class at all, by design, so a future
+          regression shows as a real overflow instead of a silently
+          swallowed ellipsis. Icon treatment enlarged into its own
+          44px/soft-aqua "icon well" (`bg-findmi-50`, the same pale-aqua
+          token this file already uses for eyebrows/pills) holding a
+          28px NavIcon, vertically centered beside a title+description
+          text column — `shrink-0` on the well and chevron, `min-w-0
+          flex-1` on the text column, exactly as specced. Passbook keeps
+          its existing NavIcon "bookmark". Business drops the generic
+          retail "storefront" (no NavIcon key better fits "adding a place
+          to Findmi" on its own) for a composite "pin + plus" badge — the
+          exact map-pin-plus idiom this pass asked for, built entirely
+          from existing assets already in this codebase: NavIcon's own
+          "pin" glyph plus the same small circular plus-badge convention
+          BusinessScopedAction.tsx's CirclePlus already uses for every
+          other "add" action in the app (bg-findmi circle, white plus),
+          reproduced here as a local PlusBadgeGlyph (this file's own
+          established per-file local-glyph convention, see ChevronGlyph)
+          rather than importing a client-only account-flow module into
+          this Server Component tree. No new icon dependency added. */}
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
         <p className="mt-1 font-display text-base font-bold leading-snug tracking-tight text-ink sm:text-lg">
@@ -235,29 +255,36 @@ export default async function HomePage({
         <div className="mt-2.5 grid grid-cols-2 gap-2.5">
           <Link
             href={`/signup?next=${encodeURIComponent("/join/start?intent=passbook")}`}
-            className="rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
+            className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
           >
-            <div className="flex items-center gap-1">
-              <NavIcon name="bookmark" className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
-              <p className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase leading-snug text-ink sm:text-[11px]">
-                Start Your Passbook
-              </p>
-              <ChevronGlyph className="h-2.5 w-2.5 shrink-0 text-ink/40" />
-            </div>
-            <p className="mt-1 truncate text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences.</p>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
+              <NavIcon name="bookmark" className="h-7 w-7 text-findmi-700" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1">
+                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">Create Passbook</span>
+                <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/40" />
+              </span>
+              <span className="mt-0.5 block text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences.</span>
+            </span>
           </Link>
           <Link
             href={`/signup?next=${encodeURIComponent("/join/start?intent=business")}`}
-            className="rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
+            className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
           >
-            <div className="flex items-center gap-1">
-              <NavIcon name="storefront" className="h-3.5 w-3.5 shrink-0 text-findmi-700" />
-              <p className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase leading-snug text-ink sm:text-[11px]">
-                Add Brand / Location
-              </p>
-              <ChevronGlyph className="h-2.5 w-2.5 shrink-0 text-ink/40" />
-            </div>
-            <p className="mt-1 truncate text-[10px] leading-snug text-ink/55 sm:text-[11px]">Get discovered on Findmi.</p>
+            <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
+              <NavIcon name="pin" className="h-7 w-7 text-findmi-700" />
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-findmi text-white ring-2 ring-white">
+                <PlusBadgeGlyph className="h-2.5 w-2.5" />
+              </span>
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1">
+                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">Add Business</span>
+                <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/40" />
+              </span>
+              <span className="mt-0.5 block text-[10px] leading-snug text-ink/55 sm:text-[11px]">Get discovered on Findmi.</span>
+            </span>
           </Link>
         </div>
         <p className="mt-2 truncate text-xs text-ink/50">Free to get started · No credit card required</p>
@@ -662,6 +689,20 @@ function ChevronGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
       <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Start-Here CTA Icon Micro-Polish pass — the same plain plus-sign shape
+// BusinessScopedAction.tsx's CirclePlus badge already uses for every
+// "add" action elsewhere in the app, reproduced locally (this file's own
+// established per-glyph convention, see ChevronGlyph above) rather than
+// importing a client-only account-flow module into this Server Component
+// tree. No new icon dependency.
+function PlusBadgeGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
