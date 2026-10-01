@@ -61,6 +61,17 @@ const HOMEPAGE_SECTION_SUBTITLE_CLASS = "mt-1 text-sm text-ink/60";
 // Homepage Content Priority pass — same real example business /join's own
 // Native Rose Showcase section uses (see PROOF_BUSINESS_SLUG there).
 const NATIVE_ROSE_SLUG = "the-native-rose";
+// Homepage Live Profile CTA Micro-Polish pass — this showcase has no
+// fetched business object (BusinessShowcaseCarousel is static real
+// screenshots, see its own comment), so there's no business.name already
+// in this page's data path to reuse for the CTA copy. Deriving the
+// display name from the existing slug constant (rather than a second,
+// independent hardcoded string) keeps the CTA's name tied to whichever
+// business NATIVE_ROSE_SLUG actually points to, without adding a new
+// query just to read one business's name.
+const NATIVE_ROSE_NAME = NATIVE_ROSE_SLUG.split("-")
+  .map((word) => word[0].toUpperCase() + word.slice(1))
+  .join(" ");
 
 export default async function HomePage({
   searchParams,
@@ -373,7 +384,7 @@ export default async function HomePage({
         <div className="mt-4">
           <BusinessShowcaseCarousel />
         </div>
-        <div className="mt-3 flex justify-center">
+        <div className="mt-3 flex justify-start">
           {/* Small Public UI Polish pass — was a bare text link, reading as
               visually unfinished in the whitespace above the black JOIN
               FINDMI card. Now the same pale-Aqua "soft highlight panel"
@@ -381,12 +392,18 @@ export default async function HomePage({
               + text-findmi-700 — see CLAUDE.md's design-system notes on
               that combination), so it reads as a real, compact secondary
               CTA without competing with the black card beneath it. Same
-              destination/behavior, unchanged. */}
+              destination/behavior, unchanged.
+              Homepage Live Profile CTA Micro-Polish pass — left-aligned
+              (was centered) to sit naturally with the left-aligned section
+              heading/copy above it; still a compact pill, not full width.
+              Copy now names the business (NATIVE_ROSE_NAME, derived from
+              the existing slug — see its own comment) instead of the
+              generic "live profile". */}
           <a
             href={`/business/${NATIVE_ROSE_SLUG}`}
             className="inline-flex items-center gap-1.5 rounded-full border border-findmi/30 bg-findmi-50 px-4 py-2 text-sm font-semibold text-findmi-700 transition hover:border-findmi/50 hover:bg-findmi-100"
           >
-            View live profile <span aria-hidden>→</span>
+            View {NATIVE_ROSE_NAME} Live Profile <span aria-hidden>→</span>
           </a>
         </div>
       </div>
