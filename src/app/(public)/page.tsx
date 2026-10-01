@@ -246,10 +246,28 @@ export default async function HomePage({
           reproduced here as a local PlusBadgeGlyph (this file's own
           established per-file local-glyph convention, see ChevronGlyph)
           rather than importing a client-only account-flow module into
-          this Server Component tree. No new icon dependency added. */}
+          this Server Component tree. No new icon dependency added.
+          Onboarding CTA Micro-Polish pass — headline bumped one Tailwind
+          type step (text-base/sm:text-lg -> text-lg/sm:text-xl) for a
+          touch more authority beneath the eyebrow; still well short of
+          the hero headline's own size. Passbook CTA retitled "My
+          Journal" (copy/visual only — href is byte-identical, still
+          /signup?next=/join/start?intent=passbook). Audited NavIcon's
+          full icon set and every local glyph already in this codebase
+          (ChevronGlyph/PlusBadgeGlyph here, LockGlyph/GlobeGlyph in
+          JournalCreateWizard.tsx, etc.) for an existing journal/notebook/
+          pencil icon — none exists — so JournalGlyph below is a small
+          local composite built the same way PlusBadgeGlyph was: a simple
+          notebook outline with two text lines, plus a standard pencil
+          silhouette (the common Feather "edit-2" path, scaled/
+          translated via a <g> transform, not imported) overlapping its
+          bottom-right corner. No icon dependency added. Add Business's
+          pin+plus well is unchanged — already the same 44px size/
+          alignment as Passbook's well, so no adjustment was needed to
+          keep the two balanced. */}
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
-        <p className="mt-1 font-display text-base font-bold leading-snug tracking-tight text-ink sm:text-lg">
+        <p className="mt-1 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:text-xl">
           Find what you love. Get discovered.
         </p>
         <div className="mt-2.5 grid grid-cols-2 gap-2.5">
@@ -258,11 +276,11 @@ export default async function HomePage({
             className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
-              <NavIcon name="bookmark" className="h-7 w-7 text-findmi-700" />
+              <JournalGlyph className="h-7 w-7 text-findmi-700" />
             </span>
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1">
-                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">Create Passbook</span>
+                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">My Journal</span>
                 <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/40" />
               </span>
               <span className="mt-0.5 block text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences.</span>
@@ -703,6 +721,25 @@ function PlusBadgeGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
       <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Onboarding CTA Micro-Polish pass — no NavIcon key (see NavIcon.tsx) or
+// existing local glyph anywhere in this codebase covers "journal" /
+// "notebook" / "write", so this is a small local composite in the same
+// convention as ChevronGlyph/PlusBadgeGlyph above: a plain notebook
+// outline with two text lines, plus the common Feather "edit-2" pencil
+// silhouette (scaled/translated via a <g>, not a new dependency)
+// overlapping its bottom-right corner.
+function JournalGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <rect x="3.5" y="3.5" width="13" height="17" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6.5 8h7M6.5 11.5h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <g transform="translate(9.5 9.5) scale(0.5)">
+        <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      </g>
     </svg>
   );
 }
