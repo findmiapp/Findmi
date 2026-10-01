@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJournalEntryWithRelations } from "@/lib/journal";
+import { isAdminSession } from "@/lib/admin/auth";
 import JournalOwnerActions from "@/components/journal/JournalOwnerActions";
 import JournalPhotoGallery from "@/components/journal/JournalPhotoGallery";
 import ReadMoreText from "@/components/ReadMoreText";
@@ -45,9 +46,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function JournalEntryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const result = await getJournalEntryWithRelations(id);
+  const [result, isAuthorizedAdmin] = await Promise.all([getJournalEntryWithRelations(id), isAdminSession()]);
   if (!result) notFound();
   const { entry, media, location, businesses, products, events, isOwner } = result;
+  const authorLabel = entry.author_label?.trim() || null;
 
   const cover = media.find((m) => m.is_cover) ?? media[0] ?? null;
   const gallery = media.filter((m) => m.id !== cover?.id);
@@ -107,6 +109,23 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
             <span className="text-label uppercase tracking-wide text-white/25">Findmi</span>
           </div>
         )}
+        {/* Journal Pass 1 — authorized-admin-only edit control. Same glass
+            icon-button treatment every other photo-overlay action in this
+            app already uses (e.g. HomeEventCard's Calendar/Share buttons),
+            not a new visual language. isAdminSession() is the same
+            independent cookie-session check /admin's own middleware gate
+            performs — server-verified, never a client-side role guess.
+            Links straight to this entry's own admin editor, never a
+            generic Journal admin index. */}
+        {isAuthorizedAdmin && (
+          <Link
+            href={`/admin/journal/${entry.id}`}
+            aria-label="Edit journal entry"
+            className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-md transition active:scale-95"
+          >
+            <EditPencilGlyph className="h-4 w-4" />
+          </Link>
+        )}
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4 pt-16 sm:p-6"
           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 35%, rgba(0,0,0,0) 85%)" }}
@@ -117,6 +136,10 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
               Natural wrapping + the gradient's own generous bottom padding
               keep even a long title readable. */}
           <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{entry.title}</h1>
+          {/* Journal Pass 1 — author attribution ("By Findmi"). Renders
+              nothing when author_label is null/empty (every existing entry
+              today) — never an empty byline row. */}
+          {authorLabel && <p className="text-xs font-semibold uppercase tracking-wide text-white/70">By {authorLabel}</p>}
           <p className="text-sm font-medium text-white/80">
             {dateLabel}
             {heroLocationLabel ? ` · ${heroLocationLabel}` : ""}
@@ -263,5 +286,22 @@ function ConnectedRow({ href, imageUrl, name, meta }: { href: string; imageUrl: 
       </span>
       <span className="shrink-0 text-xs font-semibold text-findmi-700">View</span>
     </Link>
+  );
+}
+
+// Journal Pass 1 — this file's own local glyph (no SVG helper previously
+// existed here), same plain stroke-icon convention used throughout the
+// app (e.g. page.tsx's own ChevronGlyph/PlusBadgeGlyph on the homepage).
+function EditPencilGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M17 3a2.1 2.1 0 013 3L8.5 17.5 4 19l1.5-4.5L17 3z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

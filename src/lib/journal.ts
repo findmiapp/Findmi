@@ -20,6 +20,7 @@
 //      the only client capable of signing) for a storage_path that
 //      already passed through a layer-1-gated row read. A client can never
 //      reach a private object merely by knowing its path.
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "./supabase/server";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { validateImageFile } from "./imageUploadValidation";
@@ -56,6 +57,10 @@ export interface JournalEntryRow {
   status: JournalStatus;
   created_at: string;
   updated_at: string;
+  // Journal Pass 1 — nullable author attribution ("By Findmi"). See the
+  // migration's own comment for why this is a single plain column rather
+  // than any author/publisher/organization architecture.
+  author_label: string | null;
 }
 
 export interface JournalEntryMediaRow {
@@ -187,7 +192,7 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
 
   const media = await attachSignedUrls((mediaRows ?? []) as JournalEntryMediaRow[]);
   const connections = (connectionRows ?? []) as JournalConnectionRow[];
-  const { businesses, products, events } = await resolveConnectedObjects(connections);
+  const { businesses, products, events } = await resolveConnectedObjects(connections, supabase);
 
   return {
     entry: entry as JournalEntryRow,
@@ -200,12 +205,63 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
   };
 }
 
+/** Journal Pass 1 — admin-only variant of getJournalEntryWithRelations,
+ * read entirely through the service-role client instead of the session-
+ * scoped one, so it works regardless of the caller's own Supabase auth
+ * state (an admin-password session carries no Supabase user at all) and
+ * regardless of the entry's owner/visibility/status — including an
+ * unpublished draft, which the public/owner RLS paths would never return
+ * to anyone but the real owner. Callers MUST already have verified admin
+ * authorization before calling this (see /admin/journal/[id]/page.tsx) —
+ * it performs no authorization itself, exactly like every other
+ * getAdminSupabase() consumer in this codebase. `isOwner` is always true
+ * here: the one call site (the admin editor) never reads it, since the
+ * JournalEditForm UI itself has no owner-vs-admin branch. */
+export async function getJournalEntryWithRelationsForAdmin(entryId: string): Promise<JournalEntryWithRelations | null> {
+  const admin = getAdminSupabase();
+  if (!admin) return null;
+
+  const { data: entry } = await admin.from("journal_entries").select("*").eq("id", entryId).maybeSingle();
+  if (!entry) return null;
+
+  const [{ data: mediaRows }, { data: connectionRows }, locationResult] = await Promise.all([
+    admin.from("journal_entry_media").select("*").eq("journal_entry_id", entryId).order("display_order", { ascending: true }),
+    admin.from("journal_entry_connections").select("*").eq("journal_entry_id", entryId),
+    entry.location_id
+      ? admin
+          .from("locations")
+          .select("id, name, slug, city, state, address, logo_url, cover_image_url")
+          .eq("id", entry.location_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const media = await attachSignedUrls((mediaRows ?? []) as JournalEntryMediaRow[]);
+  const connections = (connectionRows ?? []) as JournalConnectionRow[];
+  const { businesses, products, events } = await resolveConnectedObjects(connections, admin);
+
+  return {
+    entry: entry as JournalEntryRow,
+    media,
+    location: (locationResult.data as JournalLocationRef | null) ?? null,
+    businesses,
+    products,
+    events,
+    isOwner: true,
+  };
+}
+
 /** Batched lookup of the real Business/Product/Event rows a set of
  * connections point to — one query per object type total, never one
  * query per connection row (avoids N+1 on a Detail page with many
- * connections). */
+ * connections). Accepts either the session-scoped or the service-role
+ * client (same SupabaseClient-parameter pattern already used elsewhere in
+ * this codebase — see lib/handles.ts, lib/admin/categoryForm.ts) so the
+ * admin-only variant above can reuse this exact lookup instead of
+ * duplicating it. */
 async function resolveConnectedObjects(
-  connections: JournalConnectionRow[]
+  connections: JournalConnectionRow[],
+  supabase: SupabaseClient
 ): Promise<{ businesses: JournalBusinessRef[]; products: JournalProductRef[]; events: JournalEventRef[] }> {
   const businessIds = connections.map((c) => c.business_id).filter((id): id is string => Boolean(id));
   const productIds = connections.map((c) => c.product_id).filter((id): id is string => Boolean(id));
@@ -214,7 +270,6 @@ async function resolveConnectedObjects(
     return { businesses: [], products: [], events: [] };
   }
 
-  const supabase = await getServerSupabase();
   const [{ data: businesses }, { data: products }, { data: events }] = await Promise.all([
     businessIds.length
       ? supabase.from("businesses").select("id, name, slug, logo_url").in("id", businessIds)

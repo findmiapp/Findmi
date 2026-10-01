@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { isAdminSession } from "@/lib/admin/auth";
+import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
 
 // Journal V1 Server Actions — every mutation here re-derives the caller's
@@ -28,8 +30,29 @@ async function requireUser() {
 /** Verifies the caller owns `entryId`, via the session-scoped client (RLS-
  * backed — a non-owner's select simply returns no row). Returns the admin
  * (service-role) client for the actual write once ownership is confirmed,
- * same two-step pattern requireAuthorizedBusinessMember already uses. */
+ * same two-step pattern requireAuthorizedBusinessMember already uses.
+ *
+ * Journal Pass 1 — an authorized FindMi admin (isAdminSession(), the same
+ * independent cookie-session check middleware's own /admin gate performs)
+ * is also allowed through, for ANY entry regardless of its real owner —
+ * this is the one path the new /admin/journal/[id] editor needs, since an
+ * admin-password session carries no Supabase auth identity of its own and
+ * so could never pass the owner check above. requireAdminSupabase()
+ * re-verifies admin status (defense in depth, same as every other
+ * privileged admin Server Action in this codebase) before handing back the
+ * service-role client; the entry's real `user_id` is read directly via
+ * that client (bypassing RLS, correctly, since this caller is already
+ * independently authorized) so uploadJournalPhoto's storage path still
+ * groups by the entry's TRUE owner, never the editing admin. Every
+ * existing consumer owner-path call and behavior below is unchanged. */
 async function requireOwnEntry(entryId: string) {
+  if (await isAdminSession()) {
+    const admin = await requireAdminSupabase();
+    const { data: entry } = await admin.from("journal_entries").select("id, user_id").eq("id", entryId).maybeSingle();
+    if (!entry) throw new Error("That Journal Entry doesn't exist.");
+    return { admin, userId: entry.user_id as string };
+  }
+
   const user = await requireUser();
   const supabase = await getServerSupabase();
   const { data: entry } = await supabase.from("journal_entries").select("id, user_id").eq("id", entryId).maybeSingle();
