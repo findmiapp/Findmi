@@ -96,6 +96,57 @@ function CalendarGlyph({ className }: { className?: string }) {
   );
 }
 
+/** Location Detail V1 — a purpose-built compact rail card for the
+ * Location page's own "Coming Up Here" remainder (everything after the
+ * one featured happening). Deliberately not HappeningRow stretched into a
+ * rail cell — that reads like a desktop list row squeezed sideways (a
+ * wide date chip + a trailing CTA pill competing for a narrow column).
+ * This is the leaner, photographic, single-line scan: thumbnail, title,
+ * business/organizer, one date/time (or "Happening Now") line, chevron.
+ * Whole card is one Link, same destination/type rules as every other
+ * LocationHappening card (href is set once at the query). */
+export function LocationUpcomingCard({ item }: { item: LocationHappening }) {
+  const { live } = getTemporalLabel(item.start_at, item.end_at);
+
+  return (
+    <Link
+      href={item.href}
+      className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-2.5 transition active:scale-[0.98] hover:border-black/10 hover:shadow-sm"
+    >
+      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-black/[0.04]">
+        {item.imageUrl ? (
+          <SupabaseImage src={item.imageUrl} alt="" fill sizes="56px" className="object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-stone to-ink">
+            <CalendarGlyph className="h-5 w-5 text-white/25" />
+          </div>
+        )}
+        {live && (
+          <span className="absolute bottom-1 right-1">
+            <LiveDot className="text-red-500" />
+          </span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-display text-sm font-bold text-ink">{item.title}</p>
+        {item.subtitle && <p className="truncate text-xs text-ink/55">{item.subtitle}</p>}
+        <p className="mt-0.5 truncate text-xs text-ink/50">
+          {live ? "Happening Now" : formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
+        </p>
+      </div>
+      <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/30" />
+    </Link>
+  );
+}
+
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** Compact list row for the same data, for a scannable full list underneath
  * the carousel. */
 export function HappeningRow({ item }: { item: LocationHappening }) {

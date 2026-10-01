@@ -39,8 +39,11 @@ export default function ShareButton({
    * AddToCalendarButton's own new "row" layout (h-11, rounded-xl, bold
    * uppercase label) for a 3-across `grid grid-cols-3` action row (see
    * AppearanceQuickView), where "default"'s rounded-full/text-sm geometry
-   * didn't match Directions/Calendar there. */
-  variant?: "default" | "icon" | "row";
+   * didn't match Directions/Calendar there. Location Detail V1 — "grid" is
+   * an icon-over-label control that fills its parent grid cell, same
+   * shape/geometry as EventShareButton's own "grid" layout, for the
+   * Location page's primary action grid (see LocationPublicView.tsx). */
+  variant?: "default" | "icon" | "row" | "grid";
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -85,6 +88,19 @@ export default function ShareButton({
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink transition active:scale-90"
       >
         {shareGlyph}
+      </button>
+    );
+  }
+
+  if (variant === "grid") {
+    return (
+      <button
+        type="button"
+        onClick={handleShare}
+        className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
+      >
+        {shareGlyph}
+        <span className="text-[11px] font-semibold uppercase tracking-wide">{copied ? "Copied" : "Share"}</span>
       </button>
     );
   }

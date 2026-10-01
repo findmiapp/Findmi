@@ -1,56 +1,69 @@
 import Image from "next/image";
 import Link from "next/link";
+import LiveDot from "./LiveDot";
 
-/** Location Detail V1 — the Location page's own featured-happening hero,
- * visually/interaction-modeled on Business's locked FeaturedAppearanceCard
- * (same full-bleed image + bottom gradient treatment) but never importing
- * or reusing that component directly — this is a Location-only card with
- * its own content shape. No Directions action here: unlike an appearance
- * that can be anywhere, this happening is already confirmed to be AT this
- * Location, and the page's own Directions action (in the identity/action
- * row above) already covers getting to this exact place. */
+/** Location Detail V1 (visual implementation pass) — the Location page's
+ * own featured-happening hero, a contained horizontal card (image left,
+ * content right) matching the approved Hudson Yards reference exactly.
+ * Visually distinct from Business's locked FeaturedAppearanceCard (a
+ * full-bleed image with bottom-gradient text) — never imports or reuses
+ * that component. No Directions action here: this happening is already
+ * confirmed to be AT this Location, and the page's own Directions tile
+ * (in the primary action grid above) already covers getting to this
+ * exact place. `kindLabel` is truthful per entity — "Featured Event" for
+ * an event occurrence, "Featured Appearance" for a standalone appearance
+ * — never forcing Event language onto an Appearance. */
 export default function FeaturedLocationHappeningCard({
+  kindLabel,
   title,
   imageUrl,
   href,
   ctaLabel,
-  dateTimeLine,
   subtitleLine,
+  dateTimeLine,
+  locationLine,
+  live,
 }: {
+  kindLabel: string;
   title: string;
   imageUrl: string | null;
   href: string;
   ctaLabel: string;
-  dateTimeLine: string | null;
+  /** Business/organizer line — "by illy". Null when the happening has no
+   * such attribution (e.g. an occurrence with no organizer_name). */
   subtitleLine: string | null;
+  dateTimeLine: string | null;
+  locationLine: string | null;
+  live: boolean;
 }) {
   return (
     <Link
       href={href}
-      className="block overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:border-black/20"
+      className="flex items-stretch gap-3 overflow-hidden rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:gap-4 sm:p-3"
     >
-      <div className="relative aspect-[16/10] w-full bg-ink">
+      <div className="relative aspect-square w-28 shrink-0 overflow-hidden rounded-xl bg-ink sm:w-36">
         {imageUrl ? (
-          <Image src={imageUrl} alt={title} fill unoptimized sizes="(min-width: 640px) 480px, 100vw" className="object-cover" />
+          <Image src={imageUrl} alt={title} fill unoptimized sizes="(min-width: 640px) 144px, 112px" className="object-cover" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-ink">
-            <span className="text-label uppercase tracking-wide text-white/25">Findmi</span>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-white/25">Findmi</span>
           </div>
         )}
-        <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 p-3 pt-16 sm:p-4"
-          style={{
-            background:
-              "linear-gradient(to top, rgba(0,0,0,0.90) 0%, rgba(0,0,0,0.70) 28%, rgba(0,0,0,0.28) 58%, rgba(0,0,0,0) 85%)",
-          }}
-        >
-          <h2 className="font-display text-card-title-lg font-bold tracking-tight text-white line-clamp-2">{title}</h2>
-          {dateTimeLine && <p className="text-metadata font-medium text-white/90">{dateTimeLine}</p>}
-          {subtitleLine && <p className="text-metadata font-medium text-white/70 line-clamp-1">{subtitleLine}</p>}
-        </div>
+        {live && (
+          <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+            <LiveDot className="text-white" />
+            Happening Now
+          </span>
+        )}
       </div>
-      <div className="flex items-center p-3 sm:p-4">
-        <span className="flex h-10 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white">
+
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-0.5">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">{kindLabel}</p>
+        <h2 className="font-display text-base font-bold leading-snug text-ink line-clamp-2 sm:text-lg">{title}</h2>
+        {subtitleLine && <p className="truncate text-sm text-ink/60">by {subtitleLine}</p>}
+        {dateTimeLine && <p className="mt-0.5 truncate text-xs text-ink/55">{dateTimeLine}</p>}
+        {locationLine && <p className="truncate text-xs text-ink/45">{locationLine}</p>}
+        <span className="mt-1.5 inline-flex h-8 w-fit items-center justify-center rounded-lg bg-findmi px-3 text-[11px] font-bold uppercase tracking-wide text-white">
           {ctaLabel}
         </span>
       </div>

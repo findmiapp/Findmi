@@ -10,10 +10,14 @@ import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import LocationSaveButton from "@/components/LocationSaveButton";
 import ShareButton from "@/components/ShareButton";
+import AddToCalendarButton from "@/components/AddToCalendarButton";
+import { UtilityActionGrid } from "@/components/EventUtilityActions";
+import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
+import ReadMoreText from "@/components/ReadMoreText";
 import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
-import { HappeningRow } from "@/components/HappeningCard";
+import { LocationUpcomingCard } from "@/components/HappeningCard";
 import FeaturedLocationHappeningCard from "@/components/FeaturedLocationHappeningCard";
 import { HorizontalScroller, RailItem } from "@/components/Section";
 import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation, type LocationHappening } from "@/lib/data";
@@ -109,6 +113,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // above — see resolveFeaturedLocationHappening's own note.
   const featuredHappening = resolveFeaturedLocationHappening(happenings, location.featured_event_id ?? null);
   const remainderHappenings = featuredHappening ? happenings.filter((h) => h.id !== featuredHappening.id) : happenings;
+  const featuredLive = featuredHappening ? getTemporalLabel(featuredHappening.start_at, featuredHappening.end_at).live : false;
   const fullAddress = [location.address, cityStateZip(location.city, location.state, location.postal_code)]
     .filter(Boolean)
     .join(", ");
@@ -124,6 +129,57 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // identity.
   const canonicalUrl = await resolveCanonicalUrl(location.id, location.slug);
 
+  // Visual implementation pass — the hero's own tappable gallery (cover +
+  // location_images, already both fetched above — no new query), reusing
+  // the exact same cover+gallery lightbox EventCoverLightbox already
+  // provides for Event covers (a generic images/alt primitive, not
+  // Event-specific despite its name) rather than building a second one.
+  const heroImages = [location.cover_image_url, ...galleryImages].filter((u): u is string => Boolean(u));
+
+  // Visual implementation pass — the primary action grid (Directions/
+  // Save/Share/Calendar), same derived-column-count UtilityActionGrid
+  // shell the Event page's own Tier B utility row already uses (imported,
+  // not modified). Directions is the one PRIMARY (teal-filled) tile here —
+  // a deliberate Location-only visual choice per the approved reference,
+  // built locally rather than reusing Event's own outline-styled
+  // DirectionsGridCell. Add to Calendar only renders when the already-
+  // resolved featuredHappening gives it something truthful to add — never
+  // a fabricated "add this Location to your calendar" entry.
+  const directionsAction = directionsHref ? (
+    <AnalyticsLink
+      href={directionsHref}
+      target="_blank"
+      rel="noreferrer"
+      trackPayload={{ event_name: "click_directions", subject_type: "location", subject_id: location.id, location_id: location.id }}
+      className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl bg-findmi text-white transition hover:bg-findmi-600"
+    >
+      <DirectionsGlyph className="h-4 w-4" />
+      <span className="text-[11px] font-semibold uppercase tracking-wide">Directions</span>
+    </AnalyticsLink>
+  ) : null;
+  const calendarAction = featuredHappening ? (
+    <AddToCalendarButton
+      title={featuredHappening.title}
+      description={featuredHappening.description}
+      location={location.name}
+      startAt={featuredHappening.start_at}
+      endAt={featuredHappening.end_at}
+      layout="grid"
+    />
+  ) : null;
+  const primaryActionItems = [
+    directionsAction,
+    <LocationSaveButton key="save" slug={location.slug} id={location.id} layout="grid" />,
+    <ShareButton
+      key="share"
+      url={canonicalUrl}
+      title={location.name}
+      variant="grid"
+      track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
+    />,
+    calendarAction,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+
   return (
     <div className="relative mx-auto max-w-4xl px-0 pb-10 sm:px-6">
       <PageViewTracker
@@ -133,54 +189,63 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         page_type="location"
         page_path={`/location/${location.slug}`}
       />
-      {/* 1. Cover / hero — same contained, rounded landscape treatment
-          Business/Product use, so a Location profile reads like one app
-          with the rest of Findmi rather than a bare address record. No
-          fabricated imagery: a Location with no cover just gets the same
-          branded dark placeholder. No generic "LOCATION" badge overlay —
-          the category pill below (real taxonomy, not a fixed label) is
-          the identity signal instead. */}
-      <div className="px-4 pt-4 sm:px-0 sm:pt-6">
-        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm sm:aspect-[21/9]">
-          {location.cover_image_url ? (
-            <SupabaseImage
-              src={location.cover_image_url}
-              alt={location.name}
-              fill
-              priority
-              sizes="(min-width: 1024px) 1024px, 100vw"
-              className="object-cover"
-            />
+      {/* 1. Cover / hero — Visual implementation pass: edge-to-edge and
+          flush with the nav at mobile (the reference's immersive
+          "environmental photography" treatment), rounded only at the
+          bottom corners there; the original contained, rounded-on-every-
+          side landscape treatment (matching Business/Product) is
+          untouched from sm+ up. Taller aspect ratio at mobile for a
+          stronger, more dominant first impression. No fabricated imagery:
+          a Location with no cover/gallery at all just gets the same
+          branded dark placeholder it always has. Tappable zoom + a real
+          "current / total" count badge when more than one photo exists
+          (cover + location_images, both already fetched for this render —
+          no new query), reusing EventCoverLightbox (a generic
+          images/alt primitive, not actually Event-specific) rather than
+          building a second gallery/lightbox system. */}
+      <div className="sm:px-0 sm:pt-6">
+        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-b-3xl bg-mist shadow-sm sm:aspect-[21/9] sm:rounded-3xl sm:border sm:border-black/5">
+          {heroImages.length > 0 ? (
+            <EventCoverLightbox images={heroImages} alt={location.name} />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-ink">
               <PinGlyph className="h-12 w-12 text-white/15" />
             </div>
           )}
-          {/* 14. Edit affordance — same corner-of-hero placement/behavior
-              as Business's own AdminEditButton; only ever visible to an
-              authorized manager/admin session. */}
-          <AdminEditButton href={`/admin/locations/${location.id}`} className="absolute right-3 top-3 z-10" />
+          {heroImages.length > 1 && (
+            <div className="pointer-events-none absolute right-3 top-3 z-[2] flex items-center gap-1 rounded-full bg-black/50 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+              <GalleryGlyph className="h-3.5 w-3.5" />
+              1/{heroImages.length}
+            </div>
+          )}
+          {/* 14. Edit affordance — same affordance as Business's own
+              AdminEditButton, only ever visible to an authorized manager/
+              admin session; moved to the opposite corner from the new
+              consumer-facing gallery-count badge above so the two never
+              overlap. */}
+          <AdminEditButton href={`/admin/locations/${location.id}`} className="absolute bottom-3 right-3 z-10" />
         </div>
       </div>
 
-      {/* 2. Logo + identity — logo overlaps the cover's bottom edge the
-          same way Business's own profile does, so the two entity types
-          read as one visual system. */}
+      {/* 2. Logo + identity — Visual implementation pass: the logo now
+          stands alone on its own line, overlapping the hero's bottom edge
+          (left-aligned, bigger/more substantial), with Name + Follow
+          recomposed into their own row directly beneath it — Follow
+          sits beside the NAME now (vertically centered against it),
+          matching the approved reference, rather than beside the logo as
+          before. No fabricated follower count: LocationFollowButton has
+          no such count to report, so none is shown (never invented). */}
       <div className="px-4 sm:px-0">
-        <div className="max-w-xl pl-3 sm:pl-4">
-          <div className="flex items-start justify-between gap-2">
-            {location.logo_url ? (
-              <div className="relative -mt-10 h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-28 sm:w-28">
-                <SupabaseImage src={location.logo_url} alt={location.name} fill sizes="112px" className="object-cover" />
-              </div>
-            ) : (
-              <span />
-            )}
-            {/* Follow lives here, top identity area — same prominence
-                Business/Event's own Follow gets beside logo/name, never
-                buried in a secondary utility row. Required for every
-                Location regardless of claim/hours/gallery state. */}
-            <div className={`shrink-0 ${location.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}>
+        <div className="max-w-xl">
+          {location.logo_url && (
+            <div className="relative -mt-14 h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-16 sm:h-32 sm:w-32">
+              <SupabaseImage src={location.logo_url} alt={location.name} fill sizes="128px" className="object-cover" />
+            </div>
+          )}
+
+          <div className={`flex items-start justify-between gap-3 ${location.logo_url ? "mt-3" : ""}`}>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
+            <div className="shrink-0 pt-0.5">
               <LocationFollowButton
                 locationId={location.id}
                 locationSlug={location.slug}
@@ -189,10 +254,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               />
             </div>
           </div>
-
-          <h1 className="mt-3 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">
-            {location.name}
-          </h1>
 
           {/* 8. Category / subcategory — the single most-specific pick
               (parent or its chosen subcategory), no internal id, no tag
@@ -220,163 +281,157 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* 3. Action row (Public Experience V5) — Directions used to be a
-          giant solid full-color pill, the single largest object on the
-          page after the cover, isolated above a separate horizontally-
-          scrolling utility rail. Redesigned into one coherent, equally-
-          weighted secondary-action cluster — Directions/Message/Website/
-          Call — all the same compact outline geometry (matches
-          MessageButton's own "compact" h-9/rounded-lg treatment), so
-          Directions stays easy and obvious without dominating the page or
-          being visually isolated. flex-wrap (never horizontal scroll) —
-          every essential action stays reachable at 360px by wrapping to a
-          second line rather than requiring a swipe. Save/Share are true
-          utilities now: a separate, smaller row, always shown regardless
-          of whether Website/Call/Email exist (Save/Share never depended
-          on contact info existing). Every action still only renders when
-          its underlying data exists.
-
-          Mobile Action Density fix — live QA at 360-412px showed this row
-          staircasing (3 pills on line one, one orphaned pill alone on
-          line two) because plain flex-wrap has no opinion on how many
-          items share a row. `basis-[46%] grow` gives every pill a mobile-
-          only minimum share of the row (two comfortably fit, a third is
-          pushed down), and `grow` lets a genuinely final odd-one-out fill
-          the remaining width instead of sitting stranded at its own
-          content size — never a single tiny pill dead-centered on its own
-          line. `sm:basis-auto sm:grow-0` restores plain natural-width
-          flex-wrap from the tablet breakpoint up, where the whole cluster
-          already fits one row with room to spare. Button geometry itself
-          (height/border/radius/type scale/icon size) is untouched — only
-          the row's own sizing behavior changed. */}
+      {/* 3. Primary action grid (Visual implementation pass) — Directions/
+          Save/Share/Add to Calendar, the four equally-sized "doing
+          something right now" actions, matching the approved reference.
+          Directions is the one PRIMARY teal-filled tile (built above);
+          Save/Share use their own new "grid"/"grid" layouts (same icon-
+          over-label shape Event's own EventSaveButton/EventShareButton
+          already established for their own action grid). Add to Calendar
+          only joins when there's a truthful, already-resolved happening
+          to add (featuredHappening) — never a fabricated "add this
+          Location" entry; column count is derived from how many of the
+          four actually render (UtilityActionGrid, reused from the Event
+          page's own Tier B row, unmodified). Message/Website/Call/Contact
+          are real, but secondary here — moved below (see the compact
+          contact row ahead of Hours) rather than competing with this
+          grid for the page's prime real estate. */}
       <div className="px-4 sm:px-0">
-        <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          {directionsHref && (
-            <AnalyticsLink
-              href={directionsHref}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-9 grow basis-[46%] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-findmi/40 px-2.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50 sm:grow-0 sm:basis-auto sm:justify-start"
-              trackPayload={{ event_name: "click_directions", subject_type: "location", subject_id: location.id, location_id: location.id }}
-            >
-              <DirectionsGlyph className="h-3.5 w-3.5 shrink-0" />
-              Directions
-            </AnalyticsLink>
-          )}
-          {showMessageButton && (
-            <div className="grow basis-[46%] sm:grow-0 sm:basis-auto [&>button]:w-full [&>button]:justify-center sm:[&>button]:w-auto sm:[&>button]:justify-start">
-              <MessageButton size="compact" targetType="location" targetId={location.id} targetName={location.name} />
-            </div>
-          )}
-          {website && (
-            <a
-              href={website}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-9 grow basis-[46%] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink sm:grow-0 sm:basis-auto sm:justify-start"
-            >
-              <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
-              Website
-            </a>
-          )}
-          {location.phone && (
-            <a
-              href={`tel:${location.phone}`}
-              className="flex h-9 grow basis-[46%] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink sm:grow-0 sm:basis-auto sm:justify-start"
-            >
-              <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
-              Call
-            </a>
-          )}
-          {/* Unify Site-Wide Communications pass — this pill no longer
-              exposes location.email directly via mailto; it opens the
-              native Venue Contact inquiry form instead
-              (subject_type='venue_inquiry'), gated on the exact same
-              "does this venue have contact info on file" condition as
-              before. */}
-          {location.email && (
-            <InquireButton
-              targetType="location"
-              targetId={location.id}
-              targetName={location.name}
-              label="Contact"
-              className="flex h-9 grow basis-[46%] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink sm:grow-0 sm:basis-auto sm:justify-start"
-            />
-          )}
-        </div>
-
-        <div className="mt-2 flex items-center gap-2">
-          <LocationSaveButton slug={location.slug} id={location.id} />
-          <ShareButton
-            url={canonicalUrl}
-            title={location.name}
-            variant="icon"
-            track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
-          />
+        <div className="mt-4">
+          <UtilityActionGrid items={primaryActionItems} />
         </div>
       </div>
 
-      {/* What's Happening Here (Location Detail V1) — replaces the old
-          split presentation (a separate Featured Event hero above a
-          "Coming Up Here" list) that could render the exact same Event
-          twice. One resolved featured happening (resolveFeaturedLocationHappening
-          — manual Event override when still eligible, else live-now, else
-          nearest upcoming) gets the full-bleed hero; every other upcoming
-          happening (event occurrence or standalone appearance, both
-          sourced only via real location_id FKs now — see
-          getUpcomingAtLocation's own note) is the genuine remainder,
-          never re-including the featured item, in a horizontal rail
-          below using the same HorizontalScroller/RailItem infrastructure
-          the rest of the app's discovery rails already use.
-
-          This section manages its own horizontal padding (heading/hero
-          via an inner px-4 sm:px-0 wrapper matching the rest of this
-          page; the rail via HorizontalScroller's own built-in px-4
-          sm:px-6) rather than nesting inside the page's single
-          px-4 sm:px-0 content wrapper, so the rail can scroll flush to
-          the viewport edge without doubling up on horizontal padding. */}
-      <section className="mt-5">
-        <div className="px-4 sm:px-0">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">What&apos;s Happening Here</h2>
-          {happenings.length === 0 ? (
-            <p className="mt-3 text-sm text-ink/50">Nothing scheduled here yet. Check back soon.</p>
-          ) : (
-            <>
-              <p className="mt-1 text-sm text-ink/55">{happenings.length} upcoming</p>
-              {featuredHappening && (
-                <div className="mt-4 max-w-xl">
-                  <FeaturedLocationHappeningCard
-                    title={featuredHappening.title}
-                    imageUrl={featuredHappening.imageUrl}
-                    href={featuredHappening.href}
-                    ctaLabel={locationHappeningCtaLabel(featuredHappening.type)}
-                    dateTimeLine={formatAppearanceDateRange(
-                      featuredHappening.start_at,
-                      featuredHappening.end_at,
-                      featuredHappening.description
-                    )}
-                    subtitleLine={featuredHappening.subtitle}
-                  />
-                </div>
+      {/* "Events" (Visual implementation pass) — the one resolved featured
+          happening (resolveFeaturedLocationHappening — manual Event
+          override when still eligible, else live-now, else nearest
+          upcoming; LOCKED resolution logic, untouched here) as a
+          contained horizontal card matching the approved reference. A
+          short, truthful description preview and the compact Events/
+          About/Photos section nav follow directly after — tabs/anchors
+          only for sections that truthfully exist on this render (no dead
+          Nearby/Map tabs). "Coming Up Here" (the genuine remainder, never
+          re-including the featured item) comes after the nav, exactly
+          the zero/one/multiple states this architecture already
+          established: zero happenings -> one empty-state line; exactly
+          one -> the featured card alone, no remainder section at all;
+          more -> featured card + a real remainder rail. */}
+      <div className="px-4 sm:px-0">
+        <section id="events" className="mt-5 scroll-mt-20">
+          {featuredHappening ? (
+            <FeaturedLocationHappeningCard
+              kindLabel={featuredHappening.type === "event" ? "Featured Event" : "Featured Appearance"}
+              title={featuredHappening.title}
+              imageUrl={featuredHappening.imageUrl}
+              href={featuredHappening.href}
+              ctaLabel={locationHappeningCtaLabel(featuredHappening.type)}
+              subtitleLine={featuredHappening.subtitle}
+              dateTimeLine={formatAppearanceDateRange(
+                featuredHappening.start_at,
+                featuredHappening.end_at,
+                featuredHappening.description
               )}
-            </>
+              locationLine={location.name}
+              live={featuredLive}
+            />
+          ) : (
+            <p className="text-sm text-ink/50">Nothing scheduled here yet. Check back soon.</p>
           )}
-        </div>
+        </section>
 
-        {remainderHappenings.length > 0 && (
+        {location.description && (
+          <div className="mt-4 max-w-2xl">
+            <ReadMoreText text={location.description} />
+          </div>
+        )}
+
+        <nav className="mt-5 flex items-center gap-5 overflow-x-auto border-b border-black/5 pb-2.5 text-sm font-semibold text-ink/50 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <a href="#events" className="shrink-0 transition hover:text-ink">
+            Events
+          </a>
+          {location.description && (
+            <a href="#about" className="shrink-0 transition hover:text-ink">
+              About
+            </a>
+          )}
+          {galleryImages.length > 1 && (
+            <a href="#photos" className="shrink-0 transition hover:text-ink">
+              Photos
+            </a>
+          )}
+        </nav>
+      </div>
+
+      {remainderHappenings.length > 0 && (
+        <section className="mt-5">
+          <div className="px-4 sm:px-0">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Coming Up Here</h2>
+            <p className="mt-1 text-sm text-ink/55">
+              {remainderHappenings.length} upcoming{remainderHappenings.every((h) => h.type === "event") ? " events" : ""}
+            </p>
+          </div>
           <div className="mt-3">
             <HorizontalScroller>
               {remainderHappenings.map((h) => (
                 <RailItem key={h.id} density="discovery">
-                  <HappeningRow item={h} />
+                  <LocationUpcomingCard item={h} />
                 </RailItem>
               ))}
             </HorizontalScroller>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       <div className="px-4 sm:px-0">
+        {/* Secondary contact actions (Visual implementation pass) — real,
+            but no longer competing with Directions/Save/Share/Calendar
+            for prime real estate between identity and discovery. Same
+            underlying data/behavior as before (Website/Call open
+            directly; Contact opens the native Venue Contact inquiry
+            form), just recomposed into a compact, lower-priority row.
+            Every action still only renders when its underlying data
+            exists; the whole row disappears when none do. */}
+        {(showMessageButton || website || location.phone || location.email) && (
+          <div className="mt-8 flex flex-wrap items-center gap-1.5">
+            {showMessageButton && <MessageButton size="compact" targetType="location" targetId={location.id} targetName={location.name} />}
+            {website && (
+              <a
+                href={website}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              >
+                <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
+                Website
+              </a>
+            )}
+            {location.phone && (
+              <a
+                href={`tel:${location.phone}`}
+                className="flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              >
+                <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
+                Call
+              </a>
+            )}
+            {/* Unify Site-Wide Communications pass — this pill no longer
+                exposes location.email directly via mailto; it opens the
+                native Venue Contact inquiry form instead
+                (subject_type='venue_inquiry'), gated on the exact same
+                "does this venue have contact info on file" condition as
+                before. */}
+            {location.email && (
+              <InquireButton
+                targetType="location"
+                targetId={location.id}
+                targetName={location.name}
+                label="Contact"
+                className="flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-black/10 px-2.5 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
+              />
+            )}
+          </div>
+        )}
+
         {/* Hours — moved above About/Gallery (Location Detail V1):
             "is this place open" is a more immediate, actionable question
             than its description/photos. Still a compact, collapsed-by-
@@ -409,9 +464,13 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         )}
 
         {/* About — hidden entirely when no description. Never repeats
-            address/hours/contact. */}
+            address/hours/contact. The short preview directly under the
+            featured happening (above) already covers the "is this place
+            interesting" question above the fold; this is the same full
+            text for anyone who taps through from the section nav or the
+            preview's own "Read more". */}
         {location.description && (
-          <section className="mt-8">
+          <section id="about" className="mt-8 scroll-mt-20">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">About</h2>
             <p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
               {location.description}
@@ -424,7 +483,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             Never duplicates the cover — location_images is a separate
             source from cover_image_url. */}
         {galleryImages.length > 1 && (
-          <section className="mt-8">
+          <section id="photos" className="mt-8 scroll-mt-20">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
             <div className="mt-3">
               <ImageGalleryStrip images={galleryImages} alt={location.name} />
@@ -458,6 +517,16 @@ function PinGlyph({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function GalleryGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="8.5" cy="10" r="1.6" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M4 17l4.5-4.5 3 3 4-4 5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
