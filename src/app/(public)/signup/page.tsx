@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSafeRedirect } from "@/lib/auth/safe-redirect";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { signUp } from "./actions";
 import SignupForm from "./SignupForm";
 
@@ -18,6 +20,19 @@ export default async function SignupPage({
 }) {
   const { error, next, display_name: displayName, email, phone } = await searchParams;
   const safeNext = getSafeRedirect(next);
+
+  // Authenticated Signup Gateway fix — an already-signed-in visitor (e.g.
+  // tapping My Journal/Add Business from the homepage while logged in)
+  // must never see "Create your Findmi account"; they already have one.
+  // Server-side check BEFORE any UI renders, so the form is never even
+  // briefly visible. safeNext is already validated above (falls back to
+  // the existing /account default for a missing/unsafe next — see
+  // getSafeRedirect), so this redirect can never leave the app.
+  const supabase = await getServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) redirect(safeNext);
 
   return (
     <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
