@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
+import DocumentExperienceButton from "@/components/journal/DocumentExperienceButton";
+import { isAdminSession } from "@/lib/admin/auth";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
@@ -74,7 +76,7 @@ async function resolveCanonicalUrl(eventId: string, slug: string): Promise<strin
   return `${getPublicOrigin()}/${handle ?? `event/${slug}`}`;
 }
 
-interface AppearanceHostBusiness {
+export interface AppearanceHostBusiness {
   id: string;
   name: string;
   slug: string;
@@ -92,7 +94,7 @@ interface AppearanceHostBusiness {
  * distinct Business has a non-cancelled Appearance linked to this Event —
  * two or more stays attribution-less rather than guessing which one is
  * "the" host. */
-async function resolveAppearanceHostBusiness(eventId: string): Promise<AppearanceHostBusiness | null> {
+export async function resolveAppearanceHostBusiness(eventId: string): Promise<AppearanceHostBusiness | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
   const { data } = await supabase
@@ -135,7 +137,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness] =
+  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, isAdmin] =
     await Promise.all([
       getBusinessesForEvent(event.id),
       attachEventCategories([event]),
@@ -159,6 +161,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // own comment for why this second signal is needed alongside
       // event_businesses.featured below.
       resolveAppearanceHostBusiness(event.id),
+      // Journal Live Capture pass — server-verified once here, reused for
+      // both the "Document this experience" entry point's visibility and
+      // nothing else; the actual mutation it triggers re-verifies this
+      // independently server-side (see journalCaptureActions.ts).
+      isAdminSession(),
     ]);
   // Multi-Date Business Participation Pass 2B — Primary Date Integrity.
   // Only ever synthesizes/includes the Primary Date entry when this Event
@@ -637,8 +644,16 @@ export async function EventPublicView({ slug }: { slug: string }) {
           strict 4-slot Message/Save/Calendar/Share module above. Kept as
           their own self-guarded, horizontally scrollable row (only
           rendered when at least one exists) rather than stretching the
-          module to 5-6 uneven columns. */}
-      {(showContact || event.external_url) && (
+          module to 5-6 uneven columns.
+          Journal Live Capture pass — "Document this experience" joins this
+          same row rather than a new one: it's exactly this row's own
+          "lower-frequency, doesn't belong in the strict 4-slot grid"
+          category, just admin-only instead of visitor-facing. Gate reuses
+          isAdminSession() (same check AdminEditButton/the Journal pencil
+          already use) computed once above; an ordinary visitor never sees
+          this row at all unless Contact/Event Details already would have
+          shown it anyway. */}
+      {(showContact || event.external_url || isAdmin) && (
         <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex w-max items-center gap-2">
             {showContact && (
@@ -661,6 +676,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
                 Event Details
               </a>
             )}
+            {isAdmin && <DocumentExperienceButton eventSlug={event.slug} />}
           </div>
         </div>
       )}
