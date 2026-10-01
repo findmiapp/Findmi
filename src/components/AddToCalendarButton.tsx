@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 // Event Detail V2 polish pass, item 9 — real event data only (title,
 // start, end, venue/address, description), no paid third-party calendar
@@ -105,6 +106,31 @@ export default function AddToCalendarButton({
   const panelRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const resolvedEnd = endAt ?? new Date(new Date(startAt).getTime() + 2 * 60 * 60 * 1000).toISOString();
+
+  // Calendar Functional Repair pass, round 6 (ROOT CAUSE FOUND) — the
+  // on-device "Pointer: YES, Click: NO" evidence traced to this panel
+  // being a normal (non-portaled) DOM descendant of HomeEventCard's own
+  // card wrapper, which has `active:scale-[0.98]` + `overflow-hidden`.
+  // Per the CSS spec, :active applies to every ANCESTOR of whatever
+  // element is actually being pressed, not just the pressed element
+  // itself — so pressing "Google Calendar" inside this panel also
+  // engages HomeEventCard's own `:active` transform for the duration of
+  // that press. A `transform` on an ancestor makes IT the containing
+  // block for any `position: fixed` descendant (instead of the
+  // viewport), so this panel's viewport-relative `coords` get
+  // reinterpreted relative to that transformed, overflow-hidden card
+  // the instant the press lands — shifting/clipping the panel out from
+  // under the finger between pointerdown and pointerup. pointerdown
+  // still fires correctly (hit-tested before the restyle), but the
+  // click that follows lands somewhere else (or nowhere), which is
+  // exactly the observed symptom. Portaling to document.body — the
+  // same escape-the-ancestor technique LocationFollowButton's own modal
+  // already uses — removes this panel from that DOM subtree entirely,
+  // so no ancestor transform/overflow can ever touch its containing
+  // block again. `mounted` avoids an SSR document-undefined crash,
+  // matching LocationFollowButton's pattern exactly.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Calendar Functional Repair pass, round 2 — the previous fix (delaying
   // the close on blur) was still fragile: it assumed blur always fires
@@ -211,43 +237,54 @@ export default function AddToCalendarButton({
           </>
         )}
       </button>
-      {open && coords && (
-        <div
-          ref={panelRef}
-          className="fixed z-20 w-48 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
-          style={{ top: coords.top, left: coords.left }}
-        >
-          <button
-            type="button"
-            onPointerDown={handleGcalPointerDown}
-            onClick={openGoogleCalendar}
-            className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
+      {mounted &&
+        open &&
+        coords &&
+        createPortal(
+          <div
+            ref={panelRef}
+            className="fixed z-20 w-48 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg"
+            style={{ top: coords.top, left: coords.left }}
           >
-            Google Calendar
-          </button>
-          <button
-            type="button"
-            onClick={downloadIcs}
-            className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
-          >
-            Apple / Outlook (.ics)
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              onPointerDown={handleGcalPointerDown}
+              onClick={openGoogleCalendar}
+              className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
+            >
+              Google Calendar
+            </button>
+            <button
+              type="button"
+              onClick={downloadIcs}
+              className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-black/[0.03]"
+            >
+              Apple / Outlook (.ics)
+            </button>
+          </div>,
+          document.body
+        )}
       {/* TEMPORARY REAL-DEVICE INSTRUMENTATION — see notes above
           openGoogleCalendar. Fixed + very high z-index so it renders on
           top of every caller, including the two full-screen Quick View
           modals (z-50); rendered independently of `open`/`coords` so
           closing/reopening the dropdown never clears the evidence, and it
-          only ever disappears via its own explicit Dismiss button. */}
+          only ever disappears via its own explicit Dismiss button.
+          pointer-events-none (round 6) — this panel can mount mid-gesture
+          (handleGcalPointerDown sets it on the Google Calendar option's
+          OWN pointerdown), and being fixed/full-width/z-[9999] it could
+          otherwise sit on top of and swallow the very click it's trying
+          to observe on a card low enough in the viewport for the two to
+          overlap. It only needs to be seen, not tapped, except for its
+          own Dismiss button, which opts back into pointer-events. */}
       {debug && (
-        <div className="fixed inset-x-0 bottom-0 z-[9999] max-h-[45vh] overflow-y-auto border-t-4 border-yellow-400 bg-black/95 p-3 font-mono text-[11px] leading-tight text-lime-300 shadow-2xl">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[9999] max-h-[45vh] overflow-y-auto border-t-4 border-yellow-400 bg-black/95 p-3 font-mono text-[11px] leading-tight text-lime-300 shadow-2xl">
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <p className="font-bold text-yellow-300">CALENDAR DEBUG (temporary)</p>
             <button
               type="button"
               onClick={() => setDebug(null)}
-              className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase text-white"
+              className="pointer-events-auto shrink-0 rounded bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase text-white"
             >
               Dismiss
             </button>
