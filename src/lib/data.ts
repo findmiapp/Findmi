@@ -10,6 +10,7 @@ import {
 } from "./format";
 import { resolveEffectiveEventMarket } from "./event-markets";
 import { resolveEffectiveAppearanceGeography } from "./appearance-geography";
+import { resolveAppearanceDisplayImage } from "./appearance-image";
 import { DEFAULT_ADMIN_TIMEZONE, isoToLocalDateTime } from "./admin/form-helpers";
 import type {
   Appearance,
@@ -3530,25 +3531,35 @@ export interface LocationHappening {
    * CTA label only (HappeningCard/HappeningRow) — href/destination is
    * unaffected either way. */
   type: "event" | "appearance";
+  /** Location Detail V1 — the underlying Event id for an "event" item
+   * (null for "appearance"), carried through so a Location's own
+   * featured-happening resolver can check this item's real identity
+   * against `location.featured_event_id` without a second query. */
+  eventId: string | null;
 }
 
-/** Upcoming events and standalone appearances at a location, merged into one
- * chronological feed for that location's page.
+/** Location Detail V1 — Events and standalone Appearances at a Location,
+ * sourced ONLY via the real FKs now: `event_occurrences.location_id` and
+ * `appearances.location_id` (event_id IS NULL). The legacy `venue_name`
+ * ILIKE fallback this function used to run for both tables is removed
+ * here — Location Discovery (getLocationActivitySummaries above) never
+ * had it to begin with, and carrying a fuzzy text match into the one
+ * place a Location's own "what's happening" is Detail's primary content
+ * made this page less trustworthy than its own Discovery card for the
+ * exact same Location. A legacy appearance/event that only has a typed
+ * venue_name (no real location_id) simply doesn't appear here — same as
+ * it already doesn't on Discovery.
  *
- * Events are matched two ways, real FK first: `event_occurrences.location_id`
- * (Recurring Events V2's real relationship to a location) always wins when
- * present; the legacy `events.venue_name` ILIKE match — the only signal that
- * existed before that FK — is then run as a fallback for events NOT already
- * matched via the FK, so an event with a real occurrence-location link is
- * never double-counted.
- *
- * Location Connections pass — standalone appearances now follow the exact
- * same FK-first-then-ILIKE-fallback shape: `appearances.location_id` wins
- * when a Business picked a real Findmi Location; the legacy venue_name
- * ILIKE match still covers every appearance created before that FK existed
- * (or where the Business just typed a venue name Findmi doesn't have a
- * Location record for), filtered to never double-count one already matched
- * via the FK. */
+ * Image precedence (Location Detail V1's own, appearance-image.ts's
+ * `resolveAppearanceDisplayImage` reused as-is — its generic 3-tier
+ * shape already fits): a real appearance's own flyer_image_url / an
+ * event's own cover_image_url wins first; failing that, a deterministic
+ * (never random) pick from this Location's OWN gallery (location_images)
+ * — a shared, page-appropriate fallback since these are all happenings
+ * AT this place, never the generic illy/business-cover substitution
+ * problem Business's own profile had; failing that, the appearance's
+ * business's own cover/logo photo; failing all of that, null (the
+ * caller's own neutral placeholder). */
 export async function getUpcomingAtLocation(
   location: { id: string; name: string },
   limit = 12
@@ -3557,21 +3568,34 @@ export async function getUpcomingAtLocation(
   if (!supabase) return [];
   const nowIso = new Date().toISOString();
 
-  const { data: occurrenceRows } = await supabase
-    .from("event_occurrences")
-    .select("start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo)")
-    .eq("location_id", location.id)
-    .eq("status", "scheduled")
-    .gt("end_at", nowIso)
-    .order("start_at", { ascending: true })
-    .limit(limit);
+  const APPEARANCE_COLUMNS =
+    "id, title, start_at, end_at, description, flyer_image_url, business:businesses(slug, name, logo_url, cover_image_url, is_demo, publication_status)";
+
+  const [{ data: occurrenceRows }, { data: linkedAppearances }, locationGalleryImages] = await Promise.all([
+    supabase
+      .from("event_occurrences")
+      .select("start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo)")
+      .eq("location_id", location.id)
+      .eq("status", "scheduled")
+      .gt("end_at", nowIso)
+      .order("start_at", { ascending: true })
+      .limit(limit),
+    supabase
+      .from("appearances")
+      .select(APPEARANCE_COLUMNS)
+      .eq("location_id", location.id)
+      .is("event_id", null)
+      .neq("status", "canceled")
+      .gt("end_at", nowIso)
+      .order("start_at", { ascending: true })
+      .limit(limit),
+    getLocationGalleryImages(location.id),
+  ]);
 
   const fromOccurrences: LocationHappening[] = [];
-  const matchedEventIds = new Set<string>();
   for (const row of occurrenceRows ?? []) {
     const e = Array.isArray(row.event) ? row.event[0] : row.event;
     if (!e || e.is_demo) continue;
-    matchedEventIds.add(e.id);
     fromOccurrences.push({
       id: `occurrence-${e.id}-${row.start_at}`,
       title: e.name,
@@ -3579,71 +3603,19 @@ export async function getUpcomingAtLocation(
       start_at: row.start_at,
       end_at: row.end_at,
       href: `/event/${e.slug}`,
-      imageUrl: e.cover_image_url,
+      imageUrl: resolveAppearanceDisplayImage({
+        appearanceId: `occurrence-${e.id}-${row.start_at}`,
+        specificImageUrl: e.cover_image_url,
+        galleryImages: locationGalleryImages,
+        businessCoverUrl: null,
+      }),
       description: null,
       type: "event",
+      eventId: e.id,
     });
   }
 
-  const APPEARANCE_COLUMNS =
-    "id, title, start_at, end_at, description, business:businesses(slug, name, cover_image_url, is_demo, publication_status)";
-
-  const { data: linkedAppearances } = await supabase
-    .from("appearances")
-    .select(APPEARANCE_COLUMNS)
-    .eq("location_id", location.id)
-    .is("event_id", null)
-    .neq("status", "canceled")
-    .gt("end_at", nowIso)
-    .order("start_at", { ascending: true })
-    .limit(limit);
-  const matchedAppearanceIds = new Set((linkedAppearances ?? []).map((a) => a.id));
-
-  // Same active-duration principle as the rest of this pass: eligibility
-  // is end_at-based (still active or in the future), not start_at-only.
-  // end_at is required on new/edited events and appearances now, so both
-  // are plain comparisons — a null end_at is NOT treated as open-ended (a
-  // handful of legacy appearances still have one and are excluded here
-  // until backfilled — see this pass's report).
-  const [{ data: events }, { data: fallbackAppearances }] = await Promise.all([
-    supabase
-      .from("events")
-      .select("id, slug, name, cover_image_url, start_at, end_at, organizer_name")
-      .ilike("venue_name", location.name)
-      .eq("is_demo", false)
-      .gt("end_at", nowIso)
-      .order("start_at", { ascending: true })
-      .limit(limit),
-    supabase
-      .from("appearances")
-      .select(APPEARANCE_COLUMNS)
-      .ilike("venue_name", location.name)
-      .is("event_id", null)
-      .neq("status", "canceled")
-      .gt("end_at", nowIso)
-      .order("start_at", { ascending: true })
-      .limit(limit),
-  ]);
-  const appearances = [
-    ...(linkedAppearances ?? []),
-    ...(fallbackAppearances ?? []).filter((a) => !matchedAppearanceIds.has(a.id)),
-  ];
-
-  const fromEvents: LocationHappening[] = (events ?? [])
-    .filter((e) => !matchedEventIds.has(e.id))
-    .map((e) => ({
-      id: `event-${e.id}`,
-      title: e.name,
-      subtitle: e.organizer_name,
-      start_at: e.start_at,
-      end_at: e.end_at,
-      href: `/event/${e.slug}`,
-      imageUrl: e.cover_image_url,
-      description: null,
-      type: "event" as const,
-    }));
-
-  const fromAppearances: LocationHappening[] = (appearances ?? [])
+  const fromAppearances: LocationHappening[] = (linkedAppearances ?? [])
     .map((a): LocationHappening | null => {
       const b = Array.isArray(a.business) ? a.business[0] : a.business;
       if (!b || b.is_demo || b.publication_status !== "live") return null;
@@ -3653,17 +3625,21 @@ export async function getUpcomingAtLocation(
         subtitle: b.name,
         start_at: a.start_at,
         end_at: a.end_at,
-        href: `/business/${b.slug}`,
-        imageUrl: b.cover_image_url,
+        href: `/business/${b.slug}#findmi-here`,
+        imageUrl: resolveAppearanceDisplayImage({
+          appearanceId: a.id,
+          specificImageUrl: a.flyer_image_url,
+          galleryImages: locationGalleryImages,
+          businessCoverUrl: b.cover_image_url ?? b.logo_url ?? null,
+        }),
         description: a.description,
         type: "appearance" as const,
+        eventId: null,
       };
     })
     .filter((x): x is LocationHappening => x !== null);
 
-  return [...fromOccurrences, ...fromEvents, ...fromAppearances]
-    .sort((a, b) => a.start_at.localeCompare(b.start_at))
-    .slice(0, limit);
+  return [...fromOccurrences, ...fromAppearances].sort((a, b) => a.start_at.localeCompare(b.start_at)).slice(0, limit);
 }
 
 /** Event Manager Location UX pass — a legacy (no-occurrence) event has no

@@ -13,11 +13,11 @@ import ShareButton from "@/components/ShareButton";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
-import { HappeningFeatureCard, HappeningRow } from "@/components/HappeningCard";
-import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation } from "@/lib/data";
-import { resolveFeaturedEventForLocation } from "@/lib/featured-event";
-import FeaturedEventCard from "@/components/FeaturedEventCard";
-import { cityStateZip } from "@/lib/format";
+import { HappeningRow } from "@/components/HappeningCard";
+import FeaturedLocationHappeningCard from "@/components/FeaturedLocationHappeningCard";
+import { HorizontalScroller, RailItem } from "@/components/Section";
+import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation, type LocationHappening } from "@/lib/data";
+import { cityStateZip, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, isOpenNow } from "@/lib/locationHours";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -34,6 +34,43 @@ import { getSupabase } from "@/lib/supabase";
 
 function isSafeExternalUrl(url: string | null | undefined): url is string {
   return typeof url === "string" && /^https?:\/\//i.test(url);
+}
+
+function locationHappeningCtaLabel(type: LocationHappening["type"]): string {
+  return type === "event" ? "View Event" : "View Appearance";
+}
+
+/** Location Detail V1 — the Location page's own featured-happening
+ * resolver. Pure/synchronous, operating only on the `happenings` array
+ * getUpcomingAtLocation already fetched once for this render — never a
+ * second query, and never touching Business's own locked
+ * resolveFeaturedAppearance/featured_appearance_id system. Same
+ * precedence shape that system established: manual override (only when
+ * it still resolves to a real, currently-eligible upcoming item) -> a
+ * happening live right now -> the nearest upcoming happening -> none.
+ *
+ * `location.featured_event_id` is an existing Event-only manual pointer
+ * (unchanged, untouched schema) — honored here only when one of the
+ * already-fetched happenings is actually that Event (via its real
+ * eventId), so a stale pointer to an Event no longer connected to this
+ * Location silently falls through to the automatic rule instead of
+ * dead-ending the hero. */
+function resolveFeaturedLocationHappening(
+  happenings: LocationHappening[],
+  featuredEventId: string | null
+): LocationHappening | null {
+  if (happenings.length === 0) return null;
+
+  if (featuredEventId) {
+    const manual = happenings.find((h) => h.type === "event" && h.eventId === featuredEventId);
+    if (manual) return manual;
+  }
+
+  const liveNow = happenings.find((h) => getTemporalLabel(h.start_at, h.end_at).live);
+  if (liveNow) return liveNow;
+
+  // happenings is already sorted start_at ascending by getUpcomingAtLocation.
+  return happenings[0];
 }
 
 async function resolveCanonicalUrl(locationId: string, slug: string): Promise<string> {
@@ -60,15 +97,18 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const [happenings, galleryImages, showMessageButton, featuredEvent] = await Promise.all([
+  const [happenings, galleryImages, showMessageButton] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),
     getLocationGalleryImages(location.id),
     shouldShowMessageButton("location", location.id),
-    // Featured Event System — null when this Location has no eligible
-    // Event (e.g. only standalone Appearances upcoming); "Coming Up
-    // Here" below is unaffected either way.
-    resolveFeaturedEventForLocation({ id: location.id, name: location.name }, location.featured_event_id ?? null),
   ]);
+  // Location Detail V1 — one unified "What's Happening Here" module
+  // replaces the old split Featured Event hero + separate "Coming Up
+  // Here" list (which could render the exact same Event in both places).
+  // Resolution is pure/in-memory off the happenings array already fetched
+  // above — see resolveFeaturedLocationHappening's own note.
+  const featuredHappening = resolveFeaturedLocationHappening(happenings, location.featured_event_id ?? null);
+  const remainderHappenings = featuredHappening ? happenings.filter((h) => h.id !== featuredHappening.id) : happenings;
   const fullAddress = [location.address, cityStateZip(location.city, location.state, location.postal_code)]
     .filter(Boolean)
     .join(", ");
@@ -276,103 +316,97 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </div>
       </div>
 
-      <div className="px-4 sm:px-0">
-        {/* Premium Featured Event Hero pass — an eligible Event this
-            Location is hosting (manually featured, or automatically the
-            nearest real occurrence here) gets the full-bleed image
-            treatment, above "Coming Up Here" — that section's own
-            compact schedule list is untouched and still enumerates every
-            happening, including this same Event if it's also the
-            nearest one. Renders nothing when there's no eligible Event
-            (a Location with only standalone Appearances upcoming). */}
-        {featuredEvent && (
-          <section className="mt-5 max-w-xl">
-            <FeaturedEventCard
-              href={`/event/${featuredEvent.event.slug}`}
-              imageUrl={featuredEvent.event.cover_image_url}
-              imageAlt={featuredEvent.event.name}
-              category={featuredEvent.category}
-              title={featuredEvent.event.name}
-              attribution={featuredEvent.attribution}
-              statusLabel={featuredEvent.statusLabel}
-              isLive={featuredEvent.isLive}
-            />
-          </section>
-        )}
+      {/* What's Happening Here (Location Detail V1) — replaces the old
+          split presentation (a separate Featured Event hero above a
+          "Coming Up Here" list) that could render the exact same Event
+          twice. One resolved featured happening (resolveFeaturedLocationHappening
+          — manual Event override when still eligible, else live-now, else
+          nearest upcoming) gets the full-bleed hero; every other upcoming
+          happening (event occurrence or standalone appearance, both
+          sourced only via real location_id FKs now — see
+          getUpcomingAtLocation's own note) is the genuine remainder,
+          never re-including the featured item, in a horizontal rail
+          below using the same HorizontalScroller/RailItem infrastructure
+          the rest of the app's discovery rails already use.
 
-        {/* Coming Up Here comes FIRST now — "what happens here" is the
-            primary reason to visit a Location page, so it belongs
-            immediately below identity/actions rather than after About/
-            Gallery/Hours. Presentation only; the underlying occurrence-
-            aware query (getUpcomingAtLocation) is untouched. Exactly one
-            empty-state message, never both a "0 upcoming" line and a
-            separate block. Stays right here even when About/Gallery are
-            both empty.
-
-            Duplicate-render fix (Public Experience V4) — the previous
-            version mapped the exact same `happenings` array twice: once
-            as photo cards in a carousel, once as compact rows right below
-            it, so every single happening (e.g. Piccola Pasta Shop's Sep
-            20 "Native Rose" Event) rendered on screen twice with 100%
-            overlap between the two sections. Fixed here with a
-            cardinality-aware split instead, per the density rule this
-            pass establishes for Business/Event/Location relationship
-            presentations: a SMALL set (<=3) is rendered once, as cards —
-            rich enough to browse directly, no separate list needed. A
-            LARGER set gets exactly ONE featured card for the very next
-            happening, then the genuine remainder (never re-including that
-            first item) as a compact chronological schedule below it.
-            Either branch enumerates every happening exactly once.
-
-            Density pass (Public Experience V5) — the V4 fix above stopped
-            the duplication, but for the single-item case it still used
-            HappeningCard, a full-bleed aspect-[3/4] photo poster that
-            consumed nearly an entire mobile viewport for one relationship.
-            Coming Up Here is meant to feel like one of the most important
-            Location modules, not one enormous poster — so every branch
-            now uses HappeningFeatureCard, a compact card with a real but
-            modestly-sized thumbnail (see that component's own note), and
-            <=3 items lay out in a responsive grid so 2-3 upcoming
-            happenings can be scanned without each claiming a full
-            viewport. 4+ still gets one featured card for the nearest
-            happening plus HappeningRow (no thumbnail at all) for the
-            rest, the most compact tier for a real schedule.
-
-            Mobile Action Density fix — mt-8 (32px) after the tightened,
-            two-row-at-most action cluster above read as a large dead zone
-            before this section. mt-5 (20px) keeps a real visual break
-            (Coming Up Here is still its own section, not glued to the
-            actions) without the excess gap the old spacing left once the
-            action area itself got shorter. */}
-        <section className="mt-5">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">Coming Up Here</h2>
-
+          This section manages its own horizontal padding (heading/hero
+          via an inner px-4 sm:px-0 wrapper matching the rest of this
+          page; the rail via HorizontalScroller's own built-in px-4
+          sm:px-6) rather than nesting inside the page's single
+          px-4 sm:px-0 content wrapper, so the rail can scroll flush to
+          the viewport edge without doubling up on horizontal padding. */}
+      <section className="mt-5">
+        <div className="px-4 sm:px-0">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">What&apos;s Happening Here</h2>
           {happenings.length === 0 ? (
             <p className="mt-3 text-sm text-ink/50">Nothing scheduled here yet. Check back soon.</p>
           ) : (
             <>
               <p className="mt-1 text-sm text-ink/55">{happenings.length} upcoming</p>
-              {happenings.length <= 3 ? (
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {happenings.map((h) => (
-                    <HappeningFeatureCard key={h.id} item={h} />
-                  ))}
+              {featuredHappening && (
+                <div className="mt-4 max-w-xl">
+                  <FeaturedLocationHappeningCard
+                    title={featuredHappening.title}
+                    imageUrl={featuredHappening.imageUrl}
+                    href={featuredHappening.href}
+                    ctaLabel={locationHappeningCtaLabel(featuredHappening.type)}
+                    dateTimeLine={formatAppearanceDateRange(
+                      featuredHappening.start_at,
+                      featuredHappening.end_at,
+                      featuredHappening.description
+                    )}
+                    subtitleLine={featuredHappening.subtitle}
+                  />
                 </div>
-              ) : (
-                <>
-                  <div className="mt-4 max-w-xl">
-                    <HappeningFeatureCard item={happenings[0]} />
-                  </div>
-                  <div className="mt-3 flex flex-col gap-3">
-                    {happenings.slice(1).map((h) => (
-                      <HappeningRow key={h.id} item={h} />
-                    ))}
-                  </div>
-                </>
               )}
             </>
           )}
-        </section>
+        </div>
+
+        {remainderHappenings.length > 0 && (
+          <div className="mt-3">
+            <HorizontalScroller>
+              {remainderHappenings.map((h) => (
+                <RailItem key={h.id} density="discovery">
+                  <HappeningRow item={h} />
+                </RailItem>
+              ))}
+            </HorizontalScroller>
+          </div>
+        )}
+      </section>
+
+      <div className="px-4 sm:px-0">
+        {/* Hours — moved above About/Gallery (Location Detail V1):
+            "is this place open" is a more immediate, actionable question
+            than its description/photos. Still a compact, collapsed-by-
+            default accordion, not a big permanently-open block. Native
+            <details>/<summary> gives real disclosure semantics for free,
+            no dependency. The summary line reuses the same reliable
+            "Open Until X" / "Closed now" computation as the identity
+            badge above — never shown when isOpenNow can't say for sure.
+            No holiday exceptions/split shifts/timezone overhaul. */}
+        {showHours && (
+          <section className="mt-8">
+            <details className="group rounded-2xl border border-black/5 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden sm:p-5">
+                <span className="font-display text-lg font-bold tracking-tight text-ink">Hours</span>
+                <span className="flex items-center gap-2 text-sm text-ink/60">
+                  {hoursSummary}
+                  <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/40 transition group-open:rotate-180" />
+                </span>
+              </summary>
+              <dl className="flex flex-col gap-1 border-t border-black/5 p-4 pt-3 sm:p-5 sm:pt-4">
+                {LOCATION_WEEKDAYS.map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between text-sm">
+                    <dt className="text-ink/60">{label}</dt>
+                    <dd className="font-medium text-ink">{formatDayHours(location.hours?.[key])}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          </section>
+        )}
 
         {/* About — hidden entirely when no description. Never repeats
             address/hours/contact. */}
@@ -395,36 +429,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             <div className="mt-3">
               <ImageGalleryStrip images={galleryImages} alt={location.name} />
             </div>
-          </section>
-        )}
-
-        {/* Hours — now a compact, collapsed-by-default accordion below
-            Coming Up Here (never a big permanently-open block ahead of
-            the discovery content). Native <details>/<summary> gives real
-            disclosure semantics for free, no dependency. The summary
-            line reuses the same reliable "Open Until X" / "Closed now"
-            computation as the identity badge above — never shown when
-            isOpenNow can't say for sure. No holiday exceptions/split
-            shifts/timezone overhaul. */}
-        {showHours && (
-          <section className="mt-8">
-            <details className="group rounded-2xl border border-black/5 bg-white shadow-sm">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden sm:p-5">
-                <span className="font-display text-lg font-bold tracking-tight text-ink">Hours</span>
-                <span className="flex items-center gap-2 text-sm text-ink/60">
-                  {hoursSummary}
-                  <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/40 transition group-open:rotate-180" />
-                </span>
-              </summary>
-              <dl className="flex flex-col gap-1 border-t border-black/5 p-4 pt-3 sm:p-5 sm:pt-4">
-                {LOCATION_WEEKDAYS.map(({ key, label }) => (
-                  <div key={key} className="flex items-center justify-between text-sm">
-                    <dt className="text-ink/60">{label}</dt>
-                    <dd className="font-medium text-ink">{formatDayHours(location.hours?.[key])}</dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
           </section>
         )}
 
