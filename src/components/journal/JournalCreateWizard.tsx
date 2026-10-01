@@ -2,9 +2,9 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import JournalSearchSelect, { type JournalSearchResult } from "./JournalSearchSelect";
-import JournalConnectionGroup from "./JournalConnectionGroup";
+import type { JournalSearchResult } from "./JournalSearchSelect";
+import JournalConnectionsPicker from "./JournalConnectionsPicker";
+import JournalLocationPicker, { EMPTY_MANUAL_LOCATION, manualLocationHasText, type JournalManualLocationState } from "./JournalLocationPicker";
 import JournalPhotoStrip from "./JournalPhotoStrip";
 import JournalStepProgress from "./JournalStepProgress";
 import { useJournalPhotoUpload } from "./useJournalPhotoUpload";
@@ -66,6 +66,7 @@ export default function JournalCreateWizard({
 
   // Step 2
   const [location, setLocation] = useState<JournalSearchResult | null>(prefillLocation ?? null);
+  const [manualLocation, setManualLocation] = useState<JournalManualLocationState>(EMPTY_MANUAL_LOCATION);
 
   // Step 3
   const [businesses, setBusinesses] = useState<JournalSearchResult[]>(prefillBusiness ? [prefillBusiness] : []);
@@ -97,7 +98,14 @@ export default function JournalCreateWizard({
     setError(null);
     if (!entryId) return setStep(3);
     setSaving(true);
-    const result = await saveJournalLocation(entryId, location?.value ?? null);
+    const result = await saveJournalLocation(entryId, location?.value ?? null, {
+      name: manualLocation.name.trim() || null,
+      address: manualLocation.address.trim() || null,
+      city: manualLocation.city.trim() || null,
+      state: manualLocation.state.trim() || null,
+      zip: manualLocation.zip.trim() || null,
+      suggestToFindmi: manualLocation.suggest,
+    });
     setSaving(false);
     if ("error" in result) return setError(result.error);
     setStep(3);
@@ -194,14 +202,7 @@ export default function JournalCreateWizard({
       {step === 2 && (
         <div className="mt-4 flex flex-col gap-3.5">
           <h2 className="font-display text-base font-bold tracking-tight text-ink">2. Add a location</h2>
-          {location ? (
-            <SelectedLocationCard location={location} onRemove={() => setLocation(null)} />
-          ) : (
-            <>
-              <JournalSearchSelect entity="locations" placeholder="Search for a place…" onSelect={setLocation} />
-              <p className="text-xs text-ink/40">Search by name, city, or address — or skip this step.</p>
-            </>
-          )}
+          <JournalLocationPicker location={location} onLocationChange={setLocation} manual={manualLocation} onManualChange={setManualLocation} />
 
           <div className="mt-1 flex gap-2">
             <button
@@ -217,7 +218,7 @@ export default function JournalCreateWizard({
               disabled={saving}
               className="flex h-12 flex-[2] items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
             >
-              {saving ? "Saving…" : location ? "Next" : "Skip"}
+              {saving ? "Saving…" : location || manualLocationHasText(manualLocation) ? "Next" : "Skip"}
             </button>
           </div>
         </div>
@@ -225,31 +226,21 @@ export default function JournalCreateWizard({
 
       {step === 3 && (
         <div className="mt-4 flex flex-col gap-4">
-          <h2 className="font-display text-base font-bold tracking-tight text-ink">3. Add brands, products and experiences</h2>
+          <div>
+            <h2 className="font-display text-base font-bold tracking-tight text-ink">3. Add to this experience</h2>
+            <p className="mt-0.5 text-xs text-ink/50">Connect anything that was part of your day.</p>
+          </div>
 
-          <JournalConnectionGroup
-            label="Businesses"
-            entity="businesses"
-            placeholder="Search businesses…"
-            selected={businesses}
-            onAdd={(r) => setBusinesses((prev) => [...prev, r])}
-            onRemove={(id) => setBusinesses((prev) => prev.filter((r) => r.value !== id))}
-          />
-          <JournalConnectionGroup
-            label="Products"
-            entity="products"
-            placeholder="Search products…"
-            selected={products}
-            onAdd={(r) => setProducts((prev) => [...prev, r])}
-            onRemove={(id) => setProducts((prev) => prev.filter((r) => r.value !== id))}
-          />
-          <JournalConnectionGroup
-            label="Events"
-            entity="events"
-            placeholder="Search events…"
-            selected={events}
-            onAdd={(r) => setEvents((prev) => [...prev, r])}
-            onRemove={(id) => setEvents((prev) => prev.filter((r) => r.value !== id))}
+          <JournalConnectionsPicker
+            businesses={businesses}
+            products={products}
+            events={events}
+            onAddBusiness={(r) => setBusinesses((prev) => [...prev, r])}
+            onRemoveBusiness={(id) => setBusinesses((prev) => prev.filter((r) => r.value !== id))}
+            onAddProduct={(r) => setProducts((prev) => [...prev, r])}
+            onRemoveProduct={(id) => setProducts((prev) => prev.filter((r) => r.value !== id))}
+            onAddEvent={(r) => setEvents((prev) => [...prev, r])}
+            onRemoveEvent={(id) => setEvents((prev) => prev.filter((r) => r.value !== id))}
           />
 
           <div className="mt-1 flex gap-2">
@@ -288,7 +279,7 @@ export default function JournalCreateWizard({
             onClick={() => setVisibility("public")}
             icon={<GlobeGlyph className="h-4 w-4" />}
             title="Public"
-            description="Visible as a public Journal Entry and eligible for future surfacing alongside connected Findmi objects."
+            description="Anyone can see this entry. It may also appear alongside places, brands, products and events you've connected."
           />
 
           <div className="mt-1 flex gap-2">
@@ -310,23 +301,6 @@ export default function JournalCreateWizard({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-export function SelectedLocationCard({ location, onRemove }: { location: JournalSearchResult; onRemove: () => void }) {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white p-3">
-      <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-black/5">
-        {location.image_url && <Image src={location.image_url} alt="" fill unoptimized sizes="48px" className="object-cover" />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold text-ink">{location.label}</p>
-        {location.sublabel && <p className="truncate text-xs text-ink/55">{location.sublabel}</p>}
-      </div>
-      <button type="button" onClick={onRemove} className="shrink-0 text-xs font-semibold text-ink/50 hover:text-ink">
-        Remove
-      </button>
     </div>
   );
 }

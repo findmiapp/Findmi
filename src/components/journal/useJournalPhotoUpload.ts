@@ -48,14 +48,21 @@ export function useJournalPhotoUpload(initialPhotos: JournalPhotoState[], ensure
     for (const file of fileArray) {
       const formData = new FormData();
       formData.set("file", file);
-      // eslint-disable-next-line no-await-in-loop
-      const result = await uploadJournalPhoto(id, formData);
-      if ("error" in result) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const result = await uploadJournalPhoto(id, formData);
+        if ("error" in result) {
+          failed += 1;
+        } else {
+          completed += 1;
+          setPhotos((prev) => [...prev, { id: result.id, url: result.url, isCover: prev.length === 0 }]);
+          setBatch({ total: fileArray.length, completed });
+        }
+      } catch {
+        // A dropped connection mid-upload throws rather than returning
+        // {error} — treated as one more failed file, never a crash (same
+        // reasoning as MemberImageField's own upload try/catch).
         failed += 1;
-      } else {
-        completed += 1;
-        setPhotos((prev) => [...prev, { id: result.id, url: result.url, isCover: prev.length === 0 }]);
-        setBatch({ total: fileArray.length, completed });
       }
     }
     setBatch(null);

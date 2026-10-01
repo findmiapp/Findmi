@@ -10,7 +10,26 @@ import type { JournalPhotoState, JournalUploadBatch } from "./useJournalPhotoUpl
  * a row of identical small tiles with no visual lead. Shared between
  * Create and Edit so both get the exact same upload-progress behavior —
  * see useJournalPhotoUpload's own note on why `batch` is real client-side
- * state, never a database poll or one fake tile per pending file. */
+ * state, never a database poll or one fake tile per pending file.
+ *
+ * Journal V1.1 — Native File-Picker Fix. Live mobile QA found Create's
+ * empty "ADD PHOTOS" state not opening the native picker at all. This
+ * component already triggers the file input the correct way (a real
+ * `<button type="button">` calling a stable ref's `.click()`, never a
+ * wrapping `<label>`), so the trigger mechanism itself was never the
+ * difference between Create and Edit — both call through this exact same
+ * file. The one real gap: the input was hidden via `className="hidden"`
+ * (display:none). This codebase already has a documented, proven fix for
+ * exactly this symptom — see MemberImageField.tsx's own "Native
+ * File-Picker Boundary Hardening" note: some Android Chrome/WebView
+ * versions lose the pending-selection association for a display:none file
+ * input, especially when an external Activity (a separate app, e.g.
+ * Google Photos) is what hands control back to the tab. The fix there was
+ * the same one applied here: `sr-only` (clipped/off-screen, still
+ * rendered) instead of `hidden` (display:none, removed from layout).
+ * Input value is now also reset defensively before opening the picker (not
+ * just after a selection), so no stale browser/WebView state can ever
+ * carry over from an earlier attempt. */
 export default function JournalPhotoStrip({
   photos,
   batch,
@@ -29,12 +48,20 @@ export default function JournalPhotoStrip({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cover = photos.find((p) => p.isCover) ?? photos[0] ?? null;
 
+  function openPicker() {
+    // Defensive reset BEFORE opening the picker too, not only after a
+    // selection — guarantees a stale value from an earlier attempt can
+    // never block/confuse the next one. See this file's own header note.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    fileInputRef.current?.click();
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {cover ? (
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={openPicker}
           className="group relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-black/10 bg-mist"
         >
           {cover.url && <Image src={cover.url} alt="" fill unoptimized sizes="(min-width: 640px) 512px, 100vw" className="object-cover" />}
@@ -48,7 +75,7 @@ export default function JournalPhotoStrip({
       ) : (
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={openPicker}
           className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-black/15 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700"
         >
           <span className="text-3xl leading-none">+</span>
@@ -96,7 +123,7 @@ export default function JournalPhotoStrip({
           )}
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={openPicker}
             aria-label="Add more photos"
             className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-black/20 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700"
           >
@@ -110,7 +137,8 @@ export default function JournalPhotoStrip({
         type="file"
         accept="image/*"
         multiple
-        className="hidden"
+        aria-label="Add photos"
+        className="sr-only"
         onChange={(e) => {
           onFilesSelected(e.target.files);
           e.target.value = "";

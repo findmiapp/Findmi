@@ -3,10 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { JournalEntryWithRelations } from "@/lib/journal";
-import JournalSearchSelect, { type JournalSearchResult } from "./JournalSearchSelect";
-import JournalConnectionGroup from "./JournalConnectionGroup";
+import type { JournalSearchResult } from "./JournalSearchSelect";
+import JournalConnectionsPicker from "./JournalConnectionsPicker";
+import JournalLocationPicker, { type JournalManualLocationState } from "./JournalLocationPicker";
 import JournalPhotoStrip from "./JournalPhotoStrip";
-import { SelectedLocationCard } from "./JournalCreateWizard";
 import { useJournalPhotoUpload } from "./useJournalPhotoUpload";
 import { saveJournalBasics, saveJournalLocation, saveJournalConnections, updateJournalVisibility } from "@/app/(public)/my-world/journal/actions";
 
@@ -44,6 +44,14 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
         }
       : null
   );
+  const [manualLocation, setManualLocation] = useState<JournalManualLocationState>({
+    name: entry.entry.manual_location_name ?? "",
+    address: entry.entry.manual_location_address ?? "",
+    city: entry.entry.manual_location_city ?? "",
+    state: entry.entry.manual_location_state ?? "",
+    zip: entry.entry.manual_location_zip ?? "",
+    suggest: entry.entry.manual_location_suggested,
+  });
   const [businesses, setBusinesses] = useState<JournalSearchResult[]>(
     entry.businesses.map((b) => ({ value: b.id, label: b.name, image_url: b.logo_url }))
   );
@@ -67,7 +75,14 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
 
     const [basicsResult, locationResult, connectionsResult, visibilityResult] = await Promise.all([
       saveJournalBasics(entryId, formData),
-      saveJournalLocation(entryId, location?.value ?? null),
+      saveJournalLocation(entryId, location?.value ?? null, {
+        name: manualLocation.name.trim() || null,
+        address: manualLocation.address.trim() || null,
+        city: manualLocation.city.trim() || null,
+        state: manualLocation.state.trim() || null,
+        zip: manualLocation.zip.trim() || null,
+        suggestToFindmi: manualLocation.suggest,
+      }),
       saveJournalConnections(entryId, {
         businessIds: businesses.map((b) => b.value),
         productIds: products.map((p) => p.value),
@@ -133,40 +148,21 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
       </EditSection>
 
       <EditSection label="Location">
-        {location ? (
-          <SelectedLocationCard location={location} onRemove={() => setLocation(null)} />
-        ) : (
-          <JournalSearchSelect entity="locations" placeholder="Search for a place…" onSelect={setLocation} />
-        )}
+        <JournalLocationPicker location={location} onLocationChange={setLocation} manual={manualLocation} onManualChange={setManualLocation} />
       </EditSection>
 
       <EditSection label="Connections">
-        <div className="flex flex-col gap-4">
-          <JournalConnectionGroup
-            label="Businesses"
-            entity="businesses"
-            placeholder="Search businesses…"
-            selected={businesses}
-            onAdd={(r) => setBusinesses((prev) => [...prev, r])}
-            onRemove={(id) => setBusinesses((prev) => prev.filter((r) => r.value !== id))}
-          />
-          <JournalConnectionGroup
-            label="Products"
-            entity="products"
-            placeholder="Search products…"
-            selected={products}
-            onAdd={(r) => setProducts((prev) => [...prev, r])}
-            onRemove={(id) => setProducts((prev) => prev.filter((r) => r.value !== id))}
-          />
-          <JournalConnectionGroup
-            label="Events"
-            entity="events"
-            placeholder="Search events…"
-            selected={events}
-            onAdd={(r) => setEvents((prev) => [...prev, r])}
-            onRemove={(id) => setEvents((prev) => prev.filter((r) => r.value !== id))}
-          />
-        </div>
+        <JournalConnectionsPicker
+          businesses={businesses}
+          products={products}
+          events={events}
+          onAddBusiness={(r) => setBusinesses((prev) => [...prev, r])}
+          onRemoveBusiness={(id) => setBusinesses((prev) => prev.filter((r) => r.value !== id))}
+          onAddProduct={(r) => setProducts((prev) => [...prev, r])}
+          onRemoveProduct={(id) => setProducts((prev) => prev.filter((r) => r.value !== id))}
+          onAddEvent={(r) => setEvents((prev) => [...prev, r])}
+          onRemoveEvent={(id) => setEvents((prev) => prev.filter((r) => r.value !== id))}
+        />
       </EditSection>
 
       <EditSection label="Visibility">

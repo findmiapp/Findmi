@@ -25,7 +25,14 @@ export const dynamic = "force-dynamic";
  * instead of a uniform grid, grouped connected objects, a truthful "Visit
  * Details" section that no longer silently drops a time when there's no
  * Location, and owner controls moved into their own de-emphasized
- * component (JournalOwnerActions). */
+ * component (JournalOwnerActions).
+ *
+ * V1.1 — manual-location display (entry.manual_location_* — see the
+ * journal_manual_location migration; no new query, these columns already
+ * came through getJournalEntryWithRelations' existing `select("*")`) when
+ * there's no canonical Location, and the hero title no longer gets
+ * line-clamped: this detail hero is the canonical reading view for the
+ * entry's own title, unlike an archive card, which may still truncate. */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const result = await getJournalEntryWithRelations(id);
@@ -57,10 +64,37 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const connectedCount = businesses.length + products.length + events.length;
   const connectionsHeading = events.length > 0 ? "Connected to This Experience" : "Places, Brands & Products";
 
+  // V1.1 — a manual Journal location (no canonical Location row) still
+  // gets a truthful name for the hero subtitle and a Directions link when
+  // there's genuinely enough address text to form a useful map query.
+  // Never fabricated coordinates — just the owner's own typed text, passed
+  // straight into the same Google Maps search pattern LocationPublicView
+  // already uses.
+  const manualLocationName = entry.manual_location_name ?? entry.manual_location_city ?? null;
+  const hasManualLocation = Boolean(
+    entry.manual_location_name || entry.manual_location_address || entry.manual_location_city || entry.manual_location_state || entry.manual_location_zip
+  );
+  const manualLocationLine = [
+    entry.manual_location_address,
+    [entry.manual_location_city, entry.manual_location_state].filter(Boolean).join(", "),
+    entry.manual_location_zip,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const manualHasUsefulAddress = Boolean(entry.manual_location_address || (entry.manual_location_city && entry.manual_location_state));
+
   const mapsQuery = location
     ? encodeURIComponent([location.name, location.address, [location.city, location.state].filter(Boolean).join(", ")].filter(Boolean).join(", "))
-    : null;
+    : !location && hasManualLocation && manualHasUsefulAddress
+      ? encodeURIComponent(
+          [entry.manual_location_name, entry.manual_location_address, [entry.manual_location_city, entry.manual_location_state].filter(Boolean).join(", ")]
+            .filter(Boolean)
+            .join(", ")
+        )
+      : null;
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}` : null;
+
+  const heroLocationLabel = location?.name ?? manualLocationName;
 
   return (
     <div className="mx-auto max-w-2xl pb-14">
@@ -78,10 +112,14 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 35%, rgba(0,0,0,0) 85%)" }}
         >
           <p className="text-[10px] font-bold uppercase tracking-wide text-white/60">Journal Entry</p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-white line-clamp-2 sm:text-3xl">{entry.title}</h1>
+          {/* V1.1 — the detail hero is the canonical reading view for this
+              title; unlike an archive card, it never line-clamps it away.
+              Natural wrapping + the gradient's own generous bottom padding
+              keep even a long title readable. */}
+          <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{entry.title}</h1>
           <p className="text-sm font-medium text-white/80">
             {dateLabel}
-            {location ? ` · ${location.name}` : ""}
+            {heroLocationLabel ? ` · ${heroLocationLabel}` : ""}
           </p>
           {media.length > 0 && (
             <p className="text-xs text-white/60">
@@ -148,7 +186,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </section>
         )}
 
-        {(location || timeLabel) && (
+        {(location || hasManualLocation || timeLabel) && (
           <section className="mt-8">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">Visit Details</h2>
             <div className="mt-3 flex flex-col gap-2">
@@ -160,6 +198,29 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <ConnectedRow href={`/location/${location.slug}`} imageUrl={location.logo_url ?? location.cover_image_url} name={location.name} meta={[location.city, location.state].filter(Boolean).join(", ")} />
+                  </div>
+                  {directionsHref && (
+                    <a
+                      href={directionsHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-10 shrink-0 items-center justify-center rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                    >
+                      Directions
+                    </a>
+                  )}
+                </div>
+              )}
+              {/* V1.1 — no canonical Location, but the owner typed a real
+                  place: show exactly what they entered (never a fabricated
+                  Location-style card/link, since this place doesn't exist
+                  as one). Directions only renders when there's genuinely
+                  enough address text to form a useful map query. */}
+              {!location && hasManualLocation && (
+                <div className="flex items-center gap-2 rounded-xl border border-black/5 bg-white p-2.5">
+                  <div className="min-w-0 flex-1">
+                    {manualLocationName && <p className="truncate text-sm font-semibold text-ink">{manualLocationName}</p>}
+                    {manualLocationLine && <p className="truncate text-xs text-ink/50">{manualLocationLine}</p>}
                   </div>
                   {directionsHref && (
                     <a

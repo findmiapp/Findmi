@@ -187,13 +187,64 @@ export async function setJournalCoverPhoto(entryId: string, mediaId: string): Pr
   }
 }
 
-export async function saveJournalLocation(entryId: string, locationId: string | null): Promise<{ ok: true } | { error: string }> {
+export interface JournalManualLocationInput {
+  name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  suggestToFindmi: boolean;
+}
+
+/** Step 2 — a canonical FindMi Location (locationId) and a manually-typed
+ * one (manual) are mutually exclusive by construction: whichever this call
+ * receives wins, and the other side is always cleared, so a row can never
+ * end up with both a real location_id AND stale manual_location_* text
+ * left over from an earlier choice. Passing neither (both null) means the
+ * step was skipped — both sides are cleared. `manual.suggestToFindmi` is
+ * the entire "suggest this place" signal for this pass (see the
+ * migration's own comment): a plain boolean on the entry, never a
+ * promise, never an automatic write into public.locations. */
+export async function saveJournalLocation(
+  entryId: string,
+  locationId: string | null,
+  manual?: JournalManualLocationInput | null
+): Promise<{ ok: true } | { error: string }> {
   try {
     const { admin } = await requireOwnEntry(entryId);
-    if (locationId && !(await validateConnectableObject("location", locationId))) {
-      return { error: "That Location couldn't be found." };
+    if (locationId) {
+      if (!(await validateConnectableObject("location", locationId))) {
+        return { error: "That Location couldn't be found." };
+      }
+      const { error } = await admin
+        .from("journal_entries")
+        .update({
+          location_id: locationId,
+          manual_location_name: null,
+          manual_location_address: null,
+          manual_location_city: null,
+          manual_location_state: null,
+          manual_location_zip: null,
+          manual_location_suggested: false,
+        })
+        .eq("id", entryId);
+      if (error) return { error: error.message };
+      return { ok: true };
     }
-    const { error } = await admin.from("journal_entries").update({ location_id: locationId }).eq("id", entryId);
+
+    const hasManualText = Boolean(manual && (manual.name || manual.address || manual.city || manual.state || manual.zip));
+    const { error } = await admin
+      .from("journal_entries")
+      .update({
+        location_id: null,
+        manual_location_name: hasManualText ? manual!.name : null,
+        manual_location_address: hasManualText ? manual!.address : null,
+        manual_location_city: hasManualText ? manual!.city : null,
+        manual_location_state: hasManualText ? manual!.state : null,
+        manual_location_zip: hasManualText ? manual!.zip : null,
+        manual_location_suggested: hasManualText ? Boolean(manual!.suggestToFindmi) : false,
+      })
+      .eq("id", entryId);
     if (error) return { error: error.message };
     return { ok: true };
   } catch (err) {

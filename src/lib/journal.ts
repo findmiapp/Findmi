@@ -41,6 +41,17 @@ export interface JournalEntryRow {
   entry_time: string | null;
   notes: string | null;
   location_id: string | null;
+  // Journal V1.1 — manual (non-canonical) location, for a place that
+  // doesn't exist as a FindMi Location yet. Always null when location_id
+  // is set (the Create/Edit flows only ever populate one or the other —
+  // see JournalLocationPicker.tsx); never promoted into public.locations
+  // by any part of this app.
+  manual_location_name: string | null;
+  manual_location_address: string | null;
+  manual_location_city: string | null;
+  manual_location_state: string | null;
+  manual_location_zip: string | null;
+  manual_location_suggested: boolean;
   visibility: JournalVisibility;
   status: JournalStatus;
   created_at: string;
@@ -229,6 +240,7 @@ export interface JournalIndexEntry {
   id: string;
   title: string;
   entry_date: string;
+  entry_time: string | null;
   visibility: JournalVisibility;
   coverUrl: string | null;
   photoCount: number;
@@ -238,26 +250,34 @@ export interface JournalIndexEntry {
   hasEvent: boolean;
 }
 
-/** The signed-in owner's own Journal Index — published entries only (a
- * draft is a still-in-progress creation, not yet "a journal entry" from
- * the visitor's own perspective; its row and any uploaded photos are
- * preserved, just not listed here — see the Create flow's own note on
- * resuming later). Batched: one query each for entries/media-counts/
- * covers/connections, never one query per entry (no N+1 regardless of how
- * many entries exist). */
-export async function getJournalIndexForUser(
-  userId: string,
-  filter: "all" | "places" | "brands" | "events" | "products" = "all"
-): Promise<JournalIndexEntry[]> {
-  const supabase = await getServerSupabase();
-  let query = supabase
-    .from("journal_entries")
-    .select("id, title, entry_date, visibility, location_id, location:locations(name)")
-    .eq("user_id", userId)
-    .eq("status", "published");
+export type JournalArchiveFilter = "all" | "places" | "brands" | "products" | "events";
 
-  if (filter === "places") query = query.not("location_id", "is", null);
-  const { data: entries } = await query.order("entry_date", { ascending: false }).order("created_at", { ascending: false });
+/** Journal V1.1 — the signed-in owner's own full Journal archive: EVERY
+ * published entry (a draft is still-in-progress, never listed — see the
+ * Create flow's own note on resuming later), unfiltered by time OR
+ * object type. The archive page applies BOTH the Day/Week/Month/Year
+ * time-window slicing AND the "All experiences/Places/Brands/Products/
+ * Events" object-type filter over this one already-fetched array in
+ * plain JS (see lib/journalArchive.ts's filterByObjectType and
+ * entriesFor*), rather than re-querying per view/period/filter — still
+ * exactly the same fixed number of batched queries (entries once, media
+ * once, connections once, signed URLs once) no matter how many periods a
+ * visitor pages through in one request, and still zero N+1 regardless of
+ * how many entries exist. Returning the type filter unapplied here (unlike
+ * the old getJournalIndexForUser this replaces) is what lets the archive
+ * page tell "nothing in this Journal at all" apart from "nothing matches
+ * this filter" without a second query. */
+export async function getJournalArchiveEntries(userId: string): Promise<JournalIndexEntry[]> {
+  const supabase = await getServerSupabase();
+  const { data: entries } = await supabase
+    .from("journal_entries")
+    .select(
+      "id, title, entry_date, entry_time, visibility, location_id, manual_location_name, manual_location_city, location:locations(name)"
+    )
+    .eq("user_id", userId)
+    .eq("status", "published")
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false });
   if (!entries || entries.length === 0) return [];
 
   const entryIds = entries.map((e) => e.id);
@@ -288,28 +308,21 @@ export async function getJournalIndexForUser(
   }
   const signedUrls = await resolveSignedUrls(coverPaths);
 
-  const filtered =
-    filter === "brands"
-      ? entries.filter((e) => connectionsByEntry.get(e.id)?.business)
-      : filter === "products"
-        ? entries.filter((e) => connectionsByEntry.get(e.id)?.product)
-        : filter === "events"
-          ? entries.filter((e) => connectionsByEntry.get(e.id)?.event)
-          : entries;
-
-  return filtered.map((e) => {
+  return entries.map((e) => {
     const list = mediaByEntry.get(e.id) ?? [];
     const cover = list.find((m) => m.is_cover) ?? [...list].sort((a, b) => a.display_order - b.display_order)[0];
     const connections = connectionsByEntry.get(e.id);
-    const location = Array.isArray(e.location) ? (e.location[0] ?? null) : e.location;
+    const canonicalLocation = Array.isArray(e.location) ? (e.location[0] ?? null) : e.location;
+    const locationName = canonicalLocation?.name ?? e.manual_location_name ?? e.manual_location_city ?? null;
     return {
       id: e.id,
       title: e.title,
       entry_date: e.entry_date,
+      entry_time: e.entry_time,
       visibility: e.visibility as JournalVisibility,
       coverUrl: cover ? (signedUrls.get(cover.storage_path) ?? null) : null,
       photoCount: list.length,
-      location: location ? { name: location.name } : null,
+      location: locationName ? { name: locationName } : null,
       hasBusiness: Boolean(connections?.business),
       hasProduct: Boolean(connections?.product),
       hasEvent: Boolean(connections?.event),
@@ -388,7 +401,7 @@ export async function getPublicJournalEntriesForObject(
 
   const { data: entries } = await supabase
     .from("journal_entries")
-    .select("id, title, entry_date, visibility, location_id, location:locations(name)")
+    .select("id, title, entry_date, entry_time, visibility, location_id, location:locations(name)")
     .in("id", entryIds)
     .eq("visibility", "public")
     .eq("status", "published")
@@ -420,6 +433,7 @@ export async function getPublicJournalEntriesForObject(
       id: e.id,
       title: e.title,
       entry_date: e.entry_date,
+      entry_time: e.entry_time,
       visibility: e.visibility as JournalVisibility,
       coverUrl: cover ? (signedUrls.get(cover.storage_path) ?? null) : null,
       photoCount: list.length,
