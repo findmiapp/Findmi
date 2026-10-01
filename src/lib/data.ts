@@ -56,7 +56,7 @@ export const PUBLIC_BUSINESS_COLUMNS =
   "cta_2_enabled, cta_3_label, cta_3_url, cta_3_enabled, bulletin_enabled, " +
   "bulletin_heading, bulletin_body, bulletin_label, bulletin_url, " +
   "native_inquiries_enabled, market_area_id, is_pro_member, " +
-  "accepts_inquiries, inquiry_topics, featured_event_id";
+  "accepts_inquiries, inquiry_topics, featured_event_id, featured_appearance_id";
 // Intentionally excluded (matches the migration exactly — never add these
 // back here without also widening the grant): lead_status,
 // marketplace_fee_percent, processing_fee_payer, payout_method,
@@ -1135,7 +1135,12 @@ export interface AppearanceWithEventSlug extends Appearance {
   // own query below still only selects `slug`, so its rows never populate this) for
   // the Quick View modal's "Part of [Event Name]" relationship, alongside the
   // slug every existing caller already relies on.
-  event: { slug: string; name?: string } | null;
+  // Featured Appearance System — `cover_image_url` added (same optional-
+  // field discipline: only getUpcomingAppearancesForBusiness selects it)
+  // so BusinessPublicView's unified Featured Appearance card can use the
+  // linked Event's own real cover photo for an event-backed appearance
+  // with no flyer image of its own, without a second query.
+  event: { slug: string; name?: string; cover_image_url?: string | null } | null;
   // Public Graph Integrity Pass 1 — the linked first-class Location, when
   // appearance.location_id points at one. Bounded FK join on the same
   // appearances query (no second query, no N+1) — null whenever the
@@ -1248,7 +1253,7 @@ export async function getUpcomingAppearancesForBusiness(
   // distinct appearances exist just past that raw cutoff.
   const { data } = await supabase
     .from("appearances")
-    .select("*, event:events(slug, name), location:locations(id, name, slug)")
+    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .gt("end_at", nowIso)
@@ -1256,7 +1261,7 @@ export async function getUpcomingAppearancesForBusiness(
     .limit(limit * 2);
 
   type JoinedLocation = { id: string; name: string; slug: string };
-  type JoinedEvent = { slug: string; name: string };
+  type JoinedEvent = { slug: string; name: string; cover_image_url: string | null };
   type RawRow = Appearance &
     DedupableAppearance & {
       event: JoinedEvent | JoinedEvent[] | null;

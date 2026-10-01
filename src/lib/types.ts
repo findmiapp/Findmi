@@ -279,6 +279,18 @@ export interface Business {
   // content — just a pointer, validated against this Business's real
   // event_businesses participation at resolution time.
   featured_event_id?: string | null;
+  // Featured Appearance System (Business Public Profile) — an optional
+  // manual override of which of this Business's own eligible Appearances
+  // the public profile's unified Featured Appearance card shows (null =
+  // automatic: happening now, else nearest upcoming). Appearance is the
+  // canonical row for both standalone and event-backed participation, so
+  // this one pointer replaces the old split presentation (immersive
+  // Featured Event card vs. plain "Next Up" card) with a single resolver —
+  // see resolveFeaturedAppearance in BusinessPublicView.tsx. Never a copy
+  // of the Appearance's own content; validated against this Business's
+  // real appearances at write time, and silently ignored (falls back to
+  // automatic) at read time if it ever becomes stale/ineligible.
+  featured_appearance_id?: string | null;
 }
 
 export interface Market {

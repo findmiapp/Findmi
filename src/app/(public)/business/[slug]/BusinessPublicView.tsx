@@ -13,7 +13,7 @@ import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ShareButton from "@/components/ShareButton";
 import ClaimButton from "@/components/ClaimButton";
-import FeaturedEventCard from "@/components/FeaturedEventCard";
+import FeaturedAppearanceCard from "@/components/FeaturedAppearanceCard";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import MessageButton from "@/components/MessageButton";
@@ -32,9 +32,9 @@ import {
   getProductsForBusiness,
   getUpcomingAppearancesForBusiness,
   PUBLIC_BUSINESS_COLUMNS,
+  type AppearanceWithEventSlug,
 } from "@/lib/data";
 import { cityState, cityStateZip, formatAppearanceDateRange, formatTime, getTemporalLabel } from "@/lib/format";
-import LiveDot from "@/components/LiveDot";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { validateCustomDestination } from "@/lib/navigation";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -42,7 +42,6 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSupabase } from "@/lib/supabase";
 import { isBusinessPro } from "@/lib/entitlements";
-import { resolveFeaturedEventForBusiness } from "@/lib/featured-event";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -55,6 +54,29 @@ import { resolveFeaturedEventForBusiness } from "@/lib/featured-event";
 
 function isSafeExternalUrl(url: string | null | undefined): url is string {
   return typeof url === "string" && /^https?:\/\//i.test(url);
+}
+
+/** Featured Appearance System — pure, synchronous, zero-query resolver.
+ * `appearances` is the same already-fetched getUpcomingAppearancesForBusiness
+ * result this page already needs for Findmi Here, which is itself already
+ * ordered start_at ascending (a currently-live appearance's start_at is
+ * always earlier than any not-yet-started one's, so [0] already means
+ * "live if any, else nearest upcoming" with no extra sort — same reasoning
+ * lib/featured-event.ts's own automatic path documents). A manual override
+ * wins only when it's still present in that eligible list; once an
+ * appearance is canceled, ends, is deleted, or otherwise drops out of
+ * getUpcomingAppearancesForBusiness's own eligibility rules, it simply
+ * stops matching here and this silently falls back to automatic — no
+ * separate staleness check, no owner cleanup required. */
+function resolveFeaturedAppearance(
+  appearances: AppearanceWithEventSlug[],
+  overrideAppearanceId: string | null
+): AppearanceWithEventSlug | null {
+  if (overrideAppearanceId) {
+    const match = appearances.find((a) => a.id === overrideAppearanceId);
+    if (match) return match;
+  }
+  return appearances[0] ?? null;
 }
 
 /** FREE VS PRO GATING — resolved server-side via lib/entitlements.ts,
@@ -229,64 +251,73 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Appearance creation/management (Command Center's own aggregation
   // queries this same table with no such limit), storage, event rosters,
   // or /find, and still doesn't.
-  const [products, appearances, people, galleryImages, featuredEvent] = await Promise.all([
+  const [products, appearances, people, galleryImages] = await Promise.all([
     getProductsForBusiness(business.id),
     getUpcomingAppearancesForBusiness(business.id),
     getPeopleForBusiness(business.id),
     getBusinessGalleryImages(business.id),
-    // Featured Event System — null when this Business has no eligible
-    // Event to show (a business whose only upcoming presence is a
-    // standalone, non-Event Appearance keeps the existing text-only
-    // "Next Up" module below instead).
-    resolveFeaturedEventForBusiness(business.id, business.featured_event_id ?? null),
   ]);
 
-  // Action Hierarchy pass — Business's strongest CTA should be "find this
-  // business" when it has somewhere upcoming to be, not Inquire (a
-  // business that moves is the whole point of Findmi; Inquire is contact
-  // functionality, a lower-intent action for a visitor who already knows
-  // what they want). appearances is already sorted nearest-first by its
-  // own query (getUpcomingAppearancesForBusiness), so [0] is genuinely
-  // "next up" for both Free (3-item) and Pro (20-item) callers. Same
-  // event > location > in-page-anchor destination precedence
-  // AppearanceCard itself already uses for its own click target, kept
-  // deliberately simple here (no external_url/flyer tiers — this is a
-  // page-level CTA, not a full per-card click resolution).
-  const nextAppearance = appearances[0] ?? null;
-  const nextTemporal = nextAppearance ? getTemporalLabel(nextAppearance.start_at, nextAppearance.end_at) : null;
-  const nextVenueLabel = nextAppearance?.location?.name ?? nextAppearance?.venue_name ?? null;
-  const nextIsEvent = Boolean(nextAppearance?.event?.slug);
-  const nextAppearanceHref = nextAppearance
-    ? nextIsEvent
-      ? `/event/${nextAppearance.event!.slug}`
-      : nextAppearance.location?.slug
-        ? `/location/${nextAppearance.location.slug}`
+  // Featured Appearance System — replaces the old split presentation
+  // (immersive Featured Event card for an event-backed appearance vs. a
+  // plain white "Next Up" card for a standalone one) with ONE unified
+  // card for whichever single Appearance resolves. Pure/synchronous, no
+  // extra query: reuses the exact `appearances` array already fetched
+  // above for Findmi Here. Null when this Business has nothing upcoming
+  // at all (see resolveFeaturedAppearance's own doc comment for the
+  // manual-override/stale-selection rules).
+  const featuredAppearance = resolveFeaturedAppearance(appearances, business.featured_appearance_id ?? null);
+  const featuredTemporal = featuredAppearance
+    ? getTemporalLabel(featuredAppearance.start_at, featuredAppearance.end_at)
+    : null;
+  const featuredIsEvent = Boolean(featuredAppearance?.event?.slug);
+  // Image precedence (LOCKED — see this pass's own spec): the appearance's
+  // own flyer image, else the linked Event's own cover image when event-
+  // backed, else this Business's own cover image, else FeaturedAppearanceCard's
+  // own safe neutral fallback. Never the rotating business-gallery fallback
+  // BusinessLogoCard's discovery cards use — that experiment is scoped to
+  // discovery rails, not this profile.
+  const featuredImageUrl = featuredAppearance
+    ? (featuredAppearance.flyer_image_url ?? featuredAppearance.event?.cover_image_url ?? business.cover_image_url ?? null)
+    : null;
+  // Real destination only — event > location > in-page anchor, the exact
+  // same precedence AppearanceCard's own click target already uses. Never
+  // a new /appearance/[id] route.
+  const featuredHref = featuredAppearance
+    ? featuredIsEvent
+      ? `/event/${featuredAppearance.event!.slug}`
+      : featuredAppearance.location?.slug
+        ? `/location/${featuredAppearance.location.slug}`
         : "#findmi-here"
     : null;
-  // "View Event"/"View Location" only ever labels a real destination
-  // (event > location, same precedence as nextAppearanceHref above); an
-  // appearance with neither still gets a "View Details" fallback that
-  // scrolls to the real Findmi Here list (#findmi-here) rather than
-  // implying a page that doesn't exist.
-  const nextViewLabel = nextIsEvent ? "View Event" : nextAppearance?.location ? "View Location" : nextAppearance ? "View Details" : null;
   // Same directions-URL construction AppearanceCard's own lowest-tier
-  // fallback uses (venue_name/address/city/state), independent of
-  // nextAppearanceHref's event/location precedence — Directions is a
-  // distinct physical-navigation intent from "view this relationship."
-  const nextMapsQuery = nextAppearance
-    ? [nextAppearance.venue_name, nextAppearance.address, cityState(nextAppearance.city, nextAppearance.state)]
+  // fallback uses (venue_name/address/city/state) — Directions is a
+  // distinct physical-navigation intent from View Details, and null
+  // whenever there isn't enough real location data for a maps query.
+  const featuredMapsQuery = featuredAppearance
+    ? [featuredAppearance.venue_name, featuredAppearance.address, cityState(featuredAppearance.city, featuredAppearance.state)]
         .filter(Boolean)
         .join(", ")
     : "";
-  const nextDirectionsHref = nextMapsQuery
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(nextMapsQuery)}`
+  const featuredDirectionsHref = featuredMapsQuery
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(featuredMapsQuery)}`
     : null;
-  const nextTimeLine = nextAppearance
-    ? nextTemporal?.live
-      ? nextAppearance.end_at
-        ? `Until ${formatTime(nextAppearance.end_at)}`
+  // formatAppearanceDateRange already respects the established "Time TBD"
+  // semantics (isTimeUnknown) — never a fabricated exact time.
+  const featuredDateTimeLine = featuredAppearance
+    ? featuredTemporal?.live
+      ? featuredAppearance.end_at
+        ? `Until ${formatTime(featuredAppearance.end_at)}`
         : "Happening now"
-      : formatAppearanceDateRange(nextAppearance.start_at, nextAppearance.end_at, nextAppearance.description)
+      : formatAppearanceDateRange(featuredAppearance.start_at, featuredAppearance.end_at, featuredAppearance.description)
+    : null;
+  // "Venue Name · City, ST" — the same combined-join pattern already
+  // established for occurrence mini-cards (BusinessLogoCard), never just
+  // one half when both are legitimately available.
+  const featuredVenueName = featuredAppearance?.location?.name ?? featuredAppearance?.venue_name ?? null;
+  const featuredLocationLabel = featuredAppearance ? cityState(featuredAppearance.city, featuredAppearance.state) : "";
+  const featuredVenueLine = featuredAppearance
+    ? [featuredVenueName, featuredLocationLabel].filter(Boolean).join(" · ") || null
     : null;
 
   // "Meet the Owners" only when every configured role genuinely says so —
@@ -606,77 +637,29 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           competing visual systems for one fact). This is now the ONE place
           that answers "where/when are they right now or next," with real
           destinations attached — not a CTA whose only job is scrolling to
-          the list immediately below it. Same getTemporalLabel/appearances[0]
-          data as before, no new query. Renders nothing for a business with
-          no upcoming appearances (see the right rail's own Inquire-becomes-
-          primary behavior for that state instead). */}
-      {/* Premium Featured Event Hero pass — when this Business has an
-          eligible Event (manually featured, or the nearest live/upcoming
-          Event-linked Appearance), show the full-bleed image hero instead
-          of the older text-only card below. A business whose only
-          upcoming presence is a standalone, non-Event Appearance (or
-          whose manual override has become ineligible) keeps that
-          existing module untouched — never a dead/empty state. */}
-      {featuredEvent ? (
+          the list immediately below it. Renders nothing for a business
+          with no upcoming appearances (see the right rail's own Inquire-
+          becomes-primary behavior for that state instead).
+          Featured Appearance System — this used to split into an immersive
+          FeaturedEventCard for an event-backed appearance vs. a plain
+          white "Next Up" card for a standalone one (two unrelated visual
+          structures depending on provenance a visitor never sees).
+          FeaturedAppearanceCard is now the ONE unified presentation for
+          whichever single Appearance resolveFeaturedAppearance above
+          resolves, event-backed or standalone alike. */}
+      {featuredAppearance && (
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="mt-5 max-w-xl">
-            <FeaturedEventCard
-              href={`/event/${featuredEvent.event.slug}`}
-              imageUrl={featuredEvent.event.cover_image_url}
-              imageAlt={featuredEvent.event.name}
-              category={featuredEvent.category}
-              title={featuredEvent.event.name}
-              attribution={featuredEvent.attribution}
-              statusLabel={featuredEvent.statusLabel}
-              isLive={featuredEvent.isLive}
+            <FeaturedAppearanceCard
+              title={featuredAppearance.title}
+              imageUrl={featuredImageUrl}
+              viewDetailsHref={featuredHref ?? "#findmi-here"}
+              directionsHref={featuredDirectionsHref}
+              dateTimeLine={featuredDateTimeLine}
+              venueLine={featuredVenueLine}
             />
           </div>
         </div>
-      ) : (
-        nextAppearance &&
-        nextTemporal && (
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <div
-              className={`mt-5 max-w-xl rounded-2xl border p-4 sm:p-5 ${
-                nextTemporal.live ? "border-red-100 bg-red-50/70" : "border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-              }`}
-            >
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                  nextTemporal.live ? "bg-red-600 text-white" : "bg-findmi-50 text-findmi-700"
-                }`}
-              >
-                {nextTemporal.live && <LiveDot className="text-white" />}
-                {nextTemporal.live ? "Here Now" : `Next Up · ${nextTemporal.label}`}
-              </span>
-              <p className="mt-2 font-display text-lg font-bold tracking-tight text-ink">{nextAppearance.title}</p>
-              {nextTimeLine && <p className="mt-0.5 text-sm text-ink/60">{nextTimeLine}</p>}
-              {nextVenueLabel && <p className="mt-0.5 text-sm text-ink/60">{nextVenueLabel}</p>}
-              {(nextViewLabel || nextDirectionsHref) && (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {nextViewLabel && nextAppearanceHref && (
-                    <Link
-                      href={nextAppearanceHref}
-                      className="flex h-9 items-center justify-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    >
-                      {nextViewLabel}
-                    </Link>
-                  )}
-                  {nextDirectionsHref && (
-                    <a
-                      href={nextDirectionsHref}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-black/10 px-4 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
-                    >
-                      Directions
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )
       )}
 
       <div className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-10">

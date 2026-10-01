@@ -1970,35 +1970,43 @@ export async function returnProductToCatalog(businessId: string, productId: stri
   redirect(appendQuery(redirectPath, { marketplace_updated: "1" }));
 }
 
-// ── Featured Event System — owner override ──────────────────────────────
+// ── Featured Appearance System (Business Public Profile) — owner override ──
 //
-// businesses.featured_event_id is only ever a pointer (never a copy of
-// the Event's own content — see lib/featured-event.ts, which re-resolves
-// the real row on every public read and silently falls back to automatic
-// selection if this pointer ever becomes stale/ineligible). This action's
-// only job is validating that pointer before writing it: the chosen Event
-// must be one this Business is already an approved event_businesses
-// participant of — never an arbitrary Event id from the client.
+// businesses.featured_appearance_id is only ever a pointer (never a copy
+// of the Appearance's own content — see resolveFeaturedAppearance in
+// BusinessPublicView.tsx, which re-resolves the real row on every public
+// read and silently falls back to automatic selection — happening now,
+// else nearest upcoming — if this pointer ever becomes stale/ineligible).
+// This action's only job is validating that pointer before writing it: the
+// chosen Appearance must genuinely belong to this Business — never an
+// arbitrary Appearance id from the client. Toggle, not a separate
+// set/clear pair: featuring the already-featured row un-features it
+// (-> null, automatic), featuring a different eligible row simply
+// overwrites the single pointer — "one business, one optional manually
+// featured Appearance" with no separate clear control needed.
 
-/** Sets or clears (empty `event_id`) this Business's manual Featured
- * Event override. */
-export async function setFeaturedEvent(businessId: string, formData: FormData) {
-  const redirectPath = `/account/business/${businessId}?tab=profile`;
+/** Toggles this Business's manual Featured Appearance override for one
+ * specific Appearance (must belong to this Business). */
+export async function toggleFeaturedAppearance(businessId: string, appearanceId: string) {
+  const redirectPath = `/account/business/${businessId}?tab=findmi-here`;
   const { admin, business } = await requireBusinessMemberWithDetails(businessId, redirectPath);
 
-  const eventId = str(formData, "event_id");
-  if (eventId) {
-    const { data: participation } = await admin
-      .from("event_businesses")
-      .select("id")
-      .eq("event_id", eventId)
-      .eq("business_id", businessId)
-      .eq("status", "approved")
-      .maybeSingle();
-    if (!participation) redirect(appendQuery(redirectPath, { error: "You can only feature an Event you're an approved participant of." }));
-  }
+  const { data: appearance } = await admin
+    .from("appearances")
+    .select("id")
+    .eq("id", appearanceId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  if (!appearance) redirect(appendQuery(redirectPath, { error: "That appearance couldn't be found." }));
 
-  await admin.from("businesses").update({ featured_event_id: eventId }).eq("id", businessId);
+  const { data: current } = await admin
+    .from("businesses")
+    .select("featured_appearance_id")
+    .eq("id", businessId)
+    .maybeSingle();
+  const nextValue = current?.featured_appearance_id === appearanceId ? null : appearanceId;
+
+  await admin.from("businesses").update({ featured_appearance_id: nextValue }).eq("id", businessId);
 
   revalidatePath(redirectPath);
   if (business.slug) revalidatePath(`/business/${business.slug}`);

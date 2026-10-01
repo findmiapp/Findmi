@@ -41,6 +41,7 @@ import {
   returnProductToCatalog,
   setMemberProductActive,
   submitProductToMarketplace,
+  toggleFeaturedAppearance,
   updateBusinessGallery,
   updateBusinessLinks,
   updateBusinessProfile,
@@ -55,7 +56,6 @@ import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
 import AppearanceEditorDetails from "./AppearanceEditorDetails";
 import EventSearchPicker from "./EventSearchPicker";
-import FeaturedEventControl from "./FeaturedEventControl";
 import RemoveAppearanceButton from "./RemoveAppearanceButton";
 import ProductFieldsForm, { type ProductFieldValues } from "./ProductFieldsForm";
 import {
@@ -429,7 +429,7 @@ export default async function ManageBusinessPage({
     admin
       .from("businesses")
       .select(
-        "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, accepts_inquiries, inquiry_topics, market_area_id, featured_event_id"
+        "id, name, slug, logo_url, cover_image_url, plan_tier, plan_expires_at, publication_status, short_description, description, city, state, postal_code, country, email, phone, website_url, instagram_url, facebook_url, tiktok_url, bulletin_enabled, bulletin_label, bulletin_heading, bulletin_body, bulletin_url, native_inquiries_enabled, accepts_inquiries, inquiry_topics, market_area_id, featured_appearance_id"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -1767,11 +1767,11 @@ export default async function ManageBusinessPage({
             </form>
           </Panel>
 
-          {/* Featured Event System — FeaturedEventControl owns its own
-              Panel wrapper and renders nothing at all (not even an empty
-              panel) when this Business has no approved Event
-              participation to choose from yet. */}
-          <FeaturedEventControl businessId={id} currentFeaturedEventId={business.featured_event_id ?? null} />
+          {/* Featured Appearance System — replaces the old FeaturedEventControl
+              (pick-an-Event) with a simpler, inline "Feature on profile"
+              toggle directly on each eligible row in Where I'll Be below —
+              one business, one optional manually-featured Appearance, no
+              separate picker/page. */}
 
           {/* ── Gallery + Links & Contact (Owner Shell V3 — consolidated
               into Profile). Free Tier Entitlement Reset V1 — no longer
@@ -2295,6 +2295,27 @@ export default async function ManageBusinessPage({
                             venueLabel={locationLine || null}
                             isOfficialParticipation={a.source === "official_participation" && Boolean(a.event_id)}
                           />
+                          {/* Featured Appearance System — a simple inline
+                              toggle, not a separate picker/page. Featuring
+                              this row overwrites the single
+                              featured_appearance_id pointer (un-featuring
+                              whatever was featured before, if anything);
+                              featuring the already-featured row clears it
+                              back to null (automatic selection) — the
+                              "simple way to clear/change" the spec asks
+                              for, with no second control needed. */}
+                          <form action={toggleFeaturedAppearance.bind(null, id, a.id)} className="mt-2">
+                            <button
+                              type="submit"
+                              className={`text-metadata font-semibold ${
+                                business.featured_appearance_id === a.id ? "text-findmi-700" : "text-accent"
+                              }`}
+                            >
+                              {business.featured_appearance_id === a.id
+                                ? "✓ Featured on profile — tap to remove"
+                                : "Feature on profile"}
+                            </button>
+                          </form>
                           {/* QR Campaigns V1 — contextual creation for this
                               Appearance, Free-tier reachable. Existing
                               campaigns stay listed AND the creator stays
