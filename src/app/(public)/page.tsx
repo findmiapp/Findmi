@@ -414,7 +414,13 @@ export default async function HomePage({
       ))}
 
       {/* Final business CTA — unchanged, founder-editable via Site
-          Editor. */}
+          Editor. Homepage Bottom Cleanup pass — the "Keep exploring"
+          links block that used to follow this (Explore businesses/
+          events/locations) is removed entirely, so this CTA is now the
+          last substantive homepage content before Footer (rendered by
+          the shared (public)/layout.tsx, already carrying its own mt-16
+          top margin) — py-10's own bottom padding plus that margin is
+          the only spacing between them, no new wrapper added. */}
       {closingSec.visible && (
         <section className="mx-auto max-w-6xl px-6 py-10">
           <div className="flex flex-col items-start gap-4 rounded-3xl bg-ink px-6 py-8 text-white sm:px-10 sm:py-9">
@@ -432,22 +438,6 @@ export default async function HomePage({
           </div>
         </section>
       )}
-
-      {/* Keep Exploring — unchanged. */}
-      <section className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
-        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/35">Keep exploring</p>
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
-          <Link href="/businesses" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
-            Explore businesses →
-          </Link>
-          <Link href="/events" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
-            Explore events →
-          </Link>
-          <Link href="/locations" className="text-sm font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
-            Explore locations →
-          </Link>
-        </div>
-      </section>
     </div>
   );
 }
