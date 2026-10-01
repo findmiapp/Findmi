@@ -264,7 +264,23 @@ export default async function HomePage({
           bottom-right corner. No icon dependency added. Add Business's
           pin+plus well is unchanged — already the same 44px size/
           alignment as Passbook's well, so no adjustment was needed to
-          keep the two balanced. */}
+          keep the two balanced.
+          Direct Homepage Intent pass — both cards no longer ride the
+          generic /join/start?intent= mechanism described above (that
+          intermediary "How would you like to start?" screen was an
+          unwanted extra step for an already-explicit homepage action).
+          My Journal now links straight to /my-world/journal (the
+          canonical Journal/My World destination); Add Business links
+          straight to /account/business/new (the canonical business
+          creation route, same one QuickCreateMenu's own Business row
+          already uses). Both routes are already middleware-gated (see
+          middleware.ts's matcher) — a signed-out visitor is bounced to
+          /login?next=<that route> and lands back on it directly after
+          authenticating, so no client-side auth branching was added
+          here, matching the exact plain-Link pattern QuickCreateMenu's
+          Business/Venue/Event rows already use for signed-in-or-out
+          navigation. /join/start itself is untouched and still reachable
+          from generic (non-explicit-intent) onboarding entry points. */}
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
         <p className="mt-1 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:text-xl">
@@ -272,7 +288,7 @@ export default async function HomePage({
         </p>
         <div className="mt-2.5 grid grid-cols-2 gap-2.5">
           <Link
-            href={`/signup?next=${encodeURIComponent("/join/start?intent=passbook")}`}
+            href="/my-world/journal"
             className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
           >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">
@@ -287,7 +303,7 @@ export default async function HomePage({
             </span>
           </Link>
           <Link
-            href={`/signup?next=${encodeURIComponent("/join/start?intent=business")}`}
+            href="/account/business/new"
             className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
           >
             <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-findmi-50">

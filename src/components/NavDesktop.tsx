@@ -103,6 +103,7 @@ export default function NavDesktop({
         </nav>
         <HeaderSearch variant="text" />
         <CartBadge variant="text" />
+        <JournalNavActions />
         <QuickCreateMenu authenticated={authenticated} businesses={businesses} />
         {highlighted.map((item) => (
           <NavLink
@@ -117,6 +118,50 @@ export default function NavDesktop({
 }
 
 const linkClass = "text-sm font-medium text-ink/70 transition hover:text-ink";
+
+/** Direct Homepage Intent + Global Journal Access pass — the desktop
+ * counterpart of HamburgerMenu's own Journal row (see that file's doc
+ * comment for why this needed permanent, sitewide navigation rather than
+ * living only on the homepage doorway / Event "Document Your Experience"
+ * CTA). Desktop's persistent top bar already has real room (unlike
+ * mobile's 14px-tall bar, which routes this into the drawer instead), so
+ * this sits inline rather than needing a menu surface of its own. Same
+ * canonical routes, same plain-Link/no-auth-branching rationale as the
+ * drawer's row — reusing the existing /my-world/journal/:path* middleware
+ * gate rather than adding a second auth check here. */
+function JournalNavActions() {
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <Link href="/my-world/journal" className={linkClass}>
+        My Journal
+      </Link>
+      <Link
+        href="/my-world/journal/new"
+        className="flex items-center gap-1.5 rounded-full border border-findmi/30 bg-findmi-50 px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-100"
+      >
+        <PencilGlyph className="h-3.5 w-3.5" />
+        Create Entry
+      </Link>
+    </div>
+  );
+}
+
+// Same pencil silhouette DocumentExperienceCta.tsx/HamburgerMenu.tsx
+// already use for Journal entry points, redrawn here per this codebase's
+// established per-file local-glyph convention.
+function PencilGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M17 3a2.1 2.1 0 013 3L8.5 17.5 4 19l1.5-4.5L17 3z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 function NavDropdown({
   item,

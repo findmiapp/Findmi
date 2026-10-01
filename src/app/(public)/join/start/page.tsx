@@ -69,7 +69,7 @@ export default async function JoinStartPage({
           className="flex flex-col rounded-3xl border border-findmi/40 bg-white p-5 shadow-[0_4px_20px_rgba(20,176,188,0.10)] transition hover:border-findmi/60"
         >
           {intent === "passbook" && <SuggestedBadge />}
-          <p className="font-display text-lg font-bold tracking-tight text-ink">Build my Digital Passbook</p>
+          <p className="font-display text-lg font-bold tracking-tight text-ink">Build My Digital Passbook</p>
           <p className="mt-1 text-sm text-ink/60">
             Discover businesses and events, save what you love, and keep track of everywhere you go.
           </p>
@@ -83,7 +83,7 @@ export default async function JoinStartPage({
           className="flex flex-col rounded-3xl border border-black/10 bg-white p-5 transition hover:border-black/20"
         >
           {intent === "business" && <SuggestedBadge />}
-          <p className="font-display text-lg font-bold tracking-tight text-ink">Add my business</p>
+          <p className="font-display text-lg font-bold tracking-tight text-ink">Add My Business</p>
           <p className="mt-1 text-sm text-ink/60">
             Show customers who you are, what you offer, and where you&rsquo;ll be next.
           </p>

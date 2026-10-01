@@ -200,6 +200,47 @@ export default function HamburgerMenu({
               <DrawerUtilityStrip onNavigate={close} authenticated={authenticated} />
               <DrawerSearch onNavigate={close} />
 
+              {/* Direct Homepage Intent + Global Journal Access pass —
+                  Journal is now a repeated Findmi behavior (Event pages'
+                  own "Document Your Experience" CTA, the homepage My
+                  Journal doorway) and needs permanent, always-visible
+                  navigation rather than living only on those two
+                  surfaces. Placed here (shrink-0, above the scrollable
+                  nav body) rather than in MobileHeader's own persistent
+                  top bar — that bar is already at 4 icons (Search/Cart/
+                  QuickCreate/Hamburger) on a 390px viewport, so two more
+                  targets there would be real clutter; the drawer is the
+                  existing "more room" surface this pass calls for
+                  instead. Both destinations are the same canonical
+                  Journal routes the homepage doorway and Event capture
+                  flow already resolve to (/my-world/journal,
+                  /my-world/journal/new) — no new Journal creation
+                  architecture. Plain Links, not auth-branched: both
+                  routes already sit behind middleware's own
+                  /my-world/journal/:path* gate (see middleware.ts),
+                  which bounces a signed-out tap to /login?next=<that
+                  route> and returns them straight there after
+                  authenticating — the exact same "safe next gateway"
+                  pattern QuickCreateMenu's own Business/Venue/Event rows
+                  already rely on, reused rather than re-decided here. */}
+              <div className="flex shrink-0 items-center gap-2 border-b border-black/5 px-4 py-2.5">
+                <Link
+                  href="/my-world/journal"
+                  onClick={close}
+                  className="flex h-9 flex-1 items-center justify-center rounded-xl border border-black/10 text-[11px] font-bold uppercase tracking-wide text-ink/70 transition hover:bg-black/[0.03]"
+                >
+                  My Journal
+                </Link>
+                <Link
+                  href="/my-world/journal/new"
+                  onClick={close}
+                  className="flex h-9 flex-[1.2] items-center justify-center gap-1.5 rounded-xl border border-findmi/30 bg-findmi-50 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-100"
+                >
+                  <PencilGlyph className="h-3.5 w-3.5" />
+                  Create Entry
+                </Link>
+              </div>
+
               {/* Nav body — flex-1 + min-h-0 (belt-and-suspenders with
                   overflow-y-auto, which already exempts a flex item from
                   the default min-height:auto shrink trap) is what makes
@@ -404,6 +445,23 @@ function MessageGlyph({ className }: { className?: string }) {
         d="M4 5.5h16a1 1 0 011 1V15a1 1 0 01-1 1H9l-4 3.5V16H4a1 1 0 01-1-1V6.5a1 1 0 011-1z"
         stroke="currentColor"
         strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// Same pencil silhouette DocumentExperienceCta.tsx already uses for its
+// own Journal CTA, redrawn here per-file rather than shared as an import
+// — the same convention MessageGlyph above already follows.
+function PencilGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M17 3a2.1 2.1 0 013 3L8.5 17.5 4 19l1.5-4.5L17 3z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
