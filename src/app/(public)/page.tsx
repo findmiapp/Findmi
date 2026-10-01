@@ -144,7 +144,6 @@ export default async function HomePage({
   const upcomingSec = resolve("featured_events");
   const closingSec = resolve("closing_cta");
   const heroSec = resolve("hero");
-  const businessDoorwaySec = resolve("business_doorway");
 
   // Homepage Hero Founder Control pass — Image 1 ("Large Image") and
   // Image 2 ("Overlay Image") are purely founder-controlled (Site Editor
@@ -185,24 +184,34 @@ export default async function HomePage({
           page never hardcodes it. */}
       <HomeHero images={heroImages} imageLinks={heroImageLinks} heading={heroSec.heading} description={heroSec.body} />
 
-      {/* Business Acquisition doorway — content/behavior unchanged; a
-          Above-the-Fold Polish pass tightened this to a compact utility
-          line (py-1.5, was pb-1/pt-3) so it reads as one quiet row
-          between the hero and Search rather than its own spaced-out
-          section. */}
-      {businessDoorwaySec.visible && (
-        <div className="mx-auto max-w-6xl px-4 py-1.5 sm:px-6">
-          <Link
-            href={businessDoorwaySec.ctaUrl ?? "/join"}
-            className="inline-flex flex-wrap items-baseline gap-1 text-sm text-ink/50 transition hover:text-ink/70"
-          >
-            <span>{businessDoorwaySec.heading}</span>
-            <span className="font-semibold text-ink underline decoration-ink/25 underline-offset-2">
-              {businessDoorwaySec.ctaLabel}
-            </span>
-          </Link>
-        </div>
-      )}
+      {/* Homepage Join CTA pass — replaces the old single-line "Have a
+          business or brand? Put it on FindMi →" business-acquisition
+          doorway (previously founder-editable via
+          site_sections.business_doorway; that key/its admin field are
+          untouched, just no longer read here) with a compact dual-sided
+          Join message: FindMi is for people discovering things they love
+          AND the brands/businesses that want to be discovered — one
+          universal Join flow (/join) either way, no separate consumer/
+          business entry points. "JOIN FINDMI FREE" renders visually
+          uppercase via the `uppercase` utility on properly-cased text
+          ("Join Findmi Free"), matching this app's brand-casing rule
+          (capital F only) the same way every other all-caps button label
+          already does. */}
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6">
+        <p className="font-display text-xl font-bold leading-snug tracking-tight text-ink sm:text-2xl">
+          Find what you love.
+          <br />
+          Get discovered by people who will.
+        </p>
+        <Link
+          href="/join"
+          className="mt-3.5 inline-flex h-11 items-center gap-1.5 rounded-2xl bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+        >
+          Join Findmi Free
+          <ChevronGlyph className="h-3 w-3" />
+        </Link>
+        <p className="mt-2.5 text-xs text-ink/50">For people, brands &amp; businesses · No credit card required</p>
+      </div>
 
       {/* Homepage Bulletin Carousel — one or more admin-managed editorial
           announcements (see /admin/bulletins). Final Above-the-Fold pass
@@ -395,12 +404,16 @@ export default async function HomePage({
               heading/copy above it; still a compact pill, not full width.
               Copy now names the business (NATIVE_ROSE_NAME, derived from
               the existing slug — see its own comment) instead of the
-              generic "live profile". */}
+              generic "live profile".
+              Join CTA + Chevron Micro-Polish pass — the long "→" arrow
+              replaced with the same chevron-right glyph as the new Join
+              CTA above, for one consistent arrow language across these
+              two homepage CTAs. Everything else unchanged. */}
           <a
             href={`/business/${NATIVE_ROSE_SLUG}`}
             className="inline-flex items-center gap-1.5 rounded-full border border-findmi/30 bg-findmi-50 px-4 py-2 text-sm font-semibold text-findmi-700 transition hover:border-findmi/50 hover:bg-findmi-100"
           >
-            View {NATIVE_ROSE_NAME} Live Profile <span aria-hidden>→</span>
+            View {NATIVE_ROSE_NAME} Live Profile <ChevronGlyph className="h-3 w-3" />
           </a>
         </div>
       </div>
@@ -601,4 +614,16 @@ function dedupeCategories(categories: Category[]): Category[] {
   const seen = new Map<string, Category>();
   for (const c of categories) if (!seen.has(c.id)) seen.set(c.id, c);
   return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Join CTA + Chevron Micro-Polish pass — the same chevron-right glyph
+// already used throughout the app (e.g. FeaturedLocationCard.tsx,
+// LocationDiscoveryCard.tsx) rather than a literal "→" arrow character,
+// for the two homepage CTAs this pass touches.
+function ChevronGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
