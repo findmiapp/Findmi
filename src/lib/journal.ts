@@ -297,6 +297,14 @@ export interface JournalIndexEntry {
   entry_date: string;
   entry_time: string | null;
   visibility: JournalVisibility;
+  // Journal V2 Pass 1 — the real database status, returned alongside
+  // visibility rather than inferred from it. STATUS (draft/published) and
+  // VISIBILITY (private/public) are independent concepts — see this
+  // file's own header note on the account model — and My World needs the
+  // real value to render an honest Draft treatment and to word a
+  // draft+public entry correctly ("Public when published", never bare
+  // "Public" before it's actually anonymously resolvable).
+  status: JournalStatus;
   coverUrl: string | null;
   photoCount: number;
   location: { name: string } | null;
@@ -307,30 +315,35 @@ export interface JournalIndexEntry {
 
 export type JournalArchiveFilter = "all" | "places" | "brands" | "products" | "events";
 
-/** Journal V1.1 — the signed-in owner's own full Journal archive: EVERY
- * published entry (a draft is still-in-progress, never listed — see the
- * Create flow's own note on resuming later), unfiltered by time OR
- * object type. The archive page applies BOTH the Day/Week/Month/Year
- * time-window slicing AND the "All experiences/Places/Brands/Products/
- * Events" object-type filter over this one already-fetched array in
- * plain JS (see lib/journalArchive.ts's filterByObjectType and
- * entriesFor*), rather than re-querying per view/period/filter — still
- * exactly the same fixed number of batched queries (entries once, media
- * once, connections once, signed URLs once) no matter how many periods a
- * visitor pages through in one request, and still zero N+1 regardless of
- * how many entries exist. Returning the type filter unapplied here (unlike
- * the old getJournalIndexForUser this replaces) is what lets the archive
- * page tell "nothing in this Journal at all" apart from "nothing matches
- * this filter" without a second query. */
+/** Journal V2 Pass 1 — the signed-in owner's own full Journal archive: EVERY
+ * entry they own, draft or published, unfiltered by time OR object type.
+ * This is strictly an OWNER-scoped query (the sole call site is My World,
+ * always passed the authenticated session's own user.id — see that page's
+ * own comment) — it is never a general/public Journal listing, so
+ * returning drafts here does not expose anything: the owner is always
+ * allowed to see their own draft/private entries (same RLS/ownership rule
+ * the Detail page's own getJournalEntryWithRelations already relies on),
+ * and nothing about the PUBLIC resolver changes. A draft must never
+ * disappear from the owner's own Journal just because it hasn't been
+ * published yet (see this pass's own locked state model) — previously
+ * `.eq("status", "published")` here did exactly that.
+ *
+ * The archive page applies BOTH the Day/Week/Month/Year time-window
+ * slicing AND the "All experiences/Places/Brands/Products/Events"
+ * object-type filter over this one already-fetched array in plain JS (see
+ * lib/journalArchive.ts's filterByObjectType and entriesFor*), rather than
+ * re-querying per view/period/filter — still exactly the same fixed number
+ * of batched queries (entries once, media once, connections once, signed
+ * URLs once) no matter how many periods a visitor pages through in one
+ * request, and still zero N+1 regardless of how many entries exist. */
 export async function getJournalArchiveEntries(userId: string): Promise<JournalIndexEntry[]> {
   const supabase = await getServerSupabase();
   const { data: entries } = await supabase
     .from("journal_entries")
     .select(
-      "id, title, entry_date, entry_time, visibility, location_id, manual_location_name, manual_location_city, location:locations(name)"
+      "id, title, entry_date, entry_time, visibility, status, location_id, manual_location_name, manual_location_city, location:locations(name)"
     )
     .eq("user_id", userId)
-    .eq("status", "published")
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
   if (!entries || entries.length === 0) return [];
@@ -375,6 +388,7 @@ export async function getJournalArchiveEntries(userId: string): Promise<JournalI
       entry_date: e.entry_date,
       entry_time: e.entry_time,
       visibility: e.visibility as JournalVisibility,
+      status: e.status as JournalStatus,
       coverUrl: cover ? (signedUrls.get(cover.storage_path) ?? null) : null,
       photoCount: list.length,
       location: locationName ? { name: locationName } : null,
@@ -490,6 +504,9 @@ export async function getPublicJournalEntriesForObject(
       entry_date: e.entry_date,
       entry_time: e.entry_time,
       visibility: e.visibility as JournalVisibility,
+      // This query itself is hard-scoped to .eq("status", "published")
+      // above, so this is always accurate — never inferred from visibility.
+      status: "published",
       coverUrl: cover ? (signedUrls.get(cover.storage_path) ?? null) : null,
       photoCount: list.length,
       location: location ? { name: location.name } : null,

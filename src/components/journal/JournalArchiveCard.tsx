@@ -15,6 +15,14 @@ export default function JournalArchiveCard({ entry }: { entry: JournalIndexEntry
   const connectionLabels = [entry.hasBusiness ? "Business" : null, entry.hasProduct ? "Product" : null, entry.hasEvent ? "Event" : null].filter(
     (v): v is string => Boolean(v)
   );
+  // Journal V2 Pass 1 — a draft must stay fully visible/clickable in the
+  // owner's own archive (never disappear, never look disabled); this pill
+  // is the one subtle-but-unmistakable signal that it hasn't been
+  // published yet. Draft takes priority over the existing Private pill
+  // below (showing both would be redundant noise) — a published entry
+  // still gets its own Private pill exactly as before, since that
+  // distinction is still meaningful once published.
+  const isDraft = entry.status === "draft";
   const metaParts = [
     entry.photoCount > 0 ? `${entry.photoCount} photo${entry.photoCount === 1 ? "" : "s"}` : null,
     connectionLabels.length > 0 ? connectionLabels.join(", ") : null,
@@ -37,8 +45,12 @@ export default function JournalArchiveCard({ entry }: { entry: JournalIndexEntry
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 p-3">
         <div className="flex items-start justify-between gap-2">
           <p className="line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">{entry.title}</p>
-          {entry.visibility === "private" && (
-            <span className="mt-0.5 shrink-0 rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink/50">Private</span>
+          {isDraft ? (
+            <span className="mt-0.5 shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">Draft</span>
+          ) : (
+            entry.visibility === "private" && (
+              <span className="mt-0.5 shrink-0 rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink/50">Private</span>
+            )
           )}
         </div>
         {entry.location && <p className="truncate text-xs text-ink/55">{entry.location.name}</p>}

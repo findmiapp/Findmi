@@ -8,7 +8,7 @@ import JournalConnectionsPicker from "./JournalConnectionsPicker";
 import JournalLocationPicker, { type JournalManualLocationState } from "./JournalLocationPicker";
 import JournalPhotoStrip from "./JournalPhotoStrip";
 import { useJournalPhotoUpload } from "./useJournalPhotoUpload";
-import { saveJournalBasics, saveJournalLocation, saveJournalConnections, updateJournalVisibility } from "@/app/(public)/my-world/journal/actions";
+import { saveJournalBasics, saveJournalLocation, saveJournalConnections, updateJournalVisibility, publishJournalEntry } from "@/app/(public)/my-world/journal/actions";
 
 /** Journal V1 (visual convergence pass) — Edit own Journal Entry. Still
  * one consolidated form (not the four-step wizard) that reuses the exact
@@ -24,6 +24,13 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Journal V2 Pass 1 — STATUS is tracked locally purely to react to a
+  // successful Publish in this same session (the Draft pill/Publish button
+  // disappear immediately rather than needing a full reload); it is never
+  // written anywhere here except via the canonical publishJournalEntry
+  // action below. Save Changes never touches this.
+  const [status, setStatus] = useState(entry.entry.status);
+  const [publishing, setPublishing] = useState(false);
 
   const { photos, batch, error: photoError, handleFiles, handleRemove, handleSetCover } = useJournalPhotoUpload(
     entry.media.map((m) => ({ id: m.id, url: m.url ?? "", isCover: m.is_cover })),
@@ -61,12 +68,14 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
   const [events, setEvents] = useState<JournalSearchResult[]>(entry.events.map((e) => ({ value: e.id, label: e.name, image_url: e.cover_image_url })));
   const [visibility, setVisibility] = useState<"private" | "public">(entry.entry.visibility);
 
-  async function handleSave() {
-    setError(null);
-    if (!title.trim()) return setError("Give this entry a title.");
-    if (!entryDate) return setError("Choose a date.");
-    setSaving(true);
-
+  // Journal V2 Pass 1 — the exact same persistence Save Changes always did,
+  // extracted so Publish Entry can run it first (see this file's own
+  // header note on why: publishJournalEntry re-validates title/entry_date
+  // by reading them back FROM THE DATABASE, so a visible-but-unsaved edit
+  // must be written before that check runs, or Publish would silently
+  // validate/publish stale server state while the form shows something
+  // else). Returns the same shape handleSave already checked.
+  async function persistAll(): Promise<{ ok: true } | { error: string }> {
     const formData = new FormData();
     formData.set("title", title);
     formData.set("entry_date", entryDate);
@@ -90,19 +99,70 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
       }),
       updateJournalVisibility(entryId, visibility),
     ]);
-    setSaving(false);
 
     const failed = [basicsResult, locationResult, connectionsResult, visibilityResult].find((r) => "error" in r);
-    if (failed && "error" in failed) return setError(failed.error);
+    if (failed && "error" in failed) return { error: failed.error };
+    return { ok: true };
+  }
+
+  async function handleSave() {
+    setError(null);
+    if (!title.trim()) return setError("Give this entry a title.");
+    if (!entryDate) return setError("Choose a date.");
+    setSaving(true);
+
+    const result = await persistAll();
+    setSaving(false);
+    if ("error" in result) return setError(result.error);
 
     router.push(`/journal/${entryId}`);
     router.refresh();
   }
 
+  // Journal V2 Pass 1 — the real Publish Entry action the audit found
+  // completely missing from this form: previously the ONLY code path that
+  // ever set status to "published" was the Create wizard's own Step 4,
+  // so a draft created any other way (Event capture, admin capture) could
+  // never be published once past creation. Reuses the existing canonical
+  // publishJournalEntry Server Action unchanged — never a second,
+  // competing publish implementation — the only thing new here is giving
+  // this form a way to call it, after first guaranteeing the save it
+  // represents has actually landed (see persistAll's own note).
+  async function handlePublish() {
+    setError(null);
+    if (!title.trim()) return setError("Give this entry a title.");
+    if (!entryDate) return setError("Choose a date.");
+    setPublishing(true);
+
+    const saveResult = await persistAll();
+    if ("error" in saveResult) {
+      setPublishing(false);
+      return setError(saveResult.error);
+    }
+
+    const publishResult = await publishJournalEntry(entryId, visibility);
+    // A successful call redirects server-side (same pattern as
+    // JournalCreateWizard's own handlePublish) and never resolves here; a
+    // plain {error} object means it genuinely didn't, so the form state
+    // (including the edits just saved above) stays exactly as the owner
+    // left it and nothing navigates away.
+    if (publishResult && "error" in publishResult) {
+      setPublishing(false);
+      setError(publishResult.error);
+      return;
+    }
+    setStatus("published");
+  }
+
   return (
     <div className="mx-auto max-w-lg px-4 py-5 sm:px-6">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-lg font-bold tracking-tight text-ink">Edit Journal Entry</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="font-display text-lg font-bold tracking-tight text-ink">Edit Journal Entry</h1>
+          {status === "draft" && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">Draft</span>
+          )}
+        </div>
         <button type="button" onClick={() => router.push(`/journal/${entryId}`)} className="text-xs font-semibold text-ink/50 hover:text-ink">
           Cancel
         </button>
@@ -186,16 +246,42 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
             Public
           </button>
         </div>
+        {/* Journal V2 Pass 1 — the audited semantic mismatch: a draft
+            entry with visibility="public" is NOT yet anonymously
+            resolvable (the public resolver still requires
+            status="published"), so the toggle above choosing "Public"
+            must never be read as "this is live right now." Choosing it
+            while still a draft is legitimate configuration for later —
+            just not an effective state yet. Published entries get the
+            plain, accurate "Public"/"Private" they already had. */}
+        <p className="mt-1.5 text-xs text-ink/50">
+          {status === "draft" && visibility === "public" ? "Public when published — not yet visible to anyone else." : visibility === "public" ? "Public — anyone can view this entry." : "Private — only you can view this entry."}
+        </p>
       </EditSection>
 
       <button
         type="button"
         onClick={handleSave}
-        disabled={saving}
+        disabled={saving || publishing}
         className="mt-6 flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
       >
         {saving ? "Saving…" : "Save Changes"}
       </button>
+
+      {/* Journal V2 Pass 1 — the missing Publish action. Only rendered for
+          a draft (a published entry has nothing to publish); Save Changes
+          above stays the one action that never changes status, exactly as
+          the locked state model requires. */}
+      {status === "draft" && (
+        <button
+          type="button"
+          onClick={handlePublish}
+          disabled={saving || publishing}
+          className="mt-2.5 flex h-12 w-full items-center justify-center rounded-2xl border-2 border-findmi text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {publishing ? "Publishing…" : "Publish Entry"}
+        </button>
+      )}
     </div>
   );
 }

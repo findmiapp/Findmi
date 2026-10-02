@@ -155,7 +155,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
       <div className="px-4 sm:px-0">
         {isOwner && (
           <div className="mt-4">
-            <JournalOwnerActions entryId={entry.id} visibility={entry.visibility} />
+            <JournalOwnerActions entryId={entry.id} visibility={entry.visibility} status={entry.status} />
           </div>
         )}
 

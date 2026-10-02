@@ -13,8 +13,22 @@ import { updateJournalVisibility, deleteJournalEntryAction } from "@/app/(public
  * itself for attention. No social/engagement actions here — Journal V1
  * deliberately has none (no comments, no reaction counts, no view
  * counts) for any viewer, owner included. */
-export default function JournalOwnerActions({ entryId, visibility }: { entryId: string; visibility: "private" | "public" }) {
+export default function JournalOwnerActions({
+  entryId,
+  visibility,
+  status,
+}: {
+  entryId: string;
+  visibility: "private" | "public";
+  status: "draft" | "published";
+}) {
   const [currentVisibility, setCurrentVisibility] = useState(visibility);
+  // Journal V2 Pass 1 — a draft entry with visibility="public" is not yet
+  // anonymously resolvable (see JournalEditForm's own identical note), so
+  // this pill must say so rather than the bare "Public" a published entry
+  // correctly shows. `status` never changes from this component (Publish
+  // lives in the Edit form) — it's read-only context here.
+  const visibilityLabel = status === "draft" && currentVisibility === "public" ? "Public when published" : currentVisibility === "private" ? "Private" : "Public";
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -50,9 +64,10 @@ export default function JournalOwnerActions({ entryId, visibility }: { entryId: 
         >
           Edit
         </Link>
-        <span className="rounded-full bg-black/[0.04] px-2.5 py-1 font-semibold uppercase tracking-wide text-ink/40">
-          {currentVisibility === "private" ? "Private" : "Public"}
-        </span>
+        {status === "draft" && (
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 font-bold uppercase tracking-wide text-amber-800">Draft</span>
+        )}
+        <span className="rounded-full bg-black/[0.04] px-2.5 py-1 font-semibold uppercase tracking-wide text-ink/40">{visibilityLabel}</span>
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
