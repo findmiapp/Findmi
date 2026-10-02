@@ -8,6 +8,7 @@ import { isAdminSession } from "@/lib/admin/auth";
 import JournalOwnerActions from "@/components/journal/JournalOwnerActions";
 import JournalPhotoGallery from "@/components/journal/JournalPhotoGallery";
 import ReadMoreText from "@/components/ReadMoreText";
+import { formatDateShortInZone, formatTimeRangeInZone } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +49,23 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const [result, isAuthorizedAdmin] = await Promise.all([getJournalEntryWithRelations(id), isAdminSession()]);
   if (!result) notFound();
-  const { entry, media, location, businesses, products, events, isOwner } = result;
+  const { entry, media, location, businesses, products, events, occurrences, isOwner } = result;
   const authorLabel = entry.author_label?.trim() || null;
+
+  // Journal Experience Date repair — an Event connection's displayed date
+  // must be the specific attended Event Occurrence (category B: EVENT
+  // OCCURRENCE DATE), never the parent Event's own events.start_at
+  // (category C: PARENT EVENT DATE). Only falls back to the Event's own
+  // start_at (the old, generic behavior) when no occurrence is connected
+  // for that Event — never a guessed/first occurrence.
+  const occurrenceForEvent = (eventId: string) => occurrences.find((o) => o.event_id === eventId) ?? null;
+  const primaryOccurrence = events.length > 0 ? occurrenceForEvent(events[0].id) : null;
+  // Visit Details' time line prefers the connected occurrence's real
+  // start–end range (authoritative) over the manually-typed entry_time —
+  // available data this pass surfaces without redesigning the section.
+  const occurrenceTimeLabel = primaryOccurrence
+    ? formatTimeRangeInZone(primaryOccurrence.start_at, primaryOccurrence.end_at, primaryOccurrence.timezone)
+    : null;
 
   const cover = media.find((m) => m.is_cover) ?? media[0] ?? null;
   const gallery = media.filter((m) => m.id !== cover?.id);
@@ -194,28 +210,30 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
               )}
               {events.length > 0 && (
                 <ConnectedGroup label="Events">
-                  {events.map((e) => (
-                    <ConnectedRow
-                      key={`event-${e.id}`}
-                      href={`/event/${e.slug}`}
-                      imageUrl={e.cover_image_url}
-                      name={e.name}
-                      meta={new Date(e.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    />
-                  ))}
+                  {events.map((e) => {
+                    // The Event (e) stays canonical for name/slug/image/URL;
+                    // a connected Event Occurrence is authoritative for the
+                    // specific attended date/time (never the parent Event's
+                    // own start_at) — see this file's occurrenceForEvent note.
+                    const occ = occurrenceForEvent(e.id);
+                    const meta = occ
+                      ? `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeRangeInZone(occ.start_at, occ.end_at, occ.timezone)}`
+                      : new Date(e.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    return <ConnectedRow key={`event-${e.id}`} href={`/event/${e.slug}`} imageUrl={e.cover_image_url} name={e.name} meta={meta} />;
+                  })}
                 </ConnectedGroup>
               )}
             </div>
           </section>
         )}
 
-        {(location || hasManualLocation || timeLabel) && (
+        {(location || hasManualLocation || timeLabel || occurrenceTimeLabel) && (
           <section className="mt-8">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">Visit Details</h2>
             <div className="mt-3 flex flex-col gap-2">
               <p className="text-sm text-ink/70">
                 {dateLabel}
-                {timeLabel ? ` · ${timeLabel}` : ""}
+                {occurrenceTimeLabel ? ` · ${occurrenceTimeLabel}` : timeLabel ? ` · ${timeLabel}` : ""}
               </p>
               {location && (
                 <div className="flex items-center gap-2">

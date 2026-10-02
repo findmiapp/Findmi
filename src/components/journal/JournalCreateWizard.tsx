@@ -140,14 +140,30 @@ export default function JournalCreateWizard({
     setError(null);
     if (!entryId) return setStep(4);
     setSaving(true);
-    const result = await saveJournalConnections(entryId, {
-      businessIds: businesses.map((b) => b.value),
-      productIds: products.map((p) => p.value),
-      eventIds: events.map((e) => e.value),
-      occurrenceId: occurrence?.id ?? null,
-    });
+    // Journal Experience Date repair — Step 1's saveJournalBasics already
+    // persisted entry_date once, but handleSelectOccurrence (Step 3) can
+    // update the local entryDate afterward when the owner picks a specific
+    // Event Occurrence. Nothing else re-saves basics before this point, so
+    // that updated date must be re-persisted here — otherwise the UI shows
+    // the selected occurrence correctly while journal_entries.entry_date
+    // silently keeps Step 1's earlier (often default-to-today) value.
+    const basicsFormData = new FormData();
+    basicsFormData.set("title", title);
+    basicsFormData.set("entry_date", entryDate);
+    if (entryTime) basicsFormData.set("entry_time", entryTime);
+    if (notes) basicsFormData.set("notes", notes);
+    const [basicsResult, connectionsResult] = await Promise.all([
+      saveJournalBasics(entryId, basicsFormData),
+      saveJournalConnections(entryId, {
+        businessIds: businesses.map((b) => b.value),
+        productIds: products.map((p) => p.value),
+        eventIds: events.map((e) => e.value),
+        occurrenceId: occurrence?.id ?? null,
+      }),
+    ]);
     setSaving(false);
-    if ("error" in result) return setError(result.error);
+    const failed = [basicsResult, connectionsResult].find((r) => "error" in r);
+    if (failed && "error" in failed) return setError(failed.error);
     setStep(4);
   }
 
