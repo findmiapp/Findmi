@@ -5,14 +5,8 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isAdminSession } from "@/lib/admin/auth";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
-import {
-  getEventBySlug,
-  getBusinessesForEvent,
-  eventHasAnyOccurrences,
-  getEffectiveEventSchedule,
-  findLocationByExactVenue,
-  isPrimaryDateId,
-} from "@/lib/data";
+import { getEventBySlug, getBusinessesForEvent, eventHasAnyOccurrences, getAllOccurrencesForEvent, findLocationByExactVenue } from "@/lib/data";
+import type { FindmiEvent } from "@/lib/types";
 import { resolveAppearanceHostBusiness } from "./EventPublicView";
 
 // Event Action UX + Universal Journal CTA pass — "Document Your
@@ -89,37 +83,43 @@ export async function getEventJournalCtaState(eventId: string): Promise<EventJou
  * for that one field rather than guessing.
  *
  * Journal V2 Pass 2 — Event Occurrence integrity. This is the exact
- * mechanism the Cup of Love bug traced back to: `upcomingOccurrences[0]`
+ * mechanism the Cup of Love bug traced back to: an arbitrary occurrence
  * was being treated as "the" occurrence for both the entry_date default
- * AND (as of this pass) the real database occurrenceId relationship, even
- * when the event had multiple real dates and this Event-level CTA (see
- * DocumentExperienceCta — one link per Event, not one per date) has no way
- * to know which one the visitor actually means. `occurrenceId` is now only
- * ever populated when exactly one REAL occurrence exists (never the
- * synthetic Primary Date placeholder — see isPrimaryDateId/primaryDateId's
- * own header comment — which is not a real event_occurrences row and must
- * never be written into event_occurrence_id). When 2+ real occurrences
- * exist, this returns occurrenceId: null AND falls back entry_date to
- * today (never an arbitrary occurrence's date presented as if it were
- * confidently known) — the owner can still set the correct date/connect
- * the correct occurrence by hand afterward in Edit, same as any other
- * Journal field. */
-async function resolveDeterministicEventContext(eventId: string, event: Parameters<typeof getEffectiveEventSchedule>[0]) {
+ * AND the real database occurrenceId relationship, even when the event had
+ * multiple real dates and this Event-level CTA (see DocumentExperienceCta
+ * — one link per Event, not one per date) has no way to know which one the
+ * visitor actually means. `occurrenceId` is only ever populated when
+ * exactly one REAL occurrence exists. When 2+ real occurrences exist, this
+ * returns occurrenceId: null AND falls back entry_date to today (never an
+ * arbitrary occurrence's date presented as if it were confidently known) —
+ * the owner can still connect the correct occurrence afterward in Edit via
+ * JournalConnectionsPicker's own "Which date was this?" picker (Pass 2B),
+ * which reuses this exact same determinism rule.
+ *
+ * Journal V2 Pass 2B — Past Event CTA semantics. Deliberately
+ * getAllOccurrencesForEvent (no end_at filter) rather than
+ * getEffectiveEventSchedule/getUpcomingOccurrencesForEvent, both of which
+ * are correctly upcoming-only for public discovery surfaces but were
+ * silently causing a single-occurrence event to resolve as "ambiguous"
+ * (occurrenceId: null) the moment that one occurrence finished — exactly
+ * backwards for Journal, where documenting something that already happened
+ * is the common case, not an edge case. A fully-finished Event with one
+ * real occurrence is exactly as deterministic as an upcoming one. */
+async function resolveDeterministicEventContext(eventId: string, event: Pick<FindmiEvent, "venue_name" | "address">) {
   const [businesses, hasOccurrences, matchedLocation, appearanceHostBusiness] = await Promise.all([
     getBusinessesForEvent(eventId),
     eventHasAnyOccurrences(eventId),
     event.venue_name ? findLocationByExactVenue(event.venue_name, event.address) : Promise.resolve(null),
     resolveAppearanceHostBusiness(eventId),
   ]);
-  const upcomingOccurrences = hasOccurrences ? await getEffectiveEventSchedule(event, 40) : [];
-  const realOccurrences = upcomingOccurrences.filter((o) => !isPrimaryDateId(o.id));
+  const realOccurrences = hasOccurrences ? await getAllOccurrencesForEvent(eventId) : [];
   const unambiguousOccurrence = realOccurrences.length === 1 ? realOccurrences[0] : null;
 
-  const canonicalLocation = upcomingOccurrences.find((o) => o.location)?.location ?? matchedLocation;
+  const canonicalLocation = unambiguousOccurrence?.location ?? realOccurrences.find((o) => o.location)?.location ?? matchedLocation;
   const hostBusiness = businesses.find((b) => b.featured) ?? appearanceHostBusiness ?? (businesses.length === 1 ? businesses[0] : null);
 
   const entryDate = unambiguousOccurrence
-    ? isoToLocalDateTime(unambiguousOccurrence.start_at).slice(0, 10)
+    ? isoToLocalDateTime(unambiguousOccurrence.start_at, unambiguousOccurrence.timezone).slice(0, 10)
     : new Date().toISOString().slice(0, 10);
 
   return {

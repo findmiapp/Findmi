@@ -1828,6 +1828,39 @@ export async function getUpcomingOccurrencesForEvent(
   return occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
 }
 
+/** Journal V2 Pass 2B — every real occurrence for one event, past AND
+ * upcoming, chronological (ascending — earliest first, for a "which date
+ * was this" picker). Deliberately separate from
+ * getUpcomingOccurrencesForEvent above: that function exists for public
+ * discovery surfaces (the Event page's "Upcoming Dates" carousel), where
+ * excluding anything already over is correct and intentional. Journal
+ * documentation of an experience that already happened is a first-class
+ * requirement — retrospective retrieval must never be degraded the way
+ * "upcoming" discovery is allowed to be. No end_at filter here at all.
+ * `limit` is a reasonable bound for a very long-running recurring event,
+ * not real pagination — not needed at current data scale. */
+export async function getAllOccurrencesForEvent(eventId: string, limit = 60): Promise<EventOccurrenceWithLocation[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("event_occurrences")
+    .select("*")
+    .eq("event_id", eventId)
+    .order("start_at", { ascending: true })
+    .limit(limit);
+  const occurrences = (data ?? []) as EventOccurrence[];
+  if (occurrences.length === 0) return [];
+
+  const locationIds = Array.from(new Set(occurrences.map((o) => o.location_id).filter((id): id is string => !!id)));
+  const locationsById = new Map<string, FindmiLocation>();
+  if (locationIds.length > 0) {
+    const { data: locs } = await supabase.from("locations").select("*").in("id", locationIds);
+    for (const l of (locs ?? []) as FindmiLocation[]) locationsById.set(l.id, l);
+  }
+
+  return occurrences.map((o) => ({ ...o, location: o.location_id ? (locationsById.get(o.location_id) ?? null) : null }));
+}
+
 // ── Multi-Date Business Participation Pass 2B — Primary Date Integrity ──
 // events.start_at/end_at (the Primary Date) is never migrated into
 // event_occurrences (LOCKED architecture — see this pass's own spec), but

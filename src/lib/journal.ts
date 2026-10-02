@@ -139,6 +139,11 @@ export interface JournalOccurrenceRef {
   start_at: string;
   end_at: string;
   location_id: string | null;
+  // Journal V2 Pass 2B — the occurrence's own IANA timezone (every
+  // event_occurrences row carries one), needed to render its date/time
+  // correctly rather than assuming a fixed zone — see
+  // JournalConnectionsPicker's own formatOccurrenceDate/Time.
+  timezone: string;
 }
 
 export interface JournalEntryWithRelations {
@@ -309,7 +314,7 @@ async function resolveConnectedObjects(
       ? supabase.from("events").select("id, name, slug, cover_image_url, start_at, city, state").in("id", eventIds)
       : Promise.resolve({ data: [] }),
     occurrenceIds.length
-      ? supabase.from("event_occurrences").select("id, event_id, start_at, end_at, location_id").in("id", occurrenceIds)
+      ? supabase.from("event_occurrences").select("id, event_id, start_at, end_at, location_id, timezone").in("id", occurrenceIds)
       : Promise.resolve({ data: [] }),
   ]);
 

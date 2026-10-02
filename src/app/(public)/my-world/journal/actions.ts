@@ -8,6 +8,8 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isAdminSession } from "@/lib/admin/auth";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
+import { getAllOccurrencesForEvent } from "@/lib/data";
+import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 
 // Journal V1 Server Actions — every mutation here re-derives the caller's
 // real id from their own session (getServerSupabase().auth.getUser()) and
@@ -279,12 +281,19 @@ export interface JournalConnectionIds {
   businessIds: string[];
   productIds: string[];
   eventIds: string[];
+  // Journal V2 Pass 2B — at most one specific Event Occurrence, additional
+  // to (never instead of) a parent Event connection. Null means "no
+  // specific date identified," a legitimate, honest state — never guessed.
+  occurrenceId: string | null;
 }
 
 /** Replace-set semantics — simplest correct model for a small, infrequently
  * -changed list: every real connection for this entry is validated fresh
  * and the full set is written atomically (delete-then-insert), rather than
- * diffing individual adds/removes. */
+ * diffing individual adds/removes. Re-selecting the same Event/occurrence
+ * never creates a duplicate row — the delete-then-insert replaces the
+ * entire set every time, and the DB's own unique index on
+ * (journal_entry_id, event_occurrence_id) backs this as a second layer. */
 export async function saveJournalConnections(entryId: string, ids: JournalConnectionIds): Promise<{ ok: true } | { error: string }> {
   try {
     const { admin } = await requireOwnEntry(entryId);
@@ -297,11 +306,24 @@ export async function saveJournalConnections(entryId: string, ids: JournalConnec
     const invalid = checks.find((c) => !c.ok);
     if (invalid) return { error: `That ${invalid.kind} couldn't be found.` };
 
+    // Journal V2 Pass 2B — an occurrence connection is only ever valid
+    // alongside its own parent Event connection (see this pass's own
+    // locked "both relationships are meaningful" requirement) — never a
+    // bare occurrence with no Event, which would be an orphan semantic
+    // state (section 14's own concern, enforced here rather than trusted
+    // from the client).
+    if (ids.occurrenceId) {
+      const { data: occ } = await admin.from("event_occurrences").select("id, event_id").eq("id", ids.occurrenceId).maybeSingle();
+      if (!occ) return { error: "That date couldn't be found." };
+      if (!ids.eventIds.includes(occ.event_id)) return { error: "That date doesn't belong to a connected event." };
+    }
+
     await admin.from("journal_entry_connections").delete().eq("journal_entry_id", entryId);
     const rows = [
       ...ids.businessIds.map((business_id) => ({ journal_entry_id: entryId, business_id })),
       ...ids.productIds.map((product_id) => ({ journal_entry_id: entryId, product_id })),
       ...ids.eventIds.map((event_id) => ({ journal_entry_id: entryId, event_id })),
+      ...(ids.occurrenceId ? [{ journal_entry_id: entryId, event_occurrence_id: ids.occurrenceId }] : []),
     ];
     if (rows.length > 0) {
       const { error } = await admin.from("journal_entry_connections").insert(rows);
@@ -311,6 +333,60 @@ export async function saveJournalConnections(entryId: string, ids: JournalConnec
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't save those connections." };
   }
+}
+
+export interface JournalOccurrenceOption {
+  id: string;
+  event_id: string;
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  /** Pre-resolved local calendar date (YYYY-MM-DD) in the occurrence's own
+   * timezone — see isoToLocalDateTime's own doc comment. Computed here,
+   * server-side, once, rather than duplicating timezone math in the
+   * client picker component. */
+  localDate: string;
+  location: {
+    id: string;
+    name: string;
+    slug: string;
+    city: string | null;
+    state: string | null;
+    logo_url: string | null;
+    cover_image_url: string | null;
+  } | null;
+}
+
+/** Journal V2 Pass 2B — real, picker-ready occurrences for an Event being
+ * connected to a Journal entry. Deliberately backed by
+ * getAllOccurrencesForEvent (lib/data.ts) rather than the discovery-facing
+ * getUpcomingOccurrencesForEvent/getEffectiveEventSchedule — retrospective
+ * documentation of an already-finished Event is a first-class Journal
+ * requirement (see this pass's own locked product principle), never
+ * filtered to "upcoming only" the way public discovery surfaces correctly
+ * are. This is a Journal-specific retrieval mode, not a change to how
+ * Events are discovered anywhere else. */
+export async function getEventOccurrencesForJournal(eventId: string): Promise<JournalOccurrenceOption[]> {
+  const occurrences = await getAllOccurrencesForEvent(eventId);
+  return occurrences.map((o) => ({
+    id: o.id,
+    event_id: o.event_id,
+    start_at: o.start_at,
+    end_at: o.end_at,
+    timezone: o.timezone,
+    localDate: isoToLocalDateTime(o.start_at, o.timezone).slice(0, 10),
+    location: o.location
+      ? {
+          id: o.location.id,
+          name: o.location.name,
+          slug: o.location.slug,
+          city: o.location.city,
+          state: o.location.state,
+          logo_url: o.location.logo_url,
+          cover_image_url: o.location.cover_image_url,
+        }
+      : null,
+  }));
 }
 
 /** Step 4 — the final save. Requires the entry to already have a real

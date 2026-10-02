@@ -2,13 +2,20 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import type { JournalEntryWithRelations } from "@/lib/journal";
+import type { JournalEntryWithRelations, JournalOccurrenceRef } from "@/lib/journal";
 import type { JournalSearchResult } from "./JournalSearchSelect";
 import JournalConnectionsPicker from "./JournalConnectionsPicker";
 import JournalLocationPicker, { type JournalManualLocationState } from "./JournalLocationPicker";
 import JournalPhotoStrip from "./JournalPhotoStrip";
 import { useJournalPhotoUpload } from "./useJournalPhotoUpload";
-import { saveJournalBasics, saveJournalLocation, saveJournalConnections, updateJournalVisibility, publishJournalEntry } from "@/app/(public)/my-world/journal/actions";
+import {
+  saveJournalBasics,
+  saveJournalLocation,
+  saveJournalConnections,
+  updateJournalVisibility,
+  publishJournalEntry,
+  type JournalOccurrenceOption,
+} from "@/app/(public)/my-world/journal/actions";
 
 /** Journal V1 (visual convergence pass) — Edit own Journal Entry. Still
  * one consolidated form (not the four-step wizard) that reuses the exact
@@ -66,7 +73,40 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
     entry.products.map((p) => ({ value: p.id, label: p.name, sublabel: p.business?.name, image_url: p.image_url }))
   );
   const [events, setEvents] = useState<JournalSearchResult[]>(entry.events.map((e) => ({ value: e.id, label: e.name, image_url: e.cover_image_url })));
+  // Journal V2 Pass 2B — at most one specific Event Occurrence, loaded
+  // from whatever getJournalEntryWithRelations already resolved (see
+  // lib/journal.ts). Never guessed here — only ever set via an explicit
+  // occurrence-picker selection (handleSelectOccurrence below).
+  const [occurrence, setOccurrence] = useState<JournalOccurrenceRef | null>(entry.occurrences[0] ?? null);
   const [visibility, setVisibility] = useState<"private" | "public">(entry.entry.visibility);
+
+  // Journal V2 Pass 2B — entry_date vs. location are deliberately handled
+  // differently on occurrence selection. `location` is already an
+  // explicit nullable field, so "has the owner already set one?" is
+  // simply `location !== null` — reliable, no new state needed, so it
+  // only defaults from the occurrence when genuinely unset. `entryDate`
+  // has no equivalent "was this defaulted or deliberately typed" signal
+  // today, and inventing one would be exactly the fragile hidden state
+  // this pass was told not to add; instead, the occurrence-selection tap
+  // itself IS the owner's explicit, visible date decision for this
+  // connection, so applying it directly (still editable afterward in the
+  // Basics section below) is honest, not silent.
+  function handleSelectOccurrence(occ: JournalOccurrenceOption) {
+    setOccurrence({ id: occ.id, event_id: occ.event_id, start_at: occ.start_at, end_at: occ.end_at, timezone: occ.timezone, location_id: occ.location?.id ?? null });
+    setEntryDate(occ.localDate);
+    if (!location && occ.location) {
+      setLocation({
+        value: occ.location.id,
+        label: occ.location.name,
+        sublabel: [occ.location.city, occ.location.state].filter(Boolean).join(", ") || undefined,
+        image_url: occ.location.logo_url ?? occ.location.cover_image_url,
+      });
+    }
+  }
+
+  function handleClearOccurrence() {
+    setOccurrence(null);
+  }
 
   // Journal V2 Pass 1 — the exact same persistence Save Changes always did,
   // extracted so Publish Entry can run it first (see this file's own
@@ -96,6 +136,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
         businessIds: businesses.map((b) => b.value),
         productIds: products.map((p) => p.value),
         eventIds: events.map((e) => e.value),
+        occurrenceId: occurrence?.id ?? null,
       }),
       updateJournalVisibility(entryId, visibility),
     ]);
@@ -216,12 +257,15 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
           businesses={businesses}
           products={products}
           events={events}
+          occurrence={occurrence}
           onAddBusiness={(r) => setBusinesses((prev) => [...prev, r])}
           onRemoveBusiness={(id) => setBusinesses((prev) => prev.filter((r) => r.value !== id))}
           onAddProduct={(r) => setProducts((prev) => [...prev, r])}
           onRemoveProduct={(id) => setProducts((prev) => prev.filter((r) => r.value !== id))}
           onAddEvent={(r) => setEvents((prev) => [...prev, r])}
           onRemoveEvent={(id) => setEvents((prev) => prev.filter((r) => r.value !== id))}
+          onSelectOccurrence={handleSelectOccurrence}
+          onClearOccurrence={handleClearOccurrence}
         />
       </EditSection>
 

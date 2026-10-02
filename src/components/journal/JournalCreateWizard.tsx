@@ -14,7 +14,9 @@ import {
   saveJournalLocation,
   saveJournalConnections,
   publishJournalEntry,
+  type JournalOccurrenceOption,
 } from "@/app/(public)/my-world/journal/actions";
+import type { JournalOccurrenceRef } from "@/lib/journal";
 
 /** Journal V1 (visual convergence pass) — the mobile-first, four-step
  * Create Journal Entry flow. Architecture unchanged from the original
@@ -72,9 +74,32 @@ export default function JournalCreateWizard({
   const [businesses, setBusinesses] = useState<JournalSearchResult[]>(prefillBusiness ? [prefillBusiness] : []);
   const [products, setProducts] = useState<JournalSearchResult[]>(prefillProduct ? [prefillProduct] : []);
   const [events, setEvents] = useState<JournalSearchResult[]>(prefillEvent ? [prefillEvent] : []);
+  // Journal V2 Pass 2B — never prefilled even alongside prefillEvent: a
+  // specific occurrence is never guessed, only ever set via an explicit
+  // picker selection (same reasoning as JournalEditForm's own
+  // handleSelectOccurrence). A prefilled Event with no occurrence yet
+  // still gets the picker's own "Which date was this?" affordance.
+  const [occurrence, setOccurrence] = useState<JournalOccurrenceRef | null>(null);
 
   // Step 4
   const [visibility, setVisibility] = useState<"private" | "public">("private");
+
+  function handleSelectOccurrence(occ: JournalOccurrenceOption) {
+    setOccurrence({ id: occ.id, event_id: occ.event_id, start_at: occ.start_at, end_at: occ.end_at, timezone: occ.timezone, location_id: occ.location?.id ?? null });
+    setEntryDate(occ.localDate);
+    if (!location && occ.location) {
+      setLocation({
+        value: occ.location.id,
+        label: occ.location.name,
+        sublabel: [occ.location.city, occ.location.state].filter(Boolean).join(", ") || undefined,
+        image_url: occ.location.logo_url ?? occ.location.cover_image_url,
+      });
+    }
+  }
+
+  function handleClearOccurrence() {
+    setOccurrence(null);
+  }
 
   async function goToStep2() {
     setError(null);
@@ -119,6 +144,7 @@ export default function JournalCreateWizard({
       businessIds: businesses.map((b) => b.value),
       productIds: products.map((p) => p.value),
       eventIds: events.map((e) => e.value),
+      occurrenceId: occurrence?.id ?? null,
     });
     setSaving(false);
     if ("error" in result) return setError(result.error);
@@ -235,12 +261,15 @@ export default function JournalCreateWizard({
             businesses={businesses}
             products={products}
             events={events}
+            occurrence={occurrence}
             onAddBusiness={(r) => setBusinesses((prev) => [...prev, r])}
             onRemoveBusiness={(id) => setBusinesses((prev) => prev.filter((r) => r.value !== id))}
             onAddProduct={(r) => setProducts((prev) => [...prev, r])}
             onRemoveProduct={(id) => setProducts((prev) => prev.filter((r) => r.value !== id))}
             onAddEvent={(r) => setEvents((prev) => [...prev, r])}
             onRemoveEvent={(id) => setEvents((prev) => prev.filter((r) => r.value !== id))}
+            onSelectOccurrence={handleSelectOccurrence}
+            onClearOccurrence={handleClearOccurrence}
           />
 
           <div className="mt-1 flex gap-2">
