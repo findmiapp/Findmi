@@ -250,6 +250,11 @@ export interface JournalUploadAuthorization {
   token: string;
 }
 
+/** Per-file outcome of a batch authorization call — see
+ * authorizeJournalPhotoUploads's own comment on why this is per-item
+ * rather than all-or-nothing. */
+export type JournalUploadAuthorizationResult = ({ ok: true } & JournalUploadAuthorization) | { ok: false; error: string };
+
 /** Journal Photo Experience V2 — the batch half of direct browser-to-
  * Storage upload. ONE ownership check (requireOwnEntry) authorizes the
  * WHOLE selected batch, not one per file — this is the call that replaces
@@ -265,23 +270,44 @@ export interface JournalUploadAuthorization {
  * can ever produce ("jpg"/"png") — never a client-supplied arbitrary
  * string — so the allocated Storage path can never be influenced by
  * attacker-controlled input, exactly like the legacy uploadJournalPhoto
- * path above. */
+ * path above.
+ *
+ * Mobile QA Repair, second pass — real Android QA showed an entire new
+ * batch (5/5) failing together with one shared error message. The cause
+ * wasn't Storage metadata timing: it was this function wrapping every
+ * per-file createSignedUploadUrl call in a single Promise.all. One
+ * transient failure on ANY file (a momentary network/API blip — plausible
+ * on cellular, and more likely the more concurrent signed-URL requests a
+ * batch makes) rejected the whole Promise.all, so the catch block below
+ * turned the ENTIRE batch into one shared { error }, and the caller then
+ * marked every file in the batch as errored — exactly matching "all 5
+ * failed together," independent of (and unrelated to) upload or
+ * finalize-time verification. Each file's signed-URL request is now
+ * caught independently so one failure can no longer take down its
+ * batch-mates; only a failure that genuinely applies to the whole batch
+ * (ownership check, the >40 guard) still returns a shared { error }. */
 export async function authorizeJournalPhotoUploads(
   entryId: string,
   files: { extension: "jpg" | "png" }[]
-): Promise<{ uploads: JournalUploadAuthorization[] } | { error: string }> {
+): Promise<{ uploads: JournalUploadAuthorizationResult[] } | { error: string }> {
   try {
     const { admin, userId } = await requireOwnEntry(entryId);
     if (files.length === 0) return { uploads: [] };
     if (files.length > 40) return { error: "Too many photos selected at once." };
 
     const uploads = await Promise.all(
-      files.map(async (f) => {
-        const ext = f.extension === "png" ? "png" : "jpg";
-        const path = `journal/${userId}/${entryId}/${randomUUID()}.${ext}`;
-        const { data, error } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUploadUrl(path);
-        if (error || !data) throw new Error(error?.message ?? "Couldn't authorize that upload.");
-        return { path: data.path, token: data.token };
+      files.map(async (f): Promise<JournalUploadAuthorizationResult> => {
+        try {
+          const ext = f.extension === "png" ? "png" : "jpg";
+          const path = `journal/${userId}/${entryId}/${randomUUID()}.${ext}`;
+          const { data, error } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUploadUrl(path);
+          if (error || !data) throw new Error(error?.message ?? "Couldn't authorize that upload.");
+          return { ok: true, path: data.path, token: data.token };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Couldn't authorize that upload.";
+          console.error("[journal] authorizeJournalPhotoUploads item failed", { entryId, message });
+          return { ok: false, error: message };
+        }
       })
     );
     return { uploads };

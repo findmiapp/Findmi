@@ -264,7 +264,23 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         directEntries.forEach((item) => erroredLocalIds.add(item.localId));
         updateItems((prev) => prev.map((it) => (erroredLocalIds.has(it.localId) ? { ...it, status: "error", errorMessage: authResult.error } : it)));
       } else {
-        directEntries.forEach((item, i) => authByLocalId.set(item.localId, authResult.uploads[i]));
+        // Mobile QA Repair, second pass — each file's authorization now
+        // succeeds or fails independently (see authorizeJournalPhotoUploads's
+        // own comment), so only the actually-failed items in this batch are
+        // marked errored; the rest proceed to upload normally.
+        const authErrorByLocalId = new Map<string, string>();
+        directEntries.forEach((item, i) => {
+          const result = authResult.uploads[i];
+          if (result.ok) {
+            authByLocalId.set(item.localId, { path: result.path, token: result.token });
+          } else {
+            erroredLocalIds.add(item.localId);
+            authErrorByLocalId.set(item.localId, result.error);
+          }
+        });
+        if (erroredLocalIds.size > 0) {
+          updateItems((prev) => prev.map((it) => (authErrorByLocalId.has(it.localId) ? { ...it, status: "error", errorMessage: authErrorByLocalId.get(it.localId) } : it)));
+        }
       }
     }
 
@@ -310,7 +326,12 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
           updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: authResult.error } : it)));
           return;
         }
-        await runOne(entryId, localId, file, true, authResult.uploads[0]);
+        const single = authResult.uploads[0];
+        if (!single.ok) {
+          updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: single.error } : it)));
+          return;
+        }
+        await runOne(entryId, localId, file, true, { path: single.path, token: single.token });
       }
       await persistOrder(entryId);
     },
