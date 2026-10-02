@@ -29,6 +29,8 @@ export default function JournalCapturePhotos({
     items,
     error,
     batchProgress,
+    batchPerf,
+    dismissBatchPerf,
     hasActiveUploads,
     handleFiles,
     handleRemove,
@@ -44,6 +46,8 @@ export default function JournalCapturePhotos({
       items={items}
       error={error}
       batchProgress={batchProgress}
+      batchPerf={batchPerf}
+      onDismissBatchPerf={dismissBatchPerf}
       disabled={hasActiveUploads}
       onFilesSelected={handleFiles}
       onRemove={handleRemove}

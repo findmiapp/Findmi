@@ -48,6 +48,8 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
     items: photoItems,
     error: photoError,
     batchProgress: photoBatchProgress,
+    batchPerf: photoBatchPerf,
+    dismissBatchPerf: dismissPhotoBatchPerf,
     hasActiveUploads,
     handleFiles,
     handleRemove,
@@ -233,6 +235,8 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
           items={photoItems}
           error={photoError}
           batchProgress={photoBatchProgress}
+          batchPerf={photoBatchPerf}
+          onDismissBatchPerf={dismissPhotoBatchPerf}
           disabled={hasActiveUploads}
           onFilesSelected={handleFiles}
           onRemove={handleRemove}

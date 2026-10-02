@@ -8,8 +8,17 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isAdminSession } from "@/lib/admin/auth";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
+import { MAX_UPLOAD_BYTES } from "@/lib/imageUploadValidation";
 import { getAllOccurrencesForEvent } from "@/lib/data";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
+
+// Journal Photo Upload V3 — the direct-upload path (browser -> Storage via
+// a signed upload URL) never passes through validateImageFile()'s true
+// byte-signature check, since the whole point is to skip the server round
+// trip for the binary. finalizeJournalPhotoBatch's own post-upload
+// metadata check (size + declared content-type) is the closest equivalent
+// available without downloading the file back onto the server.
+const ALLOWED_DIRECT_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 // Journal V1 Server Actions — every mutation here re-derives the caller's
 // real id from their own session (getServerSupabase().auth.getUser()) and
@@ -232,6 +241,218 @@ export async function removeJournalPhoto(entryId: string, mediaId: string): Prom
     return { ok: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't remove that photo." };
+  }
+}
+
+export interface JournalBatchAuthItem {
+  localId: string;
+  ok: boolean;
+  path?: string;
+  token?: string;
+  errorMessage?: string;
+}
+
+/** Journal Photo Upload V3 — the batch half of direct browser-to-Storage
+ * upload. ONE ownership check (requireOwnEntry) authorizes the WHOLE
+ * selected chunk, not one Server Action round trip per photo — this is
+ * the call that keeps a normal (non-HEIC) photo's binary OFF Vercel
+ * entirely (see useJournalPhotoUpload's own header note on why the
+ * previous server-upload-only architecture was too slow for high-volume
+ * batches). createSignedUploadUrl needs no storage.objects RLS policy at
+ * all (see src/lib/supabase/client.ts's own note): it's generated here
+ * using the service-role client, which bypasses Storage RLS entirely, and
+ * the resulting token is a short-lived (2-hour), path-scoped bearer
+ * credential the browser then uses directly with uploadToSignedUrl. No
+ * new Storage policy, no bucket-privacy change, no service-role exposure
+ * to the browser.
+ *
+ * Each file's signed-URL request is caught independently (never one
+ * unguarded Promise.all whose single rejection would fail the whole
+ * chunk) — one photo's authorization failure can never take down its
+ * chunk-mates, the exact bug the previous direct-upload attempt had. */
+export async function authorizeJournalPhotoUploadBatch(
+  entryId: string,
+  files: { localId: string; extension: "jpg" | "png" }[]
+): Promise<{ results: JournalBatchAuthItem[] } | { error: string }> {
+  try {
+    const { admin, userId } = await requireOwnEntry(entryId);
+    if (files.length === 0) return { results: [] };
+    if (files.length > 40) return { error: "Too many photos in one batch." };
+
+    const results = await Promise.all(
+      files.map(async (f): Promise<JournalBatchAuthItem> => {
+        try {
+          const ext = f.extension === "png" ? "png" : "jpg";
+          const path = `journal/${userId}/${entryId}/${randomUUID()}.${ext}`;
+          const { data, error } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUploadUrl(path);
+          if (error || !data) throw new Error(error?.message ?? "Couldn't authorize that upload.");
+          return { localId: f.localId, ok: true, path: data.path, token: data.token };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Couldn't authorize that upload.";
+          console.error("[journal] authorizeJournalPhotoUploadBatch item failed", { entryId, localId: f.localId, message });
+          return { localId: f.localId, ok: false, errorMessage: message };
+        }
+      })
+    );
+    return { results };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Couldn't authorize uploads.";
+    console.error("[journal] authorizeJournalPhotoUploadBatch failed", { entryId, fileCount: files.length, message });
+    return { error: message };
+  }
+}
+
+export interface JournalBatchFinalizeItem {
+  localId: string;
+  ok: boolean;
+  mediaId?: string;
+  url?: string;
+  errorMessage?: string;
+}
+
+/** The metadata-only half of direct upload — called once the browser has
+ * already PUT a chunk's bytes straight to Storage via uploadToSignedUrl.
+ * Never trusts a client-supplied storagePath at face value: each must fall
+ * inside this exact user's own namespace for this exact entry (the same
+ * prefix authorizeJournalPhotoUploadBatch always generates), or that one
+ * item is rejected before any row is written — never the whole batch.
+ *
+ * ONE list() call covers the entire chunk (every photo in it shares the
+ * same folder) instead of one per photo, sorted by created_at DESCENDING
+ * so this batch's brand-new objects are always found even if this entry's
+ * Storage folder already holds many older ones from previous sessions —
+ * a plain default (name-sorted) listing could otherwise miss them once a
+ * folder holds more than one page of objects. A single retry of that same
+ * batched call (never per item) absorbs a rare read-after-write gap.
+ *
+ * Idempotent against a retried/duplicated call: a row is looked up by
+ * storage_path (unique per upload attempt — a fresh randomUUID every time
+ * authorizeJournalPhotoUploadBatch runs) before inserting, so a lost
+ * response or a duplicate Retry tap for an already-finalized photo returns
+ * the existing row instead of creating a second one. No schema change or
+ * uniqueness constraint was needed for this — see this module's own note
+ * on why a single-owner editing session never has a true concurrent
+ * double-submit race for the same path. */
+export async function finalizeJournalPhotoBatch(
+  entryId: string,
+  items: { localId: string; storagePath: string; displayOrder: number }[]
+): Promise<{ results: JournalBatchFinalizeItem[] } | { error: string }> {
+  try {
+    const { admin, userId } = await requireOwnEntry(entryId);
+    if (items.length === 0) return { results: [] };
+    if (items.length > 40) return { error: "Too many photos in one batch." };
+
+    const expectedPrefix = `journal/${userId}/${entryId}/`;
+    const results: JournalBatchFinalizeItem[] = [];
+    const safeItems: typeof items = [];
+    for (const item of items) {
+      if (!item.storagePath.startsWith(expectedPrefix) || item.storagePath.includes("..")) {
+        results.push({ localId: item.localId, ok: false, errorMessage: "That upload couldn't be verified." });
+      } else {
+        safeItems.push(item);
+      }
+    }
+    if (safeItems.length === 0) return { results };
+
+    const folder = `journal/${userId}/${entryId}`;
+    const listOnce = () => admin.storage.from(JOURNAL_MEDIA_BUCKET).list(folder, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+    let { data: listing } = await listOnce();
+    let byFilename = new Map((listing ?? []).map((f) => [f.name, f]));
+    const missing = safeItems.map((it) => it.storagePath.slice(it.storagePath.lastIndexOf("/") + 1)).filter((name) => !byFilename.has(name));
+    if (missing.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      ({ data: listing } = await listOnce());
+      byFilename = new Map((listing ?? []).map((f) => [f.name, f]));
+    }
+
+    const verified: { item: (typeof safeItems)[number]; path: string }[] = [];
+    for (const item of safeItems) {
+      const filename = item.storagePath.slice(item.storagePath.lastIndexOf("/") + 1);
+      const found = byFilename.get(filename);
+      const size = found?.metadata?.size;
+      const mimetype = found?.metadata?.mimetype;
+      if (!found || size === undefined || size > MAX_UPLOAD_BYTES || !mimetype || !ALLOWED_DIRECT_UPLOAD_MIME_TYPES.has(mimetype)) {
+        console.error("[journal] finalizeJournalPhotoBatch verification failed", {
+          entryId,
+          storagePath: item.storagePath,
+          found: Boolean(found),
+          size,
+          mimetype,
+        });
+        await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([item.storagePath]);
+        results.push({ localId: item.localId, ok: false, errorMessage: "That photo couldn't be verified." });
+        continue;
+      }
+      verified.push({ item, path: item.storagePath });
+    }
+    if (verified.length === 0) return { results };
+
+    // Idempotency check — see this function's own header note.
+    const paths = verified.map((v) => v.path);
+    const { data: existingRows } = await admin
+      .from("journal_entry_media")
+      .select("id, storage_path")
+      .eq("journal_entry_id", entryId)
+      .in("storage_path", paths);
+    const mediaIdByPath = new Map<string, string>((existingRows ?? []).map((r) => [r.storage_path as string, r.id as string]));
+
+    const needsInsert = verified.filter((v) => !mediaIdByPath.has(v.path));
+    if (needsInsert.length > 0) {
+      const rows = needsInsert.map(({ item, path }) => ({
+        journal_entry_id: entryId,
+        storage_path: path,
+        display_order: Number.isInteger(item.displayOrder) && item.displayOrder >= 0 ? item.displayOrder : 0,
+        is_cover: item.displayOrder === 0,
+      }));
+      const { data: insertedRows, error: insertError } = await admin.from("journal_entry_media").insert(rows).select("id, storage_path");
+      if (insertError) {
+        console.error("[journal] finalizeJournalPhotoBatch insert failed", { entryId, message: insertError.message });
+        for (const { item } of needsInsert) results.push({ localId: item.localId, ok: false, errorMessage: "Couldn't save that photo." });
+      } else {
+        for (const row of insertedRows ?? []) mediaIdByPath.set(row.storage_path as string, row.id as string);
+      }
+    }
+
+    // Image Performance V1's own batched-signed-URL pattern (see
+    // lib/journal.ts's resolveSignedUrls) — ONE createSignedUrls call for
+    // however many photos just got confirmed, never one per photo.
+    const confirmedPaths = verified.filter((v) => mediaIdByPath.has(v.path)).map((v) => v.path);
+    const { data: signedUrls } = confirmedPaths.length > 0
+      ? await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrls(confirmedPaths, 60 * 60)
+      : { data: [] };
+    const urlByPath = new Map((signedUrls ?? []).filter((s) => s.signedUrl && !s.error).map((s) => [s.path as string, s.signedUrl as string]));
+
+    for (const { item, path } of verified) {
+      const mediaId = mediaIdByPath.get(path);
+      if (!mediaId) continue; // already pushed an error result above
+      results.push({ localId: item.localId, ok: true, mediaId, url: urlByPath.get(path) ?? "" });
+    }
+    return { results };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Couldn't finalize those photos.";
+    console.error("[journal] finalizeJournalPhotoBatch failed", { entryId, message });
+    return { error: message };
+  }
+}
+
+/** Cleans up a Storage object that was uploaded directly (via the signed-
+ * URL path above) but never finalized into a journal_entry_media row —
+ * e.g. the owner removed the photo from the grid while it was still
+ * mid-upload. Never touches the database (there is no row to delete yet);
+ * the same storagePath-namespace check as finalizeJournalPhotoBatch
+ * prevents this from ever being pointed at a path outside the caller's
+ * own entry. */
+export async function discardJournalUpload(entryId: string, storagePath: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { admin, userId } = await requireOwnEntry(entryId);
+    const expectedPrefix = `journal/${userId}/${entryId}/`;
+    if (!storagePath.startsWith(expectedPrefix) || storagePath.includes("..")) {
+      return { error: "That upload couldn't be verified." };
+    }
+    await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([storagePath]);
+    return { ok: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't clean up that upload." };
   }
 }
 

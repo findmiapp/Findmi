@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { JournalBatchProgress, JournalPhotoItem } from "./useJournalPhotoUpload";
+import type { JournalBatchPerf, JournalBatchProgress, JournalPhotoItem } from "./useJournalPhotoUpload";
 
 /** Journal Photo Experience V2 — a sortable grid replacing V1's "big cover
  * + filmstrip" layout. The layout changes to a uniform grid specifically
@@ -43,6 +43,8 @@ export default function JournalPhotoStrip({
   items,
   error,
   batchProgress,
+  batchPerf,
+  onDismissBatchPerf,
   onFilesSelected,
   onRemove,
   onRetry,
@@ -55,6 +57,12 @@ export default function JournalPhotoStrip({
   items: JournalPhotoItem[];
   error: string | null;
   batchProgress: JournalBatchProgress | null;
+  /** Upload Performance V3 — temporary, phone-visible QA readout for the
+   * batch that just finished. See useJournalPhotoUpload's own doc comment
+   * on JournalBatchPerf — safe to delete this prop and the block below
+   * entirely once upload performance is confirmed fixed by real-device QA. */
+  batchPerf?: JournalBatchPerf | null;
+  onDismissBatchPerf?: () => void;
   onFilesSelected: (files: FileList | null) => void;
   onRemove: (localId: string) => void;
   onRetry: (localId: string) => void;
@@ -172,6 +180,25 @@ export default function JournalPhotoStrip({
         <p className="text-xs font-semibold text-ink/50">
           {batchProgress.completed === 0 ? "Preparing…" : `Uploading ${batchProgress.completed} of ${batchProgress.total}`}
         </p>
+      )}
+
+      {/* Upload Performance V3 — temporary QA readout, editor-only, never
+          shown on the public Journal page. No signed URLs/tokens/raw
+          errors — just counts and durations. Delete this block (and
+          batchPerf/dismissBatchPerf) once upload performance is confirmed
+          fixed by real-device QA. */}
+      {batchPerf && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-black/10 bg-mist px-2.5 py-1.5 text-[11px] text-ink/60">
+          <span>
+            QA — {batchPerf.count} photo{batchPerf.count === 1 ? "" : "s"} · Prep {(batchPerf.prepMs / 1000).toFixed(1)}s · Upload{" "}
+            {(batchPerf.uploadMs / 1000).toFixed(1)}s · Finalize {(batchPerf.finalizeMs / 1000).toFixed(1)}s · Total {(batchPerf.totalMs / 1000).toFixed(1)}s
+          </span>
+          {onDismissBatchPerf && (
+            <button type="button" onClick={onDismissBatchPerf} aria-label="Dismiss" className="shrink-0 font-bold text-ink/40">
+              ✕
+            </button>
+          )}
+        </div>
       )}
 
       <input

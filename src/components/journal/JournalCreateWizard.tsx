@@ -66,6 +66,8 @@ export default function JournalCreateWizard({
     items: photoItems,
     error: photoError,
     batchProgress: photoBatchProgress,
+    batchPerf: photoBatchPerf,
+    dismissBatchPerf: dismissPhotoBatchPerf,
     hasActiveUploads,
     handleFiles,
     handleRemove,
@@ -216,6 +218,8 @@ export default function JournalCreateWizard({
             items={photoItems}
             error={photoError}
             batchProgress={photoBatchProgress}
+            batchPerf={photoBatchPerf}
+            onDismissBatchPerf={dismissPhotoBatchPerf}
             disabled={hasActiveUploads}
             onFilesSelected={handleFiles}
             onRemove={handleRemove}
