@@ -24,18 +24,27 @@ const JPEG_QUALITY = 0.82;
 // still gets the full treatment.
 const SKIP_IF_UNDER_BYTES = 1.5 * 1024 * 1024;
 
-function isHeicLike(file: File): boolean {
-  // Mirrors the same hint-based check validateImageFile() uses before its
-  // own authoritative byte-signature check — good enough here because this
-  // is only ever a "should I even try to touch this file" gate; the real
-  // safety authority is still the server. A false negative (an HEIC file
-  // this misses) just means it goes through the resize path below, which
-  // falls back to returning the original file untouched on any decode
-  // failure anyway — never a broken upload either way.
+/** Journal Photo Experience V2 — also used by useJournalPhotoUpload to
+ * decide, BEFORE preprocessing runs, whether a selected file should route
+ * through the legacy full-binary server conversion path (HEIC/HEIF) or the
+ * direct-to-Storage upload path (everything else). Mirrors the same hint-
+ * based check validateImageFile() uses before its own authoritative byte-
+ * signature check — good enough here because this is only ever a "should I
+ * even try to touch this file" gate; the real safety authority is still the
+ * server. A false negative (an HEIC file this misses) just means it goes
+ * through the resize path below, which falls back to returning the
+ * original file untouched on any decode failure anyway — never a broken
+ * upload either way. */
+export function isHeicLike(file: File): boolean {
   return /^image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
 }
 
-function isPng(file: File): boolean {
+/** Also used by useJournalPhotoUpload to pre-select the correct extension
+ * ("png" vs "jpg") when authorizing a direct-upload Storage path, before
+ * preprocessing has actually run — safe because this utility never changes
+ * a PNG's format (see the PNG Safety note below), so the final extension is
+ * always knowable from the original file alone. */
+export function isPng(file: File): boolean {
   return file.type === "image/png" || /\.png$/i.test(file.name);
 }
 

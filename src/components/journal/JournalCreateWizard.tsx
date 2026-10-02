@@ -58,7 +58,18 @@ export default function JournalCreateWizard({
     return result.id;
   }
 
-  const { photos, batch, error: photoError, handleFiles, handleRemove, handleSetCover } = useJournalPhotoUpload([], ensureEntryId);
+  const {
+    items: photoItems,
+    error: photoError,
+    hasActiveUploads,
+    handleFiles,
+    handleRemove,
+    retryItem,
+    handleDragReorder,
+    moveEarlier,
+    moveLater,
+    makeCover,
+  } = useJournalPhotoUpload([], ensureEntryId);
 
   // Step 1
   const [title, setTitle] = useState("");
@@ -196,7 +207,18 @@ export default function JournalCreateWizard({
         <div className="mt-4 flex flex-col gap-3.5">
           <h2 className="font-display text-base font-bold tracking-tight text-ink">1. Add the basics</h2>
 
-          <JournalPhotoStrip photos={photos} batch={batch} error={photoError} onFilesSelected={handleFiles} onRemove={handleRemove} onSetCover={handleSetCover} />
+          <JournalPhotoStrip
+            items={photoItems}
+            error={photoError}
+            disabled={hasActiveUploads}
+            onFilesSelected={handleFiles}
+            onRemove={handleRemove}
+            onRetry={retryItem}
+            onDragReorder={handleDragReorder}
+            onMoveEarlier={moveEarlier}
+            onMoveLater={moveLater}
+            onMakeCover={makeCover}
+          />
 
           <input
             type="text"
@@ -338,10 +360,16 @@ export default function JournalCreateWizard({
             <button
               type="button"
               onClick={handlePublish}
-              disabled={saving}
+              disabled={saving || hasActiveUploads}
               className="flex h-12 flex-[2] items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
             >
-              {saving ? "Saving…" : "Save Journal Entry"}
+              {/* Publishing While Uploads Are Active — never finish
+                  publication while a selected photo is still mid-upload
+                  (it would silently omit from the saved entry). The
+                  button simply stays disabled with an honest reason until
+                  every active upload settles, rather than attempting a
+                  background "publish once ready" state machine. */}
+              {saving ? "Saving…" : hasActiveUploads ? "Finishing your photos…" : "Save Journal Entry"}
             </button>
           </div>
         </div>

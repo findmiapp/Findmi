@@ -19,19 +19,31 @@ export default function JournalCapturePhotos({
   entryId: string;
   initialPhotos: { id: string; url: string; isCover: boolean }[];
 }) {
-  const { photos, batch, error, handleFiles, handleRemove, handleSetCover } = useJournalPhotoUpload(
-    initialPhotos,
-    async () => entryId
-  );
+  const {
+    items,
+    error,
+    hasActiveUploads,
+    handleFiles,
+    handleRemove,
+    retryItem,
+    handleDragReorder,
+    moveEarlier,
+    moveLater,
+    makeCover,
+  } = useJournalPhotoUpload(initialPhotos, async () => entryId);
 
   return (
     <JournalPhotoStrip
-      photos={photos}
-      batch={batch}
+      items={items}
       error={error}
+      disabled={hasActiveUploads}
       onFilesSelected={handleFiles}
       onRemove={handleRemove}
-      onSetCover={handleSetCover}
+      onRetry={retryItem}
+      onDragReorder={handleDragReorder}
+      onMoveEarlier={moveEarlier}
+      onMoveLater={moveLater}
+      onMakeCover={makeCover}
     />
   );
 }

@@ -8,8 +8,18 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isAdminSession } from "@/lib/admin/auth";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
+import { MAX_UPLOAD_BYTES } from "@/lib/imageUploadValidation";
 import { getAllOccurrencesForEvent } from "@/lib/data";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
+
+// Journal Photo Experience V2 — the direct-upload path (browser -> Storage
+// via a signed upload URL) never passes through validateImageFile()'s true
+// byte-signature check, since the whole point is to skip the server round
+// trip for the binary. finalizeJournalPhoto's own post-upload metadata
+// check (size + declared content-type) is the closest equivalent available
+// without downloading the file back onto the server — see that function's
+// own comment.
+const ALLOWED_DIRECT_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 // Journal V1 Server Actions — every mutation here re-derives the caller's
 // real id from their own session (getServerSupabase().auth.getUser()) and
@@ -235,15 +245,185 @@ export async function removeJournalPhoto(entryId: string, mediaId: string): Prom
   }
 }
 
-export async function setJournalCoverPhoto(entryId: string, mediaId: string): Promise<{ ok: true } | { error: string }> {
+export interface JournalUploadAuthorization {
+  path: string;
+  token: string;
+}
+
+/** Journal Photo Experience V2 — the batch half of direct browser-to-
+ * Storage upload. ONE ownership check (requireOwnEntry) authorizes the
+ * WHOLE selected batch, not one per file — this is the call that replaces
+ * V1's "binary through a Server Action" round trip for every normal
+ * (non-HEIC) photo. createSignedUploadUrl itself needs no storage.objects
+ * RLS policy at all (see src/lib/supabase/client.ts's own note): it's
+ * generated here using the service-role client, which bypasses Storage RLS
+ * entirely, and the resulting token is a short-lived (2-hour), path-scoped
+ * bearer credential the browser then uses directly with uploadToSignedUrl.
+ * No new Storage policy, no bucket-privacy change.
+ *
+ * `extension` is constrained to the two real outputs imagePreprocessing.ts
+ * can ever produce ("jpg"/"png") — never a client-supplied arbitrary
+ * string — so the allocated Storage path can never be influenced by
+ * attacker-controlled input, exactly like the legacy uploadJournalPhoto
+ * path above. */
+export async function authorizeJournalPhotoUploads(
+  entryId: string,
+  files: { extension: "jpg" | "png" }[]
+): Promise<{ uploads: JournalUploadAuthorization[] } | { error: string }> {
   try {
-    const { admin } = await requireOwnEntry(entryId);
-    await admin.from("journal_entry_media").update({ is_cover: false }).eq("journal_entry_id", entryId);
-    const { error } = await admin.from("journal_entry_media").update({ is_cover: true }).eq("id", mediaId).eq("journal_entry_id", entryId);
-    if (error) return { error: error.message };
+    const { admin, userId } = await requireOwnEntry(entryId);
+    if (files.length === 0) return { uploads: [] };
+    if (files.length > 40) return { error: "Too many photos selected at once." };
+
+    const uploads = await Promise.all(
+      files.map(async (f) => {
+        const ext = f.extension === "png" ? "png" : "jpg";
+        const path = `journal/${userId}/${entryId}/${randomUUID()}.${ext}`;
+        const { data, error } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUploadUrl(path);
+        if (error || !data) throw new Error(error?.message ?? "Couldn't authorize that upload.");
+        return { path: data.path, token: data.token };
+      })
+    );
+    return { uploads };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't authorize uploads." };
+  }
+}
+
+/** The metadata-only half of direct upload — called once the browser has
+ * already PUT the actual bytes straight to Storage via uploadToSignedUrl.
+ * Never trusts the client-supplied storagePath at face value: it must fall
+ * inside this exact user's own namespace for this exact entry (the same
+ * prefix authorizeJournalPhotoUploads itself always generates), or the
+ * finalize is rejected before any row is written — a client cannot attach
+ * an arbitrary Storage path (its own or anyone else's) to a Journal entry
+ * through this call. `displayOrder` is the same pure-ordering, no-
+ * authorization-meaning value the legacy upload path already accepts (see
+ * its own comment) — now sourced from the photo's CURRENT position in the
+ * owner's editing grid at the moment it finishes, not its original
+ * selection index, since the owner may have already reordered. */
+export async function finalizeJournalPhoto(
+  entryId: string,
+  input: { storagePath: string; displayOrder: number }
+): Promise<{ id: string; url: string } | { error: string }> {
+  try {
+    const { admin, userId } = await requireOwnEntry(entryId);
+    const expectedPrefix = `journal/${userId}/${entryId}/`;
+    if (!input.storagePath.startsWith(expectedPrefix) || input.storagePath.includes("..")) {
+      return { error: "That upload couldn't be verified." };
+    }
+
+    // Defense in depth — re-check the ACTUAL uploaded object's real size
+    // and declared content-type against the same rules every other upload
+    // path enforces (MAX_UPLOAD_BYTES, image-only), since this path never
+    // passed through validateImageFile(). A client that skipped
+    // preprocessing, or isn't FindMi's own client at all, can't get an
+    // oversized or non-image object into journal_entry_media this way —
+    // it gets deleted and rejected here instead.
+    const lastSlash = input.storagePath.lastIndexOf("/");
+    const folder = input.storagePath.slice(0, lastSlash);
+    const filename = input.storagePath.slice(lastSlash + 1);
+    const { data: listing } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).list(folder, { search: filename, limit: 1 });
+    const uploadedObject = listing?.find((f) => f.name === filename);
+    const size = uploadedObject?.metadata?.size;
+    const mimetype = uploadedObject?.metadata?.mimetype;
+    if (!uploadedObject || size === undefined || size > MAX_UPLOAD_BYTES || !mimetype || !ALLOWED_DIRECT_UPLOAD_MIME_TYPES.has(mimetype)) {
+      await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([input.storagePath]);
+      return { error: "That photo couldn't be verified." };
+    }
+
+    const displayOrder = Number.isInteger(input.displayOrder) && input.displayOrder >= 0 ? input.displayOrder : 0;
+
+    const [{ data: mediaRow, error: insertError }, { data: signed }] = await Promise.all([
+      admin
+        .from("journal_entry_media")
+        .insert({ journal_entry_id: entryId, storage_path: input.storagePath, display_order: displayOrder, is_cover: displayOrder === 0 })
+        .select("id")
+        .single(),
+      admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrl(input.storagePath, 60 * 60),
+    ]);
+    if (insertError || !mediaRow) {
+      await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([input.storagePath]);
+      return { error: insertError?.message ?? "Couldn't save that photo." };
+    }
+    return { id: mediaRow.id, url: signed?.signedUrl ?? "" };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't finalize that photo." };
+  }
+}
+
+/** Cleans up a Storage object that was uploaded directly (via the signed-
+ * URL path above) but never finalized into a journal_entry_media row —
+ * e.g. the owner removed the photo from the grid while it was still
+ * mid-upload. Never touches the database (there is no row to delete yet);
+ * the same storagePath-namespace check as finalizeJournalPhoto prevents
+ * this from ever being pointed at a path outside the caller's own entry. */
+export async function discardJournalUpload(entryId: string, storagePath: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { admin, userId } = await requireOwnEntry(entryId);
+    const expectedPrefix = `journal/${userId}/${entryId}/`;
+    if (!storagePath.startsWith(expectedPrefix) || storagePath.includes("..")) {
+      return { error: "That upload couldn't be verified." };
+    }
+    await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([storagePath]);
     return { ok: true };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Couldn't update the cover photo." };
+    return { error: err instanceof Error ? err.message : "Couldn't clean up that upload." };
+  }
+}
+
+/** Journal Photo Experience V2 — persists the owner's current photo order
+ * (drag, the fallback Move Earlier/Later/Make Cover menu, or the automatic
+ * end-of-batch reconciliation after a set of uploads settles). The client
+ * array is authoritative for the editing session; this call makes it
+ * authoritative in the database too, for exactly the media rows it names.
+ *
+ * Every id in `orderedMediaIds` is re-verified against this entry before
+ * anything is written — an id belonging to another entry (another user's
+ * or this owner's own different entry) is silently dropped rather than
+ * trusted, so this can never be used to reorder media it doesn't own.
+ *
+ * Cover is re-derived from position (index 0 = cover), never a separate
+ * field the client sets directly — "Make Cover" is just "move to the
+ * front, then call this." journal_entry_media_one_cover_idx is a unique
+ * partial index (at most one is_cover=true row per entry), so every row's
+ * is_cover is cleared in one pass BEFORE any row is set back to true —
+ * interleaving those two would risk two rows briefly both claiming
+ * is_cover=true and colliding on that index. The second pass (display_order
+ * + is_cover for each row) is safe to run concurrently once phase one has
+ * cleared every row, since at most one of these updates ever sets
+ * is_cover=true again.
+ *
+ * This is deliberately NOT one atomic transaction/RPC — no migration was
+ * needed for this pass (see this action's own audit note): a single owner
+ * never edits the same entry concurrently from two places, so the only
+ * failure window is a rare partial write that leaves a stale-but-
+ * recoverable order (the next successful reorder/reconciliation overwrites
+ * it completely) — never cross-entry or cross-user corruption, since every
+ * update stays scoped to a verified id AND this entryId. */
+export async function reorderJournalMedia(entryId: string, orderedMediaIds: string[]): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { admin } = await requireOwnEntry(entryId);
+    if (orderedMediaIds.length === 0) return { ok: true };
+
+    const { data: existing } = await admin.from("journal_entry_media").select("id").eq("journal_entry_id", entryId).in("id", orderedMediaIds);
+    const validIds = new Set((existing ?? []).map((r) => r.id as string));
+    const safeOrder = orderedMediaIds.filter((id) => validIds.has(id));
+    if (safeOrder.length === 0) return { ok: true };
+
+    const { error: clearError } = await admin.from("journal_entry_media").update({ is_cover: false }).eq("journal_entry_id", entryId);
+    if (clearError) return { error: clearError.message };
+
+    const results = await Promise.all(
+      safeOrder.map((mediaId, index) =>
+        admin.from("journal_entry_media").update({ display_order: index, is_cover: index === 0 }).eq("id", mediaId).eq("journal_entry_id", entryId)
+      )
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) return { error: failed.error.message };
+    return { ok: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't update photo order." };
   }
 }
 

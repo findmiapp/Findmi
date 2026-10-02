@@ -39,7 +39,18 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
   const [status, setStatus] = useState(entry.entry.status);
   const [publishing, setPublishing] = useState(false);
 
-  const { photos, batch, error: photoError, handleFiles, handleRemove, handleSetCover } = useJournalPhotoUpload(
+  const {
+    items: photoItems,
+    error: photoError,
+    hasActiveUploads,
+    handleFiles,
+    handleRemove,
+    retryItem,
+    handleDragReorder,
+    moveEarlier,
+    moveLater,
+    makeCover,
+  } = useJournalPhotoUpload(
     entry.media.map((m) => ({ id: m.id, url: m.url ?? "", isCover: m.is_cover })),
     async () => entryId
   );
@@ -212,7 +223,18 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
       {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</p>}
 
       <EditSection label="Photos">
-        <JournalPhotoStrip photos={photos} batch={batch} error={photoError} onFilesSelected={handleFiles} onRemove={handleRemove} onSetCover={handleSetCover} />
+        <JournalPhotoStrip
+          items={photoItems}
+          error={photoError}
+          disabled={hasActiveUploads}
+          onFilesSelected={handleFiles}
+          onRemove={handleRemove}
+          onRetry={retryItem}
+          onDragReorder={handleDragReorder}
+          onMoveEarlier={moveEarlier}
+          onMoveLater={moveLater}
+          onMakeCover={makeCover}
+        />
       </EditSection>
 
       <EditSection label="Basics">
@@ -320,10 +342,13 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
         <button
           type="button"
           onClick={handlePublish}
-          disabled={saving || publishing}
+          disabled={saving || publishing || hasActiveUploads}
           className="mt-2.5 flex h-12 w-full items-center justify-center rounded-2xl border-2 border-findmi text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {publishing ? "Publishing…" : "Publish Entry"}
+          {/* Publishing While Uploads Are Active — never publish while a
+              selected photo is still mid-upload; Save Changes above is
+              unaffected since it never touches photo/media state. */}
+          {publishing ? "Publishing…" : hasActiveUploads ? "Finishing your photos…" : "Publish Entry"}
         </button>
       )}
     </div>

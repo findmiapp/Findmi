@@ -1,179 +1,397 @@
 "use client";
 
-import { useState } from "react";
-import { uploadJournalPhoto, removeJournalPhoto, setJournalCoverPhoto } from "@/app/(public)/my-world/journal/actions";
-import { preprocessImageForUpload } from "@/lib/imagePreprocessing";
+import { useEffect, useRef, useState } from "react";
+import { arrayMove } from "@dnd-kit/sortable";
+import {
+  uploadJournalPhoto,
+  removeJournalPhoto,
+  authorizeJournalPhotoUploads,
+  finalizeJournalPhoto,
+  discardJournalUpload,
+  reorderJournalMedia,
+  type JournalUploadAuthorization,
+} from "@/app/(public)/my-world/journal/actions";
+import { preprocessImageForUpload, isHeicLike, isPng } from "@/lib/imagePreprocessing";
 import { createConcurrencyLimiter } from "@/lib/concurrency";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 
-export interface JournalPhotoState {
+// Journal Photo Experience V2 — mirrors the literal bucket id
+// JOURNAL_MEDIA_BUCKET exports from lib/journal.ts. That module pulls in
+// server-only Supabase helpers and must never be imported from a "use
+// client" file, so the bucket id is duplicated here as a plain string
+// rather than shared via import.
+const JOURNAL_MEDIA_BUCKET = "journal-media";
+
+const MAX_PREPARE_CONCURRENCY = 2;
+const MAX_UPLOAD_CONCURRENCY = 3;
+
+export type JournalPhotoStatus = "local" | "preparing" | "uploading" | "saving" | "complete" | "error";
+
+export interface JournalPhotoItem {
+  /** Stable identity for the whole lifecycle of this photo — generated
+   * once at selection time for a new photo, or set to the real media id
+   * for one loaded already-persisted. Never changes as status advances,
+   * so React keys and dnd-kit's own sortable identity stay stable through
+   * local -> uploading -> complete. */
+  localId: string;
+  status: JournalPhotoStatus;
+  /** An object URL (local/preparing/uploading/saving) or a real signed
+   * read URL (complete) — always something <Image> can render right now. */
+  previewUrl: string;
+  isObjectUrl: boolean;
+  file?: File;
+  mediaId?: string;
+  storagePath?: string;
+  errorMessage?: string;
+}
+
+export interface JournalInitialPhoto {
   id: string;
   url: string;
   isCover: boolean;
 }
 
-export interface JournalUploadBatch {
-  total: number;
-  completed: number;
+/** Legacy-data reconciliation — a photo's cover status before this pass
+ * lived entirely in is_cover (set via the old setJournalCoverPhoto star
+ * button), independent of display_order. V2's model treats "whichever
+ * photo is first in the grid" as the cover, so an existing entry whose
+ * real cover isn't already first has it moved to the front on load — a
+ * one-time visual correction; the first reorder/add/remove afterward
+ * persists it back to the database via persistOrder. Array.prototype.sort
+ * is spec-stable, so every non-cover photo keeps its existing relative
+ * (display_order) order. */
+function buildInitialItems(initial: JournalInitialPhoto[]): JournalPhotoItem[] {
+  const sorted = [...initial].sort((a, b) => Number(b.isCover) - Number(a.isCover));
+  return sorted.map((p) => ({
+    localId: p.id,
+    status: "complete",
+    previewUrl: p.url,
+    isObjectUrl: false,
+    mediaId: p.id,
+  }));
 }
 
-// Image Performance V1 — two independent concurrency limits, not one.
-// PREPARE bounds how many photos are being decoded/resized in memory at
-// once (a phone's own camera-original decode is the expensive, memory-
-// heavy step); UPLOAD bounds how many network requests are in flight at
-// once. A photo moves from prepare -> upload as soon as ITS OWN prep
-// finishes, independent of its siblings, so uploads start well before the
-// whole batch has been prepared — never "decode all 20, then start
-// uploading." Both are plain integers, not a package.
-const MAX_PREPARE_CONCURRENCY = 2;
-const MAX_UPLOAD_CONCURRENCY = 3;
+function isActiveStatus(status: JournalPhotoStatus): boolean {
+  return status === "local" || status === "preparing" || status === "uploading" || status === "saving";
+}
 
-/** Journal V1 (visual convergence pass) — the shared photo-upload/manage
- * logic behind both Create (JournalCreateWizard) and Edit
- * (JournalEditForm), previously duplicated between them. `ensureEntryId`
- * is how the two callers differ: Create's lazily creates a draft row on
- * first real use, Edit's trivially resolves the already-known entryId —
- * this hook doesn't need to know which.
+/** Journal Photo Experience V2 — replaces V1's single sequential/bounded
+ * upload loop with an item-based state machine: every selected photo
+ * becomes a visible grid item INSTANTLY (a local object-URL preview, before
+ * any preprocessing/network work starts), then moves through its own
+ * prepare -> upload -> save pipeline in the background, independently
+ * reorderable (drag, the fallback menu, or Make Cover) at every stage. The
+ * owner's current on-screen order is always authoritative — not original
+ * selection order, not completion order — and is what every finalize/
+ * reorder call persists.
  *
- * `batch` is real CLIENT-SIDE state (never a database poll): `total` is
- * how many files were selected in this pick, `completed` increments only
- * on a real successful upload (never for a failed one), and `batch`
- * itself clears the instant every file in the pick has been attempted —
- * success or failure — so the aggregate tile never lingers. Failures are
- * surfaced once, after the batch finishes, without ever claiming a failed
- * file as uploaded; every photo that DID succeed stays in `photos`
- * regardless of what the rest of the batch does. */
-export function useJournalPhotoUpload(initialPhotos: JournalPhotoState[], ensureEntryId: () => Promise<string | null>) {
-  const [photos, setPhotos] = useState<JournalPhotoState[]>(initialPhotos);
-  const [batch, setBatch] = useState<JournalUploadBatch | null>(null);
+ * Normal JPEG/WEBP/PNG photos upload DIRECTLY browser -> Supabase Storage
+ * (via a server-authorized signed upload URL — see
+ * authorizeJournalPhotoUploads), never through a Server Action carrying the
+ * binary. HEIC/HEIF still goes through the existing server-side
+ * heic-convert path (uploadJournalPhoto) unchanged, since reliable client-
+ * side HEIC decoding isn't available across Android + iPhone without a new
+ * heavy dependency — see this pass's own note on that tradeoff. */
+export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensureEntryId: () => Promise<string | null>) {
+  const [items, setItems] = useState<JournalPhotoItem[]>(() => buildInitialItems(initialPhotos));
   const [error, setError] = useState<string | null>(null);
+  const itemsRef = useRef(items);
+  // Mid-flight removal — a photo being decoded/uploaded/saved can't safely
+  // be cancelled with the current SDK, so removal just marks it here; the
+  // pipeline's own checkpoints (after prepare, after upload, after
+  // finalize) check this set and clean up (discard the orphaned Storage
+  // object, or delete the now-real row) rather than resurrecting it.
+  const removedRef = useRef<Set<string>>(new Set());
 
-  async function handleFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    // Mobile Picker Repair pass — a batch already in flight is the
-    // double-submit guard itself: JournalPhotoStrip disables the trigger
-    // button/input whenever `batch` is non-null, so this can only be
-    // reached once per batch. `batch` is also set HERE, synchronously,
-    // before the first `await` — not after `ensureEntryId` resolves, as
-    // before — so the visible progress tile appears the instant a real
-    // `change` event reaches React, never only once the network round-trip
-    // to create/resolve the draft finishes (the same "prove the event
-    // actually fired" reasoning MemberImageField's own `preparing` state
-    // uses).
-    if (batch) return;
-    setError(null);
-    const fileArray = Array.from(files);
-    setBatch({ total: fileArray.length, completed: 0 });
+  function updateItems(updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) {
+    setItems((prev) => {
+      const next = updater(prev);
+      itemsRef.current = next;
+      return next;
+    });
+  }
 
-    const resolvedId = await ensureEntryId();
-    if (!resolvedId) {
-      setBatch(null);
-      return;
-    }
-    const id: string = resolvedId;
-
-    // Image Performance V1 — Photo Order Is Non-Negotiable. Concurrent
-    // uploads mean completion order is no longer selection order, so the
-    // selected A/B/C/D must stay A/B/C/D regardless of which one's network
-    // request happens to finish first. `existingCount`/`existingIds` are
-    // snapshotted once, before any upload in this batch starts:
-    // `existingCount` becomes each photo's base display_order (its fixed
-    // position in THIS selection is added on top, so two photos in the
-    // same batch can never collide, and nothing already in the entry is
-    // ever renumbered); `existingIds` lets `commit()` below always rebuild
-    // `photos` as "whatever of the pre-batch set still exists" + "this
-    // batch's own results, in selection order" — correct even if the owner
-    // removes an older photo while this batch is still running.
-    const existingCount = photos.length;
-    const hadExistingPhotos = existingCount > 0;
-    const existingIds = new Set(photos.map((p) => p.id));
-
-    const prepareLimit = createConcurrencyLimiter(MAX_PREPARE_CONCURRENCY);
-    const uploadLimit = createConcurrencyLimiter(MAX_UPLOAD_CONCURRENCY);
-
-    const results: (JournalPhotoState | null)[] = new Array(fileArray.length).fill(null);
-    let completed = 0;
-    let failed = 0;
-
-    function commit() {
-      setPhotos((prev) => {
-        const stillExisting = prev.filter((p) => existingIds.has(p.id));
-        return [...stillExisting, ...results.filter((p): p is JournalPhotoState => p !== null)];
+  // Object URL Lifecycle — revoke every remaining local preview on
+  // unmount; a completed item's object URL is already revoked the moment
+  // it's swapped for the real signed URL (see runOne below).
+  useEffect(() => {
+    return () => {
+      itemsRef.current.forEach((it) => {
+        if (it.isObjectUrl) URL.revokeObjectURL(it.previewUrl);
       });
-    }
+    };
+  }, []);
 
-    async function runOne(file: File, index: number) {
-      try {
-        const prepared = await prepareLimit(() => preprocessImageForUpload(file));
+  const hasActiveUploads = items.some((it) => isActiveStatus(it.status));
+
+  // Navigation Safety — a native, reliable, cheap warning for an actual
+  // tab close/refresh while uploads are active. In-app navigation isn't
+  // intercepted (no router-level framework added for this) — the visible
+  // per-photo progress in the grid is the primary signal for that case.
+  useEffect(() => {
+    function handler(e: BeforeUnloadEvent) {
+      if (!hasActiveUploads) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasActiveUploads]);
+
+  const prepareLimit = useRef(createConcurrencyLimiter(MAX_PREPARE_CONCURRENCY)).current;
+  const uploadLimit = useRef(createConcurrencyLimiter(MAX_UPLOAD_CONCURRENCY)).current;
+
+  function currentPosition(localId: string): number {
+    const index = itemsRef.current.findIndex((it) => it.localId === localId);
+    return index === -1 ? itemsRef.current.length : index;
+  }
+
+  async function persistOrder(entryId: string) {
+    const orderedMediaIds = itemsRef.current.filter((it) => it.status === "complete" && it.mediaId).map((it) => it.mediaId as string);
+    if (orderedMediaIds.length === 0) return;
+    await reorderJournalMedia(entryId, orderedMediaIds);
+  }
+
+  async function runOne(entryId: string, localId: string, originalFile: File, direct: boolean, authorization: JournalUploadAuthorization | null) {
+    if (removedRef.current.has(localId)) return;
+    updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "preparing", errorMessage: undefined } : it)));
+
+    const prepared = await prepareLimit(() => preprocessImageForUpload(originalFile));
+    if (removedRef.current.has(localId)) return;
+    updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "uploading" } : it)));
+
+    try {
+      let mediaId: string;
+      let url: string;
+
+      if (!direct) {
+        // HEIC/HEIF — unchanged legacy path: the full (already validated-
+        // small-enough, per the 5MB cap) file goes through the Server
+        // Action, which still does its own server-side conversion.
         const formData = new FormData();
         formData.set("file", prepared);
-        formData.set("displayOrder", String(existingCount + index));
-        const result = await uploadLimit(() => uploadJournalPhoto(id, formData));
-        if ("error" in result) {
-          failed += 1;
-        } else {
-          completed += 1;
-          results[index] = { id: result.id, url: result.url, isCover: result.isCover };
-          commit();
-          setBatch({ total: fileArray.length, completed });
+        formData.set("displayOrder", String(currentPosition(localId)));
+        const result = await uploadLimit(() => uploadJournalPhoto(entryId, formData));
+        if ("error" in result) throw new Error(result.error);
+        mediaId = result.id;
+        url = result.url;
+      } else {
+        if (!authorization) throw new Error("Couldn't authorize this upload.");
+        const supabase = getBrowserSupabase();
+        if (!supabase) throw new Error("Upload isn't available right now.");
+
+        await uploadLimit(async () => {
+          const { error: uploadError } = await supabase.storage.from(JOURNAL_MEDIA_BUCKET).uploadToSignedUrl(authorization.path, authorization.token, prepared, {
+            contentType: prepared.type || "application/octet-stream",
+            cacheControl: "31536000",
+          });
+          if (uploadError) throw new Error(uploadError.message);
+        });
+
+        if (removedRef.current.has(localId)) {
+          // Uploaded straight to Storage but removed from the grid before
+          // it could be finalized — no DB row exists yet, so just clean up
+          // the now-orphaned object rather than ever writing one.
+          await discardJournalUpload(entryId, authorization.path);
+          return;
         }
-      } catch {
-        // A dropped connection (or a preprocessing bug) throws rather than
-        // returning {error} — treated as one more failed file, never a
-        // crash, and never corrupting the rest of the batch's results
-        // (same reasoning as MemberImageField's own upload try/catch).
-        failed += 1;
+
+        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "saving", storagePath: authorization.path } : it)));
+        const result = await finalizeJournalPhoto(entryId, { storagePath: authorization.path, displayOrder: currentPosition(localId) });
+        if ("error" in result) throw new Error(result.error);
+        mediaId = result.id;
+        url = result.url;
       }
-    }
 
-    // Every file's own pipeline starts "at once" here, but the two
-    // limiters above are what actually bound real concurrent work — this
-    // is not an unlimited Promise.all across the network/CPU, just the
-    // scheduling of up to 20+ small state machines that each wait their
-    // turn for a prepare slot, then an upload slot.
-    await Promise.all(fileArray.map((file, index) => runOne(file, index)));
-
-    setBatch(null);
-
-    // Cover failover — if this entry started with zero photos and the
-    // intended cover (selection index 0, display_order 0) is the one photo
-    // that failed, no row ever got is_cover. Patch it onto whichever
-    // succeeded photo has the earliest selection index, reusing the exact
-    // same setJournalCoverPhoto action the manual "make cover" star uses —
-    // no new server logic for this edge case.
-    if (!hadExistingPhotos) {
-      const settled = results.filter((p): p is JournalPhotoState => p !== null);
-      const hasCover = settled.some((p) => p.isCover);
-      if (settled.length > 0 && !hasCover) {
-        const fallbackCover = settled[0];
-        await setJournalCoverPhoto(id, fallbackCover.id);
-        setPhotos((prev) => prev.map((p) => ({ ...p, isCover: p.id === fallbackCover.id })));
+      if (removedRef.current.has(localId)) {
+        // Finalized (a real row now exists) but removed in the meantime —
+        // delete it through the normal, already-correct removal path
+        // rather than leaving an orphaned record.
+        await removeJournalPhoto(entryId, mediaId);
+        return;
       }
-    }
 
-    if (failed > 0) {
-      setError(`${failed} photo${failed === 1 ? "" : "s"} couldn't be uploaded. ${completed > 0 ? "The rest were saved." : ""}`.trim());
+      updateItems((prev) =>
+        prev.map((it) => {
+          if (it.localId !== localId) return it;
+          if (it.isObjectUrl) URL.revokeObjectURL(it.previewUrl);
+          return { ...it, status: "complete", mediaId, previewUrl: url, isObjectUrl: false, errorMessage: undefined };
+        })
+      );
+    } catch (err) {
+      if (removedRef.current.has(localId)) return;
+      const message = err instanceof Error ? err.message : "Couldn't upload that photo.";
+      updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: message } : it)));
     }
   }
 
-  async function handleRemove(mediaId: string) {
-    const id = await ensureEntryId();
-    if (!id) return;
-    const wasCover = photos.find((p) => p.id === mediaId)?.isCover ?? false;
-    setPhotos((prev) => prev.filter((p) => p.id !== mediaId));
-    const result = await removeJournalPhoto(id, mediaId);
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    // The Add Photos control stays protected from overlapping, uncontrolled
+    // batches — JournalPhotoStrip also disables the trigger while any photo
+    // is active, so this is the double-submit guard, not the only one.
+    if (hasActiveUploads) return;
+    setError(null);
+
+    const fileArray = Array.from(files);
+    const entryId = await ensureEntryId();
+    if (!entryId) return;
+
+    // Core UX Requirement — every selected photo becomes a real, visible
+    // grid item immediately, before any preprocessing/network work starts.
+    const newItems: JournalPhotoItem[] = fileArray.map((file) => ({
+      localId: crypto.randomUUID(),
+      status: "local",
+      previewUrl: URL.createObjectURL(file),
+      isObjectUrl: true,
+      file,
+    }));
+    updateItems((prev) => [...prev, ...newItems]);
+
+    // Batch Authorization — classify up front (synchronously, no waiting
+    // on preprocessing) so the whole non-HEIC subset can be authorized in
+    // ONE server round trip (one ownership check, N signed upload URLs),
+    // never one authorization call per photo.
+    const directEntries = newItems.filter((item) => item.file && !isHeicLike(item.file));
+    const authByLocalId = new Map<string, JournalUploadAuthorization>();
+    const erroredLocalIds = new Set<string>();
+
+    if (directEntries.length > 0) {
+      const extensions = directEntries.map((item) => ({ extension: isPng(item.file as File) ? ("png" as const) : ("jpg" as const) }));
+      const authResult = await authorizeJournalPhotoUploads(entryId, extensions);
+      if ("error" in authResult) {
+        directEntries.forEach((item) => erroredLocalIds.add(item.localId));
+        updateItems((prev) => prev.map((it) => (erroredLocalIds.has(it.localId) ? { ...it, status: "error", errorMessage: authResult.error } : it)));
+      } else {
+        directEntries.forEach((item, i) => authByLocalId.set(item.localId, authResult.uploads[i]));
+      }
+    }
+
+    const runners = newItems
+      .filter((item) => !erroredLocalIds.has(item.localId))
+      .map((item) => runOne(entryId, item.localId, item.file as File, authByLocalId.has(item.localId), authByLocalId.get(item.localId) ?? null));
+
+    await Promise.all(runners);
+
+    // Final Order Reconciliation — regardless of completion-order races or
+    // any reordering the owner did while this batch was still in flight,
+    // persist display_order/is_cover from the grid's CURRENT order for
+    // every photo that's actually persisted now.
+    await persistOrder(entryId);
+
+    const stillErrored = itemsRef.current.filter((it) => it.status === "error").length;
+    if (stillErrored > 0) {
+      setError(`${stillErrored} photo${stillErrored === 1 ? "" : "s"} couldn't be uploaded. Tap Retry on ${stillErrored === 1 ? "it" : "any of them"}.`);
+    }
+  }
+
+  async function retryItem(localId: string) {
+    const item = itemsRef.current.find((it) => it.localId === localId);
+    if (!item || item.status !== "error" || !item.file) return;
+    const entryId = await ensureEntryId();
+    if (!entryId) return;
+    setError(null);
+
+    const file = item.file;
+    if (isHeicLike(file)) {
+      await runOne(entryId, localId, file, false, null);
+    } else {
+      const authResult = await authorizeJournalPhotoUploads(entryId, [{ extension: isPng(file) ? "png" : "jpg" }]);
+      if ("error" in authResult) {
+        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: authResult.error } : it)));
+        return;
+      }
+      await runOne(entryId, localId, file, true, authResult.uploads[0]);
+    }
+    await persistOrder(entryId);
+  }
+
+  async function handleRemove(localId: string) {
+    const item = itemsRef.current.find((it) => it.localId === localId);
+    if (!item) return;
+
+    if (item.status === "local" || item.status === "error") {
+      if (item.isObjectUrl) URL.revokeObjectURL(item.previewUrl);
+      updateItems((prev) => prev.filter((it) => it.localId !== localId));
+      return;
+    }
+
+    if (isActiveStatus(item.status)) {
+      removedRef.current.add(localId);
+      if (item.isObjectUrl) URL.revokeObjectURL(item.previewUrl);
+      updateItems((prev) => prev.filter((it) => it.localId !== localId));
+      return;
+    }
+
+    // status === "complete" — reuse the existing, already-correct deletion
+    // behavior (Storage removal + cover failover) unchanged.
+    const entryId = await ensureEntryId();
+    if (!entryId || !item.mediaId) return;
+    updateItems((prev) => prev.filter((it) => it.localId !== localId));
+    const result = await removeJournalPhoto(entryId, item.mediaId);
     if ("error" in result) {
       setError(result.error);
       return;
     }
-    if (wasCover) setPhotos((prev) => (prev.length > 0 ? prev.map((p, i) => ({ ...p, isCover: i === 0 })) : prev));
+    await persistOrder(entryId);
   }
 
-  async function handleSetCover(mediaId: string) {
-    const id = await ensureEntryId();
-    if (!id) return;
-    setPhotos((prev) => prev.map((p) => ({ ...p, isCover: p.id === mediaId })));
-    await setJournalCoverPhoto(id, mediaId);
+  function reorder(updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) {
+    updateItems(updater);
+    ensureEntryId().then((entryId) => {
+      if (entryId) void persistOrder(entryId);
+    });
   }
 
-  return { photos, batch, error, setError, handleFiles, handleRemove, handleSetCover };
+  // Reorder While Some Photos Are Local — every one of these operates on
+  // the live array regardless of each item's status; persistOrder above
+  // only ever writes the subset that's actually persisted, in its current
+  // position, so a still-uploading photo's eventual finalize (or the end-
+  // of-batch reconciliation) is what places it correctly once it's real.
+  function handleDragReorder(activeLocalId: string, overLocalId: string) {
+    reorder((prev) => {
+      const oldIndex = prev.findIndex((it) => it.localId === activeLocalId);
+      const newIndex = prev.findIndex((it) => it.localId === overLocalId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }
+
+  function moveEarlier(localId: string) {
+    reorder((prev) => {
+      const index = prev.findIndex((it) => it.localId === localId);
+      if (index <= 0) return prev;
+      return arrayMove(prev, index, index - 1);
+    });
+  }
+
+  function moveLater(localId: string) {
+    reorder((prev) => {
+      const index = prev.findIndex((it) => it.localId === localId);
+      if (index === -1 || index >= prev.length - 1) return prev;
+      return arrayMove(prev, index, index + 1);
+    });
+  }
+
+  function makeCover(localId: string) {
+    reorder((prev) => {
+      const index = prev.findIndex((it) => it.localId === localId);
+      if (index <= 0) return prev;
+      return arrayMove(prev, index, 0);
+    });
+  }
+
+  return {
+    items,
+    error,
+    setError,
+    hasActiveUploads,
+    handleFiles,
+    handleRemove,
+    retryItem,
+    handleDragReorder,
+    moveEarlier,
+    moveLater,
+    makeCover,
+  };
 }

@@ -1,158 +1,125 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
-import type { JournalPhotoState, JournalUploadBatch } from "./useJournalPhotoUpload";
+import { DndContext, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import type { JournalPhotoItem } from "./useJournalPhotoUpload";
 
-/** Journal V1 (visual convergence pass) — the shared photo manager for
- * Create Step 1 and Edit: a meaningful large cover preview (once a photo
- * exists) with a compact filmstrip of everything underneath, rather than
- * a row of identical small tiles with no visual lead. Shared between
- * Create and Edit so both get the exact same upload-progress behavior —
- * see useJournalPhotoUpload's own note on why `batch` is real client-side
- * state, never a database poll or one fake tile per pending file.
+/** Journal Photo Experience V2 — a sortable grid replacing V1's "big cover
+ * + filmstrip" layout. The layout changes to a uniform grid specifically
+ * because the product requirement is press-and-drag reordering of the
+ * WHOLE set (see useJournalPhotoUpload's own header note) — a mixed-size
+ * hero-plus-strip collection can't be drag-sorted cleanly. Tile styling
+ * (rounded corners, border, the existing Cover badge treatment, the same
+ * Remove button) is carried over unchanged; this is a reflow, not a
+ * redesign of the editor around it.
  *
- * Journal V1.1 — Native File-Picker Fix. Live mobile QA found Create's
- * empty "ADD PHOTOS" state not opening the native picker at all. This
- * component already triggers the file input the correct way (a real
- * `<button type="button">` calling a stable ref's `.click()`, never a
- * wrapping `<label>`), so the trigger mechanism itself was never the
- * difference between Create and Edit — both call through this exact same
- * file. The one real gap: the input was hidden via `className="hidden"`
- * (display:none). This codebase already has a documented, proven fix for
- * exactly this symptom — see MemberImageField.tsx's own "Native
- * File-Picker Boundary Hardening" note: some Android Chrome/WebView
- * versions lose the pending-selection association for a display:none file
- * input, especially when an external Activity (a separate app, e.g.
- * Google Photos) is what hands control back to the tab. The fix there was
- * the same one applied here: `sr-only` (clipped/off-screen, still
- * rendered) instead of `hidden` (display:none, removed from layout).
- * Input value is now also reset defensively before opening the picker (not
- * just after a selection), so no stale browser/WebView state can ever
- * carry over from an earlier attempt. */
+ * Every selected photo is visible the instant it's picked (handleFiles
+ * already appended it to `items` before this renders) — the per-tile
+ * status badge (small spinner / error+Retry) is the only loading UI;
+ * nothing ever covers the photo itself. */
 export default function JournalPhotoStrip({
-  photos,
-  batch,
+  items,
   error,
   onFilesSelected,
   onRemove,
-  onSetCover,
+  onRetry,
+  onDragReorder,
+  onMoveEarlier,
+  onMoveLater,
+  onMakeCover,
+  disabled,
 }: {
-  photos: JournalPhotoState[];
-  batch: JournalUploadBatch | null;
+  items: JournalPhotoItem[];
   error: string | null;
   onFilesSelected: (files: FileList | null) => void;
-  onRemove: (id: string) => void;
-  onSetCover: (id: string) => void;
+  onRemove: (localId: string) => void;
+  onRetry: (localId: string) => void;
+  onDragReorder: (activeLocalId: string, overLocalId: string) => void;
+  onMoveEarlier: (localId: string) => void;
+  onMoveLater: (localId: string) => void;
+  onMakeCover: (localId: string) => void;
+  disabled: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cover = photos.find((p) => p.isCover) ?? photos[0] ?? null;
-  // Mobile Picker Repair pass — a batch in flight disables every trigger
-  // AND the input itself (not just one or the other): a disabled button
-  // can't fire openPicker, and a disabled input silently no-ops `.click()`
-  // if something still called it, so there's no path to a second
-  // concurrent upload batch while one is already running. Mirrors the
-  // same `disabled={isPending}` convention MemberImageField already uses
-  // for its own single upload.
-  const uploading = Boolean(batch);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  // Touch-friendly activation constraints — a short tap/scroll gesture
+  // must never accidentally start a drag. PointerSensor (mouse/trackpad)
+  // needs a small movement threshold; TouchSensor needs a short press
+  // delay plus a movement tolerance, the standard dnd-kit pattern for
+  // "press and drag" without fighting normal page scroll.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+  );
 
   function openPicker() {
-    // Defensive reset BEFORE opening the picker too, not only after a
-    // selection — guarantees a stale value from an earlier attempt can
-    // never block/confuse the next one. See this file's own header note.
     if (fileInputRef.current) fileInputRef.current.value = "";
     fileInputRef.current?.click();
   }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    onDragReorder(String(active.id), String(over.id));
+  }
+
+  const completedCount = items.filter((it) => it.status === "complete").length;
+  const activeCount = items.length - completedCount - items.filter((it) => it.status === "error").length;
+  const isUploadingAny = items.some((it) => it.status === "uploading" || it.status === "saving");
+
   return (
     <div className="flex flex-col gap-2">
-      {cover ? (
+      {items.length === 0 ? (
         <button
           type="button"
           onClick={openPicker}
-          disabled={uploading}
-          className="group relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-black/10 bg-mist disabled:cursor-not-allowed"
-        >
-          {cover.url && <Image src={cover.url} alt="" fill unoptimized sizes="(min-width: 640px) 512px, 100vw" className="object-cover" />}
-          <span className="absolute left-2.5 top-2.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
-            Cover
-          </span>
-          <span className="absolute bottom-2.5 right-2.5 flex h-9 items-center justify-center gap-1.5 rounded-full bg-white/95 px-3.5 text-xs font-bold uppercase tracking-wide text-ink shadow-sm transition group-active:scale-95">
-            + Add Photos
-          </span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={openPicker}
-          disabled={uploading}
-          className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-black/15 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-black/15 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700"
         >
           <span className="text-3xl leading-none">+</span>
           <span className="text-xs font-bold uppercase tracking-wide">Add Photos</span>
         </button>
-      )}
-
-      {(photos.length > 0 || batch) && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {photos.map((p) => (
-            <div key={p.id} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-mist">
-              {p.url && <Image src={p.url} alt="" fill unoptimized sizes="64px" className="object-cover" />}
-              {p.isCover ? (
-                <span className="absolute inset-x-0 bottom-0 bg-findmi py-0.5 text-center text-[7px] font-bold uppercase tracking-wide text-white">
-                  Cover
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onSetCover(p.id)}
-                  aria-label="Make cover photo"
-                  title="Make cover"
-                  className="absolute bottom-0 left-0 rounded-tr-lg bg-black/50 px-1 py-0.5 text-[9px] font-bold text-white"
-                >
-                  ★
-                </button>
-              )}
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={items.map((it) => it.localId)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {items.map((item, index) => (
+                <JournalPhotoTile
+                  key={item.localId}
+                  item={item}
+                  isCover={index === 0}
+                  canMoveEarlier={index > 0}
+                  canMoveLater={index < items.length - 1}
+                  menuOpen={openMenuId === item.localId}
+                  onToggleMenu={() => setOpenMenuId((prev) => (prev === item.localId ? null : item.localId))}
+                  onCloseMenu={() => setOpenMenuId(null)}
+                  onRemove={() => onRemove(item.localId)}
+                  onRetry={() => onRetry(item.localId)}
+                  onMoveEarlier={() => onMoveEarlier(item.localId)}
+                  onMoveLater={() => onMoveLater(item.localId)}
+                  onMakeCover={() => onMakeCover(item.localId)}
+                />
+              ))}
               <button
                 type="button"
-                onClick={() => onRemove(p.id)}
-                aria-label="Remove photo"
-                className="absolute right-0 top-0 rounded-bl-lg bg-black/50 px-1.5 py-0.5 text-[10px] font-bold text-white"
+                onClick={openPicker}
+                disabled={disabled}
+                aria-label="Add more photos"
+                className="flex aspect-square items-center justify-center rounded-xl border border-dashed border-black/20 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                ✕
+                <span className="text-xl leading-none">+</span>
               </button>
             </div>
-          ))}
-          {batch && (
-            <div className="flex h-16 w-24 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-findmi/30 bg-findmi-50 text-center">
-              {/* Image Performance V1 — before the first photo in this
-                  batch has actually landed, "Preparing photos…" is the
-                  honest state (resize/compress + the first network round
-                  trip are both still in flight); once at least one has
-                  completed, switch to real progress. Never a bare "0 of
-                  21" with no context for what's happening. */}
-              {batch.completed === 0 ? (
-                <span className="text-[10px] font-bold uppercase tracking-wide text-ink/60">Preparing…</span>
-              ) : (
-                <>
-                  <span className="text-[11px] font-bold text-ink">
-                    {batch.completed} of {batch.total}
-                  </span>
-                  <span className="text-[8px] font-semibold uppercase tracking-wide text-ink/50">Uploaded</span>
-                </>
-              )}
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={openPicker}
-            disabled={uploading}
-            aria-label="Add more photos"
-            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-black/20 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span className="text-xl leading-none">+</span>
-          </button>
-        </div>
+          </SortableContext>
+        </DndContext>
+      )}
+
+      {activeCount > 0 && (
+        <p className="text-xs font-semibold text-ink/50">
+          {completedCount === 0 && !isUploadingAny ? "Preparing…" : `Uploading ${completedCount} of ${items.length}`}
+        </p>
       )}
 
       <input
@@ -162,7 +129,7 @@ export default function JournalPhotoStrip({
         multiple
         aria-label="Add photos"
         className="sr-only"
-        disabled={uploading}
+        disabled={disabled}
         onChange={(e) => {
           onFilesSelected(e.target.files);
           e.target.value = "";
@@ -170,5 +137,156 @@ export default function JournalPhotoStrip({
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
+  );
+}
+
+function JournalPhotoTile({
+  item,
+  isCover,
+  canMoveEarlier,
+  canMoveLater,
+  menuOpen,
+  onToggleMenu,
+  onCloseMenu,
+  onRemove,
+  onRetry,
+  onMoveEarlier,
+  onMoveLater,
+  onMakeCover,
+}: {
+  item: JournalPhotoItem;
+  isCover: boolean;
+  canMoveEarlier: boolean;
+  canMoveLater: boolean;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onCloseMenu: () => void;
+  onRemove: () => void;
+  onRetry: () => void;
+  onMoveEarlier: () => void;
+  onMoveLater: () => void;
+  onMakeCover: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.localId });
+  const isBusy = item.status === "preparing" || item.status === "uploading" || item.status === "saving";
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`group relative aspect-square touch-none overflow-hidden rounded-xl border border-black/10 bg-mist ${isDragging ? "z-10 opacity-80 ring-2 ring-findmi" : ""}`}
+    >
+      {/* Drag handle is the photo itself (press + drag), scoped away from
+          the Remove/options buttons below so those stay independently
+          tappable without starting a drag. */}
+      <div {...attributes} {...listeners} className="absolute inset-0 cursor-grab active:cursor-grabbing">
+        <Image src={item.previewUrl} alt="" fill unoptimized sizes="(min-width: 640px) 160px, 120px" className="pointer-events-none object-cover" />
+      </div>
+
+      {isCover && (
+        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-findmi py-0.5 text-center text-[7px] font-bold uppercase tracking-wide text-white">
+          Cover
+        </span>
+      )}
+
+      {isBusy && (
+        <span className="pointer-events-none absolute left-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/55">
+          <SpinnerGlyph className="h-2.5 w-2.5 animate-spin text-white" />
+        </span>
+      )}
+
+      {item.status === "error" && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="absolute inset-x-0 bottom-0 bg-red-600/90 py-1 text-center text-[9px] font-bold uppercase tracking-wide text-white"
+        >
+          Retry
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove photo"
+        className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-[10px] font-bold text-white"
+      >
+        ✕
+      </button>
+
+      <div className="absolute bottom-1 right-1">
+        <button
+          type="button"
+          onClick={onToggleMenu}
+          aria-label="Photo options"
+          className="flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-[9px] font-bold leading-none text-white"
+        >
+          •••
+        </button>
+        {menuOpen && (
+          <>
+            {/* Backdrop — closes the menu on an outside tap without
+                building a global click-outside listener. */}
+            <div className="fixed inset-0 z-10" onClick={onCloseMenu} />
+            <div className="absolute bottom-6 right-0 z-20 flex w-32 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg">
+              {!isCover && (
+                <PhotoMenuItem
+                  label="Make Cover"
+                  onClick={() => {
+                    onMakeCover();
+                    onCloseMenu();
+                  }}
+                />
+              )}
+              <PhotoMenuItem
+                label="Move Earlier"
+                disabled={!canMoveEarlier}
+                onClick={() => {
+                  onMoveEarlier();
+                  onCloseMenu();
+                }}
+              />
+              <PhotoMenuItem
+                label="Move Later"
+                disabled={!canMoveLater}
+                onClick={() => {
+                  onMoveLater();
+                  onCloseMenu();
+                }}
+              />
+              <PhotoMenuItem
+                label="Remove"
+                onClick={() => {
+                  onRemove();
+                  onCloseMenu();
+                }}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PhotoMenuItem({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="px-3 py-2 text-left text-[11px] font-semibold text-ink transition hover:bg-findmi-50 disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
+    >
+      {label}
+    </button>
+  );
+}
+
+function SpinnerGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" opacity="0.3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
   );
 }
