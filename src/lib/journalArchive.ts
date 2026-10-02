@@ -9,7 +9,11 @@
 // matter how many periods a visitor pages through.
 import type { JournalArchiveFilter, JournalIndexEntry } from "./journal";
 
-export type JournalArchiveView = "day" | "week" | "month" | "year";
+// Journal V2 Pass 2 — "all" is not another calendar granularity; it is the
+// chronological archive/list representation of the owner's complete
+// Passbook (see My World's own page comment on how it's rendered
+// differently from the other four, time-windowed views).
+export type JournalArchiveView = "day" | "week" | "month" | "year" | "all";
 
 /** The "All experiences / Places / Brands / Products / Events" secondary
  * filter — applied in plain JS over the one already-fetched, unfiltered
@@ -70,11 +74,14 @@ export function shiftAnchor(anchor: Date, view: JournalArchiveView, direction: 1
   } else if (view === "month") {
     d.setDate(1);
     d.setMonth(d.getMonth() + direction);
-  } else {
+  } else if (view === "year") {
     d.setDate(1);
     d.setMonth(0);
     d.setFullYear(d.getFullYear() + direction);
   }
+  // "all" has no anchor/period to shift — its own page branch never
+  // renders prev/next controls, so this is intentionally a no-op rather
+  // than silently reusing the year behavior a plain `else` would give it.
   return d;
 }
 

@@ -11,6 +11,7 @@ import {
   eventHasAnyOccurrences,
   getEffectiveEventSchedule,
   findLocationByExactVenue,
+  isPrimaryDateId,
 } from "@/lib/data";
 import { resolveAppearanceHostBusiness } from "./EventPublicView";
 
@@ -85,7 +86,24 @@ export async function getEventJournalCtaState(eventId: string): Promise<EventJou
  * duplicating that resolution. Returns only what's genuinely
  * unambiguous — an event with 2+ un-featured, un-Appearance-linked
  * businesses, or no resolvable occurrence/Location, simply yields a null
- * for that one field rather than guessing. */
+ * for that one field rather than guessing.
+ *
+ * Journal V2 Pass 2 — Event Occurrence integrity. This is the exact
+ * mechanism the Cup of Love bug traced back to: `upcomingOccurrences[0]`
+ * was being treated as "the" occurrence for both the entry_date default
+ * AND (as of this pass) the real database occurrenceId relationship, even
+ * when the event had multiple real dates and this Event-level CTA (see
+ * DocumentExperienceCta — one link per Event, not one per date) has no way
+ * to know which one the visitor actually means. `occurrenceId` is now only
+ * ever populated when exactly one REAL occurrence exists (never the
+ * synthetic Primary Date placeholder — see isPrimaryDateId/primaryDateId's
+ * own header comment — which is not a real event_occurrences row and must
+ * never be written into event_occurrence_id). When 2+ real occurrences
+ * exist, this returns occurrenceId: null AND falls back entry_date to
+ * today (never an arbitrary occurrence's date presented as if it were
+ * confidently known) — the owner can still set the correct date/connect
+ * the correct occurrence by hand afterward in Edit, same as any other
+ * Journal field. */
 async function resolveDeterministicEventContext(eventId: string, event: Parameters<typeof getEffectiveEventSchedule>[0]) {
   const [businesses, hasOccurrences, matchedLocation, appearanceHostBusiness] = await Promise.all([
     getBusinessesForEvent(eventId),
@@ -94,14 +112,21 @@ async function resolveDeterministicEventContext(eventId: string, event: Paramete
     resolveAppearanceHostBusiness(eventId),
   ]);
   const upcomingOccurrences = hasOccurrences ? await getEffectiveEventSchedule(event, 40) : [];
+  const realOccurrences = upcomingOccurrences.filter((o) => !isPrimaryDateId(o.id));
+  const unambiguousOccurrence = realOccurrences.length === 1 ? realOccurrences[0] : null;
+
   const canonicalLocation = upcomingOccurrences.find((o) => o.location)?.location ?? matchedLocation;
-  const heroTemporalSource = upcomingOccurrences[0] ?? { start_at: event.start_at, end_at: event.end_at };
   const hostBusiness = businesses.find((b) => b.featured) ?? appearanceHostBusiness ?? (businesses.length === 1 ? businesses[0] : null);
+
+  const entryDate = unambiguousOccurrence
+    ? isoToLocalDateTime(unambiguousOccurrence.start_at).slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
 
   return {
     hostBusinessId: hostBusiness?.id ?? null,
     locationId: canonicalLocation?.id ?? null,
-    entryDate: isoToLocalDateTime(heroTemporalSource.start_at).slice(0, 10),
+    entryDate,
+    occurrenceId: unambiguousOccurrence?.id ?? null,
   };
 }
 
@@ -130,7 +155,7 @@ export async function startOrResumeEventJournalEntry(eventSlug: string): Promise
     const existing = await findExistingEntryForEventUser(event.id, user.id, admin);
     if (existing) return { id: existing.id, status: existing.status, isAdmin };
 
-    const { hostBusinessId, locationId, entryDate } = await resolveDeterministicEventContext(event.id, event);
+    const { hostBusinessId, locationId, entryDate, occurrenceId } = await resolveDeterministicEventContext(event.id, event);
 
     const { data: newEntry, error: insertError } = await admin
       .from("journal_entries")
@@ -145,9 +170,16 @@ export async function startOrResumeEventJournalEntry(eventSlug: string): Promise
       .single();
     if (insertError || !newEntry) return { error: insertError?.message ?? "Couldn't start this Journal entry." };
 
+    // Journal V2 Pass 2 — the parent Event connection is always written
+    // (unchanged); the Occurrence connection is a SEPARATE, additional row
+    // (never a replacement) and only exists when resolveDeterministicEventContext
+    // found exactly one real candidate — see that function's own note on
+    // why a null occurrenceId here is the correct, honest outcome rather
+    // than a gap to fill with a guess.
     const connectionRows = [
       { journal_entry_id: newEntry.id, event_id: event.id },
       ...(hostBusinessId ? [{ journal_entry_id: newEntry.id, business_id: hostBusinessId }] : []),
+      ...(occurrenceId ? [{ journal_entry_id: newEntry.id, event_occurrence_id: occurrenceId }] : []),
     ];
     const { error: connectionError } = await admin.from("journal_entry_connections").insert(connectionRows);
     if (connectionError) return { error: connectionError.message };

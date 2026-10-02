@@ -33,7 +33,13 @@ const VIEWS: { key: JournalArchiveView; label: string }[] = [
   { key: "week", label: "Week" },
   { key: "month", label: "Month" },
   { key: "year", label: "Year" },
+  // Journal V2 Pass 2 — ALL is not another calendar granularity; it's the
+  // chronological archive view of the complete Passbook (see this page's
+  // own header note and the "all" branch below).
+  { key: "all", label: "All" },
 ];
+
+type JournalArchiveSort = "newest" | "oldest";
 
 const FILTERS: { key: JournalArchiveFilter; label: string }[] = [
   { key: "all", label: "All experiences" },
@@ -60,7 +66,7 @@ const FILTERS: { key: JournalArchiveFilter; label: string }[] = [
 export default async function JournalIndexPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; date?: string; day?: string; filter?: string }>;
+  searchParams: Promise<{ view?: string; date?: string; day?: string; filter?: string; sort?: string }>;
 }) {
   const supabase = await getServerSupabase();
   const {
@@ -73,17 +79,24 @@ export default async function JournalIndexPage({
   const filterKey = (FILTERS.some((f) => f.key === params.filter) ? params.filter : "all") as JournalArchiveFilter;
   const anchor = parseAnchorDate(params.date);
   const explicitDay = params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) ? params.day : null;
+  // Journal V2 Pass 2 — sort only has visible effect in the "all" view
+  // (the other four views are always chronological within their own
+  // period), but it's still parsed/carried here rather than being local
+  // client state, so it survives navigation/back-forward like every other
+  // control on this page.
+  const sortKey = (params.sort === "oldest" ? "oldest" : "newest") as JournalArchiveSort;
   const today = todayYmd();
 
   const allEntries = await getJournalArchiveEntries(user.id);
   const journalIsEmpty = allEntries.length === 0;
   const entries = filterByObjectType(allEntries, filterKey);
 
-  function hrefFor(next: { view?: JournalArchiveView; date?: string; filter?: JournalArchiveFilter; day?: string | null }) {
+  function hrefFor(next: { view?: JournalArchiveView; date?: string; filter?: JournalArchiveFilter; day?: string | null; sort?: JournalArchiveSort }) {
     const qp = new URLSearchParams();
     qp.set("view", next.view ?? view);
     qp.set("filter", next.filter ?? filterKey);
     qp.set("date", next.date ?? toYmd(anchor));
+    qp.set("sort", next.sort ?? sortKey);
     const day = next.day === undefined ? explicitDay : next.day;
     if (day) qp.set("day", day);
     return `/my-world/journal?${qp.toString()}`;
@@ -174,7 +187,7 @@ export default async function JournalIndexPage({
         )}
       </div>
     );
-  } else {
+  } else if (view === "year") {
     const year = anchor.getFullYear();
     const summaries = buildYearMonthSummaries(entries, year);
     temporalLabel = yearLabel(anchor);
@@ -208,6 +221,22 @@ export default async function JournalIndexPage({
             </div>
           );
         })}
+      </div>
+    );
+  } else {
+    // Journal V2 Pass 2 — "all": the complete chronological archive, not
+    // another time-windowed period. `entries` (already filtered by object
+    // type) arrives from getJournalArchiveEntries already ordered
+    // entry_date desc, created_at desc — the exact deterministic
+    // newest-first order this view wants by default, tie-broken by
+    // created_at same as every other view already relies on implicitly.
+    // "Oldest first" is a plain reverse of that same stable order, never a
+    // second query or a different tie-break rule.
+    temporalLabel = "All";
+    const allViewEntries = sortKey === "oldest" ? [...entries].reverse() : entries;
+    body = (
+      <div className="mt-6">
+        <EntryList entries={allViewEntries} emptyLabel="No entries yet." />
       </div>
     );
   }
@@ -274,23 +303,52 @@ export default async function JournalIndexPage({
             </div>
           </details>
 
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <Link
-              href={prevHref}
-              aria-label="Previous"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:border-ink/30 hover:text-ink"
-            >
-              ‹
-            </Link>
-            <p className="text-sm font-bold text-ink">{temporalLabel}</p>
-            <Link
-              href={nextHref}
-              aria-label="Next"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:border-ink/30 hover:text-ink"
-            >
-              ›
-            </Link>
-          </div>
+          {view === "all" ? (
+            // Journal V2 Pass 2 — "all" has no period to page through, so
+            // the prev/temporalLabel/next row is replaced with a compact
+            // Newest/Oldest sort control instead — not a dropdown, just
+            // two plain links, consistent with this page's existing
+            // "whole state lives in the URL, no client component" design.
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-ink">All Entries</p>
+              <div className="flex items-center gap-1 rounded-full border border-black/10 bg-white p-1">
+                <Link
+                  href={hrefFor({ sort: "newest" })}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide transition ${
+                    sortKey === "newest" ? "bg-findmi text-white" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Newest
+                </Link>
+                <Link
+                  href={hrefFor({ sort: "oldest" })}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide transition ${
+                    sortKey === "oldest" ? "bg-findmi text-white" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Oldest
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <Link
+                href={prevHref}
+                aria-label="Previous"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              >
+                ‹
+              </Link>
+              <p className="text-sm font-bold text-ink">{temporalLabel}</p>
+              <Link
+                href={nextHref}
+                aria-label="Next"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:border-ink/30 hover:text-ink"
+              >
+                ›
+              </Link>
+            </div>
+          )}
 
           {body}
         </>

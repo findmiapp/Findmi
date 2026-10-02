@@ -83,6 +83,12 @@ export interface JournalConnectionRow {
   business_id: string | null;
   product_id: string | null;
   event_id: string | null;
+  // Journal V2 Pass 2 — which specific Event Occurrence this experience
+  // relates to, independent of (and additional to) the parent event_id
+  // connection above — see the journal_event_occurrence_connection
+  // migration's own header note on why these are two separate rows rather
+  // than one column changing meaning.
+  event_occurrence_id: string | null;
 }
 
 export interface JournalLocationRef {
@@ -121,6 +127,20 @@ export interface JournalEventRef {
   state: string | null;
 }
 
+/** Journal V2 Pass 2 — canonical Event Occurrence data for an
+ * occurrence-backed Journal entry: just enough (id, parent event_id,
+ * start_at/end_at, location_id) for a future Experience Context UI to
+ * describe "A Cup of Love, Thu Oct 1, Hudson Yards" without that UI
+ * needing a second round trip to events/locations — this pass only
+ * resolves the data, it does not render it anywhere new. */
+export interface JournalOccurrenceRef {
+  id: string;
+  event_id: string;
+  start_at: string;
+  end_at: string;
+  location_id: string | null;
+}
+
 export interface JournalEntryWithRelations {
   entry: JournalEntryRow;
   media: JournalMediaWithUrl[];
@@ -128,6 +148,11 @@ export interface JournalEntryWithRelations {
   businesses: JournalBusinessRef[];
   products: JournalProductRef[];
   events: JournalEventRef[];
+  // Zero or more — the schema allows more than one occurrence connection
+  // per entry (same "one row per connected object" shape as businesses/
+  // products/events), though every current creation path attaches at
+  // most one.
+  occurrences: JournalOccurrenceRef[];
   isOwner: boolean;
 }
 
@@ -192,7 +217,7 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
 
   const media = await attachSignedUrls((mediaRows ?? []) as JournalEntryMediaRow[]);
   const connections = (connectionRows ?? []) as JournalConnectionRow[];
-  const { businesses, products, events } = await resolveConnectedObjects(connections, supabase);
+  const { businesses, products, events, occurrences } = await resolveConnectedObjects(connections, supabase);
 
   return {
     entry: entry as JournalEntryRow,
@@ -201,6 +226,7 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
     businesses,
     products,
     events,
+    occurrences,
     isOwner: Boolean(user && user.id === entry.user_id),
   };
 }
@@ -238,7 +264,7 @@ export async function getJournalEntryWithRelationsForAdmin(entryId: string): Pro
 
   const media = await attachSignedUrls((mediaRows ?? []) as JournalEntryMediaRow[]);
   const connections = (connectionRows ?? []) as JournalConnectionRow[];
-  const { businesses, products, events } = await resolveConnectedObjects(connections, admin);
+  const { businesses, products, events, occurrences } = await resolveConnectedObjects(connections, admin);
 
   return {
     entry: entry as JournalEntryRow,
@@ -247,6 +273,7 @@ export async function getJournalEntryWithRelationsForAdmin(entryId: string): Pro
     businesses,
     products,
     events,
+    occurrences,
     isOwner: true,
   };
 }
@@ -262,15 +289,16 @@ export async function getJournalEntryWithRelationsForAdmin(entryId: string): Pro
 async function resolveConnectedObjects(
   connections: JournalConnectionRow[],
   supabase: SupabaseClient
-): Promise<{ businesses: JournalBusinessRef[]; products: JournalProductRef[]; events: JournalEventRef[] }> {
+): Promise<{ businesses: JournalBusinessRef[]; products: JournalProductRef[]; events: JournalEventRef[]; occurrences: JournalOccurrenceRef[] }> {
   const businessIds = connections.map((c) => c.business_id).filter((id): id is string => Boolean(id));
   const productIds = connections.map((c) => c.product_id).filter((id): id is string => Boolean(id));
   const eventIds = connections.map((c) => c.event_id).filter((id): id is string => Boolean(id));
-  if (businessIds.length === 0 && productIds.length === 0 && eventIds.length === 0) {
-    return { businesses: [], products: [], events: [] };
+  const occurrenceIds = connections.map((c) => c.event_occurrence_id).filter((id): id is string => Boolean(id));
+  if (businessIds.length === 0 && productIds.length === 0 && eventIds.length === 0 && occurrenceIds.length === 0) {
+    return { businesses: [], products: [], events: [], occurrences: [] };
   }
 
-  const [{ data: businesses }, { data: products }, { data: events }] = await Promise.all([
+  const [{ data: businesses }, { data: products }, { data: events }, { data: occurrences }] = await Promise.all([
     businessIds.length
       ? supabase.from("businesses").select("id, name, slug, logo_url").in("id", businessIds)
       : Promise.resolve({ data: [] }),
@@ -280,6 +308,9 @@ async function resolveConnectedObjects(
     eventIds.length
       ? supabase.from("events").select("id, name, slug, cover_image_url, start_at, city, state").in("id", eventIds)
       : Promise.resolve({ data: [] }),
+    occurrenceIds.length
+      ? supabase.from("event_occurrences").select("id, event_id, start_at, end_at, location_id").in("id", occurrenceIds)
+      : Promise.resolve({ data: [] }),
   ]);
 
   return {
@@ -288,6 +319,7 @@ async function resolveConnectedObjects(
       (p) => ({ ...p, business: Array.isArray(p.business) ? (p.business[0] ?? null) : p.business })
     ),
     events: (events ?? []) as JournalEventRef[],
+    occurrences: (occurrences ?? []) as JournalOccurrenceRef[],
   };
 }
 
