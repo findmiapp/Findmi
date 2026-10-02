@@ -125,7 +125,7 @@ export async function saveJournalBasics(
 export async function uploadJournalPhoto(
   entryId: string,
   formData: FormData
-): Promise<{ id: string; url: string } | { error: string }> {
+): Promise<{ id: string; url: string; isCover: boolean } | { error: string }> {
   try {
     const { admin, userId } = await requireOwnEntry(entryId);
     const file = formData.get("file");
@@ -134,11 +134,31 @@ export async function uploadJournalPhoto(
     const validated = await validateImageFile(file);
     if ("error" in validated) return validated;
 
-    const { count } = await admin
-      .from("journal_entry_media")
-      .select("id", { count: "exact", head: true })
-      .eq("journal_entry_id", entryId);
-    const displayOrder = count ?? 0;
+    // Image Performance V1 — concurrent uploads broke the old "count
+    // existing rows, use that as the next index" approach: two uploads
+    // racing the same count query could read the same count and collide
+    // on display_order. The client (useJournalPhotoUpload) now computes a
+    // deterministic, collision-free index per photo BEFORE any upload in
+    // the batch starts (existing photo count snapshotted once, plus each
+    // photo's own fixed position in the user's selection — never
+    // completion order), and sends it as `displayOrder`. This is a pure
+    // ordering value with no authorization meaning — requireOwnEntry above
+    // already gates that only the entry's real owner can call this at all,
+    // so the worst a bad value could do is misorder the owner's own
+    // photos. Any caller that doesn't send one (defensive — only this
+    // hook does today) falls back to the exact original count-query
+    // behavior, unchanged.
+    const requestedOrderRaw = formData.get("displayOrder");
+    let displayOrder: number;
+    if (typeof requestedOrderRaw === "string" && /^\d+$/.test(requestedOrderRaw)) {
+      displayOrder = parseInt(requestedOrderRaw, 10);
+    } else {
+      const { count } = await admin
+        .from("journal_entry_media")
+        .select("id", { count: "exact", head: true })
+        .eq("journal_entry_id", entryId);
+      displayOrder = count ?? 0;
+    }
 
     // Server-generated path only — never the original filename. Scoped
     // under the owning user AND entry so a storage listing (service-role
@@ -150,21 +170,36 @@ export async function uploadJournalPhoto(
     const { error: uploadError } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).upload(path, uploadBody, {
       contentType: validated.contentType,
       upsert: false,
+      // Image Performance V1 — every path here is immutable (a fresh
+      // randomUUID every time, upsert: false, never overwritten), so a
+      // 1-year cache lifetime is safe; Supabase's own default (3600s) was
+      // needlessly short for content that never changes under its URL.
+      cacheControl: "31536000",
     });
     if (uploadError) return { error: uploadError.message };
 
-    const { data: mediaRow, error: insertError } = await admin
-      .from("journal_entry_media")
-      .insert({ journal_entry_id: entryId, storage_path: path, display_order: displayOrder, is_cover: displayOrder === 0 })
-      .select("id")
-      .single();
+    // Image Performance V1 — the DB insert and the signed-URL creation are
+    // independent (the signed URL only needs `path`, already known above,
+    // never the insert's result), so they now run concurrently instead of
+    // strictly in series. Failure semantics are unchanged from before: an
+    // insert failure still cleans up the just-uploaded Storage object; a
+    // signing failure alone was already non-fatal before this change (the
+    // caller simply got back an empty `url`) and still is — no new orphan
+    // risk, just less time spent waiting.
+    const [{ data: mediaRow, error: insertError }, { data: signed }] = await Promise.all([
+      admin
+        .from("journal_entry_media")
+        .insert({ journal_entry_id: entryId, storage_path: path, display_order: displayOrder, is_cover: displayOrder === 0 })
+        .select("id")
+        .single(),
+      admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrl(path, 60 * 60),
+    ]);
     if (insertError || !mediaRow) {
       await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([path]);
       return { error: insertError?.message ?? "Couldn't save that photo." };
     }
 
-    const { data: signed } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrl(path, 60 * 60);
-    return { id: mediaRow.id, url: signed?.signedUrl ?? "" };
+    return { id: mediaRow.id, url: signed?.signedUrl ?? "", isCover: displayOrder === 0 };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't upload that photo." };
   }

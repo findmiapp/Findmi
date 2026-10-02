@@ -127,6 +127,11 @@ export async function uploadMemberBusinessImage(
     const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, uploadBody, {
       contentType: uploadContentType,
       upsert: false,
+      // Image Performance V1 — path is a fresh randomUUID, never
+      // overwritten (upsert: false), so a 1-year cache lifetime is safe;
+      // Supabase's own default (3600s) was needlessly short for content
+      // that never changes.
+      cacheControl: "31536000",
     });
     if (error) return { error: error.message };
 

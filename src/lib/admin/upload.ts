@@ -57,6 +57,11 @@ export async function uploadImage(formData: FormData): Promise<{ url?: string; e
   const { error } = await supabase.storage.from(BUCKET).upload(path, uploadBody, {
     contentType: uploadContentType,
     upsert: false,
+    // Image Performance V1 — path is a fresh randomUUID, never overwritten
+    // (upsert: false), so a 1-year cache lifetime is safe for content that
+    // can never change under its own URL; Supabase's own default (3600s)
+    // was needlessly short.
+    cacheControl: "31536000",
   });
   if (error) return { error: error.message };
 

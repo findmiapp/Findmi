@@ -125,10 +125,22 @@ export default function JournalPhotoStrip({
           ))}
           {batch && (
             <div className="flex h-16 w-24 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-findmi/30 bg-findmi-50 text-center">
-              <span className="text-[11px] font-bold text-ink">
-                {batch.completed} of {batch.total}
-              </span>
-              <span className="text-[8px] font-semibold uppercase tracking-wide text-ink/50">Uploading…</span>
+              {/* Image Performance V1 — before the first photo in this
+                  batch has actually landed, "Preparing photos…" is the
+                  honest state (resize/compress + the first network round
+                  trip are both still in flight); once at least one has
+                  completed, switch to real progress. Never a bare "0 of
+                  21" with no context for what's happening. */}
+              {batch.completed === 0 ? (
+                <span className="text-[10px] font-bold uppercase tracking-wide text-ink/60">Preparing…</span>
+              ) : (
+                <>
+                  <span className="text-[11px] font-bold text-ink">
+                    {batch.completed} of {batch.total}
+                  </span>
+                  <span className="text-[8px] font-semibold uppercase tracking-wide text-ink/50">Uploaded</span>
+                </>
+              )}
             </div>
           )}
           <button
