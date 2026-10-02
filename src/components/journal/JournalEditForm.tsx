@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { JournalEntryWithRelations, JournalOccurrenceRef } from "@/lib/journal";
 import type { JournalSearchResult } from "./JournalSearchSelect";
@@ -39,6 +39,11 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
   const [status, setStatus] = useState(entry.entry.status);
   const [publishing, setPublishing] = useState(false);
 
+  // Mobile QA Repair pass — stable across renders so the photo hook's own
+  // per-tile handlers stay stable too (see useJournalPhotoUpload's note on
+  // why that matters for drag performance).
+  const ensureEntryId = useCallback(async () => entryId, [entryId]);
+
   const {
     items: photoItems,
     error: photoError,
@@ -52,7 +57,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
     makeCover,
   } = useJournalPhotoUpload(
     entry.media.map((m) => ({ id: m.id, url: m.url ?? "", isCover: m.is_cover })),
-    async () => entryId
+    ensureEntryId
   );
 
   const [title, setTitle] = useState(entry.entry.title);

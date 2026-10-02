@@ -286,7 +286,9 @@ export async function authorizeJournalPhotoUploads(
     );
     return { uploads };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Couldn't authorize uploads." };
+    const message = err instanceof Error ? err.message : "Couldn't authorize uploads.";
+    console.error("[journal] authorizeJournalPhotoUploads failed", { entryId, fileCount: files.length, message });
+    return { error: message };
   }
 }
 
@@ -320,14 +322,46 @@ export async function finalizeJournalPhoto(
     // preprocessing, or isn't FindMi's own client at all, can't get an
     // oversized or non-image object into journal_entry_media this way —
     // it gets deleted and rejected here instead.
+    //
+    // Mobile QA Repair pass — the browser's own PUT to Storage
+    // (uploadToSignedUrl) and THIS list() lookup are two separate HTTP
+    // requests, unlike the legacy server-side path where upload and
+    // finalize happen in the same request. Real-device QA surfaced
+    // exactly this gap: a photo that had genuinely just finished
+    // uploading (especially a SECOND batch, fired immediately after a
+    // first one settled) could still get "couldn't be verified" here
+    // because list() ran before the object's metadata was visible yet —
+    // a read-after-write timing gap this path never had to account for
+    // before direct upload existed. Retrying the lookup a few times with
+    // a short backoff absorbs that gap without weakening what's actually
+    // being checked (size + declared type still both verified before any
+    // row is written) and without silently retrying a genuinely failed
+    // upload — if the object truly never arrives, this still rejects it.
     const lastSlash = input.storagePath.lastIndexOf("/");
     const folder = input.storagePath.slice(0, lastSlash);
     const filename = input.storagePath.slice(lastSlash + 1);
-    const { data: listing } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).list(folder, { search: filename, limit: 1 });
-    const uploadedObject = listing?.find((f) => f.name === filename);
+
+    let uploadedObject: { metadata: { size: number; mimetype: string } | null } | undefined;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: listing } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).list(folder, { search: filename, limit: 1 });
+      uploadedObject = listing?.find((f) => f.name === filename);
+      if (uploadedObject) break;
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+
     const size = uploadedObject?.metadata?.size;
     const mimetype = uploadedObject?.metadata?.mimetype;
     if (!uploadedObject || size === undefined || size > MAX_UPLOAD_BYTES || !mimetype || !ALLOWED_DIRECT_UPLOAD_MIME_TYPES.has(mimetype)) {
+      // Keep the real reason server-side (never exposed to the client —
+      // no token/secret is ever part of this) so a genuine recurrence is
+      // diagnosable from logs instead of just another silent "Retry".
+      console.error("[journal] finalizeJournalPhoto verification failed", {
+        entryId,
+        storagePath: input.storagePath,
+        found: Boolean(uploadedObject),
+        size,
+        mimetype,
+      });
       await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([input.storagePath]);
       return { error: "That photo couldn't be verified." };
     }

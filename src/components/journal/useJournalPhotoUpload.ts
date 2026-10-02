@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
 import {
   uploadJournalPhoto,
@@ -103,13 +103,13 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
   // object, or delete the now-real row) rather than resurrecting it.
   const removedRef = useRef<Set<string>>(new Set());
 
-  function updateItems(updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) {
+  const updateItems = useCallback((updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) => {
     setItems((prev) => {
       const next = updater(prev);
       itemsRef.current = next;
       return next;
     });
-  }
+  }, []);
 
   // Object URL Lifecycle — revoke every remaining local preview on
   // unmount; a completed item's object URL is already revoked the moment
@@ -141,18 +141,18 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
   const prepareLimit = useRef(createConcurrencyLimiter(MAX_PREPARE_CONCURRENCY)).current;
   const uploadLimit = useRef(createConcurrencyLimiter(MAX_UPLOAD_CONCURRENCY)).current;
 
-  function currentPosition(localId: string): number {
+  const currentPosition = useCallback((localId: string): number => {
     const index = itemsRef.current.findIndex((it) => it.localId === localId);
     return index === -1 ? itemsRef.current.length : index;
-  }
+  }, []);
 
-  async function persistOrder(entryId: string) {
+  const persistOrder = useCallback(async (entryId: string) => {
     const orderedMediaIds = itemsRef.current.filter((it) => it.status === "complete" && it.mediaId).map((it) => it.mediaId as string);
     if (orderedMediaIds.length === 0) return;
     await reorderJournalMedia(entryId, orderedMediaIds);
-  }
+  }, []);
 
-  async function runOne(entryId: string, localId: string, originalFile: File, direct: boolean, authorization: JournalUploadAuthorization | null) {
+  const runOne = useCallback(async (entryId: string, localId: string, originalFile: File, direct: boolean, authorization: JournalUploadAuthorization | null) => {
     if (removedRef.current.has(localId)) return;
     updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "preparing", errorMessage: undefined } : it)));
 
@@ -221,11 +221,12 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     } catch (err) {
       if (removedRef.current.has(localId)) return;
       const message = err instanceof Error ? err.message : "Couldn't upload that photo.";
+      console.error("[journal] photo upload failed", { localId, direct, message });
       updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: message } : it)));
     }
-  }
+  }, [currentPosition, prepareLimit, updateItems, uploadLimit]);
 
-  async function handleFiles(files: FileList | null) {
+  const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     // The Add Photos control stays protected from overlapping, uncontrolled
     // batches — JournalPhotoStrip also disables the trigger while any photo
@@ -283,103 +284,131 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     if (stillErrored > 0) {
       setError(`${stillErrored} photo${stillErrored === 1 ? "" : "s"} couldn't be uploaded. Tap Retry on ${stillErrored === 1 ? "it" : "any of them"}.`);
     }
-  }
+  }, [hasActiveUploads, ensureEntryId, updateItems, runOne, persistOrder]);
 
-  async function retryItem(localId: string) {
-    const item = itemsRef.current.find((it) => it.localId === localId);
-    if (!item || item.status !== "error" || !item.file) return;
-    const entryId = await ensureEntryId();
-    if (!entryId) return;
-    setError(null);
+  // Mobile QA Repair pass — these five are invoked once per photo tile
+  // (JournalPhotoStrip renders one per item). Stable references across
+  // renders let React.memo on the tile component actually skip re-
+  // rendering tiles whose own data hasn't changed, which matters a lot
+  // more than usual here since dnd-kit re-renders every sortable item in
+  // the grid on every pointer-move frame while a drag is active (see this
+  // pass's own note on investigating drag lag).
+  const retryItem = useCallback(
+    async (localId: string) => {
+      const item = itemsRef.current.find((it) => it.localId === localId);
+      if (!item || item.status !== "error" || !item.file) return;
+      const entryId = await ensureEntryId();
+      if (!entryId) return;
+      setError(null);
 
-    const file = item.file;
-    if (isHeicLike(file)) {
-      await runOne(entryId, localId, file, false, null);
-    } else {
-      const authResult = await authorizeJournalPhotoUploads(entryId, [{ extension: isPng(file) ? "png" : "jpg" }]);
-      if ("error" in authResult) {
-        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: authResult.error } : it)));
+      const file = item.file;
+      if (isHeicLike(file)) {
+        await runOne(entryId, localId, file, false, null);
+      } else {
+        const authResult = await authorizeJournalPhotoUploads(entryId, [{ extension: isPng(file) ? "png" : "jpg" }]);
+        if ("error" in authResult) {
+          updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: authResult.error } : it)));
+          return;
+        }
+        await runOne(entryId, localId, file, true, authResult.uploads[0]);
+      }
+      await persistOrder(entryId);
+    },
+    [ensureEntryId, runOne, updateItems, persistOrder]
+  );
+
+  const handleRemove = useCallback(
+    async (localId: string) => {
+      const item = itemsRef.current.find((it) => it.localId === localId);
+      if (!item) return;
+
+      if (item.status === "local" || item.status === "error") {
+        if (item.isObjectUrl) URL.revokeObjectURL(item.previewUrl);
+        updateItems((prev) => prev.filter((it) => it.localId !== localId));
         return;
       }
-      await runOne(entryId, localId, file, true, authResult.uploads[0]);
-    }
-    await persistOrder(entryId);
-  }
 
-  async function handleRemove(localId: string) {
-    const item = itemsRef.current.find((it) => it.localId === localId);
-    if (!item) return;
+      if (isActiveStatus(item.status)) {
+        removedRef.current.add(localId);
+        if (item.isObjectUrl) URL.revokeObjectURL(item.previewUrl);
+        updateItems((prev) => prev.filter((it) => it.localId !== localId));
+        return;
+      }
 
-    if (item.status === "local" || item.status === "error") {
-      if (item.isObjectUrl) URL.revokeObjectURL(item.previewUrl);
+      // status === "complete" — reuse the existing, already-correct
+      // deletion behavior (Storage removal + cover failover) unchanged.
+      const entryId = await ensureEntryId();
+      if (!entryId || !item.mediaId) return;
       updateItems((prev) => prev.filter((it) => it.localId !== localId));
-      return;
-    }
+      const result = await removeJournalPhoto(entryId, item.mediaId);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      await persistOrder(entryId);
+    },
+    [ensureEntryId, updateItems, persistOrder]
+  );
 
-    if (isActiveStatus(item.status)) {
-      removedRef.current.add(localId);
-      if (item.isObjectUrl) URL.revokeObjectURL(item.previewUrl);
-      updateItems((prev) => prev.filter((it) => it.localId !== localId));
-      return;
-    }
-
-    // status === "complete" — reuse the existing, already-correct deletion
-    // behavior (Storage removal + cover failover) unchanged.
-    const entryId = await ensureEntryId();
-    if (!entryId || !item.mediaId) return;
-    updateItems((prev) => prev.filter((it) => it.localId !== localId));
-    const result = await removeJournalPhoto(entryId, item.mediaId);
-    if ("error" in result) {
-      setError(result.error);
-      return;
-    }
-    await persistOrder(entryId);
-  }
-
-  function reorder(updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) {
-    updateItems(updater);
-    ensureEntryId().then((entryId) => {
-      if (entryId) void persistOrder(entryId);
-    });
-  }
+  const reorder = useCallback(
+    (updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) => {
+      updateItems(updater);
+      ensureEntryId().then((entryId) => {
+        if (entryId) void persistOrder(entryId);
+      });
+    },
+    [ensureEntryId, updateItems, persistOrder]
+  );
 
   // Reorder While Some Photos Are Local — every one of these operates on
   // the live array regardless of each item's status; persistOrder above
   // only ever writes the subset that's actually persisted, in its current
   // position, so a still-uploading photo's eventual finalize (or the end-
   // of-batch reconciliation) is what places it correctly once it's real.
-  function handleDragReorder(activeLocalId: string, overLocalId: string) {
-    reorder((prev) => {
-      const oldIndex = prev.findIndex((it) => it.localId === activeLocalId);
-      const newIndex = prev.findIndex((it) => it.localId === overLocalId);
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
-  }
+  const handleDragReorder = useCallback(
+    (activeLocalId: string, overLocalId: string) => {
+      reorder((prev) => {
+        const oldIndex = prev.findIndex((it) => it.localId === activeLocalId);
+        const newIndex = prev.findIndex((it) => it.localId === overLocalId);
+        if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return prev;
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+    },
+    [reorder]
+  );
 
-  function moveEarlier(localId: string) {
-    reorder((prev) => {
-      const index = prev.findIndex((it) => it.localId === localId);
-      if (index <= 0) return prev;
-      return arrayMove(prev, index, index - 1);
-    });
-  }
+  const moveEarlier = useCallback(
+    (localId: string) => {
+      reorder((prev) => {
+        const index = prev.findIndex((it) => it.localId === localId);
+        if (index <= 0) return prev;
+        return arrayMove(prev, index, index - 1);
+      });
+    },
+    [reorder]
+  );
 
-  function moveLater(localId: string) {
-    reorder((prev) => {
-      const index = prev.findIndex((it) => it.localId === localId);
-      if (index === -1 || index >= prev.length - 1) return prev;
-      return arrayMove(prev, index, index + 1);
-    });
-  }
+  const moveLater = useCallback(
+    (localId: string) => {
+      reorder((prev) => {
+        const index = prev.findIndex((it) => it.localId === localId);
+        if (index === -1 || index >= prev.length - 1) return prev;
+        return arrayMove(prev, index, index + 1);
+      });
+    },
+    [reorder]
+  );
 
-  function makeCover(localId: string) {
-    reorder((prev) => {
-      const index = prev.findIndex((it) => it.localId === localId);
-      if (index <= 0) return prev;
-      return arrayMove(prev, index, 0);
-    });
-  }
+  const makeCover = useCallback(
+    (localId: string) => {
+      reorder((prev) => {
+        const index = prev.findIndex((it) => it.localId === localId);
+        if (index <= 0) return prev;
+        return arrayMove(prev, index, 0);
+      });
+    },
+    [reorder]
+  );
 
   return {
     items,

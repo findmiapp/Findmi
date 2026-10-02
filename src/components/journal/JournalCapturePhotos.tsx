@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { useJournalPhotoUpload } from "./useJournalPhotoUpload";
 import JournalPhotoStrip from "./JournalPhotoStrip";
 
@@ -19,6 +20,11 @@ export default function JournalCapturePhotos({
   entryId: string;
   initialPhotos: { id: string; url: string; isCover: boolean }[];
 }) {
+  // Mobile QA Repair pass — stable across renders so the photo hook's own
+  // per-tile handlers stay stable too (see useJournalPhotoUpload's note on
+  // why that matters for drag performance).
+  const ensureEntryId = useCallback(async () => entryId, [entryId]);
+
   const {
     items,
     error,
@@ -30,7 +36,7 @@ export default function JournalCapturePhotos({
     moveEarlier,
     moveLater,
     makeCover,
-  } = useJournalPhotoUpload(initialPhotos, async () => entryId);
+  } = useJournalPhotoUpload(initialPhotos, ensureEntryId);
 
   return (
     <JournalPhotoStrip

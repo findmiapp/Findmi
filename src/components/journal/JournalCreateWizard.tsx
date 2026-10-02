@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { JournalSearchResult } from "./JournalSearchSelect";
 import JournalConnectionsPicker from "./JournalConnectionsPicker";
@@ -47,7 +47,11 @@ export default function JournalCreateWizard({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  async function ensureEntryId(): Promise<string | null> {
+  // Mobile QA Repair pass — stable across renders (useCallback) so the
+  // photo hook's own per-tile handlers (which depend on this) stay stable
+  // too, letting React.memo on photo tiles actually skip re-rendering
+  // unrelated tiles during a drag. See useJournalPhotoUpload's own note.
+  const ensureEntryId = useCallback(async (): Promise<string | null> => {
     if (entryId) return entryId;
     const result = await startJournalDraft();
     if ("error" in result) {
@@ -56,7 +60,7 @@ export default function JournalCreateWizard({
     }
     setEntryId(result.id);
     return result.id;
-  }
+  }, [entryId]);
 
   const {
     items: photoItems,
