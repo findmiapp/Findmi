@@ -81,21 +81,59 @@ export interface JournalBatchProgress {
   total: number;
 }
 
-/** V3 — a small, temporary, phone-visible QA summary for the batch that
+/** V3.1 — a small, temporary, phone-visible QA summary for the batch that
  * just finished. Android QA has no desktop DevTools, so wall-clock
- * durations need to surface somewhere in the editor itself for the next
- * round of real-device testing. Durations are approximate wall-clock
- * milestones (preprocessing/upload/finalize deliberately overlap in this
- * pipeline — see processChunk — so these are not strictly serial
- * durations), never anything sensitive: no signed URLs, no tokens, no raw
- * error text. Intended to be deleted outright once upload performance is
- * confirmed fixed by real-device QA. */
+ * durations need to surface somewhere in the editor itself. Unlike the
+ * first V3 attempt (a single global "last mark wins" timestamp per stage,
+ * which collapsed to misleading 0.0s/0.0s/58s readings once a batch's
+ * stages genuinely overlapped), these are derived from PER-ITEM
+ * start/end timestamps: a span is earliest-start -> latest-end across
+ * every item that actually went through that stage — see handleFiles'
+ * own computation. Never anything sensitive: no signed URLs, no tokens,
+ * no raw error text. Intended to be deleted outright once upload
+ * performance is confirmed fixed by real-device QA. */
 export interface JournalBatchPerf {
   count: number;
-  prepMs: number;
-  uploadMs: number;
-  finalizeMs: number;
+  /** selection -> every local preview inserted into the grid. */
+  previewMs: number;
+  /** earliest preprocessStart -> latest preprocessEnd, across every item
+   * that went through client-side preprocessing. */
+  prepSpanMs: number;
+  /** earliest uploadStart -> latest uploadEnd — covers both the direct-
+   * to-Storage PUT for a normal photo and the whole legacy Server Action
+   * call for a HEIC/HEIF one (see runHeicItem's own note). */
+  uploadSpanMs: number;
+  /** earliest finalizeStart -> latest finalizeEnd, across every chunk's
+   * batch finalization call. */
+  finalizeSpanMs: number;
+  /** selection -> this batch's final settled state (every item complete
+   * or errored, order persisted). */
   totalMs: number;
+  /** Sum of each direct-upload item's post-preprocessing file size, plus
+   * each HEIC item's original (un-preprocessed — that path never resizes
+   * client-side) file size. A rough "how much actually went over the
+   * wire" figure for QA, not a precise compression ratio. */
+  compressedBytes: number;
+  /** How many of this batch's photos went through the legacy per-photo
+   * Server Action path (HEIC/HEIF) rather than direct-to-Storage — a
+   * batch where this unexpectedly equals `count` means every photo took
+   * the slow path, the single most useful signal this readout can give
+   * for diagnosing an unexplained slow batch. */
+  legacyCount: number;
+}
+
+/** V3.1 — per-item wall-clock timestamps backing JournalBatchPerf's span
+ * math above. Kept in a ref (never React state) since nothing needs to
+ * re-render as these fill in — only the final aggregate, computed once
+ * the whole batch settles, becomes state. */
+interface JournalItemTiming {
+  preprocessStart?: number;
+  preprocessEnd?: number;
+  uploadStart?: number;
+  uploadEnd?: number;
+  finalizeStart?: number;
+  finalizeEnd?: number;
+  preparedBytes?: number;
 }
 
 /** Legacy-data reconciliation — a photo's cover status before this pass
@@ -196,9 +234,10 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
 
   const prepareLimit = useRef(createConcurrencyLimiter(MAX_PREPARE_CONCURRENCY)).current;
   const uploadLimit = useRef(createConcurrencyLimiter(MAX_UPLOAD_CONCURRENCY)).current;
-  // V3 perf instrumentation — see JournalBatchPerf's own doc comment.
-  const prepMarkRef = useRef(0);
-  const uploadMarkRef = useRef(0);
+  // V3.1 perf instrumentation — see JournalItemTiming/JournalBatchPerf's
+  // own doc comments. Reset (cleared) at the start of every handleFiles
+  // call so a later batch's numbers never include an earlier batch's.
+  const timingRef = useRef<Map<string, JournalItemTiming>>(new Map());
 
   const currentPosition = useCallback((localId: string): number => {
     const index = itemsRef.current.findIndex((it) => it.localId === localId);
@@ -215,8 +254,13 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     async (localId: string, originalFile: File): Promise<File | null> => {
       if (removedRef.current.has(localId)) return null;
       updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "preparing", errorMessage: undefined } : it)));
+      const timing = timingRef.current.get(localId);
+      if (timing) timing.preprocessStart = performance.now();
       const prepared = await prepareLimit(() => preprocessImageForUpload(originalFile));
-      prepMarkRef.current = Math.max(prepMarkRef.current, performance.now());
+      if (timing) {
+        timing.preprocessEnd = performance.now();
+        timing.preparedBytes = prepared.size;
+      }
       if (removedRef.current.has(localId)) return null;
       return prepared;
     },
@@ -230,6 +274,8 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
   const uploadOneDirect = useCallback(
     async (localId: string, prepared: File, auth: { path: string; token: string }): Promise<void> => {
       updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "uploading" } : it)));
+      const timing = timingRef.current.get(localId);
+      if (timing) timing.uploadStart = performance.now();
       const supabase = getBrowserSupabase();
       if (!supabase) throw new Error("Upload isn't available right now.");
       await uploadLimit(async () => {
@@ -239,7 +285,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         });
         if (uploadError) throw new Error(uploadError.message);
       });
-      uploadMarkRef.current = Math.max(uploadMarkRef.current, performance.now());
+      if (timing) timing.uploadEnd = performance.now();
       updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "saving", storagePath: auth.path } : it)));
     },
     [updateItems, uploadLimit]
@@ -271,7 +317,12 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
   );
 
   /** HEIC/HEIF — unchanged legacy path: the full file goes through the
-   * server-side heic-convert Server Action, exactly as it always has. */
+   * server-side heic-convert Server Action, exactly as it always has.
+   * Timed as one "upload" span (no separate client preprocessing step
+   * exists for this path, so preprocessStart/End are never set for these
+   * items — see JournalBatchPerf's own note on why a batch where
+   * legacyCount equals the batch size means every photo went slow here,
+   * not through the fast direct-upload pipeline). */
   const runHeicItem = useCallback(
     async (entryId: string, localId: string, originalFile: File, onSettle?: () => void) => {
       try {
@@ -280,10 +331,16 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         if (removedRef.current.has(localId)) return;
         updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "uploading" } : it)));
 
+        const timing = timingRef.current.get(localId);
+        if (timing) {
+          timing.uploadStart = performance.now();
+          timing.preparedBytes = originalFile.size;
+        }
         const formData = new FormData();
         formData.set("file", originalFile);
         formData.set("displayOrder", String(currentPosition(localId)));
         const result = await uploadLimit(() => uploadJournalPhoto(entryId, formData));
+        if (timing) timing.uploadEnd = performance.now();
         if ("error" in result) throw new Error(result.error);
         const { id: mediaId, url } = result;
 
@@ -387,7 +444,17 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       );
 
       if (toFinalize.length === 0) return;
+      const finalizeCallStart = performance.now();
+      toFinalize.forEach((t) => {
+        const timing = timingRef.current.get(t.localId);
+        if (timing) timing.finalizeStart = finalizeCallStart;
+      });
       const finalizeResult = await finalizeJournalPhotoBatch(entryId, toFinalize);
+      const finalizeCallEnd = performance.now();
+      toFinalize.forEach((t) => {
+        const timing = timingRef.current.get(t.localId);
+        if (timing) timing.finalizeEnd = finalizeCallEnd;
+      });
       if ("error" in finalizeResult) {
         toFinalize.forEach((t) => {
           updateItems((prev) => prev.map((it) => (it.localId === t.localId ? { ...it, status: "error", errorMessage: finalizeResult.error } : it)));
@@ -414,11 +481,14 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       setBatchPerf(null);
 
       const fileArray = Array.from(files);
-      const entryId = await ensureEntryId();
-      if (!entryId) return;
+      const batchStart = performance.now();
 
-      // Core UX Requirement — every selected photo becomes a real, visible
-      // grid item immediately, before any preprocessing/network work starts.
+      // NON-NEGOTIABLE — every selected photo becomes a real, visible grid
+      // item AND gets its local object-URL preview in ONE synchronous state
+      // update, before anything async (including resolving the entry id,
+      // which for a brand-new entry is a real network round trip) ever
+      // runs. A preview must never wait on preprocessing, authorization,
+      // upload, finalization, or the entry id itself.
       const newItems: JournalPhotoItem[] = fileArray.map((file) => ({
         localId: crypto.randomUUID(),
         status: "local",
@@ -427,10 +497,22 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         file,
       }));
       updateItems((prev) => [...prev, ...newItems]);
+      const previewsReadyAt = performance.now();
 
-      const batchStart = performance.now();
-      prepMarkRef.current = batchStart;
-      uploadMarkRef.current = batchStart;
+      timingRef.current.clear();
+      newItems.forEach((item) => timingRef.current.set(item.localId, {}));
+
+      const entryId = await ensureEntryId();
+      if (!entryId) {
+        // The previews above already rendered — don't leave them stuck in
+        // "local" forever with no way to tell the owner why nothing is
+        // happening; Retry re-attempts ensureEntryId through its own path.
+        const newLocalIds = new Set(newItems.map((item) => item.localId));
+        updateItems((prev) =>
+          prev.map((it) => (newLocalIds.has(it.localId) ? { ...it, status: "error", errorMessage: "Couldn't start this Journal entry. Tap Retry." } : it))
+        );
+        return;
+      }
 
       // Current-Batch Progress — this call's own selection only, never
       // mixed with photos already persisted before it or added after it.
@@ -456,13 +538,29 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       // every photo that's actually persisted now.
       await persistOrder(entryId);
 
+      // V3.1 — derive batch-level spans from each item's own timestamps
+      // (see JournalBatchPerf's own doc comment on why a single shared
+      // "last mark wins" timestamp per stage was misleading once stages
+      // genuinely overlapped).
       const finalizeDoneAt = performance.now();
+      const timings = [...timingRef.current.values()];
+      const spanOf = (startKey: keyof JournalItemTiming, endKey: keyof JournalItemTiming): number => {
+        const starts = timings.map((t) => t[startKey]).filter((v): v is number => v !== undefined);
+        const ends = timings.map((t) => t[endKey]).filter((v): v is number => v !== undefined);
+        if (starts.length === 0 || ends.length === 0) return 0;
+        return Math.max(0, Math.round(Math.max(...ends) - Math.min(...starts)));
+      };
+      const compressedBytes = timings.reduce((sum, t) => sum + (t.preparedBytes ?? 0), 0);
+
       setBatchPerf({
         count: newItems.length,
-        prepMs: Math.max(0, Math.round(prepMarkRef.current - batchStart)),
-        uploadMs: Math.max(0, Math.round(uploadMarkRef.current - prepMarkRef.current)),
-        finalizeMs: Math.max(0, Math.round(finalizeDoneAt - uploadMarkRef.current)),
+        previewMs: Math.max(0, Math.round(previewsReadyAt - batchStart)),
+        prepSpanMs: spanOf("preprocessStart", "preprocessEnd"),
+        uploadSpanMs: spanOf("uploadStart", "uploadEnd"),
+        finalizeSpanMs: spanOf("finalizeStart", "finalizeEnd"),
         totalMs: Math.round(finalizeDoneAt - batchStart),
+        compressedBytes,
+        legacyCount: heicItems.length,
       });
 
       const stillErrored = itemsRef.current.filter((it) => it.status === "error").length;

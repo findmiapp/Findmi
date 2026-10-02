@@ -182,16 +182,26 @@ export default function JournalPhotoStrip({
         </p>
       )}
 
-      {/* Upload Performance V3 — temporary QA readout, editor-only, never
+      {/* Upload Performance V3.1 — temporary QA readout, editor-only, never
           shown on the public Journal page. No signed URLs/tokens/raw
           errors — just counts and durations. Delete this block (and
           batchPerf/dismissBatchPerf) once upload performance is confirmed
-          fixed by real-device QA. */}
+          fixed by real-device QA. Spans are earliest-start -> latest-end
+          per stage across the whole batch (see useJournalPhotoUpload's own
+          note on why this replaced a simpler but misleading single-mark
+          approach) — Prep/Upload/Finalize can and do overlap, so they
+          won't sum to Total. legacyCount > 0 means that many photos went
+          through the slow per-photo HEIC Server Action path instead of
+          direct-to-Storage — the single most useful signal here if a
+          batch is unexpectedly slow. */}
       {batchPerf && (
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-black/10 bg-mist px-2.5 py-1.5 text-[11px] text-ink/60">
+        <div className="flex items-start justify-between gap-2 rounded-lg border border-dashed border-black/10 bg-mist px-2.5 py-1.5 text-[11px] text-ink/60">
           <span>
-            QA — {batchPerf.count} photo{batchPerf.count === 1 ? "" : "s"} · Prep {(batchPerf.prepMs / 1000).toFixed(1)}s · Upload{" "}
-            {(batchPerf.uploadMs / 1000).toFixed(1)}s · Finalize {(batchPerf.finalizeMs / 1000).toFixed(1)}s · Total {(batchPerf.totalMs / 1000).toFixed(1)}s
+            QA — {batchPerf.count} photo{batchPerf.count === 1 ? "" : "s"} · Total {(batchPerf.totalMs / 1000).toFixed(1)}s · Preview{" "}
+            {(batchPerf.previewMs / 1000).toFixed(1)}s · Prep span {(batchPerf.prepSpanMs / 1000).toFixed(1)}s · Upload span{" "}
+            {(batchPerf.uploadSpanMs / 1000).toFixed(1)}s · Finalize span {(batchPerf.finalizeSpanMs / 1000).toFixed(1)}s · Compressed{" "}
+            {(batchPerf.compressedBytes / (1024 * 1024)).toFixed(1)} MB
+            {batchPerf.legacyCount > 0 && ` · ${batchPerf.legacyCount} via HEIC fallback`}
           </span>
           {onDismissBatchPerf && (
             <button type="button" onClick={onDismissBatchPerf} aria-label="Dismiss" className="shrink-0 font-bold text-ink/40">

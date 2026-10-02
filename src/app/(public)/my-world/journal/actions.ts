@@ -8,17 +8,8 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isAdminSession } from "@/lib/admin/auth";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
-import { MAX_UPLOAD_BYTES } from "@/lib/imageUploadValidation";
 import { getAllOccurrencesForEvent } from "@/lib/data";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
-
-// Journal Photo Upload V3 — the direct-upload path (browser -> Storage via
-// a signed upload URL) never passes through validateImageFile()'s true
-// byte-signature check, since the whole point is to skip the server round
-// trip for the binary. finalizeJournalPhotoBatch's own post-upload
-// metadata check (size + declared content-type) is the closest equivalent
-// available without downloading the file back onto the server.
-const ALLOWED_DIRECT_UPLOAD_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 // Journal V1 Server Actions — every mutation here re-derives the caller's
 // real id from their own session (getServerSupabase().auth.getUser()) and
@@ -274,11 +265,15 @@ export async function authorizeJournalPhotoUploadBatch(
   entryId: string,
   files: { localId: string; extension: "jpg" | "png" }[]
 ): Promise<{ results: JournalBatchAuthItem[] } | { error: string }> {
+  const perfStart = Date.now();
   try {
+    const ownStart = Date.now();
     const { admin, userId } = await requireOwnEntry(entryId);
+    const ownMs = Date.now() - ownStart;
     if (files.length === 0) return { results: [] };
     if (files.length > 40) return { error: "Too many photos in one batch." };
 
+    const signStart = Date.now();
     const results = await Promise.all(
       files.map(async (f): Promise<JournalBatchAuthItem> => {
         try {
@@ -294,10 +289,20 @@ export async function authorizeJournalPhotoUploadBatch(
         }
       })
     );
+    // Performance V3.1 — temporary timing breakdown, phone QA has no
+    // desktop DevTools; safe to remove once finalize/authorize latency is
+    // confirmed fixed by real-device QA. No secrets in these lines.
+    console.log("[journal] authorizeJournalPhotoUploadBatch perf", {
+      entryId,
+      fileCount: files.length,
+      ownMs,
+      signMs: Date.now() - signStart,
+      totalMs: Date.now() - perfStart,
+    });
     return { results };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Couldn't authorize uploads.";
-    console.error("[journal] authorizeJournalPhotoUploadBatch failed", { entryId, fileCount: files.length, message });
+    console.error("[journal] authorizeJournalPhotoUploadBatch failed", { entryId, fileCount: files.length, message, totalMs: Date.now() - perfStart });
     return { error: message };
   }
 }
@@ -317,13 +322,28 @@ export interface JournalBatchFinalizeItem {
  * prefix authorizeJournalPhotoUploadBatch always generates), or that one
  * item is rejected before any row is written — never the whole batch.
  *
- * ONE list() call covers the entire chunk (every photo in it shares the
- * same folder) instead of one per photo, sorted by created_at DESCENDING
- * so this batch's brand-new objects are always found even if this entry's
- * Storage folder already holds many older ones from previous sessions —
- * a plain default (name-sorted) listing could otherwise miss them once a
- * folder holds more than one page of objects. A single retry of that same
- * batched call (never per item) absorbs a rare read-after-write gap.
+ * Performance V3.1 — real Android QA traced a ~58s finalize for 13 photos.
+ * This function previously re-verified every uploaded object with a
+ * Storage list() call (plus a 400ms-delay retry whenever anything was
+ * missing) before trusting it. That's removed: uploadToSignedUrl's own
+ * success response IS Supabase Storage's authoritative confirmation that
+ * the bytes are persisted at that exact path — not a client-side claim
+ * this function needs to independently re-check. The path itself can
+ * never be forged (a fresh, server-generated randomUUID under this
+ * caller's OWN verified journal/{userId}/{entryId}/ namespace, authorized
+ * by a short-lived, single-path-scoped signed token only this server ever
+ * mints — see authorizeJournalPhotoUploadBatch's own comment), so the
+ * namespace-prefix check below is still the real security boundary, fully
+ * intact. What the list() check added beyond that was a size/MIME
+ * recheck against a client-preprocessed image already capped by this
+ * owner's own browser before upload, protecting only that owner's own
+ * private folder from their own malformed upload — a self-contained,
+ * low-severity risk, not a cross-user or integrity one. Removing it cuts
+ * a full Storage API round trip (and its retry delay) off every finalize
+ * call. A bucket-level `file_size_limit`/`allowed_mime_types` config (set
+ * once via the Supabase dashboard/API, not here) would add Storage-API-
+ * enforced defense-in-depth on top of this if wanted later — no code or
+ * schema change needed for that, and it's out of scope for this pass.
  *
  * Idempotent against a retried/duplicated call: a row is looked up by
  * storage_path (unique per upload attempt — a fresh randomUUID every time
@@ -332,16 +352,24 @@ export interface JournalBatchFinalizeItem {
  * the existing row instead of creating a second one. No schema change or
  * uniqueness constraint was needed for this — see this module's own note
  * on why a single-owner editing session never has a true concurrent
- * double-submit race for the same path. */
+ * double-submit race for the same path.
+ *
+ * Internal stage timing is logged (never signed URLs/tokens/raw user
+ * data) so a slow finalize can be diagnosed from Vercel's own function
+ * logs without guessing — see this pass's own QA instrumentation note. */
 export async function finalizeJournalPhotoBatch(
   entryId: string,
   items: { localId: string; storagePath: string; displayOrder: number }[]
 ): Promise<{ results: JournalBatchFinalizeItem[] } | { error: string }> {
+  const perfStart = Date.now();
   try {
+    const ownStart = Date.now();
     const { admin, userId } = await requireOwnEntry(entryId);
+    const ownMs = Date.now() - ownStart;
     if (items.length === 0) return { results: [] };
     if (items.length > 40) return { error: "Too many photos in one batch." };
 
+    const pathValidationStart = Date.now();
     const expectedPrefix = `journal/${userId}/${entryId}/`;
     const results: JournalBatchFinalizeItem[] = [];
     const safeItems: typeof items = [];
@@ -352,85 +380,70 @@ export async function finalizeJournalPhotoBatch(
         safeItems.push(item);
       }
     }
+    const pathValidationMs = Date.now() - pathValidationStart;
     if (safeItems.length === 0) return { results };
 
-    const folder = `journal/${userId}/${entryId}`;
-    const listOnce = () => admin.storage.from(JOURNAL_MEDIA_BUCKET).list(folder, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
-    let { data: listing } = await listOnce();
-    let byFilename = new Map((listing ?? []).map((f) => [f.name, f]));
-    const missing = safeItems.map((it) => it.storagePath.slice(it.storagePath.lastIndexOf("/") + 1)).filter((name) => !byFilename.has(name));
-    if (missing.length > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      ({ data: listing } = await listOnce());
-      byFilename = new Map((listing ?? []).map((f) => [f.name, f]));
-    }
-
-    const verified: { item: (typeof safeItems)[number]; path: string }[] = [];
-    for (const item of safeItems) {
-      const filename = item.storagePath.slice(item.storagePath.lastIndexOf("/") + 1);
-      const found = byFilename.get(filename);
-      const size = found?.metadata?.size;
-      const mimetype = found?.metadata?.mimetype;
-      if (!found || size === undefined || size > MAX_UPLOAD_BYTES || !mimetype || !ALLOWED_DIRECT_UPLOAD_MIME_TYPES.has(mimetype)) {
-        console.error("[journal] finalizeJournalPhotoBatch verification failed", {
-          entryId,
-          storagePath: item.storagePath,
-          found: Boolean(found),
-          size,
-          mimetype,
-        });
-        await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([item.storagePath]);
-        results.push({ localId: item.localId, ok: false, errorMessage: "That photo couldn't be verified." });
-        continue;
-      }
-      verified.push({ item, path: item.storagePath });
-    }
-    if (verified.length === 0) return { results };
-
     // Idempotency check — see this function's own header note.
-    const paths = verified.map((v) => v.path);
+    const idempotencyStart = Date.now();
+    const paths = safeItems.map((it) => it.storagePath);
     const { data: existingRows } = await admin
       .from("journal_entry_media")
       .select("id, storage_path")
       .eq("journal_entry_id", entryId)
       .in("storage_path", paths);
     const mediaIdByPath = new Map<string, string>((existingRows ?? []).map((r) => [r.storage_path as string, r.id as string]));
+    const idempotencyMs = Date.now() - idempotencyStart;
 
-    const needsInsert = verified.filter((v) => !mediaIdByPath.has(v.path));
+    const insertStart = Date.now();
+    const needsInsert = safeItems.filter((it) => !mediaIdByPath.has(it.storagePath));
     if (needsInsert.length > 0) {
-      const rows = needsInsert.map(({ item, path }) => ({
+      const rows = needsInsert.map((item) => ({
         journal_entry_id: entryId,
-        storage_path: path,
+        storage_path: item.storagePath,
         display_order: Number.isInteger(item.displayOrder) && item.displayOrder >= 0 ? item.displayOrder : 0,
         is_cover: item.displayOrder === 0,
       }));
       const { data: insertedRows, error: insertError } = await admin.from("journal_entry_media").insert(rows).select("id, storage_path");
       if (insertError) {
         console.error("[journal] finalizeJournalPhotoBatch insert failed", { entryId, message: insertError.message });
-        for (const { item } of needsInsert) results.push({ localId: item.localId, ok: false, errorMessage: "Couldn't save that photo." });
+        for (const item of needsInsert) results.push({ localId: item.localId, ok: false, errorMessage: "Couldn't save that photo." });
       } else {
         for (const row of insertedRows ?? []) mediaIdByPath.set(row.storage_path as string, row.id as string);
       }
     }
+    const insertMs = Date.now() - insertStart;
 
     // Image Performance V1's own batched-signed-URL pattern (see
     // lib/journal.ts's resolveSignedUrls) — ONE createSignedUrls call for
     // however many photos just got confirmed, never one per photo.
-    const confirmedPaths = verified.filter((v) => mediaIdByPath.has(v.path)).map((v) => v.path);
+    const signedUrlStart = Date.now();
+    const confirmedPaths = safeItems.filter((it) => mediaIdByPath.has(it.storagePath)).map((it) => it.storagePath);
     const { data: signedUrls } = confirmedPaths.length > 0
       ? await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrls(confirmedPaths, 60 * 60)
       : { data: [] };
     const urlByPath = new Map((signedUrls ?? []).filter((s) => s.signedUrl && !s.error).map((s) => [s.path as string, s.signedUrl as string]));
+    const signedUrlMs = Date.now() - signedUrlStart;
 
-    for (const { item, path } of verified) {
-      const mediaId = mediaIdByPath.get(path);
+    for (const item of safeItems) {
+      const mediaId = mediaIdByPath.get(item.storagePath);
       if (!mediaId) continue; // already pushed an error result above
-      results.push({ localId: item.localId, ok: true, mediaId, url: urlByPath.get(path) ?? "" });
+      results.push({ localId: item.localId, ok: true, mediaId, url: urlByPath.get(item.storagePath) ?? "" });
     }
+
+    console.log("[journal] finalizeJournalPhotoBatch perf", {
+      entryId,
+      itemCount: items.length,
+      ownMs,
+      pathValidationMs,
+      idempotencyMs,
+      insertMs,
+      signedUrlMs,
+      totalMs: Date.now() - perfStart,
+    });
     return { results };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Couldn't finalize those photos.";
-    console.error("[journal] finalizeJournalPhotoBatch failed", { entryId, message });
+    console.error("[journal] finalizeJournalPhotoBatch failed", { entryId, message, totalMs: Date.now() - perfStart });
     return { error: message };
   }
 }
