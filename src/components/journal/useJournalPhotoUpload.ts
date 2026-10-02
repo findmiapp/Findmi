@@ -2,25 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
-import {
-  uploadJournalPhoto,
-  removeJournalPhoto,
-  authorizeJournalPhotoUploads,
-  finalizeJournalPhoto,
-  discardJournalUpload,
-  reorderJournalMedia,
-  type JournalUploadAuthorization,
-} from "@/app/(public)/my-world/journal/actions";
-import { preprocessImageForUpload, isHeicLike, isPng } from "@/lib/imagePreprocessing";
+import { uploadJournalPhoto, removeJournalPhoto, reorderJournalMedia } from "@/app/(public)/my-world/journal/actions";
+import { preprocessImageForUpload } from "@/lib/imagePreprocessing";
 import { createConcurrencyLimiter } from "@/lib/concurrency";
-import { getBrowserSupabase } from "@/lib/supabase/client";
-
-// Journal Photo Experience V2 — mirrors the literal bucket id
-// JOURNAL_MEDIA_BUCKET exports from lib/journal.ts. That module pulls in
-// server-only Supabase helpers and must never be imported from a "use
-// client" file, so the bucket id is duplicated here as a plain string
-// rather than shared via import.
-const JOURNAL_MEDIA_BUCKET = "journal-media";
 
 const MAX_PREPARE_CONCURRENCY = 2;
 const MAX_UPLOAD_CONCURRENCY = 3;
@@ -41,7 +25,6 @@ export interface JournalPhotoItem {
   isObjectUrl: boolean;
   file?: File;
   mediaId?: string;
-  storagePath?: string;
   errorMessage?: string;
 }
 
@@ -49,6 +32,15 @@ export interface JournalInitialPhoto {
   id: string;
   url: string;
   isCover: boolean;
+}
+
+/** Current-batch upload progress, surfaced separately from `items` so the
+ * UI never has to derive it from a mix of already-persisted photos and the
+ * photos actually in flight right now — see this hook's own Journal Photo
+ * Stability pass note on why that mix produced misleading copy before. */
+export interface JournalBatchProgress {
+  completed: number;
+  total: number;
 }
 
 /** Legacy-data reconciliation — a photo's cover status before this pass
@@ -75,32 +67,44 @@ function isActiveStatus(status: JournalPhotoStatus): boolean {
   return status === "local" || status === "preparing" || status === "uploading" || status === "saving";
 }
 
-/** Journal Photo Experience V2 — replaces V1's single sequential/bounded
- * upload loop with an item-based state machine: every selected photo
- * becomes a visible grid item INSTANTLY (a local object-URL preview, before
- * any preprocessing/network work starts), then moves through its own
- * prepare -> upload -> save pipeline in the background, independently
- * reorderable (drag, the fallback menu, or Make Cover) at every stage. The
- * owner's current on-screen order is always authoritative — not original
- * selection order, not completion order — and is what every finalize/
- * reorder call persists.
+/** Journal Photo Stability pass — every photo (including HEIC/HEIF) now
+ * uploads through the ONE proven V1 transport: browser -> client
+ * preprocessing -> uploadJournalPhoto (Server Action, binary in the
+ * request body) -> Storage -> journal_entry_media -> signed read URL. The
+ * V2 direct-to-Storage architecture (a server-issued signed upload URL,
+ * the browser PUTting bytes straight to Supabase Storage, then a separate
+ * finalize call) repeatedly failed real Android QA — most recently an
+ * entire new batch failing together — and reliability was judged more
+ * important than its theoretical upload-speed edge. That whole pipeline
+ * (authorizeJournalPhotoUploads/finalizeJournalPhoto/discardJournalUpload,
+ * the browser Supabase Storage client) is gone; every photo is now just
+ * one ownership-checked, independently-failing Server Action call, same as
+ * V1 always was for HEIC.
  *
- * Normal JPEG/WEBP/PNG photos upload DIRECTLY browser -> Supabase Storage
- * (via a server-authorized signed upload URL — see
- * authorizeJournalPhotoUploads), never through a Server Action carrying the
- * binary. HEIC/HEIF still goes through the existing server-side
- * heic-convert path (uploadJournalPhoto) unchanged, since reliable client-
- * side HEIC decoding isn't available across Android + iPhone without a new
- * heavy dependency — see this pass's own note on that tradeoff. */
+ * Still an item-based state machine, not V1's single sequential loop:
+ * every selected photo becomes a visible grid item INSTANTLY (a local
+ * object-URL preview, before any preprocessing/network work starts), then
+ * moves through its own prepare -> upload -> save pipeline in the
+ * background, independently reorderable (drag, the fallback menu, or Make
+ * Cover) at every stage. The owner's current on-screen order is always
+ * authoritative — not original selection order, not completion order —
+ * and is what every reorder/end-of-batch reconciliation persists.
+ *
+ * preprocessImageForUpload already no-ops on a HEIC/HEIF file (returns it
+ * unchanged — client-side HEIC decoding isn't reliably available), so it
+ * runs unconditionally here; uploadJournalPhoto's own validateImageFile
+ * still does the real server-side HEIC-to-JPEG conversion for that file,
+ * exactly as it always has. */
 export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensureEntryId: () => Promise<string | null>) {
   const [items, setItems] = useState<JournalPhotoItem[]>(() => buildInitialItems(initialPhotos));
   const [error, setError] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<JournalBatchProgress | null>(null);
   const itemsRef = useRef(items);
-  // Mid-flight removal — a photo being decoded/uploaded/saved can't safely
-  // be cancelled with the current SDK, so removal just marks it here; the
-  // pipeline's own checkpoints (after prepare, after upload, after
-  // finalize) check this set and clean up (discard the orphaned Storage
-  // object, or delete the now-real row) rather than resurrecting it.
+  // Mid-flight removal — a photo being prepared/uploaded can't safely be
+  // cancelled with the current SDK, so removal just marks it here; the
+  // pipeline's own checkpoint (right after the Server Action resolves)
+  // checks this set and cleans up the now-real row rather than
+  // resurrecting it.
   const removedRef = useRef<Set<string>>(new Set());
 
   const updateItems = useCallback((updater: (prev: JournalPhotoItem[]) => JournalPhotoItem[]) => {
@@ -152,155 +156,102 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     await reorderJournalMedia(entryId, orderedMediaIds);
   }, []);
 
-  const runOne = useCallback(async (entryId: string, localId: string, originalFile: File, direct: boolean, authorization: JournalUploadAuthorization | null) => {
-    if (removedRef.current.has(localId)) return;
-    updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "preparing", errorMessage: undefined } : it)));
+  /** One photo, start to finish, through the proven server-upload
+   * transport — entirely independent of every other photo in its batch
+   * (its own preprocessing slot, its own uploadJournalPhoto call, its own
+   * success/error outcome), so one failure can never take down its
+   * batch-mates. `onSettle` (used by handleFiles for current-batch
+   * progress) fires exactly once, success or failure. */
+  const runOne = useCallback(
+    async (entryId: string, localId: string, originalFile: File, onSettle?: () => void) => {
+      try {
+        if (removedRef.current.has(localId)) return;
+        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "preparing", errorMessage: undefined } : it)));
 
-    const prepared = await prepareLimit(() => preprocessImageForUpload(originalFile));
-    if (removedRef.current.has(localId)) return;
-    updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "uploading" } : it)));
+        const prepared = await prepareLimit(() => preprocessImageForUpload(originalFile));
+        if (removedRef.current.has(localId)) return;
+        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "uploading" } : it)));
 
-    try {
-      let mediaId: string;
-      let url: string;
-
-      if (!direct) {
-        // HEIC/HEIF — unchanged legacy path: the full (already validated-
-        // small-enough, per the 5MB cap) file goes through the Server
-        // Action, which still does its own server-side conversion.
         const formData = new FormData();
         formData.set("file", prepared);
         formData.set("displayOrder", String(currentPosition(localId)));
         const result = await uploadLimit(() => uploadJournalPhoto(entryId, formData));
         if ("error" in result) throw new Error(result.error);
-        mediaId = result.id;
-        url = result.url;
-      } else {
-        if (!authorization) throw new Error("Couldn't authorize this upload.");
-        const supabase = getBrowserSupabase();
-        if (!supabase) throw new Error("Upload isn't available right now.");
-
-        await uploadLimit(async () => {
-          const { error: uploadError } = await supabase.storage.from(JOURNAL_MEDIA_BUCKET).uploadToSignedUrl(authorization.path, authorization.token, prepared, {
-            contentType: prepared.type || "application/octet-stream",
-            cacheControl: "31536000",
-          });
-          if (uploadError) throw new Error(uploadError.message);
-        });
+        const { id: mediaId, url } = result;
 
         if (removedRef.current.has(localId)) {
-          // Uploaded straight to Storage but removed from the grid before
-          // it could be finalized — no DB row exists yet, so just clean up
-          // the now-orphaned object rather than ever writing one.
-          await discardJournalUpload(entryId, authorization.path);
+          // Uploaded and saved, but removed from the grid in the
+          // meantime — delete the now-real row through the normal,
+          // already-correct removal path rather than leaving an orphan.
+          await removeJournalPhoto(entryId, mediaId);
           return;
         }
 
-        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "saving", storagePath: authorization.path } : it)));
-        const result = await finalizeJournalPhoto(entryId, { storagePath: authorization.path, displayOrder: currentPosition(localId) });
-        if ("error" in result) throw new Error(result.error);
-        mediaId = result.id;
-        url = result.url;
+        updateItems((prev) =>
+          prev.map((it) => {
+            if (it.localId !== localId) return it;
+            if (it.isObjectUrl) URL.revokeObjectURL(it.previewUrl);
+            return { ...it, status: "complete", mediaId, previewUrl: url, isObjectUrl: false, errorMessage: undefined };
+          })
+        );
+      } catch (err) {
+        if (removedRef.current.has(localId)) return;
+        const message = err instanceof Error ? err.message : "Couldn't upload that photo.";
+        console.error("[journal] photo upload failed", { localId, message });
+        updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: message } : it)));
+      } finally {
+        onSettle?.();
       }
+    },
+    [currentPosition, prepareLimit, updateItems, uploadLimit]
+  );
 
-      if (removedRef.current.has(localId)) {
-        // Finalized (a real row now exists) but removed in the meantime —
-        // delete it through the normal, already-correct removal path
-        // rather than leaving an orphaned record.
-        await removeJournalPhoto(entryId, mediaId);
-        return;
-      }
+  const handleFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      // The Add Photos control stays protected from overlapping, uncontrolled
+      // batches — JournalPhotoStrip also disables the trigger while any photo
+      // is active, so this is the double-submit guard, not the only one.
+      if (hasActiveUploads) return;
+      setError(null);
 
-      updateItems((prev) =>
-        prev.map((it) => {
-          if (it.localId !== localId) return it;
-          if (it.isObjectUrl) URL.revokeObjectURL(it.previewUrl);
-          return { ...it, status: "complete", mediaId, previewUrl: url, isObjectUrl: false, errorMessage: undefined };
-        })
+      const fileArray = Array.from(files);
+      const entryId = await ensureEntryId();
+      if (!entryId) return;
+
+      // Core UX Requirement — every selected photo becomes a real, visible
+      // grid item immediately, before any preprocessing/network work starts.
+      const newItems: JournalPhotoItem[] = fileArray.map((file) => ({
+        localId: crypto.randomUUID(),
+        status: "local",
+        previewUrl: URL.createObjectURL(file),
+        isObjectUrl: true,
+        file,
+      }));
+      updateItems((prev) => [...prev, ...newItems]);
+
+      // Current-Batch Progress — this call's own selection only, never
+      // mixed with photos already persisted before it or added after it.
+      setBatchProgress({ completed: 0, total: newItems.length });
+      const runners = newItems.map((item) =>
+        runOne(entryId, item.localId, item.file as File, () => setBatchProgress((prev) => (prev ? { ...prev, completed: prev.completed + 1 } : prev)))
       );
-    } catch (err) {
-      if (removedRef.current.has(localId)) return;
-      const message = err instanceof Error ? err.message : "Couldn't upload that photo.";
-      console.error("[journal] photo upload failed", { localId, direct, message });
-      updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: message } : it)));
-    }
-  }, [currentPosition, prepareLimit, updateItems, uploadLimit]);
+      await Promise.all(runners);
+      setBatchProgress(null);
 
-  const handleFiles = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    // The Add Photos control stays protected from overlapping, uncontrolled
-    // batches — JournalPhotoStrip also disables the trigger while any photo
-    // is active, so this is the double-submit guard, not the only one.
-    if (hasActiveUploads) return;
-    setError(null);
+      // Final Order Reconciliation — regardless of completion-order races or
+      // any reordering the owner did while this batch was still in flight,
+      // persist display_order/is_cover from the grid's CURRENT order for
+      // every photo that's actually persisted now.
+      await persistOrder(entryId);
 
-    const fileArray = Array.from(files);
-    const entryId = await ensureEntryId();
-    if (!entryId) return;
-
-    // Core UX Requirement — every selected photo becomes a real, visible
-    // grid item immediately, before any preprocessing/network work starts.
-    const newItems: JournalPhotoItem[] = fileArray.map((file) => ({
-      localId: crypto.randomUUID(),
-      status: "local",
-      previewUrl: URL.createObjectURL(file),
-      isObjectUrl: true,
-      file,
-    }));
-    updateItems((prev) => [...prev, ...newItems]);
-
-    // Batch Authorization — classify up front (synchronously, no waiting
-    // on preprocessing) so the whole non-HEIC subset can be authorized in
-    // ONE server round trip (one ownership check, N signed upload URLs),
-    // never one authorization call per photo.
-    const directEntries = newItems.filter((item) => item.file && !isHeicLike(item.file));
-    const authByLocalId = new Map<string, JournalUploadAuthorization>();
-    const erroredLocalIds = new Set<string>();
-
-    if (directEntries.length > 0) {
-      const extensions = directEntries.map((item) => ({ extension: isPng(item.file as File) ? ("png" as const) : ("jpg" as const) }));
-      const authResult = await authorizeJournalPhotoUploads(entryId, extensions);
-      if ("error" in authResult) {
-        directEntries.forEach((item) => erroredLocalIds.add(item.localId));
-        updateItems((prev) => prev.map((it) => (erroredLocalIds.has(it.localId) ? { ...it, status: "error", errorMessage: authResult.error } : it)));
-      } else {
-        // Mobile QA Repair, second pass — each file's authorization now
-        // succeeds or fails independently (see authorizeJournalPhotoUploads's
-        // own comment), so only the actually-failed items in this batch are
-        // marked errored; the rest proceed to upload normally.
-        const authErrorByLocalId = new Map<string, string>();
-        directEntries.forEach((item, i) => {
-          const result = authResult.uploads[i];
-          if (result.ok) {
-            authByLocalId.set(item.localId, { path: result.path, token: result.token });
-          } else {
-            erroredLocalIds.add(item.localId);
-            authErrorByLocalId.set(item.localId, result.error);
-          }
-        });
-        if (erroredLocalIds.size > 0) {
-          updateItems((prev) => prev.map((it) => (authErrorByLocalId.has(it.localId) ? { ...it, status: "error", errorMessage: authErrorByLocalId.get(it.localId) } : it)));
-        }
+      const stillErrored = itemsRef.current.filter((it) => it.status === "error").length;
+      if (stillErrored > 0) {
+        setError(`${stillErrored} photo${stillErrored === 1 ? "" : "s"} couldn't be uploaded. Tap Retry on ${stillErrored === 1 ? "it" : "any of them"}.`);
       }
-    }
-
-    const runners = newItems
-      .filter((item) => !erroredLocalIds.has(item.localId))
-      .map((item) => runOne(entryId, item.localId, item.file as File, authByLocalId.has(item.localId), authByLocalId.get(item.localId) ?? null));
-
-    await Promise.all(runners);
-
-    // Final Order Reconciliation — regardless of completion-order races or
-    // any reordering the owner did while this batch was still in flight,
-    // persist display_order/is_cover from the grid's CURRENT order for
-    // every photo that's actually persisted now.
-    await persistOrder(entryId);
-
-    const stillErrored = itemsRef.current.filter((it) => it.status === "error").length;
-    if (stillErrored > 0) {
-      setError(`${stillErrored} photo${stillErrored === 1 ? "" : "s"} couldn't be uploaded. Tap Retry on ${stillErrored === 1 ? "it" : "any of them"}.`);
-    }
-  }, [hasActiveUploads, ensureEntryId, updateItems, runOne, persistOrder]);
+    },
+    [hasActiveUploads, ensureEntryId, updateItems, runOne, persistOrder]
+  );
 
   // Mobile QA Repair pass — these five are invoked once per photo tile
   // (JournalPhotoStrip renders one per item). Stable references across
@@ -316,26 +267,10 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       const entryId = await ensureEntryId();
       if (!entryId) return;
       setError(null);
-
-      const file = item.file;
-      if (isHeicLike(file)) {
-        await runOne(entryId, localId, file, false, null);
-      } else {
-        const authResult = await authorizeJournalPhotoUploads(entryId, [{ extension: isPng(file) ? "png" : "jpg" }]);
-        if ("error" in authResult) {
-          updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: authResult.error } : it)));
-          return;
-        }
-        const single = authResult.uploads[0];
-        if (!single.ok) {
-          updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: single.error } : it)));
-          return;
-        }
-        await runOne(entryId, localId, file, true, { path: single.path, token: single.token });
-      }
+      await runOne(entryId, localId, item.file);
       await persistOrder(entryId);
     },
-    [ensureEntryId, runOne, updateItems, persistOrder]
+    [ensureEntryId, runOne, persistOrder]
   );
 
   const handleRemove = useCallback(
@@ -435,6 +370,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     items,
     error,
     setError,
+    batchProgress,
     hasActiveUploads,
     handleFiles,
     handleRemove,

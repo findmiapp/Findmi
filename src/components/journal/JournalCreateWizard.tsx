@@ -65,6 +65,7 @@ export default function JournalCreateWizard({
   const {
     items: photoItems,
     error: photoError,
+    batchProgress: photoBatchProgress,
     hasActiveUploads,
     handleFiles,
     handleRemove,
@@ -214,6 +215,7 @@ export default function JournalCreateWizard({
           <JournalPhotoStrip
             items={photoItems}
             error={photoError}
+            batchProgress={photoBatchProgress}
             disabled={hasActiveUploads}
             onFilesSelected={handleFiles}
             onRemove={handleRemove}

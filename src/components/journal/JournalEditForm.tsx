@@ -47,6 +47,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
   const {
     items: photoItems,
     error: photoError,
+    batchProgress: photoBatchProgress,
     hasActiveUploads,
     handleFiles,
     handleRemove,
@@ -231,6 +232,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
         <JournalPhotoStrip
           items={photoItems}
           error={photoError}
+          batchProgress={photoBatchProgress}
           disabled={hasActiveUploads}
           onFilesSelected={handleFiles}
           onRemove={handleRemove}

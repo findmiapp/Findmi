@@ -28,6 +28,7 @@ export default function JournalCapturePhotos({
   const {
     items,
     error,
+    batchProgress,
     hasActiveUploads,
     handleFiles,
     handleRemove,
@@ -42,6 +43,7 @@ export default function JournalCapturePhotos({
     <JournalPhotoStrip
       items={items}
       error={error}
+      batchProgress={batchProgress}
       disabled={hasActiveUploads}
       onFilesSelected={handleFiles}
       onRemove={handleRemove}

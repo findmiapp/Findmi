@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { JournalPhotoItem } from "./useJournalPhotoUpload";
+import type { JournalBatchProgress, JournalPhotoItem } from "./useJournalPhotoUpload";
 
 /** Journal Photo Experience V2 — a sortable grid replacing V1's "big cover
  * + filmstrip" layout. The layout changes to a uniform grid specifically
@@ -42,6 +42,7 @@ import type { JournalPhotoItem } from "./useJournalPhotoUpload";
 export default function JournalPhotoStrip({
   items,
   error,
+  batchProgress,
   onFilesSelected,
   onRemove,
   onRetry,
@@ -53,6 +54,7 @@ export default function JournalPhotoStrip({
 }: {
   items: JournalPhotoItem[];
   error: string | null;
+  batchProgress: JournalBatchProgress | null;
   onFilesSelected: (files: FileList | null) => void;
   onRemove: (localId: string) => void;
   onRetry: (localId: string) => void;
@@ -98,9 +100,6 @@ export default function JournalPhotoStrip({
     setActiveId(null);
   }
 
-  const completedCount = items.filter((it) => it.status === "complete").length;
-  const activeCount = items.length - completedCount - items.filter((it) => it.status === "error").length;
-  const isUploadingAny = items.some((it) => it.status === "uploading" || it.status === "saving");
   const activeItem = activeId ? items.find((it) => it.localId === activeId) : null;
 
   return (
@@ -169,9 +168,9 @@ export default function JournalPhotoStrip({
         </DndContext>
       )}
 
-      {activeCount > 0 && (
+      {batchProgress && (
         <p className="text-xs font-semibold text-ink/50">
-          {completedCount === 0 && !isUploadingAny ? "Preparing…" : `Uploading ${completedCount} of ${items.length}`}
+          {batchProgress.completed === 0 ? "Preparing…" : `Uploading ${batchProgress.completed} of ${batchProgress.total}`}
         </p>
       )}
 
