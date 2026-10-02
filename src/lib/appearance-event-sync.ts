@@ -385,7 +385,21 @@ export async function ensureOccurrenceAppearance(supabase: SupabaseClient, occur
   const derived = await deriveOccurrenceFields(supabase, occurrenceId);
   if (!derived) return;
   const { event_id, title, start_at, end_at, location_id, venue_name, address, city, state, latitude, longitude } = derived;
-  const fields = { event_id, title, start_at, end_at, location_id, venue_name, address, city, state, latitude, longitude };
+  // Event Participation <-> Appearance Integrity Repair pass — CONCRETE
+  // DEFECT FIX. This object previously omitted event_occurrence_id
+  // entirely, even though it's inserted/updated onto the row right below
+  // and both existence checks above/below key off that exact column —
+  // every occurrence-backed Appearance this function ever created was
+  // therefore unfindable by its own future calls, so re-approving the
+  // same business for the same occurrence could never reactivate the row
+  // it had already created; it could only insert a fresh duplicate (or,
+  // once appearances_one_per_business_occurrence's real DB-level partial
+  // unique index is finally exercised by a populated column, start
+  // correctly rejecting that duplicate as the race-safe backstop its own
+  // comment below always assumed was already active). Scoped to exactly
+  // the one missing field — no other derivation or field-ownership rule
+  // here changes.
+  const fields = { event_id, event_occurrence_id: occurrenceId, title, start_at, end_at, location_id, venue_name, address, city, state, latitude, longitude };
 
   // Production Bugfix — Multi-Date Participation Status. Same ordered +
   // limited bound as ensureEventAppearance's own identical reactivation
