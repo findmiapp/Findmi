@@ -36,14 +36,29 @@ export function useJournalPhotoUpload(initialPhotos: JournalPhotoState[], ensure
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    // Mobile Picker Repair pass — a batch already in flight is the
+    // double-submit guard itself: JournalPhotoStrip disables the trigger
+    // button/input whenever `batch` is non-null, so this can only be
+    // reached once per batch. `batch` is also set HERE, synchronously,
+    // before the first `await` — not after `ensureEntryId` resolves, as
+    // before — so the visible "Uploading…" tile appears the instant a
+    // real `change` event reaches React, never only once the network
+    // round-trip to create/resolve the draft finishes (the same
+    // "prove the event actually fired" reasoning MemberImageField's own
+    // `preparing` state uses).
+    if (batch) return;
     setError(null);
-    const id = await ensureEntryId();
-    if (!id) return;
-
     const fileArray = Array.from(files);
+    setBatch({ total: fileArray.length, completed: 0 });
+
+    const id = await ensureEntryId();
+    if (!id) {
+      setBatch(null);
+      return;
+    }
+
     let completed = 0;
     let failed = 0;
-    setBatch({ total: fileArray.length, completed: 0 });
 
     for (const file of fileArray) {
       const formData = new FormData();

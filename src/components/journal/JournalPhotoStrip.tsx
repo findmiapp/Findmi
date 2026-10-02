@@ -47,6 +47,14 @@ export default function JournalPhotoStrip({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cover = photos.find((p) => p.isCover) ?? photos[0] ?? null;
+  // Mobile Picker Repair pass — a batch in flight disables every trigger
+  // AND the input itself (not just one or the other): a disabled button
+  // can't fire openPicker, and a disabled input silently no-ops `.click()`
+  // if something still called it, so there's no path to a second
+  // concurrent upload batch while one is already running. Mirrors the
+  // same `disabled={isPending}` convention MemberImageField already uses
+  // for its own single upload.
+  const uploading = Boolean(batch);
 
   function openPicker() {
     // Defensive reset BEFORE opening the picker too, not only after a
@@ -62,7 +70,8 @@ export default function JournalPhotoStrip({
         <button
           type="button"
           onClick={openPicker}
-          className="group relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-black/10 bg-mist"
+          disabled={uploading}
+          className="group relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-black/10 bg-mist disabled:cursor-not-allowed"
         >
           {cover.url && <Image src={cover.url} alt="" fill unoptimized sizes="(min-width: 640px) 512px, 100vw" className="object-cover" />}
           <span className="absolute left-2.5 top-2.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
@@ -76,7 +85,8 @@ export default function JournalPhotoStrip({
         <button
           type="button"
           onClick={openPicker}
-          className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-black/15 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700"
+          disabled={uploading}
+          className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-black/15 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <span className="text-3xl leading-none">+</span>
           <span className="text-xs font-bold uppercase tracking-wide">Add Photos</span>
@@ -124,8 +134,9 @@ export default function JournalPhotoStrip({
           <button
             type="button"
             onClick={openPicker}
+            disabled={uploading}
             aria-label="Add more photos"
-            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-black/20 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700"
+            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-black/20 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <span className="text-xl leading-none">+</span>
           </button>
@@ -139,6 +150,7 @@ export default function JournalPhotoStrip({
         multiple
         aria-label="Add photos"
         className="sr-only"
+        disabled={uploading}
         onChange={(e) => {
           onFilesSelected(e.target.files);
           e.target.value = "";
