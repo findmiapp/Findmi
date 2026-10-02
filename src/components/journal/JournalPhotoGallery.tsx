@@ -1,4 +1,7 @@
+"use client";
+
 import Image from "next/image";
+import { JournalPhotoTrigger } from "./JournalMediaViewer";
 
 export interface JournalGalleryItem {
   id: string;
@@ -10,6 +13,13 @@ export interface JournalGalleryItem {
    * category column can flow straight into grouped sections here without
    * replacing this component — see groupByCategory below. */
   category?: string | null;
+  /** Global Media Viewer V1 — this photo's position within the full,
+   * canonically-ordered (display_order ascending) Journal media
+   * collection, including the cover — never this item's own position
+   * within just the gallery subset. -1 when it couldn't be resolved
+   * (e.g. a signed URL failed to generate), in which case the tile
+   * renders as a plain, non-interactive photo rather than a dead button. */
+  mediaIndex: number;
 }
 
 /** Journal V1 (visual convergence pass) — the Detail page's editorial
@@ -85,8 +95,8 @@ function EditorialGrid({ items }: { items: JournalGalleryItem[] }) {
 }
 
 function GalleryTile({ item, className, sizes }: { item: JournalGalleryItem; className: string; sizes: string }) {
-  return (
-    <div className={`relative overflow-hidden rounded-xl bg-mist ${className}`}>
+  const content = (
+    <>
       {item.url && <Image src={item.url} alt={item.caption ?? ""} fill unoptimized sizes={sizes} className="object-cover" />}
       {item.caption && (
         <div
@@ -96,6 +106,18 @@ function GalleryTile({ item, className, sizes }: { item: JournalGalleryItem; cla
           <p className="truncate text-[11px] font-medium text-white">{item.caption}</p>
         </div>
       )}
-    </div>
+    </>
+  );
+
+  // No URL at all (nothing to view full-screen) — a plain, non-interactive
+  // tile, same as before this pass.
+  if (!item.url || item.mediaIndex < 0) {
+    return <div className={`relative overflow-hidden rounded-xl bg-mist ${className}`}>{content}</div>;
+  }
+
+  return (
+    <JournalPhotoTrigger index={item.mediaIndex} label="View photo" className={`relative overflow-hidden rounded-xl bg-mist ${className}`}>
+      {content}
+    </JournalPhotoTrigger>
   );
 }

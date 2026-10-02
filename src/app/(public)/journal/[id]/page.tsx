@@ -7,6 +7,8 @@ import { getJournalEntryWithRelations } from "@/lib/journal";
 import { isAdminSession } from "@/lib/admin/auth";
 import JournalOwnerActions from "@/components/journal/JournalOwnerActions";
 import JournalPhotoGallery from "@/components/journal/JournalPhotoGallery";
+import { JournalMediaViewerRoot, JournalPhotoTrigger } from "@/components/journal/JournalMediaViewer";
+import type { MediaViewerItem } from "@/components/MediaViewer";
 import ReadMoreText from "@/components/ReadMoreText";
 import { formatDateShortInZone, formatTimeRangeInZone } from "@/lib/format";
 
@@ -69,6 +71,16 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
 
   const cover = media.find((m) => m.is_cover) ?? media[0] ?? null;
   const gallery = media.filter((m) => m.id !== cover?.id);
+
+  // Global Media Viewer V1 — the viewer's own collection, in the SAME
+  // display_order-ascending order already used everywhere else on this
+  // page (never reinvented). Only media with a real signed URL can ever
+  // be opened full-screen; everything else keeps rendering exactly as it
+  // did before this pass (a plain, non-interactive tile/fallback).
+  const viewerItems: MediaViewerItem[] = media
+    .filter((m): m is typeof m & { url: string } => Boolean(m.url))
+    .map((m) => ({ id: m.id, src: m.url, alt: entry.title, caption: m.caption }));
+  const coverIndex = cover?.url ? viewerItems.findIndex((v) => v.id === cover.id) : -1;
   const dateLabel = new Date(entry.entry_date + "T00:00:00").toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -114,12 +126,14 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
 
   const heroLocationLabel = location?.name ?? manualLocationName;
 
-  return (
-    <div className="mx-auto max-w-2xl pb-14">
+  const pageBody = (
+    <>
       {/* Hero */}
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink sm:rounded-b-3xl">
         {cover?.url ? (
-          <Image src={cover.url} alt={entry.title} fill unoptimized priority sizes="(min-width: 768px) 672px, 100vw" className="object-cover" />
+          <JournalPhotoTrigger index={coverIndex} label={`View photo${media.length === 1 ? "" : "s"}`} className="absolute inset-0 h-full w-full">
+            <Image src={cover.url} alt={entry.title} fill unoptimized priority sizes="(min-width: 768px) 672px, 100vw" className="object-cover" />
+          </JournalPhotoTrigger>
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-ink">
             <span className="text-label uppercase tracking-wide text-white/25">Findmi</span>
@@ -186,7 +200,15 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
 
         {gallery.length > 0 && (
           <section className="mt-6">
-            <JournalPhotoGallery items={gallery.map((m) => ({ id: m.id, url: m.url, caption: m.caption, category: null }))} />
+            <JournalPhotoGallery
+              items={gallery.map((m) => ({
+                id: m.id,
+                url: m.url,
+                caption: m.caption,
+                category: null,
+                mediaIndex: m.url ? viewerItems.findIndex((v) => v.id === m.id) : -1,
+              }))}
+            />
           </section>
         )}
 
@@ -279,6 +301,15 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </section>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div className="mx-auto max-w-2xl pb-14">
+      {/* Global Media Viewer V1 — only instantiated when there's real,
+          openable media; a zero-photo entry gets no viewer at all (see
+          this pass's own requirement on that). */}
+      {viewerItems.length > 0 ? <JournalMediaViewerRoot items={viewerItems}>{pageBody}</JournalMediaViewerRoot> : pageBody}
     </div>
   );
 }
