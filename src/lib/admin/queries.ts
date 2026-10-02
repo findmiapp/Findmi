@@ -753,9 +753,25 @@ export interface AdminAppearancesResult {
   failed: boolean;
 }
 
-function logAdminQueryError(context: string, error: { message: string; code?: string } | null): void {
+/** Admin Appearances Query Failure fix — widened to also capture
+ * `details`/`hint` (PostgrestError carries both, alongside `message`/
+ * `code`). The PGRST201 ambiguous-embed failure this was built to
+ * diagnose surfaces its useful detail there (which two tables/columns
+ * PostgREST considered ambiguous) — `message`/`code` alone weren't
+ * enough to tell "ambiguous relationship" apart from any other failure
+ * without pulling Supabase's own project logs. Server-side only, same
+ * as before: never put this in front of a browser. */
+function logAdminQueryError(
+  context: string,
+  error: { message: string; code?: string; details?: string | null; hint?: string | null } | null
+): void {
   if (!error) return;
-  console.error(`[admin-data] ${context} failed`, { message: error.message, code: error.code });
+  console.error(`[admin-data] ${context} failed`, {
+    message: error.message,
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
+  });
 }
 
 export async function getAdminAppearances(filters: AppearanceListFilters = {}): Promise<AdminAppearancesResult> {
@@ -764,10 +780,26 @@ export async function getAdminAppearances(filters: AppearanceListFilters = {}): 
     logAdminQueryError("getAdminAppearances", { message: "Admin Supabase client isn't configured." });
     return { appearances: [], failed: true };
   }
+  // Admin Appearances Query Failure fix — `business:businesses(id, name)`
+  // must be pinned to the FK PostgREST should traverse
+  // (appearances.business_id -> businesses.id, `appearances_business_id_fkey`).
+  // The Featured Appearance System pass later added a SECOND, reverse FK
+  // between these same two tables (`businesses.featured_appearance_id ->
+  // appearances.id`, `businesses_featured_appearance_id_fkey`), so
+  // PostgREST can no longer infer which relationship this embed means —
+  // confirmed live via Supabase's own edge/postgrest logs: this exact
+  // request was returning HTTP 300 with `PostgREST; error=PGRST201`
+  // ("more than one relationship was found"), which getAdminAppearances
+  // then silently turned into an empty array before this pass's error
+  // handling existed. The `!appearances_business_id_fkey` hint below is
+  // the standard PostgREST disambiguation syntax — no schema change, no
+  // data change; every other embed here (event, market, market_area) has
+  // exactly one FK path each (verified against pg_constraint) and needs
+  // no hint.
   let query = supabase
     .from("appearances")
     .select(
-      "*, business:businesses(id, name), event:events(id, name, market:markets(id, name), market_area:market_areas(id, name)), market:markets(id, name), market_area:market_areas(id, name)"
+      "*, business:businesses!appearances_business_id_fkey(id, name), event:events(id, name, market:markets(id, name), market_area:market_areas(id, name)), market:markets(id, name), market_area:market_areas(id, name)"
     );
   if (filters.q) {
     const term = `%${filters.q}%`;

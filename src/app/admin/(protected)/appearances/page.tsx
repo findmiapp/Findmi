@@ -187,14 +187,25 @@ export default async function AdminAppearancesPage({
           bulk review (the revalidated appearance list no longer contains
           the reviewed ids). Bulk controls only render on the Unreviewed
           view (showBulk), per this pass's own "selection controls on the
-          Unreviewed view" requirement. */}
-      <div className="mt-2">
-        <AppearanceReviewList
-          key={appearances.map((a) => a.id).join(",")}
-          appearances={appearances}
-          showBulk={reviewedFilter === "unreviewed"}
-        />
-      </div>
+          Unreviewed view" requirement.
+          Admin Appearances Query Failure fix — only rendered when the
+          query actually succeeded. AppearanceReviewList has its own
+          built-in "No results for this view." empty state for a
+          genuinely empty `appearances` array (State B); rendering it
+          unconditionally meant a failed query (State A, `appearances:
+          []` from the error path) showed BOTH the error banner above AND
+          that empty-state text — two contradictory messages for one
+          failure. Skipping the component entirely on `failed` keeps the
+          three states (error / empty / rows) mutually exclusive. */}
+      {!failed && (
+        <div className="mt-2">
+          <AppearanceReviewList
+            key={appearances.map((a) => a.id).join(",")}
+            appearances={appearances}
+            showBulk={reviewedFilter === "unreviewed"}
+          />
+        </div>
+      )}
     </div>
   );
 }
