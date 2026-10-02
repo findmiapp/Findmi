@@ -1,15 +1,16 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { JournalIndexEntry } from "@/lib/journal";
+import { parseYmd, formatEntryTime } from "@/lib/journalArchive";
 
 /** Journal V1.1 — the archive's own richer card (replacing the old
  * Index's small square gallery tile): a large cover image leads, title
  * gets real room (still line-clamped here — unlike the Detail hero, a
- * list card legitimately needs to stay compact), then a location line and
- * a truthful meta line built only from real data (photo count, and which
- * connection TYPES exist — never a fabricated per-type count the schema
- * doesn't track). Works unmodified whether the entry has no cover, one
- * photo, many photos, no location, a canonical or manual location, or
+ * list card legitimately needs to stay compact), then a date/location line
+ * and a truthful meta line built only from real data (photo count, and
+ * which connection TYPES exist — never a fabricated per-type count the
+ * schema doesn't track). Works unmodified whether the entry has no cover,
+ * one photo, many photos, no location, a canonical or manual location, or
  * zero/one/many connected objects. */
 export default function JournalArchiveCard({ entry }: { entry: JournalIndexEntry }) {
   const connectionLabels = [entry.hasBusiness ? "Business" : null, entry.hasProduct ? "Product" : null, entry.hasEvent ? "Event" : null].filter(
@@ -27,6 +28,17 @@ export default function JournalArchiveCard({ entry }: { entry: JournalIndexEntry
     entry.photoCount > 0 ? `${entry.photoCount} photo${entry.photoCount === 1 ? "" : "s"}` : null,
     connectionLabels.length > 0 ? connectionLabels.join(", ") : null,
   ].filter((v): v is string => Boolean(v));
+
+  // Quick Journal Preview Card Experience Date pass — this card can appear
+  // in All/Day/Week/Month/Year (and future search/Passbook) without a
+  // surrounding date heading, so it must read correctly on its own: the
+  // EXPERIENCE DATE (entry_date — never created_at) leads, the already-typed
+  // entry_time rides along when present (no new occurrence query/resolver
+  // added just for this), and location trails in the same line.
+  const dateLabel = parseYmd(entry.entry_date)
+    .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    .toUpperCase();
+  const timeLabel = entry.entry_time ? formatEntryTime(entry.entry_time) : null;
 
   return (
     <Link
@@ -53,7 +65,13 @@ export default function JournalArchiveCard({ entry }: { entry: JournalIndexEntry
             )
           )}
         </div>
-        {entry.location && <p className="truncate text-xs text-ink/55">{entry.location.name}</p>}
+        <p className="truncate text-xs text-ink/55">
+          <span className="font-semibold text-ink/70">
+            {dateLabel}
+            {timeLabel ? ` · ${timeLabel}` : ""}
+          </span>
+          {entry.location ? ` · ${entry.location.name}` : ""}
+        </p>
         {metaParts.length > 0 && <p className="truncate text-xs text-ink/45">{metaParts.join(" · ")}</p>}
       </div>
     </Link>
