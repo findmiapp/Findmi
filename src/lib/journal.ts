@@ -175,7 +175,7 @@ export async function getCurrentUserId(): Promise<string | null> {
  * are passed (createSignedUrls), never one call per photo. Returns null
  * for any path that failed to sign (a deleted/missing object) rather than
  * throwing, so one bad row never breaks an entire gallery. */
-async function resolveSignedUrls(paths: string[]): Promise<Map<string, string>> {
+export async function resolveSignedUrls(paths: string[]): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   if (paths.length === 0) return result;
   const admin = getAdminSupabase();
@@ -483,75 +483,11 @@ export async function validateConnectableObject(
   return Boolean(data);
 }
 
-/** Future surfacing — the reusable query helper future Business/Product/
- * Location/Event pages will call to show "Experiences" (real public
- * Journal Entries connected to this object). Built now, per this pass's
- * own architecture requirement, but not rendered anywhere yet. */
-export async function getPublicJournalEntriesForObject(
-  kind: "location" | "business" | "product" | "event",
-  objectId: string,
-  limit = 12
-): Promise<JournalIndexEntry[]> {
-  const supabase = await getServerSupabase();
-  const column = kind === "location" ? "location_id" : `${kind}_id`;
-
-  let entryIds: string[];
-  if (kind === "location") {
-    const { data } = await supabase.from("journal_entries").select("id").eq("location_id", objectId).eq("visibility", "public").eq("status", "published").limit(limit);
-    entryIds = (data ?? []).map((r) => r.id);
-  } else {
-    const { data } = await supabase.from("journal_entry_connections").select("journal_entry_id").eq(column, objectId).limit(limit);
-    entryIds = (data ?? []).map((r) => r.journal_entry_id);
-  }
-  if (entryIds.length === 0) return [];
-
-  const { data: entries } = await supabase
-    .from("journal_entries")
-    .select("id, title, entry_date, entry_time, visibility, location_id, location:locations(name)")
-    .in("id", entryIds)
-    .eq("visibility", "public")
-    .eq("status", "published")
-    .order("entry_date", { ascending: false })
-    .limit(limit);
-  if (!entries || entries.length === 0) return [];
-
-  const { data: mediaRows } = await supabase
-    .from("journal_entry_media")
-    .select("journal_entry_id, storage_path, is_cover, display_order")
-    .in(
-      "journal_entry_id",
-      entries.map((e) => e.id)
-    );
-  const mediaByEntry = new Map<string, { storage_path: string; is_cover: boolean; display_order: number }[]>();
-  for (const row of mediaRows ?? []) {
-    const list = mediaByEntry.get(row.journal_entry_id) ?? [];
-    list.push(row);
-    mediaByEntry.set(row.journal_entry_id, list);
-  }
-  const coverPaths = [...mediaByEntry.values()].map((list) => (list.find((m) => m.is_cover) ?? [...list].sort((a, b) => a.display_order - b.display_order)[0])?.storage_path).filter((p): p is string => Boolean(p));
-  const signedUrls = await resolveSignedUrls(coverPaths);
-
-  return entries.map((e) => {
-    const list = mediaByEntry.get(e.id) ?? [];
-    const cover = list.find((m) => m.is_cover) ?? [...list].sort((a, b) => a.display_order - b.display_order)[0];
-    const location = Array.isArray(e.location) ? (e.location[0] ?? null) : e.location;
-    return {
-      id: e.id,
-      title: e.title,
-      entry_date: e.entry_date,
-      entry_time: e.entry_time,
-      visibility: e.visibility as JournalVisibility,
-      // This query itself is hard-scoped to .eq("status", "published")
-      // above, so this is always accurate — never inferred from visibility.
-      status: "published",
-      coverUrl: cover ? (signedUrls.get(cover.storage_path) ?? null) : null,
-      photoCount: list.length,
-      location: location ? { name: location.name } : null,
-      hasBusiness: false,
-      hasProduct: false,
-      hasEvent: false,
-    };
-  });
-}
+/** Public distribution of Journal entries onto Business/Event/Location/
+ * Product pages lives in lib/journal-distribution.ts
+ * (getPublicJournalCollection) — it replaced the never-wired
+ * getPublicJournalEntriesForObject, which pre-limited connection rows
+ * before filtering for public/published, missed occurrence -> Event
+ * rollup, and couldn't paginate. */
 
 export { validateImageFile };

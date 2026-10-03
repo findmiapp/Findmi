@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 import Image from "next/image";
+import JournalCollection from "@/components/journal/JournalCollection";
+import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
@@ -137,7 +139,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, journalCtaState] =
+  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, journalCtaState, journal] =
     await Promise.all([
       getBusinessesForEvent(event.id),
       attachEventCategories([event]),
@@ -167,6 +169,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // getEventJournalCtaState's own comment). The CTA itself always
       // renders regardless of this value — only its copy changes.
       getEventJournalCtaState(event.id),
+      // Journal Distribution V1 — public experiences connected to this
+      // Event OR to any of its dates (occurrence -> Event rollup at read
+      // time), de-duplicated.
+      getPublicJournalCollection({ subjectType: "event", subjectId: event.id, limit: 6, withCount: true }),
     ]);
   // Multi-Date Business Participation Pass 2B — Primary Date Integrity.
   // Only ever synthesizes/includes the Primary Date entry when this Event
@@ -842,6 +848,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
             Location profile whenever canonicalLocation resolved one
             (occurrence relationship preferred, exact-text-match fallback
             for legacy events) — never a fabricated link. */}
+        {/* Journal Distribution V1 — renders nothing when empty; the
+            DocumentExperienceCta above is separate and unchanged. */}
+        {journal.entries.length > 0 && (
+          <section className="mt-8">
+            <JournalCollection
+              heading="Experiences"
+              entries={journal.entries}
+              total={journal.total}
+              seeAllHref={journalCollectionHref("event", event.slug)}
+            />
+          </section>
+        )}
+
         {hasVenueDetails && (
           <section className="mt-8">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">About the Venue</h2>

@@ -8,6 +8,8 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
 import FormAction from "@/components/FormAction";
 import ProductCard from "@/components/ProductCard";
+import JournalCollection from "@/components/journal/JournalCollection";
+import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import ProductSaveButton from "@/components/ProductSaveButton";
 import ShareButton from "@/components/ShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
@@ -97,11 +99,14 @@ export default async function ProductPage({
     product.business.accepts_inquiries &&
     sanitizeBusinessInquiryTopics(product.business.inquiry_topics).includes("product_order");
 
-  const [fulfillmentOptions, appearances, sellerProducts, inquiryAction] = await Promise.all([
+  const [fulfillmentOptions, appearances, sellerProducts, inquiryAction, journal] = await Promise.all([
     canAddToCart ? getFulfillmentOptionsForProduct(product.id) : Promise.resolve([]),
     getUpcomingAppearancesForBusiness(product.business_id, 3),
     getProductsForBusiness(product.business_id),
     resolveProductInquiryForm(product, product.business),
+    // Journal Distribution V1 — experiences structurally connected to
+    // this Product only.
+    getPublicJournalCollection({ subjectType: "product", subjectId: product.id, limit: 6, withCount: true }),
   ]);
   const moreFromSeller = sellerProducts.filter((p) => p.id !== product.id).slice(0, 8);
 
@@ -343,6 +348,18 @@ export default async function ProductPage({
           >
             View all appearances →
           </Link>
+        </section>
+      )}
+
+      {/* Journal Distribution V1 — renders nothing when empty. */}
+      {journal.entries.length > 0 && (
+        <section className="mt-10">
+          <JournalCollection
+            heading="From the Journal"
+            entries={journal.entries}
+            total={journal.total}
+            seeAllHref={journalCollectionHref("product", product.slug)}
+          />
         </section>
       )}
 

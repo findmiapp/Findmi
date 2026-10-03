@@ -22,6 +22,8 @@ import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import { FeaturedBadge, VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
+import JournalCollection from "@/components/journal/JournalCollection";
+import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
   attachCategories,
@@ -252,11 +254,14 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Appearance creation/management (Command Center's own aggregation
   // queries this same table with no such limit), storage, event rosters,
   // or /find, and still doesn't.
-  const [products, appearances, people, galleryImages] = await Promise.all([
+  const [products, appearances, people, galleryImages, journal] = await Promise.all([
     getProductsForBusiness(business.id),
     getUpcomingAppearancesForBusiness(business.id),
     getPeopleForBusiness(business.id),
     getBusinessGalleryImages(business.id),
+    // Journal Distribution V1 — public, published experiences connected to
+    // this Business; small preview set + exact count for "See all".
+    getPublicJournalCollection({ subjectType: "business", subjectId: business.id, limit: 6, withCount: true }),
   ]);
 
   // Featured Appearance System — replaces the old split presentation
@@ -859,6 +864,18 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               <div className="mt-4">
                 <ImageGalleryStrip images={galleryImages} alt={business.name} />
               </div>
+            </section>
+          )}
+
+          {/* Journal Distribution V1 — renders nothing when empty. */}
+          {journal.entries.length > 0 && (
+            <section className="mt-8">
+              <JournalCollection
+                heading="From the Journal"
+                entries={journal.entries}
+                total={journal.total}
+                seeAllHref={journalCollectionHref("business", business.slug)}
+              />
             </section>
           )}
 

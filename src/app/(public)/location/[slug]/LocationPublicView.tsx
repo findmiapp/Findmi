@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import JournalCollection from "@/components/journal/JournalCollection";
+import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
@@ -108,7 +110,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const [happenings, galleryImages, showMessageButton, placeContext, withinHappenings] = await Promise.all([
+  const [happenings, galleryImages, showMessageButton, placeContext, withinHappenings, journal] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),
     getLocationGalleryImages(location.id),
     shouldShowMessageButton("location", location.id),
@@ -119,6 +121,9 @@ export async function LocationPublicView({ slug }: { slug: string }) {
     // one (descendants), kept separate from `happenings` (exactly here),
     // which still drives Featured, Calendar and What's Happening Here.
     getUpcomingWithinLocation(location.id),
+    // Journal Distribution V1 — entries whose structured location_id is
+    // EXACTLY this place (no descendants, no manual-text matching).
+    getPublicJournalCollection({ subjectType: "location", subjectId: location.id, limit: 6, withCount: true }),
   ]);
   // Location Detail V1 — one unified "What's Happening Here" module
   // replaces the old split Featured Event hero + separate "Coming Up
@@ -440,6 +445,19 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       {withinHappenings.length > 0 && (
         <section className="mt-6 px-4 sm:px-0">
           <LocationHappeningCollection happenings={withinHappenings} heading={`Within ${location.name}`} />
+        </section>
+      )}
+
+      {/* Journal Distribution V1 — separate from activity; renders nothing
+          when empty. */}
+      {journal.entries.length > 0 && (
+        <section className="mt-6 px-4 sm:px-0">
+          <JournalCollection
+            heading="From the Journal"
+            entries={journal.entries}
+            total={journal.total}
+            seeAllHref={journalCollectionHref("location", location.slug)}
+          />
         </section>
       )}
 
