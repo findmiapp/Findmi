@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import LocationGeographyFields from "@/components/LocationGeographyFields";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { requireBusinessMember } from "@/lib/permissions";
+import { isManagingRole } from "@/lib/business-locations";
 import { createMemberLocation } from "../actions";
 
 export const metadata: Metadata = {
@@ -37,6 +40,7 @@ export default async function AddLocationPage({
     market_id?: string;
     market_area_id?: string;
     requested_market_text?: string;
+    business_id?: string;
   }>;
 }) {
   const {
@@ -50,23 +54,50 @@ export default async function AddLocationPage({
     market_id: submittedMarketId,
     market_area_id: submittedAreaId,
     requested_market_text: submittedRequestedMarketText,
+    business_id: businessIdParam,
   } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent("/account/location/new")}`);
+  const selfPath = businessIdParam ? `/account/location/new?business_id=${encodeURIComponent(businessIdParam)}` : "/account/location/new";
+  if (!user) redirect(`/login?next=${encodeURIComponent(selfPath)}`);
 
-  const marketsWithAreas = await getActiveMarketsWithAreaOptions();
+  // /account V2 Pass 2 — Business context (Presence -> Locations -> Add
+  // location). Honored only for an owner/manager of that Business; anyone
+  // else just gets the ordinary standalone form. createMemberLocation
+  // re-checks this server-side regardless.
+  const [marketsWithAreas, business] = await Promise.all([
+    getActiveMarketsWithAreaOptions(),
+    resolveBusinessContext(businessIdParam),
+  ]);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-      <p className="text-label font-bold uppercase text-accent">Your Findmi</p>
-      <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add a Venue</h1>
-      <p className="mt-2 text-body text-muted">
-        You&rsquo;ll own and manage it right away in your Location Manager, free, with no separate Venue fee, ever.
-      </p>
+      {business ? (
+        <>
+          <Link
+            href={`/account/business/${business.id}?tab=findmi-here&view=locations`}
+            className="text-metadata font-semibold text-muted hover:text-primary"
+          >
+            &larr; {business.name}
+          </Link>
+          <h1 className="mt-2 font-display text-page-title font-bold text-primary sm:text-display">Add a location</h1>
+          <p className="mt-2 text-body text-muted">
+            A place where {business.name} has an ongoing physical presence. You&rsquo;ll manage it right away, and it
+            appears publicly once Findmi has reviewed it.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-label font-bold uppercase text-accent">Your Findmi</p>
+          <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add a Venue</h1>
+          <p className="mt-2 text-body text-muted">
+            You&rsquo;ll own and manage it right away in your Location Manager, free, with no separate Venue fee, ever.
+          </p>
+        </>
+      )}
 
       {error && (
         <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">
@@ -81,6 +112,7 @@ export default async function AddLocationPage({
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberLocation} className="flex flex-col gap-4">
+          {business && <input type="hidden" name="business_id" value={business.id} />}
           <label className="block">
             <span className="mb-1.5 block text-body font-medium text-primary">Venue name</span>
             <input
@@ -112,11 +144,24 @@ export default async function AddLocationPage({
           />
 
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
-            Create My Venue
+            {business ? "Create location" : "Create My Venue"}
           </button>
           <p className="text-center text-metadata text-subtle">Free, no separate Venue fee, ever.</p>
         </form>
       </div>
     </div>
   );
+}
+
+async function resolveBusinessContext(businessId: string | undefined): Promise<{ id: string; name: string } | null> {
+  if (!businessId) return null;
+  try {
+    if (!isManagingRole((await requireBusinessMember(businessId)).role)) return null;
+  } catch {
+    return null;
+  }
+  const admin = getAdminSupabase();
+  if (!admin) return null;
+  const { data } = await admin.from("businesses").select("id, name").eq("id", businessId).maybeSingle();
+  return (data as { id: string; name: string } | null) ?? null;
 }

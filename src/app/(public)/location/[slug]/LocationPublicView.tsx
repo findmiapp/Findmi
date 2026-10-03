@@ -35,6 +35,7 @@ import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, i
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
 import { getSupabase } from "@/lib/supabase";
+import { getOperatorsForLocation } from "@/lib/business-locations";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Location's public page, shared verbatim by both the canonical
@@ -110,7 +111,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const [happenings, galleryImages, showMessageButton, placeContext, withinHappenings, journal] = await Promise.all([
+  const [happenings, galleryImages, showMessageButton, placeContext, withinHappenings, journal, operators] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),
     getLocationGalleryImages(location.id),
     shouldShowMessageButton("location", location.id),
@@ -124,6 +125,10 @@ export async function LocationPublicView({ slug }: { slug: string }) {
     // Journal Distribution V1 — entries whose structured location_id is
     // EXACTLY this place (no descendants, no manual-text matching).
     getPublicJournalCollection({ subjectType: "location", subjectId: location.id, limit: 6, withCount: true }),
+    // /account V2 Pass 2 — live Businesses with an ongoing presence here
+    // (business_locations). Public read; empty if none (or if the table
+    // isn't there yet).
+    getOperatorsForLocation(getSupabase(), location.id, { limit: 6, publicOnly: true }),
   ]);
   // Location Detail V1 — one unified "What's Happening Here" module
   // replaces the old split Featured Event hero + separate "Coming Up
@@ -305,6 +310,22 @@ export async function LocationPublicView({ slug }: { slug: string }) {
                   {placeContext.geography}
                 </>
               )}
+            </p>
+          )}
+
+          {/* /account V2 Pass 2 — "Operated by": quiet context line, each
+              Business linking to its own page. Absent when none. */}
+          {operators.items.length > 0 && (
+            <p className="mt-1 text-sm leading-snug text-ink/55">
+              Operated by{" "}
+              {operators.items.map((b, i) => (
+                <span key={b.businessId}>
+                  {i > 0 && (i === operators.items.length - 1 ? " & " : ", ")}
+                  <Link href={`/business/${b.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
+                    {b.name}
+                  </Link>
+                </span>
+              ))}
             </p>
           )}
 

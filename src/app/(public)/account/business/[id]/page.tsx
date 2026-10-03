@@ -34,6 +34,7 @@ import BusinessHome from "./v2/BusinessHome";
 import MoreMenu from "./v2/MoreMenu";
 import OpportunitiesView from "./v2/OpportunitiesView";
 import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "./v2/PresenceViews";
+import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
 import { getApplicationsForBusiness, getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import {
   addAppearanceFromEvent,
@@ -325,6 +326,11 @@ export default async function ManageBusinessPage({
     // /account V2 — Presence sub-view and "open the add composer" quick action.
     view?: string;
     compose?: string;
+    // /account V2 Pass 2 — Presence -> Locations add panel / remove
+    // confirmation / post-action notice.
+    add?: string;
+    remove?: string;
+    location_updated?: string;
   }>;
 }) {
   const { id } = await params;
@@ -344,6 +350,9 @@ export default async function ManageBusinessPage({
     schedule_limit: scheduleLimitParam,
     view: viewParam,
     compose: composeParam,
+    add: addParam,
+    remove: removeParam,
+    location_updated: locationUpdated,
     add_title,
     add_date,
     add_start_time,
@@ -400,9 +409,11 @@ export default async function ManageBusinessPage({
   // banner on the account home, same shape every other /account page
   // already uses).
   let isAdminElevated = false;
+  let membershipRole: string | null = null;
   try {
     const membership = await requireBusinessMember(id);
     isAdminElevated = Boolean(membership.viaAdmin);
+    membershipRole = membership.role;
   } catch (err) {
     const message = err instanceof Error ? err.message : "You don't have access to that business.";
     redirect(errorRedirectUrl("/account", message));
@@ -655,6 +666,32 @@ export default async function ManageBusinessPage({
   // the account dashboard — no new query.
   const presenceView = parsePresenceView(viewParam);
   const composeOpen = composeParam === "1";
+  // /account V2 Pass 2 — Business Locations, fetched only for that view.
+  // Read via the service-role client (already authorized above) so the
+  // owner also sees their own pending/archived connected Locations.
+  const businessLocationsView =
+    activeTab === "findmi-here" && presenceView === "locations"
+      ? await (async () => {
+          const [page, managed] = await Promise.all([
+            getLocationsForBusiness(admin, id),
+            user ? getManagedLocationsForUser(admin, user.id) : Promise.resolve([]),
+          ]);
+          const managedIds = new Set(managed.map((m) => m.id));
+          const linkedIds = new Set(page.items.map((l) => l.locationId));
+          // Linked ids beyond the first page still mustn't be offered again.
+          const alsoLinked = await getLinkedLocationIds(
+            admin,
+            id,
+            managed.filter((m) => !linkedIds.has(m.id)).map((m) => m.id)
+          );
+          return {
+            ...page,
+            connectable: managed.filter((m) => !linkedIds.has(m.id) && !alsoLinked.has(m.id)),
+            // Admin Manage-As can manage every Location (lib/permissions.ts).
+            manageableIds: isAdminElevated ? page.items.map((l) => l.locationId) : page.items.map((l) => l.locationId).filter((lid) => managedIds.has(lid)),
+          };
+        })()
+      : null;
   const [pendingInvitations, businessApplications] =
     activeTab === "opportunities" || activeTab === "overview"
       ? await Promise.all([
@@ -2015,7 +2052,19 @@ export default async function ManageBusinessPage({
           </div>
         )}
         {activeTab === "findmi-here" && presenceView === "locations" && (
-          <LocationsPresence locations={qrEligibleLocations} businessName={business.name} />
+          <LocationsPresence
+            basePath={`/account/business/${id}`}
+            businessId={id}
+            businessName={business.name}
+            locations={businessLocationsView?.items ?? []}
+            hasMore={businessLocationsView?.hasMore ?? false}
+            connectable={businessLocationsView?.connectable ?? []}
+            manageableIds={businessLocationsView?.manageableIds ?? []}
+            canEdit={isManagingRole(membershipRole)}
+            addOpen={addParam === "1"}
+            confirmRemoveId={removeParam ?? null}
+            notice={locationUpdated ?? null}
+          />
         )}
         {activeTab === "findmi-here" && presenceView === "upcoming" && (
           <div className="flex flex-col gap-5 lg:max-w-3xl">

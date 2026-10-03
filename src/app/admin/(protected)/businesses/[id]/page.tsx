@@ -9,6 +9,13 @@ import {
   publicationStatusLabel,
 } from "@/lib/admin/membership-queries";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
+import { RelationField } from "@/components/admin/RelationPicker";
+import { getLocationsForBusiness } from "@/lib/business-locations";
+import {
+  adminConnectBusinessLocation,
+  adminRemoveBusinessLocation,
+  adminSetPrimaryBusinessLocation,
+} from "../location-actions";
 import AdminTabNav, { type TabNavItem } from "@/components/admin/TabNav";
 import SubmitBar from "@/components/admin/SubmitBar";
 import {
@@ -91,6 +98,7 @@ const ADMIN_TABS: TabNavItem[] = [
   { key: "gallery", label: "Gallery" },
   { key: "products", label: "Products" },
   { key: "appearances", label: "Appearances" },
+  { key: "locations", label: "Locations" },
   { key: "categories", label: "Categories" },
   { key: "ownership", label: "Ownership" },
   { key: "plan", label: "Plan" },
@@ -147,6 +155,11 @@ export default async function EditBusinessPage({
         getBusinessAreasByMarket(marketsAdmin, id),
       ])
     : [[], [], [], new Map<string, string[]>()];
+  // /account V2 Pass 2 — connected Locations (business_locations), only
+  // fetched for the Locations tab. Bounded page; fails safe to empty if
+  // the migration isn't applied yet.
+  const businessLocations =
+    tab === "locations" && marketsAdmin ? await getLocationsForBusiness(marketsAdmin, id) : { items: [], hasMore: false };
   const activePrimaryMarket = marketAssignments.find((m) => m.relationship === "primary" && m.active) ?? null;
   const activeAdditionalMarkets = marketAssignments.filter((m) => m.relationship === "additional" && m.active);
   const inactiveMarketAssignments = marketAssignments.filter((m) => !m.active);
@@ -621,6 +634,75 @@ export default async function EditBusinessPage({
                 Import Appearances →
               </Link>
             </div>
+          </div>
+        )}
+
+        {/* ── Locations ────────────────────────────────────────────── */}
+        {/* /account V2 Pass 2 — places where this business has an ongoing
+            physical presence. Not Sold Here, not temporary Appearances.
+            Remove deletes only the connection, never the Location. */}
+        {tab === "locations" && (
+          <div className="rounded-2xl border border-black/10 bg-white p-4">
+            <p className="text-sm font-semibold text-ink">Locations</p>
+            <p className="mt-1 text-xs text-ink/45">
+              Places where this business has an ongoing physical presence. Connect deliberately — not for places it&rsquo;s
+              only sold at or temporarily appears at.
+            </p>
+            {businessLocations.items.length > 0 ? (
+              <ul className="mt-3 flex flex-col gap-2">
+                {businessLocations.items.map((l) => (
+                  <li key={l.locationId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-black/10 px-3 py-2">
+                    <div className="min-w-0">
+                      <Link href={`/admin/locations/${l.locationId}`} className="truncate text-sm font-medium text-ink hover:underline">
+                        {l.name}
+                      </Link>
+                      <p className="text-xs text-ink/45">
+                        {[l.city, l.state].filter(Boolean).join(", ") || "No city"}
+                        {l.isPrimary ? " · Primary" : ""}
+                        {l.isPending ? " · Pending review" : ""}
+                        {l.isArchived ? " · Archived" : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {!l.isPrimary && (
+                        <form action={adminSetPrimaryBusinessLocation.bind(null, id, l.locationId)}>
+                          <button type="submit" className="text-xs font-semibold text-findmi-700 hover:underline">
+                            Set primary
+                          </button>
+                        </form>
+                      )}
+                      <form action={adminRemoveBusinessLocation.bind(null, id, l.locationId)}>
+                        <button type="submit" className="text-xs font-semibold text-red-600 hover:underline">
+                          Remove
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-ink/50">No connected locations.</p>
+            )}
+            {businessLocations.hasMore && (
+              <p className="mt-2 text-xs text-ink/45">Showing the first {businessLocations.items.length}.</p>
+            )}
+            <form action={adminConnectBusinessLocation.bind(null, id)} className="mt-4 flex flex-col gap-3">
+              <RelationField
+                label="Connect a location"
+                name="location_id"
+                entity="locations"
+                initial={null}
+                clearLabel={null}
+                placeholder="Search locations"
+                hint="Removing later deletes only the connection — the Location itself stays."
+              />
+              <button
+                type="submit"
+                className="w-fit rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
+              >
+                Connect
+              </button>
+            </form>
           </div>
         )}
 

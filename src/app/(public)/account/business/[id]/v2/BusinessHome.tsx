@@ -68,7 +68,7 @@ export default function BusinessHome({
       <nav aria-label="Quick actions" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <QuickAction href={`${basePath}?tab=findmi-here&compose=1`} icon={<NavIcon name="calendar" className="h-[18px] w-[18px]" />} label="Appearance" />
         <QuickAction href="/account/event/new" icon={<SparkGlyph className="h-[18px] w-[18px]" />} label="Event" />
-        <QuickAction href="/account/location/new" icon={<NavIcon name="pin" className="h-[18px] w-[18px]" />} label="Location" />
+        <QuickAction href={`${basePath}?tab=findmi-here&view=locations&add=1`} icon={<NavIcon name="pin" className="h-[18px] w-[18px]" />} label="Location" />
         <QuickAction href={`${basePath}?tab=products&compose=1`} icon={<NavIcon name="tag" className="h-[18px] w-[18px]" />} label="Product" />
       </nav>
 

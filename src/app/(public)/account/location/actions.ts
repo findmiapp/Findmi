@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { requireEventMember, requireLocationMember } from "@/lib/permissions";
+import { requireBusinessMember, requireEventMember, requireLocationMember } from "@/lib/permissions";
+import { isManagingRole, linkBusinessLocation } from "@/lib/business-locations";
 import { errorRedirectUrl, errorRedirectUrlWithFields, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -153,7 +154,14 @@ export async function createMemberLocation(formData: FormData) {
   // this Market-scoped MarketAreaFields picker.
   const areaId = str(formData, "market_area_id");
   const requestedMarketTextRaw = str(formData, "requested_market_text");
+  // /account V2 Pass 2 — optional Business context (Presence -> Locations
+  // -> Add location). Same form, same validation, same is_demo=true
+  // pending-review creation; the only additions are an up-front
+  // owner/manager check on that Business and, after the Location exists,
+  // connecting it to the Business (first connection becomes primary).
+  const businessId = str(formData, "business_id");
   const preservedFields = {
+    business_id: businessId,
     name,
     address,
     city,
@@ -165,6 +173,16 @@ export async function createMemberLocation(formData: FormData) {
   const fail = (message: string): never => {
     redirect(errorRedirectUrlWithFields(CREATE_LOCATION_PATH, message, preservedFields));
   };
+
+  if (businessId) {
+    let canManageBusiness = false;
+    try {
+      canManageBusiness = isManagingRole((await requireBusinessMember(businessId)).role);
+    } catch {
+      canManageBusiness = false;
+    }
+    if (!canManageBusiness) fail("You need to be an owner or manager of that business to add a location to it.");
+  }
 
   if (!name) fail("Venue name is required.");
 
@@ -234,6 +252,19 @@ export async function createMemberLocation(formData: FormData) {
     await admin.from("locations").update({ market_area_id: effectiveAreaId }).eq("id", locationId);
   }
   revalidatePath("/account");
+  if (businessId) {
+    // The creator is already this Location's owner (create_owned_location
+    // above), and owner/manager of the Business (checked up front) — the
+    // same two-sided authority connectBusinessLocation requires.
+    const linked = await linkBusinessLocation(admin, businessId, locationId);
+    revalidatePath(`/account/business/${businessId}`);
+    const params = new URLSearchParams(
+      linked.ok
+        ? { location_updated: "created" }
+        : { error: `Your location was created, but couldn't be connected yet: ${linked.error}` }
+    );
+    redirect(`/account/business/${businessId}?tab=findmi-here&view=locations&${params.toString()}`);
+  }
   redirect(`/account/location/${locationId}?created=1`);
 }
 
