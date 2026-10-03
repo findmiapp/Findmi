@@ -71,6 +71,8 @@ export function AccountRelationField({
   entity,
   clearLabel = "None",
   onSelect,
+  selectedBadge,
+  hideHintWhenSelected = false,
 }: {
   label: string;
   name: string;
@@ -80,6 +82,11 @@ export function AccountRelationField({
   entity: "businesses" | "locations";
   clearLabel?: string | null;
   onSelect?: (value: AccountSearchResult | null) => void;
+  /** Optional small confirmation line under the selected item's own
+   * sublabel (e.g. "Linked Findmi place") — omitted by every existing
+   * caller, so their selected card renders exactly as before. */
+  selectedBadge?: string;
+  hideHintWhenSelected?: boolean;
 }) {
   const [selected, setSelectedState] = useState<AccountSearchResult | null>(initial);
   const setSelected = (value: AccountSearchResult | null) => {
@@ -102,6 +109,14 @@ export function AccountRelationField({
               <span className="block truncate text-sm font-medium text-ink">{selected.label}</span>
               {selected.sublabel && (
                 <span className="block truncate text-xs text-ink/45">{selected.sublabel}</span>
+              )}
+              {selectedBadge && (
+                <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-findmi-700">
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="h-3 w-3">
+                    <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {selectedBadge}
+                </span>
               )}
             </span>
           </div>
@@ -146,7 +161,7 @@ export function AccountRelationField({
           )}
         </div>
       )}
-      {hint && <p className="mt-1 text-xs text-ink/45">{hint}</p>}
+      {hint && !(hideHintWhenSelected && selected) && <p className="mt-1 text-xs text-ink/45">{hint}</p>}
     </div>
   );
 }

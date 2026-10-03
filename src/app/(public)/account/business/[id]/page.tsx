@@ -54,6 +54,7 @@ import MemberImageField from "./MemberImageField";
 import MemberGalleryField from "./MemberGalleryField";
 import MemberProductActiveButton from "./MemberProductActiveButton";
 import AppearanceFieldsForm, { type AppearanceFieldValues } from "./AppearanceFieldsForm";
+import type { AccountSearchResult } from "@/components/account/AccountRelationPicker";
 import AppearanceEditorDetails from "./AppearanceEditorDetails";
 import EventSearchPicker from "./EventSearchPicker";
 import RemoveAppearanceButton from "./RemoveAppearanceButton";
@@ -101,6 +102,28 @@ const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
   approved: "Approved",
   declined: "Declined",
 };
+
+/** Physical Presence Pass 1 — one shape for every server-seeded value of
+ * the Appearance form's Findmi place picker (stored link, Location
+ * Manager preselect, validation-error restore): structured city/state so
+ * the form can show "City, ST" and clear an un-linked place's snapshot
+ * precisely. */
+function toPickedLocation(loc: {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  address?: string | null;
+}): AccountSearchResult {
+  return {
+    value: loc.id,
+    label: loc.name,
+    sublabel: [loc.city, loc.state].filter(Boolean).join(", ") || undefined,
+    city: loc.city,
+    state: loc.state,
+    address: loc.address ?? null,
+  };
+}
 
 /** Launch Stability pass — QR Appearance Label Disambiguation (P2). Bare
  * a.title alone (the previous label at every QR-picker call site below)
@@ -270,6 +293,7 @@ export default async function ManageBusinessPage({
     add_state?: string;
     add_external_url?: string;
     add_flyer_image_url?: string;
+    add_location_id?: string;
     edit_title?: string;
     edit_date?: string;
     edit_start_time?: string;
@@ -280,6 +304,7 @@ export default async function ManageBusinessPage({
     edit_state?: string;
     edit_external_url?: string;
     edit_flyer_image_url?: string;
+    edit_location_id?: string;
     order?: string;
     order_status?: string;
     add_name?: string;
@@ -320,6 +345,7 @@ export default async function ManageBusinessPage({
     add_state,
     add_external_url,
     add_flyer_image_url,
+    add_location_id,
     edit_title,
     edit_date,
     edit_start_time,
@@ -330,6 +356,7 @@ export default async function ManageBusinessPage({
     edit_state,
     edit_external_url,
     edit_flyer_image_url,
+    edit_location_id,
     add_name: addProductName,
     add_description: addProductDescription,
     add_image_url: addProductImageUrl,
@@ -698,7 +725,7 @@ export default async function ManageBusinessPage({
     // Location Connections pass — the real Findmi Location this
     // standalone appearance is linked to, if any (embedded via the FK for
     // the Edit form's own AccountRelationField default).
-    location: { id: string; name: string; city: string | null } | null;
+    location: { id: string; name: string; city: string | null; state: string | null } | null;
   };
   let appearances: OwnAppearance[] = [];
   // Owner Action UX pass — carries name/date/venue as separate fields
@@ -771,7 +798,7 @@ export default async function ManageBusinessPage({
       admin
         .from("appearances")
         .select(
-          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, source, location:locations(id, name, city)"
+          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, source, location:locations(id, name, city, state)"
         )
         .eq("business_id", id)
         .neq("status", "canceled")
@@ -1106,15 +1133,26 @@ export default async function ManageBusinessPage({
   // same admin client this page already reads Location context with
   // elsewhere. A missing/foreign id just yields no match, same as never
   // having the param at all.
-  let preselectedLocation: { value: string; label: string; sublabel?: string } | null = null;
-  if (preselectedLocationId && admin) {
+  //
+  // Physical Presence Pass 1 — the same server-side lookup also restores
+  // a place the owner had picked when a validation error sent them back
+  // (add_location_id / edit_location_id, carried by
+  // buildAppearanceErrorUrl). Previously the picker came back blank while
+  // the snapshot venue text survived, so a corrected resubmit silently
+  // saved an appearance that LOOKED linked but wasn't.
+  async function lookupPickedLocation(locationId: string | undefined): Promise<AccountSearchResult | null> {
+    if (!locationId || !admin) return null;
     const { data: loc } = await admin
       .from("locations")
-      .select("id, name, city")
-      .eq("id", preselectedLocationId)
+      .select("id, name, city, state, address")
+      .eq("id", locationId)
       .maybeSingle();
-    if (loc) preselectedLocation = { value: loc.id, label: loc.name, sublabel: loc.city ?? undefined };
+    return loc ? toPickedLocation(loc) : null;
   }
+  const [preselectedLocation, editErrorLocation] = await Promise.all([
+    lookupPickedLocation(add_location_id ?? preselectedLocationId),
+    lookupPickedLocation(editing ? edit_location_id : undefined),
+  ]);
 
   // "Add an Appearance" defaults — blank unless a server-side validation
   // error on THIS form just sent the visitor back here, in which case
@@ -1132,10 +1170,9 @@ export default async function ManageBusinessPage({
     state: add_state ?? "",
     external_url: add_external_url ?? "",
     flyer_image_url: add_flyer_image_url ?? null,
-    // Blank on an ordinary fresh load or after a validation error (same
-    // as before — a rejected submission just asks the visitor to re-pick
-    // the Location); preselected only via ?location_id= from Location
-    // Manager, above.
+    // Blank on an ordinary fresh load; preselected via ?location_id= from
+    // Location Manager, or restored from add_location_id after a
+    // validation error (see lookupPickedLocation above).
     location: preselectedLocation,
   };
   // Where I'll Be V3 — whether a rejected manual-add submission just sent
@@ -2234,7 +2271,7 @@ export default async function ManageBusinessPage({
                         state: edit_state ?? a.state ?? "",
                         external_url: edit_external_url ?? a.external_url ?? "",
                         flyer_image_url: edit_flyer_image_url ?? a.flyer_image_url,
-                        location: a.location ? { value: a.location.id, label: a.location.name, sublabel: a.location.city ?? undefined } : null,
+                        location: editErrorLocation ?? (a.location ? toPickedLocation(a.location) : null),
                       }
                     : {
                         title: a.title,
@@ -2247,7 +2284,7 @@ export default async function ManageBusinessPage({
                         state: a.state ?? "",
                         external_url: a.external_url ?? "",
                         flyer_image_url: a.flyer_image_url,
-                        location: a.location ? { value: a.location.id, label: a.location.name, sublabel: a.location.city ?? undefined } : null,
+                        location: a.location ? toPickedLocation(a.location) : null,
                       };
                   const locationLine = [a.venue_name, [a.city, a.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
                   const isLiveNow = getTemporalLabel(a.start_at, a.end_at).live;
@@ -2267,6 +2304,11 @@ export default async function ManageBusinessPage({
                               </p>
                               <p className="mt-0.5 text-microcopy text-subtle">
                                 {a.event_id ? "Findmi Event" : "Added by you"}
+                                {/* Physical Presence Pass 1 — management-only
+                                    signal: a standalone appearance with no
+                                    real location_id won't flow onto any
+                                    Location page. Never shown publicly. */}
+                                {!a.event_id && !a.location && " · Not linked to a Findmi place"}
                                 {a.participationStatus && (
                                   <>
                                     {" · "}

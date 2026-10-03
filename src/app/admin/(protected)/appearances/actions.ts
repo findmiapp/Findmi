@@ -85,6 +85,11 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     longitude: number | null;
   } | null = null;
   let resolvedOccurrenceId: string | null = null;
+  // Physical Presence Pass 1 — the selected occurrence's own Location FK,
+  // carried onto the appearance below (same occurrence → appearance
+  // location_id rule deriveOccurrenceFields in lib/appearance-event-sync.ts
+  // applies to synced participation appearances).
+  let occurrenceLocationId: string | null = null;
   let eventSlug: string | null = null;
 
   if (eventId) {
@@ -104,6 +109,7 @@ export async function saveAppearance(id: string | null, formData: FormData) {
           .maybeSingle();
         if (occurrence) {
           resolvedOccurrenceId = occurrence.id;
+          occurrenceLocationId = occurrence.location_id ?? null;
           let venue = {
             venue_name: event.venue_name,
             address: event.address,
@@ -148,6 +154,56 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     }
   }
 
+  // Physical Presence Pass 1 — appearances.location_id (the FK that puts
+  // an appearance on its Location's own What's Happening Here) was never
+  // written here before, so every admin-created standalone appearance was
+  // invisible to Location pages no matter what venue text it showed.
+  //   - Event date (occurrence) selected: the occurrence's own Location is
+  //     authoritative — incl. null when that date has none, so a stale
+  //     link can't survive a date change (same as appearance-event-sync).
+  //   - Event linked without a specific date: events carry no location_id,
+  //     so the column is left untouched (never cleared or guessed).
+  //   - Standalone: the admin's own Findmi Place pick ("" = not linked).
+  //     Blank venue fields are snapshotted from that place, never
+  //     overwriting text the admin typed.
+  let locationFields: {
+    location_id?: string | null;
+    venue_name?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } = {};
+  if (eventId) {
+    if (resolvedOccurrenceId) locationFields = { location_id: occurrenceLocationId };
+  } else {
+    const pickedLocationId = str(formData, "location_id");
+    if (!pickedLocationId) {
+      locationFields = { location_id: null };
+    } else {
+      const { data: location } = await supabase
+        .from("locations")
+        .select("id, name, address, city, state, latitude, longitude")
+        .eq("id", pickedLocationId)
+        .maybeSingle();
+      if (!location) redirect(errorRedirectUrl(editPath, "That Findmi place no longer exists — pick it again."));
+      const typedAddress = str(formData, "address");
+      locationFields = {
+        location_id: location.id,
+        venue_name: str(formData, "venue_name") ?? location.name,
+        address: typedAddress ?? location.address,
+        city: str(formData, "city") ?? location.city,
+        state: str(formData, "state") ?? location.state,
+        // Coordinates only when the address itself came from the place,
+        // so a hand-typed address never gets another address's pin.
+        ...(!typedAddress && location.latitude != null && location.longitude != null
+          ? { latitude: location.latitude, longitude: location.longitude }
+          : {}),
+      };
+    }
+  }
+
   const payload = {
     business_id: businessId,
     event_id: eventId,
@@ -170,6 +226,7 @@ export async function saveAppearance(id: string | null, formData: FormData) {
     market_id: marketId,
     market_area_id: areaId,
     ...(derivedFields ? { latitude: derivedFields.latitude, longitude: derivedFields.longitude } : {}),
+    ...locationFields,
   };
 
   // Event-Linked Appearance Removal Sync pass — read the row's OWN prior

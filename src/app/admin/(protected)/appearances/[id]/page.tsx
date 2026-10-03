@@ -3,6 +3,7 @@ import {
   getAdminAppearanceById,
   getBusinessOptionById,
   getEventOptionById,
+  getLocationOptionById,
 } from "@/lib/admin/queries";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import AppearanceForm from "../AppearanceForm";
@@ -21,9 +22,10 @@ export default async function EditAppearancePage({
   const appearance = await getAdminAppearanceById(id);
   if (!appearance) notFound();
 
-  const [initialBusiness, initialEvent, marketsWithAreas] = await Promise.all([
+  const [initialBusiness, initialEvent, initialLocation, marketsWithAreas] = await Promise.all([
     getBusinessOptionById(appearance.business_id),
     getEventOptionById(appearance.event_id),
+    getLocationOptionById(appearance.location_id),
     getActiveMarketsWithAreaOptions(),
   ]);
 
@@ -42,6 +44,7 @@ export default async function EditAppearancePage({
           appearance={appearance}
           initialBusiness={initialBusiness}
           initialEvent={initialEvent}
+          initialLocation={initialLocation}
           marketsWithAreas={marketsWithAreas}
           error={error}
         />

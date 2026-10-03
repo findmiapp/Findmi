@@ -21,6 +21,7 @@ export default async function NewAppearancePage({
           appearance={null}
           initialBusiness={null}
           initialEvent={null}
+          initialLocation={null}
           marketsWithAreas={marketsWithAreas}
           error={error}
         />

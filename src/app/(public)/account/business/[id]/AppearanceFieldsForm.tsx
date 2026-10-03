@@ -26,6 +26,21 @@ export interface AppearanceFieldValues {
   location: AccountSearchResult | null;
 }
 
+/** City/state for a picked place — prefers the search result's own
+ * structured city/state, falling back to its "City, ST" sublabel (the
+ * shape server-seeded `initial` values use). */
+function locationCityState(location: AccountSearchResult): [string | null, string | null] {
+  if (location.city !== undefined || location.state !== undefined) {
+    return [location.city ?? null, location.state ?? null];
+  }
+  const [city, state] = (location.sublabel ?? "").split(",").map((s) => s.trim());
+  return [city || null, state || null];
+}
+
+function clearIfEquals(input: HTMLInputElement | null, value: string | null) {
+  if (input && value && input.value.trim() === value.trim()) input.value = "";
+}
+
 /** Shared fields for both "Add an appearance manually" and "Edit
  * appearance" — a Client Component only so it can catch the single most
  * common mistake (an end time at/before the start time — e.g. AM instead
@@ -55,6 +70,18 @@ export default function AppearanceFieldsForm({
   const cityRef = useRef<HTMLInputElement>(null);
   const stateRef = useRef<HTMLInputElement>(null);
 
+  // Physical Presence Pass 1 — the Findmi place picker is the primary
+  // path; manual venue entry is a secondary disclosure. `linked` mirrors
+  // the picker's own selection (the picker still owns the hidden
+  // location_id input). The manual group starts open only for an
+  // unlinked appearance that already has venue text (a legacy/manual
+  // record must stay visible and editable — never silently linked).
+  const [linked, setLinked] = useState<AccountSearchResult | null>(defaultValues.location);
+  const hasManualText = Boolean(
+    defaultValues.venue_name || defaultValues.address || defaultValues.city || defaultValues.state
+  );
+  const [manualOpen, setManualOpen] = useState(!defaultValues.location && hasManualText);
+
   // Picking an existing Findmi Location fills the plain text fields below
   // from its own real name/city/state/address — a convenience snapshot,
   // never the source of truth once location_id is set (see
@@ -63,11 +90,29 @@ export default function AppearanceFieldsForm({
   // there in AccountSearchResult; the field just wasn't being read here),
   // so it's now hydrated the same as venue_name/city/state instead of
   // requiring the visitor to retype a canonical Location's own address.
+  //
+  // Physical Presence Pass 1 — un-linking ("Change") clears only the
+  // snapshot values that still exactly match the place being removed, so
+  // an unlinked save can never keep displaying that place's name while no
+  // longer actually being connected to it. Anything the owner typed
+  // themselves is left alone.
   function handleLocationSelect(location: AccountSearchResult | null) {
-    if (!location) return;
+    if (!location) {
+      if (linked) {
+        const [prevCity, prevState] = locationCityState(linked);
+        clearIfEquals(venueNameRef.current, linked.label);
+        clearIfEquals(addressRef.current, linked.address ?? null);
+        clearIfEquals(cityRef.current, prevCity);
+        clearIfEquals(stateRef.current, prevState);
+      }
+      setLinked(null);
+      return;
+    }
+    setLinked(location);
+    setManualOpen(false);
     if (venueNameRef.current) venueNameRef.current.value = location.label;
     if (addressRef.current && location.address) addressRef.current.value = location.address;
-    const [city, state] = (location.sublabel ?? "").split(",").map((s) => s.trim());
+    const [city, state] = locationCityState(location);
     if (cityRef.current && city) cityRef.current.value = city;
     if (stateRef.current && state) stateRef.current.value = state;
   }
@@ -121,27 +166,34 @@ export default function AppearanceFieldsForm({
         </label>
       </div>
       {timeError && <p className="text-xs text-red-600">{timeError}</p>}
-      {/* Where I'll Be V3.1 — clearLabel suppressed (its generic "Leave
-          blank for ..." sentence read as database-internal language) in
-          favor of one plain hint sentence covering both paths. Venue Name/
-          Address/City/State stay unconditionally present, never
-          conditionally hidden when a Location is selected — Address in
-          particular is never auto-filled from a selected Location (see
-          handleLocationSelect above), so hiding these could silently lose
-          a value the Server Action still expects. They're demoted to a
-          quiet secondary group instead — visual hierarchy does the work,
-          field presence doesn't change. */}
+      {/* Physical Presence Pass 1 — the Findmi place picker is primary.
+          Venue Name/Address/City/State stay MOUNTED at all times (the
+          Server Action still reads them, and a selected place's snapshot
+          is written into them); they're only visually hidden until the
+          owner explicitly chooses manual entry, or when an unlinked
+          record already has venue text to show. */}
       <AccountRelationField
-        label="Where is this happening? (optional)"
+        label="Where will you be?"
         name="location_id"
         entity="locations"
         initial={defaultValues.location}
-        placeholder="Search Findmi Locations…"
+        placeholder="Search Findmi places…"
         clearLabel={null}
-        hint="Select an existing Findmi location, or enter the venue manually below."
+        hint="Pick the place so this shows up on its Findmi page too."
+        hideHintWhenSelected
+        selectedBadge="Linked Findmi place"
         onSelect={handleLocationSelect}
       />
-      <div className="mt-1 flex flex-col gap-2">
+      {!linked && !manualOpen && (
+        <button
+          type="button"
+          onClick={() => setManualOpen(true)}
+          className="w-fit text-xs font-semibold text-findmi-700 hover:underline"
+        >
+          Can&rsquo;t find the place? Enter details manually
+        </button>
+      )}
+      <div className={`mt-1 flex-col gap-2 ${!linked && manualOpen ? "flex" : "hidden"}`}>
         <span className="text-xs font-semibold uppercase tracking-wide text-ink/35">Venue details</span>
         <input
           ref={venueNameRef}

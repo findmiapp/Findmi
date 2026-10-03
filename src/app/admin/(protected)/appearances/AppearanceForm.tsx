@@ -13,12 +13,14 @@ export default function AppearanceForm({
   appearance,
   initialBusiness,
   initialEvent,
+  initialLocation,
   marketsWithAreas,
   error,
 }: {
   appearance: AdminAppearance | null;
   initialBusiness: SelectOption | null;
   initialEvent: SelectOption | null;
+  initialLocation: SelectOption | null;
   marketsWithAreas: MarketWithAreaOptions[];
   error?: string;
 }) {
@@ -57,6 +59,26 @@ export default function AppearanceForm({
             state: appearance?.state ?? "",
           }}
         />
+
+        {/* Physical Presence Pass 1 — the real Findmi place this
+            appearance is at (appearances.location_id), which is what puts
+            it on that Location's own What's Happening Here. Same
+            standalone-only rule as Market/Area below: once a Related Event
+            date is set, saveAppearance takes the place from that date's
+            own Location instead. */}
+        <div className="rounded-2xl border border-black/10 p-4">
+          <RelationField
+            label="Findmi Place"
+            name="location_id"
+            entity="locations"
+            initial={initialLocation}
+            clearLabel="Not linked to a Findmi place"
+            placeholder="Search Findmi places…"
+            hint="Standalone appearances only — links this appearance to that place's page. Blank venue fields above are filled from the place on save. With a Related Event date set, the place comes from that date instead."
+            createHref="/admin/locations/new"
+            createLabel="New Location"
+          />
+        </div>
 
         <div className="rounded-2xl border border-black/10 p-4">
           <p className="mb-1 text-sm font-semibold text-ink">Card Click Behavior</p>
