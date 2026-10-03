@@ -1,7 +1,7 @@
 import { CheckboxField, SelectField, TextareaField, TextField } from "@/components/admin/Fields";
 import { RelationField } from "@/components/admin/RelationPicker";
 import ImageField from "@/components/admin/ImageField";
-import NameSlugFields from "@/components/admin/NameSlugFields";
+import { LinkedNameInput, LinkedNameSlugProvider, LinkedSlugInput } from "@/components/admin/LinkedNameSlug";
 import SubmitBar from "@/components/admin/SubmitBar";
 import DeleteButton from "@/components/admin/DeleteButton";
 import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
@@ -36,114 +36,118 @@ export default function LocationForm({
           </p>
         )}
 
-        <CheckboxField
-          label="Published"
-          name="published"
-          defaultChecked={location ? !location.is_demo : true}
-          hint="On = visible to the public. Off = hidden (demo/test only)."
-        />
-
-        <NameSlugFields
-          isNew={!location}
-          nameLabel="Location Name"
-          defaultName={location?.name}
-          defaultSlug={location?.slug}
-          slugHint="Used in the public URL: /location/your-slug"
-        />
-
-        <TextField label="Address" name="address" defaultValue={location?.address} />
-        <div className="grid gap-4 sm:grid-cols-3">
-          <TextField label="City" name="city" defaultValue={location?.city} />
-          <TextField label="State" name="state" defaultValue={location?.state} />
-          <TextField label="ZIP Code" name="postal_code" defaultValue={location?.postal_code} />
-        </div>
-
-        <CategorySubcategoryField categories={categories} defaultCategoryId={location?.category_id} />
-
-        <TextareaField
-          label="Description"
-          name="description"
-          defaultValue={location?.description}
-          hint="Shown on the public venue page. Owner-editable from the Location Manager too."
-        />
-        <ImageField label="Cover Image" name="cover_image_url" defaultValue={location?.cover_image_url} />
-        <ImageField label="Logo / Profile Image (square works best)" name="logo_url" defaultValue={location?.logo_url} />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Website" name="website_url" type="url" defaultValue={location?.website_url} />
-          <TextField label="Email" name="email" type="email" defaultValue={location?.email} />
-        </div>
-        <TextField label="Phone" name="phone" type="tel" defaultValue={location?.phone} />
-
-        <LocationHoursField name="hours" defaultValue={location?.hours ?? null} />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField
-            label="Latitude"
-            name="latitude"
-            defaultValue={location?.latitude ?? undefined}
-            hint="Optional."
-          />
-          <TextField
-            label="Longitude"
-            name="longitude"
-            defaultValue={location?.longitude ?? undefined}
-            hint="Optional."
-          />
-        </div>
-
-        {/* Location Market -> Area Parity pass — same cascading Market ->
-            Area picker Events already use (MarketAreaFields), replacing the
-            old plain Market-only select. Changing Market clears an
-            incompatible Area client-side; saveLocation re-validates
-            server-side via isAreaInMarket regardless. */}
-        <div className="rounded-2xl border border-black/10 p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Market / Area</p>
-          <p className="mt-1 text-xs text-ink/50">
-            The physical Findmi Market (and, optionally, Area) this venue belongs to. Event occurrences linked to
-            this location can inherit its Market.
-          </p>
-          <div className="mt-3">
-            <MarketAreaFields
-              markets={marketsWithAreas}
-              defaultMarketId={location?.market_id ?? null}
-              defaultAreaId={location?.market_area_id ?? null}
-            />
-          </div>
-        </div>
-
-        {/* Physical Presence Pass 2 — Place Graph V1. PHYSICAL
-            containment only: which place this one is physically inside or
-            part of (Eataly Chiosco -> Madison Square Park). Never who owns,
-            operates, sponsors, or partners with it — those stay on
-            Businesses/Events. Both fields optional; the database rejects
-            any parent choice that would form a loop. */}
-        <div className="rounded-2xl border border-black/10 p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Place Hierarchy</p>
-          <p className="mt-1 text-xs text-ink/50">
-            Physical context only — the larger place this one sits inside (a park, mall, building, floor…). Not
-            ownership, operator, or partnerships.
-          </p>
-          <div className="mt-3 flex flex-col gap-4">
+        {/* Location Admin UX cleanup — the editor reads as five plain
+            questions: what place is this, where is it, is it inside
+            another place, its public details, then FindMi-only settings.
+            Field names, values and save behavior are unchanged; only
+            grouping, order and copy moved. Three distinct concepts are
+            kept visibly separate: postal address (Where), physical
+            containment (Physical Context), and discovery organization
+            (Market/Area, in FindMi Settings). */}
+        <LinkedNameSlugProvider isNew={!location} defaultSlug={location?.slug}>
+          <FormSection title="Place">
+            <LinkedNameInput label="Location Name" defaultValue={location?.name} placeholder="e.g. Eataly Chiosco" />
             <SelectField
               label="Place Type"
               name="place_type"
               defaultValue={location?.place_type ?? ""}
+              hint="What kind of physical place is this? (optional)"
               options={[
                 { value: "", label: "Not set" },
                 ...PLACE_TYPES.map((t) => ({ value: t, label: PLACE_TYPE_LABELS[t] })),
               ]}
             />
+            <div>
+              <CategorySubcategoryField categories={categories} defaultCategoryId={location?.category_id} />
+              <p className="mt-1 text-xs text-ink/45">What is this place known for?</p>
+            </div>
+            <CheckboxField
+              label="Published"
+              name="published"
+              defaultChecked={location ? !location.is_demo : true}
+              hint="Visible on Findmi. Off keeps it hidden."
+            />
+          </FormSection>
+
+          <FormSection title="Where">
+            <TextField label="Address" name="address" defaultValue={location?.address} />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+              <div className="col-span-2 sm:col-span-1">
+                <TextField label="City" name="city" defaultValue={location?.city} />
+              </div>
+              <TextField label="State" name="state" defaultValue={location?.state} />
+              <TextField label="ZIP Code" name="postal_code" defaultValue={location?.postal_code} />
+            </div>
+          </FormSection>
+
+          {/* Physical Presence Pass 2 — parent_location_id is PHYSICAL
+              containment only (never ownership/operator/partner); the
+              database rejects any choice that would form a loop. */}
+          <FormSection title="Physical Context">
             <RelationField
-              label="Parent Place"
+              label="Parent Place (optional)"
               name="parent_location_id"
               entity="locations"
               initial={initialParent}
               excludeValue={location?.id ?? null}
               clearLabel="No parent place"
               placeholder="Search Findmi locations…"
-              hint="The place this one is physically inside or part of, if any."
+              hint="Is this place physically inside or part of another place? e.g. Eataly Chiosco → Flatiron North Plaza"
             />
-          </div>
-        </div>
+          </FormSection>
+
+          <FormSection title="Details">
+            <TextareaField
+              label="Description"
+              name="description"
+              defaultValue={location?.description}
+              hint="Shown on the public page."
+            />
+            <ImageField label="Cover Image" name="cover_image_url" defaultValue={location?.cover_image_url} />
+            <ImageField label="Logo / Profile Image (square works best)" name="logo_url" defaultValue={location?.logo_url} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField label="Website" name="website_url" type="url" defaultValue={location?.website_url} />
+              <TextField label="Email" name="email" type="email" defaultValue={location?.email} />
+            </div>
+            <TextField label="Phone" name="phone" type="tel" defaultValue={location?.phone} />
+            <LocationHoursField name="hours" defaultValue={location?.hours ?? null} />
+          </FormSection>
+
+          {/* Secondary, collapsed by default (native <details> — keyboard
+              accessible, and its inputs still submit while closed). Holds
+              the URL slug, map coordinates and discovery Market/Area. */}
+          <details className="group rounded-2xl border border-black/10 bg-black/[0.015]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
+              <span>
+                <span className="block text-xs font-bold uppercase tracking-wide text-ink/50">Findmi Settings</span>
+                <span className="mt-0.5 block text-xs text-ink/45">URL, map coordinates, Market &amp; Area</span>
+              </span>
+              <span aria-hidden="true" className="text-ink/40 transition group-open:rotate-180">
+                ▾
+              </span>
+            </summary>
+            <div className="flex flex-col gap-4 border-t border-black/5 px-4 pb-4 pt-4">
+              <LinkedSlugInput hint="Public URL: /location/your-slug. Auto-generated from the name." />
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                <TextField label="Latitude" name="latitude" defaultValue={location?.latitude ?? undefined} />
+                <TextField label="Longitude" name="longitude" defaultValue={location?.longitude ?? undefined} />
+              </div>
+              <div>
+                <MarketAreaFields
+                  markets={marketsWithAreas}
+                  defaultMarketId={location?.market_id ?? null}
+                  defaultAreaId={location?.market_area_id ?? null}
+                  marketLabel="Market (optional)"
+                  areaLabel="Area (optional)"
+                />
+                <p className="mt-1.5 text-xs text-ink/45">
+                  Market is used by Findmi to organize discovery by city or region. Area is an optional neighborhood or
+                  local area within that Market.
+                </p>
+              </div>
+            </div>
+          </details>
+        </LinkedNameSlugProvider>
 
         <SubmitBar cancelHref="/admin/locations" />
       </form>
@@ -162,5 +166,17 @@ export default function LocationForm({
         </div>
       )}
     </div>
+  );
+}
+
+/** One plain-language group of the Location editor — same bordered card
+ * and small uppercase heading the admin forms already use for grouped
+ * fields. */
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-black/10 p-4">
+      <h2 className="text-xs font-bold uppercase tracking-wide text-ink/50">{title}</h2>
+      <div className="mt-3 flex flex-col gap-4">{children}</div>
+    </section>
   );
 }
