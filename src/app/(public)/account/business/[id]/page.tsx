@@ -8,7 +8,7 @@ import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isAdminSession } from "@/lib/admin/auth";
 import { isBusinessPro } from "@/lib/entitlements";
-import { getCategories, getMarketAreaLabel, getProductCategories } from "@/lib/data";
+import { getCategories, getMarketAreaLabel, getPastAppearancesForBusiness, getProductCategories } from "@/lib/data";
 import {
   buildNeedsAttentionItems,
   resolveDashboardAppearances,
@@ -27,11 +27,14 @@ interface TabNavItem {
   label: string;
   icon: NavIconKey;
 }
-import AccountNav from "../../AccountNav";
-import NavIcon from "@/components/NavIcon";
 import type { NavIconKey } from "@/lib/navigation";
-import { Panel, Row, Stat, Chip, EmptyLine, SectionEyebrow, secondaryButtonClass } from "../../owner-ui";
-import BusinessMobileNav from "./BusinessMobileNav";
+import { Panel, Row, Stat, Chip, EmptyLine, SectionEyebrow } from "../../owner-ui";
+import BusinessAppShell, { sectionForTab } from "./v2/BusinessAppShell";
+import BusinessHome from "./v2/BusinessHome";
+import MoreMenu from "./v2/MoreMenu";
+import OpportunitiesView from "./v2/OpportunitiesView";
+import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "./v2/PresenceViews";
+import { getApplicationsForBusiness, getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import {
   addAppearanceFromEvent,
   addManualAppearance,
@@ -89,7 +92,6 @@ import {
 } from "@/lib/analytics/ownerPerformance";
 import PerformanceTab from "./PerformanceTab";
 import QrCampaignCreator, { QrCampaignContextualPanel } from "./QrCampaignCreator";
-import BusinessOverviewV2 from "./BusinessOverviewV2";
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
@@ -242,6 +244,8 @@ const VALID_TAB_KEYS = new Set<string>([
   "opportunities",
   "inquiries",
   "referral",
+  // /account V2 — the More menu (secondary destinations).
+  "more",
   ...Object.keys(LEGACY_TAB_REDIRECTS),
 ]);
 
@@ -318,6 +322,9 @@ export default async function ManageBusinessPage({
     add_distribution?: string;
     location_id?: string;
     schedule_limit?: string;
+    // /account V2 — Presence sub-view and "open the add composer" quick action.
+    view?: string;
+    compose?: string;
   }>;
 }) {
   const { id } = await params;
@@ -335,6 +342,8 @@ export default async function ManageBusinessPage({
     editing,
     location_id: preselectedLocationId,
     schedule_limit: scheduleLimitParam,
+    view: viewParam,
+    compose: composeParam,
     add_title,
     add_date,
     add_start_time,
@@ -420,9 +429,9 @@ export default async function ManageBusinessPage({
   // redirects off-page (not to another tab on this page) so a bookmarked
   // link, the Settings "More" link, and every existing email deep link
   // that still points at ?tab=opportunities all land on the real thing.
-  if (tab === "opportunities") {
-    redirect("/account/messages?filter=opportunities");
-  }
+  // /account V2 — Opportunities is a primary Business destination again,
+  // rendered in-shell from the same loaders/action the Inbox uses (Inbox
+  // remains the account-wide view, linked from it).
 
   // Owner Shell V3 — persistent Business switcher (Section 12 of this
   // pass). Only queried for a real authenticated owner: a pure admin-
@@ -450,7 +459,6 @@ export default async function ManageBusinessPage({
       })
       .filter((b): b is { id: string; name: string } => Boolean(b));
   }
-  const showSwitcher = managedBusinesses.length > 1;
 
   const [{ data: business }, categories, { data: businessCategoryRows }, { data: galleryRows }, businessHandle] = await Promise.all([
     admin
@@ -640,6 +648,25 @@ export default async function ManageBusinessPage({
     redirect(`/account/business/${id}?tab=settings`);
   }
   const activeTab = tab === "referral" ? "overview" : tab;
+
+  // /account V2 — Opportunities (full list on its own view; pending
+  // invitation count for Home) and Presence's Past view, each only
+  // queried when actually shown. Same existing loaders as the Inbox and
+  // the account dashboard — no new query.
+  const presenceView = parsePresenceView(viewParam);
+  const composeOpen = composeParam === "1";
+  const [pendingInvitations, businessApplications] =
+    activeTab === "opportunities" || activeTab === "overview"
+      ? await Promise.all([
+          getPendingInvitationsForBusiness(admin, id),
+          activeTab === "opportunities" ? getApplicationsForBusiness(admin, id) : Promise.resolve([] as OpportunityListItem[]),
+        ])
+      : [[] as OpportunityListItem[], [] as OpportunityListItem[]];
+  const businessOpportunities = [...pendingInvitations, ...businessApplications].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  const pastAppearances =
+    activeTab === "findmi-here" && presenceView === "past" ? await getPastAppearancesForBusiness(id, 30) : [];
 
   // Owner Performance V1 — only queried when this tab is actually open
   // (analytics aggregation is heavier than this page's other summary
@@ -1094,34 +1121,7 @@ export default async function ManageBusinessPage({
     pro &&
     (products.length > 0 ||
       orderSummary.newCount + orderSummary.openCount + orderSummary.readyCount + orderSummary.fulfilledCount + orderSummary.cancelledCount > 0);
-  const visibleTabs: TabNavItem[] = ordersRelevant ? [...PRIMARY_TABS, ORDERS_TAB] : PRIMARY_TABS;
 
-  // Mobile Navigation Fix, revised by the Stable Primary Nav pass — a
-  // horizontally-scrolling tab strip has no affordance that more
-  // destinations exist off-screen (live QA: "Couldn't even tell I had to
-  // scroll to get to products"). Mobile gets a deliberately finite
-  // 3-control row that ALWAYS stays directly tappable, keyed by tab key
-  // rather than array position so it can stay independent of the desktop
-  // sidebar's own ordering (visibleTabs/PRIMARY_TABS, untouched below).
-  // First-Class QR Campaigns pass — QR Campaigns takes the 3rd slot
-  // (Overview / Where I'll Be / QR Campaigns): it's the promoted
-  // operational tool this pass exists to surface, so it can't be the one
-  // that lands behind "More" on the device most owners actually use in
-  // the field. Analytics moves into "More" here ONLY — desktop's sidebar
-  // still shows Analytics directly, unchanged. Everything else (Analytics,
-  // Profile, Products, Orders, Settings) collapses into one "More" control
-  // whose own label becomes the current destination's name when inside it
-  // (e.g. "Products ▾") so the active location stays unambiguous. Settings
-  // (never part of visibleTabs/the primary rail) is added here since
-  // mobile has no other entry point for it once the old strip's
-  // horizontal scroll is gone.
-  const MOBILE_PRIMARY_KEYS = new Set(["overview", "findmi-here", "qr"]);
-  const mobilePrimaryTabs = PRIMARY_TABS.filter((t) => MOBILE_PRIMARY_KEYS.has(t.key));
-  const mobileMoreTabs: { key: string; label: string }[] = [
-    ...PRIMARY_TABS.filter((t) => !MOBILE_PRIMARY_KEYS.has(t.key)).map((t) => ({ key: t.key, label: t.label })),
-    ...(ordersRelevant ? [{ key: ORDERS_TAB.key, label: ORDERS_TAB.label }] : []),
-    { key: "settings", label: "Settings" },
-  ];
 
   const addFromEvent = addAppearanceFromEvent.bind(null, id);
   const addManual = addManualAppearance.bind(null, id);
@@ -1209,7 +1209,7 @@ export default async function ManageBusinessPage({
   // eligibility check like Orders' own ordersRelevant). Anything else
   // falls back to Overview rather than risking a dead/empty destination
   // on the target Business.
-  const SWITCHABLE_TABS = new Set(["overview", "findmi-here", "performance", "profile", "products", "qr"]);
+  const SWITCHABLE_TABS = new Set(["overview", "findmi-here", "performance", "profile", "products", "qr", "opportunities", "more"]);
   const switcherTab = SWITCHABLE_TABS.has(activeTab) ? activeTab : "overview";
 
   // First-Class QR Campaigns tab — resolves each campaign's destination
@@ -1225,38 +1225,8 @@ export default async function ManageBusinessPage({
     return { ...c, destinationLabel };
   });
 
-  // Business Overview V2 — presentation-only reshaping of already-fetched
-  // data for BusinessOverviewV2's props. No new query, no new business
-  // logic; each value below is read from a variable this page already
-  // computed above (categories/currentCategoryId, products, appearances,
-  // businessQrCampaigns, performanceData, followerSummary, needsAttention,
-  // orderList, qrEligibleEvents/Locations).
-  const overviewCategoryLabel = categories.find((c) => c.id === currentCategoryId)?.name ?? null;
-  // Same "$price or price_label" formatting rule the Products tab's own
-  // row already uses (line ~1928) — reused verbatim, not recomputed.
-  const overviewProducts = products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    imageUrl: p.image_url,
-    priceLabel: p.price != null ? `$${p.price}` : p.price_label || null,
-    isActive: p.is_active,
-  }));
-  const overviewQrCampaigns = businessQrCampaigns.map((c) => ({
-    id: c.id,
-    name: c.name,
-    destinationLabel: c.destinationLabel,
-    scans: c.scans,
-    isActive: c.isActive,
-  }));
-  const overviewAppearances = [...todayAppearances, ...upcomingAppearances];
-  const overviewQrCentralOptions = {
-    businessId: id,
-    businessName: business.name,
-    appearances: appearances.map((a) => ({ id: a.id, name: buildAppearanceQrLabel(a) })),
-    products: products.map((p) => ({ id: p.id, name: p.name })),
-    events: qrEligibleEvents,
-    locations: qrEligibleLocations,
-  };
+  // /account V2 Home — the performance snapshot reads these already-
+  // computed values (no new analytics definition).
   const overviewPulse = {
     profileViews: {
       value: performanceData?.headline.profileViews.value ?? 0,
@@ -1272,164 +1242,18 @@ export default async function ManageBusinessPage({
     },
     followers: followerSummary.totalCount,
   };
-  const overviewDiscoverySources = performanceData?.discoverySources.map((s) => ({ label: s.label, impressions: s.impressions })) ?? null;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
-      <AccountNav />
-
-      {/* Admin Manage-As Foundation — persistent, unmissable on every tab,
-          but Visual System Pass 1 shrinks it to a single compact line: the
-          safety signal (founder can't forget they're elevated) doesn't
-          need a giant bordered alert card to do its job. Never
-          impersonation: the founder's own admin session is the actor
-          throughout (see lib/permissions.ts's requireMembership). */}
-      {isAdminElevated && (
-        <div className="mb-3 flex max-w-md items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-metadata">
-          <span className="truncate font-semibold text-amber-800">Admin mode · Managing {business.name}</span>
-          <Link href={`/admin/businesses/${id}`} className="shrink-0 font-bold text-amber-800 underline underline-offset-2 hover:text-amber-900">
-            Exit
-          </Link>
-        </div>
-      )}
-
-      {/* Findmi Owner Product visual system (Sept 2026) — a compact
-          workspace identity band, not a mobile page header stretched
-          wide: 36px mark, tight name+Plan chip on one line, a single
-          quiet meta line below. This is the LAST time Plan/Settings/View
-          Profile need saying on this page — the sidebar/tab-strip below
-          is pure navigation, and Overview's own Public Presence row says
-          publication status once, not twice.
-          Business Overview V2 Visual Correction Pass — suppressed ONLY on
-          the Overview tab: BusinessOverviewV2's own Hero (logo, name,
-          Plan chip, category/geography, View Public Profile, Settings,
-          and — moved there too — the Business switcher below) already
-          covers everything this band shows, so rendering both back to
-          back produced two consecutive business headers. Every other tab
-          keeps this band exactly as it always has. */}
-      {activeTab !== "overview" && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            {business.logo_url ? (
-              <SupabaseImage
-                src={business.logo_url}
-                alt=""
-                width={36}
-                height={36}
-                className="h-9 w-9 shrink-0 rounded-lg border border-black/[0.06] object-cover"
-              />
-            ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-findmi-50 font-display text-metadata font-bold text-accent">
-                {business.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h1 className="truncate font-display text-section-title font-bold text-primary">{business.name}</h1>
-                <Chip tone={pro ? "aqua" : "neutral"}>{pro ? "Pro" : "Free"}</Chip>
-                {/* Owner Shell V3 — persistent Business switcher. Never shown
-                    for exactly one managed Business, or for a pure admin-
-                    elevated session (managedBusinesses is always empty
-                    there). Native <details> — keyboard-operable with zero
-                    client JS. */}
-                {showSwitcher && (
-                  <details className="group relative shrink-0">
-                    <summary
-                      aria-label="Switch business"
-                      className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full text-ink/35 transition hover:bg-black/[0.05] hover:text-ink [&::-webkit-details-marker]:hidden"
-                    >
-                      <ChevronGlyph className="h-4 w-4 transition-transform group-open:rotate-180" />
-                    </summary>
-                    <div className="absolute left-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-black/[0.07] bg-white p-1.5 shadow-lg">
-                      <p className="px-2 py-1 text-label font-bold uppercase text-subtle">Switch Business</p>
-                      {managedBusinesses.map((b) => (
-                        <Link
-                          key={b.id}
-                          href={`/account/business/${b.id}?tab=${switcherTab}`}
-                          className={`block truncate rounded-lg px-2.5 py-2 text-body font-semibold transition hover:bg-black/[0.03] ${
-                            b.id === id ? "text-accent" : "text-primary"
-                          }`}
-                        >
-                          {b.name}
-                        </Link>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-              {/* Mobile: a compact text-link fallback for the two secondary
-                  actions the sm:+ button pair below covers — at 390px there
-                  isn't room for a long Business name AND two real buttons
-                  on one row, so mobile gets plain links on their own quiet
-                  line instead of a squeezed/truncated header. */}
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-metadata text-subtle sm:hidden">
-                {businessGeographyLabel && <span className="truncate">{businessGeographyLabel}</span>}
-                {business.slug && (
-                  <Link href={`/business/${business.slug}`} className="font-semibold text-muted">
-                    View Profile
-                  </Link>
-                )}
-                <Link href={`${basePath}?tab=settings`} className="font-semibold text-muted">
-                  Settings
-                </Link>
-              </div>
-              {businessGeographyLabel && <p className="hidden truncate text-metadata text-subtle sm:block">{businessGeographyLabel}</p>}
-            </div>
-          </div>
-          <div className="hidden shrink-0 items-center gap-2 sm:flex">
-            {business.slug && (
-              <Link href={`/business/${business.slug}`} className={secondaryButtonClass("sm")}>
-                View Public Page
-              </Link>
-            )}
-            <Link href={`${basePath}?tab=settings`} className={secondaryButtonClass("sm")}>
-              Settings
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {/* MOBILE NAVIGATION — Mobile Navigation Fix (see mobileMoreTabs' own
-          doc comment above and BusinessMobileNav.tsx). Desktop hides this
-          in favor of the sidebar below — completely unchanged. */}
-      <BusinessMobileNav basePath={basePath} primaryTabs={mobilePrimaryTabs} moreTabs={mobileMoreTabs} activeTab={activeTab} />
-
-      {/* DESKTOP — a real sidebar workspace: Business-section navigation
-          in a fixed left rail, content in the wide column beside it.
-          This is the actual structural difference from a "webpage with
-          tabs": at 1440px an owner sees where they are AND has the rest
-          of the canvas for content simultaneously, the same spatial
-          language the Loom Spaces/Build A Dream references use for
-          their own left-nav workspace — Findmi's own module language
-          inside it, never their layout copied wholesale. */}
-      <div className="mt-5 lg:grid lg:grid-cols-[208px_1fr] lg:items-start lg:gap-8">
-        <aside className="hidden lg:sticky lg:top-[4.5rem] lg:block">
-          <nav aria-label="Business sections" className="flex flex-col gap-0.5">
-            {visibleTabs.map((t) => {
-              const active = t.key === activeTab;
-              return (
-                <Link
-                  key={t.key}
-                  href={`${basePath}?tab=${t.key}`}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-button font-semibold transition ${
-                    active ? "bg-findmi text-white shadow-sm" : "text-muted hover:bg-black/[0.03] hover:text-primary"
-                  }`}
-                >
-                  <NavIcon name={t.icon} className="h-4 w-4 shrink-0" />
-                  {t.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
-
-        {/* Business Manager V4 — each tab's own root element below owns
-            its width/composition within this main column (a wide multi-
-            region layout for Overview/Where I'll Be/Analytics/Products,
-            a 2-column card grid for Profile, a narrower column for the
-            secondary Settings/Inquiries/Orders tabs). */}
-        <div className="min-w-0">
+    <BusinessAppShell
+      basePath={basePath}
+      business={{ id, name: business.name, slug: business.slug, logoUrl: business.logo_url }}
+      pro={pro}
+      isExpiredPro={isExpiredPro}
+      managedBusinesses={managedBusinesses}
+      switcherTab={switcherTab}
+      activeSection={sectionForTab(activeTab)}
+      isAdminElevated={isAdminElevated}
+    >
         {error && (
           <p className="mb-4 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>
         )}
@@ -1538,34 +1362,29 @@ export default async function ManageBusinessPage({
                 authorization, no new analytics definition, no new QR
                 behavior). Deep management stays exactly where it already
                 lives; every module below only links to it. */}
-            <BusinessOverviewV2
+            <BusinessHome
               basePath={basePath}
               businessId={id}
-              business={{
-                name: business.name,
-                slug: business.slug,
-                logoUrl: business.logo_url,
-                coverImageUrl: business.cover_image_url,
-                publicationStatus: business.publication_status,
-              }}
+              businessName={business.name}
               pro={pro}
-              isExpiredPro={isExpiredPro}
-              categoryLabel={overviewCategoryLabel}
-              geographyLabel={businessGeographyLabel}
+              todayAppearances={todayAppearances}
+              upcomingAppearances={upcomingAppearances}
+              needsAttention={needsAttention}
+              metrics={
+                performanceData
+                  ? {
+                      profileViews: overviewPulse.profileViews,
+                      actionsTaken: overviewPulse.actionsTaken,
+                      qrScans: overviewPulse.qrScans,
+                      followers: overviewPulse.followers,
+                    }
+                  : null
+              }
+              metricsRangeLabel={performanceData?.rangeLabel ?? null}
+              pendingInvitationCount={pendingInvitations.filter((o) => o.status === "pending").length}
+              newOrderCount={orderSummary.newCount}
               businessHandle={businessHandle}
               updateHandleAction={updateBusinessHandle.bind(null, id)}
-              managedBusinesses={managedBusinesses}
-              switcherTab={switcherTab}
-              pulse={overviewPulse}
-              pulseRangeLabel={performanceData?.rangeLabel ?? null}
-              discoverySources={overviewDiscoverySources}
-              appearances={overviewAppearances}
-              qrCampaigns={overviewQrCampaigns}
-              qrCentralOptions={overviewQrCentralOptions}
-              products={overviewProducts}
-              productCount={products.length}
-              needsAttention={needsAttention}
-              recentOrders={orderList}
             />
           </div>
         )}
@@ -1982,7 +1801,7 @@ export default async function ManageBusinessPage({
                   {products.length > 0 ? `${products.length} in your catalog` : "Show customers what you make, sell or offer."}
                 </p>
               </div>
-              <details className="group" open={addProductHasDraft}>
+              <details className="group" open={addProductHasDraft || composeOpen}>
                 <summary className="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden">
                   <span className="group-open:hidden">{products.length > 0 ? "+ Add Product" : "+ Add Your First Product"}</span>
                   <span className="hidden group-open:inline">Close</span>
@@ -2172,7 +1991,33 @@ export default async function ManageBusinessPage({
             record, at any list length. Business logic untouched:
             addFromEvent/addManual/updateOwnerAppearance/
             removeOwnerAppearance are the exact same actions as before. */}
+        {/* /account V2 — Presence: Upcoming (the existing Where I'll Be
+            management below, unchanged) · Past · Locations. */}
         {activeTab === "findmi-here" && (
+          <div className="mb-5">
+            <PresenceHeader basePath={basePath} view={presenceView} />
+          </div>
+        )}
+        {activeTab === "findmi-here" && presenceView === "past" && (
+          <div className="lg:max-w-3xl">
+            <PastPresence
+              items={pastAppearances.map((a) => ({
+                id: a.id,
+                title: a.title,
+                startAt: a.start_at,
+                endAt: a.end_at,
+                venueName: a.venue_name,
+                city: a.city,
+                state: a.state,
+                eventSlug: a.event?.slug ?? null,
+              }))}
+            />
+          </div>
+        )}
+        {activeTab === "findmi-here" && presenceView === "locations" && (
+          <LocationsPresence locations={qrEligibleLocations} businessName={business.name} />
+        )}
+        {activeTab === "findmi-here" && presenceView === "upcoming" && (
           <div className="flex flex-col gap-5 lg:max-w-3xl">
             {/* Business Manager V4 — this is the customer-facing schedule
                 workspace for THIS business, not a second copy of Account
@@ -2186,7 +2031,7 @@ export default async function ManageBusinessPage({
             </div>
             <AppearanceEditorDetails
               className="group"
-              initialOpen={addHasDraft}
+              initialOpen={addHasDraft || composeOpen}
               summaryClassName="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden"
               summary={
                 <>
@@ -2949,13 +2794,21 @@ export default async function ManageBusinessPage({
           </div>
         )}
 
+        {/* ── /account V2 — Opportunities (in-shell) ─────────────────── */}
+        {activeTab === "opportunities" && (
+          <OpportunitiesView basePath={basePath} businessId={id} opportunities={businessOpportunities} />
+        )}
+
+        {/* ── /account V2 — More (secondary destinations) ───────────── */}
+        {activeTab === "more" && (
+          <MoreMenu basePath={basePath} businessSlug={business.slug} ordersRelevant={ordersRelevant} showReferral={Boolean(referralPartner)} />
+        )}
+
         {/* Referral now renders inside Settings (?tab=settings) —
             ?tab=referral redirects there whenever referralPartner exists
             (see the redirect logic above); activeTab can never equal
             "referral" by the time rendering reaches here. */}
-        </div>
-      </div>
-    </div>
+    </BusinessAppShell>
   );
 }
 
@@ -3201,16 +3054,5 @@ function ScheduleDateBadge({ iso, live }: { iso: string; live?: boolean }) {
       </span>
       <span className="font-display text-body font-bold leading-none text-primary">{d.getDate()}</span>
     </span>
-  );
-}
-
-/** Owner Shell V3 — the Business switcher's own disclosure indicator.
- * Same 24x24/currentColor/rounded-stroke language as every other one-off
- * chevron in this codebase (e.g. AccountNav.tsx's own ChevronGlyph). */
-function ChevronGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

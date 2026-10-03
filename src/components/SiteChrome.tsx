@@ -62,11 +62,15 @@ export default function SiteChrome({
   const isOnboardingEntry = AUTH_JOURNEY_ROUTES.has(pathname);
 
   if (isOwner) {
+    // /account V2 — the Business app shell has a fixed bottom tab bar on
+    // mobile (/account/business/<id>), so the footer gets matching bottom
+    // room there and is never hidden behind it.
+    const hasBusinessTabBar = /^\/account\/business\/(?!new$)[^/]+$/.test(pathname);
     return (
       <>
         <OwnerHeader isAdmin={isAdmin} />
         <div className="flex-1">{children}</div>
-        {footer}
+        <div className={hasBusinessTabBar ? "pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" : undefined}>{footer}</div>
       </>
     );
   }
