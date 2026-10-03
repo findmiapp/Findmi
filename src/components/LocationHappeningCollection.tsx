@@ -31,7 +31,15 @@ type ViewMode = "cards" | "list";
  * from this collection — `happenings` here is always the FULL upcoming
  * set, same as Business's own Featured Appearance + FindMi Here
  * collection both showing the same appearance. */
-export default function LocationHappeningCollection({ happenings }: { happenings: LocationHappening[] }) {
+export default function LocationHappeningCollection({
+  happenings,
+  heading = "What's Happening Here",
+}: {
+  happenings: LocationHappening[];
+  /** Physical Presence Pass 3 — "Within {place}" for descendant activity;
+   * omitted (default heading) for the exact-match collection. */
+  heading?: string;
+}) {
   const [view, setView] = useState<ViewMode>("cards");
   const allEvents = happenings.every((h) => h.type === "event");
   const allAppearances = happenings.every((h) => h.type === "appearance");
@@ -41,7 +49,7 @@ export default function LocationHappeningCollection({ happenings }: { happenings
     <div>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">What&apos;s Happening Here</h2>
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">{heading}</h2>
           <p className="mt-0.5 text-xs text-ink/50">{subtitle}</p>
         </div>
         <ViewSwitcher view={view} onChange={setView} />
@@ -90,13 +98,31 @@ function LocationMomentCards({ happenings }: { happenings: LocationHappening[] }
 }
 
 function LocationMomentCard({ item }: { item: LocationHappening }) {
+  // Physical Presence Pass 3 — a Within item names its exact child place
+  // with its own link, so the card can't be a single <Link> (no nested
+  // anchors): the same card body becomes the main link, with the place
+  // link beneath it. Exact items (no `at`) render exactly as before.
+  if (item.at) {
+    return (
+      <div className="w-64 shrink-0 overflow-hidden rounded-2xl border border-black/5 bg-white text-left shadow-sm sm:w-72">
+        <LocationMomentCardBody item={item} className="block transition active:scale-[0.98]" />
+        <AtPlaceLink at={item.at} className="block px-3 pb-3 -mt-1.5" />
+      </div>
+    );
+  }
+  return (
+    <LocationMomentCardBody
+      item={item}
+      className="block w-64 shrink-0 overflow-hidden rounded-2xl border border-black/5 bg-white text-left shadow-sm transition active:scale-[0.98] sm:w-72"
+    />
+  );
+}
+
+function LocationMomentCardBody({ item, className }: { item: LocationHappening; className: string }) {
   const { label, live } = getTemporalLabel(item.start_at, item.end_at);
 
   return (
-    <Link
-      href={item.href}
-      className="block w-64 shrink-0 overflow-hidden rounded-2xl border border-black/5 bg-white text-left shadow-sm transition active:scale-[0.98] sm:w-72"
-    >
+    <Link href={item.href} className={className}>
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-mist">
         {item.imageUrl ? (
           <SupabaseImage src={item.imageUrl} alt="" fill sizes="(min-width: 640px) 288px, 256px" className="object-cover" />
@@ -144,6 +170,28 @@ function LocationMomentRow({ item }: { item: LocationHappening }) {
 
   return (
     <li>
+      <LocationMomentRowLink item={item} label={label} live={live} />
+      {item.at && <AtPlaceLink at={item.at} className="block px-4 pb-3 -mt-2 pl-[4.875rem]" />}
+    </li>
+  );
+}
+
+/** Physical Presence Pass 3 — "at {exact place}" for a Within item, linking
+ * to that child place's own page. */
+function AtPlaceLink({ at, className }: { at: NonNullable<LocationHappening["at"]>; className: string }) {
+  return (
+    <p className={`truncate text-xs text-ink/55 ${className}`}>
+      at{" "}
+      <Link href={`/location/${at.slug}`} className="font-semibold text-findmi-700 hover:underline">
+        {at.name}
+      </Link>
+    </p>
+  );
+}
+
+function LocationMomentRowLink({ item, label, live }: { item: LocationHappening; label: string; live: boolean }) {
+  return (
+    <>
       <Link
         href={item.href}
         className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition active:scale-[0.99] hover:bg-findmi-50/60"
@@ -179,7 +227,7 @@ function LocationMomentRow({ item }: { item: LocationHappening }) {
 
         <ArrowGlyph className="h-3.5 w-3.5 shrink-0 text-ink/30" />
       </Link>
-    </li>
+    </>
   );
 }
 

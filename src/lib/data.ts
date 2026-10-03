@@ -3643,6 +3643,11 @@ export interface LocationHappening {
    * featured-happening resolver can check this item's real identity
    * against `location.featured_event_id` without a second query. */
   eventId: string | null;
+  /** Physical Presence Pass 3 — set ONLY on "Within" items (activity at a
+   * descendant place): the exact place it actually happens, so the parent
+   * page never implies it happens at the parent itself. Always absent on
+   * exact-match items from getUpcomingAtLocation. */
+  at?: { id: string; name: string; slug: string };
 }
 
 /** Location Detail V1 — Events and standalone Appearances at a Location,
@@ -3673,16 +3678,39 @@ export async function getUpcomingAtLocation(
 ): Promise<LocationHappening[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
+  const rows = await queryUpcomingHappenings(supabase, [location.id], getLocationGalleryImages(location.id), limit);
+  return rows.map(({ locationId: _locationId, idSuffix: _idSuffix, ...h }) => h);
+}
+
+type HappeningRow = LocationHappening & { locationId: string; idSuffix: string };
+
+/** The ONE eligibility definition behind both "Exactly here"
+ * (getUpcomingAtLocation, a single id) and "Within"
+ * (getUpcomingWithinLocation, descendant ids) — scheduled occurrences that
+ * haven't ended, of non-demo events; standalone (event_id IS NULL),
+ * non-canceled appearances that haven't ended, of live non-demo
+ * businesses. Event-linked appearances stay excluded exactly as before:
+ * their occurrence already represents them, so the same activity can
+ * never surface twice (once as the Event, once as its official
+ * Appearance). Each row also carries the location_id it matched on, so a
+ * Within caller can label the real exact place. */
+async function queryUpcomingHappenings(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  locationIds: string[],
+  galleryImagesSource: Promise<string[]> | string[],
+  limit: number
+): Promise<HappeningRow[]> {
+  if (locationIds.length === 0) return [];
   const nowIso = new Date().toISOString();
 
   const APPEARANCE_COLUMNS =
-    "id, title, start_at, end_at, description, flyer_image_url, business:businesses(slug, name, logo_url, cover_image_url, is_demo, publication_status)";
+    "id, location_id, title, start_at, end_at, description, flyer_image_url, business:businesses(slug, name, logo_url, cover_image_url, is_demo, publication_status)";
 
-  const [{ data: occurrenceRows }, { data: linkedAppearances }, locationGalleryImages] = await Promise.all([
+  const [{ data: occurrenceRows }, { data: linkedAppearances }, galleryImages] = await Promise.all([
     supabase
       .from("event_occurrences")
-      .select("start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo)")
-      .eq("location_id", location.id)
+      .select("location_id, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo)")
+      .in("location_id", locationIds)
       .eq("status", "scheduled")
       .gt("end_at", nowIso)
       .order("start_at", { ascending: true })
@@ -3690,21 +3718,23 @@ export async function getUpcomingAtLocation(
     supabase
       .from("appearances")
       .select(APPEARANCE_COLUMNS)
-      .eq("location_id", location.id)
+      .in("location_id", locationIds)
       .is("event_id", null)
       .neq("status", "canceled")
       .gt("end_at", nowIso)
       .order("start_at", { ascending: true })
       .limit(limit),
-    getLocationGalleryImages(location.id),
+    galleryImagesSource,
   ]);
 
-  const fromOccurrences: LocationHappening[] = [];
+  const fromOccurrences: HappeningRow[] = [];
   for (const row of occurrenceRows ?? []) {
     const e = Array.isArray(row.event) ? row.event[0] : row.event;
     if (!e || e.is_demo) continue;
     fromOccurrences.push({
       id: `occurrence-${e.id}-${row.start_at}`,
+      idSuffix: row.location_id as string,
+      locationId: row.location_id as string,
       title: e.name,
       subtitle: e.organizer_name,
       start_at: row.start_at,
@@ -3713,7 +3743,7 @@ export async function getUpcomingAtLocation(
       imageUrl: resolveAppearanceDisplayImage({
         appearanceId: `occurrence-${e.id}-${row.start_at}`,
         specificImageUrl: e.cover_image_url,
-        galleryImages: locationGalleryImages,
+        galleryImages,
         businessCoverUrl: null,
       }),
       description: null,
@@ -3722,12 +3752,14 @@ export async function getUpcomingAtLocation(
     });
   }
 
-  const fromAppearances: LocationHappening[] = (linkedAppearances ?? [])
-    .map((a): LocationHappening | null => {
+  const fromAppearances: HappeningRow[] = (linkedAppearances ?? [])
+    .map((a): HappeningRow | null => {
       const b = Array.isArray(a.business) ? a.business[0] : a.business;
       if (!b || b.is_demo || b.publication_status !== "live") return null;
       return {
         id: `appearance-${a.id}`,
+        idSuffix: "",
+        locationId: a.location_id as string,
         title: a.title,
         subtitle: b.name,
         start_at: a.start_at,
@@ -3736,7 +3768,7 @@ export async function getUpcomingAtLocation(
         imageUrl: resolveAppearanceDisplayImage({
           appearanceId: a.id,
           specificImageUrl: a.flyer_image_url,
-          galleryImages: locationGalleryImages,
+          galleryImages,
           businessCoverUrl: b.cover_image_url ?? b.logo_url ?? null,
         }),
         description: a.description,
@@ -3744,9 +3776,72 @@ export async function getUpcomingAtLocation(
         eventId: null,
       };
     })
-    .filter((x): x is LocationHappening => x !== null);
+    .filter((x): x is HappeningRow => x !== null);
 
   return [...fromOccurrences, ...fromAppearances].sort((a, b) => a.start_at.localeCompare(b.start_at)).slice(0, limit);
+}
+
+/** Physical Presence Pass 3 — every public place physically contained by
+ * `locationId` (children, grandchildren, ...), EXCLUDING the place itself.
+ * Walks locations.parent_location_id one LEVEL per query (all siblings at
+ * a depth in a single `.in(...)`), so cost is the hierarchy's depth —
+ * typically 1–3 small queries — never one query per node, and no new RPC
+ * or migration. Runs through the anon client, so RLS hides archived/
+ * trashed places; demo places are filtered here. A hidden or demo place
+ * also hides its own subtree (same rule as get_location_ancestors). Same
+ * 64-level defensive cap as the Pass 2 trigger, plus a visited set so even
+ * corrupt data can't loop. Any query error (e.g. hierarchy column absent)
+ * resolves to "no descendants" — Within simply doesn't render. */
+export async function getLocationDescendants(
+  locationId: string
+): Promise<{ id: string; name: string; slug: string }[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const found: { id: string; name: string; slug: string }[] = [];
+  const visited = new Set<string>([locationId]);
+  let frontier = [locationId];
+  for (let depth = 0; depth < 64 && frontier.length > 0; depth++) {
+    const { data, error } = await supabase
+      .from("locations")
+      .select("id, name, slug")
+      .in("parent_location_id", frontier)
+      .eq("is_demo", false);
+    if (error || !data) break;
+    const next: string[] = [];
+    for (const row of data as { id: string; name: string; slug: string }[]) {
+      if (visited.has(row.id)) continue;
+      visited.add(row.id);
+      found.push(row);
+      next.push(row.id);
+    }
+    frontier = next;
+  }
+  return found;
+}
+
+/** Physical Presence Pass 3 — "Within": upcoming activity happening at a
+ * DESCENDANT of this place (never at the place itself — that is
+ * getUpcomingAtLocation's "Exactly here", unchanged). Same eligibility as
+ * exact (shared queryUpcomingHappenings). Every item carries `at` = the
+ * real exact place, so a parent page can say "at Eataly Chiosco" instead
+ * of implying the activity is at the parent. Each underlying occurrence or
+ * appearance appears once: a row has exactly one location_id, and each
+ * descendant is resolved once regardless of depth. No gallery-image
+ * fallback here — the parent's photos would misrepresent a child place —
+ * so cards use the Event cover / Appearance flyer / business photo, else
+ * the existing neutral placeholder. */
+export async function getUpcomingWithinLocation(locationId: string, limit = 12): Promise<LocationHappening[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const descendants = await getLocationDescendants(locationId);
+  if (descendants.length === 0) return [];
+  const byId = new Map(descendants.map((d) => [d.id, d]));
+  const rows = await queryUpcomingHappenings(supabase, [...byId.keys()], [], limit);
+  return rows.flatMap(({ locationId: rowLocationId, idSuffix, ...h }) => {
+    const at = byId.get(rowLocationId);
+    if (!at) return [];
+    return [{ ...h, id: idSuffix ? `${h.id}-${idSuffix}` : h.id, at }];
+  });
 }
 
 /** Event Manager Location UX pass — a legacy (no-occurrence) event has no

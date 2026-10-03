@@ -25,6 +25,7 @@ import {
   getLocationGalleryImages,
   getLocationPlaceContext,
   getUpcomingAtLocation,
+  getUpcomingWithinLocation,
   type LocationHappening,
 } from "@/lib/data";
 import { cityStateZip, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
@@ -107,13 +108,17 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const [happenings, galleryImages, showMessageButton, placeContext] = await Promise.all([
+  const [happenings, galleryImages, showMessageButton, placeContext, withinHappenings] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),
     getLocationGalleryImages(location.id),
     shouldShowMessageButton("location", location.id),
     // Physical Presence Pass 2 — physical-context line only; null (no
     // query at all) for a Location without a parent place.
     getLocationPlaceContext(location),
+    // Physical Presence Pass 3 — activity at places physically INSIDE this
+    // one (descendants), kept separate from `happenings` (exactly here),
+    // which still drives Featured, Calendar and What's Happening Here.
+    getUpcomingWithinLocation(location.id),
   ]);
   // Location Detail V1 — one unified "What's Happening Here" module
   // replaces the old split Featured Event hero + separate "Coming Up
@@ -377,9 +382,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               locationLine={location.name}
               live={featuredLive}
             />
-          ) : (
+          ) : withinHappenings.length === 0 ? (
+            // Physical Presence Pass 3 — only truly empty when there is
+            // nothing exactly here AND nothing within this place.
             <p className="text-sm text-ink/50">Nothing scheduled here yet. Check back soon.</p>
-          )}
+          ) : null}
         </section>
 
         {location.description && (
@@ -422,6 +429,17 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       {happenings.length > 0 && (
         <section className="mt-6 px-4 sm:px-0">
           <LocationHappeningCollection happenings={happenings} />
+        </section>
+      )}
+
+      {/* Physical Presence Pass 3 — "Within": activity at places physically
+          inside this one (e.g. Eataly Chiosco inside Flatiron North Plaza).
+          Separate from What's Happening Here so the page never implies it
+          happens at this place itself; every item names and links its
+          exact place ("at Eataly Chiosco"). Renders nothing when empty. */}
+      {withinHappenings.length > 0 && (
+        <section className="mt-6 px-4 sm:px-0">
+          <LocationHappeningCollection happenings={withinHappenings} heading={`Within ${location.name}`} />
         </section>
       )}
 
