@@ -14,7 +14,8 @@ export default function JournalCollection({
   total,
   layout = "rail",
 }: {
-  heading: string;
+  /** Omit when the surrounding page already titles the collection. */
+  heading?: string;
   entries: PublicJournalCard[];
   seeAllHref?: string | null;
   /** Exact eligible count when known; drives "See all N". */
@@ -26,22 +27,24 @@ export default function JournalCollection({
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-display text-lg font-bold tracking-tight text-ink">{heading}</h2>
-        {showSeeAll && seeAllHref && (
-          <Link href={seeAllHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
-            {total != null ? `See all ${total}` : "See all"}
-          </Link>
-        )}
-      </div>
+      {(heading || showSeeAll) && (
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          {heading && <h2 className="font-display text-lg font-bold tracking-tight text-ink">{heading}</h2>}
+          {showSeeAll && seeAllHref && (
+            <Link href={seeAllHref} className="shrink-0 text-xs font-semibold text-findmi-700 hover:underline">
+              {total != null ? `See all ${total}` : "See all"}
+            </Link>
+          )}
+        </div>
+      )}
       {layout === "rail" ? (
-        <div className="-mx-4 mt-3 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {entries.map((entry) => (
             <JournalPreviewCard key={entry.id} entry={entry} className="w-64 shrink-0 sm:w-72" />
           ))}
         </div>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
           {entries.map((entry) => (
             <JournalPreviewCard key={entry.id} entry={entry} />
           ))}

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import JournalCollection from "@/components/journal/JournalCollection";
-import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
+import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
@@ -453,7 +453,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       {journal.entries.length > 0 && (
         <section className="mt-6 px-4 sm:px-0">
           <JournalCollection
-            heading="From the Journal"
+            heading={momentsHeading("location", location.name)}
             entries={journal.entries}
             total={journal.total}
             seeAllHref={journalCollectionHref("location", location.slug)}

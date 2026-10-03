@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactElement } from "react";
 import Image from "next/image";
 import JournalCollection from "@/components/journal/JournalCollection";
-import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
+import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
@@ -853,7 +853,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
         {journal.entries.length > 0 && (
           <section className="mt-8">
             <JournalCollection
-              heading="Experiences"
+              heading={momentsHeading("event", event.name)}
               entries={journal.entries}
               total={journal.total}
               seeAllHref={journalCollectionHref("event", event.slug)}

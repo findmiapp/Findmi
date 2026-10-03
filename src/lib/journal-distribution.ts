@@ -192,6 +192,15 @@ export async function getPublicJournalCollection({
   };
 }
 
+/** Public distribution copy: Journal entries surface as "Moments" on
+ * Businesses, Events, Locations and Products (Journal stays the creation
+ * system's name). Presentation only. */
+export function momentsHeading(subjectType: JournalSubjectType, name: string): string {
+  if (subjectType === "event") return `Moments from ${name}`;
+  if (subjectType === "location") return `Moments at ${name}`;
+  return `Moments with ${name}`;
+}
+
 /** /journal?{subject}=<slug> — the "See all" destination for each surface. */
 export function journalCollectionHref(subjectType: JournalSubjectType, slug: string): string {
   return `/journal?${subjectType}=${encodeURIComponent(slug)}`;

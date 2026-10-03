@@ -23,7 +23,7 @@ import { shouldShowMessageButton } from "@/lib/message-visibility";
 import { FeaturedBadge, VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
 import JournalCollection from "@/components/journal/JournalCollection";
-import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
+import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
 import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
   attachCategories,
@@ -871,7 +871,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           {journal.entries.length > 0 && (
             <section className="mt-8">
               <JournalCollection
-                heading="From the Journal"
+                heading={momentsHeading("business", business.name)}
                 entries={journal.entries}
                 total={journal.total}
                 seeAllHref={journalCollectionHref("business", business.slug)}

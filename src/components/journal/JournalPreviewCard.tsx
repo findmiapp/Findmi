@@ -43,7 +43,7 @@ export default function JournalPreviewCard({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-ink">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-white/25">Findmi Journal</span>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-white/25">Findmi</span>
           </div>
         )}
       </div>

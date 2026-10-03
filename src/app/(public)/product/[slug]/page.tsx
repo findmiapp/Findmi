@@ -9,7 +9,7 @@ import AppearanceCard from "@/components/AppearanceCard";
 import FormAction from "@/components/FormAction";
 import ProductCard from "@/components/ProductCard";
 import JournalCollection from "@/components/journal/JournalCollection";
-import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
+import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
 import ProductSaveButton from "@/components/ProductSaveButton";
 import ShareButton from "@/components/ShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
@@ -355,7 +355,7 @@ export default async function ProductPage({
       {journal.entries.length > 0 && (
         <section className="mt-10">
           <JournalCollection
-            heading="From the Journal"
+            heading={momentsHeading("product", product.name)}
             entries={journal.entries}
             total={journal.total}
             seeAllHref={journalCollectionHref("product", product.slug)}

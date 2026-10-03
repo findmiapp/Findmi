@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import JournalCollection from "@/components/journal/JournalCollection";
 import { getBusinessBySlug, getEventBySlug, getLocationBySlug, getProductBySlug } from "@/lib/data";
-import { getPublicJournalCollection, type JournalSubjectType } from "@/lib/journal-distribution";
+import { getPublicJournalCollection, momentsHeading, type JournalSubjectType } from "@/lib/journal-distribution";
 
 /** Journal Distribution V1 — the "See all" destination for one public
  * object's Journal collection: /journal?business=<slug> (or event=,
@@ -40,10 +40,10 @@ async function resolveSubject(params: SearchParams) {
 
 export async function generateMetadata({ searchParams }: { searchParams: Promise<SearchParams> }): Promise<Metadata> {
   const subject = await resolveSubject(await searchParams);
-  if (!subject) return { title: "Journal" };
+  if (!subject) return { title: "Moments" };
   return {
-    title: `${subject.type === "event" ? "Experiences" : "From the Journal"} · ${subject.name}`,
-    description: `Journal experiences connected to ${subject.name} on Findmi.`,
+    title: momentsHeading(subject.type, subject.name),
+    description: `${momentsHeading(subject.type, subject.name)} on Findmi.`,
   };
 }
 
@@ -61,25 +61,25 @@ export default async function JournalCollectionPage({ searchParams }: { searchPa
     withCount: !cursor,
   });
   const base = `/journal?${subject.type}=${encodeURIComponent(subject.slug)}`;
-  const heading = subject.type === "event" ? "Experiences" : "From the Journal";
+  const heading = momentsHeading(subject.type, subject.name);
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-16 pt-6 sm:px-6">
       <Link href={subject.href} className="text-xs font-semibold text-findmi-700 hover:underline">
         ← {subject.name}
       </Link>
-      <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{subject.name}</h1>
-      <p className="mt-1 text-sm text-ink/55">
-        {page.total != null
-          ? `${page.total} ${page.total === 1 ? "experience" : "experiences"} from the Findmi Journal`
-          : "Experiences from the Findmi Journal"}
-      </p>
+      <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{heading}</h1>
+      {page.total != null && (
+        <p className="mt-1 text-sm text-ink/55">
+          {page.total} {page.total === 1 ? "moment" : "moments"}
+        </p>
+      )}
 
       <div className="mt-6">
         {page.entries.length > 0 ? (
-          <JournalCollection heading={heading} entries={page.entries} layout="grid" />
+          <JournalCollection entries={page.entries} layout="grid" />
         ) : (
-          <p className="text-sm text-ink/50">No more experiences.</p>
+          <p className="text-sm text-ink/50">No more moments.</p>
         )}
       </div>
 
@@ -94,7 +94,7 @@ export default async function JournalCollectionPage({ searchParams }: { searchPa
           )}
           {page.nextCursor && (
             <Link href={`${base}&cursor=${encodeURIComponent(page.nextCursor)}`} className="text-findmi-700 hover:underline">
-              Older experiences →
+              Older moments →
             </Link>
           )}
         </nav>
