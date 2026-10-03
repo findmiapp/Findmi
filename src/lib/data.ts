@@ -3549,6 +3549,62 @@ export async function getLocationBySlug(slug: string): Promise<LocationWithCateg
   return { ...row, category: normalizeCategoryEmbed(row.category) };
 }
 
+/** Physical Presence Pass 2 — the public physical-context line for a
+ * Location page ("Madison Square Park · Flatiron, New York"). */
+export interface LocationPlaceContext {
+  /** Nearest parent first, outward. Each links to its own public page. */
+  ancestors: { id: string; name: string; slug: string }[];
+  /** "Area, Market" discovery-geography suffix from the nearest place in
+   * the chain (this Location first) that has one — display only, never
+   * inherited onto the Location itself. */
+  geography: string | null;
+}
+
+/** Resolves the ancestor chain server-side in ONE round trip
+ * (get_location_ancestors, a recursive SQL function — see
+ * 20261003010000_location_place_hierarchy.sql), plus one small Market/Area
+ * name lookup. Returns null — and costs zero queries — for a Location with
+ * no parent, so an ordinary flat Location renders exactly as before. Also
+ * null on any RPC failure (e.g. migration not yet applied): the breadcrumb
+ * is optional context, never a reason for the page itself to fail.
+ * Read-only presentation — never consulted by any activity, Featured
+ * Event, directions, or Market/Area query. */
+export async function getLocationPlaceContext(
+  location: Pick<FindmiLocation, "id" | "parent_location_id" | "market_id" | "market_area_id">
+): Promise<LocationPlaceContext | null> {
+  if (!location.parent_location_id) return null;
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc("get_location_ancestors", { p_location_id: location.id });
+  if (error || !data || data.length === 0) return null;
+  const rows = data as { id: string; name: string; slug: string; market_id: string | null; market_area_id: string | null; depth: number }[];
+  const ancestors = [...rows].sort((a, b) => a.depth - b.depth).map((r) => ({ id: r.id, name: r.name, slug: r.slug }));
+
+  const geoSource = [location, ...rows].find((n) => n.market_area_id || n.market_id) ?? null;
+  let geography: string | null = null;
+  if (geoSource) {
+    const [{ data: area }, { data: market }] = await Promise.all([
+      geoSource.market_area_id
+        ? supabase
+            .from("market_areas")
+            .select("name, display_name")
+            .eq("id", geoSource.market_area_id)
+            .eq("active", true)
+            .eq("consumer_visible", true)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      geoSource.market_id
+        ? supabase.from("markets").select("name, display_name").eq("id", geoSource.market_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const areaLabel = area ? (area.display_name || area.name) : null;
+    const marketLabel = market ? (market.display_name || market.name) : null;
+    const parts = [areaLabel, marketLabel !== areaLabel ? marketLabel : null].filter((v): v is string => Boolean(v));
+    geography = parts.length > 0 ? parts.join(", ") : null;
+  }
+  return { ancestors, geography };
+}
+
 /** Location Manager / venue profile — the location-level gallery
  * (location_images), same normalized-child-rows pattern as
  * business_images/event_images. Ordered, public, read-only. */

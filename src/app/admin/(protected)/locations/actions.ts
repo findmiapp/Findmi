@@ -11,6 +11,7 @@ import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { getEntityManagerEmails } from "@/lib/notifications/recipients";
 import { sendProductNotification } from "@/lib/notifications/productNotify";
 import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
+import { isPlaceType } from "@/lib/place-types";
 
 /** Location review-decision notification — every CURRENT location_members
  * recipient, same shape as notifyBusinessOwners/notifyEventOrganizers
@@ -58,6 +59,39 @@ async function notifyLocationManagers(
   });
 }
 
+/** Physical Presence Pass 2 — trg_locations_hierarchy's own exceptions
+ * ("cannot be its own parent", "hierarchy cycle", "deeper than 64
+ * levels") surfaced as plain admin language; every other error passes
+ * through unchanged. */
+function friendlyHierarchyError(message: string): string {
+  if (/own parent|hierarchy cycle/i.test(message)) {
+    return "That parent place is inside this place already — a place can't be inside itself. Pick a different parent.";
+  }
+  if (/deeper than 64 levels/i.test(message)) {
+    return "That parent place chain is too deep. Pick a closer parent place.";
+  }
+  return message;
+}
+
+/** Deploy-order safety net — if this code reaches an environment where
+ * 20261003010000_location_place_hierarchy.sql hasn't been applied yet,
+ * PostgREST rejects the two new columns and every Location save would
+ * fail. Retry once without them so ordinary Location editing keeps
+ * working; the hierarchy fields simply don't persist until the migration
+ * is applied. */
+function isMissingHierarchyColumns(message: string): boolean {
+  return /parent_location_id|place_type/.test(message) && /column|schema cache/i.test(message);
+}
+
+function withoutHierarchy<T extends { parent_location_id: unknown; place_type: unknown }>(
+  payload: T
+): Omit<T, "parent_location_id" | "place_type"> {
+  const rest: Record<string, unknown> = { ...payload };
+  delete rest.parent_location_id;
+  delete rest.place_type;
+  return rest as Omit<T, "parent_location_id" | "place_type">;
+}
+
 export async function saveLocation(id: string | null, formData: FormData) {
   const editPath = id ? `/admin/locations/${id}` : "/admin/locations/new";
   const supabase = await requireAdminSupabase();
@@ -97,6 +131,19 @@ export async function saveLocation(id: string | null, formData: FormData) {
   const hoursRaw = str(formData, "hours");
   const hours = hoursRaw ? JSON.parse(hoursRaw) : null;
 
+  // Physical Presence Pass 2 — Place Graph V1. Parent = physical
+  // containment only. A self-parent is rejected here with a clear message;
+  // longer loops (A -> B -> A, ...) are rejected by the database's own
+  // trg_locations_hierarchy trigger and mapped to the same message below.
+  // place_type outside the known vocabulary is stored as null, never
+  // guessed.
+  const parentLocationId = str(formData, "parent_location_id");
+  if (id && parentLocationId === id) {
+    redirect(errorRedirectUrl(editPath, "A place can't be its own parent place."));
+  }
+  const placeTypeRaw = str(formData, "place_type");
+  const placeType = isPlaceType(placeTypeRaw) ? placeTypeRaw : null;
+
   const payload = {
     name,
     slug,
@@ -117,6 +164,8 @@ export async function saveLocation(id: string | null, formData: FormData) {
     email: str(formData, "email"),
     phone: str(formData, "phone"),
     hours,
+    parent_location_id: parentLocationId,
+    place_type: placeType,
   };
 
   let locationId = id;
@@ -127,16 +176,24 @@ export async function saveLocation(id: string | null, formData: FormData) {
     const { data: before } = await supabase.from("locations").select("is_demo").eq("id", locationId).maybeSingle();
     const wasPublished = before ? !before.is_demo : null;
 
-    const { error } = await supabase.from("locations").update(payload).eq("id", locationId);
-    if (error) redirect(errorRedirectUrl(editPath, error.message));
+    let { error } = await supabase.from("locations").update(payload).eq("id", locationId);
+    if (error && isMissingHierarchyColumns(error.message)) {
+      ({ error } = await supabase.from("locations").update(withoutHierarchy(payload)).eq("id", locationId));
+    }
+    if (error) redirect(errorRedirectUrl(editPath, friendlyHierarchyError(error.message)));
 
     const nowPublished = !payload.is_demo;
     if (wasPublished !== null && wasPublished !== nowPublished) {
       await notifyLocationManagers(supabase, locationId, name as string, nowPublished ? "approved" : "rejected");
     }
   } else {
-    const { data, error } = await supabase.from("locations").insert(payload).select("id").single();
-    if (error || !data) redirect(errorRedirectUrl(editPath, error?.message ?? "Could not create location."));
+    let { data, error } = await supabase.from("locations").insert(payload).select("id").single();
+    if (error && isMissingHierarchyColumns(error.message)) {
+      ({ data, error } = await supabase.from("locations").insert(withoutHierarchy(payload)).select("id").single());
+    }
+    if (error || !data) {
+      redirect(errorRedirectUrl(editPath, error ? friendlyHierarchyError(error.message) : "Could not create location."));
+    }
     locationId = data.id;
   }
 

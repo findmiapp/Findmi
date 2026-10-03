@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAdminLocationById, getAllCategories } from "@/lib/admin/queries";
+import { getAdminLocationById, getAllCategories, getLocationOptionById } from "@/lib/admin/queries";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import ViewPublicPageLink from "@/components/admin/ViewPublicPageLink";
 import LocationForm from "../LocationForm";
@@ -22,6 +22,7 @@ export default async function EditLocationPage({
     getAllCategories("location"),
   ]);
   if (!location) notFound();
+  const initialParent = await getLocationOptionById(location.parent_location_id ?? null);
   const publicHref = !location.is_demo ? `/location/${location.slug}` : null;
 
   return (
@@ -48,7 +49,7 @@ export default async function EditLocationPage({
         </p>
       )}
       <div className="mt-5">
-        <LocationForm location={location} marketsWithAreas={marketsWithAreas} categories={categories} error={error} />
+        <LocationForm location={location} initialParent={initialParent} marketsWithAreas={marketsWithAreas} categories={categories} error={error} />
       </div>
     </div>
   );

@@ -75,6 +75,7 @@ export function RelationField({
   createLabel,
   clearLabel = "None",
   onSelect,
+  excludeValue,
 }: {
   label: string;
   name: string;
@@ -92,6 +93,9 @@ export function RelationField({
    * selection too, instead of only the hidden input this already renders.
    * Every existing caller omits this; behavior for them is unchanged. */
   onSelect?: (value: SearchResult | null) => void;
+  /** Optional id never offered as a result — e.g. a Location's own id in
+   * its Parent Place picker. Omitted by every other caller. */
+  excludeValue?: string | null;
 }) {
   const [selected, setSelectedState] = useState<SearchResult | null>(initial);
   const setSelected = (value: SearchResult | null) => {
@@ -148,7 +152,7 @@ export function RelationField({
           {open && query.trim() && (
             <ResultsDropdown
               loading={loading}
-              results={results}
+              results={excludeValue ? results.filter((r) => r.value !== excludeValue) : results}
               onPick={(r) => {
                 setSelected(r);
                 setQuery("");

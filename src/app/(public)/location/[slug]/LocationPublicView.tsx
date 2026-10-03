@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
@@ -19,7 +20,13 @@ import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
 import FeaturedLocationHappeningCard from "@/components/FeaturedLocationHappeningCard";
 import LocationHappeningCollection from "@/components/LocationHappeningCollection";
-import { getLocationBySlug, getLocationGalleryImages, getUpcomingAtLocation, type LocationHappening } from "@/lib/data";
+import {
+  getLocationBySlug,
+  getLocationGalleryImages,
+  getLocationPlaceContext,
+  getUpcomingAtLocation,
+  type LocationHappening,
+} from "@/lib/data";
 import { cityStateZip, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, isOpenNow } from "@/lib/locationHours";
 import { getPublicHandleForEntity } from "@/lib/handles";
@@ -100,10 +107,13 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const location = await getLocationBySlug(slug);
   if (!location) notFound();
 
-  const [happenings, galleryImages, showMessageButton] = await Promise.all([
+  const [happenings, galleryImages, showMessageButton, placeContext] = await Promise.all([
     getUpcomingAtLocation({ id: location.id, name: location.name }),
     getLocationGalleryImages(location.id),
     shouldShowMessageButton("location", location.id),
+    // Physical Presence Pass 2 — physical-context line only; null (no
+    // query at all) for a Location without a parent place.
+    getLocationPlaceContext(location),
   ]);
   // Location Detail V1 — one unified "What's Happening Here" module
   // replaces the old split Featured Event hero + separate "Coming Up
@@ -264,6 +274,29 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               />
             </div>
           </div>
+
+          {/* Physical Presence Pass 2 — where this place physically sits
+              (nearest parent first), e.g. "Madison Square Park · Flatiron,
+              New York". Context, not navigation chrome: quiet text, each
+              parent linking to its own page. Absent for a flat Location. */}
+          {placeContext && (
+            <p className="mt-1 text-sm leading-snug text-ink/55">
+              {placeContext.ancestors.map((a, i) => (
+                <span key={a.id}>
+                  {i > 0 && <span aria-hidden="true"> · </span>}
+                  <Link href={`/location/${a.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
+                    {a.name}
+                  </Link>
+                </span>
+              ))}
+              {placeContext.geography && (
+                <>
+                  <span aria-hidden="true"> · </span>
+                  {placeContext.geography}
+                </>
+              )}
+            </p>
+          )}
 
           {/* 8. Category / subcategory — the single most-specific pick
               (parent or its chosen subcategory), no internal id, no tag

@@ -1,4 +1,5 @@
-import { CheckboxField, TextareaField, TextField } from "@/components/admin/Fields";
+import { CheckboxField, SelectField, TextareaField, TextField } from "@/components/admin/Fields";
+import { RelationField } from "@/components/admin/RelationPicker";
 import ImageField from "@/components/admin/ImageField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
@@ -6,17 +7,20 @@ import DeleteButton from "@/components/admin/DeleteButton";
 import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
 import LocationHoursField from "@/components/admin/LocationHoursField";
-import type { AdminLocation } from "@/lib/admin/queries";
+import type { AdminLocation, SelectOption } from "@/lib/admin/queries";
+import { PLACE_TYPES, PLACE_TYPE_LABELS } from "@/lib/place-types";
 import type { Category } from "@/lib/types";
 import { saveLocation, deleteLocation } from "./actions";
 
 export default function LocationForm({
   location,
+  initialParent,
   marketsWithAreas,
   categories,
   error,
 }: {
   location: AdminLocation | null;
+  initialParent: SelectOption | null;
   marketsWithAreas: MarketWithAreaOptions[];
   categories: Category[];
   error?: string;
@@ -102,6 +106,41 @@ export default function LocationForm({
               markets={marketsWithAreas}
               defaultMarketId={location?.market_id ?? null}
               defaultAreaId={location?.market_area_id ?? null}
+            />
+          </div>
+        </div>
+
+        {/* Physical Presence Pass 2 — Place Graph V1. PHYSICAL
+            containment only: which place this one is physically inside or
+            part of (Eataly Chiosco -> Madison Square Park). Never who owns,
+            operates, sponsors, or partners with it — those stay on
+            Businesses/Events. Both fields optional; the database rejects
+            any parent choice that would form a loop. */}
+        <div className="rounded-2xl border border-black/10 p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Place Hierarchy</p>
+          <p className="mt-1 text-xs text-ink/50">
+            Physical context only — the larger place this one sits inside (a park, mall, building, floor…). Not
+            ownership, operator, or partnerships.
+          </p>
+          <div className="mt-3 flex flex-col gap-4">
+            <SelectField
+              label="Place Type"
+              name="place_type"
+              defaultValue={location?.place_type ?? ""}
+              options={[
+                { value: "", label: "Not set" },
+                ...PLACE_TYPES.map((t) => ({ value: t, label: PLACE_TYPE_LABELS[t] })),
+              ]}
+            />
+            <RelationField
+              label="Parent Place"
+              name="parent_location_id"
+              entity="locations"
+              initial={initialParent}
+              excludeValue={location?.id ?? null}
+              clearLabel="No parent place"
+              placeholder="Search Findmi locations…"
+              hint="The place this one is physically inside or part of, if any."
             />
           </div>
         </div>

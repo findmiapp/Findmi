@@ -1,3 +1,5 @@
+import type { LocationPlaceType } from "./place-types";
+
 export type MembershipStatus = "lead" | "active" | "past_due" | "canceled";
 export type LeadStatus =
   | "new"
@@ -853,6 +855,12 @@ export interface FindmiLocation {
   // content — just a pointer, validated against a real occurrence at this
   // Location at resolution time.
   featured_event_id?: string | null;
+  // Physical Presence Pass 2 — Place Graph V1. PHYSICAL containment only
+  // ("this place is inside / part of the parent place") — never
+  // ownership, operator, partner, sponsor, or organizer. Optional on the
+  // type so a row read before the migration is applied still type-checks.
+  parent_location_id?: string | null;
+  place_type?: LocationPlaceType | null;
 }
 
 export type LocationWeekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
