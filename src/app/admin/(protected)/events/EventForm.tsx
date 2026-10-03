@@ -268,6 +268,15 @@ export default function EventForm({
         />
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <CheckboxField
+          label="Show on Homepage"
+          name="show_on_homepage"
+          defaultChecked={event?.show_on_homepage}
+          hint="Eligible for the homepage's What's Happening rail. Off by default — independent of Featured and publication status; doesn't change where else this event appears."
+        />
+      </div>
+
       <CheckboxList
         label="Categories / Experience"
         name="category_ids"

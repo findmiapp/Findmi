@@ -1409,6 +1409,13 @@ interface EffectiveUpcomingEventsOptions {
    * unknown/inactive Area slug (once a Market is resolved) returns zero
    * rows, same "resolved-but-empty" idiom as Market/category filtering. */
   areaSlug?: string;
+  /** Homepage Event Merchandising — when true, both branches below also
+   * require `show_on_homepage = true`. Deliberately opt-in (default
+   * false/omitted = existing unfiltered behavior) so this never affects
+   * /discover, /events, /find, getFeaturedEvents, or the admin-managed
+   * Homepage Row system — only getUpcomingEvents (the homepage "What's
+   * Happening" rail) passes this. */
+  requireShowOnHomepage?: boolean;
 }
 
 function applyEventTextFilters<
@@ -1586,6 +1593,7 @@ export async function getEffectiveUpcomingEvents(
   if (occurrenceEventIds.length > 0) {
     let evQuery = supabase.from("events").select("*").eq("is_demo", false).in("id", occurrenceEventIds);
     if (areaId) evQuery = evQuery.eq("market_area_id", areaId);
+    if (options.requireShowOnHomepage) evQuery = evQuery.eq("show_on_homepage", true);
     evQuery = applyEventTextFilters(evQuery, options);
     const { data } = await evQuery;
     occurrenceEvents = data ?? [];
@@ -1601,6 +1609,7 @@ export async function getEffectiveUpcomingEvents(
   if (options.eventIds) legacyQuery = legacyQuery.in("id", options.eventIds);
   if (marketId) legacyQuery = legacyQuery.eq("market_id", marketId);
   if (areaId) legacyQuery = legacyQuery.eq("market_area_id", areaId);
+  if (options.requireShowOnHomepage) legacyQuery = legacyQuery.eq("show_on_homepage", true);
   legacyQuery = bounds
     ? legacyQuery.lt("start_at", bounds.end.toISOString()).gt("end_at", bounds.start.toISOString())
     : legacyQuery.gt("end_at", new Date().toISOString());
@@ -1649,6 +1658,11 @@ export async function getEffectiveUpcomingEvents(
   return rows;
 }
 
+/** Homepage "What's Happening" rail ONLY — the one caller of
+ * getEffectiveUpcomingEvents that requires show_on_homepage = true (see
+ * that option's own doc comment). /discover, /events, /find, and
+ * getFeaturedEvents all go through getEventsDiscovery instead and are
+ * unaffected by this requirement. */
 export async function getUpcomingEvents(
   limit = 20,
   when: DiscoveryWindow = "anytime",
@@ -1656,7 +1670,11 @@ export async function getUpcomingEvents(
   areaSlug?: string
 ): Promise<FindmiEvent[]> {
   const bounds = getDiscoveryWindowBounds(when);
-  const rows = await getEffectiveUpcomingEvents(bounds, { marketSlug, areaSlug: marketSlug ? areaSlug : undefined });
+  const rows = await getEffectiveUpcomingEvents(bounds, {
+    marketSlug,
+    areaSlug: marketSlug ? areaSlug : undefined,
+    requireShowOnHomepage: true,
+  });
   return rows.slice(0, limit).map((r) => applyOccurrenceOverride(r.event, r.occurrence, r.occurrenceLocation));
 }
 

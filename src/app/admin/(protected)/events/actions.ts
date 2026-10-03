@@ -201,6 +201,7 @@ export async function saveEvent(id: string | null, formData: FormData) {
     external_url: str(formData, "external_url"),
     is_featured: bool(formData, "is_featured"),
     featured_sort_order: num(formData, "featured_sort_order"),
+    show_on_homepage: bool(formData, "show_on_homepage"),
     is_demo: !bool(formData, "published"),
     directions_enabled: bool(formData, "directions_enabled"),
     rsvp_enabled: bool(formData, "rsvp_enabled"),

@@ -548,6 +548,12 @@ export interface FindmiEvent {
   organizer_name: string | null;
   external_url: string | null;
   is_featured: boolean;
+  // Homepage Event Merchandising — deliberately separate from is_featured
+  // above (general editorial priority, used elsewhere) and from
+  // publication_status. Gates ONLY whether this Event is eligible for the
+  // homepage "What's Happening" rail (getUpcomingEvents); every other
+  // existing eligibility rule and every other Event surface is unaffected.
+  show_on_homepage: boolean;
   // Event Market Mapping Foundation V1 — the event's normal/default
   // physical FindMi Market (reuses the same `markets` table as
   // business_markets, but is a structurally separate concept: this is
