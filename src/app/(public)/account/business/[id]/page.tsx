@@ -12,6 +12,7 @@ import { getCategories, getMarketAreaLabel, getPastAppearancesForBusiness, getPr
 import {
   buildNeedsAttentionItems,
   resolveDashboardAppearances,
+  withoutSupersededEventProjections,
   type DashboardAppearance,
   type DashboardAppearanceSource,
 } from "@/lib/business-dashboard";
@@ -805,6 +806,9 @@ export default async function ManageBusinessPage({
   }[] = [];
   // Where I'll Be Schedule Scale Bound pass — see below.
   let scheduleHasMore = false;
+  // Activity Integrity — Event ids for which this business has per-date
+  // official projections (see withoutSupersededEventProjections).
+  let eventIdsWithOccurrenceProjections = new Set<string>();
   const SCHEDULE_PAGE_SIZE = 25;
   let scheduleLimitUsed = SCHEDULE_PAGE_SIZE;
 
@@ -880,7 +884,7 @@ export default async function ManageBusinessPage({
       // Add flow itself, and its separate platform-wide Event/Occurrence
       // queries below, are an explicitly out-of-scope concern this pass —
       // see the Schedule Scalability audit).
-      admin.from("appearances").select("event_id, event_occurrence_id").eq("business_id", id).neq("status", "canceled"),
+      admin.from("appearances").select("event_id, event_occurrence_id, source").eq("business_id", id).neq("status", "canceled"),
       admin.from("event_businesses").select("event_id, status").eq("business_id", id),
       admin.from("event_occurrence_businesses").select("occurrence_id, status").eq("business_id", id),
     ]);
@@ -904,6 +908,11 @@ export default async function ManageBusinessPage({
           : null,
     }));
 
+    eventIdsWithOccurrenceProjections = new Set(
+      (linkedIdRows ?? [])
+        .filter((r) => r.event_occurrence_id && r.event_id && r.source === "official_participation")
+        .map((r) => r.event_id as string)
+    );
     const linkedEventIds = new Set((linkedIdRows ?? []).filter((r) => !r.event_occurrence_id).map((r) => r.event_id));
     const linkedOccurrenceIds = new Set((linkedIdRows ?? []).map((r) => r.event_occurrence_id).filter((x): x is string => Boolean(x)));
 
@@ -1007,7 +1016,9 @@ export default async function ManageBusinessPage({
   const { appearances: dashboardAppearances, businessGeographyLabel } = await resolveDashboardAppearances(
     admin,
     id,
-    appearances as DashboardAppearanceSource[],
+    // Home's Happening now / Coming up show one card per real-world
+    // participation; the Where I'll Be management list keeps every row.
+    withoutSupersededEventProjections(appearances, eventIdsWithOccurrenceProjections) as DashboardAppearanceSource[],
     { primaryMarketId: primaryMarket?.marketId ?? null, marketAreaId: business.market_area_id ?? null }
   );
   const todayAppearances = dashboardAppearances.filter((a) => a.isToday);

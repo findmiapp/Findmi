@@ -47,7 +47,41 @@ export interface DashboardAppearanceSource {
   flyer_image_url: string | null;
   event_id: string | null;
   event_occurrence_id: string | null;
+  /** The appearance's authoritative linked Location (occurrence-level
+   * projections copy event_occurrences.location_id). Preferred over the
+   * venue text and any Market/Area fallback for the place label. */
+  location?: { name: string } | null;
   participationStatus: EventParticipationStatus | null;
+}
+
+/** Activity Integrity — an Event-level official participation projection
+ * (source='official_participation', event_id set, event_occurrence_id
+ * null) is superseded once the same business has per-date official
+ * projections for that SAME Event: the Event gained occurrences after the
+ * business joined, and ensureOccurrenceAppearance now projects each date
+ * individually (see the "ambiguous recurring-event participation" case in
+ * lib/appearance-event-sync.ts). Showing both makes one participation look
+ * like two simultaneous activities, so presentation keeps the per-date
+ * rows and drops the Event-level one.
+ *
+ * Keyed only on authoritative ids (business is implicit — callers pass one
+ * business's rows; event_id from the row; the set of event ids that have
+ * occurrence-level official projections for this business). Never on
+ * title, time or place. Manual/owner-entered rows, standalone rows,
+ * occurrence-level rows, and Event-level rows for Events with no
+ * per-date projection are always kept. Records themselves are untouched. */
+export function withoutSupersededEventProjections<
+  T extends { event_id: string | null; event_occurrence_id: string | null; source?: string | null },
+>(rows: T[], eventIdsWithOccurrenceProjections: Set<string>): T[] {
+  return rows.filter(
+    (r) =>
+      !(
+        r.source === "official_participation" &&
+        r.event_id &&
+        !r.event_occurrence_id &&
+        eventIdsWithOccurrenceProjections.has(r.event_id)
+      )
+  );
 }
 
 export interface DashboardAppearance {
@@ -183,7 +217,7 @@ export async function resolveDashboardAppearances(
       title: a.title,
       startAt: a.start_at,
       endAt: a.end_at,
-      venueName: a.venue_name,
+      venueName: a.location?.name ?? a.venue_name,
       address: a.address,
       city: a.city,
       state: a.state,
