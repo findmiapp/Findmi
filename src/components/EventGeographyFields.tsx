@@ -37,6 +37,18 @@ export interface EventGeographyFieldsProps {
  * Event creation has no Area picker today (same limitation as Business —
  * see BusinessGeographyFields), so only the Market portion of a match is
  * used here, exactly matching the smallest-change-necessary instruction.
+ *
+ * Market/Area Product Boundary — USERS PROVIDE REAL-WORLD INFORMATION;
+ * FINDMI DERIVES GEOGRAPHIC CLASSIFICATION. When a real Findmi place is
+ * selected, the place IS the geography: the "Findmi area" control is not
+ * shown at all (the owner already said where it's happening), while the
+ * same silent derivation still fills the hidden market_id /
+ * requested_market_text from that place's city/state, exactly as before.
+ * The control appears only on the text-only venue path (no Findmi place),
+ * where it remains a genuine fallback — and never before any venue is
+ * given. Nothing here blocks creating the Event. Future: address →
+ * geocode → coordinates → Market → Area, classified once on the Location
+ * and inherited by its activities (not built yet).
  */
 export default function EventGeographyFields({
   markets,
@@ -67,7 +79,17 @@ export default function EventGeographyFields({
     }
   }, [status, suggestion, overridden]);
 
+  // A selected Findmi place supplies the geography — drop any earlier
+  // manual Market choice so the hidden value follows the place.
+  const placeSelected = Boolean(locationName);
+  useEffect(() => {
+    if (placeSelected) setOverridden(false);
+  }, [placeSelected]);
+
   const showManualPicker = overridden || status === "idle";
+  // Text-only venue fallback only: no Findmi place, and some venue city/
+  // state (or an explicit earlier choice) to classify.
+  const showAreaControl = !placeSelected && (overridden || Boolean(city.trim() || state.trim()));
   const requestedMarketText =
     !overridden && status === "no_match" ? [city.trim(), state.trim()].filter(Boolean).join(", ") : "";
 
@@ -83,6 +105,7 @@ export default function EventGeographyFields({
         }}
       />
 
+      {showAreaControl && (
       <div>
         <span className="mb-1.5 block text-sm font-medium text-ink">
           Findmi area <span className="font-normal text-ink/40">(optional)</span>
@@ -160,6 +183,7 @@ export default function EventGeographyFields({
 
         <p className="mt-1.5 text-xs text-ink/45">You can add or change this later from your Event Manager.</p>
       </div>
+      )}
 
       <input type="hidden" name="market_id" value={marketId} />
       <input type="hidden" name="requested_market_text" value={showManualPicker ? "" : requestedMarketText} />
