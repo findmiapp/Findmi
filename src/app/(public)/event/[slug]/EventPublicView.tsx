@@ -6,7 +6,7 @@ import BrandHeading from "@/components/BrandHeading";
 import SectionHeading from "@/components/SectionHeading";
 import { EndedStatus, FactsBand, WhenFact, WhereFact } from "@/components/event/KeyFacts";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
-import EventMomentsGrid from "@/components/event/EventMomentsGrid";
+import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import EventGalleryMosaic from "@/components/event/EventGalleryMosaic";
 import EventLocationFeature from "@/components/event/EventLocationFeature";
 import Link from "next/link";
@@ -182,7 +182,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // time), de-duplicated. Public Event V2 Next Body pass — raised from
       // 6 to a still-bounded 12 so Findmi Moments' incremental "show 3
       // more" reveal has real local batches to expand through before
-      // falling back to "View all Moments" (see EventMomentsGrid).
+      // falling back to "View all Moments" (see MomentsCarousel).
       getPublicJournalCollection({ subjectType: "event", subjectId: event.id, limit: 12, withCount: true }),
     ]);
   // Multi-Date Business Participation Pass 2B — Primary Date Integrity.
@@ -644,11 +644,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
 
   // Findmi Moments — heading + compact "+ Add Moment" pill at its right,
   // then one compact supporting block (two sentences, tight spacing, no
-  // Business name — Live QA Polish pass), an incrementally-revealed
-  // horizontal collection (EventMomentsGrid), and a quiet "View Your
-  // Journal" link. The section always renders (heading + pill + copy), so
-  // the capability never disappears when there are no public Moments yet
-  // — only the grid itself is conditional.
+  // Business name — Live QA Polish pass), the shared compact-card
+  // MomentsCarousel (Event/Business Moments Consistency pass — the same
+  // primitive Business Moments now uses), and a quiet "View Your Journal"
+  // link. The section always renders (heading + pill + copy), so the
+  // capability never disappears when there are no public Moments yet —
+  // only the carousel itself is conditional.
   const momentsSection = (
     <section id="moments" className="scroll-mt-24">
       <BrandHeading
@@ -668,12 +669,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
       </p>
       {journal.entries.length > 0 && (
         <div className="mt-4">
-          <EventMomentsGrid entries={journal.entries} total={journal.total} viewAllHref={journalCollectionHref("event", event.slug)} />
+          <MomentsCarousel entries={journal.entries} total={journal.total} viewAllHref={journalCollectionHref("event", event.slug)} />
         </div>
       )}
       <div className="mt-4">
         <Link href="/my-world/journal" className="inline-flex items-center gap-1 text-metadata font-semibold text-muted transition hover:text-primary">
-          View Your Journal ✓
+          View Your Journal ›
         </Link>
       </div>
     </section>

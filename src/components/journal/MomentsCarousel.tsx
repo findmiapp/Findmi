@@ -2,16 +2,19 @@ import Link from "next/link";
 import type { PublicJournalCard } from "@/lib/journal-distribution";
 import JournalPreviewCard from "@/components/journal/JournalPreviewCard";
 
-/** Findmi Moments (Public Event V2 Next Body pass; Live QA Polish pass) —
- * editorial Event imagery stays in Gallery; this is community Journal
- * content. Carousel-ready rather than a fixed grid: a single Moment stays
- * a compact card (never stretches full width), and more Moments continue
- * naturally in the same horizontally-scrollable row, with the next card
- * peeking into view on mobile — same edge-bleed/snap idiom already used by
- * JournalCollection's own "compact" rail and Upcoming Dates. The batch
- * itself stays server-bounded (see EventPublicView's fetch limit); "View
- * all Moments" only appears once real Moments exist beyond that bound. */
-export default function EventMomentsGrid({
+/** The one compact Moment-card presentation shared by every public surface
+ * that shows Moments (Event, Business, …) — a Findmi product primitive,
+ * not an Event-specific or Business-specific widget. Carousel-ready rather
+ * than a fixed grid: a single Moment stays a compact card (never stretches
+ * full width), and more Moments continue naturally in the same
+ * horizontally-scrollable row, with the next card peeking into view on
+ * mobile — same edge-bleed/snap idiom already used by JournalCollection's
+ * own "compact" rail and Upcoming Dates. The batch itself stays
+ * server-bounded by whatever limit the caller's own getPublicJournalCollection
+ * call used; "View all Moments" only appears once real Moments exist
+ * beyond that bound. Carries no subject-specific wording — callers supply
+ * their own heading above it. */
+export default function MomentsCarousel({
   entries,
   total,
   viewAllHref,

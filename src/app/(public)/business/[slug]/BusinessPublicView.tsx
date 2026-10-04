@@ -20,9 +20,9 @@ import MessageButton from "@/components/MessageButton";
 import InquireButton from "@/components/InquireButton";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
-import { FeaturedBadge, VerifiedBadge } from "@/components/Badge";
+import { VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
-import JournalCollection from "@/components/journal/JournalCollection";
+import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
 import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
@@ -631,14 +631,33 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 removed. Verified and Featured are unrelated to plan status
                 and are preserved exactly as before. */}
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
-            {(business.verified || business.is_featured) && (
+            {/* Business Hero Metadata Consistency pass — Featured is
+                editorial curation (businesses.is_featured), not a trust
+                badge; it no longer renders here as a separate pill (it
+                used to visually compete with name/category/geography).
+                The underlying is_featured field, Admin controls, and
+                every other consumer of it (homepage/discovery sorting,
+                etc.) are untouched — this removes ONE presentation, not
+                the data. Verified is unrelated and still shows. */}
+            {business.verified && (
               <div className="flex flex-wrap items-center gap-1.5">
-                {business.verified && <VerifiedBadge />}
-                {business.is_featured && <FeaturedBadge />}
+                <VerifiedBadge />
               </div>
             )}
+            {/* Business Hero Metadata Consistency pass — category is now a
+                compact aqua pill (same accent language as the rest of the
+                app) rather than plain bold text, so it reads as a distinct
+                chip instead of competing with the business name above it.
+                Area stays quiet text on the same row. Both halves are
+                independently optional — no empty pill, no dangling
+                separator — and this still carries only the real,
+                dynamic category/location data already resolved above. */}
             <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
-              {primaryCategory && <span className="font-semibold text-ink/70">{primaryCategory.name}</span>}
+              {primaryCategory && (
+                <span className="inline-flex items-center rounded-full bg-findmi-50 px-2.5 py-1 text-xs font-bold text-findmi-700">
+                  {primaryCategory.name}
+                </span>
+              )}
               {/* Free shows exactly 1 category — the "+N" extra-category
                   count is Pro-only, regardless of how many category rows
                   the business actually has (a Free business is limited to
@@ -893,15 +912,24 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             </section>
           )}
 
-          {/* Journal Distribution V1 — renders nothing when empty. */}
+          {/* Journal Distribution V1 — renders nothing when empty.
+              Event/Business Moments Consistency pass — same compact
+              card-carousel primitive (MomentsCarousel) the Event page's
+              own Findmi Moments section uses, replacing the old larger
+              portrait JournalCollection "rail" card here. The
+              Business-specific heading ("Moments with {name}") is
+              preserved exactly as before — only the card language changed,
+              never the wording/behavior. */}
           {journal.entries.length > 0 && (
             <section className="mt-8">
-              <JournalCollection
-                heading={momentsHeading("business", business.name)}
-                entries={journal.entries}
-                total={journal.total}
-                seeAllHref={journalCollectionHref("business", business.slug)}
-              />
+              <h2 className="font-display text-lg font-bold tracking-tight text-ink">{momentsHeading("business", business.name)}</h2>
+              <div className="mt-4">
+                <MomentsCarousel
+                  entries={journal.entries}
+                  total={journal.total}
+                  viewAllHref={journalCollectionHref("business", business.slug)}
+                />
+              </div>
             </section>
           )}
 
