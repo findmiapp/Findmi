@@ -25,7 +25,7 @@ export default function EventSaveButton({
         aria-pressed={saved}
         aria-label={saved ? "Saved" : "Save"}
         title={saved ? "Saved" : "Save"}
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition active:scale-95 ${
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 border transition active:scale-95 ${
           saved ? "border-findmi/40 bg-findmi-50 text-findmi-700" : "border-black/10 bg-white text-ink/70 hover:border-ink/30 hover:text-ink"
         }`}
       >

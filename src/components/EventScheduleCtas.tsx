@@ -3,7 +3,6 @@
 import type { ResolvedForm } from "@/lib/forms";
 import { validateCustomDestination } from "@/lib/navigation";
 import FormAction from "./FormAction";
-import { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS, secondaryCtaContent } from "@/lib/event-actions";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 
 type ResolvedAction = Pick<ResolvedForm, "url" | "displayMode">;
@@ -48,6 +47,41 @@ function resolveAction(override: string | null | undefined, parent: ResolvedActi
  * in advance whether any Tier A action exists for the current selection.
  * flex-1 on every button is what lets 1, 2, or 3 of them split the row's
  * width evenly. */
+export interface EventCtaConfig {
+  ticketsEnabled: boolean;
+  ticketsUrl: string | null;
+  rsvpEnabled: boolean;
+  rsvp: ResolvedAction | null;
+  vendorApplicationsEnabled: boolean;
+  vendorApplication: ResolvedAction | null;
+}
+
+export type ResolvedEventCta = {
+  label: string;
+  action: ResolvedAction;
+  weight: "solid" | "outline";
+  eventName: "click_tickets" | "click_rsvp" | "click_apply_to_vend";
+};
+
+/** The organizer actions for one selected date, in priority order (Get
+ * Tickets, RSVP, Apply to Vend) — per-date overrides win over the Event's
+ * own destinations. Shared by EventScheduleCtas and EventActionRow. */
+export function resolveEventCtas(
+  selected: { ticket_url_override: string | null; rsvp_url_override: string | null; vendor_apply_url_override: string | null },
+  c: EventCtaConfig
+): ResolvedEventCta[] {
+  const ticket = c.ticketsEnabled
+    ? resolveAction(selected.ticket_url_override, c.ticketsUrl ? { url: c.ticketsUrl, displayMode: "external" } : null)
+    : null;
+  const rsvpAction = c.rsvpEnabled ? resolveAction(selected.rsvp_url_override, c.rsvp) : null;
+  const vendorAction = c.vendorApplicationsEnabled ? resolveAction(selected.vendor_apply_url_override, c.vendorApplication) : null;
+  const actions: ResolvedEventCta[] = [];
+  if (ticket) actions.push({ label: "Get Tickets", action: ticket, weight: "solid", eventName: "click_tickets" });
+  if (rsvpAction) actions.push({ label: "RSVP", action: rsvpAction, weight: "solid", eventName: "click_rsvp" });
+  if (vendorAction) actions.push({ label: "Apply to Vend", action: vendorAction, weight: "outline", eventName: "click_apply_to_vend" });
+  return actions;
+}
+
 export default function EventScheduleCtas({
   eventId,
   ticketsEnabled,
@@ -57,21 +91,10 @@ export default function EventScheduleCtas({
   vendorApplicationsEnabled,
   vendorApplication,
   bare = false,
-  pick,
-  fallback,
-  withPrimary,
 }: {
   /** Public Event V2 — render just the buttons (no wrapping row) so the
    * caller can place them in its own action row beside Follow. */
   bare?: boolean;
-  /** Event compact action hierarchy: "primary" renders only the ONE
-   * dominant transactional action (Get Tickets, else RSVP) — or `fallback`
-   * when none resolves for the selected date; "secondary" renders the
-   * rest (Apply to Vend, a second transactional action) as compact
-   * outlined buttons, plus `withPrimary` when a primary exists. */
-  pick?: "primary" | "secondary";
-  fallback?: React.ReactNode;
-  withPrimary?: React.ReactNode;
   /** Analytics attribution only. */
   eventId: string;
   ticketsEnabled: boolean;
@@ -82,68 +105,9 @@ export default function EventScheduleCtas({
   vendorApplication: ResolvedAction | null;
 }) {
   const { selected, selectedState } = useEventOccurrence();
-  if (!selected || selectedState === "cancelled") return pick === "primary" ? <>{fallback ?? null}</> : null;
+  if (!selected || selectedState === "cancelled") return null;
 
-  const ticket = ticketsEnabled
-    ? resolveAction(selected.ticket_url_override, ticketsUrl ? { url: ticketsUrl, displayMode: "external" } : null)
-    : null;
-  const rsvpAction = rsvpEnabled ? resolveAction(selected.rsvp_url_override, rsvp) : null;
-  const vendorAction = vendorApplicationsEnabled
-    ? resolveAction(selected.vendor_apply_url_override, vendorApplication)
-    : null;
-
-  const actions: { label: string; action: ResolvedAction; weight: "solid" | "outline"; eventName: "click_tickets" | "click_rsvp" | "click_apply_to_vend" }[] =
-    [];
-  if (ticket) actions.push({ label: "Get Tickets", action: ticket, weight: "solid", eventName: "click_tickets" });
-  if (rsvpAction) actions.push({ label: "RSVP", action: rsvpAction, weight: "solid", eventName: "click_rsvp" });
-  if (vendorAction) actions.push({ label: "Apply to Vend", action: vendorAction, weight: "outline", eventName: "click_apply_to_vend" });
-
-  if (pick) {
-    const primaryIdx = actions.findIndex((a) => a.weight === "solid");
-    const track = (eventName: (typeof actions)[number]["eventName"]) => ({
-      event_name: eventName,
-      subject_type: "event_occurrence",
-      subject_id: selected.id,
-      event_id: eventId,
-      event_occurrence_id: selected.id,
-      location_id: selected.location?.id ?? undefined,
-    });
-    if (pick === "primary") {
-      const p = actions[primaryIdx];
-      if (!p) return <>{fallback ?? null}</>;
-      return (
-        <FormAction
-          href={p.action.url}
-          displayMode={p.action.displayMode}
-          label={p.label}
-          className={EVENT_PRIMARY_CTA_CLASS}
-          track={track(p.eventName)}
-        />
-      );
-    }
-    const rest = actions.filter((_, i) => i !== primaryIdx);
-    if (rest.length === 0 && !(primaryIdx >= 0 && withPrimary)) return null;
-    return (
-      <>
-        {primaryIdx >= 0 ? withPrimary : null}
-        {rest.map((a) => {
-          const c = secondaryCtaContent(a.label);
-          return (
-            <span key={a.label} className="inline-flex items-center gap-1.5">
-              {c.prompt && <span className="text-metadata text-muted">{c.prompt}</span>}
-              <FormAction
-                href={a.action.url}
-                displayMode={a.action.displayMode}
-                label={c.text}
-                className={EVENT_SECONDARY_CTA_CLASS}
-                track={track(a.eventName)}
-              />
-            </span>
-          );
-        })}
-      </>
-    );
-  }
+  const actions = resolveEventCtas(selected, { ticketsEnabled, ticketsUrl, rsvpEnabled, rsvp, vendorApplicationsEnabled, vendorApplication });
 
   if (actions.length === 0) return null;
 

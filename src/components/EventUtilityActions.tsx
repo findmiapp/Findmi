@@ -125,6 +125,45 @@ function DirectionsGlyph({ className }: { className?: string }) {
  * EventScheduleSummary's own manualVenueLine fallback already reads) to
  * build a Maps query, so Directions still works for a founder-typed venue
  * with no FindMi Location relationship at all — same data, no new system. */
+/** The selected date's place + Maps destination (selected occurrence's
+ * Location → the Event's canonical Location → the occurrence's manual
+ * venue text). Shared by EventUtilityActions and EventActionRow. */
+export function useOccurrenceDirections(
+  eventId: string,
+  directionsEnabled: boolean,
+  canonicalLocation: (EventLocationCardLocation & { id: string }) | null
+) {
+  const { selected, selectedState } = useEventOccurrence();
+  const location = selected?.location ?? canonicalLocation ?? null;
+  const manualVenueLine = selected
+    ? [selected.venue_name, selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+  const locationLine = location
+    ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(" · ")
+    : manualVenueLine || null;
+  const mapQuery = location
+    ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
+    : manualVenueLine || null;
+  const href =
+    directionsEnabled && selected && selectedState !== "cancelled" && mapQuery
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
+      : null;
+  const placeName = location?.name ?? selected?.venue_name ?? null;
+  const trackPayload: TrackEventPayload | null = selected
+    ? {
+        event_name: "click_directions",
+        subject_type: "event_occurrence",
+        subject_id: selected.id,
+        event_id: eventId,
+        event_occurrence_id: selected.id,
+        location_id: location?.id,
+      }
+    : null;
+  return { href, placeName, locationLine, trackPayload };
+}
+
 export default function EventUtilityActions({
   eventId,
   eventName,

@@ -74,7 +74,7 @@ export default function EventShareButton({
         onClick={handleShare}
         aria-label={copied ? "Link copied" : "Share"}
         title={copied ? "Link copied" : "Share"}
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-ink/70 transition hover:border-ink/30 hover:text-ink active:scale-95 ${copied ? "border-findmi/40 text-findmi-700" : ""}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 border border-black/10 bg-white text-ink/70 transition hover:border-ink/30 hover:text-ink active:scale-95 ${copied ? "border-findmi/40 text-findmi-700" : ""}`}
       >
         <ShareGlyph className="h-[18px] w-[18px]" />
       </button>

@@ -11,7 +11,6 @@ import {
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
 import { EndedStatus, FactsBand, QuietStatus, WhenFact, WhereFact } from "./event/KeyFacts";
-import DirectionsIconLink from "./event/DirectionsIconLink";
 
 /** The recurring-event hero's date/time/location block — Recurring
  * Events V2. Reads the shared selectedOccurrence context (never the
@@ -138,30 +137,14 @@ export default function EventScheduleSummary({
   const mapQuery = location
     ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
     : [manualVenueName, manualVenueLine].filter(Boolean).join(", ");
-  const directions =
-    directionsEnabled && selectedState !== "cancelled" && mapQuery ? (
-      <DirectionsIconLink
-        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
-        placeName={location?.name ?? manualVenueName}
-        trackPayload={{
-          event_name: "click_directions",
-          subject_type: "event_occurrence",
-          subject_id: selected.id,
-          event_id: eventId,
-          event_occurrence_id: selected.id,
-          location_id: location && "id" in location ? (location.id as string) : undefined,
-        }}
-      />
-    ) : null;
-
   return (
     <FactsBand
       when={<WhenFact dateLabel={dateRangeLabel} detail={timeLabel} count={countLabel} status={status} />}
       where={
         location ? (
-          <WhereFact name={location.name} href={`/location/${location.slug}`} lines={addressLines} action={directions} />
+          <WhereFact name={location.name} href={`/location/${location.slug}`} lines={addressLines} />
         ) : (
-          <WhereFact name={manualVenueName} lines={manualAddressLines} action={directions} />
+          <WhereFact name={manualVenueName} lines={manualAddressLines} />
         )
       }
     />

@@ -26,9 +26,8 @@ import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
-import EventScheduleCtas from "@/components/EventScheduleCtas";
+import EventActionRow from "@/components/event/EventActionRow";
 import { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS, secondaryCtaContent } from "@/lib/event-actions";
-import EventUtilityActions, { UtilityActionGrid } from "@/components/EventUtilityActions";
 import EventScheduleSummary, { type HistoricalSchedule } from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
@@ -352,8 +351,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
 
 
   // Save/Share don't depend on the selected occurrence, so they're built
-  // ONCE here and reused by both the single-date path (UtilityActionGrid)
-  // and the multi-date path (EventUtilityActions, which adds its own
+  // ONCE here and reused by both the single-date action row and the
+  // multi-date EventActionRow (which adds its own
   // occurrence-dependent Add to Calendar on top).
   const saveAction = <EventSaveButton slug={event.slug} id={event.id} layout="icon" />;
   const shareAction = (
@@ -461,15 +460,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
             name={legacyWhereName}
             href={matchedLocation ? `/location/${matchedLocation.slug}` : null}
             lines={legacyWhereLines}
-            action={
-              showDirections && !legacyEnded ? (
-                <DirectionsIconLink
-                  href={directionsHref!}
-                  placeName={legacyWhereName}
-                  trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
-                />
-              ) : null
-            }
           />
         ) : null
       }
@@ -490,8 +480,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const followCompact = showFollow ? (
     <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} size="compact" />
   ) : null;
-  const ctaProps = {
-    eventId: event.id,
+  const ctaConfig = {
     ticketsEnabled: event.tickets_enabled,
     ticketsUrl: event.tickets_url,
     rsvpEnabled: event.rsvp_enabled,
@@ -508,84 +497,85 @@ export async function EventPublicView({ slug }: { slug: string }) {
     subject_id: event.id,
     event_id: event.id,
   });
+
+  // Multi-date: EventActionRow resolves everything per selected date.
+  // Single-date: the same layout, server-side —
+  //   [ primary ] [Directions] [Save] [Calendar] [Share]   (primary exists)
+  //   [ DIRECTIONS ] [Save] [Calendar] [Share]              (no ticket/RSVP)
+  //   [ FOLLOW ] [Save] [Calendar] [Share]                  (neither)
   const legacyPrimary = eventEnded ? null : (customCtas.find((c) => c.weight === "solid") ?? null);
   const legacySecondary = eventEnded ? [] : customCtas.filter((c) => c !== legacyPrimary);
+  const legacyDirections = showDirections && !legacyEnded && directionsHref ? directionsHref : null;
+  const legacyDirectionsTrack = { event_name: "click_directions" as const, subject_type: "event", subject_id: event.id, event_id: event.id };
+  const legacyFollowInSecondary = Boolean(legacyPrimary || legacyDirections);
 
-  const primarySlot = eventEnded ? (
-    followBlock
-  ) : hasOccurrences ? (
-    <EventScheduleCtas pick="primary" fallback={followBlock} {...ctaProps} />
-  ) : legacyPrimary ? (
-    <FormAction
-      href={legacyPrimary.href}
-      displayMode={legacyPrimary.displayMode}
-      label={legacyPrimary.label}
-      className={EVENT_PRIMARY_CTA_CLASS}
-      track={legacyTrack(legacyPrimary.label)}
-    />
-  ) : (
-    followBlock
-  );
-
-  const utilityIcons = hasOccurrences ? (
-    <EventUtilityActions
-      variant="icons"
+  const actions = hasOccurrences ? (
+    <EventActionRow
+      cta={ctaConfig}
       eventId={event.id}
       eventName={event.name}
       description={event.description}
-      message={null}
+      directionsEnabled={event.directions_enabled}
+      canonicalLocation={canonicalLocation}
       save={saveAction}
       share={shareAction}
-      directionsEnabled={false}
-      canonicalLocation={canonicalLocation}
+      followBlock={followBlock}
+      followCompact={followCompact}
     />
   ) : (
-    <>
-      {saveAction}
-      {legacyEnded ? null : (
-        <AddToCalendarButton
-          title={event.name}
-          description={event.description}
-          location={venueLine || null}
-          startAt={event.start_at}
-          endAt={event.end_at}
-          layout="icon"
-        />
-      )}
-      {shareAction}
-    </>
-  );
-
-  const secondaryRow = eventEnded ? null : hasOccurrences ? (
-    <EventScheduleCtas pick="secondary" withPrimary={followCompact} {...ctaProps} />
-  ) : (
-    <>
-      {legacyPrimary ? followCompact : null}
-      {legacySecondary.map((c) => {
-        const content = secondaryCtaContent(c.label);
-        return (
-          <span key={c.label} className="inline-flex items-center gap-1.5">
-            {content.prompt && <span className="text-metadata text-muted">{content.prompt}</span>}
-            <FormAction
-              href={c.href}
-              displayMode={c.displayMode}
-              label={content.text}
-              className={EVENT_SECONDARY_CTA_CLASS}
-              track={legacyTrack(c.label)}
-            />
-          </span>
-        );
-      })}
-    </>
-  );
-
-  const actions = (
     <div className="flex flex-col gap-2.5">
-      <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 empty:hidden">{primarySlot}</div>
-        {utilityIcons}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex min-w-0 flex-1 empty:hidden">
+          {legacyPrimary ? (
+            <FormAction
+              href={legacyPrimary.href}
+              displayMode={legacyPrimary.displayMode}
+              label={legacyPrimary.label}
+              className={EVENT_PRIMARY_CTA_CLASS}
+              track={legacyTrack(legacyPrimary.label)}
+            />
+          ) : legacyDirections ? (
+            <DirectionsIconLink variant="expanded" href={legacyDirections} placeName={legacyWhereName} trackPayload={legacyDirectionsTrack} />
+          ) : (
+            followBlock
+          )}
+        </div>
+        {legacyPrimary && legacyDirections && (
+          <DirectionsIconLink href={legacyDirections} placeName={legacyWhereName} trackPayload={legacyDirectionsTrack} />
+        )}
+        {saveAction}
+        {legacyEnded ? null : (
+          <AddToCalendarButton
+            title={event.name}
+            description={event.description}
+            location={venueLine || null}
+            startAt={event.start_at}
+            endAt={event.end_at}
+            layout="icon"
+          />
+        )}
+        {shareAction}
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 empty:hidden">{secondaryRow}</div>
+      {(legacyFollowInSecondary && followCompact) || legacySecondary.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {legacyFollowInSecondary ? followCompact : null}
+          {legacySecondary.map((c) => {
+            const content = secondaryCtaContent(c.label);
+            return (
+              <span key={c.label} className="inline-flex items-center gap-1.5">
+                {content.prompt && <span className="text-metadata text-muted">{content.prompt}</span>}
+                <FormAction
+                  href={c.href}
+                  displayMode={c.displayMode}
+                  label={content.text}
+                  className={EVENT_SECONDARY_CTA_CLASS}
+                  track={legacyTrack(c.label)}
+                />
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 

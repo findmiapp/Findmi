@@ -168,7 +168,7 @@ export default function AddToCalendarButton({
     layout === "grid"
       ? "flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
       : layout === "icon"
-        ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-ink/70 transition hover:border-ink/30 hover:text-ink active:scale-95"
+        ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 border border-black/10 bg-white text-ink/70 transition hover:border-ink/30 hover:text-ink active:scale-95"
         : layout === "glass"
         ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-black/40 text-white backdrop-blur-md transition active:scale-95"
         : layout === "row"
