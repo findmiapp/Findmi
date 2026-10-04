@@ -37,10 +37,19 @@ export default function TabNav({
   items,
   activeKey,
   basePath,
+  extraParams,
 }: {
   items: TabNavItem[];
   activeKey: string;
   basePath: string;
+  /** Account Shell V1 — query params to carry through every tab link
+   * besides `tab` itself, e.g. the Event/Location Manager's `business_id`
+   * navigation hint. Without this, switching tabs silently dropped it
+   * (basePath + "?tab=" never preserved anything else), losing the "<-
+   * {Business}" return link after the first tab click. Optional and
+   * additive — omitting it is identical to this component's prior
+   * behavior. */
+  extraParams?: Record<string, string>;
 }) {
   return (
     <nav
@@ -49,10 +58,11 @@ export default function TabNav({
     >
       {items.map((item) => {
         const active = item.key === activeKey;
+        const params = new URLSearchParams({ ...extraParams, tab: item.key });
         return (
           <Link
             key={item.key}
-            href={`${basePath}?tab=${item.key}`}
+            href={`${basePath}?${params.toString()}`}
             className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition ${
               active ? "bg-findmi text-white" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
             }`}

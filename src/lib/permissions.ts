@@ -88,6 +88,35 @@ export async function requireLocationMember(locationId: string): Promise<Members
   return requireMembership("location_members", "location_id", locationId);
 }
 
+/** Account Shell V1 (Event + Location Manager pass) — resolves an
+ * explicit `?business_id=` navigation HINT into {id, name} for a
+ * lightweight "<- {Business}" return link on the Event/Location Manager.
+ * This is NEVER an authorization check for the Event/Location itself —
+ * requireEventMember/requireLocationMember already independently gate the
+ * real page access before this ever runs — and it is NEVER evidence that
+ * the Business owns the Event/Location: it only renders a way back to
+ * wherever the click genuinely came from. A hint that's missing, not a
+ * real business id, or one the caller isn't actually a member of simply
+ * resolves to null; the caller then falls back to a neutral return path,
+ * never a guessed Business (never "the first participating Business",
+ * never any inference from event_businesses/location relationships).
+ * Same shape account/event/new and account/location/new's own
+ * resolveBusinessContext already used; consolidated here now that the
+ * Event/Location Managers need it too. */
+export async function resolveBusinessNavContext(
+  admin: SupabaseClient,
+  businessId: string | undefined
+): Promise<{ id: string; name: string } | null> {
+  if (!businessId) return null;
+  try {
+    await requireBusinessMember(businessId);
+  } catch {
+    return null;
+  }
+  const { data } = await admin.from("businesses").select("id, name").eq("id", businessId).maybeSingle();
+  return (data as { id: string; name: string } | null) ?? null;
+}
+
 /** Opportunities + Conversation Foundation V1 — the same
  * profiles.email_verified_at re-check the claim flow already established
  * (see /api/account/claim/route.ts's own isEmailVerified), extracted here

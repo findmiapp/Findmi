@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
-import { requireEventMember } from "@/lib/permissions";
+import { requireEventMember, resolveBusinessNavContext } from "@/lib/permissions";
 import { getAdminEventById, getAllCategories, getEventCategoryIds } from "@/lib/admin/queries";
 import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
@@ -13,7 +13,7 @@ import MarketAreaFields from "@/components/MarketAreaFields";
 import { getEntityHandle } from "@/lib/handles";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
 import { QrCampaignContextualPanel } from "../../business/[id]/QrCampaignCreator";
-import AccountNav from "../../AccountNav";
+import EntityManagerContextBar from "@/components/account/EntityManagerContextBar";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import EventLocationField from "@/components/account/EventLocationField";
 import MemberEventImageField from "./MemberEventImageField";
@@ -108,6 +108,7 @@ export default async function ManageEventPage({
     add_start_time?: string;
     add_end_time?: string;
     add_location_id?: string;
+    business_id?: string;
   }>;
 }) {
   const { id } = await params;
@@ -119,6 +120,7 @@ export default async function ManageEventPage({
     add_start_time: addStartTime,
     add_end_time: addEndTime,
     add_location_id: addLocationId,
+    business_id: businessIdParam,
   } = await searchParams;
   const tab = tabParam && VALID_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
@@ -147,7 +149,13 @@ export default async function ManageEventPage({
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
 
-  const [result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, eventHandle, addLocationHint, pendingApplicationNotes] = await Promise.all([
+  // Account Shell V1 — a Business V2 owner who arrived via an explicit
+  // ?business_id= navigation hint sees a quiet way back to that Business.
+  // Never treated as evidence this Business hosts/owns the Event — an
+  // Event genuinely has no single canonical owning Business (see
+  // event_businesses/event_occurrence_businesses), only participants.
+  const [businessContext, result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, eventHandle, addLocationHint, pendingApplicationNotes] = await Promise.all([
+    resolveBusinessNavContext(admin, businessIdParam),
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
@@ -355,19 +363,13 @@ export default async function ManageEventPage({
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-      <AccountNav />
-
-      {isAdminElevated && (
-        <div className="mx-auto mb-4 max-w-md rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-body font-bold text-amber-800">Admin mode: you are managing {event.name} with elevated access.</p>
-          <Link
-            href={`/admin/events/${id}`}
-            className="mt-1.5 inline-block text-metadata font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
-          >
-            Exit Admin Mode
-          </Link>
-        </div>
-      )}
+      <EntityManagerContextBar
+        backHref={businessContext ? `/account/business/${businessContext.id}?tab=findmi-here` : "/account"}
+        backLabel={businessContext ? businessContext.name : "Your Findmi"}
+        isAdminElevated={isAdminElevated}
+        adminExitHref={`/admin/events/${id}`}
+        entityName={event.name}
+      />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -400,7 +402,12 @@ export default async function ManageEventPage({
       )}
 
       <div className="mt-5">
-        <TabNav items={OWNER_TABS} activeKey={tab} basePath={`/account/event/${id}`} />
+        <TabNav
+          items={OWNER_TABS}
+          activeKey={tab}
+          basePath={`/account/event/${id}`}
+          extraParams={businessIdParam ? { business_id: businessIdParam } : undefined}
+        />
       </div>
 
       <div className="mt-5 flex flex-col gap-5">

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
-import { requireLocationMember, requireBusinessMember } from "@/lib/permissions";
+import { requireLocationMember, resolveBusinessNavContext } from "@/lib/permissions";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getAdminLocationById, getAllCategories } from "@/lib/admin/queries";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
@@ -12,7 +12,7 @@ import { getPendingMarketRequestForLocation } from "@/lib/market-requests";
 import { getLocationGalleryImages } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
 import { hasAnyHours } from "@/lib/locationHours";
-import AccountNav from "../../AccountNav";
+import EntityManagerContextBar from "@/components/account/EntityManagerContextBar";
 import TabNav, { type TabNavItem } from "@/components/TabNav";
 import MarketAreaFields from "@/components/MarketAreaFields";
 import CategorySubcategoryField from "@/components/admin/CategorySubcategoryField";
@@ -118,14 +118,14 @@ export default async function ManageLocationPage({
   if (!location) redirect(errorRedirectUrl("/account", "Location not found."));
 
   // Account Shell V1 — a Business V2 owner who got here from their own
-  // Findmi Here tab (PresenceViews' "Manage location" link now passes
-  // ?business_id= as a hint) sees a quiet way back to that Business
-  // instead of only the old AccountNav grid below. Honored only for an
-  // actual member of that business (or an admin session) — same
-  // best-effort, non-blocking resolveBusinessContext pattern
-  // account/event/new/page.tsx already uses; a stale/foreign business_id
-  // just resolves to null and changes nothing.
-  const businessContext = await resolveBusinessContext(businessIdParam);
+  // Findmi Here tab (PresenceViews' "Manage location" link passes
+  // ?business_id= as a hint) sees a quiet way back to that Business via
+  // EntityManagerContextBar below, now that AccountNav is gone. Honored
+  // only for an actual member of that business (or an admin session) —
+  // resolveBusinessNavContext is the same best-effort pattern consolidated
+  // into lib/permissions.ts now that a second Manager needs it; a stale/
+  // foreign business_id just resolves to null and changes nothing.
+  const businessContext = await resolveBusinessNavContext(admin, businessIdParam);
 
   // QR Campaigns V1 — this Location's own QR campaigns (independent of
   // any Business — location_members, not business_members, is the real
@@ -351,27 +351,13 @@ export default async function ManageLocationPage({
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-      {businessContext && (
-        <Link
-          href={`/account/business/${businessContext.id}?tab=findmi-here&view=locations`}
-          className="mb-3 inline-flex items-center text-metadata font-semibold text-muted hover:text-primary"
-        >
-          &larr; {businessContext.name}
-        </Link>
-      )}
-      <AccountNav />
-
-      {isAdminElevated && (
-        <div className="mx-auto mb-4 max-w-md rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-bold text-amber-800">Admin mode: you are managing {location.name} with elevated access.</p>
-          <Link
-            href={`/admin/locations/${id}`}
-            className="mt-1.5 inline-block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
-          >
-            Exit Admin Mode
-          </Link>
-        </div>
-      )}
+      <EntityManagerContextBar
+        backHref={businessContext ? `/account/business/${businessContext.id}?tab=findmi-here&view=locations` : "/account"}
+        backLabel={businessContext ? businessContext.name : "Your Findmi"}
+        isAdminElevated={isAdminElevated}
+        adminExitHref={`/admin/locations/${id}`}
+        entityName={location.name}
+      />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -405,7 +391,12 @@ export default async function ManageLocationPage({
       )}
 
       <div className="mt-5">
-        <TabNav items={OWNER_TABS} activeKey={tab} basePath={`/account/location/${id}`} />
+        <TabNav
+          items={OWNER_TABS}
+          activeKey={tab}
+          basePath={`/account/location/${id}`}
+          extraParams={businessIdParam ? { business_id: businessIdParam } : undefined}
+        />
       </div>
 
       <div className="mt-5 flex flex-col gap-5">
@@ -809,22 +800,4 @@ export default async function ManageLocationPage({
       </div>
     </div>
   );
-}
-
-/** Account Shell V1 — same shape as account/event/new/page.tsx's own
- * resolveBusinessContext: honored only for a real member of that business
- * (or an admin session), never trusted as this Location's owner —
- * requireLocationMember() above already independently authorized the
- * actual page access. */
-async function resolveBusinessContext(businessId: string | undefined): Promise<{ id: string; name: string } | null> {
-  if (!businessId) return null;
-  try {
-    await requireBusinessMember(businessId);
-  } catch {
-    return null;
-  }
-  const admin = getAdminSupabase();
-  if (!admin) return null;
-  const { data } = await admin.from("businesses").select("id, name").eq("id", businessId).maybeSingle();
-  return (data as { id: string; name: string } | null) ?? null;
 }
