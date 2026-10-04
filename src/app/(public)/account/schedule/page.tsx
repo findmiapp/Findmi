@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getUnifiedSchedule, getUnifiedPastSchedule, type ScheduleItem } from "@/lib/dashboard";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { formatDateShort, formatTime } from "@/lib/format";
-import AccountNav from "../AccountNav";
+import PersonalAppShell from "../PersonalAppShell";
 import BusinessScopedAction, { PlusGlyph } from "../BusinessScopedAction";
 import AppearanceFieldsForm from "../business/[id]/AppearanceFieldsForm";
 import { updateOwnerAppearance, removeOwnerAppearance } from "../business/actions";
@@ -44,10 +45,11 @@ export default async function AccountSchedulePage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/account/schedule");
 
-  const [{ data: businessMemberships }, { data: eventMemberships }, { data: locationMemberships }] = await Promise.all([
+  const [{ data: businessMemberships }, { data: eventMemberships }, { data: locationMemberships }, displayName] = await Promise.all([
     supabase.from("business_members").select("business_id, businesses(id, name)").eq("user_id", user.id),
     supabase.from("event_members").select("event_id, events(id, name, is_demo)").eq("user_id", user.id),
     supabase.from("location_members").select("location_id, locations(id, name, is_demo)").eq("user_id", user.id),
+    getPersonalDisplayName(supabase, user.id),
   ]);
 
   type BusinessRow = { business_id: string; businesses: { id: string; name: string } | { id: string; name: string }[] | null };
@@ -120,9 +122,7 @@ export default async function AccountSchedulePage({
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
-
+    <PersonalAppShell displayName={displayName}>
       <h1 className="font-display text-page-title font-bold text-primary">Schedule</h1>
       <p className="mt-1.5 text-body text-muted">Manage everywhere you&rsquo;ll be.</p>
 
@@ -243,6 +243,6 @@ export default async function AccountSchedulePage({
           Past organized Events aren&rsquo;t included here yet. View an Event&rsquo;s own dates from its Event Manager.
         </p>
       )}
-    </div>
+    </PersonalAppShell>
   );
 }

@@ -22,7 +22,7 @@ import ShareButton from "@/components/ShareButton";
 import SupabaseImage from "@/components/SupabaseImage";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
-import AccountNav from "./AccountNav";
+import PersonalAppShell from "./PersonalAppShell";
 import AccountErrorBanner from "./AccountErrorBanner";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
 import { CompactStatus, OwnerModule, SoftZone } from "./dashboard-ui";
@@ -378,9 +378,8 @@ export default async function AccountHomePage({
   const singleBusiness = myBusinesses.length === 1 ? myBusinesses[0] : null;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
+    <PersonalAppShell displayName={profile?.display_name ?? null}>
       <AccountSync />
-      <AccountNav />
 
       {/* IDENTITY — Mobile Command Center V2 pass: the read-only audit
           found this compact header still accounted for roughly the top
@@ -407,9 +406,9 @@ export default async function AccountHomePage({
               this header's own earlier pass already applied to the old
               "Your Findmi" eyebrow — real estate that named the page
               without contributing information. A plain, light greeting is
-              enough; Sign Out and other account controls live in
-              AccountNav (unchanged, still rendered below), never on this
-              line. */}
+              enough; Sign Out and other account controls live in the
+              personal shell (PersonalAppShell, see this page's own
+              return), never on this line. */}
           <h1 className="text-body font-semibold text-secondary">
             Welcome Back{profile?.display_name ? `, ${profile.display_name}` : ""}
           </h1>
@@ -669,7 +668,7 @@ export default async function AccountHomePage({
           </form>
         </details>
       </div>
-    </div>
+    </PersonalAppShell>
   );
 }
 

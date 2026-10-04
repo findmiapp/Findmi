@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
 import { formatUsPhone } from "@/lib/phone";
-import AccountNav from "../AccountNav";
+import PersonalAppShell from "../PersonalAppShell";
 import SignOutConfirm from "@/components/SignOutConfirm";
 import { updateProfile, signOut } from "./actions";
 
@@ -38,9 +38,7 @@ export default async function ProfilePage({
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
-
+    <PersonalAppShell displayName={profile?.display_name ?? null}>
       <div className="mx-auto max-w-md">
         <p className="text-label font-bold uppercase text-accent">Your Findmi account</p>
         <h1 className="mt-1 font-display text-page-title font-bold text-primary">Profile</h1>
@@ -117,6 +115,6 @@ export default async function ProfilePage({
           </SignOutConfirm>
         </div>
       </div>
-    </div>
+    </PersonalAppShell>
   );
 }

@@ -73,6 +73,18 @@ interface LocationEmbed {
   cover_image_url: string | null;
 }
 
+/** Account Shell Pass 1 — the one small read the personal shell's own
+ * identity block needs (PersonalAppShell), shared across every migrated
+ * personal page rather than each one re-writing the same
+ * profiles.select("display_name") query inline. Returns null for a
+ * profile row that doesn't exist yet or has no display_name set — the
+ * shell falls back to a generic "Personal" label in that case, never the
+ * user's email (see CLAUDE.md — email is not a primary identity here). */
+export async function getPersonalDisplayName(supabase: SupabaseClient, userId: string): Promise<string | null> {
+  const { data } = await supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle<{ display_name: string | null }>();
+  return data?.display_name ?? null;
+}
+
 /** A person's real, durable account-bound Saves/Follows — the empty
  * result for every category is a genuinely empty array (a signed-in
  * visitor with nothing saved/followed yet gets back all-empty arrays,

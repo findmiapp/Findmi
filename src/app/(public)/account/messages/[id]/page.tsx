@@ -12,7 +12,8 @@ import {
 } from "@/lib/opportunities";
 import { formatDateShort, formatTime } from "@/lib/format";
 import { respondToApplicationInThread, respondToInvitationInThread } from "@/app/(public)/connect/actions";
-import AccountNav from "../../AccountNav";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
+import PersonalAppShell from "../../PersonalAppShell";
 import ReplyComposer from "./ReplyComposer";
 
 export const metadata: Metadata = {
@@ -57,7 +58,11 @@ export default async function ConversationPage({
   const admin = getAdminSupabase();
   if (!admin) notFound();
 
-  const [thread, managed] = await Promise.all([getConversationThread(admin, id, user.id), getUserManagedEntities(admin, user.id)]);
+  const [thread, managed, displayName] = await Promise.all([
+    getConversationThread(admin, id, user.id),
+    getUserManagedEntities(admin, user.id),
+    getPersonalDisplayName(supabase, user.id),
+  ]);
   if (!thread) notFound();
 
   const myBusinessIds = new Set(managed.businesses.map((b) => b.id));
@@ -89,9 +94,7 @@ export default async function ConversationPage({
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
-
+    <PersonalAppShell displayName={displayName}>
       <Link href="/account/messages" className="text-metadata font-semibold text-subtle hover:text-muted">
         ← Inbox
       </Link>
@@ -133,7 +136,7 @@ export default async function ConversationPage({
           <p className="text-metadata text-subtle">You can view this conversation, but none of your current identities can reply here.</p>
         )}
       </div>
-    </div>
+    </PersonalAppShell>
   );
 }
 

@@ -66,11 +66,30 @@ export default function SiteChrome({
     // mobile (/account/business/<id>), so the footer gets matching bottom
     // room there and is never hidden behind it.
     const hasBusinessTabBar = /^\/account\/business\/(?!new$)[^/]+$/.test(pathname);
+    // Account Shell Pass 1 — the new Personal/shared account shell
+    // (PersonalAppShell) has the exact same fixed mobile bottom tab bar,
+    // on every route it wraps. Listed explicitly (not a broad /^\/account/
+    // match) so this never accidentally covers a route PersonalAppShell
+    // doesn't actually render on (e.g. Event/Location Managers, still on
+    // legacy AccountNav with no fixed bottom nav of their own).
+    const PERSONAL_SHELL_ROUTES = new Set([
+      "/account",
+      "/account/schedule",
+      "/account/saved",
+      "/account/following",
+      "/account/orders",
+      "/account/profile",
+      "/account/messages",
+      "/account/business",
+    ]);
+    const hasPersonalShellTabBar =
+      PERSONAL_SHELL_ROUTES.has(pathname) || pathname.startsWith("/account/orders/") || pathname.startsWith("/account/messages/");
+    const hasFixedBottomNav = hasBusinessTabBar || hasPersonalShellTabBar;
     return (
       <>
         <OwnerHeader isAdmin={isAdmin} />
         <div className="flex-1">{children}</div>
-        <div className={hasBusinessTabBar ? "pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" : undefined}>{footer}</div>
+        <div className={hasFixedBottomNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" : undefined}>{footer}</div>
       </>
     );
   }

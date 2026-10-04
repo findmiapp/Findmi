@@ -5,7 +5,8 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getCustomerOrderList, CUSTOMER_STATUS_LABELS } from "@/lib/customer-orders";
 import { formatDateShort } from "@/lib/format";
 import NavIcon from "@/components/NavIcon";
-import AccountNav from "../AccountNav";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
+import PersonalAppShell from "../PersonalAppShell";
 
 export const metadata: Metadata = {
   title: "Orders",
@@ -28,12 +29,10 @@ export default async function OrdersPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/account/orders");
 
-  const orders = await getCustomerOrderList(supabase, user.id);
+  const [orders, displayName] = await Promise.all([getCustomerOrderList(supabase, user.id), getPersonalDisplayName(supabase, user.id)]);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
-
+    <PersonalAppShell displayName={displayName}>
       <h1 className="font-display text-page-title font-bold text-primary">Orders</h1>
       <p className="mt-1.5 text-body text-muted">A record of what you&rsquo;ve bought on Findmi.</p>
 
@@ -69,6 +68,6 @@ export default async function OrdersPage() {
           ))}
         </div>
       )}
-    </div>
+    </PersonalAppShell>
   );
 }

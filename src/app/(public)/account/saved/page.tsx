@@ -9,7 +9,8 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { cityState, formatDateRange } from "@/lib/format";
 import { PUBLIC_BUSINESS_COLUMNS, PUBLIC_PRODUCT_COLUMNS, type LocationWithCategory } from "@/lib/data";
 import type { BusinessWithCategories, FindmiEvent, Product } from "@/lib/types";
-import AccountNav from "../AccountNav";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
+import PersonalAppShell from "../PersonalAppShell";
 
 export const metadata: Metadata = {
   title: "Saved",
@@ -38,7 +39,7 @@ export default async function AccountSavedPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/account/saved");
 
-  const [{ data: savedBusinesses }, { data: savedEvents }, { data: savedProducts }, { data: savedLocations }] =
+  const [{ data: savedBusinesses }, { data: savedEvents }, { data: savedProducts }, { data: savedLocations }, displayName] =
     await Promise.all([
       supabase.from("account_saved_businesses").select(`business:businesses(${PUBLIC_BUSINESS_COLUMNS})`).eq("user_id", user.id),
       supabase.from("account_saved_events").select("event:events(*)").eq("user_id", user.id),
@@ -57,6 +58,7 @@ export default async function AccountSavedPage() {
         .from("account_saved_locations")
         .select("location:locations(*, category:categories(id, name, slug))")
         .eq("user_id", user.id),
+      getPersonalDisplayName(supabase, user.id),
     ]);
 
   const businesses = ((savedBusinesses ?? []) as unknown as { business: BusinessWithCategories | null }[])
@@ -79,9 +81,7 @@ export default async function AccountSavedPage() {
   const empty = businesses.length === 0 && events.length === 0 && products.length === 0 && locations.length === 0;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
-
+    <PersonalAppShell displayName={displayName}>
       <h1 className="font-display text-page-title font-bold text-primary">Saved</h1>
       <p className="mt-1.5 text-body text-muted">Businesses, events, products, and locations you&rsquo;ve saved to your account.</p>
 
@@ -147,6 +147,6 @@ export default async function AccountSavedPage() {
           )}
         </>
       )}
-    </div>
+    </PersonalAppShell>
   );
 }

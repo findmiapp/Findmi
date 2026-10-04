@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
-import AccountNav from "../AccountNav";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
+import PersonalAppShell from "../PersonalAppShell";
 import { resolveBusinessScopedHref } from "../businessScope";
 
 export const metadata: Metadata = {
@@ -42,13 +43,13 @@ export default async function AccountBusinessPage() {
   const directHref = resolveBusinessScopedHref(businesses, "overview");
   if (directHref) redirect(directHref);
 
-  return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
+  const displayName = await getPersonalDisplayName(supabase, user.id);
 
+  return (
+    <PersonalAppShell displayName={displayName}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-page-title font-bold text-primary">Business</h1>
+          <h1 className="font-display text-page-title font-bold text-primary">Your Businesses</h1>
           <p className="mt-1.5 text-body text-muted">Which business do you want to manage?</p>
         </div>
         {/* Account Create Navigation Hotfix — this page only ever renders
@@ -78,6 +79,6 @@ export default async function AccountBusinessPage() {
           </Link>
         ))}
       </div>
-    </div>
+    </PersonalAppShell>
   );
 }

@@ -6,7 +6,8 @@ import { getCustomerOrderDetail, CUSTOMER_STATUS_LABELS } from "@/lib/customer-o
 import { FULFILLMENT_LABELS } from "@/lib/commerce/quote";
 import { formatDateShort } from "@/lib/format";
 import SupabaseImage from "@/components/SupabaseImage";
-import AccountNav from "../../AccountNav";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
+import PersonalAppShell from "../../PersonalAppShell";
 
 export const metadata: Metadata = {
   title: "Order",
@@ -27,15 +28,16 @@ export default async function AccountOrderDetailPage({ params }: { params: Promi
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/account/orders/${id}`)}`);
 
-  const order = await getCustomerOrderDetail(supabase, id, user.id);
+  const [order, displayName] = await Promise.all([
+    getCustomerOrderDetail(supabase, id, user.id),
+    getPersonalDisplayName(supabase, user.id),
+  ]);
   if (!order) notFound();
 
   const statusLabel = order.paymentStatus === "paid" ? CUSTOMER_STATUS_LABELS[order.status] : order.paymentStatus;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
-
+    <PersonalAppShell displayName={displayName}>
       <Link href="/account/orders" className="text-metadata font-semibold text-muted hover:text-primary">
         ← All orders
       </Link>
@@ -90,6 +92,6 @@ export default async function AccountOrderDetailPage({ params }: { params: Promi
           <span>${order.totalCharged.toFixed(2)}</span>
         </div>
       </div>
-    </div>
+    </PersonalAppShell>
   );
 }

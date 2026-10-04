@@ -8,7 +8,8 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { cityState, formatDateRange } from "@/lib/format";
 import { PUBLIC_BUSINESS_COLUMNS, type LocationWithCategory } from "@/lib/data";
 import type { BusinessWithCategories, FindmiEvent } from "@/lib/types";
-import AccountNav from "../AccountNav";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
+import PersonalAppShell from "../PersonalAppShell";
 import FollowingUnfollowButton from "./FollowingUnfollowButton";
 
 export const metadata: Metadata = {
@@ -33,7 +34,7 @@ export default async function AccountFollowingPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/account/following");
 
-  const [{ data: followedBusinesses }, { data: followedEvents }, { data: followedLocations }] = await Promise.all([
+  const [{ data: followedBusinesses }, { data: followedEvents }, { data: followedLocations }, displayName] = await Promise.all([
     supabase
       .from("account_followed_businesses")
       .select(`business:businesses(${PUBLIC_BUSINESS_COLUMNS})`)
@@ -47,6 +48,7 @@ export default async function AccountFollowingPage() {
       .from("account_followed_locations")
       .select("location:locations(*, category:categories(id, name, slug))")
       .eq("user_id", user.id),
+    getPersonalDisplayName(supabase, user.id),
   ]);
 
   const businesses = ((followedBusinesses ?? []) as unknown as { business: BusinessWithCategories | null }[])
@@ -88,9 +90,7 @@ export default async function AccountFollowingPage() {
   const empty = businesses.length === 0 && events.length === 0 && locations.length === 0;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
-
+    <PersonalAppShell displayName={displayName}>
       <h1 className="font-display text-page-title font-bold text-primary">Following</h1>
       <p className="mt-1.5 text-body text-muted">Businesses, events, and Locations you follow with your Findmi account.</p>
 
@@ -164,6 +164,6 @@ export default async function AccountFollowingPage() {
           )}
         </>
       )}
-    </div>
+    </PersonalAppShell>
   );
 }

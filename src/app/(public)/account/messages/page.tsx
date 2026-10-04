@@ -8,7 +8,8 @@ import { conversationContextLabel } from "@/lib/admin/conversations";
 import { CUSTOMER_SUBJECT_TYPES } from "@/lib/dashboard";
 import { formatDateShort } from "@/lib/format";
 import { respondToEventInvitation } from "../business/actions";
-import AccountNav from "../AccountNav";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
+import PersonalAppShell from "../PersonalAppShell";
 
 export const metadata: Metadata = {
   title: "Inbox",
@@ -50,7 +51,10 @@ export default async function InboxPage({
   if (!user) redirect("/login?next=/account/messages");
 
   const admin = getAdminSupabase();
-  const allConversations = admin ? await listConversationsForUser(admin, user.id) : [];
+  const [allConversations, displayName] = await Promise.all([
+    admin ? listConversationsForUser(admin, user.id) : Promise.resolve([]),
+    getPersonalDisplayName(supabase, user.id),
+  ]);
   // 'opportunity'-subject_type Conversations (created only when a note is
   // attached to an invitation/application — see lib/opportunities.ts's
   // own createOpportunity) are deliberately excluded from BOTH lists
@@ -86,9 +90,7 @@ export default async function InboxPage({
   const totalCount = (showConversations ? conversationRows.length : 0) + (showOpportunities ? opportunities.length : 0);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <AccountNav />
-
+    <PersonalAppShell displayName={displayName}>
       <h1 className="font-display text-page-title font-bold text-primary">Inbox</h1>
       <p className="mt-1.5 text-body text-muted">Customers, organizers and opportunities that need your attention.</p>
 
@@ -171,6 +173,6 @@ export default async function InboxPage({
           </ul>
         )}
       </div>
-    </div>
+    </PersonalAppShell>
   );
 }
