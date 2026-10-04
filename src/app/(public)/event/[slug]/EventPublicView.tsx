@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import type { ReactElement } from "react";
 import Image from "next/image";
 import JournalCollection from "@/components/journal/JournalCollection";
-import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
+import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
+import BrandHeading from "@/components/BrandHeading";
+import { LiveStatus, QuietStatus, WhenFact, WhereFact } from "@/components/event/KeyFacts";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
@@ -17,7 +19,6 @@ import Bulletin from "@/components/Bulletin";
 import EventBusinessRoster from "@/components/EventBusinessRoster";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import EventFollowButton from "@/components/EventFollowButton";
-import EventLocationCard from "@/components/EventLocationCard";
 import FeaturedEventHeroOverlay from "@/components/FeaturedEventHeroOverlay";
 import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
@@ -45,7 +46,7 @@ import {
   getOccurrenceBusinessRosters,
   isPrimaryDateId,
 } from "@/lib/data";
-import { cityStateZip, formatDateRange, getTemporalLabel } from "@/lib/format";
+import { cityState, cityStateZip, formatDateRange, formatTime, getTemporalLabel } from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -323,19 +324,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
   if (vendorAppForm) {
     customCtas.push({ label: "Apply to Vend", href: vendorAppForm.url, displayMode: vendorAppForm.displayMode, weight: "outline" });
   }
-  // Public Message Action + Event CTA Cohesion pass — for a legacy
-  // (non-recurring) event, the organizer's own external "Apply to Vend"
-  // CTA is deterministically known here, server-side, so it's pulled out
-  // of the Tier A array and paired with MESSAGE in the new fixed primary
-  // row below instead (same href/displayMode, same underlying
-  // vendorAppForm resolution — only its POSITION and RADIUS change, never
-  // its behavior). Tickets/RSVP stay in Tier A exactly as before. A
-  // recurring event's own occurrence-dependent Apply to Vend (rendered by
-  // EventScheduleCtas, client-side, per the SELECTED occurrence — not
-  // knowable here at server-render time) is intentionally left
-  // untouched; see the primary-row comment below for why.
-  const legacyVendorApplyCta = !hasOccurrences ? customCtas.find((c) => c.label === "Apply to Vend") ?? null : null;
-  const legacyTierACtas = legacyVendorApplyCta ? customCtas.filter((c) => c.label !== "Apply to Vend") : customCtas;
+  // Public Event V2 — every organizer action (including a single-date
+  // event's Apply to Vend) now lives in the one primary action row.
 
   const showContact = event.contact_enabled;
   const showMessageButton = await shouldShowMessageButton("event", event.id);
@@ -347,12 +337,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // report. Rendered as plain text only; never a fabricated profile link.
   const hasOrganizer = Boolean(event.organizer_name?.trim());
 
-  // Item 17 (Venue) — events has no location_id/FindMi Location
-  // relationship today either — every event currently falls in the
-  // "not linked" case, so this only ever shows the real stored venue
-  // fields (+ the event-specific venue gallery), never a fabricated
-  // Location link (see the pass report).
-  const hasVenueDetails = Boolean(event.venue_name || event.address || location);
 
   // Event Detail Action Bar Correction pass — Message/Save/Share don't
   // depend on the selected occurrence (client-only, unknowable here at
@@ -380,138 +364,53 @@ export async function EventPublicView({ slug }: { slug: string }) {
     />
   );
 
-  // Event Page Final Compression pass — the occurrence date rail and
-  // "Who You'll Find Here" are built once as their own variables (not
-  // duplicated in source) because this pass renders them in ONE of TWO
-  // different positions depending on whether the event actually has real
-  // occurrences to show — see showOccurrenceCluster/scheduleAndDetails
-  // below. Both blocks are exactly what already existed before this
-  // pass, just extracted so they can be placed conditionally. The rail
-  // itself is still self-guarded (renders nothing with zero real
-  // occurrences), and the roster ternary is still the exact original
-  // hasOccurrences branch — only each block's POSITION on the page
-  // changes, never its own internal logic.
-  const showOccurrenceCluster = realOccurrences.length > 0;
-  const datesAndLineupSection = realOccurrences.length > 0 && (
-    <div className="mt-3 -mx-4 sm:mx-0">
-      <p className="mb-2 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
-        Upcoming Dates &amp; Lineup
-      </p>
-      {/* Public Upcoming Dates Mobile UX pass — ONE horizontal rail:
-          "View all N" (UpcomingDatesRail's own compact trigger) is the
-          final scrollable item in the SAME rail, never a second
-          line/section beneath the carousel. Bounded initial render is
-          preserved (see that component's own doc comment); every
-          occurrence is still passed to EventOccurrenceProvider above
-          regardless of how many cards are currently visible, so the
-          date SELECTOR context (Tier A CTAs/Location/roster switching)
-          is unaffected either way. */}
-      <UpcomingDatesRail
-        occurrences={realOccurrences}
-        eventName={event.name}
-        eventId={event.id}
-        canonicalLocation={canonicalLocation}
-        coverImageUrl={coverAndGallery[0] ?? null}
-        galleryImages={images.gallery}
-        ticketsEnabled={event.tickets_enabled}
-        ticketsUrl={event.tickets_url}
-        rsvpEnabled={event.rsvp_enabled}
-        rsvp={rsvpForm}
-        vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
-        vendorApplication={vendorAppForm}
-        rostersByOccurrence={rostersByOccurrence}
+  // ── Public Event V2 ────────────────────────────────────────────────────
+  // ESSENTIALS FIRST (key facts, actions, Moments) · EXPERIENCE SECOND
+  // (overview, dates, lineup, Findmi Moments, photos) · DEEP DETAILS LAST
+  // (place, products, host, claim). Open editorial sections separated by
+  // hairlines instead of stacked bordered cards; every section renders only
+  // when it has real content. Section ids (overview, dates, lineup,
+  // moments, media, place, products, details) are stable anchors for the
+  // future entity sub-nav. Data, actions and their analytics are unchanged.
+
+  // Single-date (no occurrence rows) Key Facts — server-resolved.
+  const legacyEnded = new Date(event.end_at ?? event.start_at).getTime() < Date.now();
+  const legacyWhereName = matchedLocation?.name ?? event.venue_name ?? null;
+  const legacyWhereLine = matchedLocation
+    ? [matchedLocation.address, cityState(matchedLocation.city, matchedLocation.state)].filter(Boolean).join(", ")
+    : [event.address, location].filter(Boolean).join(", ");
+  const keyFacts = hasOccurrences ? (
+    <EventScheduleSummary canonicalLocation={canonicalLocation} />
+  ) : (
+    <div className="flex flex-col gap-3.5">
+      <WhenFact
+        dateLabel={formatDateRange(event.start_at, event.end_at)}
+        status={
+          heroTemporal.live ? (
+            <LiveStatus until={event.end_at ? formatTime(event.end_at) : null} />
+          ) : legacyEnded ? (
+            <QuietStatus>This event has ended</QuietStatus>
+          ) : null
+        }
+      />
+      <WhereFact
+        name={legacyWhereName}
+        href={matchedLocation ? `/location/${matchedLocation.slug}` : null}
+        line={legacyWhereLine || null}
       />
     </div>
   );
-  const whoYoullFindHere = hasOccurrences ? (
-    <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} eventName={event.name} />
-  ) : (
-    <section className="mt-5">
-      <h2 className="font-display text-lg font-bold tracking-tight text-ink">Who You&rsquo;ll Find Here</h2>
-      <p className="mt-1 text-sm text-ink/55">
-        {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
-      </p>
-      <EventBusinessRoster businesses={businesses} eventName={event.name} />
-    </section>
-  );
 
-  // Recurring Events V2 — for an event WITH occurrence rows, occurrence
-  // scheduling becomes public scheduling truth: the details card's date/
-  // time/location and the Directions/Add to Calendar actions read the
-  // shared selectedOccurrence (EventScheduleSummary/EventUtilityActions)
-  // instead of the parent event's own start_at/end_at/venue fields, which
-  // stop being authoritative the moment occurrences exist. A legacy event
-  // with zero occurrence rows (hasOccurrences false, upcomingOccurrences
-  // always []) renders this exact same JSX block, but with the original
-  // static date/venue line and Directions/Add to Calendar untouched — see
-  // the two `hasOccurrences ? … : …` branches below. Built once as a
-  // variable (not duplicated per branch) so Tier A CTAs, the rest of the
-  // utility row, and Bulletin are never repeated in source.
-  const scheduleAndDetails = (
-    <>
-      {/* Item 7 — one coherent details module (title, date/time, venue,
-          address) instead of floating loosely in open whitespace below
-          the cover. Light containment only: subtle border, restrained
-          radius, no heavy card styling. */}
-      <div className="rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-5">
-        {/* Restore Event Follow pass — Follow lives here now: the top of
-            the details card, visually distinct from both the Tier A
-            booking actions (RSVP/Tickets/Vendor Apply) below and the
-            Tier B utility row (Save/Directions/Share) — never confused
-            with either. event.follow_enabled is the same existing
-            founder-configurable gate it always respected.
-            Premium Featured Event Hero pass — category pill and the
-            event's h1 title moved into the new full-bleed hero above
-            (FeaturedEventHeroOverlay); showing them a second time here
-            would just duplicate the hero. Follow keeps its own row so
-            this card doesn't open with dead whitespace when Follow is
-            off. */}
-        {showFollow && (
-          <div className="flex justify-end">
-            <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} size="compact" />
-          </div>
-        )}
-
-        {hasOccurrences ? (
-          <EventScheduleSummary canonicalLocation={canonicalLocation} />
-        ) : (
-          <div className="mt-3 flex flex-col gap-2 text-sm text-ink/65">
-            <div className="flex items-center gap-2">
-              <CalendarGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-              <span className="font-medium text-ink/80">{formatDateRange(event.start_at, event.end_at)}</span>
-            </div>
-            {matchedLocation ? (
-              <EventLocationCard location={matchedLocation} />
-            ) : (
-              venueLine && (
-                <div className="flex items-center gap-2">
-                  <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-                  <span>{venueLine}</span>
-                </div>
-              )
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Tier A — the strongest, organizer-configured actions, PRIMARY
-          EVENT ACTION per the public composition hierarchy (Public
-          Experience V5: identity -> when -> where -> primary action ->
-          relationship content). For a recurring event, the selected
-          occurrence's own RSVP/ticket/vendor-apply override (if any) wins
-          over the parent's resolved action — see EventScheduleCtas; a
-          legacy event keeps the exact original server-resolved customCtas
-          rendering below (minus Apply to Vend, in the secondary row below
-          instead — see legacyTierACtas).
-          Event Page Visual Convergence pass — Directions moved OUT of
-          this row into the compact Tier B grid below (alongside Save/
-          Calendar/Share), matching the approved reference: RSVP/Tickets
-          alone here (the visually LARGEST action), not sharing a row with
-          a same-size Directions button. Each button is flex-1, so 1 or 2
-          Tier A actions still degrade sensibly; flex-wrap keeps every
-          action reachable at 360px. */}
+  // PRIMARY ACTION row — organizer actions (Tickets/RSVP/Apply to Vend)
+  // plus Follow. Multi-date events resolve them per selected date.
+  const followButton = showFollow ? (
+    <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} />
+  ) : null;
+  const primaryRow = (
+    <div className="flex flex-wrap items-center gap-2.5 empty:hidden">
       {hasOccurrences ? (
         <EventScheduleCtas
+          bare
           eventId={event.id}
           ticketsEnabled={event.tickets_enabled}
           ticketsUrl={event.tickets_url}
@@ -521,239 +420,305 @@ export async function EventPublicView({ slug }: { slug: string }) {
           vendorApplication={vendorAppForm}
         />
       ) : (
-        legacyTierACtas.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-stretch gap-2.5">
-            {legacyTierACtas.map((action) => (
-              <FormAction
-                key={action.label}
-                href={action.href}
-                displayMode={action.displayMode}
-                label={action.label}
-                className={
-                  action.weight === "solid"
-                    ? "flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                    : "flex h-12 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-                }
-                track={{
-                  event_name: action.label === "Get Tickets" ? "click_tickets" : "click_rsvp",
-                  subject_type: "event",
-                  subject_id: event.id,
-                  event_id: event.id,
-                }}
-              />
-            ))}
+        customCtas.map((action) => (
+          <FormAction
+            key={action.label}
+            href={action.href}
+            displayMode={action.displayMode}
+            label={action.label}
+            className={
+              action.weight === "solid"
+                ? "flex h-11 min-w-[8rem] flex-1 items-center justify-center rounded-full bg-findmi px-6 text-button font-bold text-white transition hover:bg-findmi-600"
+                : "flex h-11 min-w-[8rem] flex-1 items-center justify-center rounded-full border border-findmi/40 bg-white px-5 text-button font-bold text-findmi-700 transition hover:bg-findmi-50"
+            }
+            track={{
+              event_name:
+                action.label === "Get Tickets" ? "click_tickets" : action.label === "Apply to Vend" ? "click_apply_to_vend" : "click_rsvp",
+              subject_type: "event",
+              subject_id: event.id,
+              event_id: event.id,
+            }}
+          />
+        ))
+      )}
+      {followButton}
+    </div>
+  );
+
+  // UTILITIES — one quiet segmented bar (Message/Save/Calendar/Share/Get
+  // Here), each action exactly once.
+  const utilityBar = hasOccurrences ? (
+    <EventUtilityActions
+      variant="bar"
+      eventId={event.id}
+      eventName={event.name}
+      description={event.description}
+      message={messageAction}
+      save={saveAction}
+      share={shareAction}
+      directionsEnabled={event.directions_enabled}
+      canonicalLocation={canonicalLocation}
+    />
+  ) : (
+    <UtilityActionGrid
+      variant="bar"
+      items={[
+        messageAction,
+        saveAction,
+        <AddToCalendarButton
+          key="calendar"
+          title={event.name}
+          description={event.description}
+          location={venueLine || null}
+          startAt={event.start_at}
+          endAt={event.end_at}
+          layout="grid"
+        />,
+        shareAction,
+        showDirections ? (
+          <DirectionsGridCell
+            key="directions"
+            href={directionsHref!}
+            trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
+          />
+        ) : null,
+      ].filter((item): item is ReactElement => Boolean(item))}
+    />
+  );
+
+  // Lower-frequency links folded into one quiet line (never their own rows).
+  const quietLinkClass = "inline-flex items-center gap-1.5 text-metadata font-semibold text-secondary transition hover:text-findmi-700";
+  const secondaryLinks =
+    canonicalWebsite || canonicalPhone || showContact || event.external_url ? (
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        {canonicalWebsite && (
+          <a href={canonicalWebsite} target="_blank" rel="noreferrer" className={quietLinkClass}>
+            <GlobeGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            Website
+          </a>
+        )}
+        {canonicalPhone && (
+          <a href={`tel:${canonicalPhone}`} className={quietLinkClass}>
+            <PhoneGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            Call
+          </a>
+        )}
+        {showContact && (
+          <InquireButton
+            targetType="event"
+            targetId={event.id}
+            targetName={event.name}
+            label="Contact organizer"
+            className={quietLinkClass}
+            track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
+          />
+        )}
+        {event.external_url && (
+          <a href={event.external_url} target="_blank" rel="noreferrer" className={quietLinkClass}>
+            <ExternalGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            Event details
+          </a>
+        )}
+      </div>
+    ) : null;
+
+  const essentials = (
+    <div className="flex flex-col gap-5">
+      {keyFacts}
+      <div className="flex flex-col gap-3">
+        {primaryRow}
+        {utilityBar}
+        {secondaryLinks}
+      </div>
+      <DocumentExperienceCta eventSlug={event.slug} state={journalCtaState} />
+    </div>
+  );
+
+  // ── Editorial sections ────────────────────────────────────────────────
+  const overviewSection =
+    event.description || (event.bulletin_enabled && event.bulletin_body) ? (
+      <section id="overview" className="scroll-mt-24">
+        {event.description && (
+          <>
+            <SectionHeading>What&rsquo;s happening</SectionHeading>
+            <div className="mt-2 max-w-2xl text-body-lg leading-relaxed text-secondary">
+              <ReadMoreText text={event.description} />
+            </div>
+          </>
+        )}
+        {event.bulletin_enabled && event.bulletin_body && (
+          <div className={event.description ? "mt-4" : ""}>
+            <Bulletin heading={event.bulletin_heading} body={event.bulletin_body} />
           </div>
+        )}
+      </section>
+    ) : null;
+
+  const datesSection =
+    realOccurrences.length > 0 ? (
+      <section id="dates" className="scroll-mt-24">
+        <SectionHeading>Upcoming dates</SectionHeading>
+        <p className="mt-0.5 text-metadata text-muted">
+          {realOccurrences.length} upcoming date{realOccurrences.length === 1 ? "" : "s"} · tap one to see its details
+        </p>
+        <div className="-mx-4 mt-1 sm:mx-0">
+          <UpcomingDatesRail
+            occurrences={realOccurrences}
+            eventName={event.name}
+            eventId={event.id}
+            canonicalLocation={canonicalLocation}
+            coverImageUrl={coverAndGallery[0] ?? null}
+            galleryImages={images.gallery}
+            ticketsEnabled={event.tickets_enabled}
+            ticketsUrl={event.tickets_url}
+            rsvpEnabled={event.rsvp_enabled}
+            rsvp={rsvpForm}
+            vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
+            vendorApplication={vendorAppForm}
+            rostersByOccurrence={rostersByOccurrence}
+          />
+        </div>
+      </section>
+    ) : null;
+
+  // Lineup — per selected date for multi-date events (renders nothing when
+  // that date has no confirmed lineup), the confirmed roster otherwise.
+  const lineupSection = hasOccurrences ? (
+    <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} eventName={event.name} />
+  ) : businesses.length > 0 ? (
+    <section id="lineup" className="scroll-mt-24">
+      <SectionHeading>Who You&rsquo;ll Find Here</SectionHeading>
+      <p className="mt-0.5 text-metadata text-muted">
+        {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
+      </p>
+      <EventBusinessRoster businesses={businesses} eventName={event.name} />
+    </section>
+  ) : null;
+
+  const momentsSection =
+    journal.entries.length > 0 ? (
+      <section id="moments" className="scroll-mt-24">
+        <BrandHeading
+          accent="Moments"
+          className="mb-3"
+          trailing={
+            journal.total != null && journal.total > journal.entries.length ? (
+              <Link href={journalCollectionHref("event", event.slug)} className="text-metadata font-semibold text-findmi-700 hover:underline">
+                See all {journal.total}
+              </Link>
+            ) : null
+          }
+        />
+        <JournalCollection entries={journal.entries} total={journal.total} />
+      </section>
+    ) : null;
+
+  // Photos — the event's own gallery (the cover lives in the hero, whose
+  // lightbox also reaches every gallery image). A future MediaMosaic can
+  // replace this block in place.
+  const mediaSection =
+    images.gallery.length > 0 ? (
+      <section id="media" className="scroll-mt-24">
+        <SectionHeading>Photos</SectionHeading>
+        <div className="mt-3">
+          <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} />
+        </div>
+      </section>
+    ) : null;
+
+  // Place — only when it adds something beyond Key Facts (the event's own
+  // venue photos); never a second copy of the same Location card.
+  const placeName = canonicalLocation?.name ?? event.venue_name ?? null;
+  const placeSection =
+    images.venue.length > 0 ? (
+      <section id="place" className="scroll-mt-24">
+        <SectionHeading>The place</SectionHeading>
+        {placeName &&
+          (canonicalLocation ? (
+            <Link href={`/location/${canonicalLocation.slug}`} className="mt-0.5 inline-block text-metadata font-semibold text-findmi-700 hover:underline">
+              {placeName} ›
+            </Link>
+          ) : (
+            <p className="mt-0.5 text-metadata text-muted">{placeName}</p>
+          ))}
+        <div className="mt-3">
+          <ImageGalleryStrip images={images.venue} alt={placeName ?? "Venue"} />
+        </div>
+      </section>
+    ) : null;
+
+  const productsSection =
+    featuredProducts.length > 0 ? (
+      <section id="products" className="scroll-mt-24">
+        <SectionHeading>{event.featured_products_heading?.trim() || "Featured at This Event"}</SectionHeading>
+        <div className="-mx-4 mt-3 sm:mx-0">
+          <HorizontalScroller>
+            {featuredProducts.map((p) => (
+              <div key={p.id} className="w-[42%] min-w-[150px] max-w-[176px] shrink-0 sm:w-44">
+                <ProductCard product={p} />
+              </div>
+            ))}
+          </HorizontalScroller>
+        </div>
+      </section>
+    ) : null;
+
+  const detailsSection = (
+    <section id="details" className="scroll-mt-24">
+      {hostBusiness ? (
+        <>
+          <p className="text-label font-bold uppercase text-subtle">Hosted by</p>
+          <Link href={`/business/${hostBusiness.slug}`} className="group mt-2 flex items-center gap-3">
+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-black/5 ring-1 ring-black/[0.06]">
+              {hostBusiness.logo_url ? (
+                <Image src={hostBusiness.logo_url} alt="" fill unoptimized sizes="48px" className="object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-sm font-bold uppercase text-ink/30">
+                  {hostBusiness.name.charAt(0)}
+                </div>
+              )}
+            </div>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-card-title-lg font-bold text-primary group-hover:text-findmi-700">{hostBusiness.name}</span>
+              <span className="text-metadata font-semibold text-findmi-700">View brand ›</span>
+            </span>
+          </Link>
+        </>
+      ) : (
+        hasOrganizer && (
+          <>
+            <p className="text-label font-bold uppercase text-subtle">Run by</p>
+            <p className="mt-1 text-card-title-lg font-bold text-primary">{event.organizer_name}</p>
+          </>
         )
       )}
-
-      {/* Event Action UX + Universal Journal CTA pass — the strongest
-          FindMi-owned experience CTA, directly beneath the organizer's
-          own primary action (RSVP/Tickets/the legacy equivalent above),
-          before any other secondary row. Permanent and universal — every
-          viewer sees it; see DocumentExperienceCta's own comment for why
-          it carries no visibility gate. */}
-      <DocumentExperienceCta eventSlug={event.slug} state={journalCtaState} />
-
-      {/* Contextual actions (Event + Location Action Row Consistency pass)
-          — Website/Call use the same compact h-9/rounded-xl/px-3/text-xs
-          button geometry as the Location page's own secondary actions,
-          and render only when the Event's already-resolved
-          canonicalLocation actually has them on file (see
-          canonicalWebsite/canonicalPhone above). A legacy event's own
-          Apply to Vend joins the same row at the same size. Event Detail
-          Action Bar Correction pass — this wrapper is now self-guarded
-          (only rendered when at least one of these three actually
-          exists), since MESSAGE — the one action that used to make this
-          row non-empty for nearly every event — moved into the unified
-          utility grid below. Without that guard this div would otherwise
-          render as an empty, orphaned row for the common case (no linked
-          Location website/phone, not a legacy vendor-apply event). */}
-      {(canonicalWebsite || canonicalPhone || legacyVendorApplyCta) && (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {canonicalWebsite && (
-            <a
-              href={canonicalWebsite}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
-            >
-              <GlobeGlyph className="h-3.5 w-3.5 shrink-0" />
-              Website
-            </a>
-          )}
-          {canonicalPhone && (
-            <a
-              href={`tel:${canonicalPhone}`}
-              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-black/10 px-3 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink"
-            >
-              <PhoneGlyph className="h-3.5 w-3.5 shrink-0" />
-              Call
-            </a>
-          )}
-          {legacyVendorApplyCta && (
-            <FormAction
-              href={legacyVendorApplyCta.href}
-              displayMode={legacyVendorApplyCta.displayMode}
-              label="Apply to Vend"
-              className="flex h-9 items-center justify-center rounded-xl border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-              track={{ event_name: "click_apply_to_vend", subject_type: "event", subject_id: event.id, event_id: event.id }}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Tier B — Event Detail Action Bar Correction pass. Message/Save/
-          Add to Calendar/Share are now ONE deliberate utility module
-          (UtilityActionGrid/EventUtilityActions) instead of Message
-          living alone in the row above and Save/Calendar/Share living in
-          a separately-styled horizontal scroller below: same rounded-2xl
-          icon-over-label treatment, equal width, and the column count is
-          derived from however many of the four are actually present, so
-          a missing one (no Message configured, no selected occurrence
-          for Add to Calendar) reflows the rest instead of leaving an
-          empty cell. Recurring events: EventUtilityActions owns the one
-          piece that depends on client-only selected-occurrence state
-          (Add to Calendar); Message/Save/Share don't depend on it and
-          are built once below, then passed straight through. Legacy
-          events: every action's presence is already known here
-          server-side, so the grid renders directly. */}
-      {hasOccurrences ? (
-        <EventUtilityActions
-          eventId={event.id}
-          eventName={event.name}
-          description={event.description}
-          message={messageAction}
-          save={saveAction}
-          share={shareAction}
-          directionsEnabled={event.directions_enabled}
-          canonicalLocation={canonicalLocation}
-        />
-      ) : (
-        <UtilityActionGrid
-          items={[
-            messageAction,
-            saveAction,
-            <AddToCalendarButton
-              key="calendar"
-              title={event.name}
-              description={event.description}
-              location={venueLine || null}
-              startAt={event.start_at}
-              endAt={event.end_at}
-              layout="grid"
-            />,
-            shareAction,
-            showDirections ? (
-              <DirectionsGridCell
-                key="directions"
-                href={directionsHref!}
-                trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
-              />
-            ) : null,
-          ].filter((item): item is ReactElement => Boolean(item))}
-        />
-      )}
-
-      {/* Overflow utilities — Contact Organizer / Event Details are
-          separate, lower-frequency actions that don't belong in the
-          strict 4-slot Message/Save/Calendar/Share module above. Kept as
-          their own self-guarded, horizontally scrollable row (only
-          rendered when at least one exists) rather than stretching the
-          module to 5-6 uneven columns. Event Action UX + Universal
-          Journal CTA pass — the admin-only Document-this-experience entry
-          point that used to live here is gone; it's now DocumentExperienceCta
-          above, universal and no longer tied to this row at all. */}
-      {(showContact || event.external_url) && (
-        <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex w-max items-center gap-2">
-            {showContact && (
-              <InquireButton
-                targetType="event"
-                targetId={event.id}
-                targetName={event.name}
-                label="Contact Organizer"
-                className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-                track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
-              />
-            )}
-            {event.external_url && (
-              <a
-                href={event.external_url}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-ink/30 hover:text-ink"
-              >
-                Event Details
-              </a>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Item 8 — optional Bulletin, same shared component as Business
-          Profile, right after the utility row and before About. */}
-      <div className="mt-2">
-        <Bulletin heading={event.bulletin_heading} body={event.bulletin_enabled ? event.bulletin_body : null} />
+      {/* Claim foundation pass — deliberately last, small, and muted. */}
+      <div className={hostBusiness || hasOrganizer ? "mt-6" : ""}>
+        <ClaimButton type="event" slug={event.slug} entityName={event.name} />
       </div>
+    </section>
+  );
 
-      {/* Event Page Final Compression pass — when the event has real
-          occurrences to show, Upcoming Dates & Lineup and Who You'll Find
-          Here move up to sit directly beneath the actions (the occurrence
-          experience is more actionable than the description/gallery and
-          should be reachable sooner) — both are the exact same blocks
-          built once above (datesAndLineupSection/whoYoullFindHere), just
-          rendered in this earlier position instead of after the gallery.
-          An event with no real occurrences renders nothing here
-          (datesAndLineupSection is self-guarded; the roster is rendered
-          in its original later position below instead) — never an empty
-          "Upcoming Dates & Lineup" section. */}
-      {showOccurrenceCluster && (
-        <>
-          {datesAndLineupSection}
-          {whoYoullFindHere}
-        </>
-      )}
-
-      {/* Event Page Visual Convergence pass — the approved reference runs
-          the description directly after logistics/actions with no large
-          section heading at all on mobile (a big "ABOUT THIS EVENT" label
-          + generous margins was exactly the kind of vertical cost Dates &
-          Lineup was buried under). Heading now hidden below sm: — desktop
-          keeps it, where there's width/height to spare. Same single
-          description field, same collapsed-by-default ReadMoreText. */}
-      {event.description && (
-        <section className="mt-3">
-          <h2 className="hidden font-display text-lg font-bold tracking-tight text-ink sm:block">About This Event</h2>
-          <div className="mt-0 max-w-2xl sm:mt-3">
-            <ReadMoreText text={event.description} />
-          </div>
-        </section>
-      )}
-
-      {/* Premium Featured Event Hero pass — supporting gallery images now
-          live here, below the core event info/description, rather than as
-          a thumbnail strip between the cover and the event identity (that
-          strip is gone — the hero above is the primary image, tap-to-zoom
-          reaches every one of these same images too via its own
-          lightbox). Same real images.gallery, same ImageGalleryStrip,
-          unchanged minCount={1}/compact — only the position moved. */}
-      {images.gallery.length > 0 && (
-        <div className="mt-3 -mx-4 sm:mx-0">
-          <div className="px-4 sm:px-0">
-            <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} compact />
-          </div>
+  const body = (
+    <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-5 sm:px-6 sm:pt-7 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
+      {/* Essentials — first on phones; a sticky right rail on desktop. */}
+      <aside className="lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:self-start">{essentials}</aside>
+      {/* Experience + details. divide-y only separates sections that
+          actually render (client sections that resolve to nothing leave no
+          stray separator). */}
+      <div className="mt-8 border-t border-black/[0.07] lg:col-start-1 lg:row-start-1 lg:mt-0 lg:border-t-0">
+        <div className="divide-y divide-black/[0.07] [&>*]:py-7 lg:[&>*:first-child]:pt-0">
+          {overviewSection}
+          {datesSection}
+          {lineupSection}
+          {momentsSection}
+          {mediaSection}
+          {placeSection}
+          {productsSection}
+          {detailsSection}
         </div>
-      )}
-
-      {/* Event Page Final Compression pass — an event with NO real
-          occurrences (a legacy one-time event, or a recurring event with
-          none currently upcoming) keeps the original ordering: Who You'll
-          Find Here stays here, after the description/gallery, exactly as
-          before this pass. showOccurrenceCluster's own block above
-          already rendered it earlier for every event that actually has
-          something to show in Upcoming Dates & Lineup. */}
-      {!showOccurrenceCluster && whoYoullFindHere}
-    </>
+      </div>
+    </div>
   );
 
   return (
@@ -765,21 +730,21 @@ export async function EventPublicView({ slug }: { slug: string }) {
         page_type="event"
         page_path={`/event/${event.slug}`}
       />
-      {/* Event Page Visual Convergence pass — tightened further (42vh/400px
-          -> 36vh/340px) against the approved reference: the hero stays
-          immersive (full-bleed image + gradient + overlay) but must leave
-          RSVP/actions reachable within/near the first mobile viewport,
-          not just "not the whole screen." A viewport-relative height (not
-          an aspect ratio) with min/max clamps keeps the hero's mobile
-          height proportional to the device rather than to its own width.
-          Desktop keeps the original cinematic 21/9 strip — this
-          correction is mobile-only. EventCoverLightbox/gradient/category/
-          title/status/analytics are otherwise unchanged. */}
-      <div className="relative h-[36vh] max-h-[340px] min-h-[220px] w-full overflow-hidden border-b border-black/5 bg-ink sm:h-auto sm:aspect-[21/9] sm:rounded-b-3xl">
+      {/* Hero — full-bleed photography with restrained scroll depth
+          (EventCoverLightbox parallax; static with reduced motion or
+          without browser support). Title, place and host attribution; a
+          live pill only when genuinely live. */}
+      <div
+        className={`relative w-full overflow-hidden bg-ink sm:rounded-b-3xl ${
+          coverAndGallery.length > 0
+            ? "h-[40vh] max-h-[380px] min-h-[240px] sm:h-auto sm:max-h-[520px] sm:aspect-[21/9]"
+            : "h-[200px] sm:h-[260px]"
+        }`}
+      >
         {coverAndGallery.length > 0 ? (
-          <EventCoverLightbox images={coverAndGallery} alt={event.name} />
+          <EventCoverLightbox images={coverAndGallery} alt={event.name} parallax />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-ink">
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-ink to-findmi-900">
             <CalendarGlyph className="h-12 w-12 text-white/15" />
           </div>
         )}
@@ -789,154 +754,33 @@ export async function EventPublicView({ slug }: { slug: string }) {
           attribution={hostBusiness?.name ?? null}
           attributionHref={hostBusiness ? `/business/${hostBusiness.slug}` : undefined}
           venueLabel={heroVenueLabel}
-          statusLabel={heroTemporal.live ? "Happening Now" : null}
+          statusLabel={heroTemporal.live ? "Happening now" : null}
           isLive={heroTemporal.live}
+          showStatusOnFull
           titleTag="h1"
         />
         <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-30" />
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6 sm:py-7">
-        {/* Final Event Experience Polish pass — root-caused why the
-            default occurrence selection (and therefore the top logistics
-            module, the Dates & Lineup rail's selected card, and Who
-            You'll Find Here) could silently resolve to the SYNTHESIZED
-            whole-event-range entry (see getEffectiveEventSchedule's own
-            "Primary Date Integrity" comment) instead of a real per-day
-            occurrence: the synthetic entry's own start_at/end_at spans
-            the entire event, so it trivially satisfies resolveDefault()'s
-            "currently happening" check and got selected ahead of the real
-            Sep 30 occurrence whenever the event's overall window
-            (Sep 29 - Oct 1) was still open. The rail itself already
-            excludes the synthetic entry (realOccurrences), but the
-            PROVIDER still considered it a selectable candidate — the
-            mismatch this pass fixes. The provider now receives
-            realOccurrences only, so only a genuine event_occurrences row
-            can ever be selected — current -> next -> none, never the
-            synthesized range. */}
-        {hasOccurrences ? (
-          <EventOccurrenceProvider occurrences={realOccurrences}>{scheduleAndDetails}</EventOccurrenceProvider>
-        ) : (
-          scheduleAndDetails
-        )}
-
-        {/* Item 11 — a founder-picked small set of real, existing products
-            (event_products), moved to right after Who You'll Find Here.
-            Omitted entirely when none are assigned, never automatic
-            merchandising. Real purchasable/view-only behavior via
-            ProductCard, unchanged. */}
-        {featuredProducts.length > 0 && (
-          <div className="mt-8 -mx-4 sm:mx-0">
-            <p className="mb-3 px-4 font-display text-lg font-bold tracking-tight text-ink sm:px-0">
-              {event.featured_products_heading?.trim() || "Featured at This Event"}
-            </p>
-            <HorizontalScroller>
-              {featuredProducts.map((p) => (
-                <div key={p.id} className="w-[42%] min-w-[150px] max-w-[176px] shrink-0 sm:w-44">
-                  <ProductCard product={p} />
-                </div>
-              ))}
-            </HorizontalScroller>
-          </div>
-        )}
-
-        {/* Item 10 — Venue, now with its own optional compact gallery.
-            Always renders the real stored venue fields as plain text
-            (address/city/state — useful human-readable info regardless)
-            plus this event's own venue_image gallery rows. The "View
-            Location" link below is clickable and goes to a real Findmi
-            Location profile whenever canonicalLocation resolved one
-            (occurrence relationship preferred, exact-text-match fallback
-            for legacy events) — never a fabricated link. */}
-        {/* Journal Distribution V1 — renders nothing when empty; the
-            DocumentExperienceCta above is separate and unchanged. */}
-        {journal.entries.length > 0 && (
-          <section className="mt-8">
-            <JournalCollection
-              heading={momentsHeading("event", event.name)}
-              entries={journal.entries}
-              total={journal.total}
-              seeAllHref={journalCollectionHref("event", event.slug)}
-            />
-          </section>
-        )}
-
-        {hasVenueDetails && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About the Venue</h2>
-            {/* Final Mobile Visual Convergence pass — a real linked
-                Location now renders as the same compact, visual
-                EventLocationCard the top logistics module uses (thumbnail/
-                logo, name, address, chevron, link to the real Location
-                page) instead of duplicating a plain-text name/address block
-                plus a separate "View Location" link. Reuses the shared
-                component rather than building parallel Location UI. No
-                canonicalLocation (a founder-typed venue with no matching
-                FindMi Location) keeps the original plain-text fallback
-                exactly as before. */}
-            {canonicalLocation ? (
-              <div className="mt-3">
-                <EventLocationCard location={canonicalLocation} />
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-col gap-1 text-sm text-ink/70">
-                {event.venue_name && <p className="font-semibold text-ink">{event.venue_name}</p>}
-                {(event.address || location) && <p>{[event.address, location].filter(Boolean).join(", ")}</p>}
-              </div>
-            )}
-            {images.venue.length > 0 && (
-              <div className="mt-3">
-                <ImageGalleryStrip images={images.venue} alt={event.venue_name ?? "Venue"} />
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* Event Page Visual Correction pass — "Hosted By" is now a real
-            linked Business object card whenever hostBusiness resolved
-            (same event_businesses.featured/sole-participant reasoning as
-            the hero byline — see that variable's own comment). A plain-
-            text organizer_name with no matching Business (e.g. a named
-            individual, not a FindMi Business) keeps the original Run By
-            text exactly as before — never dropped, never a fabricated
-            link. */}
-        {hostBusiness ? (
-          <section className="mt-8">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Hosted By</p>
-            <Link
-              href={`/business/${hostBusiness.slug}`}
-              className="mt-2 flex items-center gap-3 rounded-xl border border-black/10 bg-white p-3 transition hover:border-findmi/40 hover:bg-findmi-50"
-            >
-              <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-black/5">
-                {hostBusiness.logo_url ? (
-                  <Image src={hostBusiness.logo_url} alt="" fill unoptimized sizes="44px" className="object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-sm font-bold uppercase text-ink/30">
-                    {hostBusiness.name.charAt(0)}
-                  </div>
-                )}
-              </div>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-semibold text-ink">{hostBusiness.name}</span>
-                <span className="text-xs font-semibold text-findmi-700">View Brand ›</span>
-              </span>
-            </Link>
-          </section>
-        ) : (
-          hasOrganizer && (
-            <section className="mt-8">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Run By</p>
-              <p className="mt-1 text-base font-semibold text-ink">{event.organizer_name}</p>
-            </section>
-          )
-        )}
-
-        {/* Claim foundation pass — deliberately last, small, and muted. */}
-        <div className="mt-8">
-          <ClaimButton type="event" slug={event.slug} entityName={event.name} />
-        </div>
-      </div>
+      {/* The selected-date context wraps essentials AND sections, so Key
+          Facts, actions, the dates rail and the lineup stay in sync. Only
+          genuine occurrence rows are selectable (never the synthesized
+          whole-event range — see the Final Event Experience Polish note in
+          git history). */}
+      {hasOccurrences ? <EventOccurrenceProvider occurrences={realOccurrences}>{body}</EventOccurrenceProvider> : body}
     </div>
+  );
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="font-display text-section-title-lg font-bold text-primary">{children}</h2>;
+}
+
+function ExternalGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path d="M14 5h5v5M19 5l-8 8M17 14v4.5a1.5 1.5 0 01-1.5 1.5h-10A1.5 1.5 0 014 18.5v-10A1.5 1.5 0 015.5 7H10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -949,19 +793,6 @@ function CalendarGlyph({ className }: { className?: string }) {
   );
 }
 
-function PinGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className ?? "h-4 w-4 shrink-0 text-ink/40"}>
-      <path
-        d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
 
 // Same glyphs/sizing as the Location page's own Website/Call pills (Event
 // + Location Action Row Consistency pass).

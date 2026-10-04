@@ -27,8 +27,23 @@ import { trackEvent, type TrackEventPayload } from "@/lib/analytics/track";
  * padding (same pattern the Overflow-utilities row below already uses)
  * keeps this from ever causing page-level horizontal scroll; scrollbar
  * hidden via the same utility classes used elsewhere on this page. */
-export function UtilityActionGrid({ items }: { items: ReactNode[] }) {
+export function UtilityActionGrid({ items, variant = "rail" }: { items: ReactNode[]; variant?: "rail" | "bar" }) {
   if (items.length === 0) return null;
+  // Public Event V2 — "bar": one quiet segmented surface with equal cells
+  // instead of a strip of separate bordered tiles. The cells' own (shared)
+  // grid-button borders are made transparent here only; the Location page
+  // keeps the original "rail" look.
+  if (variant === "bar") {
+    return (
+      <div className="grid grid-flow-col auto-cols-fr gap-0.5 rounded-2xl bg-black/[0.035] p-1 [&>div>a]:border-transparent [&>div>button]:border-transparent [&>div>div>button]:border-transparent">
+        {items.map((item, i) => (
+          <div key={i} className="h-[52px] min-w-0">
+            {item}
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="mt-2 -mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex w-max gap-2">
@@ -120,7 +135,9 @@ export default function EventUtilityActions({
   share,
   directionsEnabled,
   canonicalLocation,
+  variant = "rail",
 }: {
+  variant?: "rail" | "bar";
   eventId: string;
   eventName: string;
   description: string | null;
@@ -185,5 +202,5 @@ export default function EventUtilityActions({
     ) : null,
   ].filter((item): item is ReactNode => Boolean(item));
 
-  return <UtilityActionGrid items={items} />;
+  return <UtilityActionGrid items={items} variant={variant} />;
 }

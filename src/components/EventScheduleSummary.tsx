@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { cityState, cityStateZip, formatDateShortInZone, formatTimeInZone } from "@/lib/format";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
-import LiveDot from "./LiveDot";
+import { LiveStatus, QuietStatus, WhenFact, WhereFact } from "./event/KeyFacts";
 
 /** The recurring-event hero's date/time/location block — Recurring
  * Events V2. Reads the shared selectedOccurrence context (never the
@@ -42,7 +41,14 @@ import LiveDot from "./LiveDot";
  * selected occurrence shows its own compact tag in the same spot instead
  * (mutually exclusive with Happening Now — never both). A thin divider
  * separates that top "when/status" group from the venue/address group
- * beneath it, only when there's real venue content to separate from. */
+ * beneath it, only when there's real venue content to separate from.
+ *
+ * Public Event V2 — rendered as the borderless Key Facts (WHEN / WHERE
+ * rows, components/event/KeyFacts) instead of a bordered card: date range,
+ * time and number of dates on the When row with a quiet status line
+ * (Happening now · until …, the next date, or Cancelled); the selected
+ * date's place, linked, with its address on the Where row. Same data and
+ * selection logic as before. */
 export default function EventScheduleSummary({
   canonicalLocation,
 }: {
@@ -51,14 +57,13 @@ export default function EventScheduleSummary({
   const { occurrences, selected, selectedState } = useEventOccurrence();
 
   if (!selected || selectedState === "none") {
-    return <p className="mt-3 text-sm font-medium text-ink/50">No upcoming dates announced</p>;
+    return <WhenFact dateLabel="No upcoming dates announced" detail="Follow to hear about new dates." />;
   }
 
   const location = selected.location ?? canonicalLocation;
   const addressLine = location ? [location.address, cityState(location.city, location.state)].filter(Boolean).join(", ") : "";
-  const manualVenueLine = [selected.venue_name, selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)]
-    .filter(Boolean)
-    .join(" · ");
+  const manualVenueName = selected.venue_name ?? null;
+  const manualVenueLine = [selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)].filter(Boolean).join(", ");
 
   const first = occurrences[0] ?? selected;
   const last = occurrences[occurrences.length - 1] ?? selected;
@@ -75,54 +80,26 @@ export default function EventScheduleSummary({
   const timeLabel = hasUniformTime
     ? `${firstStartTime} – ${firstEndTime}`
     : `${formatTimeInZone(selected.start_at, selected.timezone)} – ${formatTimeInZone(selected.end_at, selected.timezone)}`;
+  const dateCount = occurrences.length;
+  const detail = [timeLabel, dateCount > 1 ? `${dateCount} dates` : null].filter(Boolean).join(" · ");
 
-  const hasVenueContent = Boolean(location || manualVenueLine);
+  let status: React.ReactNode = null;
+  if (selectedState === "cancelled") {
+    status = <QuietStatus tone="red">This date is cancelled</QuietStatus>;
+  } else if (selectedState === "current") {
+    status = <LiveStatus until={formatTimeInZone(selected.end_at, selected.timezone)} />;
+  } else if (dateCount > 1) {
+    status = <QuietStatus>Next: {formatDateShortInZone(selected.start_at, selected.timezone)}</QuietStatus>;
+  }
 
   return (
-    <div className="mt-3 flex flex-col gap-1 text-sm">
-      {/* Small Public UI Polish pass — WHEN promoted from a plain text-sm
-          line (same weight-class as ordinary body copy) to the same
-          semantic section-title/card-title scale already used for major
-          page moments elsewhere (see FeaturedEventHeroOverlay/
-          FeaturedAppearanceCard). flex-wrap already handles a genuinely
-          long date/time combination gracefully; no truncation added. */}
-      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="text-section-title sm:text-section-title-lg font-bold text-ink">{dateRangeLabel}</span>
-        <span className="text-ink/30">·</span>
-        <span className="text-card-title sm:text-card-title-lg font-semibold text-ink/75">{timeLabel}</span>
-      </p>
-      {selectedState === "cancelled" ? (
-        <span className="inline-flex w-fit items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
-          Cancelled
-        </span>
-      ) : (
-        selectedState === "current" && (
-          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-red-600">
-            <LiveDot className="animate-happening-now-glow rounded-full text-red-600" />
-            Happening Now
-          </span>
-        )
-      )}
-      {hasVenueContent && <div className="border-t border-black/[0.06]" />}
+    <div className="flex flex-col gap-3.5">
+      <WhenFact dateLabel={dateRangeLabel} detail={detail} status={status} />
       {location ? (
-        <Link href={`/location/${location.slug}`} className="group w-fit">
-          <span className="flex items-center gap-1 font-semibold text-ink transition group-hover:text-findmi-700">
-            {location.name}
-            <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/30 transition group-hover:text-findmi-700" />
-          </span>
-          {addressLine && <span className="block text-xs text-ink/50">{addressLine}</span>}
-        </Link>
+        <WhereFact name={location.name} href={`/location/${location.slug}`} line={addressLine || null} />
       ) : (
-        manualVenueLine && <p className="text-xs text-ink/55">{manualVenueLine}</p>
+        <WhereFact name={manualVenueName} line={manualVenueLine || null} />
       )}
     </div>
-  );
-}
-
-function ChevronGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

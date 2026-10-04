@@ -12,7 +12,20 @@ import ImageLightbox from "./ImageLightbox";
 // and no gallery, `images` has length 1 and the lightbox simply shows
 // that one image with no prev/next controls — unchanged from the
 // original single-image behavior.
-export default function EventCoverLightbox({ images, alt }: { images: string[]; alt: string }) {
+export default function EventCoverLightbox({
+  images,
+  alt,
+  parallax = false,
+}: {
+  images: string[];
+  alt: string;
+  /** Public Event V2 — opt-in restrained scroll depth for the cover (see
+   * .findmi-hero-parallax in globals.css). The image sits in a wrapper
+   * that's 32px taller than the hero (extra height above), so the drift
+   * never exposes an edge; without support / with reduced motion it's a
+   * static, correctly-cropped cover. Location pages don't pass it. */
+  parallax?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const cover = images[0];
   if (!cover) return null;
@@ -25,15 +38,21 @@ export default function EventCoverLightbox({ images, alt }: { images: string[]; 
           failing to serve it. Bypassing the optimizer fetches the
           original file directly instead of relying on that failing
           pipeline. */}
-      <Image
-        src={cover}
-        alt={alt}
-        fill
-        priority
-        unoptimized
-        sizes="(min-width: 1024px) 1024px, 100vw"
-        className="object-cover"
-      />
+      {parallax ? (
+        <div className="findmi-hero-parallax absolute inset-x-0 -top-8 bottom-0">
+          <Image src={cover} alt={alt} fill priority unoptimized sizes="100vw" className="object-cover" />
+        </div>
+      ) : (
+        <Image
+          src={cover}
+          alt={alt}
+          fill
+          priority
+          unoptimized
+          sizes="(min-width: 1024px) 1024px, 100vw"
+          className="object-cover"
+        />
+      )}
       <button
         type="button"
         onClick={() => setOpen(true)}

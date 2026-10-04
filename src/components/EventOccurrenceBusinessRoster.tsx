@@ -34,15 +34,16 @@ export default function EventOccurrenceBusinessRoster({
   if (!selected) return null;
 
   const businesses = rostersByOccurrence[selected.id] ?? [];
+  // Public Event V2 — no empty section: a date with no confirmed lineup
+  // renders nothing (the parent supplies spacing/separators).
+  if (businesses.length === 0) return null;
 
   return (
-    <section className="mt-5">
-      <h2 className="font-display text-lg font-bold tracking-tight text-ink">Who You&rsquo;ll Find Here</h2>
-      {businesses.length === 0 ? (
-        <p className="mt-1 text-sm text-ink/55">Vendor lineup coming soon.</p>
-      ) : (
+    <section id="lineup" className="scroll-mt-24">
+      <h2 className="font-display text-section-title-lg font-bold text-primary">Who You&rsquo;ll Find Here</h2>
+      {(
         <>
-          <p className="mt-1 text-sm text-ink/55">
+          <p className="mt-0.5 text-metadata text-muted">
             {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
           </p>
           {/* key={selected.id} — forces a fresh EventBusinessRoster instance

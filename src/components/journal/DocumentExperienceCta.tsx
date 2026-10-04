@@ -1,53 +1,44 @@
 import Link from "next/link";
 import type { EventJournalCtaState } from "@/app/(public)/event/[slug]/journalCaptureActions";
 
-const COPY: Record<EventJournalCtaState["kind"], { title: string; subtitle: string | null }> = {
-  none: { title: "Document Your Experience", subtitle: "Create a Journal Entry" },
-  draft: { title: "Continue Your Journal Entry", subtitle: "Keep documenting your experience" },
-  published: { title: "View Your Journal Entry", subtitle: null },
-};
-
-/** Event Action UX + Universal Journal CTA pass — a large, permanent
- * FindMi-owned secondary CTA directly beneath the Event's primary
- * organizer action (RSVP/Tickets), never a small admin utility tucked
- * under the utility row. Always rendered, for every viewer — logged out,
- * logged in, or admin — per this pass's own instruction: auth state
- * decides what happens AFTER the tap (see the /event/[slug]/journal
- * entry point this links to), never whether the CTA exists. `state` only
- * changes the copy shown; the destination is always the same entry
- * point, which independently resolves (or re-resolves) the correct
- * existing entry — never a second, divergent lookup here. White/pale-
- * aqua background + aqua border/icon, never solid aqua, so it stays
- * visually substantial without competing with a solid-filled RSVP
- * button above it. */
+/** Public Event V2 — Moments action. Public concept: MOMENTS (individual
+ * pieces of an experience); the user's personal collection stays their
+ * JOURNAL (one entry per Event). Additive, compact, never dominant:
+ *
+ *   no entry yet          → "+ Add Moment"
+ *   draft or published    → "+ Add More"
+ *
+ * Both go to /event/[slug]/journal, which resolves (or creates) the one
+ * entry for this user + event and always opens its editor — so Add More
+ * can genuinely add more, even to a published entry. A published entry
+ * also gets a quiet "View your Journal" link to its public page; a draft
+ * links to the personal Journal list. Always rendered for every viewer
+ * (signed-out visitors go through signup from the entry point). */
 export default function DocumentExperienceCta({ eventSlug, state }: { eventSlug: string; state: EventJournalCtaState }) {
-  const copy = COPY[state.kind];
+  const hasEntry = state.kind !== "none";
+  const viewHref = state.kind === "published" ? `/journal/${state.id}` : state.kind === "draft" ? "/my-world/journal" : null;
   return (
-    <Link
-      href={`/event/${eventSlug}/journal`}
-      className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-findmi/40 bg-findmi-50/50 px-4 py-4 transition hover:border-findmi/60 hover:bg-findmi-50"
-    >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-findmi-700">
-        <PencilGlyph className="h-5 w-5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-bold tracking-tight text-ink sm:text-base">{copy.title}</span>
-        {copy.subtitle && <span className="mt-0.5 block text-xs text-ink/55">{copy.subtitle}</span>}
-      </span>
-    </Link>
-  );
-}
-
-function PencilGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path
-        d="M17 3a2.1 2.1 0 013 3L8.5 17.5 4 19l1.5-4.5L17 3z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Link
+          href={`/event/${eventSlug}/journal`}
+          className="inline-flex h-10 items-center gap-1.5 rounded-full border border-findmi/40 bg-white px-4 text-button font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+        >
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-4 w-4">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+          </svg>
+          {hasEntry ? "Add More" : "Add Moment"}
+        </Link>
+        {viewHref && (
+          <Link href={viewHref} className="text-metadata font-semibold text-muted transition hover:text-primary">
+            View your Journal
+          </Link>
+        )}
+      </div>
+      <p className="max-w-md text-microcopy leading-relaxed text-subtle">
+        Add moments from your experience to your Journal. They may also be featured on this event or the brand&rsquo;s
+        Findmi page.
+      </p>
+    </div>
   );
 }

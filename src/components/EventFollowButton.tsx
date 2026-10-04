@@ -179,8 +179,11 @@ export default function EventFollowButton({
         onClick={authed ? handleAuthedFollow : openModal}
         aria-haspopup={authed ? undefined : "dialog"}
         aria-expanded={authed ? undefined : open}
-        className={`flex ${h} items-center justify-center rounded-full bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
+        className={`flex ${h} items-center justify-center rounded-full border border-findmi/40 bg-white px-5 ${text} font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50`}
       >
+        {/* Public Event V2 — outline until followed, so it never competes
+            with the organizer's primary action (RSVP/Tickets); the filled
+            "Following" state above is the confirmation. */}
         Follow
       </button>
 

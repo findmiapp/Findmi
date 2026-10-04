@@ -55,7 +55,11 @@ export default function EventScheduleCtas({
   rsvp,
   vendorApplicationsEnabled,
   vendorApplication,
+  bare = false,
 }: {
+  /** Public Event V2 — render just the buttons (no wrapping row) so the
+   * caller can place them in its own action row beside Follow. */
+  bare?: boolean;
   /** Analytics attribution only. */
   eventId: string;
   ticketsEnabled: boolean;
@@ -84,9 +88,7 @@ export default function EventScheduleCtas({
 
   if (actions.length === 0) return null;
 
-  return (
-    <div className="mt-3 flex flex-wrap items-stretch gap-2.5">
-      {actions.map(({ label, action, weight, eventName }) => (
+  const buttons = actions.map(({ label, action, weight, eventName }) => (
         <FormAction
           key={label}
           href={action.url}
@@ -94,8 +96,8 @@ export default function EventScheduleCtas({
           label={label}
           className={
             weight === "solid"
-              ? "flex h-12 flex-1 items-center justify-center rounded-2xl bg-findmi px-6 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-              : "flex h-12 flex-1 items-center justify-center rounded-2xl border border-findmi/40 px-5 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+              ? "flex h-11 min-w-[8rem] flex-1 items-center justify-center rounded-full bg-findmi px-6 text-button font-bold text-white transition hover:bg-findmi-600"
+              : "flex h-11 min-w-[8rem] flex-1 items-center justify-center rounded-full border border-findmi/40 bg-white px-5 text-button font-bold text-findmi-700 transition hover:bg-findmi-50"
           }
           track={{
             event_name: eventName,
@@ -106,7 +108,7 @@ export default function EventScheduleCtas({
             location_id: selected.location?.id ?? undefined,
           }}
         />
-      ))}
-    </div>
-  );
+      ));
+  if (bare) return <>{buttons}</>;
+  return <div className="mt-3 flex flex-wrap items-stretch gap-2.5">{buttons}</div>;
 }

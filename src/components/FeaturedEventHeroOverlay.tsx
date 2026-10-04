@@ -65,6 +65,9 @@ export interface FeaturedEventHeroOverlayProps {
    * teaser card living on a page whose own h1 is the Business/Location
    * name. */
   titleTag?: "h1" | "h2" | "h3";
+  /** Public Event V2 — show the live/status pill on the full (non-compact)
+   * Event hero too. Defaults to the compact teaser behavior only. */
+  showStatusOnFull?: boolean;
 }
 
 export default function FeaturedEventHeroOverlay({
@@ -77,6 +80,7 @@ export default function FeaturedEventHeroOverlay({
   isLive,
   compact = false,
   titleTag = "h2",
+  showStatusOnFull = false,
 }: FeaturedEventHeroOverlayProps) {
   const TitleTag = titleTag;
 
@@ -121,7 +125,7 @@ export default function FeaturedEventHeroOverlay({
             hero (compact=false) no longer shows HAPPENING NOW at all —
             that single presentation lives in the white logistics card
             below the hero now (EventScheduleSummary). */}
-        {compact && statusLabel && (
+        {(compact || showStatusOnFull) && statusLabel && (
           <span
             className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
               isLive ? "bg-red-500/90 text-white" : "bg-white/15 text-white backdrop-blur-sm"

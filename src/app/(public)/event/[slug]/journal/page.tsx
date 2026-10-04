@@ -22,7 +22,9 @@ export const dynamic = "force-dynamic";
  * whichever existing surface already fits the result — the public entry
  * itself if already published, the admin capture surface for an admin's
  * own draft, or the existing self-serve editor for an ordinary
- * consumer's own draft. Never renders any UI of its own. */
+ * consumer's own draft. Never renders any UI of its own.
+ * (Public Event V2: published entries now also open the editor — see
+ * below.) */
 export default async function EventJournalEntryPointPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
 
@@ -37,6 +39,10 @@ export default async function EventJournalEntryPointPage({ params }: { params: P
   const result = await startOrResumeEventJournalEntry(slug);
   if ("error" in result) notFound();
 
-  if (result.status === "published") redirect(`/journal/${result.id}`);
+  // Public Event V2 — "Add Moment" / "Add More" always open the editor so
+  // the user can actually add to their entry, published or not (the
+  // consumer editor and the admin capture surface both accept published
+  // entries). The read-only public entry is linked separately on the Event
+  // page ("View your Journal").
   redirect(result.isAdmin ? `/admin/journal/${result.id}/capture` : `/my-world/journal/${result.id}/edit`);
 }
