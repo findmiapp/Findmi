@@ -155,7 +155,7 @@ export default function AccountNav() {
                 Create on Findmi
               </p>
               <BusinessScopedMenuItem
-                label="Add to Presence"
+                label="Findmi Here"
                 tab="findmi-here"
                 icon={<PlusGlyph className="h-4 w-4" />}
                 businesses={businesses}

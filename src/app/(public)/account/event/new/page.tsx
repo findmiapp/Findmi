@@ -111,8 +111,8 @@ export default async function AddEventPage({
 
   const admin = getAdminSupabase();
   const entitled = admin ? await canCurrentUserManageEvents(admin, user.id) : false;
-  // Business Manager V2 Pass A — "Add to Presence → Hosting something"
-  // opens this same flow with the originating business as CONTEXT only
+  // Business Manager V2 Pass A — "+ Add → Host something" opens this
+  // same flow with the originating business as CONTEXT only
   // (back link + wording). It does not make that business the Event's
   // host — no host relationship exists until Pass C.
   const businessContext = await resolveBusinessContext(businessIdParam);
@@ -130,7 +130,7 @@ export default async function AddEventPage({
       <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
         {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
         <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-          {businessContext ? "Hosting something" : "Add an Event"}
+          {businessContext ? "Host something" : "Add an Event"}
         </h1>
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <p className="text-body font-semibold text-primary">Event management is included with qualifying Findmi membership.</p>
@@ -160,7 +160,7 @@ export default async function AddEventPage({
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
       <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-        {businessContext ? "Hosting something" : "Add an Event"}
+        {businessContext ? "Host something" : "Add an Event"}
       </h1>
       <p className="mt-2 text-body text-muted">
         {businessContext

@@ -29,7 +29,7 @@ export default function RemoveAppearanceButton({
 }) {
   const whenWhere = [dateLabel, venueLabel].filter(Boolean).join(" · ");
   const message = [
-    "Remove from your Presence?",
+    "Remove this appearance?",
     "",
     title,
     whenWhere,

@@ -20,15 +20,23 @@ export function parsePresenceView(raw: string | undefined): PresenceView {
 }
 
 export function PresenceHeader({ basePath, view }: { basePath: string; view: PresenceView }) {
+  // Terminology pass — visible labels only ("Happening" includes both
+  // happening-now and upcoming activity, not just currently-live — the
+  // underlying PresenceView key stays "upcoming" and its filtering
+  // semantics are completely unchanged). "Past" and "Locations" are
+  // unchanged.
   const items: { key: PresenceView; label: string }[] = [
-    { key: "upcoming", label: "Upcoming" },
+    { key: "upcoming", label: "Happening" },
     { key: "past", label: "Past" },
     { key: "locations", label: "Locations" },
   ];
   return (
     <div className="flex flex-col gap-3">
-      <h1 className="font-display text-page-title-lg font-bold text-primary">Presence</h1>
-      <nav aria-label="Presence" className="flex w-full gap-1 rounded-full bg-black/[0.04] p-1 sm:w-fit">
+      <div>
+        <h1 className="font-display text-page-title-lg font-bold text-primary">Findmi Here</h1>
+        <p className="mt-0.5 text-body text-muted">Manage where your business shows up.</p>
+      </div>
+      <nav aria-label="Findmi Here" className="flex w-full gap-1 rounded-full bg-black/[0.04] p-1 sm:w-fit">
         {items.map((i) => {
           const active = i.key === view;
           return (

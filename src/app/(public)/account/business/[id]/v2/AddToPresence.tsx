@@ -43,19 +43,19 @@ export default function AddToPresence({
   const options: { href: string; title: string; copy: string; icon: ReactNode }[] = [
     {
       href: `/account/event/new?business_id=${encodeURIComponent(businessId)}`,
-      title: "Hosting something",
+      title: "Host something",
       copy: "Create an activation, pop-up, tasting, class, launch or event you’re organizing.",
       icon: <SparkGlyph className="h-5 w-5" />,
     },
     {
       href: `${basePath}?tab=findmi-here&compose=1`,
-      title: "Going somewhere",
+      title: "Go somewhere",
       copy: "Add a festival, market, retailer sampling, trade show or somewhere else you’ll be.",
       icon: <NavIcon name="compass" className="h-5 w-5" />,
     },
     {
       href: `${basePath}?tab=findmi-here&view=locations&add=1`,
-      title: "One of our locations",
+      title: "Add a location",
       copy: "Add or connect a store, café, showroom or other ongoing location for this business.",
       icon: <NavIcon name="pin" className="h-5 w-5" />,
     },
@@ -75,7 +75,7 @@ export default function AddToPresence({
         }
       >
         <PlusGlyph className="h-4 w-4" />
-        Add to Presence
+        Add
       </button>
 
       {open && (
@@ -90,7 +90,7 @@ export default function AddToPresence({
             <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-full bg-black/10 sm:hidden" />
             <div className="flex items-center justify-between gap-3 px-1">
               <h2 id="add-to-presence-title" className="font-display text-section-title font-bold text-primary">
-                Add to Presence
+                What would you like to add?
               </h2>
               <button
                 type="button"

@@ -1236,6 +1236,60 @@ export function dedupeAppearances<T extends DedupableAppearance>(rows: T[]): T[]
   return order.map((key) => winners.get(key)!);
 }
 
+// Canonical Activity Normalization pass — these three live here (not in
+// lib/business-dashboard.ts, where withoutSupersededEventProjections used
+// to be defined) so the OWNER dashboard (canonicalOwnerAppearances, see
+// that file) and the PUBLIC Findmi Here feed (getBusinessFindmiHereActivity
+// below) apply the exact same suppression rule rather than two
+// independently-maintained copies. Pure/synchronous throughout — nothing
+// here queries the database; callers own their own fetching and pass in
+// whatever rows they already have.
+
+/** Which Event ids this set of rows already has a per-date (occurrence-
+ * level) OFFICIAL participation projection for — the signal
+ * withoutSupersededEventProjections needs to know an Event-level official
+ * row for that same Event is now stale. Derived only from authoritative
+ * ids (event_id/event_occurrence_id/source), never from title/time/place. */
+export function deriveEventIdsWithOccurrenceProjections<
+  T extends { event_id: string | null; event_occurrence_id: string | null; source?: string | null },
+>(rows: T[]): Set<string> {
+  const ids = new Set<string>();
+  for (const r of rows) {
+    if (r.event_occurrence_id && r.event_id && r.source === "official_participation") ids.add(r.event_id);
+  }
+  return ids;
+}
+
+/** Activity Integrity — an Event-level official participation projection
+ * (source='official_participation', event_id set, event_occurrence_id
+ * null) is superseded once the same business has per-date official
+ * projections for that SAME Event: the Event gained occurrences after the
+ * business joined, and ensureOccurrenceAppearance now projects each date
+ * individually (see the "ambiguous recurring-event participation" case in
+ * lib/appearance-event-sync.ts). Showing both makes one participation look
+ * like two simultaneous activities, so presentation keeps the per-date
+ * rows and drops the Event-level one.
+ *
+ * Keyed only on authoritative ids (business is implicit — callers pass one
+ * business's rows; event_id from the row; the set of event ids that have
+ * occurrence-level official projections for this business). Never on
+ * title, time or place. Manual/owner-entered rows, standalone rows,
+ * occurrence-level rows, and Event-level rows for Events with no
+ * per-date projection are always kept. Records themselves are untouched. */
+export function withoutSupersededEventProjections<
+  T extends { event_id: string | null; event_occurrence_id: string | null; source?: string | null },
+>(rows: T[], eventIdsWithOccurrenceProjections: Set<string>): T[] {
+  return rows.filter(
+    (r) =>
+      !(
+        r.source === "official_participation" &&
+        r.event_id &&
+        !r.event_occurrence_id &&
+        eventIdsWithOccurrenceProjections.has(r.event_id)
+      )
+  );
+}
+
 export async function getUpcomingAppearancesForBusiness(
   businessId: string,
   limit = 20
@@ -1410,12 +1464,25 @@ export async function getBusinessFindmiHereActivity(
   const events = new Map<string, EventRow>(((eventData ?? []) as EventRow[]).map((e) => [e.id, e]));
 
   // 1. Event-level Appearances follow the Event's own current schedule.
-  const reconciled: BusinessActivityRow[] = rows.map((r) => {
+  const reDated: BusinessActivityRow[] = rows.map((r) => {
     const e = r.event_id ? events.get(r.event_id) : null;
     if (!e || r.event_occurrence_id || !e.end_at) return r;
     if (e.start_at === r.start_at && e.end_at === r.end_at) return r;
     return { ...r, start_at: e.start_at, end_at: e.end_at };
   });
+
+  // Canonical Activity Normalization pass — the same supersession rule
+  // the owner dashboard applies (lib/business-dashboard.ts's
+  // canonicalOwnerAppearances), so public Findmi Here can never disagree
+  // with the owner's own view about which projection is authoritative.
+  // Runs BEFORE steps 2/3 below: once a stale Event-level row is dropped
+  // here, its event_id is still "covered" by the surviving occurrence-
+  // level real rows, so eventsWithRows (step 2) correctly still skips
+  // synthesizing a replacement Event-level placeholder for it.
+  const reconciled: BusinessActivityRow[] = withoutSupersededEventProjections(
+    reDated,
+    deriveEventIdsWithOccurrenceProjections(reDated)
+  );
 
   const nowIso = new Date().toISOString();
   const base = {

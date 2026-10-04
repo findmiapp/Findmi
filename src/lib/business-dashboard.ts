@@ -15,7 +15,7 @@
 // second, parallel appearances query.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EventParticipationStatus } from "./types";
-import { dedupeAppearances, getMarketAreaLabel, type DedupableAppearance } from "./data";
+import { dedupeAppearances, getMarketAreaLabel, withoutSupersededEventProjections, type DedupableAppearance } from "./data";
 import { getTemporalLabel, type TemporalLabel } from "./format";
 
 // A small, deliberate duplicate of page.tsx's own PARTICIPATION_LABEL —
@@ -54,35 +54,14 @@ export interface DashboardAppearanceSource {
   participationStatus: EventParticipationStatus | null;
 }
 
-/** Activity Integrity — an Event-level official participation projection
- * (source='official_participation', event_id set, event_occurrence_id
- * null) is superseded once the same business has per-date official
- * projections for that SAME Event: the Event gained occurrences after the
- * business joined, and ensureOccurrenceAppearance now projects each date
- * individually (see the "ambiguous recurring-event participation" case in
- * lib/appearance-event-sync.ts). Showing both makes one participation look
- * like two simultaneous activities, so presentation keeps the per-date
- * rows and drops the Event-level one.
- *
- * Keyed only on authoritative ids (business is implicit — callers pass one
- * business's rows; event_id from the row; the set of event ids that have
- * occurrence-level official projections for this business). Never on
- * title, time or place. Manual/owner-entered rows, standalone rows,
- * occurrence-level rows, and Event-level rows for Events with no
- * per-date projection are always kept. Records themselves are untouched. */
-export function withoutSupersededEventProjections<
-  T extends { event_id: string | null; event_occurrence_id: string | null; source?: string | null },
->(rows: T[], eventIdsWithOccurrenceProjections: Set<string>): T[] {
-  return rows.filter(
-    (r) =>
-      !(
-        r.source === "official_participation" &&
-        r.event_id &&
-        !r.event_occurrence_id &&
-        eventIdsWithOccurrenceProjections.has(r.event_id)
-      )
-  );
-}
+// Canonical Activity Normalization pass — withoutSupersededEventProjections
+// moved to lib/data.ts (imported above) so the public Findmi Here feed
+// (getBusinessFindmiHereActivity) applies the exact same suppression rule
+// as this file's own canonicalOwnerAppearances, rather than two
+// independently-maintained copies. Re-exported here unchanged so every
+// existing caller of THIS module keeps working without an import-path
+// change.
+export { withoutSupersededEventProjections };
 
 /** The canonical owner-facing appearance list: superseded Event-level
  * projections dropped, then the same per-date dedupe the public pages use
@@ -322,8 +301,8 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
   if (input.upcomingAppearances.length === 0) {
     items.push({
       id: "no-appearances",
-      message: "Nothing upcoming in your Presence yet.",
-      actionLabel: "Add to Presence",
+      message: "Nothing happening yet.",
+      actionLabel: "Add to Findmi Here",
       actionHref: `${base}?tab=findmi-here&add=presence`,
     });
   } else {

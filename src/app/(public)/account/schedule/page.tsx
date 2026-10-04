@@ -132,7 +132,7 @@ export default async function AccountSchedulePage({
           businesses={businesses}
           tab="findmi-here"
           icon={<PlusGlyph className="h-4 w-4" />}
-          label="Add to Presence"
+          label="Add"
         />
       </div>
 

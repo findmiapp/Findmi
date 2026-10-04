@@ -8,7 +8,13 @@ import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isAdminSession } from "@/lib/admin/auth";
 import { isBusinessPro } from "@/lib/entitlements";
-import { getCategories, getMarketAreaLabel, getPastAppearancesForBusiness, getProductCategories } from "@/lib/data";
+import {
+  deriveEventIdsWithOccurrenceProjections,
+  getCategories,
+  getMarketAreaLabel,
+  getPastAppearancesForBusiness,
+  getProductCategories,
+} from "@/lib/data";
 import {
   buildNeedsAttentionItems,
   resolveDashboardAppearances,
@@ -202,7 +208,7 @@ const cardClass = "rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5";
 // what Inbox already shows.
 const PRIMARY_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview", icon: "home" },
-  { key: "findmi-here", label: "Presence", icon: "calendar" },
+  { key: "findmi-here", label: "Findmi Here", icon: "calendar" },
   // Performance -> Analytics (owner-facing rename only — see
   // lib/analytics/ownerPerformance.ts's own doc comment; the tab KEY
   // stays "performance" on purpose so every existing ?tab=performance
@@ -921,11 +927,12 @@ export default async function ManageBusinessPage({
           : null,
     }));
 
-    eventIdsWithOccurrenceProjections = new Set(
-      (linkedIdRows ?? [])
-        .filter((r) => r.event_occurrence_id && r.event_id && r.source === "official_participation")
-        .map((r) => r.event_id as string)
-    );
+    // Canonical Activity Normalization pass — same derivation
+    // getBusinessFindmiHereActivity (the public Findmi Here feed) now uses
+    // on its own rows, so both surfaces agree on which Events have
+    // per-date official projections rather than maintaining two copies of
+    // this filter.
+    eventIdsWithOccurrenceProjections = deriveEventIdsWithOccurrenceProjections(linkedIdRows ?? []);
     const linkedEventIds = new Set((linkedIdRows ?? []).filter((r) => !r.event_occurrence_id).map((r) => r.event_id));
     const linkedOccurrenceIds = new Set((linkedIdRows ?? []).map((r) => r.event_occurrence_id).filter((x): x is string => Boolean(x)));
 
@@ -2128,10 +2135,10 @@ export default async function ManageBusinessPage({
                 eventOnlySchedule — an approved Event participation that
                 genuinely has upcoming activity but happens to have no
                 `appearances` row shouldn't read as "nothing scheduled." */}
-            {/* Pass A — intent-based entry. "Add to Presence" opens the
-                Hosting / Going / Our locations sheet; "Going somewhere"
-                lands back here with compose=1, opening the existing
-                request-to-join composer (manual fallback underneath). */}
+            {/* Pass A — intent-based entry. "+ Add" opens the Host / Go /
+                Add a location sheet; "Go somewhere" lands back here with
+                compose=1, opening the existing request-to-join composer
+                (manual fallback underneath). */}
             <div className="flex flex-col gap-3">
               <p className="text-body text-muted">What you&rsquo;re hosting and where you&rsquo;ll be. This is what customers see on your public Findmi profile.</p>
               <AddToPresence basePath={basePath} businessId={id} initialOpen={addParam === "presence"} />
@@ -2144,7 +2151,7 @@ export default async function ManageBusinessPage({
             )}
             {presenceAdded && !error && (
               <p role="status" className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">
-                Added to your Presence.
+                Added to Findmi Here.
               </p>
             )}
 
@@ -2152,7 +2159,7 @@ export default async function ManageBusinessPage({
               <div id="going-somewhere" className={cardClass}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-card-title font-bold text-primary">Going somewhere</p>
+                    <p className="text-card-title font-bold text-primary">Go somewhere</p>
                     <p className="mt-0.5 text-metadata text-muted">Find the event on Findmi and request to join.</p>
                   </div>
                   <Link href={`${basePath}?tab=findmi-here`} className="shrink-0 text-metadata font-semibold text-muted hover:text-primary">
@@ -2179,7 +2186,7 @@ export default async function ManageBusinessPage({
                       businessId={id}
                       action={addManual}
                       defaultValues={addDefaultValues}
-                      submitLabel="Add to Presence"
+                      submitLabel="Add"
                     />
                   </div>
                 </AppearanceEditorDetails>
@@ -2203,7 +2210,7 @@ export default async function ManageBusinessPage({
                 both preserved but quiet — status gets restrained emphasis
                 only when it isn't the expected/approved state. */}
             {(presenceAppearances.length > 0 || eventOnlySchedule.length > 0 || pendingSchedule.length > 0) && (
-              <Panel title="Upcoming" padded={false}>
+              <Panel title="Happening" padded={false}>
               <ul className="flex flex-col divide-y divide-black/[0.05]">
                 {presenceAppearances.map((a) => {
                   const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");

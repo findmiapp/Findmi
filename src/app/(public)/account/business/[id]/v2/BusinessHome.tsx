@@ -65,9 +65,9 @@ export default function BusinessHome({
         <p className="mt-0.5 text-body text-muted">Here&rsquo;s what&rsquo;s happening with {businessName}.</p>
       </header>
 
-      {/* Quick actions — Pass A: one intent-based activity entry (Add to
-          Presence: hosting / going / our locations) instead of competing
-          Event vs Appearance vs Location buttons; Product stays separate. */}
+      {/* Quick actions — Pass A: one intent-based activity entry (+ Add:
+          host / go / add a location) instead of competing Event vs
+          Appearance vs Location buttons; Product stays separate. */}
       <nav aria-label="Quick actions" className="flex flex-wrap gap-2">
         <AddToPresence basePath={basePath} businessId={businessId} variant="chip" />
         <QuickAction href={`${basePath}?tab=products&compose=1`} icon={<NavIcon name="tag" className="h-[18px] w-[18px]" />} label="Product" />
@@ -123,8 +123,8 @@ export default function BusinessHome({
           </ul>
         ) : (
           <p className="mt-2 text-body text-muted">
-            Nothing scheduled yet. Use <span className="font-semibold text-secondary">Add to Presence</span> to add what
-            you&rsquo;re hosting or where you&rsquo;ll be.
+            Nothing scheduled yet. Use <span className="font-semibold text-secondary">+ Add</span> to add where your
+            business is showing up.
           </p>
         )}
       </section>

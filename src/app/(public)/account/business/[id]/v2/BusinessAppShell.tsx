@@ -6,7 +6,7 @@ import { Chip } from "../../../owner-ui";
 
 /** /account V2, Pass 1 — the Business app shell. One persistent Business
  * context (logo + name + switcher) and one navigation model:
- *   mobile  — a fixed bottom tab bar: Home · Presence · Products · Opportunities · More
+ *   mobile  — a fixed bottom tab bar: Home · Findmi Here · Products · Opportunities · More
  *   desktop — a left rail: the same five plus Performance
  * Every destination is still the existing `?tab=` view of
  * /account/business/[id] underneath (no route migration), so every
@@ -39,7 +39,7 @@ type NavItem = { section: BusinessSection; label: string; tab: string; icon: Rea
 function navItems(): NavItem[] {
   return [
     { section: "home", label: "Home", tab: "overview", icon: <NavIcon name="home" className="h-[22px] w-[22px]" /> },
-    { section: "presence", label: "Presence", tab: "findmi-here", icon: <NavIcon name="pin" className="h-[22px] w-[22px]" /> },
+    { section: "presence", label: "Findmi Here", tab: "findmi-here", icon: <NavIcon name="pin" className="h-[22px] w-[22px]" /> },
     { section: "products", label: "Products", tab: "products", icon: <NavIcon name="tag" className="h-[22px] w-[22px]" /> },
     { section: "opportunities", label: "Opportunities", tab: "opportunities", icon: <SparkGlyph className="h-[22px] w-[22px]" /> },
     {
