@@ -63,6 +63,7 @@ import { trackEvent } from "@/lib/analytics/track";
 export interface HistoricalSchedule {
   dateLabel: string;
   detail: string | null;
+  count: string | null;
   where: { name: string | null; href: string | null; line: string | null } | null;
 }
 
@@ -89,7 +90,7 @@ export default function EventScheduleSummary({
     }
     return (
       <FactsBand
-        when={<WhenFact dateLabel={historical.dateLabel} detail={historical.detail} status={<EndedStatus />} />}
+        when={<WhenFact dateLabel={historical.dateLabel} detail={historical.detail} count={historical.count} status={<EndedStatus />} />}
         where={historical.where ? <WhereFact name={historical.where.name} href={historical.where.href} line={historical.where.line} /> : null}
       />
     );
@@ -119,7 +120,7 @@ export default function EventScheduleSummary({
     ? `${firstStartTime} – ${firstEndTime}`
     : `${formatTimeInZone(selected.start_at, selected.timezone)} – ${formatTimeInZone(selected.end_at, selected.timezone)}`;
   const dateCount = occurrences.length;
-  const detail = [timeLabel, dateCount > 1 ? `${dateCount} dates` : null].filter(Boolean).join(" · ");
+  const countLabel = dateCount > 1 ? `${dateCount} dates` : null;
 
   let status: React.ReactNode = null;
   if (selectedState === "cancelled") {
@@ -159,7 +160,7 @@ export default function EventScheduleSummary({
 
   return (
     <FactsBand
-      when={<WhenFact dateLabel={dateRangeLabel} detail={detail} status={status} />}
+      when={<WhenFact dateLabel={dateRangeLabel} detail={timeLabel} count={countLabel} status={status} />}
       where={
         location ? (
           <WhereFact name={location.name} href={`/location/${location.slug}`} line={addressLine || null} action={directions} />

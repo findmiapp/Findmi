@@ -30,18 +30,23 @@ function FactLabel({ icon, children }: { icon: ReactNode; children: ReactNode })
 export function WhenFact({
   dateLabel,
   detail,
+  count,
   status,
 }: {
   dateLabel: string;
-  /** Time, and/or the number of dates. */
+  /** The time line only — never with the date count appended. */
   detail?: string | null;
+  /** "12 dates" — its own secondary line, so it can never hang off the
+   * end of the time and wrap "dates" by itself. Omit for a single date. */
+  count?: string | null;
   status?: ReactNode;
 }) {
   return (
     <div className="min-w-0">
       <FactLabel icon={<CalendarGlyph className="h-3.5 w-3.5" />}>When</FactLabel>
       <p className="mt-1 break-words text-card-title font-bold text-primary">{dateLabel}</p>
-      {detail && <p className="mt-0.5 break-words text-metadata text-secondary">{detail}</p>}
+      {detail && <p className="mt-0.5 text-metadata text-secondary">{detail}</p>}
+      {count && <p className="text-metadata text-muted">{count}</p>}
       {status && <div className="mt-1">{status}</div>}
     </div>
   );

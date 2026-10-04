@@ -109,7 +109,7 @@ export default function UpcomingDatesRail({
     <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-section-title-lg font-bold text-primary">Upcoming dates</h2>
+          <h2 className="font-display text-section-title-lg font-bold text-primary">Upcoming Dates</h2>
           <p className="mt-0.5 text-metadata text-muted">
             {count} upcoming date{count === 1 ? "" : "s"}
           </p>
@@ -276,13 +276,15 @@ function OccurrenceListRow({
   );
 }
 
+/** Clean 2x2 tiles: 5.5-unit squares on a 9.5-unit pitch, so even after
+ * the 1.7 stroke there's a clear gap between tiles at 16px. */
 function GridGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <rect x="4" y="4" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="13" y="4" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="4" y="13" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="13" y="13" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="4.5" y="4.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="14" y="4.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="4.5" y="14" width="5.5" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="14" y="14" width="5.5" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7" />
     </svg>
   );
 }
@@ -290,10 +292,10 @@ function GridGlyph({ className }: { className?: string }) {
 function ListGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path d="M9 6h11M9 12h11M9 18h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="4.75" cy="6" r="1.1" fill="currentColor" />
-      <circle cx="4.75" cy="12" r="1.1" fill="currentColor" />
-      <circle cx="4.75" cy="18" r="1.1" fill="currentColor" />
+      <path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <circle cx="5.25" cy="6.5" r="1.15" fill="currentColor" />
+      <circle cx="5.25" cy="12" r="1.15" fill="currentColor" />
+      <circle cx="5.25" cy="17.5" r="1.15" fill="currentColor" />
     </svg>
   );
 }

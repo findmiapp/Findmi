@@ -49,6 +49,10 @@ unrelated feature pass.
   `globals.css` also softens `tracking-tight` specifically on
   `.font-display` elements (`-0.006em`, not Tailwind's default
   `-0.025em`) — a deliberate, centralized correction; don't revert it.
+- Visible section titles / headers use **Title Case** ("Upcoming Dates",
+  "What's Happening", "Hosted By"), written as intentional display copy —
+  never CSS `capitalize` on dynamic content. Sentences, descriptions,
+  button copy, form labels, entity names and user content are unaffected.
 - Typography direction generally: clean, consumer-oriented, open,
   neo-grotesk, restrained weights, comfortable line-height — not
   compressed, not dev-tool/SaaS-like.

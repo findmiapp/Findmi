@@ -5,7 +5,6 @@ import JournalCollection from "@/components/journal/JournalCollection";
 import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import BrandHeading from "@/components/BrandHeading";
 import { EndedStatus, FactsBand, LiveStatus, WhenFact, WhereFact, factLinkClass } from "@/components/event/KeyFacts";
-import EventVisualBridge from "@/components/event/EventVisualBridge";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -366,8 +365,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
 
   // ── Public Event V2.1 — storytelling hierarchy ─────────────────────────
   // Phones read top to bottom:
-  //   Hero → WHEN | WHERE band → What's happening (+ bulletin) → visual
-  //   bridge → actions → Upcoming dates (Cards/List) → lineup → Findmi
+  //   Hero → WHEN | WHERE band → What's happening (+ bulletin) → actions
+  //   → Upcoming dates (Cards/List) → lineup → Findmi
   //   Moments (+ Add yours) → Photos → place / products / host & details.
   // Desktop keeps the facts + actions in the sticky right rail. Open
   // editorial sections separated by hairlines; every section renders only
@@ -400,9 +399,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
       const lastLocation = last.location ?? canonicalLocation;
       historical = {
         dateLabel: formatHistoricalRange(first.start_at, last.end_at, tz, firstLabel, lastLabel),
-        detail: [uniformTime ? `${startTime} – ${endTime}` : null, past.length > 1 ? `${past.length} dates` : null]
-          .filter(Boolean)
-          .join(" · ") || null,
+        detail: uniformTime ? `${startTime} – ${endTime}` : null,
+        count: past.length > 1 ? `${past.length} dates` : null,
         where: lastLocation
           ? {
               name: lastLocation.name,
@@ -578,7 +576,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
       <section id="overview" className="scroll-mt-24">
         {event.description && (
           <>
-            <SectionHeading>What&rsquo;s happening</SectionHeading>
+            <SectionHeading>What&rsquo;s Happening</SectionHeading>
             <div className="mt-1.5 max-w-2xl">
               <ReadMoreText
                 text={event.description}
@@ -595,16 +593,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
         )}
       </section>
     ) : null;
-
-  // Early visual bridge — Findmi Moments imagery first (each tile opens
-  // its Moment), else the Event's own gallery (opens the lightbox), else
-  // nothing. Never invented imagery.
-  const momentImages = journal.entries
-    .filter((e) => e.coverUrl)
-    .map((e) => ({ src: e.coverUrl as string, href: `/journal/${e.id}`, label: e.title }));
-  const bridgeFromGallery = momentImages.length === 0;
-  const bridgeItems = bridgeFromGallery ? images.gallery.map((src) => ({ src })) : momentImages;
-  const visualBridge = bridgeItems.length > 0 ? <EventVisualBridge items={bridgeItems} alt={event.name} /> : null;
 
   const datesSection =
     realOccurrences.length > 0 ? (
@@ -666,10 +654,9 @@ export async function EventPublicView({ slug }: { slug: string }) {
     </section>
   );
 
-  // Photos — the event's own gallery (distinct from Moments). Skipped when
-  // the visual bridge above already shows every gallery image.
+  // Photos — the event's own gallery (distinct from Moments).
   const mediaSection =
-    images.gallery.length > 0 && !(bridgeFromGallery && images.gallery.length <= 3) ? (
+    images.gallery.length > 0 ? (
       <section id="media" className="scroll-mt-24">
         <SectionHeading>Photos</SectionHeading>
         <div className="mt-3">
@@ -684,7 +671,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const placeSection =
     images.venue.length > 0 ? (
       <section id="place" className="scroll-mt-24">
-        <SectionHeading>The place</SectionHeading>
+        <SectionHeading>The Place</SectionHeading>
         {placeName &&
           (canonicalLocation ? (
             <Link href={`/location/${canonicalLocation.slug}`} className="mt-0.5 inline-block text-metadata font-semibold text-findmi-700 hover:underline">
@@ -766,7 +753,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
     <section id="details" className="scroll-mt-24">
       {hostBusiness ? (
         <>
-          <p className="text-label font-bold uppercase text-subtle">Hosted by</p>
+          <p className="text-label font-bold uppercase text-subtle">Hosted By</p>
           <Link href={`/business/${hostBusiness.slug}`} className="group mt-2 flex items-center gap-3">
             <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-black/5 ring-1 ring-black/[0.06]">
               {hostBusiness.logo_url ? (
@@ -786,7 +773,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
       ) : (
         hasOrganizer && (
           <>
-            <p className="text-label font-bold uppercase text-subtle">Run by</p>
+            <p className="text-label font-bold uppercase text-subtle">Run By</p>
             <p className="mt-1 text-card-title-lg font-bold text-primary">{event.organizer_name}</p>
           </>
         )
@@ -803,14 +790,16 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // above (the two desktop wrappers are display:contents there, so their
   // children interleave via `order`). Desktop (lg): a two-column grid —
   // story on the left, facts + actions in a sticky right rail.
-  const lead = overviewSection || visualBridge ? (
-    <div className="order-2 mt-6 flex flex-col gap-4 border-t border-black/[0.07] pt-6 lg:mt-0 lg:border-t-0 lg:pt-0">
-      {overviewSection}
-      {visualBridge}
-    </div>
+  const lead = overviewSection ? (
+    <div className="order-2 mt-6 border-t border-black/[0.07] pt-6 lg:mt-0 lg:border-t-0 lg:pt-0">{overviewSection}</div>
   ) : null;
+  // Bottom spacing: the shared Footer already reserves mt-16 (64px) above
+  // itself, so the page adds no bottom padding of its own and the last
+  // section drops its bottom padding — 64px of breathing room after the
+  // final content, not page padding + section padding + footer margin
+  // stacked (≈156px before V2.1 Live Polish).
   const body = (
-    <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-16 pt-5 sm:px-6 sm:pt-7 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
+    <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-5 sm:px-6 sm:pt-7 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
       <div className="contents lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block lg:self-start">
         <div className="order-1">{keyFacts}</div>
         <div className="order-3 mt-6 lg:mt-6 lg:border-t lg:border-black/[0.07] lg:pt-5">{actions}</div>
@@ -819,7 +808,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
         {lead}
         {/* divide-y only separates sections that actually render (client
             sections that resolve to nothing leave no stray separator). */}
-        <div className="order-4 mt-7 divide-y divide-black/[0.07] border-t border-black/[0.07] [&>*]:py-7 lg:mt-8">
+        <div className="order-4 mt-7 divide-y divide-black/[0.07] border-t border-black/[0.07] [&>*]:py-7 [&>*:last-child]:pb-0 lg:mt-8">
           {datesSection}
           {lineupSection}
           {momentsSection}
