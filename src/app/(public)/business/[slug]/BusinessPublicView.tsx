@@ -270,8 +270,10 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     // this Business; small preview set + exact count for "See all".
     getPublicJournalCollection({ subjectType: "business", subjectId: business.id, limit: 6, withCount: true }),
   ]);
-  // One card per multi-date Event (its live date, else its next date);
-  // standalone appearances unchanged — see lib/findmi-here.
+  // EVENT IDENTITY != SCHEDULE OCCURRENCES. The Featured Appearance card
+  // shows a multi-date Event ONCE (its live date, else its next date — see
+  // lib/findmi-here); Findmi Here below is the schedule and keeps every
+  // individual date (scheduleAppearances).
   const appearances = collapseEventDates(activity.upcoming);
   // A featured override pointing at another date of a collapsed Event
   // resolves to that Event's card.
@@ -295,6 +297,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     ? getTemporalLabel(featuredAppearance.start_at, featuredAppearance.end_at)
     : null;
   const featuredIsEvent = Boolean(featuredAppearance?.event?.slug);
+  // Findmi Here schedule: every upcoming date/appearance. The one date the
+  // Featured card is already showing as live (Happening Now) isn't
+  // repeated; all future dates stay visible.
+  const scheduleAppearances = featuredTemporal?.live
+    ? activity.upcoming.filter((a) => a.id !== featuredAppearance?.id)
+    : activity.upcoming;
   // Image Fallback Refinement pass — precedence is now: the most specific
   // real image already attached to this appearance (its own flyer image,
   // else its linked Event's own cover image when event-backed — never
@@ -791,7 +799,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               never appears (length > 3 is false), so Free's display stays
               to that one card while the richer/full-list behavior stays
               exactly Pro's. */}
-          {appearances.length > 0 && (
+          {scheduleAppearances.length > 0 && (
             // mt-6 keeps a clear break from whatever renders above it (on
             // mobile, Inquire itself, above this column — see the rail
             // div's own note); desktop is unaffected (lg:mt-0, separated
@@ -800,7 +808,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             // spacing CTA row/Bulletin used to.
             <section id="findmi-here" className="mt-6 scroll-mt-24 lg:mt-0">
               <AppearanceFindMiHere
-                appearances={appearances}
+                appearances={scheduleAppearances}
                 business={{
                   id: business.id,
                   name: business.name,
@@ -826,7 +834,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               upcoming appearances) it reverts to being this column's own
               first item, exactly as before this pass. */}
           {hasCtas && (
-            <div className={appearances.length > 0 ? "mt-8" : ""}>
+            <div className={scheduleAppearances.length > 0 ? "mt-8" : ""}>
               <BusinessCtaRow business={business} />
             </div>
           )}

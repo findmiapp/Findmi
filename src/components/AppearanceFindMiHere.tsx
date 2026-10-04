@@ -4,6 +4,7 @@ import { useState } from "react";
 import AppearanceCarousel, { type AppearanceCarouselAppearance } from "./AppearanceCarousel";
 import AppearanceList from "./AppearanceList";
 import AppearanceQuickView, { type AppearanceQuickViewBusiness } from "./AppearanceQuickView";
+import { useStoredView } from "./ViewToggle";
 import { trackEvent } from "@/lib/analytics/track";
 import type { AnalyticsPlacementContext } from "@/lib/analytics/context";
 
@@ -37,7 +38,9 @@ export default function AppearanceFindMiHere({
   galleryImages: string[];
   analyticsContext?: AnalyticsPlacementContext;
 }) {
-  const [view, setView] = useState<ViewMode>("cards");
+  // Per-device Cards/List preference (Cards on first paint; the stored
+  // choice applies after mount — shared useStoredView).
+  const [view, setView] = useStoredView("findmi:business-findmi-here-view");
   const [openId, setOpenId] = useState<string | null>(null);
   const openAppearance = appearances.find((a) => a.id === openId) ?? null;
 
