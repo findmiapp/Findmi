@@ -311,9 +311,9 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
   if (input.upcomingAppearances.length === 0) {
     items.push({
       id: "no-appearances",
-      message: "You haven't added where you'll be yet.",
-      actionLabel: "Add Where You'll Be",
-      actionHref: `${base}?tab=findmi-here`,
+      message: "Nothing upcoming in your Presence yet.",
+      actionLabel: "Add to Presence",
+      actionHref: `${base}?tab=findmi-here&add=presence`,
     });
   } else {
     const missingImage = input.upcomingAppearances.find((a) => !a.hasImage);

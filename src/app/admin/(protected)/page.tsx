@@ -195,7 +195,7 @@ export default async function AdminDashboardPage() {
           )}
 
           {recentActivity && recentActivity.length > 0 && (
-            <ModulePanel title="Recently added" flush>
+            <ModulePanel title="Recent activity" flush>
               <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
                 {recentActivity.map((item) => (
                   <Link key={item.id} href={item.href} className="flex min-h-[48px] items-center justify-between gap-3 px-4 py-2.5 transition hover:bg-black/[0.02]">

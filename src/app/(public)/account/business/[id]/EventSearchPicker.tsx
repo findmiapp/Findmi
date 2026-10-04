@@ -22,8 +22,8 @@ const inputClass =
 
 const STATUS_LABEL: Record<NonNullable<EventPickerOption["status"]>, string> = {
   invited: "Invited",
-  applied: "Application pending",
-  pending: "Application pending",
+  applied: "Request pending",
+  pending: "Request pending",
   approved: "Approved",
   declined: "Previously declined",
 };
@@ -102,8 +102,8 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
             not discover it after the fact. */}
         {isDeclined && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            You previously declined this date. Applying again will change your status back to{" "}
-            <span className="font-semibold">Application pending</span> and re-notify the organizer — it will not be
+            You previously declined this date. Requesting again will change your status back to{" "}
+            <span className="font-semibold">Request pending</span> and re-notify the organizer — it will not be
             automatically approved.
           </p>
         )}
@@ -124,7 +124,7 @@ export default function EventSearchPicker({ options }: { options: EventPickerOpt
           type="submit"
           className="flex h-9 w-fit items-center rounded-xl bg-findmi px-5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
-          Apply
+          Request to join
         </button>
       </div>
     );

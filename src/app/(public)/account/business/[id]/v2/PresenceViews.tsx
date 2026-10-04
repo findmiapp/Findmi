@@ -62,7 +62,7 @@ export interface PastPresenceItem {
 
 export function PastPresence({ items }: { items: PastPresenceItem[] }) {
   if (items.length === 0) {
-    return <p className="text-body text-muted">Nothing in the past yet. Appearances move here after they end.</p>;
+    return <p className="text-body text-muted">Nothing in the past yet. Activity moves here after it ends.</p>;
   }
   return (
     <ul className="flex flex-col divide-y divide-black/[0.06]">

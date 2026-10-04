@@ -141,7 +141,7 @@ export default function AppearanceFieldsForm({
   return (
     <form action={action} onSubmit={handleSubmit} className="flex flex-col gap-2">
       <label className="block">
-        <span className="mb-1 block text-xs font-medium text-ink/60">Appearance name</span>
+        <span className="mb-1 block text-xs font-medium text-ink/60">Name</span>
         <input
           type="text"
           name="title"

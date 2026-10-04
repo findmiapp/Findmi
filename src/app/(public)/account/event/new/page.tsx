@@ -6,6 +6,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
+import { requireBusinessMember } from "@/lib/permissions";
 import { createMemberEvent } from "../actions";
 
 /** Multi-Entity Self-Service V1, Stage 3 — Create Event From Venue. A
@@ -84,6 +85,7 @@ export default async function AddEventPage({
     end_at?: string;
     market_id?: string;
     requested_market_text?: string;
+    business_id?: string;
   }>;
 }) {
   const {
@@ -94,6 +96,7 @@ export default async function AddEventPage({
     end_at: submittedEndAt,
     market_id: submittedMarketId,
     requested_market_text: submittedRequestedMarketText,
+    business_id: businessIdParam,
   } = await searchParams;
   const locationHint = await getLocationHint(locationIdHint);
 
@@ -101,16 +104,34 @@ export default async function AddEventPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent("/account/event/new")}`);
+  if (!user) {
+    const next = businessIdParam ? `/account/event/new?business_id=${encodeURIComponent(businessIdParam)}` : "/account/event/new";
+    redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
 
   const admin = getAdminSupabase();
   const entitled = admin ? await canCurrentUserManageEvents(admin, user.id) : false;
+  // Business Manager V2 Pass A — "Add to Presence → Hosting something"
+  // opens this same flow with the originating business as CONTEXT only
+  // (back link + wording). It does not make that business the Event's
+  // host — no host relationship exists until Pass C.
+  const businessContext = await resolveBusinessContext(businessIdParam);
+  const backToBusiness = businessContext ? (
+    <Link
+      href={`/account/business/${businessContext.id}?tab=findmi-here`}
+      className="text-metadata font-semibold text-muted hover:text-primary"
+    >
+      &larr; {businessContext.name}
+    </Link>
+  ) : null;
 
   if (!entitled) {
     return (
       <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-        <p className="text-label font-bold uppercase text-accent">Your Findmi</p>
-        <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add an Event</h1>
+        {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
+        <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
+          {businessContext ? "Hosting something" : "Add an Event"}
+        </h1>
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           <p className="text-body font-semibold text-primary">Event management is included with qualifying Findmi membership.</p>
           <p className="mt-2 text-body text-muted">
@@ -137,17 +158,21 @@ export default async function AddEventPage({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-      <p className="text-label font-bold uppercase text-accent">Your Findmi</p>
-      <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Add an Event</h1>
+      {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
+      <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
+        {businessContext ? "Hosting something" : "Add an Event"}
+      </h1>
       <p className="mt-2 text-body text-muted">
-        Create your event, then finish the details in Event Manager. Findmi will review it before it appears
-        publicly.
+        {businessContext
+          ? "Create the activation, pop-up, tasting, class, launch or event you’re organizing. You’ll finish the details and dates in Event Manager; Findmi reviews it before it appears publicly."
+          : "Create your event, then finish the details in Event Manager. Findmi will review it before it appears publicly."}
       </p>
 
       {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>}
 
       <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
         <form action={createMemberEvent} className="flex flex-col gap-4">
+          {businessContext && <input type="hidden" name="business_id" value={businessContext.id} />}
           {/* Geography Foundation Pass 2 — Location selection/manual venue
               entry (EventLocationField, unchanged) plus a live Findmi
               Market suggestion derived from whichever one is effective.
@@ -205,4 +230,19 @@ export default async function AddEventPage({
       </div>
     </div>
   );
+}
+
+/** Pass A — the originating business, honored only for one of its own
+ * members (or an admin session); anyone else just sees the plain form. */
+async function resolveBusinessContext(businessId: string | undefined): Promise<{ id: string; name: string } | null> {
+  if (!businessId) return null;
+  try {
+    await requireBusinessMember(businessId);
+  } catch {
+    return null;
+  }
+  const admin = getAdminSupabase();
+  if (!admin) return null;
+  const { data } = await admin.from("businesses").select("id, name").eq("id", businessId).maybeSingle();
+  return (data as { id: string; name: string } | null) ?? null;
 }

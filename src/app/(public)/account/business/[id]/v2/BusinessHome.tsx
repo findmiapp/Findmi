@@ -8,6 +8,7 @@ import { formatTime } from "@/lib/format";
 import { Chip } from "../../../owner-ui";
 import { SparkGlyph } from "./BusinessAppShell";
 import Greeting from "./Greeting";
+import AddToPresence from "./AddToPresence";
 
 // Same zone lib/format.ts formats every owner/public time in.
 const APP_TIMEZONE = "America/New_York";
@@ -64,11 +65,11 @@ export default function BusinessHome({
         <p className="mt-0.5 text-body text-muted">Here&rsquo;s what&rsquo;s happening with {businessName}.</p>
       </header>
 
-      {/* Quick actions — existing creation routes only. */}
-      <nav aria-label="Quick actions" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <QuickAction href={`${basePath}?tab=findmi-here&compose=1`} icon={<NavIcon name="calendar" className="h-[18px] w-[18px]" />} label="Appearance" />
-        <QuickAction href="/account/event/new" icon={<SparkGlyph className="h-[18px] w-[18px]" />} label="Event" />
-        <QuickAction href={`${basePath}?tab=findmi-here&view=locations&add=1`} icon={<NavIcon name="pin" className="h-[18px] w-[18px]" />} label="Location" />
+      {/* Quick actions — Pass A: one intent-based activity entry (Add to
+          Presence: hosting / going / our locations) instead of competing
+          Event vs Appearance vs Location buttons; Product stays separate. */}
+      <nav aria-label="Quick actions" className="flex flex-wrap gap-2">
+        <AddToPresence basePath={basePath} businessId={businessId} variant="chip" />
         <QuickAction href={`${basePath}?tab=products&compose=1`} icon={<NavIcon name="tag" className="h-[18px] w-[18px]" />} label="Product" />
       </nav>
 
@@ -122,10 +123,8 @@ export default function BusinessHome({
           </ul>
         ) : (
           <p className="mt-2 text-body text-muted">
-            Nothing scheduled yet.{" "}
-            <Link href={`${basePath}?tab=findmi-here&compose=1`} className="font-semibold text-accent">
-              Add where you&rsquo;ll be →
-            </Link>
+            Nothing scheduled yet. Use <span className="font-semibold text-secondary">Add to Presence</span> to add what
+            you&rsquo;re hosting or where you&rsquo;ll be.
           </p>
         )}
       </section>

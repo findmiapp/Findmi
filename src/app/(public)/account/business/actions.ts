@@ -628,6 +628,10 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
   const note = str(formData, "note");
 
   const [kind, a, b] = target.split(":");
+  // Pass A — truthful success state: an application is only a request
+  // ("Request sent"); only an already-invited event approves immediately
+  // and actually adds the activity to Presence.
+  let addedNow = false;
 
   if (kind === "event") {
     const eventId = a;
@@ -649,6 +653,7 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
     if (currentStatus === "invited") {
       await admin.from("event_businesses").update({ status: "approved" }).eq("event_id", eventId).eq("business_id", businessId);
       await ensureEventAppearance(admin, eventId, businessId);
+      addedNow = true;
     } else if (currentStatus !== "applied" && currentStatus !== "pending") {
       // No row yet, or a terminal 'declined' row being re-applied to —
       // a full upsert (never ignoreDuplicates) so re-applying after a
@@ -729,7 +734,7 @@ export async function addAppearanceFromEvent(businessId: string, formData: FormD
   }
 
   revalidatePath(redirectPath);
-  redirect(appendQuery(redirectPath, { appearance_added: "1" }));
+  redirect(appendQuery(redirectPath, addedNow ? { presence_added: "1" } : { request_sent: "1" }));
 }
 
 /** Withdraws this business's OWN request — only while it's still
@@ -1057,7 +1062,7 @@ export async function addManualAppearance(businessId: string, formData: FormData
   if (error) onError("Couldn't create that appearance. Please try again.");
 
   revalidatePath(redirectPath);
-  redirect(appendQuery(redirectPath, { appearance_added: "1" }));
+  redirect(appendQuery(redirectPath, { presence_added: "1" }));
 }
 
 /** Edit — only ever touches content fields (title/date-time/venue/
@@ -1084,7 +1089,7 @@ export async function updateOwnerAppearance(businessId: string, appearanceId: st
     .eq("id", appearanceId)
     .eq("business_id", businessId)
     .maybeSingle();
-  if (!existing) onError("That appearance no longer exists.");
+  if (!existing) onError("That item no longer exists.");
 
   const fields = parseAppearanceFields(formData, onError);
 

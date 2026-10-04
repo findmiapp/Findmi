@@ -212,6 +212,10 @@ export async function createMemberEvent(formData: FormData) {
     postal_code: str(formData, "postal_code"),
   };
   const preservedFields = {
+    // Pass A — Business Manager context round-trips through error
+    // redirects only; it is never written to the Event (no host
+    // relationship until Pass C).
+    business_id: str(formData, "business_id"),
     name,
     start_at: startLocal,
     end_at: endLocal,

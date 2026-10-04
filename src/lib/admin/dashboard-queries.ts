@@ -242,7 +242,7 @@ export async function getRecentActivity(): Promise<RecentActivityItem[] | null> 
   type ClaimRow = { id: string; created_at: string; entity: { name: string } | { name: string }[] | null };
   type MarketRequestRow = { id: string; requested_text: string; canonical_text: string | null; created_at: string };
 
-  const [businesses, events, businessClaims, eventClaims, marketRequests, locations, products] = await Promise.all([
+  const [businesses, events, businessClaims, eventClaims, marketRequests] = await Promise.all([
     supabase
       .from("businesses")
       .select("id, name, created_at")
@@ -270,10 +270,10 @@ export async function getRecentActivity(): Promise<RecentActivityItem[] | null> 
       .select("id, requested_text, canonical_text, created_at")
       .order("created_at", { ascending: false })
       .limit(5),
-    // Admin V2 Pass 1 — Locations and Products join the same feed (same
-    // limit-5, created_at-ordered shape).
-    supabase.from("locations").select("id, name, created_at").is("trashed_at", null).order("created_at", { ascending: false }).limit(5),
-    supabase.from("products").select("id, name, created_at").is("trashed_at", null).order("created_at", { ascending: false }).limit(5),
+    // Locations and products are deliberately absent: neither table has a
+    // creation timestamp in production (no created_at), so there is no
+    // truthful "when" to order or label them by. (Admin V2 Pass 1 queried
+    // a nonexistent created_at here, which failed silently.)
   ]);
 
   const entityName = (entity: ClaimRow["entity"]) => (Array.isArray(entity) ? entity[0]?.name : entity?.name) ?? "Unknown";
@@ -307,20 +307,6 @@ export async function getRecentActivity(): Promise<RecentActivityItem[] | null> 
       createdAt: c.created_at,
       href: "/admin/claims",
     })),
-    ...((locations.data ?? []) as EntityRow[]).map((l) => ({
-      id: `location-${l.id}`,
-      label: "New Location",
-      title: l.name,
-      createdAt: l.created_at,
-      href: `/admin/locations/${l.id}`,
-    })),
-    ...((products.data ?? []) as EntityRow[]).map((p) => ({
-      id: `product-${p.id}`,
-      label: "New Product",
-      title: p.name,
-      createdAt: p.created_at,
-      href: `/admin/products/${p.id}`,
-    })),
     ...((marketRequests.data ?? []) as MarketRequestRow[]).map((r) => ({
       id: `mr-${r.id}`,
       label: "Area Request",
@@ -346,7 +332,9 @@ export async function getLocationsAwaitingReview(limit = 5): Promise<{ items: { 
     .select("id, name, location_members!inner(id)", { count: "exact" })
     .eq("is_demo", true)
     .is("trashed_at", null)
-    .order("created_at", { ascending: false })
+    // No created_at on locations in production — alphabetical, never a
+    // fabricated recency order.
+    .order("name", { ascending: true })
     .limit(limit);
   if (error) return null;
   return { items: ((data ?? []) as { id: string; name: string }[]).map((l) => ({ id: l.id, name: l.name })), total: count ?? 0 };

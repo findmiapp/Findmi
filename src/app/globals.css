@@ -68,3 +68,13 @@ body {
 .animate-happening-now-glow {
   animation: happening-now-glow 2s ease-in-out infinite;
 }
+
+/* Reduced motion — keep a static, still-visible halo instead of the pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-happening-now-glow {
+    animation: none;
+    box-shadow:
+      0 0 6px 2px rgba(239, 68, 68, 0.3),
+      0 0 3px 1px rgba(255, 255, 255, 0.2);
+  }
+}

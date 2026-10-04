@@ -28,7 +28,7 @@ export default function OpportunitiesView({
           href={`${basePath}?tab=findmi-here&compose=1`}
           className="flex h-10 items-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600"
         >
-          Apply to an event
+          Find an event to join
         </Link>
         <Link
           href="/account/messages?filter=opportunities"

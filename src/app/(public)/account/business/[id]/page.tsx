@@ -35,6 +35,7 @@ import BusinessHome from "./v2/BusinessHome";
 import MoreMenu from "./v2/MoreMenu";
 import OpportunitiesView from "./v2/OpportunitiesView";
 import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "./v2/PresenceViews";
+import AddToPresence from "./v2/AddToPresence";
 import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
 import { getApplicationsForBusiness, getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import {
@@ -201,7 +202,7 @@ const cardClass = "rounded-xl border border-black/[0.07] bg-white p-4 sm:p-5";
 // what Inbox already shows.
 const PRIMARY_TABS: TabNavItem[] = [
   { key: "overview", label: "Overview", icon: "home" },
-  { key: "findmi-here", label: "Where I'll Be", icon: "calendar" },
+  { key: "findmi-here", label: "Presence", icon: "calendar" },
   // Performance -> Analytics (owner-facing rename only — see
   // lib/analytics/ownerPerformance.ts's own doc comment; the tab KEY
   // stays "performance" on purpose so every existing ?tab=performance
@@ -332,6 +333,9 @@ export default async function ManageBusinessPage({
     add?: string;
     remove?: string;
     location_updated?: string;
+    // Pass A — Presence success states.
+    request_sent?: string;
+    presence_added?: string;
   }>;
 }) {
   const { id } = await params;
@@ -354,6 +358,8 @@ export default async function ManageBusinessPage({
     add: addParam,
     remove: removeParam,
     location_updated: locationUpdated,
+    request_sent: requestSent,
+    presence_added: presenceAdded,
     add_title,
     add_date,
     add_start_time,
@@ -841,6 +847,12 @@ export default async function ManageBusinessPage({
     href: string | null;
   };
   let eventOnlySchedule: EventOnlySchedule[] = [];
+  // Pass A — this business's own requests to join an Event (or one of its
+  // dates) that are still awaiting a decision (applied/pending). Shown in
+  // Upcoming as "Pending" so a request never looks like it vanished — and
+  // never as a confirmed stop: no Appearance exists until approval (the
+  // existing participation -> Appearance sync is untouched).
+  let pendingSchedule: EventOnlySchedule[] = [];
 
   {
     const nowIso = new Date().toISOString();
@@ -1003,6 +1015,27 @@ export default async function ManageBusinessPage({
       });
     }
     eventOnlySchedule.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+
+    const isAwaitingDecision = (status: string) => status === "applied" || status === "pending";
+    const venueFor = (ev: { venue_name: string | null; city: string | null; state: string | null }) =>
+      [ev.venue_name, [ev.city, ev.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || null;
+    for (const r of ebStatusRows ?? []) {
+      if (!isAwaitingDecision(r.status)) continue;
+      const ev = eventById.get(r.event_id);
+      if (!ev || !ev.start_at) continue;
+      const endsAt = ev.end_at ?? ev.start_at;
+      if (new Date(endsAt) <= new Date()) continue;
+      pendingSchedule.push({ key: `pending-event:${ev.id}`, title: ev.name, startAt: ev.start_at, endAt: ev.end_at, where: venueFor(ev), href: `/event/${ev.slug}` });
+    }
+    for (const r of eobStatusRows ?? []) {
+      if (!isAwaitingDecision(r.status)) continue;
+      // occurrenceById holds upcoming dates only, so past requests drop out.
+      const occ = occurrenceById.get(r.occurrence_id);
+      const ev = occ ? eventById.get(occ.event_id) : undefined;
+      if (!occ || !ev) continue;
+      pendingSchedule.push({ key: `pending-occurrence:${occ.id}`, title: ev.name, startAt: occ.start_at, endAt: null, where: venueFor(ev), href: `/event/${ev.slug}` });
+    }
+    pendingSchedule.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   }
 
   // Command Center V1 — resolves the same appearances array above
@@ -1021,6 +1054,10 @@ export default async function ManageBusinessPage({
     withoutSupersededEventProjections(appearances, eventIdsWithOccurrenceProjections) as DashboardAppearanceSource[],
     { primaryMarketId: primaryMarket?.marketId ?? null, marketAreaId: business.market_area_id ?? null }
   );
+  // Pass A — the same id-based integrity rule for Presence → Upcoming:
+  // a superseded Event-level projection (e.g. Lavazza TABLÌ) isn't listed
+  // beside its per-date rows. Display only; records untouched.
+  const presenceAppearances = withoutSupersededEventProjections(appearances, eventIdsWithOccurrenceProjections);
   const todayAppearances = dashboardAppearances.filter((a) => a.isToday);
   const upcomingAppearances = dashboardAppearances.filter((a) => !a.isToday).slice(0, 5);
   // "Materially affects discovery" — the same fields a visitor would
@@ -2086,30 +2123,37 @@ export default async function ManageBusinessPage({
                 eventOnlySchedule — an approved Event participation that
                 genuinely has upcoming activity but happens to have no
                 `appearances` row shouldn't read as "nothing scheduled." */}
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-body text-muted">This is what customers see on your public Findmi profile.</p>
+            {/* Pass A — intent-based entry. "Add to Presence" opens the
+                Hosting / Going / Our locations sheet; "Going somewhere"
+                lands back here with compose=1, opening the existing
+                request-to-join composer (manual fallback underneath). */}
+            <div className="flex flex-col gap-3">
+              <p className="text-body text-muted">What you&rsquo;re hosting and where you&rsquo;ll be. This is what customers see on your public Findmi profile.</p>
+              <AddToPresence basePath={basePath} businessId={id} initialOpen={addParam === "presence"} />
             </div>
-            <AppearanceEditorDetails
-              className="group"
-              initialOpen={addHasDraft || composeOpen}
-              summaryClassName="flex h-10 w-fit cursor-pointer list-none items-center justify-center rounded-lg bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600 active:scale-[0.99] [&::-webkit-details-marker]:hidden"
-              summary={
-                <>
-                  <span className="group-open:hidden">
-                    {appearances.length + eventOnlySchedule.length > 0 ? "+ Add Where I'll Be" : "+ Add Your First Stop"}
-                  </span>
-                  <span className="hidden group-open:inline">Close</span>
-                </>
-              }
-            >
-              {/* ADD COMPOSER — one localized boundary only ("adding
-                  something" is a distinct temporary interaction state);
-                  search-first, with the manual/independent path tucked
-                  behind its own progressive disclosure so its full form
-                  doesn't permanently occupy the page. Neither path is
-                  framed as OPTION 1/2 or as inferior to the other. */}
-              <div className={`mt-3 ${cardClass}`}>
-                <p className="text-card-title font-bold text-primary">Add Where I&rsquo;ll Be</p>
+
+            {requestSent && !error && (
+              <p role="status" className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">
+                <span className="font-semibold">Request sent.</span> It shows below as Pending until the organizer responds.
+              </p>
+            )}
+            {presenceAdded && !error && (
+              <p role="status" className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">
+                Added to your Presence.
+              </p>
+            )}
+
+            {(addHasDraft || composeOpen) && (
+              <div id="going-somewhere" className={cardClass}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-card-title font-bold text-primary">Going somewhere</p>
+                    <p className="mt-0.5 text-metadata text-muted">Find the event on Findmi and request to join.</p>
+                  </div>
+                  <Link href={`${basePath}?tab=findmi-here`} className="shrink-0 text-metadata font-semibold text-muted hover:text-primary">
+                    Close
+                  </Link>
+                </div>
 
                 {requestOptions.length > 0 ? (
                   <form action={addFromEvent} className="mt-3">
@@ -2123,23 +2167,23 @@ export default async function ManageBusinessPage({
                   className="mt-4 border-t border-black/[0.07] pt-3"
                   initialOpen={addHasDraft}
                   summaryClassName="cursor-pointer text-metadata font-semibold text-accent [&::-webkit-details-marker]:hidden"
-                  summary="Can’t find it? Add somewhere else"
+                  summary="Can’t find it? Add where you’ll be."
                 >
                   <div className="mt-3">
                     <AppearanceFieldsForm
                       businessId={id}
                       action={addManual}
                       defaultValues={addDefaultValues}
-                      submitLabel="Add to Findmi Here"
+                      submitLabel="Add to Presence"
                     />
                   </div>
                 </AppearanceEditorDetails>
               </div>
-            </AppearanceEditorDetails>
+            )}
 
-            {appearances.length + eventOnlySchedule.length === 0 && (
+            {presenceAppearances.length + eventOnlySchedule.length + pendingSchedule.length === 0 && (
               <Panel padded={false}>
-                <EmptyLine>No upcoming stops yet. Add where you&rsquo;ll be to appear on your public profile.</EmptyLine>
+                <EmptyLine>Nothing upcoming yet. Add what you&rsquo;re hosting or where you&rsquo;ll be to show it on your public profile.</EmptyLine>
               </Panel>
             )}
 
@@ -2153,10 +2197,10 @@ export default async function ManageBusinessPage({
                 ("Findmi Event"/"Added by you") and participation status are
                 both preserved but quiet — status gets restrained emphasis
                 only when it isn't the expected/approved state. */}
-            {(appearances.length > 0 || eventOnlySchedule.length > 0) && (
+            {(presenceAppearances.length > 0 || eventOnlySchedule.length > 0 || pendingSchedule.length > 0) && (
               <Panel title="Upcoming" padded={false}>
               <ul className="flex flex-col divide-y divide-black/[0.05]">
-                {appearances.map((a) => {
+                {presenceAppearances.map((a) => {
                   const [storedDate, storedStartTime] = isoToLocalDateTime(a.start_at).split("T");
                   const storedEndTime = isoToLocalDateTime(a.end_at).split("T")[1];
                   // A server-side validation error on THIS specific
@@ -2208,7 +2252,7 @@ export default async function ManageBusinessPage({
                                 {locationLine && ` · ${locationLine}`}
                               </p>
                               <p className="mt-0.5 text-microcopy text-subtle">
-                                {a.event_id ? "Findmi Event" : "Added by you"}
+                                {a.event_id ? "Findmi event" : "Added by you"}
                                 {/* Physical Presence Pass 1 — management-only
                                     signal: a standalone appearance with no
                                     real location_id won't flow onto any
@@ -2295,11 +2339,33 @@ export default async function ManageBusinessPage({
                         {e.endAt && `–${formatTime(e.endAt)}`}
                         {e.where && ` · ${e.where}`}
                       </p>
-                      <p className="mt-0.5 text-microcopy text-subtle">Findmi Event · Confirmed</p>
+                      <p className="mt-0.5 text-microcopy text-subtle">Findmi event · Confirmed</p>
                     </div>
                     {e.href && (
                       <Link href={e.href} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
-                        View Event
+                        View event
+                      </Link>
+                    )}
+                  </li>
+                ))}
+                {/* Pass A — requests still awaiting the organizer. Not a
+                    confirmed stop and not on the public profile yet. */}
+                {pendingSchedule.map((e) => (
+                  <li key={e.key} className="flex items-center gap-3 px-4 py-3 first:pt-0 last:pb-0">
+                    <ScheduleDateBadge iso={e.startAt} live={false} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-body font-semibold text-primary">{e.title}</p>
+                      <p className="mt-0.5 truncate text-metadata text-muted">
+                        {formatTime(e.startAt)}
+                        {e.where && ` · ${e.where}`}
+                      </p>
+                      <p className="mt-0.5 text-microcopy text-subtle">
+                        <span className="font-semibold text-findmi-700">Pending</span> · Request sent · Not public until approved
+                      </p>
+                    </div>
+                    {e.href && (
+                      <Link href={e.href} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
+                        View event
                       </Link>
                     )}
                   </li>

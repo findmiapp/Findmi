@@ -29,14 +29,14 @@ export default function RemoveAppearanceButton({
 }) {
   const whenWhere = [dateLabel, venueLabel].filter(Boolean).join(" · ");
   const message = [
-    "Remove this appearance?",
+    "Remove from your Presence?",
     "",
     title,
     whenWhere,
     "",
-    "This will remove this appearance from your FindMi schedule.",
+    "This removes it from your Findmi schedule and public profile.",
     isOfficialParticipation
-      ? "\nThis appearance represents official Event participation — removing it will also withdraw your business from that Event occurrence."
+      ? "\nThis is part of a Findmi event — removing it also withdraws your business from that event date."
       : null,
   ]
     .filter((line) => line !== null)
