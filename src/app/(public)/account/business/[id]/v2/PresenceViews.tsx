@@ -322,8 +322,14 @@ function LocationCard({
             </p>
           )}
           {canManageLocation ? (
+            // Account Shell V1 — hints the Location Manager where this
+            // click came from (same business_id query-param pattern
+            // /account/location/new already uses) so it can show a small
+            // "← {business.name}" way back instead of leaving a Business
+            // V2 owner stranded in the old AccountNav-only Manager with
+            // no path back to the Business they came from.
             <Link
-              href={`/account/location/${item.locationId}`}
+              href={`/account/location/${item.locationId}?business_id=${encodeURIComponent(businessId)}`}
               className="mt-2 inline-flex items-center text-metadata font-semibold text-findmi-700 hover:underline"
             >
               Manage location →

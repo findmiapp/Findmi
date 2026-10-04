@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
-import { requireLocationMember } from "@/lib/permissions";
+import { requireLocationMember, requireBusinessMember } from "@/lib/permissions";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getAdminLocationById, getAllCategories } from "@/lib/admin/queries";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
@@ -84,10 +84,10 @@ export default async function ManageLocationPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; saved?: string; error?: string; created?: string; event_added?: string }>;
+  searchParams: Promise<{ tab?: string; saved?: string; error?: string; created?: string; event_added?: string; business_id?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam, saved, error, created, event_added: eventAdded } = await searchParams;
+  const { tab: tabParam, saved, error, created, event_added: eventAdded, business_id: businessIdParam } = await searchParams;
   const tab = tabParam && VALID_TAB_KEYS.has(tabParam) ? tabParam : "overview";
 
   // Location Manager V3 — a bookmarked/typed legacy tab key (details/
@@ -116,6 +116,16 @@ export default async function ManageLocationPage({
 
   const location = await getAdminLocationById(id);
   if (!location) redirect(errorRedirectUrl("/account", "Location not found."));
+
+  // Account Shell V1 — a Business V2 owner who got here from their own
+  // Findmi Here tab (PresenceViews' "Manage location" link now passes
+  // ?business_id= as a hint) sees a quiet way back to that Business
+  // instead of only the old AccountNav grid below. Honored only for an
+  // actual member of that business (or an admin session) — same
+  // best-effort, non-blocking resolveBusinessContext pattern
+  // account/event/new/page.tsx already uses; a stale/foreign business_id
+  // just resolves to null and changes nothing.
+  const businessContext = await resolveBusinessContext(businessIdParam);
 
   // QR Campaigns V1 — this Location's own QR campaigns (independent of
   // any Business — location_members, not business_members, is the real
@@ -341,6 +351,14 @@ export default async function ManageLocationPage({
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+      {businessContext && (
+        <Link
+          href={`/account/business/${businessContext.id}?tab=findmi-here&view=locations`}
+          className="mb-3 inline-flex items-center text-metadata font-semibold text-muted hover:text-primary"
+        >
+          &larr; {businessContext.name}
+        </Link>
+      )}
       <AccountNav />
 
       {isAdminElevated && (
@@ -791,4 +809,22 @@ export default async function ManageLocationPage({
       </div>
     </div>
   );
+}
+
+/** Account Shell V1 — same shape as account/event/new/page.tsx's own
+ * resolveBusinessContext: honored only for a real member of that business
+ * (or an admin session), never trusted as this Location's owner —
+ * requireLocationMember() above already independently authorized the
+ * actual page access. */
+async function resolveBusinessContext(businessId: string | undefined): Promise<{ id: string; name: string } | null> {
+  if (!businessId) return null;
+  try {
+    await requireBusinessMember(businessId);
+  } catch {
+    return null;
+  }
+  const admin = getAdminSupabase();
+  if (!admin) return null;
+  const { data } = await admin.from("businesses").select("id, name").eq("id", businessId).maybeSingle();
+  return (data as { id: string; name: string } | null) ?? null;
 }

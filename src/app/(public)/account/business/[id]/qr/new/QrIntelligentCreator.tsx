@@ -79,7 +79,7 @@ export default function QrIntelligentCreator({
     return optionsFor(contextType).find((o) => o.id === contextId)?.label ?? "";
   }
   function labelForDestination(): string {
-    if (destinationType === "business") return `${businessName} on FindMi`;
+    if (destinationType === "business") return `${businessName} on Findmi`;
     if (destinationType === "custom") return destinationUrl.trim() || "Custom link";
     return optionsFor(destinationType).find((o) => o.id === destinationId)?.label ?? "";
   }
