@@ -3,7 +3,6 @@ import SupabaseImage from "@/components/SupabaseImage";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import { toJsonLdScript } from "@/lib/jsonLd";
-import AppearanceFindMiHere from "@/components/AppearanceFindMiHere";
 import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShopSection from "@/components/BusinessShopSection";
 import Bulletin from "@/components/Bulletin";
@@ -13,17 +12,24 @@ import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
 import ShareButton from "@/components/ShareButton";
 import ClaimButton from "@/components/ClaimButton";
-import FeaturedAppearanceCard from "@/components/FeaturedAppearanceCard";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import MessageButton from "@/components/MessageButton";
 import InquireButton from "@/components/InquireButton";
 import { sanitizeBusinessInquiryTopics } from "@/lib/business-inquiry-topics";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
-import { FeaturedBadge, VerifiedBadge } from "@/components/Badge";
+import { FeaturedBadge } from "@/components/Badge";
 import Link from "next/link";
 import JournalCollection from "@/components/journal/JournalCollection";
-import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
+import BrandHeading from "@/components/BrandHeading";
+import SectionHeading from "@/components/SectionHeading";
+import EventCoverLightbox from "@/components/EventCoverLightbox";
+import ReadMoreText from "@/components/ReadMoreText";
+import { HorizontalScroller } from "@/components/Section";
+import BusinessFindmiHere from "@/components/business/BusinessFindmiHere";
+import { buildFindmiHere } from "@/lib/findmi-here";
+import { getLocationsForBusiness } from "@/lib/business-locations";
+import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
   attachCategories,
@@ -32,11 +38,11 @@ import {
   getBusinessGalleryImages,
   getPeopleForBusiness,
   getProductsForBusiness,
+  getPastAppearancesForBusiness,
   getUpcomingAppearancesForBusiness,
   PUBLIC_BUSINESS_COLUMNS,
-  type AppearanceWithEventSlug,
 } from "@/lib/data";
-import { cityState, cityStateZip, formatAppearanceDateRange, formatTime, getTemporalLabel } from "@/lib/format";
+import { cityStateZip } from "@/lib/format";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { validateCustomDestination } from "@/lib/navigation";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -44,7 +50,6 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getSupabase } from "@/lib/supabase";
 import { isBusinessPro } from "@/lib/entitlements";
-import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 
 /** Vanity URL rendering pass — this is the actual render tree for a
  * Business's public page, shared verbatim by both the canonical
@@ -57,29 +62,6 @@ import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 
 function isSafeExternalUrl(url: string | null | undefined): url is string {
   return typeof url === "string" && /^https?:\/\//i.test(url);
-}
-
-/** Featured Appearance System — pure, synchronous, zero-query resolver.
- * `appearances` is the same already-fetched getUpcomingAppearancesForBusiness
- * result this page already needs for Findmi Here, which is itself already
- * ordered start_at ascending (a currently-live appearance's start_at is
- * always earlier than any not-yet-started one's, so [0] already means
- * "live if any, else nearest upcoming" with no extra sort — same reasoning
- * lib/featured-event.ts's own automatic path documents). A manual override
- * wins only when it's still present in that eligible list; once an
- * appearance is canceled, ends, is deleted, or otherwise drops out of
- * getUpcomingAppearancesForBusiness's own eligibility rules, it simply
- * stops matching here and this silently falls back to automatic — no
- * separate staleness check, no owner cleanup required. */
-function resolveFeaturedAppearance(
-  appearances: AppearanceWithEventSlug[],
-  overrideAppearanceId: string | null
-): AppearanceWithEventSlug | null {
-  if (overrideAppearanceId) {
-    const match = appearances.find((a) => a.id === overrideAppearanceId);
-    if (match) return match;
-  }
-  return appearances[0] ?? null;
 }
 
 /** FREE VS PRO GATING — resolved server-side via lib/entitlements.ts,
@@ -254,127 +236,61 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Appearance creation/management (Command Center's own aggregation
   // queries this same table with no such limit), storage, event rosters,
   // or /find, and still doesn't.
-  const [products, appearances, people, galleryImages, journal] = await Promise.all([
+  const [products, appearances, pastAppearances, people, galleryImages, journal, placesPage] = await Promise.all([
     getProductsForBusiness(business.id),
     getUpcomingAppearancesForBusiness(business.id),
+    // Public Business V2 — recent history for Findmi Here's Past group
+    // (bounded; grouped by experience below, so 24 rows can become a
+    // handful of items).
+    getPastAppearancesForBusiness(business.id, 24),
     getPeopleForBusiness(business.id),
     getBusinessGalleryImages(business.id),
     // Journal Distribution V1 — public, published experiences connected to
     // this Business; small preview set + exact count for "See all".
     getPublicJournalCollection({ subjectType: "business", subjectId: business.id, limit: 6, withCount: true }),
+    // Public Business V2 — the Business's public Locations ("Places" in
+    // Findmi Here). Published, non-archived Locations only.
+    getLocationsForBusiness(getSupabase(), business.id, { publicOnly: true, limit: 12 }),
   ]);
+  const places = placesPage.items;
 
-  // Featured Appearance System — replaces the old split presentation
-  // (immersive Featured Event card for an event-backed appearance vs. a
-  // plain white "Next Up" card for a standalone one) with ONE unified
-  // card for whichever single Appearance resolves. Pure/synchronous, no
-  // extra query: reuses the exact `appearances` array already fetched
-  // above for Findmi Here. Null when this Business has nothing upcoming
-  // at all (see resolveFeaturedAppearance's own doc comment for the
-  // manual-override/stale-selection rules).
-  const featuredAppearance = resolveFeaturedAppearance(appearances, business.featured_appearance_id ?? null);
-  const featuredTemporal = featuredAppearance
-    ? getTemporalLabel(featuredAppearance.start_at, featuredAppearance.end_at)
-    : null;
-  const featuredIsEvent = Boolean(featuredAppearance?.event?.slug);
-  // Image Fallback Refinement pass — precedence is now: the most specific
-  // real image already attached to this appearance (its own flyer image,
-  // else its linked Event's own cover image when event-backed — never
-  // swapped out, so illy's real "A Cup of Love" photo is untouched), else
-  // a deterministic pick from this Business's own gallery (spreads
-  // image-less appearances across real photos instead of repeating the
-  // cover on every one), else the Business's own cover image, else
-  // FeaturedAppearanceCard's own safe neutral fallback. No new query:
-  // `galleryImages` is the same getBusinessGalleryImages result already
-  // fetched above for the Gallery section.
-  const featuredImageUrl = featuredAppearance
-    ? resolveAppearanceDisplayImage({
-        appearanceId: featuredAppearance.id,
-        specificImageUrl: featuredAppearance.flyer_image_url ?? featuredAppearance.event?.cover_image_url ?? null,
-        galleryImages,
-        businessCoverUrl: business.cover_image_url,
-      })
-    : null;
-  // Real destination only — event > location > in-page anchor, the exact
-  // same precedence AppearanceCard's own click target already uses. Never
-  // a new /appearance/[id] route.
-  const featuredHref = featuredAppearance
-    ? featuredIsEvent
-      ? `/event/${featuredAppearance.event!.slug}`
-      : featuredAppearance.location?.slug
-        ? `/location/${featuredAppearance.location.slug}`
-        : "#findmi-here"
-    : null;
-  // Same directions-URL construction AppearanceCard's own lowest-tier
-  // fallback uses (venue_name/address/city/state) — Directions is a
-  // distinct physical-navigation intent from View Details, and null
-  // whenever there isn't enough real location data for a maps query.
-  const featuredMapsQuery = featuredAppearance
-    ? [featuredAppearance.venue_name, featuredAppearance.address, cityState(featuredAppearance.city, featuredAppearance.state)]
-        .filter(Boolean)
-        .join(", ")
-    : "";
-  const featuredDirectionsHref = featuredMapsQuery
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(featuredMapsQuery)}`
-    : null;
-  // formatAppearanceDateRange already respects the established "Time TBD"
-  // semantics (isTimeUnknown) — never a fabricated exact time.
-  const featuredDateTimeLine = featuredAppearance
-    ? featuredTemporal?.live
-      ? featuredAppearance.end_at
-        ? `Until ${formatTime(featuredAppearance.end_at)}`
-        : "Happening now"
-      : formatAppearanceDateRange(featuredAppearance.start_at, featuredAppearance.end_at, featuredAppearance.description)
-    : null;
-  // "Venue Name · City, ST" — the same combined-join pattern already
-  // established for occurrence mini-cards (BusinessLogoCard), never just
-  // one half when both are legitimately available.
-  const featuredVenueName = featuredAppearance?.location?.name ?? featuredAppearance?.venue_name ?? null;
-  const featuredLocationLabel = featuredAppearance ? cityState(featuredAppearance.city, featuredAppearance.state) : "";
-  const featuredVenueLine = featuredAppearance
-    ? [featuredVenueName, featuredLocationLabel].filter(Boolean).join(" · ") || null
-    : null;
+  // ── Public Business V2 — Findmi Here model ────────────────────────────
+  // Presentation-layer grouping (lib/findmi-here): an Event's many dates
+  // become ONE experience (event_id is authoritative), standalone
+  // appearances stay individual; split into Happening Now (genuinely live
+  // only) / Upcoming / Past. featured_appearance_id keeps its meaning — its
+  // experience leads Upcoming while it's still eligible — instead of a
+  // separate, duplicate "Featured Appearance" block.
+  const findmiHere = buildFindmiHere({
+    upcoming: appearances,
+    past: pastAppearances,
+    featuredAppearanceId: business.featured_appearance_id ?? null,
+  });
+  const hasCurrentActivity = findmiHere.now.length > 0 || findmiHere.upcoming.length > 0 || places.length > 0;
 
-  // "Meet the Owners" only when every configured role genuinely says so —
-  // never assumed. Any broader/mixed set of roles gets the honest generic
-  // heading instead.
-  const allOwnersOrFounders =
-    people.length > 0 && people.every((p) => /owner|founder/i.test(p.role ?? ""));
-  const peopleHeading = allOwnersOrFounders ? "Meet the Owners" : `Meet the People Behind ${business.name}`;
-
-  // Unify Site-Wide Communications pass — Inquire no longer resolves to
-  // any external URL/Form Manager form/mailto (all of which either
-  // exposed the business's private email or left the thread outside
-  // Findmi entirely). It's now always the native InquireButton below,
-  // which creates a real Conversation (subject_type='business_inquiry')
-  // — see components/InquireButton.tsx and
-  // lib/opportunities.ts's createInquiryConversation. inquiry_cta_url
-  // stays in the schema, simply unread now (inquiry_cta_label is still
-  // the button's own founder-editable label).
-  //
-  // Business-Controlled Inquiry Settings pass — Pro alone no longer
-  // shows INQUIRE (that was the actual bug this pass fixes — see its own
-  // migration note). The owner must have explicitly turned on Accept
-  // Inquiries (accepts_inquiries) AND selected at least one inquiry
-  // topic; neither is inferred from Pro status, existing contact info,
-  // or any legacy CTA field. No business was bulk-enabled.
+  // Unify Site-Wide Communications pass — Inquire is always the native
+  // InquireButton (a real Conversation, subject_type='business_inquiry');
+  // inquiry_cta_label is its founder-editable label.
+  // Business-Controlled Inquiry Settings pass — shown only when the owner
+  // turned on Accept Inquiries AND selected at least one topic (and Pro).
   const inquiryLabel = business.inquiry_cta_label?.trim() || "Inquire";
   const enabledInquiryTopics = sanitizeBusinessInquiryTopics(business.inquiry_topics);
   const canInquire = pro && business.accepts_inquiries && enabledInquiryTopics.length > 0;
+  // MESSAGE is a direct entity-to-entity affordance: only for a signed-in
+  // viewer managing an eligible Business/Event (lib/message-visibility).
   const showMessageButton = await shouldShowMessageButton("business", business.id);
+  // A Business with no real-world activity has no stronger next step, so an
+  // enabled Inquire is promoted into the identity actions (same rule as the
+  // previous page's primary-vs-outline weighting); otherwise it lives in
+  // Contact & Links.
+  const promoteInquire = canInquire && !hasCurrentActivity;
 
   const location = cityStateZip(business.city, business.state, business.postal_code);
-  // categories[0] is the same "good enough for a compact label" primary-
-  // category convention already used elsewhere (BusinessCard, CompactCard)
-  // — not a new taxonomy concept. Anything beyond the first is folded into
-  // a plain "+N" count rather than flooding the identity block with pills
-  // (Business Profile V2, Part 4).
+  // categories[0] is the compact primary-category convention used elsewhere;
+  // the "+N" extra-category count stays Pro-only.
   const primaryCategory = business.categories[0] ?? null;
   const extraCategoryCount = Math.max(0, business.categories.length - 1);
 
-  // Compact icon row — every link gets its own recognizable glyph (Details
-  // polish pass): globe for website, and real Instagram/Facebook/TikTok
-  // marks instead of the old generic chain-link icon for the latter two.
   const socialLinks = [
     { href: business.website_url, label: "Website", icon: "globe" as const },
     { href: business.instagram_url, label: "Instagram", icon: "instagram" as const },
@@ -383,26 +299,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   ].filter((l): l is { href: string; label: string; icon: "instagram" | "globe" | "facebook" | "tiktok" } =>
     isSafeExternalUrl(l.href)
   );
-
-  // Free Tier Entitlement Reset V1 — all four standard social links
-  // (Website/Instagram/Facebook/TikTok) are core presence now, public for
-  // both tiers; the previous Free/Pro split on Facebook/TikTok is
-  // removed. Phone/email are likewise fetched and shown for both tiers
-  // now (see `contact` above).
-  const detailsSocialLinks = socialLinks;
-  // Compact Location + Links pass — location is no longer part of this
-  // check at all: it already renders compactly inline with category in
-  // the identity block above (line ~490, now Free+Pro), which was
-  // ALWAYS the real, correct, compact placement — the old DetailsBlock
-  // duplicated it a second time inside a large card below. This is now
-  // purely "is there any contact/social action to show."
-  const hasContactActions = Boolean(contact.phone || contact.email || detailsSocialLinks.length > 0);
-
-  // Free Tier Entitlement Reset V1 — computed ahead of render (mirroring
-  // BusinessCtaRow's own filter and Bulletin's own empty check) so the
-  // wrapping spacing `<div>` around each is only ever rendered alongside
-  // real content — never an empty div contributing a stray margin gap for
-  // a business with no CTAs/no bulletin configured.
+  const hasContactActions = Boolean(contact.phone || contact.email || socialLinks.length > 0);
   const hasCtas = [
     { label: business.cta_1_label, url: business.cta_1_url, enabled: business.cta_1_enabled },
     { label: business.cta_2_label, url: business.cta_2_url, enabled: business.cta_2_enabled },
@@ -415,10 +312,6 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Truthful LocalBusiness JSON-LD — every field is a real, already-public
   // column; nothing here is inferred or fabricated (no ratings, priceRange,
   // geo coordinates, or hours — none of those are modeled in the schema).
-  // address only includes locality/region since businesses has no street-
-  // address field to draw from. Free Tier Entitlement Reset V1 — every
-  // field here (description/social links/location/phone) is now public
-  // for both tiers, kept in sync with the on-page rendering above.
   const sameAs = [business.website_url, business.instagram_url, business.facebook_url, business.tiktok_url].filter(
     isSafeExternalUrl
   );
@@ -435,9 +328,6 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
       : {}),
     ...(contact.phone ? { telephone: contact.phone } : {}),
     ...(sameAs.length > 0 ? { sameAs } : {}),
-    // Free/Pro Entitlement Realignment pass — location is public
-    // structured data for both tiers now, matching the on-page identity
-    // block above.
     ...(business.city || business.state || business.postal_code
       ? {
           address: {
@@ -449,6 +339,205 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         }
       : {}),
   };
+
+  const quickViewBusiness = {
+    id: business.id,
+    name: business.name,
+    slug: business.slug,
+    logo_url: business.logo_url,
+    cover_image_url: business.cover_image_url,
+    shareUrl: canonicalUrl,
+  };
+
+  // ── Public Business V2 composition ────────────────────────────────────
+  // Phones: Hero → compact identity/actions → Findmi Here → Bulletin →
+  // Products → Findmi Moments → Photos → About → People → Contact & Links →
+  // Claim → Discover More. Desktop: the same story in the main column, with
+  // identity/actions + Contact & Links + Claim in a compact sticky rail.
+  // Every section renders only with real content.
+
+  const coverAndGallery = [business.cover_image_url, ...galleryImages].filter((v): v is string => Boolean(v));
+  const contextLine = [
+    primaryCategory ? `${primaryCategory.name}${pro && extraCategoryCount > 0 ? ` +${extraCategoryCount}` : ""}` : null,
+    location ? `${location}${business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const inquireButton = (primary: boolean) => (
+    <InquireButton
+      targetType="business"
+      targetId={business.id}
+      targetName={business.name}
+      label={inquiryLabel}
+      topics={enabledInquiryTopics}
+      className={
+        primary
+          ? "flex h-9 items-center justify-center rounded-full bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600"
+          : "flex h-9 items-center justify-center rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+      }
+    />
+  );
+
+  const identity = (
+    <div>
+      <div className="flex items-center gap-3">
+        {business.logo_url && (
+          <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-black/[0.06] bg-white">
+            <SupabaseImage src={business.logo_url} alt={business.name} fill sizes="48px" className="object-cover" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          {contextLine && <p className="line-clamp-2 text-metadata font-semibold text-secondary">{contextLine}</p>}
+          {business.is_featured && (
+            <p className="mt-0.5">
+              <FeaturedBadge />
+            </p>
+          )}
+        </div>
+      </div>
+      {business.short_description && (
+        <p className="mt-2.5 line-clamp-2 text-body text-secondary">{business.short_description}</p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
+        <SaveButton slug={business.slug} id={business.id} />
+        <ShareButton
+          url={canonicalUrl}
+          title={business.name}
+          variant="icon"
+          track={{ subject_type: "business", subject_id: business.id, business_id: business.id }}
+        />
+        {promoteInquire && inquireButton(true)}
+      </div>
+    </div>
+  );
+
+  const contactSection =
+    hasCtas || hasContactActions || showMessageButton || (canInquire && !promoteInquire) ? (
+      <section id="contact" className="scroll-mt-24">
+        <SectionHeading>Contact &amp; Links</SectionHeading>
+        <div className="mt-3 flex flex-col gap-3">
+          {(showMessageButton || (canInquire && !promoteInquire)) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {showMessageButton && (
+                <MessageButton size="compact" targetType="business" targetId={business.id} targetName={business.name} />
+              )}
+              {canInquire && !promoteInquire && inquireButton(false)}
+            </div>
+          )}
+          {hasContactActions && (
+            <BusinessLinksRow business={{ phone: contact.phone, email: contact.email }} socialLinks={socialLinks} businessId={business.id} />
+          )}
+          {hasCtas && <BusinessCtaRow business={business} />}
+        </div>
+      </section>
+    ) : null;
+
+  const findmiHereSection = (
+    <BusinessFindmiHere
+      now={findmiHere.now}
+      upcoming={findmiHere.upcoming}
+      past={findmiHere.past}
+      places={places}
+      business={quickViewBusiness}
+      galleryImages={galleryImages}
+      analyticsContext={{ pageType: "business" }}
+    />
+  );
+
+  const bulletinSection = hasBulletin ? (
+    <section id="bulletin">
+      <Bulletin
+        label={business.bulletin_label?.trim() || "Announcement"}
+        heading={business.bulletin_heading}
+        body={business.bulletin_enabled ? business.bulletin_body : null}
+        url={business.bulletin_url && validateCustomDestination(business.bulletin_url).ok ? business.bulletin_url : null}
+      />
+    </section>
+  ) : null;
+
+  const productsSection =
+    products.length > 0 ? (
+      <BusinessShopSection
+        products={products}
+        business={{ name: business.name, slug: business.slug, logo_url: business.logo_url, commerce_enabled: business.commerce_enabled }}
+      />
+    ) : null;
+
+  const momentsSection =
+    journal.entries.length > 0 ? (
+      <section id="moments" className="scroll-mt-24">
+        <BrandHeading
+          accent="Moments"
+          trailing={
+            journal.total != null && journal.total > journal.entries.length ? (
+              <Link href={journalCollectionHref("business", business.slug)} className="text-metadata font-semibold text-findmi-700 hover:underline">
+                See all {journal.total}
+              </Link>
+            ) : null
+          }
+        />
+        <div className="mt-3">
+          <JournalCollection entries={journal.entries} total={journal.total} layout="compact" />
+        </div>
+      </section>
+    ) : null;
+
+  // ImageGalleryStrip hides itself below 2 images; same rule here so no
+  // empty heading renders.
+  const photosSection =
+    galleryImages.length > 1 ? (
+      <section id="photos" className="scroll-mt-24">
+        <SectionHeading>Photos</SectionHeading>
+        <div className="mt-3">
+          <ImageGalleryStrip images={galleryImages} alt={business.name} />
+        </div>
+      </section>
+    ) : null;
+
+  const aboutSection =
+    business.description && business.description.trim() !== business.short_description?.trim() ? (
+      <section id="about" className="scroll-mt-24">
+        <SectionHeading>About</SectionHeading>
+        <div className="mt-1.5 max-w-2xl">
+          <ReadMoreText text={business.description} className="text-body-lg leading-relaxed text-secondary" />
+        </div>
+      </section>
+    ) : null;
+
+  const peopleSection =
+    people.length > 0 ? (
+      <section id="people" className="scroll-mt-24">
+        <SectionHeading>People</SectionHeading>
+        <div className="-mx-4 mt-3 sm:-mx-6 lg:mx-0">
+          <HorizontalScroller className="lg:px-0">
+            {people.map((p) => (
+              <div key={p.id} className="w-36 shrink-0 sm:w-40">
+                <PersonCard person={p} role={p.role} />
+              </div>
+            ))}
+          </HorizontalScroller>
+        </div>
+      </section>
+    ) : null;
+
+  const discoverSection =
+    alternatives.length > 0 ? (
+      <section id="discover" className="scroll-mt-24">
+        <SectionHeading>Discover More Like This</SectionHeading>
+        <div className="-mx-4 mt-3 sm:-mx-6 lg:mx-0">
+          <HorizontalScroller className="snap-x snap-mandatory scroll-px-4 sm:scroll-px-6 lg:scroll-px-0 lg:px-0">
+            {alternatives.map((alt) => (
+              <div key={alt.id} className="w-64 shrink-0 snap-start sm:w-72">
+                <BusinessLogoCard business={alt} />
+              </div>
+            ))}
+            <span aria-hidden="true" className="w-px shrink-0" />
+          </HorizontalScroller>
+        </div>
+      </section>
+    ) : null;
 
   return (
     <div>
@@ -463,9 +552,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
 
       {/* Owner-preview banner — Native Business Onboarding Pass 2. Only
           renders for the real owner/manager/staff of a not-yet-approved
-          business (see resolveOwnerPreviewBusiness); every normal (live)
-          visitor never sees this, and it's the only thing distinguishing
-          a preview render from the real public page below it. */}
+          business (see resolveOwnerPreviewBusiness). */}
       {ownerPreview && (
         <div className="mx-auto mt-4 max-w-6xl px-4 sm:px-6">
           <div className="flex flex-col gap-2 rounded-2xl border border-findmi/20 bg-findmi-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -491,475 +578,79 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         </div>
       )}
 
-      {/* Cover / brand hero — a contained, rounded landscape image (not a
-          full-bleed banner), matching Product Detail V2's hero treatment
-          so the two page types feel like one app. No fabricated imagery:
-          a business with no cover just gets the same branded dark
-          placeholder used on the product page. */}
-      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6 sm:pt-6">
-        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl border border-black/5 bg-mist shadow-sm sm:aspect-[21/9]">
-          {business.cover_image_url ? (
-            <SupabaseImage
-              src={business.cover_image_url}
-              alt={business.name}
-              fill
-              priority
-              sizes="(min-width: 1024px) 1024px, 100vw"
-              className="object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-ink">
-              <StorefrontGlyph className="h-12 w-12 text-white/15" />
-            </div>
-          )}
-          <AdminEditButton href={`/admin/businesses/${business.id}`} className="absolute right-3 top-3 z-10" />
+      {/* Hero — full-bleed cover with the Event page's restrained parallax
+          (EventCoverLightbox; static with reduced motion), cover + gallery
+          lightbox, name + Verified over a dark lower gradient. No cover →
+          a short branded band (no fake photography, no parallax). The logo
+          stays out of the moving photo — it leads the identity strip. */}
+      <div
+        className={`relative w-full overflow-hidden bg-ink sm:rounded-b-3xl ${
+          business.cover_image_url
+            ? "h-[40vh] max-h-[380px] min-h-[240px] sm:h-auto sm:max-h-[520px] sm:aspect-[21/9]"
+            : "h-[150px] sm:h-[190px]"
+        }`}
+      >
+        {business.cover_image_url ? (
+          <EventCoverLightbox images={coverAndGallery} alt={business.name} parallax />
+        ) : (
+          <div className="h-full w-full bg-gradient-to-br from-ink to-findmi-900" />
+        )}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] p-3 pt-14 sm:p-6 sm:pt-24"
+          style={{
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 30%, rgba(0,0,0,0.2) 62%, rgba(0,0,0,0) 88%)",
+          }}
+        >
+          <div className="mx-auto flex max-w-6xl items-end gap-2 sm:px-0">
+            <h1 className="line-clamp-2 font-display text-display font-bold tracking-tight text-white sm:text-display-lg">{business.name}</h1>
+            {business.verified && (
+              <span className="mb-1.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">
+                <CheckGlyph className="h-2.5 w-2.5 text-findmi-700" />
+                Verified
+              </span>
+            )}
+          </div>
         </div>
+        <AdminEditButton href={`/admin/businesses/${business.id}`} className="absolute right-3 top-3 z-30" />
       </div>
 
-      {/* Identity — full width, directly under the cover, so the logo can
-          overlap its bottom edge the same way on every breakpoint. Stays
-          above the two-column split below rather than living inside the
-          sticky right rail, which would otherwise overlap the cover on
-          its right edge instead of centered under it. */}
-      {/* UI cleanup pass item 2/3: pl-3/sm:pl-4 keeps the overlapping logo
-          (and everything under it) off the viewport edge instead of flush
-          with the page's own gutter, and max-w-xl keeps the whole
-          logo+name+badges+category block reading as one compact identity
-          section instead of sprawling across the full desktop width. */}
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="max-w-xl pl-3 sm:pl-4">
-          {/* Follow/Save micro-fix (normal-flow only — no absolute
-              positioning, no negative translation on Follow/Save itself).
-              Only the LOGO carries the negative margin that overlaps the
-              cover; items-start on the row means Follow/Save (no margin
-              of their own) align to that same unshifted top line, which
-              is exactly the cover's bottom edge — they can never render
-              above it, full stop, by ordinary box-model construction, not
-              by containment math. A small positive top margin (mt-2.5 /
-              10px mobile, matching the 96px logo's 40px overlap → 56px
-              exposed strip; sm:mt-3.5 / 14px, matching the 112px logo's
-              48px overlap → 64px exposed strip) nudges Follow/Save down
-              from that top edge to sit centered in the exposed white
-              strip beside the logo's lower portion, same reasoning as
-              before, just without the absolute-positioning machinery. */}
-          <div className="flex items-start gap-2">
-            {business.logo_url && (
-              <div className="relative -mt-10 h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-28 sm:w-28">
-                <SupabaseImage src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
-              </div>
-            )}
-            <div
-              className={`ml-auto flex flex-wrap shrink-0 items-center justify-end gap-1.5 ${business.logo_url ? "mt-2.5 sm:mt-3.5" : ""}`}
-            >
-              {/* Public Message Action pass — MESSAGE sits directly left
-                  of Follow, same row, never a standalone row of its own
-                  (locked layout). Both now share the exact same h-9/
-                  rounded-lg/text-xs/font-bold/uppercase/tracking-wide
-                  geometry — MESSAGE outlined, Follow filled — so they
-                  read as a matched pair instead of two unrelated
-                  components. No wrapper div around Follow any more (it
-                  no longer relies on a fixed w-20 slot — see
-                  FollowButton's own shrink-0 sizing). Not Pro-gated:
-                  messaging between businesses/organizers is core
-                  platform behavior, not a paid profile feature.
-                  Unify Site-Wide Communications pass — MESSAGE is a
-                  DIRECT MESSAGE affordance (entity-to-entity), so it
-                  must not even render for a viewer who isn't signed in
-                  and managing an eligible Business/Event — never shown
-                  disabled, never shown then redirected to login. See
-                  lib/message-visibility.ts's own note; Inquire below is
-                  the separate, always-available controlled entry
-                  point. */}
-              {showMessageButton && (
-                <MessageButton targetType="business" targetId={business.id} targetName={business.name} />
-              )}
-              <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
-              <SaveButton slug={business.slug} id={business.id} />
-              {/* Public Graph Integrity Pass 1 — Share as a compact,
-                  icon-only utility action alongside Message/Follow/Save,
-                  same footprint as Save (h-9/w-9). flex-wrap on this row
-                  (added this pass) is the safety net if this four-item
-                  row ever gets tight at ~390px — it wraps to a second
-                  line rather than overflowing the page horizontally. */}
-              <ShareButton
-                url={canonicalUrl}
-                title={business.name}
-                variant="icon"
-                track={{ subject_type: "business", subject_id: business.id, business_id: business.id }}
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-2">
-            {/* Item 2 — badges moved OFF the name's own line (they used to
-                sit inline with h1, crowding it as soon as 2-3 stacked up)
-                onto their own compact, wrapping row underneath. Recency
-                "New" badge removed (public presentation pass) — the
-                remaining badges close the space naturally; no empty
-                placeholder when none apply.
-                Remove Consumer-Facing Plan Status pass — Founding Member
-                no longer renders here: it's a paid plan/membership status,
-                not a consumer discovery attribute. business.founding_member
-                is untouched as a real field (still used by account/admin/
-                billing/entitlement resolution); only this public badge is
-                removed. Verified and Featured are unrelated to plan status
-                and are preserved exactly as before. */}
-            <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{business.name}</h1>
-            {(business.verified || business.is_featured) && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {business.verified && <VerifiedBadge />}
-                {business.is_featured && <FeaturedBadge />}
-              </div>
-            )}
-            <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
-              {primaryCategory && <span className="font-semibold text-ink/70">{primaryCategory.name}</span>}
-              {/* Free shows exactly 1 category — the "+N" extra-category
-                  count is Pro-only, regardless of how many category rows
-                  the business actually has (a Free business is limited to
-                  one going forward, but a legacy row could still carry
-                  more from before that rule existed). */}
-              {pro && primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
-              {/* Free/Pro Entitlement Realignment pass — city/state/ZIP
-                  are Free-public now (FREE = GET FOUND: a consumer
-                  discovery platform needs a business's location
-                  regardless of plan tier), so `location` renders for both
-                  tiers here. The "+N" extra-category count above stays
-                  Pro-only — unrelated field, unchanged by this pass. */}
-              {primaryCategory && location && <span aria-hidden="true">·</span>}
-              {location && (
-                <span>
-                  {location}
-                  {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
-                </span>
-              )}
-            </p>
-            {/* Free profile correction — short description is identity-level
-                copy (like name/category), not promotional profile content,
-                so it now shows for both tiers; everything else in this
-                identity block stays pro-gated as before. */}
-            {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
-          </div>
-        </div>
-      </div>
-
-      {/* Live-context relationship module (Public Experience V5) — replaces
-          V4's identity-row "Next Up" pill AND the right rail's separate
-          "Find [Business] Here" CTA, which together with the Findmi Here
-          heading below used to say the same thing up to three times (the
-          Cousins Maine Lobster failure case: a HERE NOW pill, then a giant
-          FIND COUSINS MAINE LOBSTER FREEHOLD HERE button, then a FINDMI
-          HERE / Find Cousins Maine Lobster Freehold Here heading — three
-          competing visual systems for one fact). This is now the ONE place
-          that answers "where/when are they right now or next," with real
-          destinations attached — not a CTA whose only job is scrolling to
-          the list immediately below it. Renders nothing for a business
-          with no upcoming appearances (see the right rail's own Inquire-
-          becomes-primary behavior for that state instead).
-          Featured Appearance System — this used to split into an immersive
-          FeaturedEventCard for an event-backed appearance vs. a plain
-          white "Next Up" card for a standalone one (two unrelated visual
-          structures depending on provenance a visitor never sees).
-          FeaturedAppearanceCard is now the ONE unified presentation for
-          whichever single Appearance resolveFeaturedAppearance above
-          resolves, event-backed or standalone alike.
-          Featured Appearance Heading pass — "Featured Appearance" used to
-          render as overlay text inside the card itself. It now sits
-          outside/above the card as a real section label.
-          Small Public UI Polish pass — that eyebrow-only treatment
-          (text-xs/uppercase/text-findmi-700) still read noticeably weaker
-          than this profile's other major section headings (FindMi Here's
-          own "Upcoming Appearances" h2, Gallery's h2), both of which use
-          the font-display/text-lg/font-bold/tracking-tight/text-ink
-          convention. Converged onto that same convention so Featured
-          Appearance carries the same visual authority as its peers,
-          instead of merely being bolded. */}
-      {featuredAppearance && (
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="mt-5 max-w-xl">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">Featured Appearance</h2>
-            <div className="mt-2">
-              <FeaturedAppearanceCard
-                title={featuredAppearance.title}
-                imageUrl={featuredImageUrl}
-                viewDetailsHref={featuredHref ?? "#findmi-here"}
-                directionsHref={featuredDirectionsHref}
-                dateTimeLine={featuredDateTimeLine}
-                venueLine={featuredVenueLine}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-10">
-        {/* Right rail on desktop: primary action + Follow/Save, and (desktop
-            only) the details/contact block — written first in the DOM so
-            it naturally lands right after identity on mobile too. */}
-        <div className="mt-6 lg:order-2 lg:sticky lg:top-20 lg:mt-0">
-          {/* Action Hierarchy pass (V5) — Follow + Save live in the identity
-              block above; the live-context module above the grid already
-              gives a business with somewhere upcoming its own "View
-              Event/Location" + Directions actions, so this slot no longer
-              duplicates that with a second "Find [Business] Here" CTA (the
-              V4 version of this row did — see the module's own comment for
-              why that was wrong). This slot is Inquire alone, weighted by
-              schedule state: a business with an upcoming appearance already
-              has a stronger reason above to click through, so Inquire stays
-              available but secondary (outline); a business with nothing
-              upcoming has no such moment, so Inquire — when the owner
-              enabled it — regains the full primary treatment. */}
-          {canInquire && (
-            <div className="min-w-0">
-              <InquireButton
-                targetType="business"
-                targetId={business.id}
-                targetName={business.name}
-                label={inquiryLabel}
-                topics={enabledInquiryTopics}
-                className={
-                  appearances.length > 0
-                    ? "flex h-11 w-full items-center justify-center rounded-2xl border border-findmi/40 px-4 text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
-                    : "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi px-4 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
-                }
-              />
-            </div>
+      {/* Body. Phones: one column in the storytelling order (the desktop
+          wrappers are display:contents there, so their children interleave
+          via `order`). Desktop: story on the left, a compact sticky rail
+          (identity/actions, Contact & Links, Claim) on the right — each
+          rendered exactly once. Bottom spacing: no page padding; the last
+          block drops its own bottom padding, leaving the shared footer's
+          64px. */}
+      <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-5 sm:px-6 sm:pt-7 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
+        <div className="contents lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block lg:self-start">
+          <div className="order-1">{identity}</div>
+          {contactSection && (
+            <div className="order-3 border-t border-black/[0.07] py-7 lg:mt-6 lg:pb-0 lg:pt-5">{contactSection}</div>
           )}
-
-          {/* Messaging UX Unification pass — the old "Message on Findmi"
-              native-inquiry link (native_inquiries_enabled-gated) used to
-              render here as a second, competing "message this business"
-              action right below Inquire. It's removed from this public
-              page: MESSAGE (in the identity row above) is now the one
-              native-Conversation entry point, so this legacy link would
-              only confuse visitors about which button actually reaches a
-              real Conversation. The native_inquiries_enabled column, its
-              admin toggle, and the /account/inquiries/* compose flow it
-              gated are all untouched — this is a public-surface removal
-              only, not a backend change (see Business Manager's
-              Inquiries tab, which still reads/writes this setting). */}
-
-          {/* Compact Location + Links pass — BusinessLinksRow covers only
-              phone/email/social/website now (location lives solely in the
-              identity block above). Free/Pro Entitlement pass — Website/
-              Instagram are now basic-profile fields (see freeSocialLinks
-              above), so this isn't gated on `pro` as a whole; phone/email
-              still come from plan-aware values already blank for Free
-              (contact.{phone,email} are hardcoded null unless pro), so a
-              Free business simply never has anything Pro-only to show
-              here. */}
-          {hasContactActions && (
-            <BusinessLinksRow
-              business={{ phone: contact.phone, email: contact.email }}
-              socialLinks={detailsSocialLinks}
-              businessId={business.id}
-              className="mt-6 hidden lg:block"
-            />
-          )}
-        </div>
-
-        <div className="lg:order-1">
-          {/* FindMi Here — Public Graph Integrity Pass 1: moved ahead of
-              the CTA row/Bulletin below. Findmi's differentiator (telling
-              consumers where a moving Business can be found next) now
-              gets first position in this column, before promotional
-              profile content, rather than after it. Hidden entirely (not
-              an empty placeholder) when nothing's scheduled, per Business
-              Profile V2 Part 9/32. Free Appearances Pass 2 — `appearances`
-              is now fetched for every business (see above), just limited
-              to 1 for Free vs. 20 for Pro at the data layer (UNCHANGED by
-              this pass) — this render block itself needed no change for
-              that; with a single item, `.slice(0, 3)` naturally renders
-              just that one card and the "Show N More" disclosure below
-              never appears (length > 3 is false), so Free's display stays
-              to that one card while the richer/full-list behavior stays
-              exactly Pro's. */}
-          {appearances.length > 0 && (
-            // mt-6 keeps a clear break from whatever renders above it (on
-            // mobile, Inquire itself, above this column — see the rail
-            // div's own note); desktop is unaffected (lg:mt-0, separated
-            // by the column layout instead). This is now the first
-            // section in this column, so it carries the "first item"
-            // spacing CTA row/Bulletin used to.
-            <section id="findmi-here" className="mt-6 scroll-mt-24 lg:mt-0">
-              <AppearanceFindMiHere
-                appearances={appearances}
-                business={{
-                  id: business.id,
-                  name: business.name,
-                  slug: business.slug,
-                  logo_url: business.logo_url,
-                  cover_image_url: business.cover_image_url,
-                  shareUrl: canonicalUrl,
-                }}
-                galleryImages={galleryImages}
-                analyticsContext={{ pageType: "business" }}
-              />
-            </section>
-          )}
-
-          {/* Items 2/4 — the up-to-3 custom CTAs and the optional Bulletin.
-              Free Tier Entitlement Reset V1 — both are core "distribute
-              your real presence" features now, public for both tiers; the
-              previous Pro-only gate is removed. Each wrapping div is only
-              rendered alongside real content (see hasCtas/hasBulletin
-              above), so a business with neither never gets a stray empty-
-              margin gap. BusinessCtaRow's own top margin only applies when
-              Findmi Here actually rendered above it; otherwise (no
-              upcoming appearances) it reverts to being this column's own
-              first item, exactly as before this pass. */}
-          {hasCtas && (
-            <div className={appearances.length > 0 ? "mt-8" : ""}>
-              <BusinessCtaRow business={business} />
-            </div>
-          )}
-          {hasBulletin && (
-            <div className="mt-8">
-              <Bulletin
-                label={business.bulletin_label?.trim() || "Announcement"}
-                heading={business.bulletin_heading}
-                body={business.bulletin_enabled ? business.bulletin_body : null}
-                url={business.bulletin_url && validateCustomDestination(business.bulletin_url).ok ? business.bulletin_url : null}
-              />
-            </div>
-          )}
-
-          {/* Products — hidden entirely with none, same rule as every other
-              optional section on this page. Item 6: now split by real
-              purchasable state (BusinessShopSection), and `business` is
-              passed through so ProductCard's Add to Cart gate checks the
-              real commerce_enabled flag instead of falling back to
-              purchasable alone. Free Tier Entitlement Reset V1 — `products`
-              is now fetched for every business (see above), so this
-              section shows real products for Free and Pro alike; only
-              existing moderation/marketplace-eligibility rules (untouched,
-              enforced inside getProductsForBusiness) still decide what a
-              "real" product is. */}
-          {products.length > 0 && (
-            <BusinessShopSection
-              businessName={business.name}
-              products={products}
-              business={{
-                name: business.name,
-                slug: business.slug,
-                logo_url: business.logo_url,
-                commerce_enabled: business.commerce_enabled,
-              }}
-            />
-          )}
-
-          {/* Gallery — Business Profile V2. A real business_images gallery
-              (new this pass, same normalized-child-rows pattern as
-              event_images), not a repeat of the cover/logo/product photos
-              already shown above. ImageGalleryStrip already hides itself
-              with fewer than 2 images (nothing to browse), so a business
-              with 0-1 gallery photos correctly shows nothing here. Same
-              shared lightbox (prev/next, keyboard, close) as everywhere
-              else it's used. Free Tier Entitlement Reset V1 — `galleryImages`
-              is now fetched for every business (see above), so this shows
-              a real gallery for Free and Pro alike; existing upload/
-              validation rules (unchanged) still decide what's in it. */}
-          {galleryImages.length > 1 && (
-            <section className="mt-8">
-              <h2 className="font-display text-lg font-bold tracking-tight text-ink">Gallery</h2>
-              <div className="mt-4">
-                <ImageGalleryStrip images={galleryImages} alt={business.name} />
-              </div>
-            </section>
-          )}
-
-          {/* Journal Distribution V1 — renders nothing when empty. */}
-          {journal.entries.length > 0 && (
-            <section className="mt-8">
-              <JournalCollection
-                heading={momentsHeading("business", business.name)}
-                entries={journal.entries}
-                total={journal.total}
-                seeAllHref={journalCollectionHref("business", business.slug)}
-              />
-            </section>
-          )}
-
-          {/* About/description — Free/Pro Entitlement pass: unlocked for
-              Free (basic-profile field, see CLAUDE.md's "FREE = PRESENCE +
-              SCHEDULE" principle). Unlike products/gallery/appearances/
-              people this comes straight off the already-fetched `business`
-              row rather than a conditionally-run query, so no plan check
-              is needed here at all now — it renders whenever set. */}
-          {business.description && (
-            <section className="mt-8">
-              <h2 className="font-display text-lg font-bold tracking-tight text-ink">About {business.name}</h2>
-              <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{business.description}</p>
-            </section>
-          )}
-
-          {/* People — editorial, human; single person gets a stronger
-              treatment, multiple people use a horizontal carousel. Never
-              rendered empty. Free Tier Entitlement Reset V1 — `people` is
-              now fetched for every business (see above); this was plan-
-              gated display only, no other privacy/approval rule involved
-              (getPeopleForBusiness itself is unchanged), so removing the
-              plan gate here is display-entitlement-only, exactly as
-              intended. */}
-          {people.length > 0 && (
-            <section className="mt-8">
-              <h2 className="font-display text-lg font-bold tracking-tight text-ink">{peopleHeading}</h2>
-              {people.length === 1 ? (
-                // Narrower on small screens — PersonCard's photo card
-                // keeps a fixed aspect ratio, so at the old max-w-xs
-                // (320px) this single-card treatment stood nearly full
-                // viewport width on mobile (~400px tall) for what's a
-                // supplementary bio, not the page's main content. Full
-                // max-w-xs comes back at sm: and up, unchanged from before.
-                <div className="mt-4 max-w-[220px] sm:max-w-xs">
-                  <PersonCard person={people[0]} role={people[0].role} />
-                </div>
-              ) : (
-                <div className="mt-4 -mx-4 flex gap-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {people.map((p) => (
-                    <div key={p.id} className="w-40 shrink-0">
-                      <PersonCard person={p} role={p.role} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-
-          {hasContactActions && (
-            <BusinessLinksRow
-              business={{ phone: contact.phone, email: contact.email }}
-              socialLinks={detailsSocialLinks}
-              businessId={business.id}
-              className="mt-8 lg:hidden"
-            />
-          )}
-
-          {/* Claim placement pass — moved off the top action area (never
-              competing with Inquire/Follow/Save there) into its own
-              compact card, immediately before "Discover More Like This".
-              Same reused flow/modal/eligibility logic as before (see
-              ClaimButton) — only the entry-point states (guest/none) pick
-              up this card's copy via variant="card"; a claim already in
-              progress still renders its own existing status card. */}
-          <div className="mt-8">
+          <div
+            className={`order-4 border-t border-black/[0.07] pt-7 empty:hidden lg:mt-6 lg:pb-0 lg:pt-5 ${discoverSection ? "pb-7" : "pb-0"}`}
+          >
+            {/* Claim placement — same reused flow/modal/eligibility (see
+                ClaimButton); renders nothing once claimed/managed. */}
             <ClaimButton type="business" slug={business.slug} entityName={business.name} variant="card" />
           </div>
-
-          {/* UI cleanup pass item 6: rebuilt on BusinessLogoCard (the same
-              cover+overlapping-logo brand-preview card Brands We Love
-              uses) instead of BusinessCard's dark PostCard poster style,
-              which read as visually disconnected from the rest of the
-              profile. */}
-          {alternatives.length > 0 && (
-            <section className="mt-8">
-              <h2 className="font-display text-lg font-bold tracking-tight text-ink">Discover More Like This</h2>
-              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {alternatives.map((alt) => (
-                  <BusinessLogoCard key={alt.id} business={alt} />
-                ))}
-              </div>
-            </section>
-          )}
+        </div>
+        <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
+          <div
+            className={`order-2 mt-6 divide-y divide-black/[0.07] border-t border-black/[0.07] [&>*]:py-7 lg:mt-0 lg:border-t-0 lg:[&>*:first-child]:pt-0 ${
+              discoverSection ? "" : "lg:[&>*:last-child]:pb-0"
+            }`}
+          >
+            {findmiHereSection}
+            {bulletinSection}
+            {productsSection}
+            {momentsSection}
+            {photosSection}
+            {aboutSection}
+            {peopleSection}
+          </div>
+          {discoverSection && <div className="order-5 border-t border-black/[0.07] pb-0 pt-7">{discoverSection}</div>}
         </div>
       </div>
     </div>
@@ -999,7 +690,7 @@ function BusinessCtaRow({ business }: { business: Business }) {
   // About" to the top of the main content column) — a border with nothing
   // above it in that column read as a stray floating line.
   return (
-    <section className="mb-8">
+    <div>
       <div className="flex flex-wrap gap-2">
         {ctas.map((cta, i) => (
           <a
@@ -1013,7 +704,7 @@ function BusinessCtaRow({ business }: { business: Business }) {
           </a>
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -1047,12 +738,12 @@ function BusinessLinksRow({
   business,
   socialLinks,
   businessId,
-  className,
+  className = "",
 }: {
   business: { phone: string | null; email: string | null };
   socialLinks: { href: string; label: string; icon: "instagram" | "globe" | "facebook" | "tiktok" }[];
   businessId: string;
-  className: string;
+  className?: string;
 }) {
   // Phone/email join the social links as the same compact pill, in one
   // horizontal wrapping row. Labels stay short ("Call"/"Email") so the
@@ -1180,16 +871,10 @@ function MailGlyph({ className }: { className?: string }) {
   );
 }
 
-function StorefrontGlyph({ className }: { className?: string }) {
+function CheckGlyph({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M4 9.5L5 4h14l1 5.5M4 9.5a2.2 2.2 0 004.3.7M4 9.5a2.2 2.2 0 004.3.7m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.3-.7M5 10v9.5a1 1 0 001 1h5v-6h2v6h5a1 1 0 001-1V10"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+      <path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

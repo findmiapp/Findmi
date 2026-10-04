@@ -1293,19 +1293,26 @@ export async function getPastAppearancesForBusiness(
   const nowIso = new Date().toISOString();
   const { data } = await supabase
     .from("appearances")
-    .select("*, event:events(slug)")
+    // Public Business V2 — the same event/location joins the upcoming query
+    // carries (name/cover for grouping by Event on the public Past list,
+    // location for its link). Additive select; the owner Past list just
+    // receives a few more fields.
+    .select("*, event:events(slug, name, cover_image_url), location:locations(id, name, slug)")
     .eq("business_id", businessId)
     .neq("status", "canceled")
     .lte("end_at", nowIso)
     .order("start_at", { ascending: false })
     .limit(limit * 2);
 
+  type JoinedEvent = { slug: string; name: string; cover_image_url: string | null };
+  type JoinedLocation = { id: string; name: string; slug: string };
   type RawRow = Appearance &
-    DedupableAppearance & { event: { slug: string } | { slug: string }[] | null };
+    DedupableAppearance & { event: JoinedEvent | JoinedEvent[] | null; location: JoinedLocation | JoinedLocation[] | null };
   const rows = ((data ?? []) as never[]).map((row: unknown) => {
     const r = row as RawRow;
     const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
-    return { ...r, event };
+    const location = Array.isArray(r.location) ? (r.location[0] ?? null) : r.location;
+    return { ...r, event, location };
   });
 
   return dedupeAppearances(rows).slice(0, limit);

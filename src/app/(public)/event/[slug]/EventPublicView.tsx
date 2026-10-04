@@ -4,6 +4,7 @@ import Image from "next/image";
 import JournalCollection from "@/components/journal/JournalCollection";
 import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import BrandHeading from "@/components/BrandHeading";
+import SectionHeading from "@/components/SectionHeading";
 import { EndedStatus, FactsBand, LiveStatus, WhenFact, WhereFact, factLinkClass } from "@/components/event/KeyFacts";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import Link from "next/link";
@@ -895,9 +896,6 @@ function formatDateWithYear(iso: string): string {
   return formatDateWithYearInZone(iso, APP_TIMEZONE);
 }
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="font-display text-section-title-lg font-bold text-primary">{children}</h2>;
-}
 
 function ExternalGlyph({ className }: { className?: string }) {
   return (

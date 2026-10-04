@@ -2,6 +2,7 @@
 
 import type { EventBusinessListing } from "@/lib/data";
 import EventBusinessRoster from "./EventBusinessRoster";
+import SectionHeading from "./SectionHeading";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 
 /** "Who You'll Find Here" for a recurring event — Recurring Events V2.
@@ -40,7 +41,7 @@ export default function EventOccurrenceBusinessRoster({
 
   return (
     <section id="lineup" className="scroll-mt-24">
-      <h2 className="font-display text-section-title-lg font-bold text-primary">Who You&rsquo;ll Find Here</h2>
+      <SectionHeading>Who You&rsquo;ll Find Here</SectionHeading>
       {(
         <>
           {/* Public Event V2.1 — one business is shown compactly (the card

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import SectionHeading from "./SectionHeading";
+import ViewToggle, { useStoredView } from "./ViewToggle";
 import type { EventBusinessListing, EventOccurrenceWithLocation } from "@/lib/data";
 import type { ResolvedForm } from "@/lib/forms";
 import { HorizontalScroller } from "./Section";
@@ -11,7 +13,6 @@ import type { EventLocationCardLocation } from "./EventLocationCard";
 
 const VISIBLE_COUNT = 10;
 const VIEW_STORAGE_KEY = "findmi:event-dates-view";
-type DatesView = "cards" | "list";
 
 /** Public Upcoming Dates Mobile UX pass — "View all N" lives as the FINAL
  * item inside the same horizontal scroll rail as the date cards, never a
@@ -79,26 +80,9 @@ export default function UpcomingDatesRail({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
-  // Public Event V2.1 — Cards / List preference. Per-device localStorage
-  // (same no-account pattern as Follow/Save); SSR and first paint are
-  // always Cards, the stored choice applies after mount, so it never
-  // blocks rendering. Read/write wrapped — storage can be unavailable.
-  const [view, setView] = useState<DatesView>("cards");
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem(VIEW_STORAGE_KEY) === "list") setView("list");
-    } catch {
-      // Storage unavailable — stay on the Cards default.
-    }
-  }, []);
-  function chooseView(next: DatesView) {
-    setView(next);
-    try {
-      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
-    } catch {
-      // Not persisted; the choice still applies for this visit.
-    }
-  }
+  // Cards / List preference — per device, Cards on first paint (shared
+  // ViewToggle / useStoredView).
+  const [view, chooseView] = useStoredView(VIEW_STORAGE_KEY);
 
   const hasMore = occurrences.length > VISIBLE_COUNT;
   const visible = expanded || !hasMore ? occurrences : occurrences.slice(0, VISIBLE_COUNT);
@@ -109,20 +93,13 @@ export default function UpcomingDatesRail({
     <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-section-title-lg font-bold text-primary">Upcoming Dates</h2>
+          <SectionHeading>Upcoming Dates</SectionHeading>
           <p className="mt-0.5 text-metadata text-muted">
             {count} upcoming date{count === 1 ? "" : "s"}
           </p>
         </div>
         {count > 1 && (
-          <div role="group" aria-label="Show dates as" className="flex shrink-0 items-center gap-0.5 rounded-full border border-black/[0.08] p-0.5">
-            <ViewToggleButton label="Cards" active={view === "cards"} onClick={() => chooseView("cards")}>
-              <GridGlyph className="h-4 w-4" />
-            </ViewToggleButton>
-            <ViewToggleButton label="List" active={view === "list"} onClick={() => chooseView("list")}>
-              <ListGlyph className="h-4 w-4" />
-            </ViewToggleButton>
-          </div>
+          <ViewToggle view={view} onChange={chooseView} label="Show dates as" />
         )}
       </div>
 
@@ -200,33 +177,6 @@ export default function UpcomingDatesRail({
   );
 }
 
-function ViewToggleButton({
-  label,
-  active,
-  onClick,
-  children,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={label}
-      title={label}
-      className={`flex h-8 w-9 items-center justify-center rounded-full transition ${
-        active ? "bg-findmi-50 text-findmi-700" : "text-ink/45 hover:text-primary"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 /** Public Event V2.1 — a dense LIST row for one date. Same selection
  * contract as EventOccurrenceCard (select + open the shared Quick View),
  * same date/time/venue derivation (describeOccurrence) — one schedule
@@ -278,28 +228,6 @@ function OccurrenceListRow({
 
 /** Clean 2x2 tiles: 5.5-unit squares on a 9.5-unit pitch, so even after
  * the 1.7 stroke there's a clear gap between tiles at 16px. */
-function GridGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <rect x="4.5" y="4.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7" />
-      <rect x="14" y="4.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7" />
-      <rect x="4.5" y="14" width="5.5" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7" />
-      <rect x="14" y="14" width="5.5" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
-function ListGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      <circle cx="5.25" cy="6.5" r="1.15" fill="currentColor" />
-      <circle cx="5.25" cy="12" r="1.15" fill="currentColor" />
-      <circle cx="5.25" cy="17.5" r="1.15" fill="currentColor" />
-    </svg>
-  );
-}
-
 function ArrowGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
