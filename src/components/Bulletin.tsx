@@ -77,17 +77,60 @@ export default function Bulletin({
   const external = url ? /^https:\/\//i.test(url) : false;
 
   const compact = variant === "compact";
-  const mainContent = (
-    <>
-      <MegaphoneGlyph className={compact ? "mt-0.5 h-4 w-4 shrink-0 self-start text-findmi-700" : "h-6 w-6 shrink-0 text-findmi-700"} />
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">{displayLabel}</p>
-        {heading?.trim() && <p className={`mt-0.5 font-bold text-ink ${compact ? "text-body" : "text-sm"}`}>{heading.trim()}</p>}
+  if (compact) {
+    // Event announcement strip: label row with a small icon; heading and a
+    // 2-line body (line breaks folded to spaces while collapsed so the
+    // preview stays two lines); Read more / Show less attached below.
+    const collapsedText = text.replace(/\s*\n+\s*/g, " ");
+    const body = (
+      <>
+        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-findmi-700">
+          <MegaphoneGlyph className="h-3.5 w-3.5 shrink-0" />
+          {displayLabel}
+        </p>
+        {heading?.trim() && <p className="mt-1 text-body font-bold leading-snug text-ink">{heading.trim()}</p>}
         <p
           ref={bodyRef}
-          className={`mt-0.5 whitespace-pre-line text-ink/75 ${compact ? "text-metadata leading-relaxed" : "text-sm"} ${
-            expanded ? "" : compact ? "line-clamp-2" : "line-clamp-3"
-          }`}
+          className={`mt-0.5 text-metadata leading-relaxed text-ink/75 ${expanded ? "whitespace-pre-line" : "line-clamp-2"}`}
+        >
+          {expanded ? text : collapsedText}
+        </p>
+      </>
+    );
+    const box = `rounded-xl border border-findmi/20 bg-findmi-50/60 px-3.5 py-3 ${url ? "transition hover:border-findmi/40" : ""}`;
+    return (
+      <div className={box}>
+        {url ? (
+          external ? (
+            <a href={url} target="_blank" rel="noreferrer" className="block">
+              {body}
+            </a>
+          ) : (
+            <Link href={url} className="block">
+              {body}
+            </Link>
+          )
+        ) : (
+          body
+        )}
+        {isClamped && (
+          <button type="button" onClick={() => setExpanded((v) => !v)} className="mt-1 text-metadata font-bold text-findmi-700 hover:underline">
+            {expanded ? "Show less" : "Read more"}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const mainContent = (
+    <>
+      <MegaphoneGlyph className="h-6 w-6 shrink-0 text-findmi-700" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">{displayLabel}</p>
+        {heading?.trim() && <p className="mt-0.5 text-sm font-bold text-ink">{heading.trim()}</p>}
+        <p
+          ref={bodyRef}
+          className={`mt-0.5 whitespace-pre-line text-sm text-ink/75 ${expanded ? "" : "line-clamp-3"}`}
         >
           {text}
         </p>
@@ -105,9 +148,9 @@ export default function Bulletin({
     <button
       type="button"
       onClick={() => setExpanded((v) => !v)}
-      className={`text-xs font-bold text-findmi-700 hover:underline ${compact ? "ml-7 mt-1" : "mt-1.5"}`}
+      className="mt-1.5 text-xs font-bold text-findmi-700 hover:underline"
     >
-      {expanded ? "Show less" : compact ? "Read more" : "View more"}
+      {expanded ? "Show less" : "View more"}
     </button>
   );
 

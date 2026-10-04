@@ -18,8 +18,11 @@ import type { EventJournalCtaState } from "@/app/(public)/event/[slug]/journalCa
 export default function DocumentExperienceCta({ eventSlug, state }: { eventSlug: string; state: EventJournalCtaState }) {
   const hasEntry = state.kind !== "none";
   const viewHref = state.kind === "published" ? `/journal/${state.id}` : state.kind === "draft" ? "/my-world/journal" : null;
+  // Stacked on phones (button, then the explanation, then the Journal
+  // link) so the copy never squeezes into a narrow column beside the
+  // button; side by side from sm up.
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+    <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
       <Link
         href={`/event/${eventSlug}/journal`}
         className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-findmi/40 bg-white px-3.5 text-button font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
@@ -29,17 +32,14 @@ export default function DocumentExperienceCta({ eventSlug, state }: { eventSlug:
         </svg>
         {hasEntry ? "Add more" : "Add yours"}
       </Link>
-      <p className="min-w-0 flex-1 basis-48 text-microcopy leading-relaxed text-subtle">
-        Share a moment from your experience. Saved to your Journal and may be featured here.
+      <div className="min-w-0 text-microcopy leading-relaxed text-subtle">
+        <p>Share a moment from your experience. Saved to your Journal and may be featured here.</p>
         {viewHref && (
-          <>
-            {" "}
-            <Link href={viewHref} className="font-semibold text-muted underline-offset-2 transition hover:text-primary hover:underline">
-              View your Journal
-            </Link>
-          </>
+          <Link href={viewHref} className="mt-0.5 inline-block font-semibold text-muted transition hover:text-primary">
+            View your Journal →
+          </Link>
         )}
-      </p>
+      </div>
     </div>
   );
 }

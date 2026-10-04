@@ -26,7 +26,8 @@ import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
-import EventScheduleCtas, { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS } from "@/components/EventScheduleCtas";
+import EventScheduleCtas from "@/components/EventScheduleCtas";
+import { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS, secondaryCtaContent } from "@/lib/event-actions";
 import EventUtilityActions, { UtilityActionGrid } from "@/components/EventUtilityActions";
 import EventScheduleSummary, { type HistoricalSchedule } from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
@@ -559,17 +560,22 @@ export async function EventPublicView({ slug }: { slug: string }) {
     <EventScheduleCtas pick="secondary" withPrimary={followCompact} {...ctaProps} />
   ) : (
     <>
-      {legacySecondary.map((c) => (
-        <FormAction
-          key={c.label}
-          href={c.href}
-          displayMode={c.displayMode}
-          label={c.label}
-          className={EVENT_SECONDARY_CTA_CLASS}
-          track={legacyTrack(c.label)}
-        />
-      ))}
       {legacyPrimary ? followCompact : null}
+      {legacySecondary.map((c) => {
+        const content = secondaryCtaContent(c.label);
+        return (
+          <span key={c.label} className="inline-flex items-center gap-1.5">
+            {content.prompt && <span className="text-metadata text-muted">{content.prompt}</span>}
+            <FormAction
+              href={c.href}
+              displayMode={c.displayMode}
+              label={content.text}
+              className={EVENT_SECONDARY_CTA_CLASS}
+              track={legacyTrack(c.label)}
+            />
+          </span>
+        );
+      })}
     </>
   );
 
@@ -579,7 +585,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <div className="flex min-w-0 flex-1 empty:hidden">{primarySlot}</div>
         {utilityIcons}
       </div>
-      <div className="flex flex-wrap items-center gap-2 empty:hidden">{secondaryRow}</div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 empty:hidden">{secondaryRow}</div>
     </div>
   );
 
@@ -811,8 +817,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // final content, not page padding + section padding + footer margin
   // stacked (≈156px before V2.1 Live Polish).
   // Top sequence (phones): Hero → Essentials (WHEN | WHERE) → Actions →
-  // Bulletin → What's Happening → Upcoming Dates → … Spacing, not a rule
-  // after every block; hairlines remain only between the lower sections.
+  // Bulletin → Upcoming Dates → What's Happening → … Spacing, not rules.
   // Desktop keeps Essentials + Actions in the sticky right rail.
   const body = (
     <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-4 sm:px-6 sm:pt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
@@ -821,12 +826,13 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <div className="order-2 mt-4 lg:mt-5">{actions}</div>
       </div>
       <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
-        {bulletinStrip && <div className="order-3 mt-3.5 lg:mt-0">{bulletinStrip}</div>}
-        {overviewSection && <div className={`order-4 mt-7 ${bulletinStrip ? "lg:mt-7" : "lg:mt-0"}`}>{overviewSection}</div>}
-        {/* divide-y only separates sections that actually render (client
-            sections that resolve to nothing leave no stray separator). */}
-        <div className="order-5 mt-7 divide-y divide-black/[0.07] [&>*]:py-7 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0 lg:mt-8">
+        {bulletinStrip && <div className="order-3 mt-3 lg:mt-0">{bulletinStrip}</div>}
+        {/* Sections are separated by spacing and typography, not a rule
+            after every block. Order: Upcoming Dates → What's Happening →
+            lineup → Moments → Photos → place → products → host & details. */}
+        <div className={`order-4 mt-8 flex flex-col gap-9 ${bulletinStrip ? "lg:mt-8" : "lg:mt-0"}`}>
           {datesSection}
+          {overviewSection}
           {lineupSection}
           {momentsSection}
           {mediaSection}

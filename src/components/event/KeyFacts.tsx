@@ -82,8 +82,7 @@ export function WhereFact({
           {name &&
             (href ? (
               <Link href={href} className="block break-words text-card-title font-bold text-primary transition hover:text-findmi-700">
-                {name}
-                <ChevronGlyph className="ml-0.5 inline h-3 w-3 -translate-y-px text-ink/30" />
+                <NameWithChevron name={name} />
               </Link>
             ) : (
               <p className="break-words text-card-title font-bold text-primary">{name}</p>
@@ -144,6 +143,23 @@ function PinGlyph({ className }: { className?: string }) {
       <path d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
       <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
     </svg>
+  );
+}
+
+/** Keeps the chevron glued to the name's last word so it never wraps onto
+ * a line by itself. */
+function NameWithChevron({ name }: { name: string }) {
+  const i = name.lastIndexOf(" ");
+  const head = i > 0 ? name.slice(0, i + 1) : "";
+  const tail = i > 0 ? name.slice(i + 1) : name;
+  return (
+    <>
+      {head}
+      <span className="whitespace-nowrap">
+        {tail}
+        <ChevronGlyph className="ml-0.5 inline h-3 w-3 -translate-y-px text-ink/30" />
+      </span>
+    </>
   );
 }
 

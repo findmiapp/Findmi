@@ -167,7 +167,7 @@ export default function EventOccurrenceCard({
       type="button"
       onClick={handleSelect}
       aria-pressed={isSelected}
-      className={`flex w-40 shrink-0 flex-col overflow-hidden rounded-2xl border text-left transition ${
+      className={`flex w-[148px] shrink-0 flex-col overflow-hidden rounded-2xl border text-left transition ${
         cancelled
           ? isSelected
             ? "border-red-300 bg-red-50/60"
@@ -177,22 +177,24 @@ export default function EventOccurrenceCard({
             : "border-black/5 bg-white hover:border-black/20"
       }`}
     >
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-mist">
+      <div className="relative aspect-[3/2] w-full overflow-hidden bg-mist">
         {imageUrl ? (
-          <SupabaseImage src={imageUrl} alt="" fill sizes="160px" className="object-cover" />
+          <SupabaseImage src={imageUrl} alt="" fill sizes="148px" className="object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-ink">
             <CalendarGlyph className="h-6 w-6 text-white/25" />
           </div>
         )}
         {live && (
-          <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
-            <LiveDot className="text-white" />
+          // Same restrained glass language as the hero's live indicator —
+          // the red lives in the dot.
+          <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full border border-white/15 bg-black/45 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
+            <LiveDot className="text-red-500" />
             Happening Now
           </span>
         )}
       </div>
-      <div className="flex flex-col gap-0.5 p-2.5">
+      <div className="flex flex-col gap-0.5 px-2.5 py-2">
         <p className="text-sm font-bold uppercase leading-tight text-ink">{dateLabel}</p>
         {cancelled ? (
           <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Cancelled</p>

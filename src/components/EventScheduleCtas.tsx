@@ -3,6 +3,7 @@
 import type { ResolvedForm } from "@/lib/forms";
 import { validateCustomDestination } from "@/lib/navigation";
 import FormAction from "./FormAction";
+import { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS, secondaryCtaContent } from "@/lib/event-actions";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 
 type ResolvedAction = Pick<ResolvedForm, "url" | "displayMode">;
@@ -47,13 +48,6 @@ function resolveAction(override: string | null | undefined, parent: ResolvedActi
  * in advance whether any Tier A action exists for the current selection.
  * flex-1 on every button is what lets 1, 2, or 3 of them split the row's
  * width evenly. */
-/** Event compact action hierarchy — shared with the single-date path in
- * EventPublicView so both render identical buttons. */
-export const EVENT_PRIMARY_CTA_CLASS =
-  "flex h-11 min-w-0 flex-1 items-center justify-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600";
-export const EVENT_SECONDARY_CTA_CLASS =
-  "inline-flex h-9 items-center justify-center rounded-lg border border-findmi/40 bg-white px-3.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50";
-
 export default function EventScheduleCtas({
   eventId,
   ticketsEnabled,
@@ -131,17 +125,22 @@ export default function EventScheduleCtas({
     if (rest.length === 0 && !(primaryIdx >= 0 && withPrimary)) return null;
     return (
       <>
-        {rest.map((a) => (
-          <FormAction
-            key={a.label}
-            href={a.action.url}
-            displayMode={a.action.displayMode}
-            label={a.label}
-            className={EVENT_SECONDARY_CTA_CLASS}
-            track={track(a.eventName)}
-          />
-        ))}
         {primaryIdx >= 0 ? withPrimary : null}
+        {rest.map((a) => {
+          const c = secondaryCtaContent(a.label);
+          return (
+            <span key={a.label} className="inline-flex items-center gap-1.5">
+              {c.prompt && <span className="text-metadata text-muted">{c.prompt}</span>}
+              <FormAction
+                href={a.action.url}
+                displayMode={a.action.displayMode}
+                label={c.text}
+                className={EVENT_SECONDARY_CTA_CLASS}
+                track={track(a.eventName)}
+              />
+            </span>
+          );
+        })}
       </>
     );
   }

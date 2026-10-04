@@ -7,6 +7,9 @@ import type { EventBusinessListing, EventOccurrenceWithLocation } from "@/lib/da
 import type { ResolvedForm } from "@/lib/forms";
 import { HorizontalScroller } from "./Section";
 import EventOccurrenceCard, { describeOccurrence } from "./EventOccurrenceCard";
+import SupabaseImage from "./SupabaseImage";
+import LiveDot from "./LiveDot";
+import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import EventOccurrenceQuickView from "./EventOccurrenceQuickView";
 import type { EventLocationCardLocation } from "./EventLocationCard";
@@ -88,6 +91,14 @@ export default function UpcomingDatesRail({
   const visible = expanded || !hasMore ? occurrences : occurrences.slice(0, VISIBLE_COUNT);
   const openOccurrence = occurrences.find((o) => o.id === openId) ?? null;
   const count = occurrences.length;
+  // When a date is live right now (already announced by the hero), the
+  // header counts the dates still to come — computed from the real
+  // schedule, never estimated.
+  const liveCount = occurrences.filter((o) => describeOccurrence(o, canonicalLocation).live).length;
+  const countLabel =
+    liveCount > 0 && count > liveCount
+      ? `${count - liveCount} more date${count - liveCount === 1 ? "" : "s"}`
+      : `${count} upcoming date${count === 1 ? "" : "s"}`;
 
   return (
     <>
@@ -95,7 +106,7 @@ export default function UpcomingDatesRail({
         <div className="min-w-0">
           <SectionHeading>Upcoming Dates</SectionHeading>
           <p className="mt-0.5 text-metadata text-muted">
-            {count} upcoming date{count === 1 ? "" : "s"}
+            {countLabel}
           </p>
         </div>
         {count > 1 && (
@@ -104,10 +115,16 @@ export default function UpcomingDatesRail({
       </div>
 
       {view === "list" ? (
-        <ul className="mt-3 divide-y divide-black/[0.06] border-y border-black/[0.06]">
+        <ul className="mt-3 flex flex-col gap-2">
           {visible.map((occ) => (
             <li key={occ.id}>
-              <OccurrenceListRow occurrence={occ} canonicalLocation={canonicalLocation} onOpenQuickView={setOpenId} />
+              <OccurrenceListRow
+                occurrence={occ}
+                canonicalLocation={canonicalLocation}
+                coverImageUrl={coverImageUrl}
+                galleryImages={galleryImages}
+                onOpenQuickView={setOpenId}
+              />
             </li>
           ))}
           {hasMore && !expanded && (
@@ -115,7 +132,7 @@ export default function UpcomingDatesRail({
               <button
                 type="button"
                 onClick={() => setExpanded(true)}
-                className="flex h-11 w-full items-center justify-center gap-1 text-metadata font-bold text-findmi-700 transition hover:bg-findmi-50/60"
+                className="flex h-10 w-full items-center justify-center gap-1 rounded-xl text-metadata font-bold text-findmi-700 transition hover:bg-findmi-50/60"
               >
                 View all {count} dates
               </button>
@@ -127,7 +144,7 @@ export default function UpcomingDatesRail({
         // tablets (first card starts exactly at the page gutter, snapping
         // back to it), and aligns with the column on desktop.
         <div className="-mx-4 mt-1 sm:-mx-6 lg:mx-0">
-          <HorizontalScroller className="snap-x snap-mandatory scroll-px-4 pt-2 sm:scroll-px-6 lg:scroll-px-0 lg:px-0">
+          <HorizontalScroller className="snap-x snap-mandatory scroll-px-4 pt-2 !gap-3 sm:scroll-px-6 lg:scroll-px-0 lg:px-0">
             {visible.map((occ) => (
               <div key={occ.id} className="shrink-0 snap-start">
                 <EventOccurrenceCard
@@ -181,18 +198,32 @@ export default function UpcomingDatesRail({
  * contract as EventOccurrenceCard (select + open the shared Quick View),
  * same date/time/venue derivation (describeOccurrence) — one schedule
  * system, two presentations. */
+/** A photographic LIST row for one date — thumbnail, date, time, place,
+ * chevron. Same selection contract as EventOccurrenceCard (select + open
+ * the shared Quick View) and the same date/time/venue derivation
+ * (describeOccurrence) and image resolution — one schedule, two views. */
 function OccurrenceListRow({
   occurrence,
   canonicalLocation,
+  coverImageUrl,
+  galleryImages,
   onOpenQuickView,
 }: {
   occurrence: EventOccurrenceWithLocation;
   canonicalLocation: EventLocationCardLocation | null;
+  coverImageUrl: string | null;
+  galleryImages: string[];
   onOpenQuickView: (id: string) => void;
 }) {
   const { selected, select } = useEventOccurrence();
   const isSelected = selected?.id === occurrence.id;
   const { cancelled, live, dateLabel, timeLabel, venueLabel } = describeOccurrence(occurrence, canonicalLocation);
+  const imageUrl = resolveAppearanceDisplayImage({
+    appearanceId: occurrence.id,
+    specificImageUrl: coverImageUrl,
+    galleryImages,
+    businessCoverUrl: null,
+  });
   return (
     <button
       type="button"
@@ -201,33 +232,49 @@ function OccurrenceListRow({
         select(occurrence.id);
         onOpenQuickView(occurrence.id);
       }}
-      className={`flex w-full items-center gap-3 px-1 py-2.5 text-left transition ${
-        isSelected ? "bg-findmi-50/70" : "hover:bg-black/[0.02]"
+      className={`flex w-full items-center gap-3 rounded-2xl border p-2 pr-3 text-left transition active:scale-[0.99] ${
+        isSelected ? "border-findmi/50 bg-findmi-50/60" : "border-black/[0.05] bg-white hover:border-black/15"
       } ${cancelled && !isSelected ? "opacity-60" : ""}`}
     >
-      <span className={`h-8 w-1 shrink-0 rounded-full ${isSelected ? "bg-findmi" : "bg-transparent"}`} aria-hidden="true" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-body font-bold text-primary">{dateLabel}</span>
-        <span className="block truncate text-metadata text-muted">
-          {[cancelled ? null : timeLabel, venueLabel].filter(Boolean).join(" · ")}
-        </span>
+      <span className="relative h-[68px] w-[84px] shrink-0 overflow-hidden rounded-xl bg-mist">
+        {imageUrl ? (
+          <SupabaseImage src={imageUrl} alt="" fill sizes="84px" className="object-cover" />
+        ) : (
+          <span className="block h-full w-full bg-ink" />
+        )}
       </span>
-      {cancelled ? (
-        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-red-600">Cancelled</span>
-      ) : live ? (
-        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-red-600">Now</span>
-      ) : isSelected ? (
-        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-findmi-700">Selected</span>
-      ) : null}
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink/25">
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-body font-bold uppercase text-primary">{dateLabel}</span>
+          {live && (
+            <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-red-600">
+              <LiveDot className="text-red-500" />
+              Live
+            </span>
+          )}
+        </span>
+        {cancelled ? (
+          <span className="mt-0.5 block text-metadata font-semibold uppercase tracking-wide text-red-600">Cancelled</span>
+        ) : (
+          <span className="mt-0.5 block truncate text-metadata text-secondary">{timeLabel}</span>
+        )}
+        {venueLabel && (
+          <span className="mt-0.5 flex items-center gap-1 text-metadata text-muted">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-3 w-3 shrink-0 text-findmi-600">
+              <path d="M12 21s7-6.2 7-11.5A7 7 0 105 9.5C5 14.8 12 21 12 21z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+              <circle cx="12" cy="9.5" r="2.2" stroke="currentColor" strokeWidth="2" />
+            </svg>
+            <span className="truncate">{venueLabel}</span>
+          </span>
+        )}
+      </span>
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-4 w-4 shrink-0 text-ink/25">
         <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
   );
 }
 
-/** Clean 2x2 tiles: 5.5-unit squares on a 9.5-unit pitch, so even after
- * the 1.7 stroke there's a clear gap between tiles at 16px. */
 function ArrowGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
