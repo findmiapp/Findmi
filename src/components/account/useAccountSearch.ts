@@ -17,6 +17,9 @@ export interface AccountSearchResult {
   address?: string | null;
   postal_code?: string | null;
   category?: string | null;
+  /** Locations only — false for a known-but-not-yet-public place (only ever
+   * returned with scope "place"). */
+  is_public?: boolean;
 }
 
 /** Debounced, cancellable search against /api/account/search — the
@@ -35,8 +38,14 @@ export interface AccountSearchResult {
  * Manager's own entity="locations" Appearance-venue picker — keeps its
  * exact original behavior (nothing fetched until a real query exists).
  * Never scoped by entity: it's the caller's choice, not the entity's. */
-export function useAccountSearch(entity: "businesses" | "locations", query: string, options?: { browseEmpty?: boolean }) {
+export function useAccountSearch(
+  entity: "businesses" | "locations",
+  query: string,
+  options?: { browseEmpty?: boolean; scope?: "place" }
+) {
   const browseEmpty = options?.browseEmpty ?? false;
+  // Find-or-Create V1 — "place" = linkable-place search (see the route).
+  const scope = options?.scope ?? null;
   const [results, setResults] = useState<AccountSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -50,7 +59,7 @@ export function useAccountSearch(entity: "businesses" | "locations", query: stri
     const controller = new AbortController();
     setLoading(true);
     const timer = setTimeout(() => {
-      fetch(`/api/account/search?entity=${entity}&q=${encodeURIComponent(q)}`, {
+      fetch(`/api/account/search?entity=${entity}&q=${encodeURIComponent(q)}${scope ? `&scope=${scope}` : ""}`, {
         signal: controller.signal,
       })
         .then((res) => res.json())
@@ -65,7 +74,7 @@ export function useAccountSearch(entity: "businesses" | "locations", query: stri
       clearTimeout(timer);
       controller.abort();
     };
-  }, [entity, query, browseEmpty]);
+  }, [entity, query, browseEmpty, scope]);
 
   return { results, loading };
 }

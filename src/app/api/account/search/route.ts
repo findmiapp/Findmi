@@ -63,10 +63,24 @@ export async function GET(request: NextRequest) {
     // View Location) the instant a Location is picked, with no second
     // request. Reuses this same existing route rather than a parallel
     // Location-search API.
+    //
+    // Find-or-Create V1 — two distinct questions, never mixed:
+    //   default      "which PUBLIC places match?" (published only) — used by
+    //                Journal pickers etc., unchanged apart from the fix below.
+    //   scope=place  "which places can I LINK to?" — the relationship picker
+    //                for Events / dates / Presence. Also includes known but
+    //                not-yet-public places (is_demo=true, e.g. one just added
+    //                inline), flagged is_public:false.
+    // Both now exclude archived/trashed rows explicitly: this route uses the
+    // service-role client, which bypasses the RLS policy that hides them.
+    // Consumer Discovery (lib/data.ts) is a separate query and is untouched.
+    const linkableScope = searchParams.get("scope") === "place";
     let query = admin
       .from("locations")
       .select("id, name, slug, city, state, address, postal_code, is_demo, category:categories(name)")
-      .eq("is_demo", false);
+      .is("archived_at", null)
+      .is("trashed_at", null);
+    if (!linkableScope) query = query.eq("is_demo", false);
     if (q) query = query.or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`);
     const { data } = await query.order("name").limit(20);
     return NextResponse.json({
@@ -82,6 +96,7 @@ export async function GET(request: NextRequest) {
           address: l.address,
           postal_code: l.postal_code,
           category: category?.name ?? null,
+          is_public: !l.is_demo,
         };
       }),
     });

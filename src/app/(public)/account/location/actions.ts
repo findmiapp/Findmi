@@ -274,51 +274,49 @@ export async function createMemberLocation(formData: FormData) {
 // createInlineAdminLocation, so EventLocationField can treat either
 // caller's result identically.
 
-/** "Add New Location" from inside the Event workflow (EventLocationField) —
- * a non-redirecting counterpart to createMemberLocation above, for a caller
- * that's a client component embedded in someone else's <form> (the Event's
- * own) rather than a page of its own, and needs the result back as data
- * (same "return {url?, error?} instead of redirecting" shape
- * uploadMemberLocationImage already established for exactly this reason).
- * Deliberately reuses createMemberLocation's own building blocks — the
- * same findLikelyDuplicateLocations check, the same create_owned_location
- * RPC (so the organizer becomes this Location's owner/manager, identical to
- * the standalone /account/location/new flow — see this action's own
- * OWNERSHIP note below), the same slug generation, the same friendly error
- * map — never a second, competing creation path. Intentionally does NOT
- * expose Market/Area here: the inline panel is a deliberately minimal
- * "establish the venue" form (see this pass's own spec), and
- * create_owned_location already treats Market as optional — the organizer
- * (or whoever ends up managing this Location) can set it later from
- * Location Manager, exactly like an event with no Market yet.
+/** Find-or-Create V1 — inline PLACE creation for relationship pickers
+ * (where an Event, an Event date or a Presence item is happening).
  *
- * OWNERSHIP — create_owned_location grants the creator 'owner' in
- * location_members atomically with the Location itself; there is no
- * "created-by-but-not-owner" variant in the current schema, and this
- * action deliberately does not invent one — it reuses the RPC exactly as
- * the standalone Location creation flow already does, so an organizer who
- * adds a venue inline gets the same free ownership/management rights
- * they'd get from /account/location/new. This is unchanged, existing
- * product behavior, not a new permission grant introduced by this pass.
+ * Product rule (see components/find-or-create/FindOrCreatePicker.tsx):
+ * find existing first; if it doesn't exist and the user may create it,
+ * collect the minimum details inline, create it, select it, continue.
  *
- * PUBLICATION — create_owned_location hardcodes is_demo=true (never
- * accepted as input), so a newly created Location starts exactly as
- * unpublished/hidden from public discovery as any other native Location —
- * this action does not, and could not, bypass that. The Event's own
- * relational reference (event_occurrences.location_id) is unaffected by
- * is_demo — see updateMemberEventLocation/createMemberEvent, which write
- * that relationship regardless of the target Location's publication
- * state — but public Event/Location rendering's own existing is_demo
- * checks continue to gate what's shown publicly, exactly as before. */
-export async function createInlineLocation(formData: FormData): Promise<CreateInlineLocationResult> {
+ * MEANING — "this physical place exists", nothing more. Unlike
+ * createMemberLocation / create_owned_location (which grant the creator
+ * location_members 'owner'), this NEVER grants location membership and
+ * NEVER creates a business_locations row: Lavazza adding "One Hotel"
+ * because it samples there must not make Lavazza (or its employee) the
+ * manager/operator of One Hotel. "One of our locations" (Business
+ * Locations) remains the separate flow that establishes management.
+ *
+ * LIFECYCLE — inserted unlisted (is_demo=true): known and immediately
+ * linkable through the place picker (scope=place search), not public
+ * Discovery. Written with the service-role client after the checks below;
+ * only name/slug are required columns (verified against production).
+ *
+ * AUTHORIZATION — a signed-in account that manages something on Findmi
+ * (a business, event or location membership): exactly the people whose
+ * workflows reach these pickers. Duplicate-safety: the conservative
+ * findLikelyDuplicateLocations check runs first unless the user has
+ * explicitly chosen "Add as a new place" (force=1). */
+export async function createInlinePlace(formData: FormData): Promise<CreateInlineLocationResult> {
   const sessionSupabase = await getServerSupabase();
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
-  if (!user) return { status: "error", error: "You need to be signed in to add a venue." };
+  if (!user) return { status: "error", error: "You need to be signed in to add a place." };
 
   const admin = getAdminSupabase();
   if (!admin) return { status: "error", error: "Server isn't configured." };
+
+  const [{ count: businessCount }, { count: eventCount }, { count: locationCount }] = await Promise.all([
+    admin.from("business_members").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    admin.from("event_members").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    admin.from("location_members").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+  ]);
+  if (!businessCount && !eventCount && !locationCount) {
+    return { status: "error", error: "Places can be added while managing a business or event." };
+  }
 
   const name = str(formData, "name");
   const address = str(formData, "address");
@@ -327,53 +325,45 @@ export async function createInlineLocation(formData: FormData): Promise<CreateIn
   const postalCode = str(formData, "postal_code");
   const force = str(formData, "force") === "1";
 
-  if (!name) return { status: "error", error: "Venue name is required." };
+  if (!name) return { status: "error", error: "Place name is required." };
+  // Minimum physical identity for V1: a street address with its city and
+  // state (ZIP optional) — enough to tell one place from another.
+  if (!address || !city || !state) {
+    return { status: "error", error: "Add the street address, city and state so this place can be identified." };
+  }
 
   if (!force) {
-    const duplicates = await findLikelyDuplicateLocations(admin, { name, address, city, state });
+    const duplicates = await findLikelyDuplicateLocations(admin, { name, address, city, state, postal_code: postalCode });
     if (duplicates.length > 0) return { status: "duplicates", duplicates };
   }
 
   const baseSlug = resolveSlugInput(null, name);
-  if (!baseSlug) return { status: "error", error: "Venue name is required to generate a URL." };
+  if (!baseSlug) return { status: "error", error: "Place name is required to generate a URL." };
   const slug = await ensureUniqueSlug(baseSlug, (candidate) => isSlugTaken("locations", candidate));
 
-  const { data: created, error } = await admin.rpc("create_owned_location", {
-    p_user_id: user.id,
-    p_name: name,
-    p_slug: slug,
-    p_address: address,
-    p_city: city,
-    p_state: state,
-  });
+  const { data: created, error } = await admin
+    .from("locations")
+    .insert({ name, slug, address, city, state, postal_code: postalCode, is_demo: true })
+    .select("id, slug, name, address, city, state, postal_code")
+    .single();
   if (error || !created) {
-    const message = CREATE_LOCATION_FRIENDLY_ERROR[error?.message ?? ""] ?? "Couldn't create your venue. Please try again.";
-    return { status: "error", error: message };
+    console.error("createInlinePlace failed:", error?.message);
+    return { status: "error", error: "Couldn't add this place. Please try again." };
   }
 
-  const locationRow = created as { id: string; slug: string; name: string; address: string | null; city: string | null; state: string | null };
-  // Best-effort follow-up, same non-rolling-back posture as
-  // createMemberLocation's own market_area_id follow-up above —
-  // create_owned_location has no p_postal_code parameter (the standalone
-  // /account/location/new form doesn't collect one either), so this is a
-  // plain, ordinary update to an already-nullable column, not a new RPC
-  // parameter or schema change.
-  if (postalCode) {
-    await admin.from("locations").update({ postal_code: postalCode }).eq("id", locationRow.id);
-  }
-
-  revalidatePath("/account");
+  const row = created as { id: string; slug: string; name: string; address: string | null; city: string | null; state: string | null; postal_code: string | null };
   return {
     status: "created",
     location: {
-      id: locationRow.id,
-      name: locationRow.name,
-      slug: locationRow.slug,
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
       category: null,
-      address: locationRow.address,
-      city: locationRow.city,
-      state: locationRow.state,
-      postal_code: postalCode || null,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      postal_code: row.postal_code,
+      is_public: false,
     },
   };
 }

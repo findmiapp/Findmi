@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import MemberImageField from "./MemberImageField";
-import { AccountRelationField, type AccountSearchResult } from "@/components/account/AccountRelationPicker";
+import type { AccountSearchResult } from "@/components/account/AccountRelationPicker";
+import PlaceField from "@/components/places/PlaceField";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -172,15 +173,13 @@ export default function AppearanceFieldsForm({
           is written into them); they're only visually hidden until the
           owner explicitly chooses manual entry, or when an unlinked
           record already has venue text to show. */}
-      <AccountRelationField
+      {/* Find-or-Create V1 — shared place picker: search linkable places,
+          or add a missing one inline (no management rights implied). */}
+      <PlaceField
         label="Where will you be?"
         name="location_id"
-        entity="locations"
         initial={defaultValues.location}
-        placeholder="Search Findmi places…"
-        clearLabel={null}
         hint="Pick the place so this shows up on its Findmi page too."
-        hideHintWhenSelected
         selectedBadge="Linked Findmi place"
         onSelect={handleLocationSelect}
       />
@@ -190,7 +189,7 @@ export default function AppearanceFieldsForm({
           onClick={() => setManualOpen(true)}
           className="w-fit text-xs font-semibold text-findmi-700 hover:underline"
         >
-          Can&rsquo;t find the place? Enter details manually
+          Or enter venue text only (no Findmi place)
         </button>
       )}
       <div className={`mt-1 flex-col gap-2 ${!linked && manualOpen ? "flex" : "hidden"}`}>
