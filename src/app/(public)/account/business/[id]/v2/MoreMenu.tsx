@@ -35,9 +35,23 @@ export default function MoreMenu({
       : []),
     { href: "/account/messages", label: "Inbox", description: "Messages and opportunities", icon: <InboxGlyph className="h-5 w-5" /> },
   ];
-  const account: MoreLink[] = [
+  // Business Account Correction Pass (#12) — this group used to be one
+  // "Account" bucket mixing Business-context destinations (Plan &
+  // settings, Referral program) with genuinely personal ones, which read
+  // as "which account am I even in?" Split by actual context instead:
+  // Business-plan destinations stay with Tools/Your business; everything
+  // under /account's shared personal shell (PersonalAppShell) — Personal
+  // account, Saved, Following, Your purchases, Your profile & sign out —
+  // moves to its own group. Schedule looks Business-ish by name, but its
+  // own page (account/schedule/page.tsx) renders inside PersonalAppShell
+  // and aggregates Business appearances + organized Events + managed
+  // Locations together — it's the unified personal view, not a
+  // Business-scoped one, so it belongs here too. No route/data change.
+  const businessPlan: MoreLink[] = [
     { href: `${basePath}?tab=settings`, label: "Plan & settings", description: "Findmi Pro, areas and business settings", icon: <GearGlyph className="h-5 w-5" /> },
     ...(showReferral ? [{ href: `${basePath}?tab=referral`, label: "Referral program", icon: <NavIcon name="person" className="h-5 w-5" /> }] : []),
+  ];
+  const yourAccount: MoreLink[] = [
     { href: "/account?view=personal", label: "Personal account", description: "Your plans, saves and follows", icon: <NavIcon name="home" className="h-5 w-5" /> },
     { href: "/account/schedule", label: "Schedule", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
     { href: "/account/saved", label: "Saved", icon: <NavIcon name="bookmark" className="h-5 w-5" /> },
@@ -51,7 +65,8 @@ export default function MoreMenu({
       <h1 className="font-display text-page-title-lg font-bold text-primary">More</h1>
       <MoreGroup title="Your business" links={yourBusiness} />
       <MoreGroup title="Tools" links={tools} />
-      <MoreGroup title="Account" links={account} />
+      <MoreGroup title="Business plan" links={businessPlan} />
+      <MoreGroup title="Your account" links={yourAccount} />
     </div>
   );
 }

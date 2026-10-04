@@ -83,7 +83,13 @@ export default function BusinessGeographyFields({
   return (
     <>
       <div>
-        <span className="mb-1.5 block text-sm font-medium text-ink">Business location</span>
+        {/* Business Account Correction Pass (#18) — "Business location"
+            read as the same concept as Findmi Here -> Locations (a real
+            Findmi Location relationship), which this isn't: it's just the
+            city/state this business is based in, feeding the Findmi area
+            match below. Copy-only fix; City/State fields and the area
+            matching logic above are unchanged. */}
+        <span className="mb-1.5 block text-sm font-medium text-ink">Where is your business based?</span>
         <div className="grid grid-cols-2 gap-4">
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-ink/60">City</span>

@@ -85,11 +85,24 @@ export default function SiteChrome({
     const hasPersonalShellTabBar =
       PERSONAL_SHELL_ROUTES.has(pathname) || pathname.startsWith("/account/orders/") || pathname.startsWith("/account/messages/");
     const hasFixedBottomNav = hasBusinessTabBar || hasPersonalShellTabBar;
+    // Business Account Correction Pass (#10) — the public About/For
+    // Business/Privacy/Terms footer was rendering inside BusinessAppShell
+    // destinations too, sitting right above the fixed bottom tab bar
+    // (just padded to clear it, never actually suppressed) — a stray
+    // piece of the public marketing site inside what's meant to be a
+    // focused app shell. Suppressed ONLY for the Business shell
+    // specifically (hasBusinessTabBar); Personal shell routes are
+    // untouched here — out of this pass's scope. The bottom clearance
+    // div stays either way so content never sits under the fixed nav.
     return (
       <>
         <OwnerHeader isAdmin={isAdmin} />
         <div className="flex-1">{children}</div>
-        <div className={hasFixedBottomNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" : undefined}>{footer}</div>
+        {hasBusinessTabBar ? (
+          <div className="pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" />
+        ) : (
+          <div className={hasFixedBottomNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" : undefined}>{footer}</div>
+        )}
       </>
     );
   }

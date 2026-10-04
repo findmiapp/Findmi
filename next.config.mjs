@@ -60,16 +60,23 @@ const nextConfig = {
       // next/font self-hosts Inter's woff2 files from this origin — no
       // external font host is ever requested at runtime.
       "font-src 'self'",
-      // Every fetch() this app's browser code makes (homepage search,
-      // homepage row/event filters, follow/follow-event) hits FindMi's own
-      // /api/* routes. Supabase, Stripe, and Open-Meteo (weather) are only
-      // ever called server-side (Server Components/Actions/route
-      // handlers) — never from the browser — so they need no connect-src
-      // entry. Stripe Checkout is a full top-level redirect
+      // Most fetch() calls this app's browser code makes (homepage search,
+      // homepage row/event filters, follow/follow-event) hit FindMi's own
+      // /api/* routes. Stripe and Open-Meteo (weather) are only ever called
+      // server-side (Server Components/Actions/route handlers) — never
+      // from the browser. Stripe Checkout is a full top-level redirect
       // (`window.location.href = result.url` in cart/page.tsx and
       // membership checkout), not a fetch, so it isn't governed by
-      // connect-src either.
-      "connect-src 'self'",
+      // connect-src either. Journal Photo Upload V3 is the one exception:
+      // useJournalPhotoUpload.ts uploads straight from the browser to
+      // Supabase Storage via a signed URL (getBrowserSupabase() +
+      // uploadToSignedUrl), so https://*.supabase.co must be allowed here
+      // too — the same host img-src already allow-lists below. Without
+      // this, the browser silently blocks that PUT before it ever leaves
+      // the device: the signed-URL mint still succeeds server-side (it's a
+      // Server Action), so every photo looked "authorized" but the actual
+      // upload never happened, landing every tile straight in Retry.
+      "connect-src 'self' https://*.supabase.co",
       // Tally forms are embedded via <iframe> in two places (FormAction
       // .tsx for business/event/product form assignments, OnboardingCta
       // .tsx for the paid-membership "Build My Profile" step) — the only

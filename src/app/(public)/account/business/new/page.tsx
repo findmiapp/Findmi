@@ -382,12 +382,13 @@ export default async function AddBusinessPage({
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Business
           </button>
-          {!hasInvite && (
-            <p className="text-center text-metadata text-subtle">
-              Free plan requires no payment. Choosing a paid plan creates your business first, then takes you to
-              choose Pro or Managed Pro, monthly or annual.
-            </p>
-          )}
+          {/* Add Business Copy Compression (#19) — this restated, word for
+              word, what the Free/Pro cards directly above the submit
+              button already say ("No credit card required" / "Create
+              your business first, then choose Pro or Managed Pro with
+              monthly or annual billing"). Dropped as a pure duplicate;
+              neither card's own copy, nor the plan_choice radio/pricing
+              logic, changed. */}
         </form>
       </div>
     </div>
@@ -514,7 +515,7 @@ function FreePlanOption({ dominant }: { dominant: boolean }) {
       <ul className="flex flex-col gap-1.5 text-metadata text-muted">
         <PlanBullet>Business profile, products &amp; gallery</PlanBullet>
         <PlanBullet>Contact info &amp; social links</PlanBullet>
-        <PlanBullet>Complete upcoming appearance schedule</PlanBullet>
+        <PlanBullet>Complete upcoming schedule</PlanBullet>
         <PlanBullet>Unlimited relevant markets</PlanBullet>
         <PlanBullet>Findmi search &amp; discovery</PlanBullet>
       </ul>

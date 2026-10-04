@@ -1535,9 +1535,17 @@ export default async function ManageBusinessPage({
             Location's own manager page, same as before this pass. */}
         {activeTab === "qr" && (
           <div className="flex flex-col gap-4 lg:max-w-2xl">
+            <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">QR Campaigns</h1>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-body text-muted">
-                Create and manage trackable QR codes for your business, products, appearances, events and locations.
+                {/* Legacy "Appearance" Copy Pass (#20) — "appearances" is
+                    internal Admin/DB ontology, not a term a business owner
+                    uses; rewritten to the contextual language Findmi Here
+                    already established (where you show up) + events and
+                    locations. No change to the QR campaign model itself —
+                    a campaign can still target a business, product,
+                    Appearance, event, or location row exactly as before. */}
+                Create and manage trackable QR codes for your business, products, where you show up, events and locations.
               </p>
               {/* QR Campaigns V2 Pass 2 — the polished Campaign Manager
                   (lifecycle, independent destination, Intelligent Creator)
@@ -1594,6 +1602,7 @@ export default async function ManageBusinessPage({
         {/* ── Profile ──────────────────────────────────────────────── */}
         {activeTab === "profile" && (
           <div className="flex flex-col gap-4 lg:max-w-5xl">
+          <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Business Profile</h1>
           <Panel title="Business Identity" meta={<span className="text-metadata text-subtle">What customers see</span>}>
             <form action={profileAction} className="flex flex-col gap-4">
               <label className="block">
@@ -1791,12 +1800,22 @@ export default async function ManageBusinessPage({
                 </div>
 
                 <p className="mt-2 text-label font-bold uppercase text-subtle">Announcement</p>
-                <div className="rounded-2xl border border-black/10 p-4">
+                {/* Announcement Form Consistency (#16) — when "Show
+                    announcement" is off, the fields below used to look
+                    just as active/editable as when it's on, which read as
+                    "this is permanently on." Pure-CSS has-[] de-emphasis
+                    (same :has(:checked) idiom this page already uses on
+                    the plan-chooser cards) dims + disables pointer events
+                    on the fields instead — no JS, no new client
+                    component, and the fields stay in the form submission
+                    (never `disabled`) so a draft value typed before
+                    toggling off isn't silently dropped on Save. */}
+                <div className="rounded-2xl border border-black/10 p-4 has-[input[name=bulletin_enabled]:not(:checked)]:[&_.announcement-fields]:pointer-events-none has-[input[name=bulletin_enabled]:not(:checked)]:[&_.announcement-fields]:opacity-40">
                   <label className="flex items-center gap-2 text-body font-medium text-primary">
                     <input type="checkbox" name="bulletin_enabled" defaultChecked={business.bulletin_enabled} />
                     Show announcement
                   </label>
-                  <div className="mt-3 flex flex-col gap-3">
+                  <div className="announcement-fields mt-3 flex flex-col gap-3 transition-opacity">
                     <label className="block">
                       <span className="mb-1.5 block text-body font-medium text-primary">Announcement label</span>
                       <input
@@ -1893,6 +1912,11 @@ export default async function ManageBusinessPage({
             completely unchanged, reused as-is for both tiers. */}
         {activeTab === "products" && (
             <div className="flex flex-col gap-4 lg:max-w-5xl">
+              {/* Missing Page Hierarchy fix (#8) — same page-title style
+                  PerformanceTab.tsx already established for this Business
+                  Manager, so Products/QR/Profile read as distinct
+                  destinations instead of starting mid-content. */}
+              <h1 className="font-display text-page-title sm:text-page-title-lg font-bold text-primary">Products</h1>
               <div className="flex items-center justify-between gap-3">
                 <p className="text-body text-muted">
                   {products.length > 0 ? `${products.length} in your catalog` : "Show customers what you make, sell or offer."}
@@ -2664,31 +2688,16 @@ export default async function ManageBusinessPage({
             </div>
           )}
 
-          {/* ── More — Customer Inquiries still lives at its own existing
-              key (Section 8: preserved exactly, just no longer a primary
-              pill); Event Invitations & Applications now links straight to
-              the canonical Inbox's Opportunities filter (Unified Inbox
-              V3 — the old in-tab copy was a duplicate, see the redirect
-              above). ── */}
-          <div className={cardClass}>
-            <p className="text-label font-bold uppercase text-subtle">More</p>
-            <div className="mt-3 flex flex-col gap-2">
-              <Link
-                href={`${basePath}?tab=inquiries`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-body font-semibold text-primary transition hover:border-black/20"
-              >
-                Customer Inquiries
-                <span className="shrink-0 text-ink/30">→</span>
-              </Link>
-              <Link
-                href="/account/messages?filter=opportunities"
-                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-3.5 py-3 text-body font-semibold text-primary transition hover:border-black/20"
-              >
-                Event Invitations &amp; Applications
-                <span className="shrink-0 text-ink/30">→</span>
-              </Link>
-            </div>
-          </div>
+          {/* Business Account Correction Pass (#13) — the "More" card that
+              used to live here (Customer Inquiries / Event Invitations &
+              Applications links) is removed: both are now one tap away
+              from every Business V2 screen via the bottom nav's own More
+              menu (Tools: Customer inquiries, Inbox — see MoreMenu.tsx),
+              so this was a duplicate nav path, not a second real feature.
+              Neither underlying page/tab/route was touched — Customer
+              Inquiries still lives at its own ?tab=inquiries key exactly
+              as before; this only removes the redundant shortcut so Plan
+              & Settings stays focused on plan/business settings. */}
           </div>
         )}
 

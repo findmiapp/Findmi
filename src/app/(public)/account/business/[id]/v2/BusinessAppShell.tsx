@@ -135,14 +135,21 @@ export default function BusinessAppShell({
                   key={item.section}
                   href={`${basePath}?tab=${item.tab}`}
                   aria-current={active ? "page" : undefined}
-                  className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 pt-1.5 text-[10.5px] font-semibold leading-tight transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40 ${
+                  className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-0.5 pt-1.5 text-[10.5px] font-semibold leading-tight transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-findmi/40 ${
                     active ? "text-accent" : "text-ink/45 hover:text-ink/70"
                   }`}
                 >
                   <span className={`flex h-7 w-12 items-center justify-center rounded-full transition ${active ? "bg-findmi-50" : ""}`}>
                     {item.icon}
                   </span>
-                  <span className="max-w-full truncate">{item.label}</span>
+                  {/* Mobile nav label truncation fix — "Opportunities" (and
+                      any other label that doesn't quite fit a 1/5-width
+                      column at 360-412px) wraps onto a controlled second
+                      line instead of being cut to "Opportuniti…" by
+                      `truncate`. min-h-[56px] above is a floor, not a cap,
+                      so a wrapped 2-line label just grows the bar slightly
+                      rather than clipping — labels are never renamed. */}
+                  <span className="max-w-full text-center leading-[1.15]">{item.label}</span>
                 </Link>
               );
             })}

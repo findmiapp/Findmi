@@ -8,6 +8,7 @@ import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
 import { requireBusinessMember } from "@/lib/permissions";
 import { createMemberEvent } from "../actions";
+import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 
 /** Multi-Entity Self-Service V1, Stage 3 — Create Event From Venue. A
  * Location owner's "+ Add an Event Here" link (see the Location Manager's
@@ -143,12 +144,40 @@ export default async function AddEventPage({
               Once you have Organizer Access, come back here to add your event at {locationHint.name} directly.
             </p>
           )}
-          <Link href="/account/business/new" className={`mt-5 ${primaryButtonClass}`}>
-            Add a Business
-          </Link>
-          <Link href="/join/business" className="mt-3 flex h-11 w-full items-center justify-center text-metadata font-semibold text-muted transition hover:text-primary">
-            Learn about Findmi Pro
-          </Link>
+          {/* "Host Something" CTA fix — a signed-in member who got here
+              with an existing business context (the "+ Add → Host
+              something" flow on that Business's own Findmi Here tab)
+              needs to upgrade THIS business, not be sent to create a new
+              one. Same /upgrade/pro?business= handoff + Pro Invite
+              redemption Plan & Status already uses on the Business
+              Manager (see account/business/[id]/page.tsx) — no new
+              billing/entitlement architecture, just routed in context. A
+              visitor with no business context at all (reached /account/
+              event/new directly) still sees the original Add a Business
+              path, unchanged. */}
+          {businessContext ? (
+            <>
+              <Link href={`/upgrade/pro?business=${businessContext.id}`} className={`mt-5 ${primaryButtonClass}`}>
+                Upgrade {businessContext.name} to Pro
+              </Link>
+              <div className="mt-3">
+                <ProInviteCodeEntry
+                  returnTo={`/account/event/new?business_id=${businessContext.id}`}
+                  businessId={businessContext.id}
+                  heading="Have a Pro Invite or Promo Code?"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <Link href="/account/business/new" className={`mt-5 ${primaryButtonClass}`}>
+                Add a Business
+              </Link>
+              <Link href="/join/business" className="mt-3 flex h-11 w-full items-center justify-center text-metadata font-semibold text-muted transition hover:text-primary">
+                Learn about Findmi Pro
+              </Link>
+            </>
+          )}
         </div>
       </div>
     );

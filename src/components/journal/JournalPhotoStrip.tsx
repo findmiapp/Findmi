@@ -182,19 +182,28 @@ export default function JournalPhotoStrip({
         </p>
       )}
 
-      {/* Upload Performance V3.1 — temporary QA readout, editor-only, never
-          shown on the public Journal page. No signed URLs/tokens/raw
-          errors — just counts and durations. Delete this block (and
-          batchPerf/dismissBatchPerf) once upload performance is confirmed
-          fixed by real-device QA. Spans are earliest-start -> latest-end
-          per stage across the whole batch (see useJournalPhotoUpload's own
-          note on why this replaced a simpler but misleading single-mark
-          approach) — Prep/Upload/Finalize can and do overlap, so they
-          won't sum to Total. legacyCount > 0 means that many photos went
-          through the slow per-photo HEIC Server Action path instead of
-          direct-to-Storage — the single most useful signal here if a
-          batch is unexpectedly slow. */}
-      {batchPerf && (
+      {/* Upload Performance V3.1 — temporary QA readout, dev-only. No
+          signed URLs/tokens/raw errors — just counts and durations. Delete
+          this block (and batchPerf/dismissBatchPerf) once upload
+          performance is confirmed fixed by real-device QA. Spans are
+          earliest-start -> latest-end per stage across the whole batch
+          (see useJournalPhotoUpload's own note on why this replaced a
+          simpler but misleading single-mark approach) — Prep/Upload/
+          Finalize can and do overlap, so they won't sum to Total.
+          legacyCount > 0 means that many photos went through the slow
+          per-photo HEIC Server Action path instead of direct-to-Storage —
+          the single most useful signal here if a batch is unexpectedly
+          slow.
+          Debug/QA leakage fix — "editor-only" was only ever an intent, not
+          an actual gate: every real owner editing their own entry (Add
+          Moment included) is "the editor," so this rendered for ordinary
+          production users on every real device, which is exactly how the
+          literal "QA — 3 photos · Total 0.7s · ..." string ended up
+          visible during live mobile QA. process.env.NODE_ENV is the same
+          gating pattern already used elsewhere in this codebase (see
+          lib/admin/auth.ts, lib/analytics/session.ts) — this stays fully
+          visible in local/dev, never renders in the production build. */}
+      {batchPerf && process.env.NODE_ENV !== "production" && (
         <div className="flex items-start justify-between gap-2 rounded-lg border border-dashed border-black/10 bg-mist px-2.5 py-1.5 text-[11px] text-ink/60">
           <span>
             QA — {batchPerf.count} photo{batchPerf.count === 1 ? "" : "s"} · Total {(batchPerf.totalMs / 1000).toFixed(1)}s · Preview{" "}
