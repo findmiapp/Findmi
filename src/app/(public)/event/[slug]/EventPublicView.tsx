@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 import Image from "next/image";
-import JournalCollection from "@/components/journal/JournalCollection";
 import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import BrandHeading from "@/components/BrandHeading";
 import SectionHeading from "@/components/SectionHeading";
 import { EndedStatus, FactsBand, WhenFact, WhereFact } from "@/components/event/KeyFacts";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
+import EventMomentsGrid from "@/components/event/EventMomentsGrid";
+import EventGalleryMosaic from "@/components/event/EventGalleryMosaic";
+import EventLocationFeature from "@/components/event/EventLocationFeature";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
-import DocumentExperienceCta from "@/components/journal/DocumentExperienceCta";
-import { getEventJournalCtaState } from "./journalCaptureActions";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
 import ClaimButton from "@/components/ClaimButton";
 import MessageButton from "@/components/MessageButton";
@@ -46,6 +46,7 @@ import {
   getEventBySlug,
   getEventImages,
   getEventProducts,
+  getLocationPlaceContext,
   getOccurrenceBusinessRosters,
   isPrimaryDateId,
 } from "@/lib/data";
@@ -152,7 +153,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, journalCtaState, journal] =
+  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, journal] =
     await Promise.all([
       getBusinessesForEvent(event.id),
       attachEventCategories([event]),
@@ -176,16 +177,13 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // own comment for why this second signal is needed alongside
       // event_businesses.featured below.
       resolveAppearanceHostBusiness(event.id),
-      // Event Action UX + Universal Journal CTA pass — drives the
-      // Journal CTA's own copy for the current viewer (none/draft/
-      // published); a signed-out visitor always resolves to "none" (see
-      // getEventJournalCtaState's own comment). The CTA itself always
-      // renders regardless of this value — only its copy changes.
-      getEventJournalCtaState(event.id),
       // Journal Distribution V1 — public experiences connected to this
       // Event OR to any of its dates (occurrence -> Event rollup at read
-      // time), de-duplicated.
-      getPublicJournalCollection({ subjectType: "event", subjectId: event.id, limit: 6, withCount: true }),
+      // time), de-duplicated. Public Event V2 Next Body pass — raised from
+      // 6 to a still-bounded 12 so Findmi Moments' incremental "show 3
+      // more" reveal has real local batches to expand through before
+      // falling back to "View all Moments" (see EventMomentsGrid).
+      getPublicJournalCollection({ subjectType: "event", subjectId: event.id, limit: 12, withCount: true }),
     ]);
   // Multi-Date Business Participation Pass 2B — Primary Date Integrity.
   // Only ever synthesizes/includes the Primary Date entry when this Event
@@ -208,6 +206,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // occurrence(s) have no linked Location, falls back to matchedLocation
   // (unchanged legacy behavior — never broken for existing events).
   const canonicalLocation = upcomingOccurrences.find((o) => o.location)?.location ?? matchedLocation;
+  // Public Event V2 Next Body pass — the Location feature strip's own
+  // physical-context line ("Inside X"), same RPC LocationPublicView already
+  // uses. Zero-cost (no query at all) for a Location with no parent place,
+  // and null entirely when the Event has no linked Location.
+  const locationPlaceContext = canonicalLocation ? await getLocationPlaceContext(canonicalLocation) : null;
   // Depends on upcomingOccurrences' own ids, so this can't join the
   // Promise.all above — one extra query, only for a recurring event, for
   // every one of its upcoming occurrences' rosters at once (never one
@@ -632,47 +635,104 @@ export async function EventPublicView({ slug }: { slug: string }) {
     <EventOccurrenceBusinessRoster rostersByOccurrence={rostersByOccurrence} eventName={event.name} />
   ) : businesses.length > 0 ? (
     <section id="lineup" className="scroll-mt-24">
-      <SectionHeading>Who You&rsquo;ll Find Here</SectionHeading>
-      {businesses.length > 1 && <p className="mt-0.5 text-metadata text-muted">{businesses.length} businesses confirmed</p>}
+      <BrandHeading accent="Here" />
+      <p className="mt-1.5 max-w-xl text-metadata text-muted">Discover the brands, people and organizations featured at this event.</p>
+      {businesses.length > 1 && <p className="mt-2 text-metadata text-muted">{businesses.length} businesses confirmed</p>}
       <EventBusinessRoster businesses={businesses} eventName={event.name} />
     </section>
   ) : null;
 
-  // Findmi Moments — compact (one Moment → a landscape feature row;
-  // several → a compact rail), with the contribution row inside it. The
-  // section always carries the Add yours / Add more entry point, so the
-  // capability never disappears when there are no public Moments yet.
+  // Findmi Moments — heading + compact "+ Add Moment" pill at its right,
+  // the dynamic host-attribution line, an incrementally-revealed grid
+  // (EventMomentsGrid — never more than two visual rows up front), and a
+  // quiet "View your Journal" link. The section always renders (heading +
+  // pill + copy), so the capability never disappears when there are no
+  // public Moments yet — only the grid itself is conditional.
+  const journalHostCopy = hostBusiness
+    ? `${hostBusiness.name} may feature your moments here or on their page.`
+    : "Your moments may be featured here.";
   const momentsSection = (
     <section id="moments" className="scroll-mt-24">
       <BrandHeading
         accent="Moments"
         trailing={
-          journal.total != null && journal.total > journal.entries.length ? (
-            <Link href={journalCollectionHref("event", event.slug)} className="text-metadata font-semibold text-findmi-700 hover:underline">
-              See all {journal.total}
-            </Link>
-          ) : null
+          <Link
+            href={`/event/${event.slug}/journal`}
+            className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
+          >
+            + Add Moment
+          </Link>
         }
       />
+      <p className="mt-1.5 max-w-xl text-metadata text-muted">Share moments from your experience that will appear in your Journal.</p>
+      <p className="mt-0.5 max-w-xl text-metadata italic text-subtle">{journalHostCopy}</p>
       {journal.entries.length > 0 && (
-        <div className="mt-3">
-          <JournalCollection entries={journal.entries} total={journal.total} layout="compact" />
+        <div className="mt-4">
+          <EventMomentsGrid entries={journal.entries} total={journal.total} viewAllHref={journalCollectionHref("event", event.slug)} />
         </div>
       )}
-      <div className="mt-3">
-        <DocumentExperienceCta eventSlug={event.slug} state={journalCtaState} />
+      <div className="mt-4">
+        <Link href="/my-world/journal" className="inline-flex items-center gap-1 text-metadata font-semibold text-muted transition hover:text-primary">
+          View your Journal →
+        </Link>
       </div>
     </section>
   );
 
-  // Photos — the event's own gallery (distinct from Moments).
+  // Gallery / Photos — the event's own editorial gallery (event_images,
+  // kind='event'), distinct from Findmi Moments (community Journal
+  // content). A curated mosaic (EventGalleryMosaic), never a full dump.
   const mediaSection =
     images.gallery.length > 0 ? (
       <section id="media" className="scroll-mt-24">
-        <SectionHeading>Photos</SectionHeading>
+        <SectionHeading>Gallery</SectionHeading>
         <div className="mt-3">
-          <ImageGalleryStrip images={images.gallery} alt={event.name} unoptimized minCount={1} />
+          <EventGalleryMosaic images={images.gallery} alt={event.name} />
         </div>
+      </section>
+    ) : null;
+
+  // Location feature — a compact destination strip for the Event's real
+  // linked Location, between Gallery/Photos and Hosted By. Only when a
+  // genuine Location relationship exists (see canonicalLocation above) —
+  // never fabricated from plain venue text.
+  const locationFeatureSection = canonicalLocation ? (
+    <EventLocationFeature location={canonicalLocation} placeContext={locationPlaceContext} />
+  ) : null;
+
+  // Hosted By — organizer identity, extracted from the old details block
+  // so it sits in its own place in the storytelling order (after Location,
+  // before the remaining secondary/details content). Never conflated with
+  // Findmi Here (participants) or Location (physical place) — see each
+  // section's own note.
+  const hostedBySection =
+    hostBusiness || hasOrganizer ? (
+      <section id="hosted-by" className="scroll-mt-24">
+        {hostBusiness ? (
+          <>
+            <p className="text-label font-bold uppercase text-subtle">Hosted By</p>
+            <Link href={`/business/${hostBusiness.slug}`} className="group mt-2 flex items-center gap-3">
+              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-black/5 ring-1 ring-black/[0.06]">
+                {hostBusiness.logo_url ? (
+                  <Image src={hostBusiness.logo_url} alt="" fill unoptimized sizes="48px" className="object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm font-bold uppercase text-ink/30">
+                    {hostBusiness.name.charAt(0)}
+                  </div>
+                )}
+              </div>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-card-title-lg font-bold text-primary group-hover:text-findmi-700">{hostBusiness.name}</span>
+                <span className="text-metadata font-semibold text-findmi-700">View brand ›</span>
+              </span>
+            </Link>
+          </>
+        ) : (
+          <>
+            <p className="text-label font-bold uppercase text-subtle">Run By</p>
+            <p className="mt-1 text-card-title-lg font-bold text-primary">{event.organizer_name}</p>
+          </>
+        )}
       </section>
     ) : null;
 
@@ -760,38 +820,14 @@ export async function EventPublicView({ slug }: { slug: string }) {
       </div>
     ) : null;
 
+  // Public Event V2 Next Body pass — Hosted By moved to its own section
+  // (hostedBySection, above); this is just the remaining quiet contact
+  // links + Claim, now the last stop in "remaining secondary content".
   const detailsSection = (
     <section id="details" className="scroll-mt-24">
-      {hostBusiness ? (
-        <>
-          <p className="text-label font-bold uppercase text-subtle">Hosted By</p>
-          <Link href={`/business/${hostBusiness.slug}`} className="group mt-2 flex items-center gap-3">
-            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-black/5 ring-1 ring-black/[0.06]">
-              {hostBusiness.logo_url ? (
-                <Image src={hostBusiness.logo_url} alt="" fill unoptimized sizes="48px" className="object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-bold uppercase text-ink/30">
-                  {hostBusiness.name.charAt(0)}
-                </div>
-              )}
-            </div>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-card-title-lg font-bold text-primary group-hover:text-findmi-700">{hostBusiness.name}</span>
-              <span className="text-metadata font-semibold text-findmi-700">View brand ›</span>
-            </span>
-          </Link>
-        </>
-      ) : (
-        hasOrganizer && (
-          <>
-            <p className="text-label font-bold uppercase text-subtle">Run By</p>
-            <p className="mt-1 text-card-title-lg font-bold text-primary">{event.organizer_name}</p>
-          </>
-        )
-      )}
-      {contactLinks && <div className={hostBusiness || hasOrganizer ? "mt-5" : ""}>{contactLinks}</div>}
+      {contactLinks}
       {/* Claim foundation pass — deliberately last, small, and muted. */}
-      <div className={hostBusiness || hasOrganizer || contactLinks ? "mt-6" : ""}>
+      <div className={contactLinks ? "mt-6" : ""}>
         <ClaimButton type="event" slug={event.slug} entityName={event.name} />
       </div>
     </section>
@@ -818,14 +854,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
       <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
         {bulletinStrip && <div className="order-3 mt-3 lg:mt-0">{bulletinStrip}</div>}
         {/* Sections are separated by spacing and typography, not a rule
-            after every block. Order: Upcoming Dates → What's Happening →
-            lineup → Moments → Photos → place → products → host & details. */}
+            after every block. Public Event V2 Next Body pass — target
+            order: Upcoming Dates → Findmi Moments → Findmi Here →
+            Gallery/Photos → Location feature → Hosted By → remaining
+            secondary content (What's Happening → The Place → Products →
+            contact/Claim). */}
         <div className={`order-4 mt-8 flex flex-col gap-9 ${bulletinStrip ? "lg:mt-8" : "lg:mt-0"}`}>
           {datesSection}
-          {overviewSection}
-          {lineupSection}
           {momentsSection}
+          {lineupSection}
           {mediaSection}
+          {locationFeatureSection}
+          {hostedBySection}
+          {overviewSection}
           {placeSection}
           {productsSection}
           {detailsSection}

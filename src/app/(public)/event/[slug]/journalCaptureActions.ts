@@ -49,29 +49,6 @@ async function findExistingEntryForEventUser(
   return row ? { id: row.id, status: row.status as "draft" | "published" } : null;
 }
 
-export type EventJournalCtaState = { kind: "none" } | { kind: "draft"; id: string } | { kind: "published"; id: string };
-
-/** Read-only — drives the Journal CTA's own copy on the Event page itself
- * (Document Your Experience / Continue Your Journal Entry / View Your
- * Journal Entry). One extra query for an authenticated viewer, the exact
- * same shape startOrResumeEventJournalEntry's own lookup below already
- * runs (shared via findExistingEntryForEventUser) — never a second,
- * divergent check. A signed-out visitor (or a signed-in one the service-
- * role client can't reach) always gets "none" — the same default CTA a
- * brand-new account would see, never a guess at future state. */
-export async function getEventJournalCtaState(eventId: string): Promise<EventJournalCtaState> {
-  const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { kind: "none" };
-  const admin = getAdminSupabase();
-  if (!admin) return { kind: "none" };
-  const existing = await findExistingEntryForEventUser(eventId, user.id, admin);
-  if (!existing) return { kind: "none" };
-  return existing.status === "published" ? { kind: "published", id: existing.id } : { kind: "draft", id: existing.id };
-}
-
 /** No new occurrence/business-resolution logic — this mirrors, field for
  * field, the exact same deterministic resolution EventPublicView's own
  * hero/"Hosted By" already computes server-side for this event (see that
@@ -86,8 +63,8 @@ export async function getEventJournalCtaState(eventId: string): Promise<EventJou
  * mechanism the Cup of Love bug traced back to: an arbitrary occurrence
  * was being treated as "the" occurrence for both the entry_date default
  * AND the real database occurrenceId relationship, even when the event had
- * multiple real dates and this Event-level CTA (see DocumentExperienceCta
- * — one link per Event, not one per date) has no way to know which one the
+ * multiple real dates and this Event-level CTA (one Add Moment link per
+ * Event, not one per date) has no way to know which one the
  * visitor actually means. `occurrenceId` is only ever populated when
  * exactly one REAL occurrence exists. When 2+ real occurrences exist, this
  * returns occurrenceId: null AND falls back entry_date to today (never an

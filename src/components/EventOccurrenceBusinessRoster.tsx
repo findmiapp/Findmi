@@ -2,7 +2,7 @@
 
 import type { EventBusinessListing } from "@/lib/data";
 import EventBusinessRoster from "./EventBusinessRoster";
-import SectionHeading from "./SectionHeading";
+import BrandHeading from "./BrandHeading";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 
 /** "Who You'll Find Here" for a recurring event — Recurring Events V2.
@@ -41,23 +41,24 @@ export default function EventOccurrenceBusinessRoster({
 
   return (
     <section id="lineup" className="scroll-mt-24">
-      <SectionHeading>Who You&rsquo;ll Find Here</SectionHeading>
-      {(
-        <>
-          {/* Public Event V2.1 — one business is shown compactly (the card
-              alone); a count line only helps when there's a lineup. */}
-          {businesses.length > 1 && <p className="mt-0.5 text-metadata text-muted">{businesses.length} businesses confirmed</p>}
-          {/* key={selected.id} — forces a fresh EventBusinessRoster instance
-              per occurrence, so its internal category-filter selection
-              (active) resets to "All" instead of persisting a category
-              name from the previously selected occurrence that may not
-              exist (or match zero businesses) under the newly selected
-              one. Without this, switching occurrences while a specific
-              category was active could silently filter the new
-              occurrence's roster down to zero visible cards. */}
-          <EventBusinessRoster key={selected.id} businesses={businesses} eventName={eventName} />
-        </>
-      )}
+      {/* Public Event V2 Next Body pass — "Findmi Here" is the branded
+          name for this Event's participating/featured roster, distinct
+          from Hosted By (organizer identity) and Location (physical
+          place). Same BrandHeading treatment as Findmi Moments. */}
+      <BrandHeading accent="Here" />
+      <p className="mt-1.5 max-w-xl text-metadata text-muted">Discover the brands, people and organizations featured at this event.</p>
+      {/* Public Event V2.1 — one business is shown compactly (the card
+          alone); a count line only helps when there's a lineup. */}
+      {businesses.length > 1 && <p className="mt-2 text-metadata text-muted">{businesses.length} businesses confirmed</p>}
+      {/* key={selected.id} — forces a fresh EventBusinessRoster instance
+          per occurrence, so its internal category-filter selection
+          (active) resets to "All" instead of persisting a category
+          name from the previously selected occurrence that may not
+          exist (or match zero businesses) under the newly selected
+          one. Without this, switching occurrences while a specific
+          category was active could silently filter the new
+          occurrence's roster down to zero visible cards. */}
+      <EventBusinessRoster key={selected.id} businesses={businesses} eventName={eventName} />
     </section>
   );
 }
