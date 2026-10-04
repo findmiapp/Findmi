@@ -643,14 +643,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
   ) : null;
 
   // Findmi Moments — heading + compact "+ Add Moment" pill at its right,
-  // the dynamic host-attribution line, an incrementally-revealed grid
-  // (EventMomentsGrid — never more than two visual rows up front), and a
-  // quiet "View your Journal" link. The section always renders (heading +
-  // pill + copy), so the capability never disappears when there are no
-  // public Moments yet — only the grid itself is conditional.
-  const journalHostCopy = hostBusiness
-    ? `${hostBusiness.name} may feature your moments here or on their page.`
-    : "Your moments may be featured here.";
+  // then one compact supporting block (two sentences, tight spacing, no
+  // Business name — Live QA Polish pass), an incrementally-revealed
+  // horizontal collection (EventMomentsGrid), and a quiet "View Your
+  // Journal" link. The section always renders (heading + pill + copy), so
+  // the capability never disappears when there are no public Moments yet
+  // — only the grid itself is conditional.
   const momentsSection = (
     <section id="moments" className="scroll-mt-24">
       <BrandHeading
@@ -664,8 +662,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
           </Link>
         }
       />
-      <p className="mt-1.5 max-w-xl text-metadata text-muted">Share moments from your experience that will appear in your Journal.</p>
-      <p className="mt-0.5 max-w-xl text-metadata italic text-subtle">{journalHostCopy}</p>
+      <p className="mt-1.5 max-w-xl text-metadata text-muted">
+        Share moments from your experience that will appear in your Journal.{" "}
+        <span className="italic text-subtle">They may be featured on brand pages.</span>
+      </p>
       {journal.entries.length > 0 && (
         <div className="mt-4">
           <EventMomentsGrid entries={journal.entries} total={journal.total} viewAllHref={journalCollectionHref("event", event.slug)} />
@@ -673,7 +673,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
       )}
       <div className="mt-4">
         <Link href="/my-world/journal" className="inline-flex items-center gap-1 text-metadata font-semibold text-muted transition hover:text-primary">
-          View your Journal →
+          View Your Journal ✓
         </Link>
       </div>
     </section>
@@ -723,7 +723,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
               </div>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-card-title-lg font-bold text-primary group-hover:text-findmi-700">{hostBusiness.name}</span>
-                <span className="text-metadata font-semibold text-findmi-700">View brand ›</span>
+                <span className="text-metadata font-semibold text-findmi-700">View Brand ›</span>
               </span>
             </Link>
           </>

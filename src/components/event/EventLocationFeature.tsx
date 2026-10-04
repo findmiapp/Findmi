@@ -28,18 +28,22 @@ export default function EventLocationFeature({
 
   return (
     <section id="location" className="scroll-mt-24">
-      <div className="flex items-center gap-4 rounded-2xl border border-black/5 bg-white p-4">
-        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-black/[0.04]">
+      {/* Live QA Polish pass — larger visual identity (h-14→h-20 thumbnail)
+          without a taller card: row height is governed by the text column,
+          not the thumbnail, so this grows "for free"; p-4→p-3 and
+          mt-2.5→mt-2 tighten the rest to net a shorter card overall. */}
+      <div className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3">
+        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-black/[0.04]">
           {image ? (
             <SupabaseImage
               src={image}
               alt=""
               fill
-              sizes="56px"
-              className={location.logo_url ? "object-contain p-1.5" : "object-cover"}
+              sizes="80px"
+              className={location.logo_url ? "object-contain p-2" : "object-cover"}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-sm font-bold uppercase text-ink/30">
+            <div className="flex h-full w-full items-center justify-center text-lg font-bold uppercase text-ink/30">
               {location.name.charAt(0)}
             </div>
           )}
@@ -48,9 +52,9 @@ export default function EventLocationFeature({
           <p className="truncate font-display text-card-title-lg font-bold text-primary">{location.name}</p>
           {addressLine && <p className="mt-0.5 truncate text-metadata text-muted">{addressLine}</p>}
           {parentName && <p className="mt-0.5 truncate text-metadata text-subtle">Inside {parentName}</p>}
-          <div className="mt-2.5 flex items-center gap-4">
+          <div className="mt-2 flex items-center gap-4">
             <Link href={`/location/${location.slug}`} className="text-metadata font-semibold text-findmi-700 hover:underline">
-              View Location →
+              View Location ›
             </Link>
             {directionsHref && (
               <DirectionsIconLink

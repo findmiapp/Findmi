@@ -1,18 +1,16 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import type { PublicJournalCard } from "@/lib/journal-distribution";
 import JournalPreviewCard from "@/components/journal/JournalPreviewCard";
 
-const INITIAL_COUNT = 4;
-const STEP = 3;
-
-/** Findmi Moments (Public Event V2 Next Body pass) — the initial grid never
- * exceeds two visual rows (4 cards at 2-up mobile, 2 rows at 3-up sm+).
- * Expanding reveals up to 3 more at a time from the already-fetched batch
- * (never a new request); once that batch is exhausted, "View all Moments"
- * takes over if more exist beyond it (see EventPublicView's fetch limit). */
+/** Findmi Moments (Public Event V2 Next Body pass; Live QA Polish pass) —
+ * editorial Event imagery stays in Gallery; this is community Journal
+ * content. Carousel-ready rather than a fixed grid: a single Moment stays
+ * a compact card (never stretches full width), and more Moments continue
+ * naturally in the same horizontally-scrollable row, with the next card
+ * peeking into view on mobile — same edge-bleed/snap idiom already used by
+ * JournalCollection's own "compact" rail and Upcoming Dates. The batch
+ * itself stays server-bounded (see EventPublicView's fetch limit); "View
+ * all Moments" only appears once real Moments exist beyond that bound. */
 export default function EventMomentsGrid({
   entries,
   total,
@@ -22,31 +20,20 @@ export default function EventMomentsGrid({
   total: number | null;
   viewAllHref: string;
 }) {
-  const [shown, setShown] = useState(Math.min(INITIAL_COUNT, entries.length));
-  const visible = entries.slice(0, shown);
-  const hasMoreLocal = shown < entries.length;
   const hasMoreRemote = total != null && total > entries.length;
 
   return (
     <div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {visible.map((entry) => (
-          <JournalPreviewCard key={entry.id} entry={entry} variant="compact" />
+      <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:scroll-px-0 lg:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {entries.map((entry) => (
+          <JournalPreviewCard key={entry.id} entry={entry} variant="compact" className="w-56 shrink-0 snap-start sm:w-60" />
         ))}
       </div>
-      {hasMoreLocal ? (
-        <button
-          type="button"
-          onClick={() => setShown((s) => Math.min(entries.length, s + STEP))}
-          className="mt-3 text-metadata font-semibold text-findmi-700 hover:underline"
-        >
-          Show {Math.min(STEP, entries.length - shown)} more
-        </button>
-      ) : hasMoreRemote ? (
+      {hasMoreRemote && (
         <Link href={viewAllHref} className="mt-3 inline-block text-metadata font-semibold text-findmi-700 hover:underline">
           View all Moments →
         </Link>
-      ) : null}
+      )}
     </div>
   );
 }
