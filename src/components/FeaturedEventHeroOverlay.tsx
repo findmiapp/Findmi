@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import LiveDot from "./LiveDot";
 
@@ -29,6 +30,10 @@ export interface FeaturedEventHeroOverlayProps {
    * plain text — the only safe option inside FeaturedEventCard, which is
    * itself already one whole-card Link. */
   attributionHref?: string;
+  /** Event page hero only — the attributed Business's logo, shown as a
+   * small rounded-square thumbnail before "by {attribution}". Omitted or
+   * null keeps the text-only byline. */
+  attributionLogoUrl?: string | null;
   /** Pre-resolved copy (e.g. "Happening Now") from the caller's own
    * getTemporalLabel() read — this component never computes or guesses
    * status itself. Null renders no pill at all.
@@ -75,6 +80,7 @@ export default function FeaturedEventHeroOverlay({
   title,
   attribution,
   attributionHref,
+  attributionLogoUrl,
   venueLabel,
   statusLabel,
   isLive,
@@ -108,38 +114,74 @@ export default function FeaturedEventHeroOverlay({
         {venueLabel && !compact && (
           <p className="text-body-lg font-semibold text-white/90 line-clamp-2">{venueLabel}</p>
         )}
-        {attribution &&
-          (attributionHref ? (
-            <Link
-              href={attributionHref}
-              className="pointer-events-auto w-fit text-metadata font-medium text-white/80 underline decoration-white/40 underline-offset-2 transition hover:text-white"
-            >
-              by {attribution}
-            </Link>
-          ) : (
-            <p className="text-metadata font-medium text-white/70">by {attribution}</p>
-          ))}
-        {/* Event Top Hierarchy Final Micro-pass — the live-status pill now
-            renders ONLY for the compact Business/Location teaser card
-            (unchanged, untouched treatment). The Event page's own full
-            hero (compact=false) no longer shows HAPPENING NOW at all —
-            that single presentation lives in the white logistics card
-            below the hero now (EventScheduleSummary). */}
-        {(compact || showStatusOnFull) && statusLabel && (
-          <span
-            className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-              isLive
-                ? compact
-                  ? "bg-red-500/90 text-white"
-                  : // Event hero: a quiet glass indicator integrated into the
-                    // photography — the red lives in the glowing dot only.
-                    "border border-white/15 bg-black/35 text-white backdrop-blur-md"
-                : "bg-white/15 text-white backdrop-blur-sm"
-            }`}
-          >
-            {isLive && <LiveDot className="animate-happening-now-glow rounded-full text-red-500" />}
-            {statusLabel}
-          </span>
+        {compact ? (
+          <>
+            {attribution && <p className="text-metadata font-medium text-white/70">by {attribution}</p>}
+            {statusLabel && (
+              <span
+                className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                  isLive ? "bg-red-500/90 text-white" : "bg-white/15 text-white backdrop-blur-sm"
+                }`}
+              >
+                {isLive && <LiveDot className="animate-happening-now-glow rounded-full text-red-500" />}
+                {statusLabel}
+              </span>
+            )}
+          </>
+        ) : (
+          (attribution || (showStatusOnFull && statusLabel)) && (
+            // Event hero bottom metadata row: byline (with the Business's
+            // small logo when it has one) on the left, the glass live pill
+            // on the right. Wraps — pill drops beneath, right-aligned — only
+            // if the two genuinely can't share a line.
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+              {attribution ? (
+                <div className="flex min-w-0 items-center gap-2">
+                  {attributionLogoUrl &&
+                    (attributionHref ? (
+                      <Link
+                        href={attributionHref}
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        className="pointer-events-auto relative h-7 w-7 shrink-0 overflow-hidden rounded-md border border-white/20 bg-white sm:h-8 sm:w-8"
+                      >
+                        <Image src={attributionLogoUrl} alt="" fill unoptimized sizes="32px" className="object-contain p-0.5" />
+                      </Link>
+                    ) : (
+                      <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-md border border-white/20 bg-white sm:h-8 sm:w-8">
+                        <Image src={attributionLogoUrl} alt="" fill unoptimized sizes="32px" className="object-contain p-0.5" />
+                      </span>
+                    ))}
+                  {attributionHref ? (
+                    <Link
+                      href={attributionHref}
+                      className="pointer-events-auto min-w-0 truncate text-metadata font-medium text-white/80 underline decoration-white/40 underline-offset-2 transition hover:text-white"
+                    >
+                      by {attribution}
+                    </Link>
+                  ) : (
+                    <p className="min-w-0 truncate text-metadata font-medium text-white/70">by {attribution}</p>
+                  )}
+                </div>
+              ) : (
+                <span />
+              )}
+              {showStatusOnFull && statusLabel && (
+                <span
+                  className={`ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                    isLive
+                      ? // A quiet glass indicator integrated into the
+                        // photography — the red lives in the glowing dot only.
+                        "border border-white/15 bg-black/35 text-white backdrop-blur-md"
+                      : "bg-white/15 text-white backdrop-blur-sm"
+                  }`}
+                >
+                  {isLive && <LiveDot className="animate-happening-now-glow rounded-full text-red-500" />}
+                  {statusLabel}
+                </span>
+              )}
+            </div>
+          )
         )}
       </div>
     </div>

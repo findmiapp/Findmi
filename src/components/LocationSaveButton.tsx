@@ -14,9 +14,30 @@ export default function LocationSaveButton({
    * control that fills its parent grid cell, same shape/geometry as
    * EventSaveButton's own "grid" layout, for the Location page's primary
    * action grid (see LocationPublicView.tsx). */
-  layout?: "icon" | "grid";
+  /** "square": the shared Event action-row utility square (same
+   * geometry and saved treatment as EventSaveButton's "icon" layout). */
+  layout?: "icon" | "grid" | "square";
 }) {
   const { saved, toggle } = useAccountSaved("location", slug, id);
+
+  if (layout === "square") {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        aria-pressed={saved}
+        aria-label={saved ? "Saved" : "Save"}
+        title={saved ? "Saved" : "Save"}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 border transition active:scale-95 ${
+          saved ? "border-findmi/40 bg-findmi-50 text-findmi-700" : "border-black/10 bg-white text-ink/70 hover:border-ink/30 hover:text-ink"
+        }`}
+      >
+        <svg viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} aria-hidden="true" className="h-[18px] w-[18px]">
+          <path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        </svg>
+      </button>
+    );
+  }
 
   if (layout === "grid") {
     return (

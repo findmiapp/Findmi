@@ -10,11 +10,10 @@ import InquireButton from "@/components/InquireButton";
 import { shouldShowMessageButton } from "@/lib/message-visibility";
 import LocationFollowButton from "@/components/LocationFollowButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
-import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import LocationSaveButton from "@/components/LocationSaveButton";
-import ShareButton from "@/components/ShareButton";
 import AddToCalendarButton from "@/components/AddToCalendarButton";
-import { UtilityActionGrid } from "@/components/EventUtilityActions";
+import DirectionsIconLink from "@/components/event/DirectionsIconLink";
+import EventShareButton from "@/components/EventShareButton";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ReadMoreText from "@/components/ReadMoreText";
@@ -159,26 +158,20 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // Event-specific despite its name) rather than building a second one.
   const heroImages = [location.cover_image_url, ...galleryImages].filter((u): u is string => Boolean(u));
 
-  // Visual implementation pass — the primary action grid (Directions/
-  // Save/Share/Calendar), same derived-column-count UtilityActionGrid
-  // shell the Event page's own Tier B utility row already uses (imported,
-  // not modified). Directions is the one PRIMARY (teal-filled) tile here —
-  // a deliberate Location-only visual choice per the approved reference,
-  // built locally rather than reusing Event's own outline-styled
-  // DirectionsGridCell. Add to Calendar only renders when the already-
-  // resolved featuredHappening gives it something truthful to add — never
-  // a fabricated "add this Location to your calendar" entry.
+  // Action row — the same approved action family as the Event page
+  // (EventActionRow): Directions as the wide primary (Location has no
+  // ticket/RSVP-style transactional action), then compact rounded-square
+  // utilities: Save, Add to Calendar (ONLY when the already-resolved
+  // featuredHappening gives it something truthful to add — never a
+  // fabricated "add this Location" entry), Share. Same components/variants
+  // Event uses; nothing invented to fill the row.
   const directionsAction = directionsHref ? (
-    <AnalyticsLink
+    <DirectionsIconLink
       href={directionsHref}
-      target="_blank"
-      rel="noreferrer"
+      placeName={location.name}
+      variant="expanded"
       trackPayload={{ event_name: "click_directions", subject_type: "location", subject_id: location.id, location_id: location.id }}
-      className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl bg-findmi text-white transition hover:bg-findmi-600"
-    >
-      <DirectionsGlyph className="h-4 w-4" />
-      <span className="text-[11px] font-semibold uppercase tracking-wide">Directions</span>
-    </AnalyticsLink>
+    />
   ) : null;
   const calendarAction = featuredHappening ? (
     <AddToCalendarButton
@@ -187,21 +180,9 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       location={location.name}
       startAt={featuredHappening.start_at}
       endAt={featuredHappening.end_at}
-      layout="grid"
+      layout="icon"
     />
   ) : null;
-  const primaryActionItems = [
-    directionsAction,
-    <LocationSaveButton key="save" slug={location.slug} id={location.id} layout="grid" />,
-    <ShareButton
-      key="share"
-      url={canonicalUrl}
-      title={location.name}
-      variant="grid"
-      track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
-    />,
-    calendarAction,
-  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return (
     <div className="relative mx-auto max-w-4xl px-0 pb-10 sm:px-6">
@@ -355,24 +336,23 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* 3. Primary action grid (Visual implementation pass) — Directions/
-          Save/Share/Add to Calendar, the four equally-sized "doing
-          something right now" actions, matching the approved reference.
-          Directions is the one PRIMARY teal-filled tile (built above);
-          Save/Share use their own new "grid"/"grid" layouts (same icon-
-          over-label shape Event's own EventSaveButton/EventShareButton
-          already established for their own action grid). Add to Calendar
-          only joins when there's a truthful, already-resolved happening
-          to add (featuredHappening) — never a fabricated "add this
-          Location" entry; column count is derived from how many of the
-          four actually render (UtilityActionGrid, reused from the Event
-          page's own Tier B row, unmodified). Message/Website/Call/Contact
-          are real, but secondary here — moved below (see the compact
-          contact row ahead of Hours) rather than competing with this
-          grid for the page's prime real estate. */}
+      {/* 3. Action row — the Event page's approved action family
+          (wide Directions primary + Save / Calendar / Share squares; see
+          directionsAction above). Message/Website/Call/Contact stay in
+          the compact contact row ahead of Hours. */}
       <div className="px-4 sm:px-0">
         <div className="mt-4">
-          <UtilityActionGrid items={primaryActionItems} />
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {directionsAction && <div className="flex min-w-0 flex-1">{directionsAction}</div>}
+            <LocationSaveButton slug={location.slug} id={location.id} layout="square" />
+            {calendarAction}
+            <EventShareButton
+              url={canonicalUrl}
+              title={location.name}
+              layout="icon"
+              track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
+            />
+          </div>
         </div>
       </div>
 
@@ -656,13 +636,6 @@ function PhoneGlyph({ className }: { className?: string }) {
 
 // Same glyph/sizing convention as Event's own Directions pill (h-3.5 w-3.5,
 // strokeWidth 1.8, currentColor).
-function DirectionsGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M12 2L4.5 20.5l.9.9L12 18l6.6 3.4.9-.9L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function ChevronGlyph({ className }: { className?: string }) {
   return (

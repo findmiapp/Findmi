@@ -120,8 +120,11 @@ export default function EventScheduleSummary({
   const timeLabel = hasUniformTime
     ? `${firstStartTime} – ${firstEndTime}`
     : `${formatTimeInZone(selected.start_at, selected.timezone)} – ${formatTimeInZone(selected.end_at, selected.timezone)}`;
+  // `occurrences` is the upcoming schedule (end_at > now — a date that is
+  // live right now is included), never the Event's lifetime count; the
+  // same list feeds the Upcoming Dates section below.
   const dateCount = occurrences.length;
-  const countLabel = dateCount > 1 ? `${dateCount} dates` : null;
+  const countLabel = dateCount > 0 ? `${dateCount} upcoming date${dateCount === 1 ? "" : "s"}` : null;
 
   let status: React.ReactNode = null;
   if (selectedState === "cancelled") {

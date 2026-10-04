@@ -866,6 +866,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           title={event.name}
           attribution={hostBusiness?.name ?? null}
           attributionHref={hostBusiness ? `/business/${hostBusiness.slug}` : undefined}
+          attributionLogoUrl={hostBusiness?.logo_url ?? null}
           venueLabel={heroVenueLabel}
           statusLabel={heroTemporal.live ? "Happening now" : null}
           isLive={heroTemporal.live}

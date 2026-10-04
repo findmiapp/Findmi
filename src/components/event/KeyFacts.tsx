@@ -36,7 +36,7 @@ export function WhenFact({
   dateLabel: string;
   /** The time line only — never with the date count appended. */
   detail?: string | null;
-  /** "12 dates" — its own secondary line, so it can never hang off the
+  /** "12 upcoming dates" — its own secondary line, so it can never hang off the
    * end of the time and wrap "dates" by itself. Omit for a single date. */
   count?: string | null;
   status?: ReactNode;
