@@ -39,7 +39,12 @@ export default function Bulletin({
   heading,
   body,
   url,
+  variant = "default",
 }: {
+  /** "compact" (Event page): a slim announcement strip — smaller icon and
+   * padding, body clamped to 2 lines with Read more / Show less. Default
+   * is unchanged (Business page). */
+  variant?: "default" | "compact";
   label?: string | null;
   heading?: string | null;
   body?: string | null;
@@ -71,15 +76,18 @@ export default function Bulletin({
   const displayLabel = label?.trim() || "Bulletin";
   const external = url ? /^https:\/\//i.test(url) : false;
 
+  const compact = variant === "compact";
   const mainContent = (
     <>
-      <MegaphoneGlyph className="h-6 w-6 shrink-0 text-findmi-700" />
+      <MegaphoneGlyph className={compact ? "mt-0.5 h-4 w-4 shrink-0 self-start text-findmi-700" : "h-6 w-6 shrink-0 text-findmi-700"} />
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-bold uppercase tracking-wide text-findmi-700">{displayLabel}</p>
-        {heading?.trim() && <p className="mt-0.5 text-sm font-bold text-ink">{heading.trim()}</p>}
+        {heading?.trim() && <p className={`mt-0.5 font-bold text-ink ${compact ? "text-body" : "text-sm"}`}>{heading.trim()}</p>}
         <p
           ref={bodyRef}
-          className={`mt-0.5 whitespace-pre-line text-sm text-ink/75 ${expanded ? "" : "line-clamp-3"}`}
+          className={`mt-0.5 whitespace-pre-line text-ink/75 ${compact ? "text-metadata leading-relaxed" : "text-sm"} ${
+            expanded ? "" : compact ? "line-clamp-2" : "line-clamp-3"
+          }`}
         >
           {text}
         </p>
@@ -97,9 +105,9 @@ export default function Bulletin({
     <button
       type="button"
       onClick={() => setExpanded((v) => !v)}
-      className="mt-1.5 text-xs font-bold text-findmi-700 hover:underline"
+      className={`text-xs font-bold text-findmi-700 hover:underline ${compact ? "ml-7 mt-1" : "mt-1.5"}`}
     >
-      {expanded ? "Show less" : "View more"}
+      {expanded ? "Show less" : compact ? "Read more" : "View more"}
     </button>
   );
 

@@ -20,11 +20,16 @@ export default function EventFollowButton({
   eventSlug,
   eventName,
   size = "default",
+  shape = "pill",
 }: {
   eventId: string;
   eventSlug: string;
   eventName: string;
   size?: "default" | "compact";
+  /** "block": fills its slot with a softer rounded-xl shape — used when
+   * Follow takes the primary slot of the Event action row (no ticket/RSVP
+   * action). Default "pill" is unchanged. */
+  shape?: "pill" | "block";
 }) {
   const [following, setFollowing] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -137,6 +142,7 @@ export default function EventFollowButton({
   const compact = size === "compact";
   const h = compact ? "h-9" : "h-11";
   const text = compact ? "text-xs" : "text-sm";
+  const shapeCls = shape === "block" ? "w-full justify-center rounded-xl" : "rounded-full";
 
   if (following) {
     // A guest's "Following" is a per-device localStorage flag, not a
@@ -151,7 +157,7 @@ export default function EventFollowButton({
           role="status"
           aria-label="Following"
           title="Following"
-          className={`flex ${h} items-center gap-1.5 rounded-full bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white`}
+          className={`flex ${h} items-center gap-1.5 ${shapeCls} bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white`}
         >
           <CheckGlyph className="h-3.5 w-3.5" />
           Following
@@ -163,7 +169,7 @@ export default function EventFollowButton({
         type="button"
         onClick={handleAuthedFollow}
         title="Following: tap to unfollow"
-        className={`flex ${h} items-center gap-1.5 rounded-full bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
+        className={`flex ${h} items-center gap-1.5 ${shapeCls} bg-findmi px-4 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
       >
         <CheckGlyph className="h-3.5 w-3.5" />
         Following
@@ -179,7 +185,7 @@ export default function EventFollowButton({
         onClick={authed ? handleAuthedFollow : openModal}
         aria-haspopup={authed ? undefined : "dialog"}
         aria-expanded={authed ? undefined : open}
-        className={`flex ${h} items-center justify-center rounded-full border border-findmi/40 bg-white px-5 ${text} font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50`}
+        className={`flex ${h} items-center justify-center ${shapeCls} border border-findmi/40 bg-white px-5 ${text} font-bold uppercase tracking-wide text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50`}
       >
         {/* Public Event V2 — outline until followed, so it never competes
             with the organizer's primary action (RSVP/Tickets); the filled

@@ -10,8 +10,8 @@ import {
 } from "@/lib/format";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
-import { EndedStatus, FactsBand, LiveStatus, QuietStatus, WhenFact, WhereFact, factLinkClass } from "./event/KeyFacts";
-import { trackEvent } from "@/lib/analytics/track";
+import { EndedStatus, FactsBand, QuietStatus, WhenFact, WhereFact } from "./event/KeyFacts";
+import DirectionsIconLink from "./event/DirectionsIconLink";
 
 /** The recurring-event hero's date/time/location block — Recurring
  * Events V2. Reads the shared selectedOccurrence context (never the
@@ -97,9 +97,11 @@ export default function EventScheduleSummary({
   }
 
   const location = selected.location ?? canonicalLocation;
-  const addressLine = location ? [location.address, cityState(location.city, location.state)].filter(Boolean).join(", ") : "";
+  const locationZip = location && "postal_code" in location ? ((location as { postal_code?: string | null }).postal_code ?? null) : null;
+  const addressLines = location ? [location.address, cityStateZip(location.city, location.state, locationZip)] : [];
   const manualVenueName = selected.venue_name ?? null;
-  const manualVenueLine = [selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)].filter(Boolean).join(", ");
+  const manualAddressLines = [selected.address, cityStateZip(selected.city, selected.state, selected.postal_code)];
+  const manualVenueLine = manualAddressLines.filter(Boolean).join(", ");
 
   const first = occurrences[0] ?? selected;
   const last = occurrences[occurrences.length - 1] ?? selected;
@@ -125,9 +127,9 @@ export default function EventScheduleSummary({
   let status: React.ReactNode = null;
   if (selectedState === "cancelled") {
     status = <QuietStatus tone="red">This date is cancelled</QuietStatus>;
-  } else if (selectedState === "current") {
-    status = <LiveStatus until={formatTimeInZone(selected.end_at, selected.timezone)} />;
-  } else if (dateCount > 1) {
+  } else if (dateCount > 1 && selectedState !== "current") {
+    // Live status is NOT repeated here — the hero's glass indicator is the
+    // page-level "Happening now", and the occurrence card marks the date.
     status = <QuietStatus>Next: {formatDateShortInZone(selected.start_at, selected.timezone)}</QuietStatus>;
   }
 
@@ -138,24 +140,18 @@ export default function EventScheduleSummary({
     : [manualVenueName, manualVenueLine].filter(Boolean).join(", ");
   const directions =
     directionsEnabled && selectedState !== "cancelled" && mapQuery ? (
-      <a
+      <DirectionsIconLink
         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
-        target="_blank"
-        rel="noreferrer"
-        className={factLinkClass}
-        onClick={() =>
-          trackEvent({
-            event_name: "click_directions",
-            subject_type: "event_occurrence",
-            subject_id: selected.id,
-            event_id: eventId,
-            event_occurrence_id: selected.id,
-            location_id: location && "id" in location ? (location.id as string) : undefined,
-          })
-        }
-      >
-        Directions
-      </a>
+        placeName={location?.name ?? manualVenueName}
+        trackPayload={{
+          event_name: "click_directions",
+          subject_type: "event_occurrence",
+          subject_id: selected.id,
+          event_id: eventId,
+          event_occurrence_id: selected.id,
+          location_id: location && "id" in location ? (location.id as string) : undefined,
+        }}
+      />
     ) : null;
 
   return (
@@ -163,9 +159,9 @@ export default function EventScheduleSummary({
       when={<WhenFact dateLabel={dateRangeLabel} detail={timeLabel} count={countLabel} status={status} />}
       where={
         location ? (
-          <WhereFact name={location.name} href={`/location/${location.slug}`} line={addressLine || null} action={directions} />
+          <WhereFact name={location.name} href={`/location/${location.slug}`} lines={addressLines} action={directions} />
         ) : (
-          <WhereFact name={manualVenueName} line={manualVenueLine || null} action={directions} />
+          <WhereFact name={manualVenueName} lines={manualAddressLines} action={directions} />
         )
       }
     />

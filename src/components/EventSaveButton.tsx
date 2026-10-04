@@ -13,9 +13,28 @@ export default function EventSaveButton({
    * is the existing Tier B rounded-full pill. "grid" is an icon-over-label
    * control that fills its parent grid cell, used only by the Event
    * page's Tier B utility row (see EventUtilityActions). */
-  layout?: "pill" | "grid";
+  layout?: "pill" | "grid" | "icon";
 }) {
   const { saved, toggle } = useAccountSaved("event", slug, id);
+
+  if (layout === "icon") {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        aria-pressed={saved}
+        aria-label={saved ? "Saved" : "Save"}
+        title={saved ? "Saved" : "Save"}
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition active:scale-95 ${
+          saved ? "border-findmi/40 bg-findmi-50 text-findmi-700" : "border-black/10 bg-white text-ink/70 hover:border-ink/30 hover:text-ink"
+        }`}
+      >
+        <svg viewBox="0 0 24 24" fill={saved ? "currentColor" : "none"} aria-hidden="true" className="h-[18px] w-[18px]">
+          <path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        </svg>
+      </button>
+    );
+  }
 
   if (layout === "grid") {
     return (

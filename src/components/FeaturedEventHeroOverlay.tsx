@@ -128,7 +128,13 @@ export default function FeaturedEventHeroOverlay({
         {(compact || showStatusOnFull) && statusLabel && (
           <span
             className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-              isLive ? "bg-red-500/90 text-white" : "bg-white/15 text-white backdrop-blur-sm"
+              isLive
+                ? compact
+                  ? "bg-red-500/90 text-white"
+                  : // Event hero: a quiet glass indicator integrated into the
+                    // photography — the red lives in the glowing dot only.
+                    "border border-white/15 bg-black/35 text-white backdrop-blur-md"
+                : "bg-white/15 text-white backdrop-blur-sm"
             }`}
           >
             {isLive && <LiveDot className="animate-happening-now-glow rounded-full text-red-500" />}

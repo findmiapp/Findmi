@@ -28,7 +28,7 @@ export default function EventShareButton({
    * Reconstruction pass — "glass" is a compact icon-only translucent/
    * blurred circle for overlaying directly on photography (HomeEventCard's
    * bottom action dock). */
-  layout?: "pill" | "grid" | "glass";
+  layout?: "pill" | "grid" | "glass" | "icon";
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -63,6 +63,20 @@ export default function EventShareButton({
       >
         <ShareGlyph className="h-4 w-4" />
         <span className="text-[11px] font-semibold uppercase tracking-wide">{copied ? "Copied" : "Share"}</span>
+      </button>
+    );
+  }
+
+  if (layout === "icon") {
+    return (
+      <button
+        type="button"
+        onClick={handleShare}
+        aria-label={copied ? "Link copied" : "Share"}
+        title={copied ? "Link copied" : "Share"}
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-ink/70 transition hover:border-ink/30 hover:text-ink active:scale-95 ${copied ? "border-findmi/40 text-findmi-700" : ""}`}
+      >
+        <ShareGlyph className="h-[18px] w-[18px]" />
       </button>
     );
   }

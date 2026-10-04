@@ -5,8 +5,8 @@ import JournalCollection from "@/components/journal/JournalCollection";
 import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import BrandHeading from "@/components/BrandHeading";
 import SectionHeading from "@/components/SectionHeading";
-import { EndedStatus, FactsBand, LiveStatus, WhenFact, WhereFact, factLinkClass } from "@/components/event/KeyFacts";
-import AnalyticsLink from "@/components/analytics/AnalyticsLink";
+import { EndedStatus, FactsBand, WhenFact, WhereFact } from "@/components/event/KeyFacts";
+import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
@@ -26,7 +26,7 @@ import { EventOccurrenceProvider } from "@/components/EventOccurrenceContext";
 import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessRoster";
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
-import EventScheduleCtas from "@/components/EventScheduleCtas";
+import EventScheduleCtas, { EVENT_PRIMARY_CTA_CLASS, EVENT_SECONDARY_CTA_CLASS } from "@/components/EventScheduleCtas";
 import EventUtilityActions, { UtilityActionGrid } from "@/components/EventUtilityActions";
 import EventScheduleSummary, { type HistoricalSchedule } from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
@@ -354,13 +354,13 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // ONCE here and reused by both the single-date path (UtilityActionGrid)
   // and the multi-date path (EventUtilityActions, which adds its own
   // occurrence-dependent Add to Calendar on top).
-  const saveAction = <EventSaveButton slug={event.slug} id={event.id} layout="grid" />;
+  const saveAction = <EventSaveButton slug={event.slug} id={event.id} layout="icon" />;
   const shareAction = (
     <EventShareButton
       title={event.name}
       url={canonicalUrl}
       track={{ subject_type: "event", subject_id: event.id, event_id: event.id }}
-      layout="grid"
+      layout="icon"
     />
   );
 
@@ -421,9 +421,12 @@ export async function EventPublicView({ slug }: { slug: string }) {
 
   // Single-date (no occurrence rows) facts — server-resolved.
   const legacyWhereName = matchedLocation?.name ?? event.venue_name ?? null;
-  const legacyWhereLine = matchedLocation
-    ? [matchedLocation.address, cityState(matchedLocation.city, matchedLocation.state)].filter(Boolean).join(", ")
-    : [event.address, location].filter(Boolean).join(", ");
+  // Address as deliberate lines (street / City, ST ZIP) so wrapping never
+  // splits a city from its state.
+  const legacyWhereLines = matchedLocation
+    ? [matchedLocation.address, cityStateZip(matchedLocation.city, matchedLocation.state, matchedLocation.postal_code ?? null)]
+    : [event.address, location];
+  const legacyHasWhereLines = legacyWhereLines.some(Boolean);
   const legacySameDay = !event.end_at || formatDateShort(event.start_at) === formatDateShort(event.end_at);
   const legacyDateLabel = legacyEnded
     ? legacySameDay
@@ -446,32 +449,24 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <WhenFact
           dateLabel={legacyDateLabel}
           detail={legacyTime}
-          status={
-            heroTemporal.live ? (
-              <LiveStatus until={event.end_at ? formatTime(event.end_at) : null} />
-            ) : legacyEnded ? (
-              <EndedStatus />
-            ) : null
-          }
+          // No live line here — the hero's glass indicator is the
+          // page-level "Happening now".
+          status={legacyEnded ? <EndedStatus /> : null}
         />
       }
       where={
-        legacyWhereName || legacyWhereLine ? (
+        legacyWhereName || legacyHasWhereLines ? (
           <WhereFact
             name={legacyWhereName}
             href={matchedLocation ? `/location/${matchedLocation.slug}` : null}
-            line={legacyWhereLine || null}
+            lines={legacyWhereLines}
             action={
               showDirections && !legacyEnded ? (
-                <AnalyticsLink
+                <DirectionsIconLink
                   href={directionsHref!}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={factLinkClass}
+                  placeName={legacyWhereName}
                   trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
-                >
-                  Directions
-                </AnalyticsLink>
+                />
               ) : null
             }
           />
@@ -480,56 +475,60 @@ export async function EventPublicView({ slug }: { slug: string }) {
     />
   );
 
-  // ACTIONS — the primary action (organizer CTA, else Follow) stays
-  // dominant; Save / Calendar / Share sit in one quiet row beneath it.
-  // Message / Contact / Website / Call moved to the host & details section.
-  // An ended event keeps only what's still useful: Follow (new dates),
-  // Save, Share — no tickets/RSVP/calendar for dates that are over.
-  const followButton = showFollow ? (
-    <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} />
+  // ACTIONS — a compact three-level hierarchy:
+  //   A. ONE primary transactional action (Get Tickets, else RSVP) filling
+  //      the row; with none (or an ended event), Follow takes that slot.
+  //   B. Secondary actions (Apply to Vend, a second transactional action)
+  //      as small outlined buttons on one line beneath, with Follow.
+  //   C. Save / Calendar / Share as square icon controls beside the primary.
+  // Message / Contact organizer stay in the host & details section. An ended
+  // event keeps only Follow / Save / Share. Handlers and analytics unchanged.
+  const followBlock = showFollow ? (
+    <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} shape="block" />
   ) : null;
-  const primaryRow = (
-    <div className="flex flex-wrap items-center gap-2.5 empty:hidden">
-      {eventEnded ? null : hasOccurrences ? (
-        <EventScheduleCtas
-          bare
-          eventId={event.id}
-          ticketsEnabled={event.tickets_enabled}
-          ticketsUrl={event.tickets_url}
-          rsvpEnabled={event.rsvp_enabled}
-          rsvp={rsvpForm}
-          vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
-          vendorApplication={vendorAppForm}
-        />
-      ) : (
-        customCtas.map((action) => (
-          <FormAction
-            key={action.label}
-            href={action.href}
-            displayMode={action.displayMode}
-            label={action.label}
-            className={
-              action.weight === "solid"
-                ? "flex h-11 min-w-[8rem] flex-1 items-center justify-center rounded-full bg-findmi px-6 text-button font-bold text-white transition hover:bg-findmi-600"
-                : "flex h-11 min-w-[8rem] flex-1 items-center justify-center rounded-full border border-findmi/40 bg-white px-5 text-button font-bold text-findmi-700 transition hover:bg-findmi-50"
-            }
-            track={{
-              event_name:
-                action.label === "Get Tickets" ? "click_tickets" : action.label === "Apply to Vend" ? "click_apply_to_vend" : "click_rsvp",
-              subject_type: "event",
-              subject_id: event.id,
-              event_id: event.id,
-            }}
-          />
-        ))
-      )}
-      {followButton}
-    </div>
+  const followCompact = showFollow ? (
+    <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} size="compact" />
+  ) : null;
+  const ctaProps = {
+    eventId: event.id,
+    ticketsEnabled: event.tickets_enabled,
+    ticketsUrl: event.tickets_url,
+    rsvpEnabled: event.rsvp_enabled,
+    rsvp: rsvpForm,
+    vendorApplicationsEnabled: event.vendor_applications_enabled && !vendorDeadlinePassed,
+    vendorApplication: vendorAppForm,
+  };
+  const legacyTrack = (label: string) => ({
+    event_name: (label === "Get Tickets" ? "click_tickets" : label === "Apply to Vend" ? "click_apply_to_vend" : "click_rsvp") as
+      | "click_tickets"
+      | "click_apply_to_vend"
+      | "click_rsvp",
+    subject_type: "event",
+    subject_id: event.id,
+    event_id: event.id,
+  });
+  const legacyPrimary = eventEnded ? null : (customCtas.find((c) => c.weight === "solid") ?? null);
+  const legacySecondary = eventEnded ? [] : customCtas.filter((c) => c !== legacyPrimary);
+
+  const primarySlot = eventEnded ? (
+    followBlock
+  ) : hasOccurrences ? (
+    <EventScheduleCtas pick="primary" fallback={followBlock} {...ctaProps} />
+  ) : legacyPrimary ? (
+    <FormAction
+      href={legacyPrimary.href}
+      displayMode={legacyPrimary.displayMode}
+      label={legacyPrimary.label}
+      className={EVENT_PRIMARY_CTA_CLASS}
+      track={legacyTrack(legacyPrimary.label)}
+    />
+  ) : (
+    followBlock
   );
 
-  const utilityRow = hasOccurrences ? (
+  const utilityIcons = hasOccurrences ? (
     <EventUtilityActions
-      variant="quiet"
+      variant="icons"
       eventId={event.id}
       eventName={event.name}
       description={event.description}
@@ -540,40 +539,60 @@ export async function EventPublicView({ slug }: { slug: string }) {
       canonicalLocation={canonicalLocation}
     />
   ) : (
-    <UtilityActionGrid
-      variant="quiet"
-      items={[
-        saveAction,
-        legacyEnded ? null : (
-          <AddToCalendarButton
-            key="calendar"
-            title={event.name}
-            description={event.description}
-            location={venueLine || null}
-            startAt={event.start_at}
-            endAt={event.end_at}
-            layout="grid"
-          />
-        ),
-        shareAction,
-      ].filter((item): item is ReactElement => Boolean(item))}
-    />
+    <>
+      {saveAction}
+      {legacyEnded ? null : (
+        <AddToCalendarButton
+          title={event.name}
+          description={event.description}
+          location={venueLine || null}
+          startAt={event.start_at}
+          endAt={event.end_at}
+          layout="icon"
+        />
+      )}
+      {shareAction}
+    </>
+  );
+
+  const secondaryRow = eventEnded ? null : hasOccurrences ? (
+    <EventScheduleCtas pick="secondary" withPrimary={followCompact} {...ctaProps} />
+  ) : (
+    <>
+      {legacySecondary.map((c) => (
+        <FormAction
+          key={c.label}
+          href={c.href}
+          displayMode={c.displayMode}
+          label={c.label}
+          className={EVENT_SECONDARY_CTA_CLASS}
+          track={legacyTrack(c.label)}
+        />
+      ))}
+      {legacyPrimary ? followCompact : null}
+    </>
   );
 
   const actions = (
-    <div className="flex flex-col gap-2">
-      {primaryRow}
-      {utilityRow}
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 empty:hidden">{primarySlot}</div>
+        {utilityIcons}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">{secondaryRow}</div>
     </div>
   );
 
   // ── Editorial sections ────────────────────────────────────────────────
-  // What's happening — a short preview right after the facts. No bulletin
-  // priority metadata exists (heading/body/enabled only), so the bulletin
-  // sits with the description it qualifies.
+  // Bulletin — a compact collapsible announcement strip directly after the
+  // actions (never between WHEN/WHERE and the primary action).
   const hasBulletin = Boolean(event.bulletin_enabled && event.bulletin_body);
+  const bulletinStrip = hasBulletin ? (
+    <Bulletin variant="compact" heading={event.bulletin_heading} body={event.bulletin_body!} />
+  ) : null;
+  // What's happening — the description preview.
   const overviewSection =
-    event.description || hasBulletin ? (
+    event.description ? (
       <section id="overview" className="scroll-mt-24">
         {event.description && (
           <>
@@ -586,11 +605,6 @@ export async function EventPublicView({ slug }: { slug: string }) {
               />
             </div>
           </>
-        )}
-        {hasBulletin && (
-          <div className={event.description ? "mt-3.5" : ""}>
-            <Bulletin heading={event.bulletin_heading} body={event.bulletin_body!} />
-          </div>
         )}
       </section>
     ) : null;
@@ -791,25 +805,27 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // above (the two desktop wrappers are display:contents there, so their
   // children interleave via `order`). Desktop (lg): a two-column grid —
   // story on the left, facts + actions in a sticky right rail.
-  const lead = overviewSection ? (
-    <div className="order-2 mt-6 border-t border-black/[0.07] pt-6 lg:mt-0 lg:border-t-0 lg:pt-0">{overviewSection}</div>
-  ) : null;
   // Bottom spacing: the shared Footer already reserves mt-16 (64px) above
   // itself, so the page adds no bottom padding of its own and the last
   // section drops its bottom padding — 64px of breathing room after the
   // final content, not page padding + section padding + footer margin
   // stacked (≈156px before V2.1 Live Polish).
+  // Top sequence (phones): Hero → Essentials (WHEN | WHERE) → Actions →
+  // Bulletin → What's Happening → Upcoming Dates → … Spacing, not a rule
+  // after every block; hairlines remain only between the lower sections.
+  // Desktop keeps Essentials + Actions in the sticky right rail.
   const body = (
-    <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-5 sm:px-6 sm:pt-7 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
+    <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-4 sm:px-6 sm:pt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
       <div className="contents lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block lg:self-start">
         <div className="order-1">{keyFacts}</div>
-        <div className="order-3 mt-6 lg:mt-6 lg:border-t lg:border-black/[0.07] lg:pt-5">{actions}</div>
+        <div className="order-2 mt-4 lg:mt-5">{actions}</div>
       </div>
       <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
-        {lead}
+        {bulletinStrip && <div className="order-3 mt-3.5 lg:mt-0">{bulletinStrip}</div>}
+        {overviewSection && <div className={`order-4 mt-7 ${bulletinStrip ? "lg:mt-7" : "lg:mt-0"}`}>{overviewSection}</div>}
         {/* divide-y only separates sections that actually render (client
             sections that resolve to nothing leave no stray separator). */}
-        <div className="order-4 mt-7 divide-y divide-black/[0.07] border-t border-black/[0.07] [&>*]:py-7 [&>*:last-child]:pb-0 lg:mt-8">
+        <div className="order-5 mt-7 divide-y divide-black/[0.07] [&>*]:py-7 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0 lg:mt-8">
           {datesSection}
           {lineupSection}
           {momentsSection}

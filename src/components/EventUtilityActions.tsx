@@ -136,7 +136,10 @@ export default function EventUtilityActions({
   canonicalLocation,
   variant = "rail",
 }: {
-  variant?: "rail" | "quiet";
+  /** "icons": Save / Calendar / Share as compact square icon controls,
+   * returned inline (no wrapper) so the caller can sit them beside the
+   * primary action — Event compact action hierarchy. */
+  variant?: "rail" | "quiet" | "icons";
   eventId: string;
   eventName: string;
   description: string | null;
@@ -181,7 +184,7 @@ export default function EventUtilityActions({
         location={locationLine}
         startAt={selected.start_at}
         endAt={selected.end_at}
-        layout="grid"
+        layout={variant === "icons" ? "icon" : "grid"}
       />
     ) : null,
     share,
@@ -201,5 +204,6 @@ export default function EventUtilityActions({
     ) : null,
   ].filter((item): item is ReactNode => Boolean(item));
 
+  if (variant === "icons") return <>{items}</>;
   return <UtilityActionGrid items={items} variant={variant} />;
 }

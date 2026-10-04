@@ -12,8 +12,8 @@ export function FactsBand({ when, where }: { when: ReactNode; where: ReactNode }
   if (!where) return <div>{when}</div>;
   return (
     <div className="grid grid-cols-2 lg:grid-cols-1">
-      <div className="min-w-0 border-r border-black/[0.08] pr-3.5 lg:border-b lg:border-r-0 lg:pb-4 lg:pr-0">{when}</div>
-      <div className="min-w-0 pl-3.5 lg:pl-0 lg:pt-4">{where}</div>
+      <div className="min-w-0 border-r border-black/[0.08] pr-3 lg:border-b lg:border-r-0 lg:pb-3.5 lg:pr-0">{when}</div>
+      <div className="min-w-0 pl-3 lg:pl-0 lg:pt-3.5">{where}</div>
     </div>
   );
 }
@@ -47,7 +47,7 @@ export function WhenFact({
       <p className="mt-1 break-words text-card-title font-bold text-primary">{dateLabel}</p>
       {detail && <p className="mt-0.5 text-metadata text-secondary">{detail}</p>}
       {count && <p className="text-metadata text-muted">{count}</p>}
-      {status && <div className="mt-1">{status}</div>}
+      {status && <div className="mt-1.5">{status}</div>}
     </div>
   );
 }
@@ -56,33 +56,46 @@ export function WhereFact({
   name,
   href,
   line,
+  lines,
   action,
 }: {
   name: string | null;
   href?: string | null;
-  /** Address / place context. */
+  /** Single address string (legacy shape). Prefer `lines`. */
   line?: string | null;
-  /** A small trailing link (e.g. Directions). */
+  /** Address as deliberate lines — e.g. ["999 Broadway", "New York, NY
+   * 10010"] — so wrapping never splits a city from its state. */
+  lines?: (string | null | undefined)[];
+  /** Compact control pinned to the column's lower-right (Directions). */
   action?: ReactNode;
 }) {
-  if (!name && !line) return null;
+  const addressLines = (lines ?? [line]).filter((l): l is string => Boolean(l && l.trim()));
+  if (!name && addressLines.length === 0) return null;
   return (
     <div className="min-w-0">
       <FactLabel icon={<PinGlyph className="h-3.5 w-3.5" />}>Where</FactLabel>
-      {name &&
-        (href ? (
-          <Link
-            href={href}
-            className="mt-1 block break-words text-card-title font-bold text-primary transition hover:text-findmi-700"
-          >
-            {name}
-            <ChevronGlyph className="ml-0.5 inline h-3 w-3 -translate-y-px text-ink/30" />
-          </Link>
-        ) : (
-          <p className="mt-1 break-words text-card-title font-bold text-primary">{name}</p>
-        ))}
-      {line && <p className="mt-0.5 line-clamp-2 break-words text-metadata text-secondary">{line}</p>}
-      {action && <div className="mt-1">{action}</div>}
+      {/* The Directions control sits beside the place name (top-right of the
+          column), so the address lines below get the full column width and
+          "City, ST ZIP" never wraps mid-line. */}
+      <div className="mt-1 flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          {name &&
+            (href ? (
+              <Link href={href} className="block break-words text-card-title font-bold text-primary transition hover:text-findmi-700">
+                {name}
+                <ChevronGlyph className="ml-0.5 inline h-3 w-3 -translate-y-px text-ink/30" />
+              </Link>
+            ) : (
+              <p className="break-words text-card-title font-bold text-primary">{name}</p>
+            ))}
+        </div>
+        {action}
+      </div>
+      {addressLines.map((l, i) => (
+        <p key={i} className="mt-0.5 break-words text-metadata leading-snug text-secondary">
+          {l}
+        </p>
+      ))}
     </div>
   );
 }

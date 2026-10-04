@@ -47,6 +47,13 @@ function resolveAction(override: string | null | undefined, parent: ResolvedActi
  * in advance whether any Tier A action exists for the current selection.
  * flex-1 on every button is what lets 1, 2, or 3 of them split the row's
  * width evenly. */
+/** Event compact action hierarchy — shared with the single-date path in
+ * EventPublicView so both render identical buttons. */
+export const EVENT_PRIMARY_CTA_CLASS =
+  "flex h-11 min-w-0 flex-1 items-center justify-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600";
+export const EVENT_SECONDARY_CTA_CLASS =
+  "inline-flex h-9 items-center justify-center rounded-lg border border-findmi/40 bg-white px-3.5 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50";
+
 export default function EventScheduleCtas({
   eventId,
   ticketsEnabled,
@@ -56,10 +63,21 @@ export default function EventScheduleCtas({
   vendorApplicationsEnabled,
   vendorApplication,
   bare = false,
+  pick,
+  fallback,
+  withPrimary,
 }: {
   /** Public Event V2 — render just the buttons (no wrapping row) so the
    * caller can place them in its own action row beside Follow. */
   bare?: boolean;
+  /** Event compact action hierarchy: "primary" renders only the ONE
+   * dominant transactional action (Get Tickets, else RSVP) — or `fallback`
+   * when none resolves for the selected date; "secondary" renders the
+   * rest (Apply to Vend, a second transactional action) as compact
+   * outlined buttons, plus `withPrimary` when a primary exists. */
+  pick?: "primary" | "secondary";
+  fallback?: React.ReactNode;
+  withPrimary?: React.ReactNode;
   /** Analytics attribution only. */
   eventId: string;
   ticketsEnabled: boolean;
@@ -70,7 +88,7 @@ export default function EventScheduleCtas({
   vendorApplication: ResolvedAction | null;
 }) {
   const { selected, selectedState } = useEventOccurrence();
-  if (!selected || selectedState === "cancelled") return null;
+  if (!selected || selectedState === "cancelled") return pick === "primary" ? <>{fallback ?? null}</> : null;
 
   const ticket = ticketsEnabled
     ? resolveAction(selected.ticket_url_override, ticketsUrl ? { url: ticketsUrl, displayMode: "external" } : null)
@@ -85,6 +103,48 @@ export default function EventScheduleCtas({
   if (ticket) actions.push({ label: "Get Tickets", action: ticket, weight: "solid", eventName: "click_tickets" });
   if (rsvpAction) actions.push({ label: "RSVP", action: rsvpAction, weight: "solid", eventName: "click_rsvp" });
   if (vendorAction) actions.push({ label: "Apply to Vend", action: vendorAction, weight: "outline", eventName: "click_apply_to_vend" });
+
+  if (pick) {
+    const primaryIdx = actions.findIndex((a) => a.weight === "solid");
+    const track = (eventName: (typeof actions)[number]["eventName"]) => ({
+      event_name: eventName,
+      subject_type: "event_occurrence",
+      subject_id: selected.id,
+      event_id: eventId,
+      event_occurrence_id: selected.id,
+      location_id: selected.location?.id ?? undefined,
+    });
+    if (pick === "primary") {
+      const p = actions[primaryIdx];
+      if (!p) return <>{fallback ?? null}</>;
+      return (
+        <FormAction
+          href={p.action.url}
+          displayMode={p.action.displayMode}
+          label={p.label}
+          className={EVENT_PRIMARY_CTA_CLASS}
+          track={track(p.eventName)}
+        />
+      );
+    }
+    const rest = actions.filter((_, i) => i !== primaryIdx);
+    if (rest.length === 0 && !(primaryIdx >= 0 && withPrimary)) return null;
+    return (
+      <>
+        {rest.map((a) => (
+          <FormAction
+            key={a.label}
+            href={a.action.url}
+            displayMode={a.action.displayMode}
+            label={a.label}
+            className={EVENT_SECONDARY_CTA_CLASS}
+            track={track(a.eventName)}
+          />
+        ))}
+        {primaryIdx >= 0 ? withPrimary : null}
+      </>
+    );
+  }
 
   if (actions.length === 0) return null;
 

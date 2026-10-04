@@ -78,7 +78,7 @@ export default function AddToCalendarButton({
    * Add to Calendar the odd, undersized middle button. The dropdown menu
    * itself is identical across all four — only the trigger markup
    * changes. */
-  layout?: "pill" | "grid" | "glass" | "row";
+  layout?: "pill" | "grid" | "glass" | "row" | "icon";
 }) {
   const [open, setOpen] = useState(false);
   // Bug fix (action-row UX pass): this button sits inside the event page's
@@ -167,7 +167,9 @@ export default function AddToCalendarButton({
   const triggerClass =
     layout === "grid"
       ? "flex h-full w-full flex-col items-center justify-center gap-1 rounded-2xl border border-black/10 text-ink/70 transition hover:border-ink/30 hover:text-ink"
-      : layout === "glass"
+      : layout === "icon"
+        ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-black/10 bg-white text-ink/70 transition hover:border-ink/30 hover:text-ink active:scale-95"
+        : layout === "glass"
         ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-black/40 text-white backdrop-blur-md transition active:scale-95"
         : layout === "row"
           ? "flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30"
@@ -178,11 +180,15 @@ export default function AddToCalendarButton({
       <button
         ref={triggerRef}
         type="button"
-        aria-label={layout === "glass" ? "Add to Calendar" : undefined}
+        aria-label={layout === "glass" || layout === "icon" ? "Add to Calendar" : undefined}
+        title={layout === "icon" ? "Add to Calendar" : undefined}
         onClick={() => {
           if (!open && triggerRef.current) {
             const rect = triggerRef.current.getBoundingClientRect();
-            setCoords({ top: rect.bottom + 6, left: rect.left });
+            // Icon layout sits at the right edge of the Event action row —
+            // keep its menu inside the viewport (other layouts unchanged).
+            const left = layout === "icon" ? Math.max(8, Math.min(rect.left, window.innerWidth - 232)) : rect.left;
+            setCoords({ top: rect.bottom + 6, left });
           }
           setOpen((o) => !o);
         }}
@@ -193,8 +199,8 @@ export default function AddToCalendarButton({
             <CalendarPlusGlyph className="h-4 w-4" />
             <span className="text-[11px] font-semibold uppercase tracking-wide">Calendar</span>
           </>
-        ) : layout === "glass" ? (
-          <CalendarPlusGlyph className="h-4 w-4" />
+        ) : layout === "glass" || layout === "icon" ? (
+          <CalendarPlusGlyph className={layout === "icon" ? "h-[18px] w-[18px]" : "h-4 w-4"} />
         ) : layout === "row" ? (
           <>
             <CalendarPlusGlyph className="h-3.5 w-3.5" />
