@@ -8,8 +8,8 @@ import AdminEditButton from "@/components/AdminEditButton";
 import AppearanceCard from "@/components/AppearanceCard";
 import FormAction from "@/components/FormAction";
 import ProductCard from "@/components/ProductCard";
-import JournalCollection from "@/components/journal/JournalCollection";
-import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
+import MomentsCarousel from "@/components/journal/MomentsCarousel";
+import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText, momentsHeading } from "@/lib/journal-distribution";
 import ProductSaveButton from "@/components/ProductSaveButton";
 import ShareButton from "@/components/ShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
@@ -351,17 +351,32 @@ export default async function ProductPage({
         </section>
       )}
 
-      {/* Journal Distribution V1 — renders nothing when empty. */}
-      {journal.entries.length > 0 && (
-        <section className="mt-10">
-          <JournalCollection
-            heading={momentsHeading("product", product.name)}
+      {/* Moment V1A — moved onto the shared MomentsCarousel (same
+          primitive Event/Business/Location already use) so "+ Add Moment"
+          stays discoverable even with zero public Moments yet; the
+          section no longer renders nothing when empty. The heading's own
+          trailing pill is the ONE "+ Add Moment" action. This Product was
+          part of the Moment — never "Tried"/"Bought"/"Loved"/"Want",
+          which don't exist as structured actions yet. */}
+      <section className="mt-10">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">{momentsHeading("product", product.name)}</h2>
+          <Link
+            href={addMomentHref("product", product.id)}
+            className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
+          >
+            + Add Moment
+          </Link>
+        </div>
+        <div className="mt-4">
+          <MomentsCarousel
             entries={journal.entries}
             total={journal.total}
-            seeAllHref={journalCollectionHref("product", product.slug)}
+            viewAllHref={journalCollectionHref("product", product.slug)}
+            emptyState={<p className="text-metadata text-muted">{momentsEmptyStateText("product", product.name)}</p>}
           />
-        </section>
-      )}
+        </div>
+      </section>
 
       {moreFromSeller.length > 0 && (
         <section className="mt-10">

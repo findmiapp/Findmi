@@ -129,12 +129,21 @@ export default function JournalConnectionsPicker({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-ink">{r.label}</p>
                   <p className="truncate text-[10px] font-bold uppercase tracking-wide text-ink/40">{r.typeLabel}</p>
+                  {/* Moment V1A — visibility-only upgrade: this was a
+                      quiet inline text link easy to miss on an
+                      Event-originated entry (the common ambiguous-
+                      multi-date case the Event page's own Add Moment flow
+                      deliberately leaves unresolved rather than guessing —
+                      see journalCaptureActions.ts). Same handler, same
+                      component, same "never guess" behavior — just a
+                      small accent pill instead of plain text, so an
+                      unresolved date reads as something to act on. */}
                   {r.kind === "event" && !occurrence && (
                     <button
                       type="button"
                       onClick={() => resolveOccurrencesFor(r.value)}
                       disabled={resolvingEventId === r.value}
-                      className="mt-0.5 text-[11px] font-semibold text-findmi-700 hover:underline disabled:opacity-50"
+                      className="mt-1 inline-flex items-center rounded-full border border-findmi/40 bg-findmi-50 px-2 py-0.5 text-[11px] font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-100 disabled:opacity-50"
                     >
                       {resolvingEventId === r.value ? "Checking dates…" : "Which date was this?"}
                     </button>

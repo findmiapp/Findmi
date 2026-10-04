@@ -218,14 +218,20 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
     <div className="mx-auto max-w-lg px-4 py-5 sm:px-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          {/* Business Account Correction Pass — an entry connected to an
-              event (the Add Moment flow from an Event page always creates
-              one of these) is contextually a "Moment," not a "Journal
-              Entry" — the underlying Journal architecture/route/model is
-              unchanged, this is copy only. entry.events is already loaded
+          {/* Moment V1A — broadened from "has an Event connection" (the
+              only contextual Add Moment entry point that existed before
+              this pass) to any real connection — Business/Product/Event
+              or a canonical Location — since Business/Location/Product
+              now each have their own Add Moment entry point too. An
+              entry with zero connections is a purely personal Journal
+              Entry; any connection makes it contextually a "Moment." The
+              underlying Journal architecture/route/model is unchanged,
+              this is copy only — every field used here is already loaded
               by getOwnJournalEntryOrNull, so no new query. */}
           <h1 className="font-display text-lg font-bold tracking-tight text-ink">
-            {entry.events.length > 0 ? "Edit Moment" : "Edit Journal Entry"}
+            {entry.businesses.length > 0 || entry.products.length > 0 || entry.events.length > 0 || entry.location
+              ? "Edit Moment"
+              : "Edit Journal Entry"}
           </h1>
           {status === "draft" && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">Draft</span>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import JournalCollection from "@/components/journal/JournalCollection";
-import { getPublicJournalCollection, journalCollectionHref, momentsHeading } from "@/lib/journal-distribution";
+import MomentsCarousel from "@/components/journal/MomentsCarousel";
+import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText, momentsHeading } from "@/lib/journal-distribution";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
@@ -449,18 +449,34 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* Journal Distribution V1 — separate from activity; renders nothing
-          when empty. */}
-      {journal.entries.length > 0 && (
-        <section className="mt-6 px-4 sm:px-0">
-          <JournalCollection
-            heading={momentsHeading("location", location.name)}
+      {/* Moment V1A — separate from activity. Moved onto the shared
+          MomentsCarousel (same primitive Event/Business already use,
+          replacing the older JournalCollection "rail" here) so this Add
+          Moment capability stays discoverable even with zero public
+          Moments yet — the section itself no longer renders nothing when
+          empty. The heading's own trailing pill is the ONE "+ Add Moment"
+          action; uses the exact Location row's REAL id (never manual
+          location text, never a Market/Area inference) via the existing
+          validated /my-world/journal/new?location=<id> contextual route. */}
+      <section className="mt-6 px-4 sm:px-0">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink">{momentsHeading("location", location.name)}</h2>
+          <Link
+            href={addMomentHref("location", location.id)}
+            className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
+          >
+            + Add Moment
+          </Link>
+        </div>
+        <div className="mt-3">
+          <MomentsCarousel
             entries={journal.entries}
             total={journal.total}
-            seeAllHref={journalCollectionHref("location", location.slug)}
+            viewAllHref={journalCollectionHref("location", location.slug)}
+            emptyState={<p className="text-metadata text-muted">{momentsEmptyStateText("location", location.name)}</p>}
           />
-        </section>
-      )}
+        </div>
+      </section>
 
       <div className="px-4 sm:px-0">
         {/* Secondary contact actions (Visual implementation pass) — real,

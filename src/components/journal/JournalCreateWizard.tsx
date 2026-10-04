@@ -102,6 +102,15 @@ export default function JournalCreateWizard({
   // Step 4
   const [visibility, setVisibility] = useState<"private" | "public">("private");
 
+  // Moment V1A — "entity-originated" reuses the exact signal this wizard
+  // already receives (a prefill prop is non-null only when a real,
+  // server-validated ?business=/location=/product=/event=<id> context
+  // param resolved — see my-world/journal/new/page.tsx) rather than a new
+  // flag. A blank /my-world/journal/new visit keeps "Create Journal
+  // Entry" exactly as before. Mirrors JournalEditForm's own "Edit Moment"
+  // vs "Edit Journal Entry" distinction.
+  const isContextual = Boolean(prefillLocation || prefillBusiness || prefillProduct || prefillEvent);
+
   function handleSelectOccurrence(occ: JournalOccurrenceOption) {
     setOccurrence({ id: occ.id, event_id: occ.event_id, start_at: occ.start_at, end_at: occ.end_at, timezone: occ.timezone, location_id: occ.location?.id ?? null });
     setEntryDate(occ.localDate);
@@ -201,7 +210,7 @@ export default function JournalCreateWizard({
   return (
     <div className="mx-auto max-w-lg px-4 py-5 sm:px-6">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-lg font-bold tracking-tight text-ink">Create Journal Entry</h1>
+        <h1 className="font-display text-lg font-bold tracking-tight text-ink">{isContextual ? "Add Moment" : "Create Journal Entry"}</h1>
         <button type="button" onClick={() => router.push("/my-world/journal")} className="text-xs font-semibold text-ink/50 hover:text-ink">
           Cancel
         </button>

@@ -214,3 +214,27 @@ export function momentsHeading(subjectType: JournalSubjectType, name: string): s
 export function journalCollectionHref(subjectType: JournalSubjectType, slug: string): string {
   return `/journal?${subjectType}=${encodeURIComponent(slug)}`;
 }
+
+/** Moment V1A — the "+ Add Moment" destination for one subject. Reuses the
+ * existing, already-validated contextual-prefill route
+ * (/my-world/journal/new?business=/location=/product=/event=<id>) that
+ * my-world/journal/new/page.tsx already resolves and preselects server-
+ * side — never a new route, never a per-entity-type creation form. Takes
+ * the subject's real id (not slug) — the exact param each resolvePrefill*
+ * function there expects. The signed-in PERSON is always the author;
+ * nothing about which subject this link came from changes that. A
+ * signed-out visitor is sent through the existing /my-world/journal/*
+ * middleware auth gate, which already preserves this full URL (including
+ * the query string) as its `next` — no new auth code needed here. */
+export function addMomentHref(subjectType: JournalSubjectType, subjectId: string): string {
+  return `/my-world/journal/new?${subjectType}=${encodeURIComponent(subjectId)}`;
+}
+
+/** Moment V1A — the restrained one-line empty-state body shown alongside
+ * the "+ Add Moment" action when a subject has zero public Moments yet.
+ * Never a second CTA (the heading's own trailing "+ Add Moment" pill is
+ * the only one on the page) and never fake/placeholder Moment content. */
+export function momentsEmptyStateText(subjectType: JournalSubjectType, name: string): string {
+  if (subjectType === "location") return "Document a moment from your visit.";
+  return `Document your experience with ${name}.`;
+}
