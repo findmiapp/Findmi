@@ -4,11 +4,13 @@ import {
   getDashboardGlance,
   getDashboardNeedsAttention,
   getEventOpportunityCount,
+  getLocationsAwaitingReview,
   getRecentActivity,
+  getTodayOnFindmi,
 } from "@/lib/admin/dashboard-queries";
 import { getPendingMarketRequestGroups } from "@/lib/admin/market-requests";
+import { formatTime } from "@/lib/format";
 import AdminGlobalSearch from "./AdminGlobalSearch";
-import AdminQuickCreate from "./AdminQuickCreate";
 import { MetricCell, ModulePanel } from "./dashboard-ui";
 
 export const dynamic = "force-dynamic";
@@ -26,19 +28,26 @@ interface AttentionQueueItem {
  * already-fetched marketRequestGroups length — no new moderation state,
  * no new query, no duplicated approval action (tapping only routes to
  * the existing authoritative list/filter). */
-function AttentionRow({ item }: { item: AttentionQueueItem }) {
+function AttentionRow({ count, label, href }: { count: number; label: string; href: string }) {
   return (
-    <Link
-      href={item.href}
-      className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 transition hover:border-amber-300"
-    >
-      <span className="text-sm font-semibold text-amber-900">
-        {item.count} {item.count === 1 ? item.label : item.pluralLabel}
+    <Link href={href} className="flex min-h-[48px] items-center gap-3 px-4 py-2.5 transition hover:bg-black/[0.02]">
+      <span className="flex h-7 min-w-[28px] shrink-0 items-center justify-center rounded-full bg-amber-100 px-2 text-metadata font-bold tabular-nums text-amber-800">
+        {count}
       </span>
-      <span className="shrink-0 text-xs font-bold text-amber-700">→</span>
+      <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{label}</span>
+      <span aria-hidden="true" className="shrink-0 text-ink/25">
+        ›
+      </span>
     </Link>
   );
 }
+
+const QUICK_CREATE = [
+  { href: "/admin/businesses/new", label: "Business" },
+  { href: "/admin/events/new", label: "Event" },
+  { href: "/admin/locations/new", label: "Location" },
+  { href: "/admin/appearances/new", label: "Appearance" },
+];
 
 function relativeDate(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -49,227 +58,180 @@ function relativeDate(iso: string): string {
 }
 
 export default async function AdminDashboardPage() {
-  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount, recentActivity] = await Promise.all([
-    getDashboardCounts(),
-    getDashboardNeedsAttention(),
-    getDashboardGlance(),
-    getPendingMarketRequestGroups(),
-    getEventOpportunityCount(),
-    getRecentActivity(),
-  ]);
+  const [counts, needsAttention, glance, marketRequestGroups, eventOpportunityCount, recentActivity, locationsAwaiting, today] =
+    await Promise.all([
+      getDashboardCounts(),
+      getDashboardNeedsAttention(),
+      getDashboardGlance(),
+      getPendingMarketRequestGroups(),
+      getEventOpportunityCount(),
+      getRecentActivity(),
+      getLocationsAwaitingReview(),
+      getTodayOnFindmi(),
+    ]);
 
-  // Every real, existing queue this admin already has a working list/
-  // filter for, as one flat list. Zero-count queues are filtered out
-  // entirely (never a wall of "0" rows) rather than rendered quiet.
+  // Every real, existing queue with a working list/filter. Zero-count
+  // queues are dropped entirely (never a wall of "0" rows).
   const attentionQueue: AttentionQueueItem[] = needsAttention
     ? [
-        {
-          label: "Business awaiting review",
-          pluralLabel: "Businesses awaiting review",
-          count: needsAttention.pendingBusinessReviews,
-          href: "/admin/businesses?published=pending_review",
-        },
-        {
-          label: "Event awaiting review",
-          pluralLabel: "Events awaiting review",
-          count: needsAttention.pendingEventReviews,
-          href: "/admin/events?needsReview=1",
-        },
-        {
-          label: "Product awaiting review",
-          pluralLabel: "Products awaiting review",
-          count: needsAttention.pendingProductReviews,
-          href: "/admin/products?status=needs_review",
-        },
-        {
-          label: "Marketplace submission awaiting review",
-          pluralLabel: "Marketplace submissions awaiting review",
-          count: needsAttention.pendingMarketplaceReviews,
-          href: "/admin/products?status=marketplace_review",
-        },
-        {
-          label: "Pending claim",
-          pluralLabel: "Pending claims",
-          count: needsAttention.pendingClaims,
-          href: "/admin/claims?status=pending",
-        },
-        {
-          label: "Event application",
-          pluralLabel: "Event applications",
-          count: needsAttention.pendingEventApplications,
-          href: "/admin/events?pending=1",
-        },
-        {
-          label: "Onboarding submission awaiting review",
-          pluralLabel: "Onboarding submissions awaiting review",
-          count: needsAttention.pendingOnboardingReview,
-          href: "/admin/onboarding?view=pending_review",
-        },
-        {
-          label: "Market/Area request",
-          pluralLabel: "Market/Area requests",
-          count: marketRequestGroups.length,
-          href: "/admin/market-requests",
-        },
-        {
-          // Admin Where I'll Be Review Inbox pass — deliberately NOT
-          // phrased "awaiting review": acknowledging a Where I'll Be
-          // record is not an approval decision.
-          label: "unreviewed Where I’ll Be record",
-          pluralLabel: "unreviewed Where I’ll Be records",
-          count: needsAttention.unreviewedAppearances,
-          href: "/admin/appearances?reviewed=unreviewed",
-        },
+        { label: "Business awaiting review", pluralLabel: "Businesses awaiting review", count: needsAttention.pendingBusinessReviews, href: "/admin/businesses?published=pending_review" },
+        { label: "Event awaiting review", pluralLabel: "Events awaiting review", count: needsAttention.pendingEventReviews, href: "/admin/events?needsReview=1" },
+        { label: "Product awaiting review", pluralLabel: "Products awaiting review", count: needsAttention.pendingProductReviews, href: "/admin/products?status=needs_review" },
+        { label: "Marketplace submission awaiting review", pluralLabel: "Marketplace submissions awaiting review", count: needsAttention.pendingMarketplaceReviews, href: "/admin/products?status=marketplace_review" },
+        { label: "Pending claim", pluralLabel: "Pending claims", count: needsAttention.pendingClaims, href: "/admin/claims?status=pending" },
+        { label: "Event application", pluralLabel: "Event applications", count: needsAttention.pendingEventApplications, href: "/admin/events?pending=1" },
+        { label: "Onboarding submission awaiting review", pluralLabel: "Onboarding submissions awaiting review", count: needsAttention.pendingOnboardingReview, href: "/admin/onboarding?view=pending_review" },
+        { label: "Market/Area request", pluralLabel: "Market/Area requests", count: marketRequestGroups.length, href: "/admin/market-requests" },
+        // Acknowledging a Where I'll Be record is not an approval decision,
+        // hence not phrased "awaiting review".
+        { label: "unreviewed Where I’ll Be record", pluralLabel: "unreviewed Where I’ll Be records", count: needsAttention.unreviewedAppearances, href: "/admin/appearances?reviewed=unreviewed" },
       ]
     : [];
   const activeAttentionItems = attentionQueue.filter((item) => item.count > 0);
-  const attentionCount = activeAttentionItems.length;
-  // V5.1 correction — Inquiries/Orders footer only renders once one of
-  // them has something to show; treated as "nothing to show" when the
-  // count is genuinely 0 OR unavailable (no service-role access) alike,
-  // since a bare "—" footer is exactly the same weak noise as "0".
-  const hasInquiries = Boolean(glance?.inquiries);
-  const hasOrders = Boolean(counts?.orders);
+  const pendingLocations = locationsAwaiting?.items ?? [];
+  const attentionTotal = activeAttentionItems.length + pendingLocations.length;
+  const now = Date.now();
+  const todayItems = today ?? [];
 
   return (
-    <div className="pb-10">
-      {/* COMMAND BAND — title + Findmi's universal command/navigation
-          instrument + Quick Create, all in one operational strip instead
-          of a title block, then a lone search field, then a separate
-          button row further down the page. Global Search's own
-          server action/authorization/debounce/grouping/routing are
-          untouched (see AdminGlobalSearch.tsx) — only its visual role
-          changed. */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-        <div className="shrink-0">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-findmi-600">Admin</p>
-          <h1 className="font-display text-lg font-bold leading-tight tracking-tight text-ink lg:text-xl">
-            Findmi Command Center
-          </h1>
+    <div className="flex flex-col gap-5">
+      {/* Command band — identity, global search, quick create. */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between lg:gap-6">
+        <div className="min-w-0">
+          <p className="text-label font-bold uppercase text-accent">Findmi Admin</p>
+          <h1 className="font-display text-page-title-lg font-bold text-primary">Home</h1>
         </div>
-        <div className="flex items-center gap-2 lg:w-[30rem]">
-          <div className="min-w-0 flex-1">
-            <AdminGlobalSearch />
-          </div>
-          <AdminQuickCreate />
+        <div className="w-full lg:w-[26rem]">
+          <AdminGlobalSearch />
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {QUICK_CREATE.map((q) => (
+          <Link
+            key={q.href}
+            href={q.href}
+            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3 text-button font-semibold text-secondary transition hover:border-findmi/40 hover:text-findmi-700"
+          >
+            <span aria-hidden="true" className="text-findmi-600">
+              +
+            </span>
+            {q.label}
+          </Link>
+        ))}
+      </div>
+
       {!counts && (
-        <p className="mt-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Server-side Supabase access isn&rsquo;t configured (missing SUPABASE_SERVICE_ROLE_KEY). Counts can&rsquo;t
-          load, and writes will fail until it&rsquo;s set.
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-body text-amber-800">
+          Server-side Supabase access isn&rsquo;t configured (missing SUPABASE_SERVICE_ROLE_KEY). Counts can&rsquo;t load, and
+          writes will fail until it&rsquo;s set.
         </p>
       )}
 
-      {/* OPERATIONAL GRID — mobile stacks in priority order (what needs
-          me -> platform scale -> what changed); desktop places Needs
-          Attention as a persistent status rail alongside a wider column
-          for scale + activity, so all three are visible simultaneously
-          instead of a single scrolling document. Explicit grid placement
-          (not `order`) keeps DOM order = mobile priority order while
-          desktop repositions purely visually. */}
-      <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
-        {/* NEEDS ATTENTION — mobile: first (answers "what needs me").
-            Desktop: right rail, self-sized (never stretched to match the
-            left column's combined height). Preserve logic: existing
-            queues only.
-            V5.1 correction — an EMPTY queue no longer renders the full
-            ModulePanel (header + border + padded body for a single
-            sentence was too much space for "nothing to do"): it collapses
-            to one compact status row instead, so Platform Snapshot starts
-            materially sooner on mobile. An ACTIVE queue is completely
-            unchanged — still the full operational module, unreduced. */}
-        <div className="lg:col-start-3 lg:row-start-1 lg:row-span-2 lg:self-start">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
+        <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
+          {/* Needs attention — first thing on a phone. Collapses to a single
+              quiet line when everything is clear. */}
           {needsAttention &&
-            (attentionCount === 0 ? (
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-emerald-50/60 px-3.5 py-2.5">
-                <span className="text-sm font-medium text-ink/60">Needs Attention</span>
-                <span className="text-sm font-semibold text-emerald-700">All clear ✓</span>
+            (attentionTotal === 0 ? (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-black/[0.07] bg-white px-4 py-3">
+                <span className="text-body font-semibold text-primary">Needs attention</span>
+                <span className="text-body font-semibold text-emerald-700">All clear ✓</span>
               </div>
             ) : (
               <ModulePanel
-                title="Needs Attention"
-                meta={<span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">{attentionCount}</span>}
+                title="Needs attention"
+                meta={<span className="rounded-full bg-amber-100 px-2 py-0.5 text-metadata font-bold text-amber-800">{attentionTotal}</span>}
+                flush
               >
-                <div className="flex flex-col gap-1.5">
+                <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
                   {activeAttentionItems.map((item) => (
-                    <AttentionRow key={item.label} item={item} />
+                    <AttentionRow key={item.label} count={item.count} label={item.count === 1 ? item.label : item.pluralLabel} href={item.href} />
                   ))}
+                  {pendingLocations.map((l) => (
+                    <Link key={l.id} href={`/admin/locations/${l.id}`} className="flex min-h-[48px] items-center gap-3 px-4 py-2.5 transition hover:bg-black/[0.02]">
+                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-label font-bold uppercase text-amber-800">Location</span>
+                      <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{l.name}</span>
+                      <span className="shrink-0 text-metadata text-muted">Awaiting review</span>
+                    </Link>
+                  ))}
+                  {(locationsAwaiting?.total ?? 0) > pendingLocations.length && (
+                    <Link href="/admin/locations" className="block px-4 py-2.5 text-metadata font-semibold text-findmi-700 hover:underline">
+                      {locationsAwaiting!.total - pendingLocations.length} more locations awaiting review →
+                    </Link>
+                  )}
                 </div>
               </ModulePanel>
             ))}
-        </div>
 
-        {/* PLATFORM SNAPSHOT — mobile: second. Desktop: left column, row 1.
-            Core platform-scale counts read large/bold; Inquiries/Orders
-            (currently both low-signal) recede to a quiet inline line
-            below rather than matching cells — same data, real hierarchy,
-            nothing hidden. "Venues" -> "Locations": Findmi's canonical
-            term for this entity everywhere else in the product — same
-            counts.locations query, text only. */}
-        <div className="lg:col-start-1 lg:col-span-2 lg:row-start-1">
-          <ModulePanel title="Platform Snapshot">
-            <div className="grid grid-cols-2 divide-x divide-y divide-black/5 sm:grid-cols-3 lg:grid-cols-6 lg:divide-y-0">
-              <MetricCell label="Live Businesses" count={counts?.businessesPublic} href="/admin/businesses" />
-              <MetricCell label="Upcoming Events" count={glance?.upcomingEvents} href="/admin/events?when=upcoming" />
-              <MetricCell label="Locations" count={counts?.locations} href="/admin/locations" />
-              <MetricCell label="Products" count={counts?.products} href="/admin/products" />
-              <MetricCell label="Accounts" count={glance?.users} href="/admin/users" />
-              <MetricCell
-                label="Event Opportunities"
-                count={eventOpportunityCount ?? undefined}
-                href="/admin/appearances?linkage=standalone&when=upcoming"
-              />
-            </div>
-            {/* V5.1 correction — "0 Inquiries · 0 Orders" read as visually
-                weak noise when both are actually zero (the common case).
-                These are secondary pipeline counters, not core
-                platform-scale KPIs, so the footer only earns its place
-                once there's something to see; same data, same links,
-                display hierarchy only. */}
-            {(hasInquiries || hasOrders) && (
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-black/[0.06] pt-3">
-                <Link href="/admin/inquiries" className="text-xs text-ink/40 transition hover:text-ink/70">
-                  {glance?.inquiries ?? "—"} Inquiries
-                </Link>
-                <Link href="/admin/orders" className="text-xs text-ink/40 transition hover:text-ink/70">
-                  {counts?.orders ?? "—"} Orders
-                </Link>
-              </div>
-            )}
-          </ModulePanel>
-        </div>
-
-        {/* RECENT ACTIVITY — mobile: third. Desktop: left column, row 2,
-            beneath Platform Snapshot. Same assembled-from-existing-
-            timestamps feed as before (see getRecentActivity's own doc
-            comment); omitted entirely if the helper can't run. */}
-        {recentActivity && (
-          <div className="lg:col-start-1 lg:col-span-2 lg:row-start-2">
-            <ModulePanel title="Recent Activity" meta={<span className="text-xs text-ink/40">What changed</span>}>
-              {recentActivity.length === 0 ? (
-                <p className="text-sm text-ink/50">No recent activity.</p>
-              ) : (
-                <div className="-mx-4 -my-4 divide-y divide-black/[0.06]">
-                  {recentActivity.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      className="flex items-center justify-between gap-3 px-4 py-2.5 transition hover:bg-black/[0.02]"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-ink">{item.title}</span>
-                        <span className="text-xs text-ink/45">{item.label}</span>
+          {/* Today on Findmi — hidden when nothing overlaps today. "Live" only
+              when now is genuinely between start and end. */}
+          {todayItems.length > 0 && (
+            <ModulePanel title="Today on Findmi" meta={<span className="text-metadata text-muted">{todayItems.length} today</span>} flush>
+              <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
+                {todayItems.map((item) => {
+                  const live =
+                    item.endAt !== null && new Date(item.startAt).getTime() <= now && now <= new Date(item.endAt).getTime();
+                  return (
+                    <Link key={item.id} href={item.href} className="flex min-h-[52px] items-center gap-3 px-4 py-2.5 transition hover:bg-black/[0.02]">
+                      <span className="w-[4.5rem] shrink-0 text-metadata font-semibold tabular-nums text-secondary">
+                        {formatTime(item.startAt)}
                       </span>
-                      <span className="shrink-0 text-xs text-ink/40">{relativeDate(item.createdAt)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body font-semibold text-primary">{item.title}</span>
+                        <span className="block truncate text-metadata text-muted">
+                          {item.kind === "event" ? "Event" : "Appearance"}
+                          {item.subtitle ? ` · ${item.subtitle}` : ""}
+                        </span>
+                      </span>
+                      {live && (
+                        <span className="shrink-0 rounded-full bg-findmi px-2 py-0.5 text-label font-bold uppercase text-white">Live</span>
+                      )}
                     </Link>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </ModulePanel>
+          )}
+
+          {recentActivity && recentActivity.length > 0 && (
+            <ModulePanel title="Recently added" flush>
+              <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
+                {recentActivity.map((item) => (
+                  <Link key={item.id} href={item.href} className="flex min-h-[48px] items-center justify-between gap-3 px-4 py-2.5 transition hover:bg-black/[0.02]">
+                    <span className="min-w-0">
+                      <span className="block truncate text-body font-semibold text-primary">{item.title}</span>
+                      <span className="text-metadata text-muted">{item.label}</span>
+                    </span>
+                    <span className="shrink-0 text-metadata text-subtle">{relativeDate(item.createdAt)}</span>
+                  </Link>
+                ))}
+              </div>
+            </ModulePanel>
+          )}
+        </div>
+
+        {/* Platform snapshot — real counts only, each opening its list. */}
+        <ModulePanel title="Platform snapshot" flush>
+          <div className="grid grid-cols-2 divide-x divide-y divide-black/[0.06] border-t border-black/[0.06]">
+            <MetricCell label="Live businesses" count={counts?.businessesPublic} href="/admin/businesses" />
+            <MetricCell label="Upcoming events" count={glance?.upcomingEvents} href="/admin/events?when=upcoming" />
+            <MetricCell label="Locations" count={counts?.locations} href="/admin/locations" />
+            <MetricCell label="Products" count={counts?.products} href="/admin/products" />
+            <MetricCell label="Accounts" count={glance?.users} href="/admin/users" />
+            <MetricCell label="Event opportunities" count={eventOpportunityCount ?? undefined} href="/admin/appearances?linkage=standalone&when=upcoming" />
           </div>
-        )}
+          {(Boolean(glance?.inquiries) || Boolean(counts?.orders)) && (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-black/[0.06] px-4 py-3">
+              <Link href="/admin/inquiries" className="text-metadata text-muted transition hover:text-primary">
+                {glance?.inquiries ?? "—"} inquiries
+              </Link>
+              <Link href="/admin/orders" className="text-metadata text-muted transition hover:text-primary">
+                {counts?.orders ?? "—"} paid orders
+              </Link>
+            </div>
+          )}
+        </ModulePanel>
       </div>
     </div>
   );

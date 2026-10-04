@@ -58,7 +58,7 @@ export default async function EditLocationPage({
       <div className="mt-5 rounded-2xl border border-black/10 bg-white p-4">
         <p className="text-sm font-semibold text-ink">Connected businesses</p>
         <p className="mt-1 text-xs text-ink/45">
-          Businesses with an ongoing presence here. Manage from each business&rsquo;s Locations tab.
+          Businesses associated with this location. Manage from each business&rsquo;s Locations tab.
         </p>
         {operators.items.length > 0 ? (
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">

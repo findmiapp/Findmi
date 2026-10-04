@@ -1,5 +1,6 @@
 import { getAdminSupabase } from "./supabase-admin";
 import { getAdminUserCount } from "./user-queries";
+import { getDiscoveryWindowBounds } from "@/lib/format";
 
 // Admin Dashboard Redesign — the /admin homepage's own data, kept
 // separate from lib/admin/queries.ts's getDashboardCounts() (still used
@@ -241,7 +242,7 @@ export async function getRecentActivity(): Promise<RecentActivityItem[] | null> 
   type ClaimRow = { id: string; created_at: string; entity: { name: string } | { name: string }[] | null };
   type MarketRequestRow = { id: string; requested_text: string; canonical_text: string | null; created_at: string };
 
-  const [businesses, events, businessClaims, eventClaims, marketRequests] = await Promise.all([
+  const [businesses, events, businessClaims, eventClaims, marketRequests, locations, products] = await Promise.all([
     supabase
       .from("businesses")
       .select("id, name, created_at")
@@ -269,6 +270,10 @@ export async function getRecentActivity(): Promise<RecentActivityItem[] | null> 
       .select("id, requested_text, canonical_text, created_at")
       .order("created_at", { ascending: false })
       .limit(5),
+    // Admin V2 Pass 1 — Locations and Products join the same feed (same
+    // limit-5, created_at-ordered shape).
+    supabase.from("locations").select("id, name, created_at").is("trashed_at", null).order("created_at", { ascending: false }).limit(5),
+    supabase.from("products").select("id, name, created_at").is("trashed_at", null).order("created_at", { ascending: false }).limit(5),
   ]);
 
   const entityName = (entity: ClaimRow["entity"]) => (Array.isArray(entity) ? entity[0]?.name : entity?.name) ?? "Unknown";
@@ -302,6 +307,20 @@ export async function getRecentActivity(): Promise<RecentActivityItem[] | null> 
       createdAt: c.created_at,
       href: "/admin/claims",
     })),
+    ...((locations.data ?? []) as EntityRow[]).map((l) => ({
+      id: `location-${l.id}`,
+      label: "New Location",
+      title: l.name,
+      createdAt: l.created_at,
+      href: `/admin/locations/${l.id}`,
+    })),
+    ...((products.data ?? []) as EntityRow[]).map((p) => ({
+      id: `product-${p.id}`,
+      label: "New Product",
+      title: p.name,
+      createdAt: p.created_at,
+      href: `/admin/products/${p.id}`,
+    })),
     ...((marketRequests.data ?? []) as MarketRequestRow[]).map((r) => ({
       id: `mr-${r.id}`,
       label: "Area Request",
@@ -312,4 +331,116 @@ export async function getRecentActivity(): Promise<RecentActivityItem[] | null> 
   ];
 
   return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 8);
+}
+
+/** Admin V2 Pass 1 — owner-created Locations still hidden pending review
+ * (is_demo=true with at least one location_members row — seeded/demo
+ * Locations have no members, so they aren't counted as "waiting"). Small
+ * and bounded; each row links straight to its admin edit page, where
+ * publishing happens. */
+export async function getLocationsAwaitingReview(limit = 5): Promise<{ items: { id: string; name: string }[]; total: number } | null> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return null;
+  const { data, count, error } = await supabase
+    .from("locations")
+    .select("id, name, location_members!inner(id)", { count: "exact" })
+    .eq("is_demo", true)
+    .is("trashed_at", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return null;
+  return { items: ((data ?? []) as { id: string; name: string }[]).map((l) => ({ id: l.id, name: l.name })), total: count ?? 0 };
+}
+
+export interface TodayActivityItem {
+  id: string;
+  kind: "appearance" | "event";
+  title: string;
+  subtitle: string | null;
+  startAt: string;
+  endAt: string | null;
+  href: string;
+}
+
+/** Admin V2 Pass 1 — "Today on Findmi": non-canceled Appearances and
+ * scheduled Event dates overlapping today (app timezone), real businesses/
+ * events only. Two small limit-8 queries. Whether something is live is
+ * decided by the caller strictly from start/end (Here Now rule). */
+export async function getTodayOnFindmi(): Promise<TodayActivityItem[] | null> {
+  const supabase = getAdminSupabase();
+  const bounds = getDiscoveryWindowBounds("now");
+  if (!supabase || !bounds) return null;
+  const startIso = bounds.start.toISOString();
+  const endIso = bounds.end.toISOString();
+
+  type AppearanceRow = {
+    id: string;
+    title: string | null;
+    start_at: string;
+    end_at: string | null;
+    venue_name: string | null;
+    business: { name: string } | { name: string }[] | null;
+  };
+  type OccurrenceRow = {
+    id: string;
+    start_at: string;
+    end_at: string | null;
+    venue_name: string | null;
+    event: { id: string; name: string } | { id: string; name: string }[] | null;
+  };
+
+  const [appearances, occurrences] = await Promise.all([
+    supabase
+      .from("appearances")
+      .select("id, title, start_at, end_at, venue_name, business:businesses!inner(name, is_demo)")
+      .neq("status", "canceled")
+      .eq("business.is_demo", false)
+      .lt("start_at", endIso)
+      .or(`end_at.gte."${startIso}",and(end_at.is.null,start_at.gte."${startIso}")`)
+      .order("start_at")
+      .limit(8),
+    supabase
+      .from("event_occurrences")
+      .select("id, start_at, end_at, venue_name, event:events!inner(id, name, is_demo, trashed_at)")
+      .eq("status", "scheduled")
+      .eq("event.is_demo", false)
+      .is("event.trashed_at", null)
+      .lt("start_at", endIso)
+      .or(`end_at.gte."${startIso}",and(end_at.is.null,start_at.gte."${startIso}")`)
+      .order("start_at")
+      .limit(8),
+  ]);
+  if (appearances.error && occurrences.error) return null;
+
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
+  const items: TodayActivityItem[] = [
+    ...((appearances.data ?? []) as AppearanceRow[]).map((a) => {
+      const business = one(a.business);
+      return {
+        id: `appearance-${a.id}`,
+        kind: "appearance" as const,
+        title: business?.name ?? a.title ?? "Appearance",
+        subtitle: a.venue_name ?? a.title,
+        startAt: a.start_at,
+        endAt: a.end_at,
+        href: `/admin/appearances/${a.id}`,
+      };
+    }),
+    ...((occurrences.data ?? []) as OccurrenceRow[]).flatMap((o) => {
+      const event = one(o.event);
+      if (!event) return [];
+      return [
+        {
+          id: `occurrence-${o.id}`,
+          kind: "event" as const,
+          title: event.name,
+          subtitle: o.venue_name,
+          startAt: o.start_at,
+          endAt: o.end_at,
+          href: `/admin/events/${event.id}`,
+        },
+      ];
+    }),
+  ];
+  return items.sort((a, b) => (a.startAt < b.startAt ? -1 : 1)).slice(0, 10);
 }

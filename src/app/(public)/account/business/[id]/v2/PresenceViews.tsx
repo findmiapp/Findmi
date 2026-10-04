@@ -180,7 +180,7 @@ export function LocationsPresence({
           <div>
             <h2 className="font-display text-section-title font-bold text-primary">Locations</h2>
             <p className="mt-1 max-w-md text-body text-muted">
-              Add places where {businessName} has an ongoing physical presence.
+              Add and manage locations for {businessName}.
             </p>
           </div>
           {!addOpen && addButton}

@@ -1,88 +1,194 @@
-import type { NavIconKey } from "@/lib/navigation";
+/** Admin V2, Pass 1 — the ONE route model every piece of Admin navigation
+ * renders from (desktop rail, mobile bottom bar, section hubs, breadcrumb
+ * context). It organizes the EXISTING admin routes by job — nothing here
+ * is a new destination except the four section hubs themselves, which
+ * are just indexes of these same links.
+ *
+ *   Home       /admin                — command center
+ *   Directory  /admin/directory      — the structural graph (who/what/where)
+ *   Activity   /admin/activity       — real-world, time-based activity
+ *   Requests   /admin/requests       — inbound things waiting on Findmi
+ *   More       /admin/more           — accounts, commerce, growth, site, legacy
+ *
+ * Opportunities has no dedicated Admin surface of its own (opportunity
+ * threads live inside Communications), so it isn't a primary section;
+ * Requests is the truthful fourth tab. Journal entries are edited at
+ * /admin/journal/[id] (reached from the public entry) — there is no
+ * Admin Journal list, so none is linked here. */
 
-/** Admin Command Center V5 pass — PRIMARY/MORE_GROUPS extracted out of
- * AdminNav.tsx (unchanged content — same routes/labels/hints, same
- * priority order) so the new desktop AdminSidebar and the existing
- * mobile/tablet AdminNav render from ONE route list instead of two that
- * could silently drift apart. isActive is the same single rule both use
- * for "is this the current admin route." */
+export type AdminSectionKey = "home" | "directory" | "activity" | "requests" | "more";
 
-export interface NavItem {
+export interface AdminNavItem {
   href: string;
   label: string;
-  /** More menu / sidebar secondary group only — short line under the label. */
   hint?: string;
-  /** Sidebar-only — PRIMARY items get a recognizable glyph; secondary
-   * groups intentionally don't (icons on every one of 14 destinations
-   * would be decorative, not recognition). */
-  icon?: NavIconKey;
 }
 
-export interface NavGroup {
+export interface AdminNavGroup {
+  label?: string;
+  items: AdminNavItem[];
+}
+
+export interface AdminSection {
+  key: AdminSectionKey;
   label: string;
-  items: NavItem[];
+  href: string;
+  /** Hub subtitle. */
+  description?: string;
+  groups: AdminNavGroup[];
 }
 
-// Exact conceptual priority order the original Command Center V1 pass specified.
-export const PRIMARY: NavItem[] = [
-  { href: "/admin", label: "Dashboard", icon: "compass" },
-  { href: "/admin/businesses", label: "Businesses", icon: "storefront" },
-  { href: "/admin/events", label: "Events", icon: "calendar" },
-  { href: "/admin/appearances", label: "Appearances", icon: "pin" },
-  // FindMi Activations Pass 1 — real-world experiences FindMi produces/
-  // curates (starting with FindMi Showroom: SoHo), a first-class Admin
-  // area of its own rather than a sub-item under Events — see the frozen
-  // architecture audit + amendment for why Activations is a distinct
-  // domain object, never a duplicate of Events/Appearances.
-  { href: "/admin/activations", label: "Activations", icon: "target" },
-  { href: "/admin/claims", label: "Claims", icon: "bookmark" },
-  { href: "/admin/users", label: "Users", icon: "person" },
-];
-
-export const MORE_GROUPS: NavGroup[] = [
+export const ADMIN_SECTIONS: AdminSection[] = [
+  { key: "home", label: "Home", href: "/admin", groups: [] },
   {
-    label: "Manage",
-    items: [
-      { href: "/admin/people", label: "People", hint: "Directory people" },
-      { href: "/admin/locations", label: "Locations", hint: "Venues & places" },
-      { href: "/admin/markets", label: "Markets", hint: "Findmi Markets & Area presentation" },
-      { href: "/admin/market-requests", label: "Market Requests", hint: "Geography requested but not yet a Market" },
-      { href: "/admin/products", label: "Products", hint: "Business products" },
-      { href: "/admin/categories", label: "Categories", hint: "Discovery taxonomy" },
-      { href: "/admin/pro-invites", label: "Pro Invites", hint: "Complimentary Pro access codes" },
-      { href: "/admin/referrals", label: "Referrals", hint: "Referral partners & commissions" },
-      { href: "/admin/qr-campaigns", label: "QR Campaigns", hint: "Physical QR scan attribution" },
-      { href: "/admin/inquiries", label: "Inquiries", hint: "Native Findmi inquiry threads" },
+    key: "directory",
+    label: "Directory",
+    href: "/admin/directory",
+    description: "Businesses, places, products and the taxonomy that connects them.",
+    groups: [
       {
-        href: "/admin/sales-inquiries",
-        label: "Sales Inquiries",
-        hint: "Multi-Region/National leads from Join's Talk to Sales",
+        items: [
+          { href: "/admin/businesses", label: "Businesses", hint: "Profiles, review, ownership, locations" },
+          { href: "/admin/locations", label: "Locations", hint: "Venues & places" },
+          { href: "/admin/products", label: "Products", hint: "Catalog & marketplace review" },
+          { href: "/admin/people", label: "People", hint: "Directory people" },
+        ],
       },
       {
-        href: "/admin/conversations",
-        label: "Communications",
-        hint: "All platform communications: inquiries, direct messages, and sales",
+        label: "Structure",
+        items: [
+          { href: "/admin/categories", label: "Categories", hint: "Discovery taxonomy" },
+          { href: "/admin/markets", label: "Markets & Areas", hint: "Findmi Markets and their Areas" },
+        ],
       },
-      { href: "/admin/site", label: "Site Editor", hint: "Site content & settings" },
-      { href: "/admin/bulletins", label: "Homepage Bulletins", hint: "Editorial homepage announcement" },
     ],
   },
   {
-    label: "Legacy & Operations",
-    items: [
-      { href: "/admin/onboarding", label: "Onboarding", hint: "Legacy onboarding" },
-      { href: "/admin/plans", label: "Plans", hint: "Legacy plan configuration" },
-      { href: "/admin/forms", label: "Forms", hint: "Legacy form system" },
-      { href: "/admin/orders", label: "Orders", hint: "Commerce orders" },
-      { href: "/admin/settlements", label: "Settlements", hint: "Seller payouts" },
+    key: "activity",
+    label: "Activity",
+    href: "/admin/activity",
+    description: "What's happening in the real world, and when.",
+    groups: [
+      {
+        items: [
+          { href: "/admin/events", label: "Events", hint: "Events, dates & participating businesses" },
+          { href: "/admin/appearances", label: "Appearances", hint: "Where businesses will be" },
+          { href: "/admin/activations", label: "Activations", hint: "Experiences Findmi produces" },
+        ],
+      },
+      {
+        label: "Tools",
+        items: [{ href: "/admin/appearances/import", label: "Import Appearances", hint: "Paste or upload a schedule" }],
+      },
+    ],
+  },
+  {
+    key: "requests",
+    label: "Requests",
+    href: "/admin/requests",
+    description: "Claims, requests and conversations waiting on Findmi.",
+    groups: [
+      {
+        items: [
+          { href: "/admin/claims", label: "Claims", hint: "Ownership claims" },
+          { href: "/admin/market-requests", label: "Market Requests", hint: "Geography requested but not yet a Market" },
+          { href: "/admin/conversations", label: "Communications", hint: "Inquiries, direct & opportunity messages, sales" },
+        ],
+      },
+      {
+        label: "Inquiries",
+        items: [
+          { href: "/admin/inquiries", label: "Inquiries", hint: "Native Findmi inquiry threads" },
+          { href: "/admin/sales-inquiries", label: "Sales Inquiries", hint: "Multi-Region/National leads" },
+        ],
+      },
+    ],
+  },
+  {
+    key: "more",
+    label: "More",
+    href: "/admin/more",
+    groups: [
+      { label: "Accounts", items: [{ href: "/admin/users", label: "Users", hint: "Findmi accounts & access" }] },
+      {
+        label: "Commerce",
+        items: [
+          { href: "/admin/orders", label: "Orders", hint: "Marketplace orders" },
+          { href: "/admin/settlements", label: "Settlements", hint: "Seller payouts" },
+        ],
+      },
+      {
+        label: "Growth",
+        items: [
+          { href: "/admin/pro-invites", label: "Pro Invites", hint: "Complimentary Pro access codes" },
+          { href: "/admin/referrals", label: "Referrals", hint: "Referral partners & commissions" },
+          { href: "/admin/qr-campaigns", label: "QR Campaigns", hint: "Physical QR scan attribution" },
+        ],
+      },
+      {
+        label: "Site",
+        items: [
+          { href: "/admin/site", label: "Site Editor", hint: "Site content & settings" },
+          { href: "/admin/bulletins", label: "Homepage Bulletins", hint: "Editorial homepage announcement" },
+        ],
+      },
+      {
+        label: "Legacy",
+        items: [
+          { href: "/admin/onboarding", label: "Onboarding", hint: "Legacy onboarding" },
+          { href: "/admin/plans", label: "Plans", hint: "Legacy plan configuration" },
+          { href: "/admin/forms", label: "Forms", hint: "Legacy form system" },
+        ],
+      },
     ],
   },
 ];
 
-/** Dashboard (/admin) only matches itself — every other admin route also
- * starts with "/admin", so an exact match there is required; every other
- * item matches its own sub-routes too (e.g. /admin/businesses/[id]). */
+/** Routes that belong to a section without being listed in it (sub-tools
+ * reached from their own parent pages). Checked after the listed items. */
+const EXTRA_SECTION_PREFIXES: { prefix: string; section: AdminSectionKey; label: string; listHref: string }[] = [
+  { prefix: "/admin/journal", section: "activity", label: "Journal", listHref: "/admin/activity" },
+  { prefix: "/admin/email-test", section: "more", label: "Email Test", listHref: "/admin/more" },
+];
+
 export function isActive(pathname: string, href: string): boolean {
   if (href === "/admin") return pathname === "/admin";
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export interface AdminRouteContext {
+  section: AdminSectionKey;
+  /** The listed destination this path is inside of, if any. */
+  item: AdminNavItem | null;
+  /** True below a destination's own list page (a detail/new/edit route). */
+  isDetail: boolean;
+}
+
+/** Which section + destination a pathname belongs to — longest matching
+ * href wins (so /admin/appearances/import beats /admin/appearances). */
+export function resolveAdminRoute(pathname: string): AdminRouteContext {
+  let best: { section: AdminSectionKey; item: AdminNavItem } | null = null;
+  for (const section of ADMIN_SECTIONS) {
+    if (section.key !== "home" && isActive(pathname, section.href)) {
+      return { section: section.key, item: null, isDetail: false };
+    }
+    for (const group of section.groups) {
+      for (const item of group.items) {
+        if (isActive(pathname, item.href) && (!best || item.href.length > best.item.href.length)) {
+          best = { section: section.key, item };
+        }
+      }
+    }
+  }
+  if (best) return { section: best.section, item: best.item, isDetail: pathname !== best.item.href };
+  for (const extra of EXTRA_SECTION_PREFIXES) {
+    if (isActive(pathname, extra.prefix)) {
+      return { section: extra.section, item: { href: extra.listHref, label: extra.label }, isDetail: true };
+    }
+  }
+  return { section: "home", item: null, isDetail: false };
+}
+
+export function getAdminSection(key: AdminSectionKey): AdminSection {
+  return ADMIN_SECTIONS.find((s) => s.key === key)!;
 }

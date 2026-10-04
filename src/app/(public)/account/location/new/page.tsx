@@ -85,8 +85,8 @@ export default async function AddLocationPage({
           </Link>
           <h1 className="mt-2 font-display text-page-title font-bold text-primary sm:text-display">Add a location</h1>
           <p className="mt-2 text-body text-muted">
-            A place where {business.name} has an ongoing physical presence. You&rsquo;ll manage it right away, and it
-            appears publicly once Findmi has reviewed it.
+            Create a location for {business.name}. You&rsquo;ll manage it right away, and it will appear publicly once
+            Findmi reviews it.
           </p>
         </>
       ) : (
