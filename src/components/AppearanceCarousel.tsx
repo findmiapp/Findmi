@@ -1,0 +1,183 @@
+"use client";
+
+import SupabaseImage from "./SupabaseImage";
+import LiveDot from "./LiveDot";
+import type { AppearanceQuickViewAppearance, AppearanceQuickViewBusiness } from "./AppearanceQuickView";
+import { formatAppearanceDateRange, getTemporalLabel, resolveVenueLabel } from "@/lib/format";
+import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
+import { trackEvent } from "@/lib/analytics/track";
+import { buildEntityEventFields, type AnalyticsPlacementContext } from "@/lib/analytics/context";
+
+/** Public Appearance Quick View — Cards view of the Business profile's
+ * "Findmi Here" section (see AppearanceFindMiHere.tsx, its view-owning
+ * parent). A pure row of visual, discovery-oriented cards: no modal state
+ * of its own (FindMi Here View Modes pass moved that up to
+ * AppearanceFindMiHere so Cards and List share exactly one Quick View
+ * instance) — a card click only calls the `onOpen` callback its parent
+ * gives it. Untouched by any of this: AppearanceCard.tsx (a completely
+ * different component — its own tiered Event/link/flyer/GPS click
+ * destinations still serve every other caller as before). */
+
+export interface AppearanceCarouselAppearance extends AppearanceQuickViewAppearance {
+  flyer_image_url: string | null;
+}
+
+export default function AppearanceCarousel({
+  appearances,
+  business,
+  galleryImages,
+  onOpen,
+  analyticsContext,
+}: {
+  appearances: AppearanceCarouselAppearance[];
+  business: AppearanceQuickViewBusiness;
+  /** Image Fallback Refinement pass — this Business's own existing
+   * gallery, already fetched by the page; see resolveAppearanceDisplayImage
+   * for the exact precedence this feeds into. */
+  galleryImages: string[];
+  onOpen: (id: string) => void;
+  analyticsContext?: AnalyticsPlacementContext;
+}) {
+  return (
+    <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {appearances.map((a) => (
+        <AppearanceCarouselCard
+          key={a.id}
+          appearance={a}
+          business={business}
+          galleryImages={galleryImages}
+          onOpen={() => onOpen(a.id)}
+          analyticsContext={analyticsContext}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AppearanceCarouselCard({
+  appearance,
+  business,
+  galleryImages,
+  onOpen,
+  analyticsContext,
+}: {
+  appearance: AppearanceCarouselAppearance;
+  business: AppearanceQuickViewBusiness;
+  galleryImages: string[];
+  onOpen: () => void;
+  analyticsContext?: AnalyticsPlacementContext;
+}) {
+  const { label, live } = getTemporalLabel(appearance.start_at, appearance.end_at);
+  const venueLabel = resolveVenueLabel(appearance);
+  const analyticsFields = buildEntityEventFields(
+    "appearance",
+    appearance.id,
+    {
+      appearanceId: appearance.id,
+      businessId: business.id,
+      eventId: appearance.event_id,
+      locationId: appearance.location_id,
+    },
+    analyticsContext
+  );
+
+  function handleOpen() {
+    trackEvent({ event_name: "entity_click", ...analyticsFields, metadata: { action: "quick_view_open" } });
+    onOpen();
+  }
+
+  // Image Fallback Refinement pass — card artwork priority is now the
+  // most specific real image already attached to this appearance (its
+  // own flyer, else its linked Event's own cover when event-backed —
+  // never swapped out for gallery art), else a deterministic pick from
+  // this Business's own gallery (so repeated image-less appearances on
+  // the same profile spread across real photos instead of all showing
+  // the business cover), else the business cover, else the logo-led
+  // fallback, else the generic glyph. The small business-logo identity
+  // badge keeps showing whenever a REAL photo is the artwork (any of the
+  // first three tiers) — it's only replaced by the logo-led treatment
+  // when there's no photo at all, so the logo is never shown twice.
+  const specificImageUrl = appearance.flyer_image_url ?? appearance.event?.cover_image_url ?? null;
+  const photoUrl = resolveAppearanceDisplayImage({
+    appearanceId: appearance.id,
+    specificImageUrl,
+    galleryImages,
+    businessCoverUrl: business.cover_image_url,
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={handleOpen}
+      aria-label={`${appearance.title}: view details`}
+      className="block w-64 shrink-0 overflow-hidden rounded-2xl border border-black/5 bg-white text-left shadow-sm transition active:scale-[0.98] sm:w-72"
+    >
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-mist">
+        {photoUrl ? (
+          <>
+            <SupabaseImage src={photoUrl} alt="" fill sizes="(min-width: 640px) 288px, 256px" className="object-cover" />
+            {business.logo_url && (
+              // Small Public UI Polish pass — was h-8/w-8 (32px), reading
+              // as a tiny status badge rather than brand identity on a
+              // ~390px card. Bumped moderately (44px) to clearly read as
+              // "this belongs to [Business]"; card-local only, not a
+              // change to SupabaseImage or any shared logo component.
+              <div className="absolute bottom-2 left-2 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow-sm">
+                <SupabaseImage src={business.logo_url} alt="" fill sizes="44px" className="object-cover" />
+              </div>
+            )}
+          </>
+        ) : business.logo_url ? (
+          <div className="flex h-full w-full items-center justify-center bg-findmi-50 p-8">
+            <div className="relative h-full w-full">
+              <SupabaseImage src={business.logo_url} alt="" fill sizes="(min-width: 640px) 288px, 256px" className="object-contain" />
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-ink">
+            <StorefrontGlyph className="h-8 w-8 text-white/25" />
+          </div>
+        )}
+        <span
+          className={`absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
+            live ? "bg-red-600 text-white" : "bg-white/90 text-ink backdrop-blur-sm"
+          }`}
+        >
+          {live && <LiveDot className="text-white" />}
+          {label}
+        </span>
+      </div>
+      <div className="p-3">
+        {!photoUrl && (
+          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">{business.name}</p>
+        )}
+        <p className="mt-0.5 line-clamp-2 font-display text-sm font-semibold leading-snug text-ink">{appearance.title}</p>
+        {venueLabel && <p className="mt-1 truncate text-xs text-ink/55">{venueLabel}</p>}
+        {/* Small Public UI Polish pass — was time-only ("7:00 PM – 11:00
+            PM"), relying entirely on the floating image badge (TOMORROW /
+            WED · OCT 7) for the actual calendar date. Now repeats the real
+            date using the same already-fetched start_at/end_at/description
+            this card already has (no new query) via the existing
+            formatAppearanceDateRange helper, lighter/secondary to the
+            title, same as before. */}
+        <p className="mt-0.5 truncate text-xs text-ink/45">
+          {formatAppearanceDateRange(appearance.start_at, appearance.end_at, appearance.description)}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+function StorefrontGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M4 9.5L5 4h14l1 5.5M4 9.5a2.2 2.2 0 004.3.7M4 9.5a2.2 2.2 0 004.3.7m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.4 0m0 0a2.2 2.2 0 004.3-.7M5 10v9.5a1 1 0 001 1h5v-6h2v6h5a1 1 0 001-1V10"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

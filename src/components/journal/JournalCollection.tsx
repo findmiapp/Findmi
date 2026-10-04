@@ -13,7 +13,6 @@ export default function JournalCollection({
   seeAllHref,
   total,
   layout = "rail",
-  single = "feature",
 }: {
   /** Omit when the surrounding page already titles the collection. */
   heading?: string;
@@ -24,9 +23,6 @@ export default function JournalCollection({
   /** "compact" (Public Event V2.1): one Moment → a single landscape
    * feature row; several → a rail of compact landscape cards. */
   layout?: "rail" | "grid" | "compact";
-  /** compact layout, exactly one entry: "feature" (horizontal row, the
-   * Event page) or "editorial" (a landscape photo card — Business). */
-  single?: "feature" | "editorial";
 }) {
   if (entries.length === 0) return null;
   const showSeeAll = Boolean(seeAllHref) && (total == null || total > entries.length);
@@ -45,7 +41,7 @@ export default function JournalCollection({
       )}
       {layout === "compact" ? (
         entries.length === 1 ? (
-          <JournalPreviewCard entry={entries[0]} variant={single} className="max-w-xl" />
+          <JournalPreviewCard entry={entries[0]} variant="feature" className="max-w-xl" />
         ) : (
           <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:scroll-px-0 lg:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {entries.map((entry) => (

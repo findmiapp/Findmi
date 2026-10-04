@@ -20,7 +20,7 @@ export default function JournalPreviewCard({
    * compact Moments rail; "feature": a single Moment as one horizontal
    * row (image beside text) instead of a tall portrait card. "default"
    * is unchanged for every other surface. */
-  variant?: "default" | "compact" | "feature" | "editorial";
+  variant?: "default" | "compact" | "feature";
 }) {
   const dateLabel = parseYmd(entry.entryDate).toLocaleDateString("en-US", {
     month: "short",
@@ -52,34 +52,6 @@ export default function JournalPreviewCard({
           <p className="mt-1 line-clamp-2 font-display text-[15px] font-semibold leading-snug text-ink">{entry.title}</p>
           {entry.excerpt && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink/60">{entry.excerpt}</p>}
           {metaParts.length > 0 && <p className="mt-1.5 truncate text-[11px] text-ink/45">{metaParts.join(" · ")}</p>}
-        </div>
-      </Link>
-    );
-  }
-
-  if (variant === "editorial") {
-    return (
-      <Link
-        href={`/journal/${entry.id}`}
-        className={`group block overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm transition active:scale-[0.99] hover:border-black/10 hover:shadow ${className}`}
-      >
-        <div className="relative aspect-[16/9] w-full overflow-hidden bg-mist">
-          {entry.coverUrl ? (
-            <Image src={entry.coverUrl} alt="" fill unoptimized sizes="(min-width: 640px) 576px, 100vw" className="object-cover transition duration-300 group-hover:scale-[1.02]" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-ink">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-white/25">Findmi</span>
-            </div>
-          )}
-        </div>
-        <div className="p-3.5 sm:p-4">
-          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-findmi-700">
-            {dateLabel}
-            {entry.locationName ? ` · ${entry.locationName}` : ""}
-          </p>
-          <p className="mt-1 line-clamp-2 font-display text-card-title-lg font-semibold leading-snug text-ink">{entry.title}</p>
-          {entry.excerpt && <p className="mt-1 line-clamp-2 text-body text-ink/60">{entry.excerpt}</p>}
-          {metaParts.length > 0 && <p className="mt-2 truncate text-[11px] text-ink/45">{metaParts.join(" · ")}</p>}
         </div>
       </Link>
     );
