@@ -43,9 +43,9 @@ export default function EventOccurrenceBusinessRoster({
       <h2 className="font-display text-section-title-lg font-bold text-primary">Who You&rsquo;ll Find Here</h2>
       {(
         <>
-          <p className="mt-0.5 text-metadata text-muted">
-            {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
-          </p>
+          {/* Public Event V2.1 — one business is shown compactly (the card
+              alone); a count line only helps when there's a lineup. */}
+          {businesses.length > 1 && <p className="mt-0.5 text-metadata text-muted">{businesses.length} businesses confirmed</p>}
           {/* key={selected.id} — forces a fresh EventBusinessRoster instance
               per occurrence, so its internal category-filter selection
               (active) resets to "All" instead of persisting a category

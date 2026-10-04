@@ -20,7 +20,9 @@ export default function JournalCollection({
   seeAllHref?: string | null;
   /** Exact eligible count when known; drives "See all N". */
   total?: number | null;
-  layout?: "rail" | "grid";
+  /** "compact" (Public Event V2.1): one Moment → a single landscape
+   * feature row; several → a rail of compact landscape cards. */
+  layout?: "rail" | "grid" | "compact";
 }) {
   if (entries.length === 0) return null;
   const showSeeAll = Boolean(seeAllHref) && (total == null || total > entries.length);
@@ -37,7 +39,17 @@ export default function JournalCollection({
           )}
         </div>
       )}
-      {layout === "rail" ? (
+      {layout === "compact" ? (
+        entries.length === 1 ? (
+          <JournalPreviewCard entry={entries[0]} variant="feature" className="max-w-xl" />
+        ) : (
+          <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:scroll-px-0 lg:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {entries.map((entry) => (
+              <JournalPreviewCard key={entry.id} entry={entry} variant="compact" className="w-56 shrink-0 snap-start sm:w-60" />
+            ))}
+          </div>
+        )
+      ) : layout === "rail" ? (
         <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {entries.map((entry) => (
             <JournalPreviewCard key={entry.id} entry={entry} className="w-64 shrink-0 sm:w-72" />

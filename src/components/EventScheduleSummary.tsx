@@ -1,9 +1,17 @@
 "use client";
 
-import { cityState, cityStateZip, formatDateShortInZone, formatTimeInZone } from "@/lib/format";
+import {
+  cityState,
+  cityStateZip,
+  formatDateShortInZone,
+  formatDayOfMonthInZone,
+  formatMonthAbbrevInZone,
+  formatTimeInZone,
+} from "@/lib/format";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import type { EventLocationCardLocation } from "./EventLocationCard";
-import { LiveStatus, QuietStatus, WhenFact, WhereFact } from "./event/KeyFacts";
+import { EndedStatus, FactsBand, LiveStatus, QuietStatus, WhenFact, WhereFact, factLinkClass } from "./event/KeyFacts";
+import { trackEvent } from "@/lib/analytics/track";
 
 /** The recurring-event hero's date/time/location block — Recurring
  * Events V2. Reads the shared selectedOccurrence context (never the
@@ -48,16 +56,43 @@ import { LiveStatus, QuietStatus, WhenFact, WhereFact } from "./event/KeyFacts";
  * time and number of dates on the When row with a quiet status line
  * (Happening now · until …, the next date, or Cancelled); the selected
  * date's place, linked, with its address on the Where row. Same data and
- * selection logic as before. */
+ * selection logic as before.
+ *
+ * Public Event V2.1 — the two facts sit side by side in one compact band
+ * (FactsBand); Directions moved here from the old utility toolbar. */
+export interface HistoricalSchedule {
+  dateLabel: string;
+  detail: string | null;
+  where: { name: string | null; href: string | null; line: string | null } | null;
+}
+
 export default function EventScheduleSummary({
   canonicalLocation,
+  historical,
+  eventId,
+  directionsEnabled,
 }: {
   canonicalLocation: EventLocationCardLocation | null;
+  /** Public Event V2.1 — when no date is upcoming any more, the event's
+   * real historical schedule (resolved server-side from its past dates)
+   * stays the headline, qualified by a subtle Ended tag — never replaced
+   * by a "no upcoming dates" message. Null only when nothing is known. */
+  historical: HistoricalSchedule | null;
+  eventId: string;
+  directionsEnabled: boolean;
 }) {
   const { occurrences, selected, selectedState } = useEventOccurrence();
 
   if (!selected || selectedState === "none") {
-    return <WhenFact dateLabel="No upcoming dates announced" detail="Follow to hear about new dates." />;
+    if (!historical) {
+      return <WhenFact dateLabel="No upcoming dates announced" detail="Follow to hear about new dates." />;
+    }
+    return (
+      <FactsBand
+        when={<WhenFact dateLabel={historical.dateLabel} detail={historical.detail} status={<EndedStatus />} />}
+        where={historical.where ? <WhereFact name={historical.where.name} href={historical.where.href} line={historical.where.line} /> : null}
+      />
+    );
   }
 
   const location = selected.location ?? canonicalLocation;
@@ -68,9 +103,12 @@ export default function EventScheduleSummary({
   const first = occurrences[0] ?? selected;
   const last = occurrences[occurrences.length - 1] ?? selected;
   const sameDay = formatDateShortInZone(first.start_at, first.timezone) === formatDateShortInZone(last.end_at, first.timezone);
+  // A range drops weekdays ("Oct 10 – Dec 26") so it fits one line of the
+  // half-width band; a single day keeps its weekday.
+  const monthDay = (iso: string) => `${formatMonthAbbrevInZone(iso, first.timezone)} ${formatDayOfMonthInZone(iso, first.timezone)}`;
   const dateRangeLabel = sameDay
     ? formatDateShortInZone(first.start_at, first.timezone)
-    : `${formatDateShortInZone(first.start_at, first.timezone)} – ${formatDateShortInZone(last.end_at, first.timezone)}`;
+    : `${monthDay(first.start_at)} – ${monthDay(last.end_at)}`;
 
   const firstStartTime = formatTimeInZone(first.start_at, first.timezone);
   const firstEndTime = formatTimeInZone(first.end_at, first.timezone);
@@ -92,14 +130,43 @@ export default function EventScheduleSummary({
     status = <QuietStatus>Next: {formatDateShortInZone(selected.start_at, selected.timezone)}</QuietStatus>;
   }
 
+  // Directions — the selected date's place (same query EventUtilityActions
+  // used to build for its "Get Here" cell, same click_directions payload).
+  const mapQuery = location
+    ? [location.name, location.address, cityState(location.city, location.state)].filter(Boolean).join(", ")
+    : [manualVenueName, manualVenueLine].filter(Boolean).join(", ");
+  const directions =
+    directionsEnabled && selectedState !== "cancelled" && mapQuery ? (
+      <a
+        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
+        target="_blank"
+        rel="noreferrer"
+        className={factLinkClass}
+        onClick={() =>
+          trackEvent({
+            event_name: "click_directions",
+            subject_type: "event_occurrence",
+            subject_id: selected.id,
+            event_id: eventId,
+            event_occurrence_id: selected.id,
+            location_id: location && "id" in location ? (location.id as string) : undefined,
+          })
+        }
+      >
+        Directions
+      </a>
+    ) : null;
+
   return (
-    <div className="flex flex-col gap-3.5">
-      <WhenFact dateLabel={dateRangeLabel} detail={detail} status={status} />
-      {location ? (
-        <WhereFact name={location.name} href={`/location/${location.slug}`} line={addressLine || null} />
-      ) : (
-        <WhereFact name={manualVenueName} line={manualVenueLine || null} />
-      )}
-    </div>
+    <FactsBand
+      when={<WhenFact dateLabel={dateRangeLabel} detail={detail} status={status} />}
+      where={
+        location ? (
+          <WhereFact name={location.name} href={`/location/${location.slug}`} line={addressLine || null} action={directions} />
+        ) : (
+          <WhereFact name={manualVenueName} line={manualVenueLine || null} action={directions} />
+        )
+      }
+    />
   );
 }

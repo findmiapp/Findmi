@@ -1,17 +1,29 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-/** Public Event V2 — the compact, borderless WHEN / WHERE essentials shown
- * right under the hero. Presentational only (no hooks), shared by the
+/** Public Event V2.1 — the compact WHEN | WHERE facts band shown right
+ * under the hero. One two-column band on phones (≈50/50, a hairline
+ * vertical divider, no cards); stacked with a horizontal hairline in the
+ * narrow desktop rail. Presentational only (no hooks), shared by the
  * multi-date path (EventScheduleSummary, client, per selected date) and
  * the single-date path (EventPublicView, server). */
 
-export function KeyFactRow({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+export function FactsBand({ when, where }: { when: ReactNode; where: ReactNode }) {
+  if (!where) return <div>{when}</div>;
   return (
-    <div className="flex items-start gap-3">
-      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">{icon}</span>
-      <div className="min-w-0 flex-1">{children}</div>
+    <div className="grid grid-cols-2 lg:grid-cols-1">
+      <div className="min-w-0 border-r border-black/[0.08] pr-3.5 lg:border-b lg:border-r-0 lg:pb-4 lg:pr-0">{when}</div>
+      <div className="min-w-0 pl-3.5 lg:pl-0 lg:pt-4">{where}</div>
     </div>
+  );
+}
+
+function FactLabel({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  return (
+    <p className="flex items-center gap-1.5 text-label font-bold uppercase text-subtle">
+      <span className="text-findmi-600">{icon}</span>
+      {children}
+    </p>
   );
 }
 
@@ -21,16 +33,17 @@ export function WhenFact({
   status,
 }: {
   dateLabel: string;
-  /** Time and/or "· 14 dates". */
+  /** Time, and/or the number of dates. */
   detail?: string | null;
   status?: ReactNode;
 }) {
   return (
-    <KeyFactRow icon={<CalendarGlyph className="h-[18px] w-[18px]" />}>
-      <p className="text-card-title-lg font-bold leading-snug text-primary">{dateLabel}</p>
-      {detail && <p className="text-body text-secondary">{detail}</p>}
-      {status && <div className="mt-0.5">{status}</div>}
-    </KeyFactRow>
+    <div className="min-w-0">
+      <FactLabel icon={<CalendarGlyph className="h-3.5 w-3.5" />}>When</FactLabel>
+      <p className="mt-1 break-words text-card-title font-bold text-primary">{dateLabel}</p>
+      {detail && <p className="mt-0.5 break-words text-metadata text-secondary">{detail}</p>}
+      {status && <div className="mt-1">{status}</div>}
+    </div>
   );
 }
 
@@ -38,36 +51,44 @@ export function WhereFact({
   name,
   href,
   line,
+  action,
 }: {
   name: string | null;
   href?: string | null;
   /** Address / place context. */
   line?: string | null;
+  /** A small trailing link (e.g. Directions). */
+  action?: ReactNode;
 }) {
   if (!name && !line) return null;
   return (
-    <KeyFactRow icon={<PinGlyph className="h-[18px] w-[18px]" />}>
+    <div className="min-w-0">
+      <FactLabel icon={<PinGlyph className="h-3.5 w-3.5" />}>Where</FactLabel>
       {name &&
         (href ? (
           <Link
             href={href}
-            className="group inline-flex max-w-full items-center gap-1 text-card-title-lg font-bold leading-snug text-primary hover:text-findmi-700"
+            className="mt-1 block break-words text-card-title font-bold text-primary transition hover:text-findmi-700"
           >
-            <span className="min-w-0 break-words">{name}</span>
-            <ChevronGlyph className="h-3.5 w-3.5 shrink-0 text-ink/30 transition group-hover:text-findmi-700" />
+            {name}
+            <ChevronGlyph className="ml-0.5 inline h-3 w-3 -translate-y-px text-ink/30" />
           </Link>
         ) : (
-          <p className="break-words text-card-title-lg font-bold leading-snug text-primary">{name}</p>
+          <p className="mt-1 break-words text-card-title font-bold text-primary">{name}</p>
         ))}
-      {line && <p className="break-words text-body text-secondary">{line}</p>}
-    </KeyFactRow>
+      {line && <p className="mt-0.5 line-clamp-2 break-words text-metadata text-secondary">{line}</p>}
+      {action && <div className="mt-1">{action}</div>}
+    </div>
   );
 }
+
+/** Quiet text link used for Directions inside the Where column. */
+export const factLinkClass = "inline-flex items-center gap-1 text-metadata font-semibold text-findmi-700 hover:underline";
 
 export function LiveStatus({ until }: { until?: string | null }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-metadata font-bold text-red-600">
-      <span className="relative flex h-2 w-2">
+      <span className="relative flex h-2 w-2 shrink-0">
         <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60 motion-safe:animate-ping" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
       </span>
@@ -78,6 +99,16 @@ export function LiveStatus({ until }: { until?: string | null }) {
 
 export function QuietStatus({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "red" }) {
   return <span className={`text-metadata font-semibold ${tone === "red" ? "text-red-700" : "text-muted"}`}>{children}</span>;
+}
+
+/** Subtle "Ended" tag for a past event — the historical dates stay the
+ * headline; this only qualifies them. */
+export function EndedStatus() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-black/[0.05] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+      Ended
+    </span>
+  );
 }
 
 export function CalendarGlyph({ className }: { className?: string }) {
@@ -101,7 +132,7 @@ function PinGlyph({ className }: { className?: string }) {
 function ChevronGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

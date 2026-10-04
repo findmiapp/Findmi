@@ -31,6 +31,53 @@ function isExactlyMidnightInZone(iso: string, timezone: string): boolean {
   return hour === "00" && minute === "00";
 }
 
+/** Public Event V2.1 — the card's date/time/venue/live derivation, shared
+ * verbatim with the Upcoming dates LIST rows (UpcomingDatesRail) so both
+ * views describe a date identically (midnight handling included). */
+export function describeOccurrence(occurrence: EventOccurrenceWithLocation, canonicalLocation: EventLocationCardLocation | null) {
+  const cancelled = occurrence.status === "cancelled";
+  const venueLabel = resolveVenueLabel({
+    location: occurrence.location ?? canonicalLocation,
+    venue_name: occurrence.venue_name,
+    address: occurrence.address,
+    city: occurrence.city,
+    state: occurrence.state,
+  });
+
+  const now = Date.now();
+  const live = !cancelled && new Date(occurrence.start_at).getTime() <= now && new Date(occurrence.end_at).getTime() > now;
+
+  // Midnight Display Polish: an occurrence ending exactly at local midnight
+  // (e.g. 11:30 AM -> 12:00 AM the next day) reads to a visitor as "the
+  // day it started," not a two-day span — so for DATE-LABEL purposes only,
+  // roll the effective end back to the prior local calendar day. The real
+  // occurrence.end_at is never touched, and the TIME line below always
+  // renders the true end time (still "12:00 AM") regardless.
+  const dateLabelEndIso = isExactlyMidnightInZone(occurrence.end_at, occurrence.timezone)
+    ? new Date(new Date(occurrence.end_at).getTime() - ONE_DAY_MS).toISOString()
+    : occurrence.end_at;
+
+  // A multi-day occurrence (its own start/end fall on different calendar
+  // days in ITS OWN timezone — e.g. an overnight date) gets both bounds
+  // ("Sep 25 – Sep 26"); a same-day occurrence gets the fuller
+  // weekday-inclusive form ("Fri, Sep 25") — never collapsed to a single
+  // date when the occurrence genuinely spans two. Both branches use only
+  // real occurrence data already available on this object.
+  const sameDay =
+    formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone) ===
+      formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone) &&
+    formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone) === formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone);
+  const dateLabel = sameDay
+    ? formatDateShortInZone(occurrence.start_at, occurrence.timezone)
+    : `${formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone)} ${formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone)} – ${formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone)} ${formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone)}`;
+  // Time-of-day only for both bounds, regardless of same-day/multi-day —
+  // the date line above already conveys any day-crossing, so this line
+  // never needs to fall back to a combined date+time string the way
+  // formatTimeRangeInZone's own multi-day branch does.
+  const timeLabel = `${formatTimeInZone(occurrence.start_at, occurrence.timezone)} – ${formatTimeInZone(occurrence.end_at, occurrence.timezone)}`;
+  return { cancelled, live, dateLabel, timeLabel, venueLabel };
+}
+
 /** One card in the public event page's "Upcoming Dates" row — Recurring
  * Events V2 makes this the occurrence SELECTOR for the whole page (see
  * EventOccurrenceContext); tapping selects it AND opens a lightweight
@@ -94,46 +141,7 @@ export default function EventOccurrenceCard({
 }) {
   const { selected, select } = useEventOccurrence();
   const isSelected = selected?.id === occurrence.id;
-  const cancelled = occurrence.status === "cancelled";
-  const venueLabel = resolveVenueLabel({
-    location: occurrence.location ?? canonicalLocation,
-    venue_name: occurrence.venue_name,
-    address: occurrence.address,
-    city: occurrence.city,
-    state: occurrence.state,
-  });
-
-  const now = Date.now();
-  const live = !cancelled && new Date(occurrence.start_at).getTime() <= now && new Date(occurrence.end_at).getTime() > now;
-
-  // Midnight Display Polish: an occurrence ending exactly at local midnight
-  // (e.g. 11:30 AM -> 12:00 AM the next day) reads to a visitor as "the
-  // day it started," not a two-day span — so for DATE-LABEL purposes only,
-  // roll the effective end back to the prior local calendar day. The real
-  // occurrence.end_at is never touched, and the TIME line below always
-  // renders the true end time (still "12:00 AM") regardless.
-  const dateLabelEndIso = isExactlyMidnightInZone(occurrence.end_at, occurrence.timezone)
-    ? new Date(new Date(occurrence.end_at).getTime() - ONE_DAY_MS).toISOString()
-    : occurrence.end_at;
-
-  // A multi-day occurrence (its own start/end fall on different calendar
-  // days in ITS OWN timezone — e.g. an overnight date) gets both bounds
-  // ("Sep 25 – Sep 26"); a same-day occurrence gets the fuller
-  // weekday-inclusive form ("Fri, Sep 25") — never collapsed to a single
-  // date when the occurrence genuinely spans two. Both branches use only
-  // real occurrence data already available on this object.
-  const sameDay =
-    formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone) ===
-      formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone) &&
-    formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone) === formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone);
-  const dateLabel = sameDay
-    ? formatDateShortInZone(occurrence.start_at, occurrence.timezone)
-    : `${formatMonthAbbrevInZone(occurrence.start_at, occurrence.timezone)} ${formatDayOfMonthInZone(occurrence.start_at, occurrence.timezone)} – ${formatMonthAbbrevInZone(dateLabelEndIso, occurrence.timezone)} ${formatDayOfMonthInZone(dateLabelEndIso, occurrence.timezone)}`;
-  // Time-of-day only for both bounds, regardless of same-day/multi-day —
-  // the date line above already conveys any day-crossing, so this line
-  // never needs to fall back to a combined date+time string the way
-  // formatTimeRangeInZone's own multi-day branch does.
-  const timeLabel = `${formatTimeInZone(occurrence.start_at, occurrence.timezone)} – ${formatTimeInZone(occurrence.end_at, occurrence.timezone)}`;
+  const { cancelled, live, dateLabel, timeLabel, venueLabel } = describeOccurrence(occurrence, canonicalLocation);
   const imageUrl = resolveAppearanceDisplayImage({
     appearanceId: occurrence.id,
     specificImageUrl: coverImageUrl,

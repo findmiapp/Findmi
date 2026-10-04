@@ -3,7 +3,7 @@
 // avoids showing UTC (the server's default) to consumers. Revisit once
 // appearances carry their own timezone (derived from city/state) instead of
 // relying on one global default.
-const APP_TIMEZONE = "America/New_York";
+export const APP_TIMEZONE = "America/New_York";
 
 export function formatDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {

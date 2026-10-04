@@ -4,7 +4,9 @@ import Image from "next/image";
 import JournalCollection from "@/components/journal/JournalCollection";
 import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import BrandHeading from "@/components/BrandHeading";
-import { LiveStatus, QuietStatus, WhenFact, WhereFact } from "@/components/event/KeyFacts";
+import { EndedStatus, FactsBand, LiveStatus, WhenFact, WhereFact, factLinkClass } from "@/components/event/KeyFacts";
+import EventVisualBridge from "@/components/event/EventVisualBridge";
+import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
@@ -25,8 +27,8 @@ import EventOccurrenceBusinessRoster from "@/components/EventOccurrenceBusinessR
 import UpcomingDatesRail from "@/components/UpcomingDatesRail";
 import EventSaveButton from "@/components/EventSaveButton";
 import EventScheduleCtas from "@/components/EventScheduleCtas";
-import EventUtilityActions, { DirectionsGridCell, UtilityActionGrid } from "@/components/EventUtilityActions";
-import EventScheduleSummary from "@/components/EventScheduleSummary";
+import EventUtilityActions, { UtilityActionGrid } from "@/components/EventUtilityActions";
+import EventScheduleSummary, { type HistoricalSchedule } from "@/components/EventScheduleSummary";
 import EventShareButton from "@/components/EventShareButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import FormAction from "@/components/FormAction";
@@ -38,6 +40,7 @@ import {
   attachEventCategories,
   eventHasAnyOccurrences,
   findLocationByExactVenue,
+  getAllOccurrencesForEvent,
   getBusinessesForEvent,
   getEffectiveEventSchedule,
   getEventBySlug,
@@ -46,7 +49,16 @@ import {
   getOccurrenceBusinessRosters,
   isPrimaryDateId,
 } from "@/lib/data";
-import { cityState, cityStateZip, formatDateRange, formatTime, getTemporalLabel } from "@/lib/format";
+import {
+  APP_TIMEZONE,
+  cityState,
+  cityStateZip,
+  formatDateShort,
+  formatTime,
+  formatTimeInZone,
+  formatTimeRange,
+  getTemporalLabel,
+} from "@/lib/format";
 import { resolveEventActionForm } from "@/lib/forms";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -338,22 +350,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const hasOrganizer = Boolean(event.organizer_name?.trim());
 
 
-  // Event Detail Action Bar Correction pass — Message/Save/Share don't
-  // depend on the selected occurrence (client-only, unknowable here at
-  // SSR time), so they're built ONCE here and reused as-is by both the
-  // legacy path (rendered directly into UtilityActionGrid below) and the
-  // recurring path (passed through to EventUtilityActions, which only
-  // adds its own occurrence-dependent Add to Calendar decision on top).
-  // Never duplicated, never re-resolved per branch.
-  const messageAction = showMessageButton ? (
-    <MessageButton
-      layout="grid"
-      targetType="event"
-      targetId={event.id}
-      targetName={event.name}
-      eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
-    />
-  ) : null;
+  // Save/Share don't depend on the selected occurrence, so they're built
+  // ONCE here and reused by both the single-date path (UtilityActionGrid)
+  // and the multi-date path (EventUtilityActions, which adds its own
+  // occurrence-dependent Add to Calendar on top).
   const saveAction = <EventSaveButton slug={event.slug} id={event.id} layout="grid" />;
   const shareAction = (
     <EventShareButton
@@ -364,51 +364,134 @@ export async function EventPublicView({ slug }: { slug: string }) {
     />
   );
 
-  // ── Public Event V2 ────────────────────────────────────────────────────
-  // ESSENTIALS FIRST (key facts, actions, Moments) · EXPERIENCE SECOND
-  // (overview, dates, lineup, Findmi Moments, photos) · DEEP DETAILS LAST
-  // (place, products, host, claim). Open editorial sections separated by
-  // hairlines instead of stacked bordered cards; every section renders only
+  // ── Public Event V2.1 — storytelling hierarchy ─────────────────────────
+  // Phones read top to bottom:
+  //   Hero → WHEN | WHERE band → What's happening (+ bulletin) → visual
+  //   bridge → actions → Upcoming dates (Cards/List) → lineup → Findmi
+  //   Moments (+ Add yours) → Photos → place / products / host & details.
+  // Desktop keeps the facts + actions in the sticky right rail. Open
+  // editorial sections separated by hairlines; every section renders only
   // when it has real content. Section ids (overview, dates, lineup,
-  // moments, media, place, products, details) are stable anchors for the
-  // future entity sub-nav. Data, actions and their analytics are unchanged.
+  // moments, media, place, products, details) are stable anchors. Data,
+  // actions and their analytics are unchanged.
 
-  // Single-date (no occurrence rows) Key Facts — server-resolved.
+  // Ended — no date left to attend. Multi-date: nothing upcoming in the
+  // effective schedule; single-date: its own end has passed.
   const legacyEnded = new Date(event.end_at ?? event.start_at).getTime() < Date.now();
+  const eventEnded = hasOccurrences ? upcomingOccurrences.length === 0 : legacyEnded;
+
+  // Multi-date with no upcoming date: the real historical schedule (one
+  // extra read, only in that case) stays the headline instead of a
+  // "no upcoming dates" message.
+  let historical: HistoricalSchedule | null = null;
+  if (hasOccurrences && realOccurrences.length === 0) {
+    const past = (await getAllOccurrencesForEvent(event.id)).filter((o) => o.status !== "cancelled");
+    if (past.length > 0) {
+      const first = past[0];
+      const last = past[past.length - 1];
+      const tz = first.timezone;
+      const firstLabel = formatDateWithYearInZone(first.start_at, tz);
+      const lastLabel = formatDateWithYearInZone(last.end_at, tz);
+      const startTime = formatTimeInZone(first.start_at, tz);
+      const endTime = formatTimeInZone(first.end_at, tz);
+      const uniformTime = past.every(
+        (o) => formatTimeInZone(o.start_at, o.timezone) === startTime && formatTimeInZone(o.end_at, o.timezone) === endTime
+      );
+      const lastLocation = last.location ?? canonicalLocation;
+      historical = {
+        dateLabel: formatHistoricalRange(first.start_at, last.end_at, tz, firstLabel, lastLabel),
+        detail: [uniformTime ? `${startTime} – ${endTime}` : null, past.length > 1 ? `${past.length} dates` : null]
+          .filter(Boolean)
+          .join(" · ") || null,
+        where: lastLocation
+          ? {
+              name: lastLocation.name,
+              href: `/location/${lastLocation.slug}`,
+              line: [lastLocation.address, cityState(lastLocation.city, lastLocation.state)].filter(Boolean).join(", ") || null,
+            }
+          : last.venue_name || last.address
+            ? {
+                name: last.venue_name,
+                href: null,
+                line: [last.address, cityStateZip(last.city, last.state, last.postal_code)].filter(Boolean).join(", ") || null,
+              }
+            : null,
+      };
+    }
+  }
+
+  // Single-date (no occurrence rows) facts — server-resolved.
   const legacyWhereName = matchedLocation?.name ?? event.venue_name ?? null;
   const legacyWhereLine = matchedLocation
     ? [matchedLocation.address, cityState(matchedLocation.city, matchedLocation.state)].filter(Boolean).join(", ")
     : [event.address, location].filter(Boolean).join(", ");
+  const legacySameDay = !event.end_at || formatDateShort(event.start_at) === formatDateShort(event.end_at);
+  const legacyDateLabel = legacyEnded
+    ? legacySameDay
+      ? formatDateWithYear(event.start_at)
+      : formatHistoricalRange(event.start_at, event.end_at!, APP_TIMEZONE, formatDateWithYear(event.start_at), formatDateWithYear(event.end_at!))
+    : legacySameDay
+      ? formatDateShort(event.start_at)
+      : `${formatDateShort(event.start_at)} – ${formatDateShort(event.end_at!)}`;
+  const legacyTime = legacySameDay ? formatTimeRange(event.start_at, event.end_at) : formatTime(event.start_at);
   const keyFacts = hasOccurrences ? (
-    <EventScheduleSummary canonicalLocation={canonicalLocation} />
+    <EventScheduleSummary
+      canonicalLocation={canonicalLocation}
+      historical={historical}
+      eventId={event.id}
+      directionsEnabled={event.directions_enabled}
+    />
   ) : (
-    <div className="flex flex-col gap-3.5">
-      <WhenFact
-        dateLabel={formatDateRange(event.start_at, event.end_at)}
-        status={
-          heroTemporal.live ? (
-            <LiveStatus until={event.end_at ? formatTime(event.end_at) : null} />
-          ) : legacyEnded ? (
-            <QuietStatus>This event has ended</QuietStatus>
-          ) : null
-        }
-      />
-      <WhereFact
-        name={legacyWhereName}
-        href={matchedLocation ? `/location/${matchedLocation.slug}` : null}
-        line={legacyWhereLine || null}
-      />
-    </div>
+    <FactsBand
+      when={
+        <WhenFact
+          dateLabel={legacyDateLabel}
+          detail={legacyTime}
+          status={
+            heroTemporal.live ? (
+              <LiveStatus until={event.end_at ? formatTime(event.end_at) : null} />
+            ) : legacyEnded ? (
+              <EndedStatus />
+            ) : null
+          }
+        />
+      }
+      where={
+        legacyWhereName || legacyWhereLine ? (
+          <WhereFact
+            name={legacyWhereName}
+            href={matchedLocation ? `/location/${matchedLocation.slug}` : null}
+            line={legacyWhereLine || null}
+            action={
+              showDirections && !legacyEnded ? (
+                <AnalyticsLink
+                  href={directionsHref!}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={factLinkClass}
+                  trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
+                >
+                  Directions
+                </AnalyticsLink>
+              ) : null
+            }
+          />
+        ) : null
+      }
+    />
   );
 
-  // PRIMARY ACTION row — organizer actions (Tickets/RSVP/Apply to Vend)
-  // plus Follow. Multi-date events resolve them per selected date.
+  // ACTIONS — the primary action (organizer CTA, else Follow) stays
+  // dominant; Save / Calendar / Share sit in one quiet row beneath it.
+  // Message / Contact / Website / Call moved to the host & details section.
+  // An ended event keeps only what's still useful: Follow (new dates),
+  // Save, Share — no tickets/RSVP/calendar for dates that are over.
   const followButton = showFollow ? (
     <EventFollowButton eventId={event.id} eventSlug={event.slug} eventName={event.name} />
   ) : null;
   const primaryRow = (
     <div className="flex flex-wrap items-center gap-2.5 empty:hidden">
-      {hasOccurrences ? (
+      {eventEnded ? null : hasOccurrences ? (
         <EventScheduleCtas
           bare
           eventId={event.id}
@@ -445,139 +528,102 @@ export async function EventPublicView({ slug }: { slug: string }) {
     </div>
   );
 
-  // UTILITIES — one quiet segmented bar (Message/Save/Calendar/Share/Get
-  // Here), each action exactly once.
-  const utilityBar = hasOccurrences ? (
+  const utilityRow = hasOccurrences ? (
     <EventUtilityActions
-      variant="bar"
+      variant="quiet"
       eventId={event.id}
       eventName={event.name}
       description={event.description}
-      message={messageAction}
+      message={null}
       save={saveAction}
       share={shareAction}
-      directionsEnabled={event.directions_enabled}
+      directionsEnabled={false}
       canonicalLocation={canonicalLocation}
     />
   ) : (
     <UtilityActionGrid
-      variant="bar"
+      variant="quiet"
       items={[
-        messageAction,
         saveAction,
-        <AddToCalendarButton
-          key="calendar"
-          title={event.name}
-          description={event.description}
-          location={venueLine || null}
-          startAt={event.start_at}
-          endAt={event.end_at}
-          layout="grid"
-        />,
-        shareAction,
-        showDirections ? (
-          <DirectionsGridCell
-            key="directions"
-            href={directionsHref!}
-            trackPayload={{ event_name: "click_directions", subject_type: "event", subject_id: event.id, event_id: event.id }}
+        legacyEnded ? null : (
+          <AddToCalendarButton
+            key="calendar"
+            title={event.name}
+            description={event.description}
+            location={venueLine || null}
+            startAt={event.start_at}
+            endAt={event.end_at}
+            layout="grid"
           />
-        ) : null,
+        ),
+        shareAction,
       ].filter((item): item is ReactElement => Boolean(item))}
     />
   );
 
-  // Lower-frequency links folded into one quiet line (never their own rows).
-  const quietLinkClass = "inline-flex items-center gap-1.5 text-metadata font-semibold text-secondary transition hover:text-findmi-700";
-  const secondaryLinks =
-    canonicalWebsite || canonicalPhone || showContact || event.external_url ? (
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        {canonicalWebsite && (
-          <a href={canonicalWebsite} target="_blank" rel="noreferrer" className={quietLinkClass}>
-            <GlobeGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-            Website
-          </a>
-        )}
-        {canonicalPhone && (
-          <a href={`tel:${canonicalPhone}`} className={quietLinkClass}>
-            <PhoneGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-            Call
-          </a>
-        )}
-        {showContact && (
-          <InquireButton
-            targetType="event"
-            targetId={event.id}
-            targetName={event.name}
-            label="Contact organizer"
-            className={quietLinkClass}
-            track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
-          />
-        )}
-        {event.external_url && (
-          <a href={event.external_url} target="_blank" rel="noreferrer" className={quietLinkClass}>
-            <ExternalGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-            Event details
-          </a>
-        )}
-      </div>
-    ) : null;
-
-  const essentials = (
-    <div className="flex flex-col gap-5">
-      {keyFacts}
-      <div className="flex flex-col gap-3">
-        {primaryRow}
-        {utilityBar}
-        {secondaryLinks}
-      </div>
-      <DocumentExperienceCta eventSlug={event.slug} state={journalCtaState} />
+  const actions = (
+    <div className="flex flex-col gap-2">
+      {primaryRow}
+      {utilityRow}
     </div>
   );
 
   // ── Editorial sections ────────────────────────────────────────────────
+  // What's happening — a short preview right after the facts. No bulletin
+  // priority metadata exists (heading/body/enabled only), so the bulletin
+  // sits with the description it qualifies.
+  const hasBulletin = Boolean(event.bulletin_enabled && event.bulletin_body);
   const overviewSection =
-    event.description || (event.bulletin_enabled && event.bulletin_body) ? (
+    event.description || hasBulletin ? (
       <section id="overview" className="scroll-mt-24">
         {event.description && (
           <>
             <SectionHeading>What&rsquo;s happening</SectionHeading>
-            <div className="mt-2 max-w-2xl text-body-lg leading-relaxed text-secondary">
-              <ReadMoreText text={event.description} />
+            <div className="mt-1.5 max-w-2xl">
+              <ReadMoreText
+                text={event.description}
+                clampClassName="line-clamp-3 sm:line-clamp-4"
+                className="text-body-lg leading-relaxed text-secondary"
+              />
             </div>
           </>
         )}
-        {event.bulletin_enabled && event.bulletin_body && (
-          <div className={event.description ? "mt-4" : ""}>
-            <Bulletin heading={event.bulletin_heading} body={event.bulletin_body} />
+        {hasBulletin && (
+          <div className={event.description ? "mt-3.5" : ""}>
+            <Bulletin heading={event.bulletin_heading} body={event.bulletin_body!} />
           </div>
         )}
       </section>
     ) : null;
 
+  // Early visual bridge — Findmi Moments imagery first (each tile opens
+  // its Moment), else the Event's own gallery (opens the lightbox), else
+  // nothing. Never invented imagery.
+  const momentImages = journal.entries
+    .filter((e) => e.coverUrl)
+    .map((e) => ({ src: e.coverUrl as string, href: `/journal/${e.id}`, label: e.title }));
+  const bridgeFromGallery = momentImages.length === 0;
+  const bridgeItems = bridgeFromGallery ? images.gallery.map((src) => ({ src })) : momentImages;
+  const visualBridge = bridgeItems.length > 0 ? <EventVisualBridge items={bridgeItems} alt={event.name} /> : null;
+
   const datesSection =
     realOccurrences.length > 0 ? (
       <section id="dates" className="scroll-mt-24">
-        <SectionHeading>Upcoming dates</SectionHeading>
-        <p className="mt-0.5 text-metadata text-muted">
-          {realOccurrences.length} upcoming date{realOccurrences.length === 1 ? "" : "s"} · tap one to see its details
-        </p>
-        <div className="-mx-4 mt-1 sm:mx-0">
-          <UpcomingDatesRail
-            occurrences={realOccurrences}
-            eventName={event.name}
-            eventId={event.id}
-            canonicalLocation={canonicalLocation}
-            coverImageUrl={coverAndGallery[0] ?? null}
-            galleryImages={images.gallery}
-            ticketsEnabled={event.tickets_enabled}
-            ticketsUrl={event.tickets_url}
-            rsvpEnabled={event.rsvp_enabled}
-            rsvp={rsvpForm}
-            vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
-            vendorApplication={vendorAppForm}
-            rostersByOccurrence={rostersByOccurrence}
-          />
-        </div>
+        <UpcomingDatesRail
+          occurrences={realOccurrences}
+          eventName={event.name}
+          eventId={event.id}
+          canonicalLocation={canonicalLocation}
+          coverImageUrl={coverAndGallery[0] ?? null}
+          galleryImages={images.gallery}
+          ticketsEnabled={event.tickets_enabled}
+          ticketsUrl={event.tickets_url}
+          rsvpEnabled={event.rsvp_enabled}
+          rsvp={rsvpForm}
+          vendorApplicationsEnabled={event.vendor_applications_enabled && !vendorDeadlinePassed}
+          vendorApplication={vendorAppForm}
+          rostersByOccurrence={rostersByOccurrence}
+        />
       </section>
     ) : null;
 
@@ -588,36 +634,42 @@ export async function EventPublicView({ slug }: { slug: string }) {
   ) : businesses.length > 0 ? (
     <section id="lineup" className="scroll-mt-24">
       <SectionHeading>Who You&rsquo;ll Find Here</SectionHeading>
-      <p className="mt-0.5 text-metadata text-muted">
-        {businesses.length} business{businesses.length === 1 ? "" : "es"} confirmed
-      </p>
+      {businesses.length > 1 && <p className="mt-0.5 text-metadata text-muted">{businesses.length} businesses confirmed</p>}
       <EventBusinessRoster businesses={businesses} eventName={event.name} />
     </section>
   ) : null;
 
-  const momentsSection =
-    journal.entries.length > 0 ? (
-      <section id="moments" className="scroll-mt-24">
-        <BrandHeading
-          accent="Moments"
-          className="mb-3"
-          trailing={
-            journal.total != null && journal.total > journal.entries.length ? (
-              <Link href={journalCollectionHref("event", event.slug)} className="text-metadata font-semibold text-findmi-700 hover:underline">
-                See all {journal.total}
-              </Link>
-            ) : null
-          }
-        />
-        <JournalCollection entries={journal.entries} total={journal.total} />
-      </section>
-    ) : null;
+  // Findmi Moments — compact (one Moment → a landscape feature row;
+  // several → a compact rail), with the contribution row inside it. The
+  // section always carries the Add yours / Add more entry point, so the
+  // capability never disappears when there are no public Moments yet.
+  const momentsSection = (
+    <section id="moments" className="scroll-mt-24">
+      <BrandHeading
+        accent="Moments"
+        trailing={
+          journal.total != null && journal.total > journal.entries.length ? (
+            <Link href={journalCollectionHref("event", event.slug)} className="text-metadata font-semibold text-findmi-700 hover:underline">
+              See all {journal.total}
+            </Link>
+          ) : null
+        }
+      />
+      {journal.entries.length > 0 && (
+        <div className="mt-3">
+          <JournalCollection entries={journal.entries} total={journal.total} layout="compact" />
+        </div>
+      )}
+      <div className="mt-3">
+        <DocumentExperienceCta eventSlug={event.slug} state={journalCtaState} />
+      </div>
+    </section>
+  );
 
-  // Photos — the event's own gallery (the cover lives in the hero, whose
-  // lightbox also reaches every gallery image). A future MediaMosaic can
-  // replace this block in place.
+  // Photos — the event's own gallery (distinct from Moments). Skipped when
+  // the visual bridge above already shows every gallery image.
   const mediaSection =
-    images.gallery.length > 0 ? (
+    images.gallery.length > 0 && !(bridgeFromGallery && images.gallery.length <= 3) ? (
       <section id="media" className="scroll-mt-24">
         <SectionHeading>Photos</SectionHeading>
         <div className="mt-3">
@@ -626,8 +678,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
       </section>
     ) : null;
 
-  // Place — only when it adds something beyond Key Facts (the event's own
-  // venue photos); never a second copy of the same Location card.
+  // Place — only when it adds something beyond the facts band (the event's
+  // own venue photos); never a second copy of the same Location card.
   const placeName = canonicalLocation?.name ?? event.venue_name ?? null;
   const placeSection =
     images.venue.length > 0 ? (
@@ -651,8 +703,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
     featuredProducts.length > 0 ? (
       <section id="products" className="scroll-mt-24">
         <SectionHeading>{event.featured_products_heading?.trim() || "Featured at This Event"}</SectionHeading>
-        <div className="-mx-4 mt-3 sm:mx-0">
-          <HorizontalScroller>
+        <div className="-mx-4 mt-3 sm:-mx-6 lg:mx-0">
+          <HorizontalScroller className="lg:px-0">
             {featuredProducts.map((p) => (
               <div key={p.id} className="w-[42%] min-w-[150px] max-w-[176px] shrink-0 sm:w-44">
                 <ProductCard product={p} />
@@ -661,6 +713,53 @@ export async function EventPublicView({ slug }: { slug: string }) {
           </HorizontalScroller>
         </div>
       </section>
+    ) : null;
+
+  // Host & details — attribution, then the lower-frequency ways to reach
+  // out (Message, Contact organizer, Website, Call, external details) as
+  // one quiet line, then Claim.
+  const quietLinkClass = "inline-flex items-center gap-1.5 text-metadata font-semibold text-secondary transition hover:text-findmi-700";
+  const contactLinks =
+    showMessageButton || canonicalWebsite || canonicalPhone || showContact || event.external_url ? (
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
+        {showMessageButton && (
+          <MessageButton
+            size="compact"
+            targetType="event"
+            targetId={event.id}
+            targetName={event.name}
+            eventOccurrences={hasOccurrences ? upcomingOccurrences.map((o) => ({ id: o.id, startAt: o.start_at })) : undefined}
+          />
+        )}
+        {showContact && (
+          <InquireButton
+            targetType="event"
+            targetId={event.id}
+            targetName={event.name}
+            label="Contact organizer"
+            className={quietLinkClass}
+            track={{ event_name: "click_contact_organizer", subject_type: "event", subject_id: event.id, event_id: event.id }}
+          />
+        )}
+        {canonicalWebsite && (
+          <a href={canonicalWebsite} target="_blank" rel="noreferrer" className={quietLinkClass}>
+            <GlobeGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            Website
+          </a>
+        )}
+        {canonicalPhone && (
+          <a href={`tel:${canonicalPhone}`} className={quietLinkClass}>
+            <PhoneGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            Call
+          </a>
+        )}
+        {event.external_url && (
+          <a href={event.external_url} target="_blank" rel="noreferrer" className={quietLinkClass}>
+            <ExternalGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+            Event details
+          </a>
+        )}
+      </div>
     ) : null;
 
   const detailsSection = (
@@ -692,23 +791,35 @@ export async function EventPublicView({ slug }: { slug: string }) {
           </>
         )
       )}
+      {contactLinks && <div className={hostBusiness || hasOrganizer ? "mt-5" : ""}>{contactLinks}</div>}
       {/* Claim foundation pass — deliberately last, small, and muted. */}
-      <div className={hostBusiness || hasOrganizer ? "mt-6" : ""}>
+      <div className={hostBusiness || hasOrganizer || contactLinks ? "mt-6" : ""}>
         <ClaimButton type="event" slug={event.slug} entityName={event.name} />
       </div>
     </section>
   );
 
+  // Layout. Phones: one flex column whose order is the storytelling order
+  // above (the two desktop wrappers are display:contents there, so their
+  // children interleave via `order`). Desktop (lg): a two-column grid —
+  // story on the left, facts + actions in a sticky right rail.
+  const lead = overviewSection || visualBridge ? (
+    <div className="order-2 mt-6 flex flex-col gap-4 border-t border-black/[0.07] pt-6 lg:mt-0 lg:border-t-0 lg:pt-0">
+      {overviewSection}
+      {visualBridge}
+    </div>
+  ) : null;
   const body = (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-5 sm:px-6 sm:pt-7 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
-      {/* Essentials — first on phones; a sticky right rail on desktop. */}
-      <aside className="lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:self-start">{essentials}</aside>
-      {/* Experience + details. divide-y only separates sections that
-          actually render (client sections that resolve to nothing leave no
-          stray separator). */}
-      <div className="mt-8 border-t border-black/[0.07] lg:col-start-1 lg:row-start-1 lg:mt-0 lg:border-t-0">
-        <div className="divide-y divide-black/[0.07] [&>*]:py-7 lg:[&>*:first-child]:pt-0">
-          {overviewSection}
+    <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-16 pt-5 sm:px-6 sm:pt-7 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
+      <div className="contents lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block lg:self-start">
+        <div className="order-1">{keyFacts}</div>
+        <div className="order-3 mt-6 lg:mt-6 lg:border-t lg:border-black/[0.07] lg:pt-5">{actions}</div>
+      </div>
+      <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
+        {lead}
+        {/* divide-y only separates sections that actually render (client
+            sections that resolve to nothing leave no stray separator). */}
+        <div className="order-4 mt-7 divide-y divide-black/[0.07] border-t border-black/[0.07] [&>*]:py-7 lg:mt-8">
           {datesSection}
           {lineupSection}
           {momentsSection}
@@ -762,14 +873,37 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <AdminEditButton href={`/admin/events/${event.id}`} className="absolute right-3 top-3 z-30" />
       </div>
 
-      {/* The selected-date context wraps essentials AND sections, so Key
-          Facts, actions, the dates rail and the lineup stay in sync. Only
+      {/* The selected-date context wraps facts, actions AND sections, so the
+          facts band, actions, the dates rail and the lineup stay in sync. Only
           genuine occurrence rows are selectable (never the synthesized
           whole-event range — see the Final Event Experience Polish note in
           git history). */}
       {hasOccurrences ? <EventOccurrenceProvider occurrences={realOccurrences}>{body}</EventOccurrenceProvider> : body}
     </div>
   );
+}
+
+/** Past dates carry their year ("Feb 14, 2026") — an ended event's
+ * historical timing should never read as an upcoming weekday. */
+function formatDateWithYearInZone(iso: string, timezone: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { timeZone: timezone, month: "short", day: "numeric", year: "numeric" });
+}
+
+/** "Feb 12 – 14, 2026" style when both ends share a year (fits the
+ * half-width band); full dates otherwise. */
+function formatHistoricalRange(startIso: string, endIso: string, timezone: string, startLabel: string, endLabel: string): string {
+  if (startLabel === endLabel) return startLabel;
+  const part = (iso: string, o: Intl.DateTimeFormatOptions) => new Date(iso).toLocaleDateString("en-US", { timeZone: timezone, ...o });
+  const sy = part(startIso, { year: "numeric" });
+  if (sy !== part(endIso, { year: "numeric" })) return `${startLabel} – ${endLabel}`;
+  const sm = part(startIso, { month: "short" });
+  const em = part(endIso, { month: "short" });
+  const endPart = sm === em ? part(endIso, { day: "numeric" }) : `${em} ${part(endIso, { day: "numeric" })}`;
+  return `${sm} ${part(startIso, { day: "numeric" })} – ${endPart}, ${sy}`;
+}
+
+function formatDateWithYear(iso: string): string {
+  return formatDateWithYearInZone(iso, APP_TIMEZONE);
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {

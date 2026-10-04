@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import ImageLightbox from "./ImageLightbox";
 
@@ -19,15 +19,41 @@ export default function EventCoverLightbox({
 }: {
   images: string[];
   alt: string;
-  /** Public Event V2 — opt-in restrained scroll depth for the cover (see
-   * .findmi-hero-parallax in globals.css). The image sits in a wrapper
-   * that's 32px taller than the hero (extra height above), so the drift
-   * never exposes an edge; without support / with reduced motion it's a
-   * static, correctly-cropped cover. Location pages don't pass it. */
+  /** Public Event V2.1 — opt-in scroll depth for the cover (see
+   * .findmi-hero-parallax in globals.css: 48px over the first 320px of
+   * scroll). The image sits in a wrapper 48px taller than the hero (extra
+   * height above), so the drift never exposes an edge. Reduced motion →
+   * static cover. Location pages don't pass it. */
   parallax?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const driftRef = useRef<HTMLDivElement>(null);
   const cover = images[0];
+
+  // Fallback only for browsers WITHOUT CSS scroll-driven animations: the
+  // same 48px / 320px drift written straight to style.transform from a
+  // passive scroll listener, at most once per frame. No React state.
+  useEffect(() => {
+    const el = driftRef.current;
+    if (!parallax || !el || typeof CSS === "undefined") return;
+    if (CSS.supports("animation-timeline: scroll()")) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      const y = Math.min(48, Math.max(0, window.scrollY) * 0.15);
+      el.style.transform = `translate3d(0, ${y.toFixed(1)}px, 0)`;
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(apply);
+    };
+    apply();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [parallax]);
   if (!cover) return null;
 
   return (
@@ -39,7 +65,7 @@ export default function EventCoverLightbox({
           original file directly instead of relying on that failing
           pipeline. */}
       {parallax ? (
-        <div className="findmi-hero-parallax absolute inset-x-0 -top-8 bottom-0">
+        <div ref={driftRef} className="findmi-hero-parallax absolute inset-x-0 -top-12 bottom-0">
           <Image src={cover} alt={alt} fill priority unoptimized sizes="100vw" className="object-cover" />
         </div>
       ) : (

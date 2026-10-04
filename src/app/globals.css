@@ -79,31 +79,33 @@ body {
   }
 }
 
-/* Public Event V2 — restrained hero depth. The cover image drifts DOWN up
-   to 32px while the hero scrolls away, so page content moves faster than
-   the photography beneath it. Pure CSS scroll-driven animation (transform
-   only, compositor-friendly, no JS scroll loop). Progressive enhancement:
-   browsers without animation-timeline, and anyone with reduced motion,
-   get a static cover (the wrapper is 32px taller above the hero, so the
-   static crop is simply 32px higher and never shows an edge). */
+/* Public Event V2.1 — hero depth, tuned to be perceptible on phones. The
+   cover image drifts DOWN up to 48px over the first 320px of page scroll
+   (≈ a phone hero's height), so the page moves ~15% faster than the
+   photography beneath it (V2 was 32px over 420px — too subtle on Android).
+   Transform only, compositor-driven, no React state, no layout shift.
+   The image wrapper is 48px taller above the hero, so the drift never
+   exposes an edge.
+   Support: scroll-driven animations ship in Chrome/Edge 115+ (incl.
+   Android Chrome) and recent Safari; elsewhere EventCoverLightbox applies
+   the same transform from a passive, rAF-throttled scroll listener.
+   Reduced motion: no parallax at all (static cover, both paths). */
 @keyframes findmi-hero-drift {
   from {
     transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translate3d(0, 32px, 0);
+    transform: translate3d(0, 48px, 0);
   }
 }
-/* Driven by the page's own scroll (scroll(root)), over the first 420px —
-   roughly the hero's height. (A view() timeline can't be used here: the
-   hero's overflow clipping makes it the image's nearest scroll container,
-   which never scrolls.) */
+/* scroll(root), not view(): the hero's overflow clipping makes it the
+   image's nearest scroll container, which never scrolls. */
 @supports (animation-timeline: scroll()) {
   @media (prefers-reduced-motion: no-preference) {
     .findmi-hero-parallax {
       animation: findmi-hero-drift linear both;
       animation-timeline: scroll(root block);
-      animation-range: 0px 420px;
+      animation-range: 0px 320px;
       will-change: transform;
     }
   }
