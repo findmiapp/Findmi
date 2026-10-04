@@ -12,7 +12,7 @@ import { getCategories, getMarketAreaLabel, getPastAppearancesForBusiness, getPr
 import {
   buildNeedsAttentionItems,
   resolveDashboardAppearances,
-  withoutSupersededEventProjections,
+  canonicalOwnerAppearances,
   type DashboardAppearance,
   type DashboardAppearanceSource,
 } from "@/lib/business-dashboard";
@@ -792,6 +792,7 @@ export default async function ManageBusinessPage({
     // "official_participation" AND event_id set — see that function's own
     // scoping rules in lib/appearance-event-sync.ts).
     source: string | null;
+    created_at: string;
     participationStatus: EventParticipationStatus | null;
     // Location Connections pass — the real Findmi Location this
     // standalone appearance is linked to, if any (embedded via the FK for
@@ -878,7 +879,7 @@ export default async function ManageBusinessPage({
       admin
         .from("appearances")
         .select(
-          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, source, location:locations(id, name, city, state)"
+          "id, title, start_at, end_at, venue_name, address, city, state, external_url, flyer_image_url, event_id, event_occurrence_id, source, created_at, location:locations(id, name, city, state)"
         )
         .eq("business_id", id)
         .neq("status", "canceled")
@@ -982,7 +983,9 @@ export default async function ManageBusinessPage({
     // the exact same events/occurrences already fetched for the picker.
     const eventById = new Map((events ?? []).map((ev) => [ev.id, ev]));
     const approvedOrphanEventIds = (ebStatusRows ?? [])
-      .filter((r) => r.status === "approved" && !linkedEventIds.has(r.event_id))
+      // An Event already projected per date (all_dates participation) never
+      // gets an extra Event-level placeholder beside those dates.
+      .filter((r) => r.status === "approved" && !linkedEventIds.has(r.event_id) && !eventIdsWithOccurrenceProjections.has(r.event_id))
       .map((r) => r.event_id);
     for (const eventId of approvedOrphanEventIds) {
       const ev = eventById.get(eventId);
@@ -1046,18 +1049,20 @@ export default async function ManageBusinessPage({
   // Event-linked appearance's geography is derived and why it's a
   // deliberately simpler lookup than the full occurrence-override
   // precedence chain used elsewhere.
+  // One canonical, deduped list feeds both Home and Presence.
+  const canonicalAppearances = canonicalOwnerAppearances(appearances, eventIdsWithOccurrenceProjections);
   const { appearances: dashboardAppearances, businessGeographyLabel } = await resolveDashboardAppearances(
     admin,
     id,
     // Home's Happening now / Coming up show one card per real-world
     // participation; the Where I'll Be management list keeps every row.
-    withoutSupersededEventProjections(appearances, eventIdsWithOccurrenceProjections) as DashboardAppearanceSource[],
+    canonicalAppearances as DashboardAppearanceSource[],
     { primaryMarketId: primaryMarket?.marketId ?? null, marketAreaId: business.market_area_id ?? null }
   );
   // Pass A — the same id-based integrity rule for Presence → Upcoming:
   // a superseded Event-level projection (e.g. Lavazza TABLÌ) isn't listed
   // beside its per-date rows. Display only; records untouched.
-  const presenceAppearances = withoutSupersededEventProjections(appearances, eventIdsWithOccurrenceProjections);
+  const presenceAppearances = canonicalAppearances;
   const todayAppearances = dashboardAppearances.filter((a) => a.isToday);
   const upcomingAppearances = dashboardAppearances.filter((a) => !a.isToday).slice(0, 5);
   // "Materially affects discovery" — the same fields a visitor would

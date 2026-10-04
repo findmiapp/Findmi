@@ -15,7 +15,7 @@
 // second, parallel appearances query.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EventParticipationStatus } from "./types";
-import { getMarketAreaLabel } from "./data";
+import { dedupeAppearances, getMarketAreaLabel, type DedupableAppearance } from "./data";
 import { getTemporalLabel, type TemporalLabel } from "./format";
 
 // A small, deliberate duplicate of page.tsx's own PARTICIPATION_LABEL —
@@ -82,6 +82,17 @@ export function withoutSupersededEventProjections<
         eventIdsWithOccurrenceProjections.has(r.event_id)
       )
   );
+}
+
+/** The canonical owner-facing appearance list: superseded Event-level
+ * projections dropped, then the same per-date dedupe the public pages use
+ * (one row per real-world date — an official row beats a manual or
+ * self-added one for the same occurrence). Display only; records untouched. */
+export function canonicalOwnerAppearances<T extends DedupableAppearance>(
+  rows: T[],
+  eventIdsWithOccurrenceProjections: Set<string>
+): T[] {
+  return dedupeAppearances(withoutSupersededEventProjections(rows, eventIdsWithOccurrenceProjections));
 }
 
 export interface DashboardAppearance {

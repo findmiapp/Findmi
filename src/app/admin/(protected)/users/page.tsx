@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; deleted?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, deleted } = await searchParams;
   const users = await listAdminUsers(q);
 
   return (
@@ -29,12 +29,16 @@ export default async function AdminUsersPage({
         </Link>
       </div>
 
+      {deleted && (
+        <p className="mt-4 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">User deleted.</p>
+      )}
+
       <form className="mt-4" action="/admin/users">
         <input
           type="search"
           name="q"
           defaultValue={q ?? ""}
-          placeholder="Search by email or name…"
+          placeholder="Search by email, name, phone or id…"
           className="w-full max-w-sm rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
         />
       </form>

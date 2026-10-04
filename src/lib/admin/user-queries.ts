@@ -66,7 +66,11 @@ export async function listAdminUsers(query?: string): Promise<AdminUserRow[]> {
   const q = query?.trim().toLowerCase();
   if (q) {
     rows = rows.filter(
-      (r) => r.email?.toLowerCase().includes(q) || r.displayName?.toLowerCase().includes(q)
+      (r) =>
+        r.email?.toLowerCase().includes(q) ||
+        r.displayName?.toLowerCase().includes(q) ||
+        Boolean(r.phone && q.replace(/\D/g, "") && r.phone.includes(q.replace(/\D/g, ""))) ||
+        r.id === q
     );
   }
 

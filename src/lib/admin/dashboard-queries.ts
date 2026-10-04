@@ -117,7 +117,7 @@ export async function getEventOpportunityCount(): Promise<number | null> {
   const nowIso = new Date().toISOString();
   const { count } = await supabase
     .from("appearances")
-    .select("id, businesses!inner(is_demo)", { count: "exact", head: true })
+    .select("id, businesses!appearances_business_id_fkey!inner(is_demo)", { count: "exact", head: true })
     .is("event_id", null)
     .eq("businesses.is_demo", false)
     .gte("start_at", nowIso);
@@ -177,7 +177,7 @@ export async function getDashboardNeedsAttention(): Promise<DashboardNeedsAttent
       .is("trashed_at", null),
     supabase
       .from("appearances")
-      .select("id, businesses!inner(is_demo)", { count: "exact", head: true })
+      .select("id, businesses!appearances_business_id_fkey!inner(is_demo)", { count: "exact", head: true })
       .is("admin_reviewed_at", null)
       .eq("businesses.is_demo", false),
   ]);
@@ -380,7 +380,7 @@ export async function getTodayOnFindmi(): Promise<TodayActivityItem[] | null> {
   const [appearances, occurrences] = await Promise.all([
     supabase
       .from("appearances")
-      .select("id, title, start_at, end_at, venue_name, business:businesses!inner(name, is_demo)")
+      .select("id, title, start_at, end_at, venue_name, business:businesses!appearances_business_id_fkey!inner(name, is_demo)")
       .neq("status", "canceled")
       .eq("business.is_demo", false)
       .lt("start_at", endIso)

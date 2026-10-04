@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJournalEntryWithRelations } from "@/lib/journal";
 import { isAdminSession } from "@/lib/admin/auth";
+import { journalAuthorHref, journalByline, resolveJournalAuthorNames } from "@/lib/journal-author";
 import JournalOwnerActions from "@/components/journal/JournalOwnerActions";
 import JournalPhotoGallery from "@/components/journal/JournalPhotoGallery";
 import { JournalMediaViewerRoot, JournalPhotoTrigger } from "@/components/journal/JournalMediaViewer";
@@ -52,7 +53,11 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const [result, isAuthorizedAdmin] = await Promise.all([getJournalEntryWithRelations(id), isAdminSession()]);
   if (!result) notFound();
   const { entry, media, location, businesses, products, events, occurrences, isOwner } = result;
-  const authorLabel = entry.author_label?.trim() || null;
+  // Recovery pass — the byline names the real author (profile display
+  // name), not the stale "Findmi" label an admin-cookie capture stamped.
+  const authorNames = await resolveJournalAuthorNames([entry.user_id]);
+  const authorLabel = journalByline(authorNames.get(entry.user_id), entry.author_label);
+  const isPublicEntry = entry.visibility === "public" && entry.status === "published";
 
   // Journal Experience Date repair — an Event connection's displayed date
   // must be the specific attended Event Occurrence (category B: EVENT
@@ -166,10 +171,18 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
               Natural wrapping + the gradient's own generous bottom padding
               keep even a long title readable. */}
           <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{entry.title}</h1>
-          {/* Journal Pass 1 — author attribution ("By Findmi"). Renders
-              nothing when author_label is null/empty (every existing entry
-              today) — never an empty byline row. */}
-          {authorLabel && <p className="text-xs font-semibold uppercase tracking-wide text-white/70">By {authorLabel}</p>}
+          {/* Author attribution — links to the author's public Journal
+              (public entries only). Never an empty byline row. */}
+          {authorLabel &&
+            (isPublicEntry ? (
+              <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
+                <Link href={journalAuthorHref(entry.id)} className="pointer-events-auto underline-offset-2 hover:text-white hover:underline">
+                  By {authorLabel}
+                </Link>
+              </p>
+            ) : (
+              <p className="text-xs font-semibold uppercase tracking-wide text-white/70">By {authorLabel}</p>
+            ))}
           <p className="text-sm font-medium text-white/80">
             {dateLabel}
             {heroLocationLabel ? ` · ${heroLocationLabel}` : ""}

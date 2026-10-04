@@ -164,7 +164,9 @@ export async function startOrResumeEventJournalEntry(eventSlug: string): Promise
         title: event.name,
         entry_date: entryDate,
         location_id: locationId,
-        author_label: isAdmin ? "Findmi" : null,
+        // Recovery pass — never stamp "Findmi": the shared admin cookie
+        // isn't an identity. The byline comes from the author's profile.
+        author_label: null,
       })
       .select("id")
       .single();

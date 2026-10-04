@@ -114,7 +114,7 @@ export async function resolveAppearanceHostBusiness(eventId: string): Promise<Ap
   if (!supabase) return null;
   const { data } = await supabase
     .from("appearances")
-    .select("business:businesses(id, name, slug, logo_url)")
+    .select("business:businesses!appearances_business_id_fkey(id, name, slug, logo_url)")
     .eq("event_id", eventId)
     .neq("status", "canceled")
     .limit(10);

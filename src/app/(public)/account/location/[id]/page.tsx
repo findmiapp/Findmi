@@ -207,7 +207,7 @@ export default async function ManageLocationPage({
         .order("start_at", { ascending: true }),
       admin
         .from("appearances")
-        .select("id, title, start_at, end_at, business:businesses(id, name, slug)")
+        .select("id, title, start_at, end_at, business:businesses!appearances_business_id_fkey(id, name, slug)")
         .eq("location_id", id)
         .is("event_id", null)
         .neq("status", "canceled")

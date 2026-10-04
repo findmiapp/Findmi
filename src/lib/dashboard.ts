@@ -306,7 +306,7 @@ async function getLocationAppearances(admin: SupabaseClient, locationIds: string
   if (locationIds.length === 0) return [];
   const { data } = await admin
     .from("appearances")
-    .select("id, location_id, start_at, end_at, title, business:businesses(slug, is_demo)")
+    .select("id, location_id, start_at, end_at, title, business:businesses!appearances_business_id_fkey(slug, is_demo)")
     .in("location_id", locationIds)
     .is("event_id", null)
     .neq("status", "canceled")
@@ -653,7 +653,7 @@ async function getPastLocationAppearances(admin: SupabaseClient, locationIds: st
   if (locationIds.length === 0) return [];
   const { data } = await admin
     .from("appearances")
-    .select("id, location_id, start_at, end_at, title, business:businesses(slug, is_demo)")
+    .select("id, location_id, start_at, end_at, title, business:businesses!appearances_business_id_fkey(slug, is_demo)")
     .in("location_id", locationIds)
     .is("event_id", null)
     .neq("status", "canceled")

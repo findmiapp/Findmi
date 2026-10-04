@@ -38,7 +38,7 @@ export default function MoreMenu({
   const account: MoreLink[] = [
     { href: `${basePath}?tab=settings`, label: "Plan & settings", description: "Findmi Pro, areas and business settings", icon: <GearGlyph className="h-5 w-5" /> },
     ...(showReferral ? [{ href: `${basePath}?tab=referral`, label: "Referral program", icon: <NavIcon name="person" className="h-5 w-5" /> }] : []),
-    { href: "/account", label: "Account home", description: "Everything you manage on Findmi", icon: <NavIcon name="home" className="h-5 w-5" /> },
+    { href: "/account?view=personal", label: "Personal account", description: "Your plans, saves and follows", icon: <NavIcon name="home" className="h-5 w-5" /> },
     { href: "/account/schedule", label: "Schedule", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
     { href: "/account/saved", label: "Saved", icon: <NavIcon name="bookmark" className="h-5 w-5" /> },
     { href: "/account/following", label: "Following", icon: <NavIcon name="person" className="h-5 w-5" /> },

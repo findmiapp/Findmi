@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import JournalCollection from "@/components/journal/JournalCollection";
 import { getBusinessBySlug, getEventBySlug, getLocationBySlug, getProductBySlug } from "@/lib/data";
 import { getPublicJournalCollection, momentsHeading, type JournalSubjectType } from "@/lib/journal-distribution";
+import { resolvePublicJournalAuthor } from "@/lib/journal-author";
 
 /** Journal Distribution V1 — the "See all" destination for one public
  * object's Journal collection: /journal?business=<slug> (or event=,
@@ -11,14 +12,31 @@ import { getPublicJournalCollection, momentsHeading, type JournalSubjectType } f
  * route. Subjects resolve through the same public loaders their own pages
  * use, so a hidden/unpublished object 404s here too. Keyset-paginated
  * ("Older experiences"); the exact total is computed on the first page
- * only. Deliberately not a global Journal homepage — no subject, no page. */
+ * only. Deliberately not a global Journal homepage — no subject, no page.
+ *
+ * Recovery pass — /journal?author=<entryId>: one author's public Journal
+ * (the byline link on an entry). Keyed on a PUBLIC entry, never a user id
+ * or email; the author resolves server-side and only their public,
+ * published entries list, newest first. */
 
 const PAGE_SIZE = 24;
 const SUBJECT_TYPES: JournalSubjectType[] = ["business", "event", "location", "product"];
 
-type SearchParams = Partial<Record<JournalSubjectType | "cursor", string>>;
+type SearchParams = Partial<Record<JournalSubjectType | "author" | "cursor", string>>;
+type Subject = { type: JournalSubjectType | "author"; id: string; name: string; href: string; slug: string; heading: string };
 
-async function resolveSubject(params: SearchParams) {
+async function resolveSubject(params: SearchParams): Promise<Subject | null> {
+  if (params.author) {
+    const author = await resolvePublicJournalAuthor(params.author);
+    if (!author) return null;
+    const name = author.name ?? "Findmi Member";
+    return { type: "author", id: author.userId, name, href: `/journal/${params.author}`, slug: params.author, heading: `${name}'s Journal` };
+  }
+  const subject = await resolveEntitySubject(params);
+  return subject ? { ...subject, heading: momentsHeading(subject.type, subject.name) } : null;
+}
+
+async function resolveEntitySubject(params: SearchParams) {
   const type = SUBJECT_TYPES.find((t) => typeof params[t] === "string" && params[t]);
   if (!type) return null;
   const slug = params[type] as string;
@@ -42,8 +60,8 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const subject = await resolveSubject(await searchParams);
   if (!subject) return { title: "Moments" };
   return {
-    title: momentsHeading(subject.type, subject.name),
-    description: `${momentsHeading(subject.type, subject.name)} on Findmi.`,
+    title: subject.heading,
+    description: `${subject.heading} on Findmi.`,
   };
 }
 
@@ -61,12 +79,12 @@ export default async function JournalCollectionPage({ searchParams }: { searchPa
     withCount: !cursor,
   });
   const base = `/journal?${subject.type}=${encodeURIComponent(subject.slug)}`;
-  const heading = momentsHeading(subject.type, subject.name);
+  const heading = subject.heading;
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-16 pt-6 sm:px-6">
       <Link href={subject.href} className="text-xs font-semibold text-findmi-700 hover:underline">
-        ← {subject.name}
+        ← {subject.type === "author" ? "Back to entry" : subject.name}
       </Link>
       <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{heading}</h1>
       {page.total != null && (

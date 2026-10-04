@@ -7,6 +7,7 @@ import {
   getUserLocationAccess,
   getUserInheritedProducts,
 } from "@/lib/admin/user-queries";
+import { getUserDependencySummary } from "@/lib/admin/user-dependencies";
 import { formatDateShort } from "@/lib/format";
 import { formatUsPhone } from "@/lib/phone";
 import { RelationField } from "@/components/admin/RelationPicker";
@@ -15,6 +16,7 @@ import {
   assignUserToBusiness,
   assignUserToEvent,
   assignUserToLocation,
+  deleteUserAccount,
   removeUserBusinessAccess,
   removeUserEventAccess,
   removeUserLocationAccess,
@@ -44,12 +46,13 @@ export default async function AdminUserDetailPage({
   const { id } = await params;
   const { error, created, password_action } = await searchParams;
 
-  const [account, businesses, events, locations, productGroups] = await Promise.all([
+  const [account, businesses, events, locations, productGroups, deps] = await Promise.all([
     getAdminUserAccount(id),
     getUserBusinessAccess(id),
     getUserEventAccess(id),
     getUserLocationAccess(id),
     getUserInheritedProducts(id),
+    getUserDependencySummary(id),
   ]);
   if (!account) notFound();
 
@@ -59,6 +62,8 @@ export default async function AdminUserDetailPage({
   const assignLocation = assignUserToLocation.bind(null, id);
   const sendReset = sendPasswordResetEmail.bind(null, id);
   const setPassword = setUserPassword.bind(null, id);
+  const deleteAccount = deleteUserAccount.bind(null, id);
+  const confirmPhrase = account.email ?? "DELETE";
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -337,6 +342,129 @@ export default async function AdminUserDetailPage({
           <p className="mt-2 text-sm text-ink/50">No products — no business access, or those businesses have none.</p>
         )}
       </section>
+      {deps && (
+        <>
+          {/* CLAIMS & JOURNAL — Recovery pass: inspect what this account is
+              connected to beyond management access. Read-only. */}
+          <section className="mt-4 rounded-2xl border border-black/10 bg-white p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Claims</p>
+            {deps.claims.length > 0 ? (
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {deps.claims.map((c, i) => (
+                  <li key={i} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate text-ink">
+                      {c.name} <span className="text-xs uppercase tracking-wide text-ink/40">{c.kind}</span>
+                    </span>
+                    <span className="shrink-0 text-xs uppercase tracking-wide text-ink/50">
+                      {c.status} · {formatDateShort(c.createdAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-ink/50">No claim requests.</p>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-black/10 bg-white p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Journal</p>
+            {deps.journal.length > 0 ? (
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {deps.journal.map((j) => {
+                  const isPublic = j.visibility === "public" && j.status === "published";
+                  return (
+                    <li key={j.id} className="flex items-center justify-between gap-3 text-sm">
+                      {isPublic ? (
+                        <Link href={`/journal/${j.id}`} className="min-w-0 truncate text-ink hover:underline">
+                          {j.title}
+                        </Link>
+                      ) : (
+                        <span className="min-w-0 truncate text-ink">{j.title}</span>
+                      )}
+                      <span className="shrink-0 text-xs uppercase tracking-wide text-ink/50">
+                        {isPublic ? "Public" : j.status === "published" ? "Private" : "Draft"} · {j.entryDate}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-ink/50">No Journal entries.</p>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-black/10 bg-white p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Other Records</p>
+            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
+              {(
+                [
+                  ["Saves & follows", deps.counts.savesAndFollows],
+                  ["Entitlements", deps.counts.entitlements],
+                  ["Pro invites", deps.counts.proRedemptions],
+                  ["Subscriptions paid", deps.counts.subscriptionsPaid],
+                  ["Orders", deps.counts.orders],
+                  ["Inquiries", deps.counts.inquiries],
+                  ["Conversations", deps.counts.conversations],
+                  ["Opportunities", deps.counts.opportunities],
+                  ["Market requests", deps.counts.marketRequests],
+                ] as const
+              ).map(([label, n]) => (
+                <div key={label} className="flex justify-between gap-2">
+                  <dt className="text-ink/55">{label}</dt>
+                  <dd className="font-medium text-ink">{n}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+
+          {/* DELETE USER — safe workflow: dependency summary, explanation,
+              typed confirmation; refused outright while any blocker exists
+              (re-checked server-side in deleteUserAccount). */}
+          <section className="mt-4 rounded-2xl border border-red-200 bg-white p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-red-700">Delete User</p>
+            {deps.blockers.length > 0 ? (
+              <>
+                <p className="mt-1 text-sm text-ink/70">This account can&rsquo;t be deleted safely yet:</p>
+                <ul className="mt-2 list-disc pl-5 text-sm text-red-700">
+                  {deps.blockers.map((b) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-ink/45">
+                  Findmi never cascades Businesses, Events, Locations, public Journal content or billing records away
+                  with an account. Resolve the items above first.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-sm text-ink/70">Deleting this account permanently:</p>
+                <ul className="mt-2 list-disc pl-5 text-sm text-ink/70">
+                  {deps.effects.map((e) => (
+                    <li key={e}>{e}</li>
+                  ))}
+                </ul>
+                <form action={deleteAccount} className="mt-3 flex flex-col gap-2">
+                  <label className="text-xs text-ink/60">
+                    Type <span className="font-semibold text-ink">{confirmPhrase}</span> to confirm
+                    <input
+                      name="confirm"
+                      autoComplete="off"
+                      required
+                      className="mt-1 block w-full rounded-xl border border-black/15 px-3 py-2 text-sm text-ink focus:border-red-400 focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="w-fit rounded-full bg-red-600 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-red-700"
+                  >
+                    Delete User
+                  </button>
+                </form>
+              </>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

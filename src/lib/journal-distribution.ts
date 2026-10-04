@@ -23,6 +23,7 @@
 // signed, server-side, via the existing batched resolveSignedUrls.
 import { getSupabase } from "./supabase";
 import { resolveSignedUrls } from "./journal";
+import { journalByline, resolveJournalAuthorNames } from "./journal-author";
 
 export type JournalSubjectType = "business" | "event" | "location" | "product";
 
@@ -81,7 +82,9 @@ export async function getPublicJournalCollection({
   cursor,
   withCount = false,
 }: {
-  subjectType: JournalSubjectType;
+  /** "author": subjectId is the author's user id (server-resolved from a
+   * public entry — see resolvePublicJournalAuthor; never from the URL). */
+  subjectType: JournalSubjectType | "author";
   subjectId: string;
   limit?: number;
   cursor?: string | null;
@@ -99,9 +102,9 @@ export async function getPublicJournalCollection({
     occurrenceIds = (occ ?? []).map((o) => o.id as string).filter((id) => UUID_RE.test(id));
   }
 
-  const viaConnection = subjectType !== "location";
+  const viaConnection = subjectType !== "location" && subjectType !== "author";
   const columns =
-    "id, title, entry_date, entry_time, notes, author_label, location:locations(name)" +
+    "id, user_id, title, entry_date, entry_time, notes, author_label, location:locations(name)" +
     (viaConnection ? ", journal_entry_connections!inner(id)" : "");
 
   let query = supabase
@@ -110,7 +113,9 @@ export async function getPublicJournalCollection({
     .eq("visibility", "public")
     .eq("status", "published");
 
-  if (subjectType === "location") {
+  if (subjectType === "author") {
+    query = query.eq("user_id", subjectId);
+  } else if (subjectType === "location") {
     query = query.eq("location_id", subjectId);
   } else if (subjectType === "event" && occurrenceIds.length > 0) {
     query = query.or(`event_id.eq.${subjectId},event_occurrence_id.in.(${occurrenceIds.join(",")})`, {
@@ -133,6 +138,7 @@ export async function getPublicJournalCollection({
 
   type Row = {
     id: string;
+    user_id: string;
     title: string;
     entry_date: string;
     entry_time: string | null;
@@ -166,7 +172,10 @@ export async function getPublicJournalCollection({
     const cover = list.find((m) => m.is_cover) ?? [...list].sort((a, b) => a.display_order - b.display_order)[0];
     if (cover) coverPathByEntry.set(entryId, cover.storage_path);
   }
-  const signed = await resolveSignedUrls([...coverPathByEntry.values()]);
+  const [signed, authorNames] = await Promise.all([
+    resolveSignedUrls([...coverPathByEntry.values()]),
+    resolveJournalAuthorNames(pageRows.map((r) => r.user_id)),
+  ]);
 
   const entries: PublicJournalCard[] = pageRows.map((r) => {
     const location = Array.isArray(r.location) ? (r.location[0] ?? null) : r.location;
@@ -177,7 +186,7 @@ export async function getPublicJournalCollection({
       entryDate: r.entry_date,
       entryTime: r.entry_time,
       excerpt: toExcerpt(r.notes),
-      authorLabel: r.author_label?.trim() || null,
+      authorLabel: journalByline(authorNames.get(r.user_id), r.author_label),
       coverUrl: coverPath ? (signed.get(coverPath) ?? null) : null,
       photoCount: mediaByEntry.get(r.id)?.length ?? 0,
       locationName: location?.name ?? null,

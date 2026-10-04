@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { errorRedirectUrl, str } from "@/lib/admin/form-helpers";
 import { getPublicOrigin } from "@/lib/site-url";
+import { getUserDependencySummary } from "@/lib/admin/user-dependencies";
 
 // Admin Users Pass 2 — user-detail actions. Every write here is scoped to
 // the one FindMi account this page manages, gated by requireAdminSupabase()
@@ -235,4 +236,38 @@ export async function removeUserLocationAccess(userId: string, memberId: string)
 
   revalidatePath(path);
   redirect(`${path}?access_updated=1`);
+}
+
+// ── Delete user (Recovery pass) ─────────────────────────────────────────
+// Safe workflow only: the dependency summary is recomputed HERE (never
+// trusted from the page), any blocker refuses outright, and the admin
+// must type the account's email (or DELETE when it has none) to confirm.
+// Nothing beyond the auth account's own FK behavior is removed — no
+// Business/Event/Location, public Journal entry or billing record can be
+// cascaded away, because any of those is a blocker.
+export async function deleteUserAccount(userId: string, formData: FormData) {
+  const supabase = await requireAdminSupabase();
+  const path = userPath(userId);
+
+  const { data, error: lookupError } = await supabase.auth.admin.getUserById(userId);
+  if (lookupError || !data.user) redirect(errorRedirectUrl(path, "Couldn't find that user."));
+  const expected = data.user!.email?.trim().toLowerCase() || "delete";
+  const typed = (str(formData, "confirm") ?? "").toLowerCase();
+  if (typed !== expected) {
+    redirect(errorRedirectUrl(path, "Confirmation didn't match — the account was not deleted."));
+  }
+
+  const summary = await getUserDependencySummary(userId);
+  if (!summary) redirect(errorRedirectUrl(path, "Server isn't configured."));
+  if (summary!.blockers.length > 0) {
+    redirect(errorRedirectUrl(path, `Not deleted: ${summary!.blockers[0]}`));
+  }
+
+  const { error } = await supabase.auth.admin.deleteUser(userId);
+  if (error) {
+    redirect(errorRedirectUrl(path, "Couldn't delete the account. Nothing was changed."));
+  }
+
+  revalidatePath("/admin/users");
+  redirect("/admin/users?deleted=1");
 }

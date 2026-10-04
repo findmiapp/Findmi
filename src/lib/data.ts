@@ -1188,16 +1188,16 @@ export interface AppearanceWithEventSlug extends Appearance {
 // most recently created row — a deterministic, non-guessing tiebreak
 // (never inspects venue/description text to judge "which one is more
 // correct").
-type DedupableAppearance = {
+export type DedupableAppearance = {
   id: string;
   event_id: string | null;
   event_occurrence_id: string | null;
   start_at: string;
-  source: string;
+  source: string | null;
   created_at: string;
 };
 
-function sourceRank(source: string): number {
+function sourceRank(source: string | null): number {
   if (source === "official_participation") return 2;
   if (source === "event_self_added") return 1;
   return 0; // "manual", or anything unrecognized
@@ -1216,7 +1216,7 @@ function betterAppearance<T extends DedupableAppearance>(a: T, b: T): T {
   return a;
 }
 
-function dedupeAppearances<T extends DedupableAppearance>(rows: T[]): T[] {
+export function dedupeAppearances<T extends DedupableAppearance>(rows: T[]): T[] {
   const winners = new Map<string, T>();
   const order: string[] = [];
   for (const row of rows) {
@@ -2347,7 +2347,7 @@ export async function getUpcomingAppearancesFeed(limit = 8): Promise<AppearanceF
   const nowIso = new Date().toISOString();
   const { data } = await supabase
     .from("appearances")
-    .select("*, business:businesses(id, name, slug, logo_url, is_demo, publication_status)")
+    .select("*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, is_demo, publication_status)")
     .neq("status", "canceled")
     .gt("end_at", nowIso)
     .order("start_at", { ascending: true })
@@ -2485,7 +2485,7 @@ export async function getFindMiHereFeed(
   let query = supabase
     .from("appearances")
     .select(
-      "*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id), location:locations(id, name, slug)"
+      "*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(market_id, market_area_id), location:locations(id, name, slug)"
     )
     .neq("status", "canceled");
 
@@ -2524,10 +2524,13 @@ export async function getFindMiHereFeed(
   // enough that geographic narrowing doesn't starve the final `limit` —
   // real appearance volume is small (dozens, not thousands), so a flat
   // 200-row cap is cheap and safe rather than a cleverer estimate.
-  const { data } = await query
+  const { data, error } = await query
     .order("is_featured", { ascending: false })
     .order("start_at", { ascending: true })
     .limit(marketId ? 200 : limit * 2); // over-fetch since some may be filtered out as demo (or, with a Market filter, out of that geography)
+  // A failed query must never pass silently as "nothing happening" (the
+  // ambiguous businesses embed did exactly that after featured_appearance_id).
+  if (error) console.error("[getFindMiHereFeed] appearances query failed", error);
 
   type JoinedBusiness = AppearanceFeedItem["business"] & { is_demo: boolean; publication_status: string };
   type JoinedEvent = { market_id: string | null; market_area_id: string | null };
@@ -2878,7 +2881,7 @@ export async function getHomeAppearanceBulletins(limit = 6): Promise<HomeBulleti
   const { data } = await supabase
     .from("appearances")
     .select(
-      "*, business:businesses(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(slug)"
+      "*, business:businesses!appearances_business_id_fkey(id, name, slug, logo_url, cover_image_url, is_demo, publication_status), event:events(slug)"
     )
     .eq("show_on_home", true)
     .neq("status", "canceled")
@@ -3595,7 +3598,7 @@ async function getLocationActivitySummaries(
         .limit(ACTIVITY_PREVIEW_FETCH_PER_LOCATION * locationIds.length),
       supabase
         .from("appearances")
-        .select("id, location_id, start_at, title, business:businesses(slug, name, logo_url, cover_image_url, is_demo, publication_status)")
+        .select("id, location_id, start_at, title, business:businesses!appearances_business_id_fkey(slug, name, logo_url, cover_image_url, is_demo, publication_status)")
         .in("location_id", locationIds)
         .is("event_id", null)
         .neq("status", "canceled")
