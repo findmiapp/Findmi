@@ -38,8 +38,7 @@ import {
   getBusinessGalleryImages,
   getPeopleForBusiness,
   getProductsForBusiness,
-  getPastAppearancesForBusiness,
-  getUpcomingAppearancesForBusiness,
+  getBusinessFindmiHereActivity,
   PUBLIC_BUSINESS_COLUMNS,
 } from "@/lib/data";
 import { cityStateZip } from "@/lib/format";
@@ -236,13 +235,14 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // Appearance creation/management (Command Center's own aggregation
   // queries this same table with no such limit), storage, event rosters,
   // or /find, and still doesn't.
-  const [products, appearances, pastAppearances, people, galleryImages, journal, placesPage] = await Promise.all([
+  const [products, activity, people, galleryImages, journal, placesPage] = await Promise.all([
     getProductsForBusiness(business.id),
-    getUpcomingAppearancesForBusiness(business.id),
-    // Public Business V2 — recent history for Findmi Here's Past group
-    // (bounded; grouped by experience below, so 24 rows can become a
-    // handful of items).
-    getPastAppearancesForBusiness(business.id, 24),
+    // Business Visual Recovery — upcoming + recent activity reconciled with
+    // the Business's approved Event participation and each Event's current
+    // schedule (see getBusinessFindmiHereActivity: an Event-level link
+    // follows its Event's dates; participation without an Appearance still
+    // counts). Bounded; grouped by experience below.
+    getBusinessFindmiHereActivity(business.id, { pastLimit: 24 }),
     getPeopleForBusiness(business.id),
     getBusinessGalleryImages(business.id),
     // Journal Distribution V1 — public, published experiences connected to
@@ -262,11 +262,15 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
   // experience leads Upcoming while it's still eligible — instead of a
   // separate, duplicate "Featured Appearance" block.
   const findmiHere = buildFindmiHere({
-    upcoming: appearances,
-    past: pastAppearances,
+    upcoming: activity.upcoming,
+    past: activity.past,
     featuredAppearanceId: business.featured_appearance_id ?? null,
   });
-  const hasCurrentActivity = findmiHere.now.length > 0 || findmiHere.upcoming.length > 0 || places.length > 0;
+  const hasCurrentActivity =
+    Boolean(findmiHere.spotlight && findmiHere.spotlight.state !== "recent") ||
+    findmiHere.now.length > 0 ||
+    findmiHere.upcoming.length > 0 ||
+    places.length > 0;
 
   // Unify Site-Wide Communications pass — Inquire is always the native
   // InquireButton (a real Conversation, subject_type='business_inquiry');
@@ -379,27 +383,34 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
     />
   );
 
+  // Identity — connects the hero to the activity below: the logo overlaps
+  // the hero's lower edge (it never moves with the parallax photo), with
+  // the category/place line beside it; then the short description and the
+  // Follow / Save / Share row. Desktop lays it out as one wide row above
+  // the two-column body.
   const identity = (
-    <div>
-      <div className="flex items-center gap-3">
-        {business.logo_url && (
-          <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-black/[0.06] bg-white">
-            <SupabaseImage src={business.logo_url} alt={business.name} fill sizes="48px" className="object-cover" />
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          {contextLine && <p className="line-clamp-2 text-metadata font-semibold text-secondary">{contextLine}</p>}
-          {business.is_featured && (
-            <p className="mt-0.5">
-              <FeaturedBadge />
-            </p>
+    <div className="lg:flex lg:items-end lg:justify-between lg:gap-10">
+      <div className="min-w-0 lg:max-w-2xl">
+        <div className="flex items-end gap-3">
+          {business.logo_url && (
+            <div className="relative -mt-10 h-[68px] w-[68px] shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-20 sm:w-20">
+              <SupabaseImage src={business.logo_url} alt={business.name} fill sizes="80px" className="object-cover" />
+            </div>
           )}
+          <div className="min-w-0 flex-1 pb-0.5">
+            {contextLine && <p className="line-clamp-2 text-metadata font-semibold text-secondary">{contextLine}</p>}
+            {business.is_featured && (
+              <p className="mt-1">
+                <FeaturedBadge />
+              </p>
+            )}
+          </div>
         </div>
+        {business.short_description && (
+          <p className="mt-3 line-clamp-2 text-body-lg leading-snug text-primary/80">{business.short_description}</p>
+        )}
       </div>
-      {business.short_description && (
-        <p className="mt-2.5 line-clamp-2 text-body text-secondary">{business.short_description}</p>
-      )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-3.5 flex shrink-0 flex-wrap items-center gap-2 lg:mt-0">
         <FollowButton businessId={business.id} businessSlug={business.slug} businessName={business.name} size="compact" />
         <SaveButton slug={business.slug} id={business.id} />
         <ShareButton
@@ -436,6 +447,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
 
   const findmiHereSection = (
     <BusinessFindmiHere
+      spotlight={findmiHere.spotlight}
       now={findmiHere.now}
       upcoming={findmiHere.upcoming}
       past={findmiHere.past}
@@ -479,7 +491,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           }
         />
         <div className="mt-3">
-          <JournalCollection entries={journal.entries} total={journal.total} layout="compact" />
+          <JournalCollection entries={journal.entries} total={journal.total} layout="compact" single="editorial" />
         </div>
       </section>
     ) : null;
@@ -596,7 +608,9 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
           <div className="h-full w-full bg-gradient-to-br from-ink to-findmi-900" />
         )}
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] p-3 pt-14 sm:p-6 sm:pt-24"
+          className={`pointer-events-none absolute inset-x-0 bottom-0 z-[2] px-4 pt-14 sm:px-6 sm:pt-24 ${
+            business.logo_url ? "pb-12 sm:pb-16" : "pb-4 sm:pb-6"
+          }`}
           style={{
             background:
               "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 30%, rgba(0,0,0,0.2) 62%, rgba(0,0,0,0) 88%)",
@@ -615,33 +629,29 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
         <AdminEditButton href={`/admin/businesses/${business.id}`} className="absolute right-3 top-3 z-30" />
       </div>
 
-      {/* Body. Phones: one column in the storytelling order (the desktop
-          wrappers are display:contents there, so their children interleave
-          via `order`). Desktop: story on the left, a compact sticky rail
-          (identity/actions, Contact & Links, Claim) on the right — each
-          rendered exactly once. Bottom spacing: no page padding; the last
-          block drops its own bottom padding, leaving the shared footer's
-          64px. */}
-      <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-5 sm:px-6 sm:pt-7 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-x-14 lg:pt-10">
+      {/* Identity strip — full width under the hero on every breakpoint. */}
+      <div className="mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6 sm:pt-4">{identity}</div>
+
+      {/* Body. Phones: one column (Findmi Here → … → People → Contact &
+          Links → Claim → Discover More; the desktop wrappers are
+          display:contents there, so their children interleave via
+          `order`). Desktop: the story on the left; Contact & Links + Claim
+          in a compact sticky rail — each rendered exactly once. Sections are
+          spaced, not ruled: the photography and card rails carry the rhythm.
+          Bottom spacing: no page padding; the shared footer's 64px. */}
+      <div className="mx-auto flex w-full max-w-6xl flex-col px-4 pt-8 sm:px-6 sm:pt-9 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-x-12">
         <div className="contents lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block lg:self-start">
-          <div className="order-1">{identity}</div>
           {contactSection && (
-            <div className="order-3 border-t border-black/[0.07] py-7 lg:mt-6 lg:pb-0 lg:pt-5">{contactSection}</div>
+            <div className="order-3 mt-10 border-t border-black/[0.07] pt-8 lg:mt-0 lg:border-t-0 lg:pt-0">{contactSection}</div>
           )}
-          <div
-            className={`order-4 border-t border-black/[0.07] pt-7 empty:hidden lg:mt-6 lg:pb-0 lg:pt-5 ${discoverSection ? "pb-7" : "pb-0"}`}
-          >
+          <div className="order-4 mt-10 empty:hidden lg:mt-8">
             {/* Claim placement — same reused flow/modal/eligibility (see
                 ClaimButton); renders nothing once claimed/managed. */}
             <ClaimButton type="business" slug={business.slug} entityName={business.name} variant="card" />
           </div>
         </div>
         <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
-          <div
-            className={`order-2 mt-6 divide-y divide-black/[0.07] border-t border-black/[0.07] [&>*]:py-7 lg:mt-0 lg:border-t-0 lg:[&>*:first-child]:pt-0 ${
-              discoverSection ? "" : "lg:[&>*:last-child]:pb-0"
-            }`}
-          >
+          <div className="order-2 flex flex-col gap-11">
             {findmiHereSection}
             {bulletinSection}
             {productsSection}
@@ -650,7 +660,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             {aboutSection}
             {peopleSection}
           </div>
-          {discoverSection && <div className="order-5 border-t border-black/[0.07] pb-0 pt-7">{discoverSection}</div>}
+          {discoverSection && <div className="order-5 mt-11">{discoverSection}</div>}
         </div>
       </div>
     </div>

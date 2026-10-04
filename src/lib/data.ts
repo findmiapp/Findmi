@@ -1318,6 +1318,189 @@ export async function getPastAppearancesForBusiness(
   return dedupeAppearances(rows).slice(0, limit);
 }
 
+/** Public Business Findmi Here — the Business page's activity, reconciled
+ * against the Event participation it actually has (read-only; nothing is
+ * written).
+ *
+ * Why: the Business page used to read only `appearances`, but an Event's
+ * schedule and a Business's approved participation are the authoritative
+ * truth for Event-backed activity. Live-data trace (Piccola Pasta Shop x
+ * The Native Rose): the Business had an approved event_businesses row, but
+ * its only Event-level Appearance was an older 'manual' row still carrying
+ * the Event's pre-reschedule date — and ensureEventAppearance skips
+ * creating the official row whenever ANY non-canceled Event-level
+ * Appearance exists, so nothing ever corrected it. Today's Event therefore
+ * sorted into Past and was missing from Happening Now / Upcoming.
+ *
+ * Rules (general, no per-Event special cases):
+ *  1. An Event-level Appearance (event_id set, no occurrence) takes the
+ *     Event's own current start/end — the Event is authoritative for an
+ *     Event-level link (Event-level participation = the Event's primary
+ *     date, the same thing ensureEventAppearance would derive).
+ *  2. An approved event_businesses row with NO non-canceled Appearance for
+ *     that Event contributes the Event's primary date.
+ *  3. An approved event_occurrence_businesses row with no Appearance for
+ *     that occurrence contributes that occurrence's date (cancelled
+ *     occurrences excluded).
+ * Derived rows are flagged `derived` (no real Appearance id — the page links
+ * them to their Event and attributes analytics to the Event). Everything is
+ * then re-split into upcoming (end > now) / past by real end time. */
+export type BusinessActivityRow = AppearanceWithEventSlug & { derived?: boolean };
+
+export async function getBusinessFindmiHereActivity(
+  businessId: string,
+  { pastLimit = 24 }: { pastLimit?: number } = {}
+): Promise<{ upcoming: BusinessActivityRow[]; past: BusinessActivityRow[] }> {
+  const supabase = getSupabase();
+  const [upcoming, past] = await Promise.all([
+    getUpcomingAppearancesForBusiness(businessId),
+    getPastAppearancesForBusiness(businessId, pastLimit),
+  ]);
+  if (!supabase) return { upcoming, past };
+
+  const [{ data: eventLinks }, { data: occurrenceLinks }] = await Promise.all([
+    supabase.from("event_businesses").select("event_id").eq("business_id", businessId).eq("status", "approved"),
+    supabase
+      .from("event_occurrence_businesses")
+      .select("occurrence_id, occurrence:event_occurrences(id, event_id, start_at, end_at, status, location:locations(id, name, slug), venue_name, address, city, state)")
+      .eq("business_id", businessId)
+      .eq("status", "approved"),
+  ]);
+
+  type OccJoin = {
+    id: string;
+    event_id: string;
+    start_at: string;
+    end_at: string;
+    status: string;
+    location: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
+    venue_name: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+  };
+  const occurrences = ((occurrenceLinks ?? []) as unknown as { occurrence: OccJoin | OccJoin[] | null }[])
+    .map((r) => (Array.isArray(r.occurrence) ? (r.occurrence[0] ?? null) : r.occurrence))
+    .filter((o): o is OccJoin => Boolean(o) && o!.status !== "cancelled");
+
+  const rows = [...upcoming, ...past];
+  const eventIds = new Set<string>();
+  for (const r of rows) if (r.event_id) eventIds.add(r.event_id);
+  for (const l of (eventLinks ?? []) as { event_id: string }[]) eventIds.add(l.event_id);
+  for (const o of occurrences) eventIds.add(o.event_id);
+  if (eventIds.size === 0) return { upcoming, past };
+
+  type EventRow = {
+    id: string;
+    slug: string;
+    name: string;
+    cover_image_url: string | null;
+    start_at: string;
+    end_at: string | null;
+    venue_name: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+  };
+  const { data: eventData } = await supabase
+    .from("events")
+    .select("id, slug, name, cover_image_url, start_at, end_at, venue_name, address, city, state")
+    .in("id", Array.from(eventIds))
+    .eq("is_demo", false);
+  const events = new Map<string, EventRow>(((eventData ?? []) as EventRow[]).map((e) => [e.id, e]));
+
+  // 1. Event-level Appearances follow the Event's own current schedule.
+  const reconciled: BusinessActivityRow[] = rows.map((r) => {
+    const e = r.event_id ? events.get(r.event_id) : null;
+    if (!e || r.event_occurrence_id || !e.end_at) return r;
+    if (e.start_at === r.start_at && e.end_at === r.end_at) return r;
+    return { ...r, start_at: e.start_at, end_at: e.end_at };
+  });
+
+  const nowIso = new Date().toISOString();
+  const base = {
+    business_id: businessId,
+    description: null,
+    latitude: null,
+    longitude: null,
+    status: "confirmed" as const,
+    source: "official_participation" as const,
+    is_featured: false,
+    bulletin_text: null,
+    show_on_home: false,
+    home_sort_order: null,
+    external_url: null,
+    flyer_image_url: null,
+    admin_reviewed_at: null,
+    market_id: null,
+    market_area_id: null,
+    categories: [],
+    created_at: nowIso,
+    derived: true,
+  };
+
+  // 2. Approved Event-level participation with no Appearance at all.
+  const eventsWithRows = new Set(reconciled.filter((r) => r.event_id).map((r) => r.event_id as string));
+  for (const l of (eventLinks ?? []) as { event_id: string }[]) {
+    const e = events.get(l.event_id);
+    if (!e || !e.end_at || eventsWithRows.has(e.id)) continue;
+    reconciled.push({
+      ...base,
+      id: `participation-${e.id}`,
+      event_id: e.id,
+      event_occurrence_id: null,
+      title: e.name,
+      start_at: e.start_at,
+      end_at: e.end_at,
+      venue_name: e.venue_name,
+      address: e.address,
+      city: e.city,
+      state: e.state,
+      location_id: null,
+      location: null,
+      event: { slug: e.slug, name: e.name, cover_image_url: e.cover_image_url },
+    } as BusinessActivityRow);
+    eventsWithRows.add(e.id);
+  }
+
+  // 3. Approved occurrence-level participation with no Appearance for it.
+  const occurrencesWithRows = new Set(reconciled.map((r) => r.event_occurrence_id).filter(Boolean));
+  for (const o of occurrences) {
+    const e = events.get(o.event_id);
+    if (!e || occurrencesWithRows.has(o.id)) continue;
+    // Same instant already represented (e.g. an Event-level row for the
+    // primary date) — never two rows for one date.
+    if (reconciled.some((r) => r.event_id === o.event_id && r.start_at === o.start_at)) continue;
+    const loc = Array.isArray(o.location) ? (o.location[0] ?? null) : o.location;
+    reconciled.push({
+      ...base,
+      id: `participation-${o.id}`,
+      event_id: o.event_id,
+      event_occurrence_id: o.id,
+      title: e.name,
+      start_at: o.start_at,
+      end_at: o.end_at,
+      venue_name: o.venue_name ?? e.venue_name,
+      address: o.address ?? e.address,
+      city: o.city ?? e.city,
+      state: o.state ?? e.state,
+      location_id: loc?.id ?? null,
+      location: loc,
+      event: { slug: e.slug, name: e.name, cover_image_url: e.cover_image_url },
+    } as BusinessActivityRow);
+  }
+
+  const now = Date.now();
+  const isUpcoming = (r: BusinessActivityRow) => new Date(r.end_at ?? r.start_at).getTime() > now;
+  return {
+    upcoming: reconciled.filter(isUpcoming).sort((a, b) => a.start_at.localeCompare(b.start_at)),
+    past: reconciled
+      .filter((r) => !isUpcoming(r))
+      .sort((a, b) => b.start_at.localeCompare(a.start_at))
+      .slice(0, pastLimit),
+  };
+}
+
 /** The one real FindMi business the homepage's "Have a business or
  * brand?" showcase demonstrates with (live-QA correction, 2026 nav pass,
  * Part 14) — was previously an entirely illustrative/static mockup. A

@@ -8,7 +8,7 @@ import SectionHeading from "../SectionHeading";
 import ViewToggle, { useStoredView } from "../ViewToggle";
 import { HorizontalScroller } from "../Section";
 import AppearanceQuickView, { type AppearanceQuickViewAppearance, type AppearanceQuickViewBusiness } from "../AppearanceQuickView";
-import type { HereItem } from "@/lib/findmi-here";
+import type { FindmiHereModel, HereItem } from "@/lib/findmi-here";
 import type { BusinessLocationItem } from "@/lib/business-locations";
 import {
   APP_TIMEZONE,
@@ -43,15 +43,20 @@ export type HereAppearance = AppearanceQuickViewAppearance & {
   flyer_image_url: string | null;
   event?: { slug: string; name?: string; cover_image_url?: string | null } | null;
   location?: { id?: string; name: string; slug: string } | null;
+  /** Derived from approved Event participation (no Appearance row). */
+  derived?: boolean;
 };
+
+type Spotlight = FindmiHereModel<HereAppearance>["spotlight"];
 
 const VIEW_STORAGE_KEY = "findmi:business-findmi-here-view";
 const PAST_PREVIEW = 3;
-/** Expanded Past stays a short recent history (no "all history" route
+/** Expanded Recently stays a short recent history (no "all history" route
  * exists yet) — never a wall of repeated stops. */
 const PAST_EXPANDED_MAX = 10;
 
 export default function BusinessFindmiHere({
+  spotlight,
   now,
   upcoming,
   past,
@@ -60,6 +65,7 @@ export default function BusinessFindmiHere({
   galleryImages,
   analyticsContext,
 }: {
+  spotlight: Spotlight;
   now: HereItem<HereAppearance>[];
   upcoming: HereItem<HereAppearance>[];
   past: HereItem<HereAppearance>[];
@@ -71,10 +77,10 @@ export default function BusinessFindmiHere({
   const [openId, setOpenId] = useState<string | null>(null);
   const [view, chooseView] = useStoredView(VIEW_STORAGE_KEY);
   const [pastExpanded, setPastExpanded] = useState(false);
-  const allAppearances = [...now, ...upcoming, ...past].flatMap((i) => i.appearances);
-  const openAppearance = allAppearances.find((a) => a.id === openId) ?? null;
+  const allAppearances = [...(spotlight ? [spotlight.item] : []), ...now, ...upcoming, ...past].flatMap((i) => i.appearances);
+  const openAppearance = allAppearances.find((a) => a.id === openId && !a.derived) ?? null;
 
-  const hasCurrent = now.length > 0 || upcoming.length > 0 || places.length > 0;
+  const hasCurrent = Boolean(spotlight && spotlight.state !== "recent") || now.length > 0 || upcoming.length > 0 || places.length > 0;
   const showToggle = upcoming.length >= 3;
 
   function changeView(next: "cards" | "list") {
@@ -98,29 +104,37 @@ export default function BusinessFindmiHere({
     <section id="findmi-here" className="scroll-mt-24">
       <SectionHeading>Findmi Here</SectionHeading>
 
+      {spotlight && (
+        <div className="mt-3">
+          <SpotlightCard spotlight={spotlight} {...itemProps} />
+        </div>
+      )}
+
       {!hasCurrent && (
-        <p className="mt-1.5 text-body text-secondary">
-          {past.length > 0 ? "Nothing scheduled right now. " : "No upcoming activity yet. "}
+        <p className="mt-3 text-body text-secondary">
+          {spotlight ? "Nothing scheduled right now. " : "No upcoming activity yet. "}
           Follow {business.name} to hear where they&rsquo;ll be next.
         </p>
       )}
 
       {now.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-6">
           <GroupHeading live>Happening Now</GroupHeading>
-          <div className="mt-2.5 flex flex-col gap-3">
+          <Rail>
             {now.map((item) => (
-              <HappeningNowCard key={item.key} item={item} {...itemProps} />
+              <div key={item.key} className="shrink-0 snap-start">
+                <HereCard item={item} {...itemProps} />
+              </div>
             ))}
-          </div>
+          </Rail>
         </div>
       )}
 
       {upcoming.length > 0 && (
-        <div className="mt-5">
+        <div className="mt-6">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <GroupHeading>Upcoming</GroupHeading>
+              <GroupHeading>{spotlight && spotlight.state !== "recent" ? "Also Coming Up" : "Upcoming"}</GroupHeading>
             </div>
             {showToggle && <ViewToggle view={view} onChange={changeView} label="Show upcoming as" />}
           </div>
@@ -133,22 +147,19 @@ export default function BusinessFindmiHere({
               ))}
             </ul>
           ) : (
-            <div className="-mx-4 mt-1 sm:-mx-6 lg:mx-0">
-              <HorizontalScroller className="snap-x snap-mandatory scroll-px-4 pt-1.5 sm:scroll-px-6 lg:scroll-px-0 lg:px-0">
-                {upcoming.map((item) => (
-                  <div key={item.key} className="shrink-0 snap-start">
-                    <HereCard item={item} {...itemProps} />
-                  </div>
-                ))}
-                <span aria-hidden="true" className="w-px shrink-0" />
-              </HorizontalScroller>
-            </div>
+            <Rail>
+              {upcoming.map((item) => (
+                <div key={item.key} className="shrink-0 snap-start">
+                  <HereCard item={item} {...itemProps} />
+                </div>
+              ))}
+            </Rail>
           )}
         </div>
       )}
 
       {places.length > 0 && (
-        <div className="mt-5">
+        <div className="mt-6">
           <GroupHeading>Places</GroupHeading>
           <ul className="mt-2 divide-y divide-black/[0.06] border-y border-black/[0.06]">
             {places.map((place) => (
@@ -161,24 +172,26 @@ export default function BusinessFindmiHere({
       )}
 
       {past.length > 0 && (
-        <div className={hasCurrent ? "mt-6" : "mt-4"}>
-          <GroupHeading muted={hasCurrent}>Past</GroupHeading>
-          <ul className="mt-1.5">
+        <div className="mt-6">
+          <div className="flex items-center justify-between gap-3">
+            <GroupHeading>{spotlight?.state === "recent" ? "Also Recently" : "Recently"}</GroupHeading>
+            {pastMore > 0 && (
+              <button
+                type="button"
+                onClick={() => setPastExpanded((v) => !v)}
+                className="shrink-0 text-metadata font-semibold text-findmi-700 hover:underline"
+              >
+                {pastExpanded ? "Show less" : `Show ${pastMore} more`}
+              </button>
+            )}
+          </div>
+          <Rail>
             {visiblePast.map((item) => (
-              <li key={item.key}>
-                <PastRow item={item} />
-              </li>
+              <div key={item.key} className="shrink-0 snap-start">
+                <HereCard item={item} past {...itemProps} />
+              </div>
             ))}
-          </ul>
-          {pastMore > 0 && (
-            <button
-              type="button"
-              onClick={() => setPastExpanded((v) => !v)}
-              className="mt-1 text-metadata font-semibold text-findmi-700 hover:underline"
-            >
-              {pastExpanded ? "Show less" : `Show ${pastMore} more`}
-            </button>
-          )}
+          </Rail>
         </div>
       )}
 
@@ -186,6 +199,18 @@ export default function BusinessFindmiHere({
         <AppearanceQuickView appearance={openAppearance} business={business} onClose={() => setOpenId(null)} analyticsContext={analyticsContext} />
       )}
     </section>
+  );
+}
+
+/** Edge-bleeding horizontal rail (first card on the page gutter, snap). */
+function Rail({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="-mx-4 mt-1 sm:-mx-6 lg:mx-0">
+      <HorizontalScroller className="snap-x snap-mandatory scroll-px-4 pt-1.5 sm:scroll-px-6 lg:scroll-px-0 lg:px-0">
+        {children}
+        <span aria-hidden="true" className="w-px shrink-0" />
+      </HorizontalScroller>
+    </div>
   );
 }
 
@@ -246,6 +271,11 @@ interface ItemProps {
 
 function itemAnalyticsFields(item: HereItem<HereAppearance>, business: AppearanceQuickViewBusiness, analyticsContext?: AnalyticsPlacementContext) {
   const a = item.lead;
+  // Derived (participation-only) rows have no Appearance id — attribute to
+  // the Event instead of inventing an appearance subject.
+  if (a.derived && a.event_id) {
+    return buildEntityEventFields("event", a.event_id, { eventId: a.event_id, businessId: business.id, locationId: a.location_id }, analyticsContext);
+  }
   return buildEntityEventFields(
     "appearance",
     a.id,
@@ -309,32 +339,65 @@ function DirectionsLink({ item, business, analyticsContext }: Omit<ItemProps, "g
   );
 }
 
-// ── Happening Now ───────────────────────────────────────────────────────
+// ── Spotlight ───────────────────────────────────────────────────────────
 
-function HappeningNowCard({ item, business, galleryImages, analyticsContext, onOpen }: ItemProps) {
+const SPOTLIGHT_LABEL: Record<NonNullable<Spotlight>["state"], string> = {
+  featured: "Featured",
+  now: "Happening Now",
+  next: "Next Up",
+  recent: "Recently",
+};
+
+/** The large photographic card at the top of Findmi Here — the visual
+ * weight the pre-V2 Featured Appearance card carried (16:10 photo, dark
+ * gradient, title/date/place over it, actions beneath), now for whichever
+ * experience the model promotes. */
+function SpotlightCard({ spotlight, business, galleryImages, analyticsContext, onOpen }: Omit<ItemProps, "item"> & { spotlight: NonNullable<Spotlight> }) {
+  const { item, state, live } = spotlight;
   const photo = imageFor(item, business, galleryImages);
-  // buildFindmiHere already made the live date this item's lead.
-  const live = item.lead;
-  const venue = resolveVenueLabel(live);
-  const until = live.end_at ? `Until ${formatTime(live.end_at)}` : null;
+  const venue = venueFor(item);
+  const n = item.appearances.length;
+  const when =
+    state === "recent"
+      ? pastLine(item)
+      : live
+        ? item.lead.end_at
+          ? `Happening now · until ${formatTime(item.lead.end_at)}`
+          : "Happening now"
+        : n > 1
+          ? `${scheduleLine(item)} · Next ${formatDateShort(item.lead.start_at)}`
+          : scheduleLine(item);
+  const label = SPOTLIGHT_LABEL[state];
   return (
-    <div className="overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
-      {photo ? (
-        <ItemTarget item={item} business={business} analyticsContext={analyticsContext} onOpen={onOpen} className="group relative block aspect-[16/9] w-full overflow-hidden bg-ink sm:aspect-[21/9]">
-          <SupabaseImage src={photo} alt="" fill sizes="(min-width: 1024px) 640px, 100vw" className="object-cover transition duration-300 group-hover:scale-[1.02]" />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 p-3.5 sm:p-4">
-            <p className="line-clamp-2 font-display text-card-title-lg font-bold text-white">{item.title}</p>
-            <p className="mt-0.5 line-clamp-1 text-metadata font-medium text-white/85">{[venue, until].filter(Boolean).join(" · ")}</p>
-          </div>
-        </ItemTarget>
-      ) : (
-        // No real image — a compact text header, never an empty photo block.
-        <div className="px-3.5 pt-3.5">
-          <p className="line-clamp-2 font-display text-card-title-lg font-bold text-primary">{item.title}</p>
-          <p className="mt-0.5 line-clamp-1 text-metadata text-secondary">{[venue, until].filter(Boolean).join(" · ")}</p>
+    <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+      <ItemTarget item={item} business={business} analyticsContext={analyticsContext} onOpen={onOpen} className="group relative block aspect-[16/10] w-full overflow-hidden bg-ink sm:aspect-[2/1]">
+        {photo ? (
+          <SupabaseImage src={photo} alt="" fill sizes="(min-width: 1024px) 720px, 100vw" className="object-cover transition duration-300 group-hover:scale-[1.02]" />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-ink to-findmi-900" />
+        )}
+        <span
+          className={`absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+            live ? "bg-red-600 text-white" : state === "recent" ? "bg-black/55 text-white backdrop-blur-sm" : "bg-white/90 text-ink backdrop-blur-sm"
+          }`}
+        >
+          {live && <LiveDot className="text-white" />}
+          {live && state === "featured" ? "Featured · Live" : label}
+        </span>
+        {n > 1 && (
+          <span className="absolute right-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
+            {n} dates
+          </span>
+        )}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 p-3.5 pt-16 sm:p-5"
+          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.66) 30%, rgba(0,0,0,0.25) 60%, rgba(0,0,0,0) 88%)" }}
+        >
+          <p className="line-clamp-2 font-display text-card-title-lg font-bold text-white sm:text-section-title-lg">{item.title}</p>
+          <p className="text-metadata font-medium text-white/90">{when}</p>
+          {venue && <p className="line-clamp-1 text-metadata font-medium text-white/70">{venue}</p>}
         </div>
-      )}
+      </ItemTarget>
       <div className="flex flex-wrap items-center gap-2 p-3">
         <ItemTarget
           item={item}
@@ -343,9 +406,9 @@ function HappeningNowCard({ item, business, galleryImages, analyticsContext, onO
           onOpen={onOpen}
           className="inline-flex h-10 items-center justify-center rounded-full bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600"
         >
-          {item.kind === "event" ? "View Event" : "Details"}
+          {item.kind === "event" ? "View Event" : "View Details"}
         </ItemTarget>
-        <DirectionsLink item={item} business={business} analyticsContext={analyticsContext} />
+        {state !== "recent" && <DirectionsLink item={item} business={business} analyticsContext={analyticsContext} />}
       </div>
     </div>
   );
@@ -353,7 +416,7 @@ function HappeningNowCard({ item, business, galleryImages, analyticsContext, onO
 
 // ── Upcoming: card + list row ───────────────────────────────────────────
 
-function HereCard({ item, business, galleryImages, analyticsContext, onOpen }: ItemProps) {
+function HereCard({ item, business, galleryImages, analyticsContext, onOpen, past = false }: ItemProps & { past?: boolean }) {
   const photo = imageFor(item, business, galleryImages);
   const { label } = getTemporalLabel(item.lead.start_at, item.lead.end_at);
   const multi = item.appearances.length > 1;
@@ -364,11 +427,18 @@ function HereCard({ item, business, galleryImages, analyticsContext, onOpen }: I
       business={business}
       analyticsContext={analyticsContext}
       onOpen={onOpen}
-      className="group block w-64 overflow-hidden rounded-2xl border border-black/[0.06] bg-white transition active:scale-[0.99] hover:border-black/15 sm:w-72"
+      className={`group block overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm transition active:scale-[0.99] hover:border-black/10 hover:shadow ${past ? "w-56 sm:w-60" : "w-64 sm:w-72"}`}
     >
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-mist">
         {photo ? (
-          <SupabaseImage src={photo} alt="" fill sizes="(min-width: 640px) 288px, 256px" className="object-cover" />
+          <>
+            <SupabaseImage src={photo} alt="" fill sizes="(min-width: 640px) 288px, 256px" className="object-cover" />
+            {business.logo_url && !past && (
+              <div className="absolute bottom-2 left-2 h-10 w-10 overflow-hidden rounded-full border-2 border-white bg-white shadow-sm">
+                <SupabaseImage src={business.logo_url} alt="" fill sizes="40px" className="object-cover" />
+              </div>
+            )}
+          </>
         ) : business.logo_url ? (
           <div className="flex h-full w-full items-center justify-center bg-findmi-50 p-8">
             <div className="relative h-full w-full">
@@ -378,8 +448,12 @@ function HereCard({ item, business, galleryImages, analyticsContext, onOpen }: I
         ) : (
           <div className="h-full w-full bg-ink" />
         )}
-        <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ink backdrop-blur-sm">
-          {label}
+        <span
+          className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide backdrop-blur-sm ${
+            past ? "bg-black/55 text-white" : "bg-white/90 text-ink"
+          }`}
+        >
+          {past ? yearOf(item.lastEnd) : label}
         </span>
         {multi && (
           <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
@@ -390,8 +464,8 @@ function HereCard({ item, business, galleryImages, analyticsContext, onOpen }: I
       <div className="p-3">
         <p className="line-clamp-2 font-display text-card-title font-semibold text-primary">{item.title}</p>
         {venue && <p className="mt-1 truncate text-metadata text-secondary">{venue}</p>}
-        <p className="mt-0.5 truncate text-metadata text-muted">{scheduleLine(item)}</p>
-        {multi && <p className="mt-0.5 truncate text-metadata font-semibold text-findmi-700">Next: {formatDateShort(item.lead.start_at)}</p>}
+        <p className="mt-0.5 truncate text-metadata text-muted">{past ? pastLine(item) : scheduleLine(item)}</p>
+        {multi && !past && <p className="mt-0.5 truncate text-metadata font-semibold text-findmi-700">Next: {formatDateShort(item.lead.start_at)}</p>}
       </div>
     </ItemTarget>
   );
@@ -472,24 +546,6 @@ function pastLine(item: HereItem<HereAppearance>): string {
     ? `${monthDay(item.firstStart)} – ${monthDay(item.lastEnd)}, ${yearOf(item.lastEnd)}`
     : `${monthDay(item.firstStart)}, ${yearOf(item.firstStart)} – ${monthDay(item.lastEnd)}, ${yearOf(item.lastEnd)}`;
   return `${range} · ${n} dates`;
-}
-
-function PastRow({ item }: { item: HereItem<HereAppearance> }) {
-  const venue = venueFor(item);
-  const href = item.kind === "event" && item.eventSlug ? `/event/${item.eventSlug}` : item.lead.location?.slug ? `/location/${item.lead.location.slug}` : null;
-  const body = (
-    <>
-      <span className="block truncate text-body font-semibold text-secondary">{item.title}</span>
-      <span className="block truncate text-metadata text-muted">{[pastLine(item), venue].filter(Boolean).join(" · ")}</span>
-    </>
-  );
-  return href ? (
-    <Link href={href} className="block py-1.5 transition hover:opacity-80">
-      {body}
-    </Link>
-  ) : (
-    <div className="py-1.5">{body}</div>
-  );
 }
 
 function DirectionsGlyph({ className }: { className?: string }) {

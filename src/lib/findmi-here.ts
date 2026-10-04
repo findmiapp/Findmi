@@ -74,7 +74,14 @@ function toItems<A extends HereAppearanceLike>(rows: A[], pickLead: (sorted: A[]
   return items;
 }
 
+export type SpotlightState = "featured" | "now" | "next" | "recent";
+
 export interface FindmiHereModel<A extends HereAppearanceLike> {
+  /** The one experience promoted into the large card at the top of Findmi
+   * Here: the featured item while eligible, else what's live, else the next
+   * upcoming one, else (nothing current) the most recent past one. It is
+   * removed from its own group below, so it never renders twice. */
+  spotlight: { item: HereItem<A>; state: SpotlightState; live: boolean } | null;
   now: HereItem<A>[];
   upcoming: HereItem<A>[];
   past: HereItem<A>[];
@@ -119,5 +126,22 @@ export function buildFindmiHere<A extends HereAppearanceLike>({
     .filter((i) => !currentKeys.has(i.key))
     .sort((a, b) => b.lastEnd.localeCompare(a.lastEnd));
 
-  return { now: nowItems, upcoming: upcomingItems, past: pastItems };
+  // Spotlight selection: featured (eligible) → live → next → most recent.
+  let spotlight: FindmiHereModel<A>["spotlight"] = null;
+  const featuredIn = (list: HereItem<A>[]) =>
+    featuredAppearanceId ? list.findIndex((i) => i.appearances.some((a) => a.id === featuredAppearanceId)) : -1;
+  const take = (list: HereItem<A>[], idx: number) => list.splice(idx, 1)[0];
+  if (featuredIn(nowItems) >= 0) {
+    spotlight = { item: take(nowItems, featuredIn(nowItems)), state: "featured", live: true };
+  } else if (featuredIn(upcomingItems) >= 0) {
+    spotlight = { item: take(upcomingItems, featuredIn(upcomingItems)), state: "featured", live: false };
+  } else if (nowItems.length > 0) {
+    spotlight = { item: take(nowItems, 0), state: "now", live: true };
+  } else if (upcomingItems.length > 0) {
+    spotlight = { item: take(upcomingItems, 0), state: "next", live: false };
+  } else if (pastItems.length > 0) {
+    spotlight = { item: take(pastItems, 0), state: "recent", live: false };
+  }
+
+  return { spotlight, now: nowItems, upcoming: upcomingItems, past: pastItems };
 }
