@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { canCurrentUserManageEvents, getHostEventEligibility } from "@/lib/entitlements";
+import { getHostEventEligibility } from "@/lib/entitlements";
 import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
 import { createMemberEvent } from "../actions";
@@ -65,14 +65,14 @@ const inputClass =
 const primaryButtonClass =
   "flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-button font-bold uppercase text-white transition hover:bg-findmi-600";
 
-/** Multi-Entity Self-Service V1, Stage 2 — native Event creation entry
- * point. Only qualifying signed-in users may create an Event (see
- * canCurrentUserManageEvents — active Pro or a redeemed Pro Invite on
- * some business they belong to; no separate Event fee, ever). A
- * non-qualifying user sees the membership-required explainer directly on
- * this page instead of a broken/dead-end form — createMemberEvent itself
- * independently re-checks entitlement too, so this page's own gate is a
- * UX convenience, never the real authorization. */
+/** Native Event creation entry point (Global + → Add An Event). Free
+ * Event Creation: ANY signed-in Findmi member may create/submit an Event —
+ * no Pro, Pro Invite, event_management entitlement or Business required.
+ * New Events still start pending review (create_owned_event) and the
+ * creator becomes their owner; management stays scoped per Event.
+ * The only remaining gate here is HOSTING: with ?business_id (Business →
+ * Findmi Here → Host Something) the caller must be an Owner/Manager of
+ * that Business. createMemberEvent re-checks that server-side. */
 export default async function AddEventPage({
   searchParams,
 }: {
@@ -118,11 +118,9 @@ export default async function AddEventPage({
   const hostEligibility = businessIdParam && admin ? await getHostEventEligibility(admin, user.id, businessIdParam) : null;
   const businessContext =
     hostEligibility && (hostEligibility.ok || hostEligibility.reason !== "not_member") ? hostEligibility.business : null;
-  const entitled = businessContext
-    ? Boolean(hostEligibility?.ok)
-    : admin
-      ? await canCurrentUserManageEvents(admin, user.id)
-      : false;
+  // Free Event Creation — only hosting AS a Business is gated (Owner/
+  // Manager of that Business); creating an Event as a member never is.
+  const canHost = businessContext ? Boolean(hostEligibility?.ok) : true;
   const backToBusiness = businessContext ? (
     <Link
       href={`/account/business/${businessContext.id}?tab=findmi-here`}
@@ -132,42 +130,16 @@ export default async function AddEventPage({
     </Link>
   ) : null;
 
-  if (!entitled) {
+  if (businessContext && !canHost) {
     return (
       <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
-        {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
-        <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-          {businessContext ? "Host Something" : "Add an Event"}
-        </h1>
+        {backToBusiness}
+        <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">Host Something</h1>
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-          {businessContext ? (
-            <p className="text-body font-semibold text-primary">
-              Only an Owner or Manager of {businessContext.name} can host Events for it.
-            </p>
-          ) : (
-            <>
-              <p className="text-body font-semibold text-primary">Event management is included with qualifying Findmi membership.</p>
-              <p className="mt-2 text-body text-muted">
-                Get Findmi Pro (or redeem a Pro Invite) on a business you manage to create and manage Events, with no
-                separate Event fee.
-              </p>
-            </>
-          )}
-          {locationHint && (
-            <p className="mt-2 text-body text-muted">
-              Once you have Organizer Access, come back here to add your event at {locationHint.name} directly.
-            </p>
-          )}
-          {businessContext ? null : (
-            <>
-              <Link href="/account/business/new" className={`mt-5 ${primaryButtonClass}`}>
-                Add a Business
-              </Link>
-              <Link href="/join/business" className="mt-3 flex h-11 w-full items-center justify-center text-metadata font-semibold text-muted transition hover:text-primary">
-                Learn about Findmi Pro
-              </Link>
-            </>
-          )}
+          <p className="text-body font-semibold text-primary">Only an Owner or Manager of {businessContext.name} can host Events for it.</p>
+          <Link href="/account/event/new" className={`mt-5 ${primaryButtonClass}`}>
+            Add An Event Instead
+          </Link>
         </div>
       </div>
     );
@@ -179,7 +151,7 @@ export default async function AddEventPage({
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
       <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-        {businessContext ? "Host Something" : "Add an Event"}
+        {businessContext ? "Host Something" : "Add An Event"}
       </h1>
       <p className="mt-2 text-body text-muted">
         {businessContext
@@ -242,11 +214,7 @@ export default async function AddEventPage({
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Event
           </button>
-          {!businessContext && (
-            <p className="text-center text-metadata text-subtle">
-              No separate Event fee. Included with your qualifying Findmi membership.
-            </p>
-          )}
+          {!businessContext && <p className="text-center text-metadata text-subtle">Free for every Findmi member.</p>}
         </form>
       </div>
     </div>

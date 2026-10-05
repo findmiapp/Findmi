@@ -7,7 +7,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireEventMember } from "@/lib/permissions";
 import { createOpportunity, resolveEventApplicationDecision, resolveOpportunityByContext } from "@/lib/opportunities";
-import { canCurrentUserManageEvents, getHostEventEligibility } from "@/lib/entitlements";
+import { getHostEventEligibility } from "@/lib/entitlements";
 import { errorRedirectUrl, errorRedirectUrlWithFields, isoToLocalDateTime, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -167,19 +167,19 @@ const CREATE_EVENT_FRIENDLY_ERROR: Record<string, string> = {
   host_not_authorized: "Only an Owner or Manager of this Business can host an Event for it.",
 };
 
-/** Creates a brand-new event natively — free, no separate Event fee,
+/** Creates a brand-new event natively — free for every signed-in member,
  * starting is_demo=true (hidden from every public discovery/detail query
  * — see getEventBySlug() in lib/data.ts) via create_owned_event(), never
  * accepted as input here or by that RPC. The authenticated creator
  * becomes its owner atomically with the event itself (same RPC, one
  * transaction).
  *
- * Entitlement is checked twice, deliberately: the /account/event/new page
- * itself already hides this form entirely from a non-qualifying user (see
- * that page), but this action re-derives it independently server-side —
- * never trusts that the page's own check alone gates the mutation, same
- * "every mutation must derive authorization server-side" discipline this
- * whole pass follows. */
+ * Free Event Creation: being signed in is the only requirement to create
+ * an Event as a member — no Pro, Pro Invite, event_management entitlement
+ * or Business. Hosting AS a Business (business_id) is still authorized
+ * here server-side (Owner/Manager of that Business) and again inside
+ * create_owned_event(). Management of the new Event stays scoped to it:
+ * the creator gets its owner event_members row from the same RPC. */
 export async function createMemberEvent(formData: FormData) {
   const sessionSupabase = await getServerSupabase();
   const {
@@ -239,13 +239,6 @@ export async function createMemberEvent(formData: FormData) {
         eligibility.reason === "role"
           ? `Only an Owner or Manager of ${businessName} can host an Event for it.`
           : "You don't have access to host an Event for that Business."
-      );
-    }
-  } else {
-    const entitled = await canCurrentUserManageEvents(admin, user.id);
-    if (!entitled) {
-      fail(
-        "Event management is included with qualifying Findmi membership. Get Findmi Pro (or redeem a Pro Invite) on a business you manage first."
       );
     }
   }

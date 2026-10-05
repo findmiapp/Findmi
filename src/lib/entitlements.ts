@@ -120,14 +120,14 @@ export async function getBusinessMarketLimit(business: Pick<Business, "plan_tier
 /**
  * Multi-Entity Self-Service V1 — Event-management entitlement.
  *
- * LOCKED RULE: Events are NOT their own paid subscription. An authenticated
- * user may create a brand-new Event at no additional Event fee if they have
- * qualifying FindMi access through EITHER:
- * (Universal Free Claim UX pass — CLAIMING an existing Event no longer
- * consults this function at all; that's a free ownership/management
- * request now, gated only on authentication + email verification. This
- * entitlement still gates new Event creation and other Event-management
- * capabilities untouched by that pass.)
+ * FREE EVENT CREATION (current rule): this does NOT gate creating or
+ * claiming an Event — any signed-in member may create one (see
+ * createMemberEvent) and claim one (claim route). Free creates and
+ * contributes; Pro analyzes and amplifies. Nothing calls this today; it is
+ * kept as the one definition of "qualifying Event-management access" for
+ * any future enhanced (Pro) Event tools. It is NOT an Event authorization
+ * check — managing a specific Event is always requireEventMember()
+ * (lib/permissions.ts). Qualifying access means EITHER:
  *   (a) active paid OR complimentary Business Pro access on ANY business
  *       they belong to (business_members join businesses.plan_tier — Pro
  *       is, and remains, a property of a BUSINESS; Stripe checkout and a

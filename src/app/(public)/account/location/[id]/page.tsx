@@ -5,7 +5,6 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireLocationMember, resolveBusinessNavContext } from "@/lib/permissions";
-import { canCurrentUserManageEvents } from "@/lib/entitlements";
 import { getAccountContexts } from "@/lib/accountContext";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import { getAdminLocationById, getAllCategories } from "@/lib/admin/queries";
@@ -160,26 +159,15 @@ export default async function ManageLocationPage({
     getAllCategories("location"),
   ]);
 
-  // Venue owner -> Add Event access UX (Stage 4) — Location ownership
-  // does NOT grant Event Management (see this stage's Locked rule), so a
-  // venue owner may legitimately lack Organizer Access. This is a
-  // cosmetic, non-authorizing hint only — checked against the caller's
-  // OWN real Supabase Auth session, never the Location membership itself
-  // (an admin-elevated session with no real user has neither) — the real
-  // gate stays entirely in /account/event/new, which re-derives this
-  // independently and shows its own graceful explainer either way. This
-  // just lets the Overview tab set expectations before the click instead
-  // of after.
   const sessionSupabase = await getServerSupabase();
   const {
     data: { user: sessionUser },
   } = await sessionSupabase.auth.getUser();
-  const eventEligible = sessionUser ? await canCurrentUserManageEvents(admin, sessionUser.id) : false;
 
   // Global Account Context Switcher V1 — Location Manager is the other
   // page that never had a reachable Sign Out or Personal/Business
-  // switching. Reuses the sessionUser already derived above for
-  // eventEligible — no second auth re-check.
+  // switching. Reuses the sessionUser already derived above — no second
+  // auth re-check.
   const [accountBusinesses, personalDisplayName] = sessionUser
     ? await Promise.all([getAccountContexts(sessionSupabase, sessionUser.id), getPersonalDisplayName(sessionSupabase, sessionUser.id)])
     : [[], null];
@@ -449,11 +437,6 @@ export default async function ManageLocationPage({
               <Link href={`/account/event/new?location_id=${id}`} className={`inline-flex w-fit ${primaryButtonClass}`}>
                 + Create Event Here
               </Link>
-              {!eventEligible && (
-                <p className="mt-2 text-xs text-ink/45">
-                  Requires Organizer Access / qualifying Findmi membership. The next screen explains how to get it.
-                </p>
-              )}
             </div>
 
             {profileAttentionMessage && (
@@ -526,11 +509,6 @@ export default async function ManageLocationPage({
                   <Link href={`/account/event/new?location_id=${id}`} className="mt-2 inline-flex h-9 items-center rounded-xl bg-findmi px-4 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600">
                     + Create Event
                   </Link>
-                  {!eventEligible && (
-                    <p className="mt-2 text-xs text-ink/45">
-                      Requires Organizer Access / qualifying Findmi membership. The next screen explains how to get it.
-                    </p>
-                  )}
                 </div>
 
                 {sessionUser && manageableEvents.length > 0 && (
