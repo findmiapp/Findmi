@@ -58,14 +58,14 @@ async function requireOwnEntry(entryId: string) {
   if (await isAdminSession()) {
     const admin = await requireAdminSupabase();
     const { data: entry } = await admin.from("journal_entries").select("id, user_id").eq("id", entryId).maybeSingle();
-    if (!entry) throw new Error("That Journal Entry doesn't exist.");
+    if (!entry) throw new Error("That Moment doesn't exist.");
     return { admin, userId: entry.user_id as string };
   }
 
   const user = await requireUser();
   const supabase = await getServerSupabase();
   const { data: entry } = await supabase.from("journal_entries").select("id, user_id").eq("id", entryId).maybeSingle();
-  if (!entry || entry.user_id !== user.id) throw new Error("That Journal Entry doesn't exist or isn't yours.");
+  if (!entry || entry.user_id !== user.id) throw new Error("That Moment doesn't exist or isn't yours.");
   const admin = getAdminSupabase();
   if (!admin) throw new Error("Server isn't configured.");
   return { admin, userId: user.id };
@@ -110,7 +110,7 @@ export async function saveJournalBasics(
     const { admin } = await requireOwnEntry(entryId);
     const title = str(formData, "title");
     const entryDate = str(formData, "entry_date");
-    if (!title) return { error: "Give this entry a title." };
+    if (!title) return { error: "Name this Moment." };
     if (!entryDate) return { error: "Choose a date." };
 
     const { error } = await admin
@@ -938,10 +938,11 @@ export interface JournalConnectionIds {
   businessIds: string[];
   productIds: string[];
   eventIds: string[];
-  // Journal V2 Pass 2B — at most one specific Event Occurrence, additional
-  // to (never instead of) a parent Event connection. Null means "no
-  // specific date identified," a legitimate, honest state — never guessed.
-  occurrenceId: string | null;
+  // Moments V2 — up to ONE specific occurrence PER connected Event (was one
+  // per Moment), each additional to (never instead of) its parent Event
+  // connection. An Event with no occurrence means "no specific date
+  // identified," a legitimate, honest state — never guessed.
+  occurrenceIds: string[];
 }
 
 /** Replace-set semantics — simplest correct model for a small, infrequently
@@ -969,10 +970,16 @@ export async function saveJournalConnections(entryId: string, ids: JournalConnec
     // bare occurrence with no Event, which would be an orphan semantic
     // state (section 14's own concern, enforced here rather than trusted
     // from the client).
-    if (ids.occurrenceId) {
-      const { data: occ } = await admin.from("event_occurrences").select("id, event_id").eq("id", ids.occurrenceId).maybeSingle();
-      if (!occ) return { error: "That date couldn't be found." };
-      if (!ids.eventIds.includes(occ.event_id)) return { error: "That date doesn't belong to a connected event." };
+    const occurrenceIds = [...new Set(ids.occurrenceIds)];
+    if (occurrenceIds.length > 0) {
+      const { data: occs } = await admin.from("event_occurrences").select("id, event_id").in("id", occurrenceIds);
+      if ((occs ?? []).length !== occurrenceIds.length) return { error: "That date couldn't be found." };
+      const seenEvents = new Set<string>();
+      for (const occ of occs ?? []) {
+        if (!ids.eventIds.includes(occ.event_id)) return { error: "That date doesn't belong to a connected event." };
+        if (seenEvents.has(occ.event_id)) return { error: "Choose one date per event." };
+        seenEvents.add(occ.event_id);
+      }
     }
 
     await admin.from("journal_entry_connections").delete().eq("journal_entry_id", entryId);
@@ -980,7 +987,7 @@ export async function saveJournalConnections(entryId: string, ids: JournalConnec
       ...ids.businessIds.map((business_id) => ({ journal_entry_id: entryId, business_id })),
       ...ids.productIds.map((product_id) => ({ journal_entry_id: entryId, product_id })),
       ...ids.eventIds.map((event_id) => ({ journal_entry_id: entryId, event_id })),
-      ...(ids.occurrenceId ? [{ journal_entry_id: entryId, event_occurrence_id: ids.occurrenceId }] : []),
+      ...occurrenceIds.map((event_occurrence_id) => ({ journal_entry_id: entryId, event_occurrence_id })),
     ];
     if (rows.length > 0) {
       const { error } = await admin.from("journal_entry_connections").insert(rows);
@@ -1003,6 +1010,8 @@ export interface JournalOccurrenceOption {
    * server-side, once, rather than duplicating timezone math in the
    * client picker component. */
   localDate: string;
+  /** Local start time (HH:MM) in the occurrence's own timezone. */
+  localTime: string;
   location: {
     id: string;
     name: string;
@@ -1032,6 +1041,7 @@ export async function getEventOccurrencesForJournal(eventId: string): Promise<Jo
     end_at: o.end_at,
     timezone: o.timezone,
     localDate: isoToLocalDateTime(o.start_at, o.timezone).slice(0, 10),
+    localTime: isoToLocalDateTime(o.start_at, o.timezone).slice(11, 16),
     location: o.location
       ? {
           id: o.location.id,
@@ -1054,7 +1064,7 @@ export async function publishJournalEntry(entryId: string, visibility: "private"
   const { admin } = await requireOwnEntry(entryId);
   const { data: entry } = await admin.from("journal_entries").select("title, entry_date").eq("id", entryId).maybeSingle();
   if (!entry?.title || !entry.entry_date) {
-    return { error: "Add a title and date before saving." };
+    return { error: "Name this Moment before publishing." };
   }
   await admin.from("journal_entries").update({ visibility, status: "published" }).eq("id", entryId);
   revalidatePath("/my-world/journal");
@@ -1062,16 +1072,19 @@ export async function publishJournalEntry(entryId: string, visibility: "private"
   redirect(`/journal/${entryId}`);
 }
 
-export async function updateJournalVisibility(entryId: string, visibility: "private" | "public"): Promise<{ ok: true } | { error: string }> {
+/** Moments V2 — "Save Without Publishing" and "Unpublish": the one
+ * not-published state a person ever sees (status draft + visibility
+ * private), so nobody has to reason about status vs. visibility. */
+export async function saveJournalAsDraft(entryId: string): Promise<{ ok: true } | { error: string }> {
   try {
     const { admin } = await requireOwnEntry(entryId);
-    const { error } = await admin.from("journal_entries").update({ visibility }).eq("id", entryId);
+    const { error } = await admin.from("journal_entries").update({ status: "draft", visibility: "private" }).eq("id", entryId);
     if (error) return { error: error.message };
     revalidatePath("/my-world/journal");
     revalidatePath(`/journal/${entryId}`);
     return { ok: true };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Couldn't update visibility." };
+    return { error: err instanceof Error ? err.message : "Couldn't save that." };
   }
 }
 

@@ -7,6 +7,7 @@ import {
   removeJournalPhoto,
   saveJournalMediaLayout,
   setJournalCover,
+  saveJournalMediaCaption,
   authorizeJournalPhotoUploadBatch,
   finalizeJournalPhotoBatch,
   discardJournalUpload,
@@ -72,6 +73,8 @@ export interface JournalPhotoItem {
   /** Moments V2 — target/current photo section. Undefined/null =
    * unsectioned. Only sent to the server when set. */
   sectionId?: string | null;
+  /** Moments V2 — the photo's own optional note (journal_entry_media.caption). */
+  caption?: string | null;
 }
 
 export interface JournalInitialPhoto {
@@ -79,6 +82,7 @@ export interface JournalInitialPhoto {
   url: string;
   isCover: boolean;
   sectionId?: string | null;
+  caption?: string | null;
 }
 
 /** Current-batch upload progress, surfaced separately from `items` so the
@@ -156,6 +160,7 @@ function buildInitialItems(initial: JournalInitialPhoto[]): JournalPhotoItem[] {
     mediaId: p.id,
     isCover: p.isCover,
     sectionId: p.sectionId ?? null,
+    caption: p.caption ?? null,
   }));
 }
 
@@ -247,13 +252,15 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     return index === -1 ? itemsRef.current.length : index;
   }, []);
 
-  /** Persists the grid's current photo ORDER only — never the cover
-   * (explicit is_cover) and never section membership (no sectionId is
-   * sent, so every photo keeps its current section). */
+  /** Persists the editor's photo layout — order plus each photo's section
+   * (this editor session is the authority for both) — never the cover
+   * (explicit is_cover). The server flattens it to one global order:
+   * sectioned photos by section order, then unsectioned photos. */
   const persistOrder = useCallback(async (entryId: string) => {
-    const orderedMediaIds = itemsRef.current.filter((it) => it.status === "complete" && it.mediaId).map((it) => it.mediaId as string);
-    if (orderedMediaIds.length === 0) return;
-    await saveJournalMediaLayout(entryId, { items: orderedMediaIds.map((mediaId) => ({ mediaId })) });
+    const complete = itemsRef.current.filter((it) => it.status === "complete" && it.mediaId);
+    if (complete.length === 0) return;
+    const result = await saveJournalMediaLayout(entryId, { items: complete.map((it) => ({ mediaId: it.mediaId as string, sectionId: it.sectionId ?? null })) });
+    if ("error" in result) setError(result.error);
   }, []);
 
   /** Mirrors the server's resulting cover into local state. */
@@ -739,26 +746,68 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     [reorder]
   );
 
-  const moveEarlier = useCallback(
-    (localId: string) => {
+  // Moments V2 — Move Earlier/Later step within the photo's own group
+  // (its section, or the unsectioned photos), so a sectioned Moment's
+  // photos never jump into a neighbouring section. For a flat Moment
+  // (every photo unsectioned) this is exactly the previous behavior.
+  const moveWithinGroup = useCallback(
+    (localId: string, direction: -1 | 1) => {
       reorder((prev) => {
         const index = prev.findIndex((it) => it.localId === localId);
-        if (index <= 0) return prev;
-        return arrayMove(prev, index, index - 1);
+        if (index === -1) return prev;
+        const group = prev[index].sectionId ?? null;
+        let target = index + direction;
+        while (target >= 0 && target < prev.length && (prev[target].sectionId ?? null) !== group) target += direction;
+        if (target < 0 || target >= prev.length) return prev;
+        const next = [...prev];
+        [next[index], next[target]] = [next[target], next[index]];
+        return next;
+      });
+    },
+    [reorder]
+  );
+  const moveEarlier = useCallback((localId: string) => moveWithinGroup(localId, -1), [moveWithinGroup]);
+  const moveLater = useCallback((localId: string) => moveWithinGroup(localId, 1), [moveWithinGroup]);
+
+  /** Moments V2 — puts photos into a section (or back to unsectioned with
+   * null), appended after that group's existing photos. Never deletes,
+   * never changes the cover. */
+  const assignSection = useCallback(
+    (localIds: string[], sectionId: string | null) => {
+      const ids = new Set(localIds);
+      reorder((prev) => {
+        const moving = prev.filter((it) => ids.has(it.localId)).map((it) => ({ ...it, sectionId }));
+        return [...prev.filter((it) => !ids.has(it.localId)), ...moving];
       });
     },
     [reorder]
   );
 
-  const moveLater = useCallback(
-    (localId: string) => {
-      reorder((prev) => {
-        const index = prev.findIndex((it) => it.localId === localId);
-        if (index === -1 || index >= prev.length - 1) return prev;
-        return arrayMove(prev, index, index + 1);
-      });
+  /** After a section is deleted server-side (its photos' section_id is
+   * already cleared there), mirror that locally. No write needed. */
+  const releaseSection = useCallback(
+    (sectionId: string) => {
+      updateItems((prev) => (prev.some((it) => it.sectionId === sectionId) ? prev.map((it) => (it.sectionId === sectionId ? { ...it, sectionId: null } : it)) : prev));
     },
-    [reorder]
+    [updateItems]
+  );
+
+  /** Moments V2 — saves one photo's note (empty = no note). Optimistic;
+   * restores the previous note if the save fails. */
+  const saveCaption = useCallback(
+    async (localId: string, caption: string): Promise<{ ok: true } | { error: string }> => {
+      const target = itemsRef.current.find((it) => it.localId === localId);
+      if (!target?.mediaId) return { error: "That photo is still uploading." };
+      const previous = target.caption ?? null;
+      const next = caption.trim() || null;
+      updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, caption: next } : it)));
+      const entryId = await ensureEntryId();
+      if (!entryId) return { error: "Couldn't save that note." };
+      const result = await saveJournalMediaCaption(entryId, target.mediaId, next);
+      if ("error" in result) updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, caption: previous } : it)));
+      return result;
+    },
+    [ensureEntryId, updateItems]
   );
 
   /** Moments V2 — Make Cover marks the photo as the cover WITHOUT moving
@@ -799,5 +848,8 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     moveEarlier,
     moveLater,
     makeCover,
+    assignSection,
+    releaseSection,
+    saveCaption,
   };
 }

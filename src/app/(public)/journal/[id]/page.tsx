@@ -41,10 +41,10 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const result = await getJournalEntryWithRelations(id);
-  if (!result || result.entry.visibility !== "public") return { title: "Journal Entry" };
+  if (!result || result.entry.visibility !== "public") return { title: "Moment" };
   return {
     title: result.entry.title,
-    description: result.entry.notes?.slice(0, 160) ?? `A Journal Entry on Findmi${result.location ? ` at ${result.location.name}` : ""}.`,
+    description: result.entry.notes?.slice(0, 160) ?? `A Moment on Findmi${result.location ? ` at ${result.location.name}` : ""}.`,
   };
 }
 
@@ -155,7 +155,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
         {isAuthorizedAdmin && (
           <Link
             href={`/admin/journal/${entry.id}`}
-            aria-label="Edit journal entry"
+            aria-label="Edit Moment"
             className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-md transition active:scale-95"
           >
             <EditPencilGlyph className="h-4 w-4" />
@@ -165,7 +165,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4 pt-16 sm:p-6"
           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 35%, rgba(0,0,0,0) 85%)" }}
         >
-          <p className="text-[10px] font-bold uppercase tracking-wide text-white/60">Journal Entry</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-white/60">Moment</p>
           {/* V1.1 — the detail hero is the canonical reading view for this
               title; unlike an archive card, it never line-clamps it away.
               Natural wrapping + the gradient's own generous bottom padding

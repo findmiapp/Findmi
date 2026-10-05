@@ -1,6 +1,9 @@
-import JournalCreateWizard from "@/components/journal/JournalCreateWizard";
+import MomentComposer from "@/components/journal/MomentComposer";
 import { getSupabase } from "@/lib/supabase";
-import type { JournalSearchResult } from "@/components/journal/JournalSearchSelect";
+import { emptyMomentInitial, type MomentPick } from "@/lib/moment-composer";
+import { resolveEventMomentPrefill, type EventMomentPrefill } from "@/app/(public)/event/[slug]/eventMomentPrefill";
+
+type JournalSearchResult = MomentPick;
 
 /** Journal V1 — entry creation from existing Findmi context. Every
  * supplied id is validated server-side against the real row before it's
@@ -64,20 +67,24 @@ async function resolvePrefillProduct(id: string | undefined): Promise<{ result: 
   return { result: { value: data.id, label: data.name, sublabel: business.name, image_url: data.image_url }, href: `/product/${data.slug}` };
 }
 
-async function resolvePrefillEvent(id: string | undefined): Promise<{ result: JournalSearchResult; href: string } | null> {
+async function resolvePrefillEvent(id: string | undefined): Promise<{ result: JournalSearchResult; href: string; context: EventMomentPrefill } | null> {
   if (!id) return null;
   const supabase = getSupabase();
   if (!supabase) return null;
   const { data } = await supabase
     .from("events")
-    .select("id, slug, name, cover_image_url, city, state, is_demo")
+    .select("id, slug, name, cover_image_url, city, state, is_demo, venue_name, address, host_business_id")
     .eq("id", id)
     .eq("is_demo", false)
     .maybeSingle();
   if (!data) return null;
+  // Moments V2 — the Event's own date / Location / host, resolved only
+  // where unambiguous, as removable prefills for this NEW Moment.
+  const context = await resolveEventMomentPrefill(data);
   return {
     result: { value: data.id, label: data.name, sublabel: [data.city, data.state].filter(Boolean).join(", ") || undefined, image_url: data.cover_image_url },
     href: `/event/${data.slug}`,
+    context,
   };
 }
 
@@ -98,13 +105,32 @@ export default async function NewJournalEntryPage({
   // visit (no prefill resolved) keeps the existing, correct fallback.
   const cancelHref = locationPrefill?.href ?? businessPrefill?.href ?? productPrefill?.href ?? eventPrefill?.href ?? "/my-world/journal";
 
-  return (
-    <JournalCreateWizard
-      prefillLocation={locationPrefill?.result ?? null}
-      prefillBusiness={businessPrefill?.result ?? null}
-      prefillProduct={productPrefill?.result ?? null}
-      prefillEvent={eventPrefill?.result ?? null}
-      cancelHref={cancelHref}
-    />
-  );
+  // Moments V2 — every contextual start is a PREFILL of the same composer,
+  // never a separate workflow; everything prefilled stays removable.
+  const initial = emptyMomentInitial();
+  if (locationPrefill) initial.location = locationPrefill.result;
+  if (businessPrefill) initial.businesses.push(businessPrefill.result);
+  if (productPrefill) initial.products.push(productPrefill.result);
+  const autoResolveEventIds: string[] = [];
+  if (eventPrefill) {
+    const { occurrence, location, hostBusiness } = eventPrefill.context;
+    initial.events.push({
+      ...eventPrefill.result,
+      origin: "where",
+      occurrence: occurrence
+        ? { id: occurrence.id, event_id: occurrence.event_id, start_at: occurrence.start_at, end_at: occurrence.end_at, timezone: occurrence.timezone, location_id: occurrence.location_id }
+        : null,
+    });
+    if (occurrence) {
+      initial.entryDate = occurrence.localDate;
+      initial.entryTime = occurrence.localTime;
+    } else {
+      autoResolveEventIds.push(eventPrefill.result.value);
+    }
+    if (!initial.location && location) initial.location = location;
+    if (hostBusiness && !initial.businesses.some((b) => b.value === hostBusiness.value)) initial.businesses.push(hostBusiness);
+    initial.title = eventPrefill.result.label;
+  }
+
+  return <MomentComposer mode="create" initial={initial} cancelHref={cancelHref} autoResolveEventIds={autoResolveEventIds} />;
 }

@@ -54,6 +54,11 @@ export default function JournalPhotoStrip({
   onMoveLater,
   onMakeCover,
   disabled,
+  coverLocalId: coverLocalIdOverride,
+  compactEmpty,
+  onEditNote,
+  onMoveToSection,
+  onRemoveFromSection,
 }: {
   items: JournalPhotoItem[];
   error: string | null;
@@ -72,6 +77,16 @@ export default function JournalPhotoStrip({
   onMoveLater: (localId: string) => void;
   onMakeCover: (localId: string) => void;
   disabled: boolean;
+  /** Moments V2 — when this strip shows one group of a sectioned Moment,
+   * the parent passes the Moment's single cover (it may live in another
+   * section) instead of this strip guessing from its own subset. */
+  coverLocalId?: string | null;
+  /** Moments V2 — an empty section shows a small add tile, not the large
+   * first-photo drop area. */
+  compactEmpty?: boolean;
+  onEditNote?: (localId: string) => void;
+  onMoveToSection?: (localId: string) => void;
+  onRemoveFromSection?: (localId: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -114,11 +129,23 @@ export default function JournalPhotoStrip({
   // position. Until one is set (e.g. the very first upload is still in
   // flight), the first photo shows as the cover — the same fallback every
   // reader of journal_entry_media uses.
-  const coverLocalId = (items.find((it) => it.isCover) ?? items[0])?.localId ?? null;
+  const coverLocalId = coverLocalIdOverride !== undefined ? coverLocalIdOverride : ((items.find((it) => it.isCover) ?? items[0])?.localId ?? null);
 
   return (
     <div className="flex flex-col gap-2">
-      {items.length === 0 ? (
+      {items.length === 0 && compactEmpty ? (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          <button
+            type="button"
+            onClick={openPicker}
+            disabled={disabled}
+            aria-label="Add photos"
+            className="flex aspect-square items-center justify-center rounded-xl border border-dashed border-black/20 text-ink/40 transition hover:border-findmi/50 hover:text-findmi-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="text-xl leading-none">+</span>
+          </button>
+        </div>
+      ) : items.length === 0 ? (
         <button
           type="button"
           onClick={openPicker}
@@ -152,6 +179,9 @@ export default function JournalPhotoStrip({
                   onMoveEarlier={onMoveEarlier}
                   onMoveLater={onMoveLater}
                   onMakeCover={onMakeCover}
+                  onEditNote={onEditNote}
+                  onMoveToSection={onMoveToSection}
+                  onRemoveFromSection={onRemoveFromSection}
                 />
               ))}
               <button
@@ -265,6 +295,9 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
   onMoveEarlier,
   onMoveLater,
   onMakeCover,
+  onEditNote,
+  onMoveToSection,
+  onRemoveFromSection,
 }: {
   item: JournalPhotoItem;
   isCover: boolean;
@@ -278,7 +311,11 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
   onMoveEarlier: (localId: string) => void;
   onMoveLater: (localId: string) => void;
   onMakeCover: (localId: string) => void;
+  onEditNote?: (localId: string) => void;
+  onMoveToSection?: (localId: string) => void;
+  onRemoveFromSection?: (localId: string) => void;
 }) {
+  const saved = item.status === "complete" && Boolean(item.mediaId);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.localId });
   const isBusy = item.status === "preparing" || item.status === "uploading" || item.status === "saving";
   const menuOpen = menuOpenId === item.localId;
@@ -311,6 +348,12 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
       {isCover && (
         <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-findmi py-0.5 text-center text-[7px] font-bold uppercase tracking-wide text-white">
           Cover
+        </span>
+      )}
+
+      {item.caption && !isBusy && item.status !== "error" && (
+        <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
+          Note
         </span>
       )}
 
@@ -352,11 +395,20 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
         </button>
         {menuOpen && (
           <PhotoMenuPopover anchorRef={menuButtonRef} onClose={onCloseMenu}>
-            {!isCover && item.status === "complete" && (
+            {!isCover && saved && (
               <PhotoMenuItem
                 label="Make Cover"
                 onClick={() => {
                   onMakeCover(item.localId);
+                  onCloseMenu();
+                }}
+              />
+            )}
+            {onEditNote && saved && (
+              <PhotoMenuItem
+                label={item.caption ? "Edit Note" : "Add A Note"}
+                onClick={() => {
+                  onEditNote(item.localId);
                   onCloseMenu();
                 }}
               />
@@ -377,6 +429,24 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
                 onCloseMenu();
               }}
             />
+            {onMoveToSection && saved && (
+              <PhotoMenuItem
+                label="Move To Section"
+                onClick={() => {
+                  onMoveToSection(item.localId);
+                  onCloseMenu();
+                }}
+              />
+            )}
+            {onRemoveFromSection && saved && item.sectionId && (
+              <PhotoMenuItem
+                label="Remove From Section"
+                onClick={() => {
+                  onRemoveFromSection(item.localId);
+                  onCloseMenu();
+                }}
+              />
+            )}
             <PhotoMenuItem
               label="Remove"
               onClick={() => {
@@ -439,7 +509,7 @@ function PhotoMenuPopover({ anchorRef, onClose, children }: { anchorRef: RefObje
       <div
         ref={menuRef}
         style={position ?? { left: 0, top: 0, visibility: "hidden" }}
-        className="fixed z-50 flex w-32 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg"
+        className="fixed z-50 flex w-40 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg"
       >
         {children}
       </div>

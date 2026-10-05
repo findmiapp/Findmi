@@ -24,6 +24,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "./supabase/server";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { validateImageFile } from "./imageUploadValidation";
+import type { JournalEntrySectionRow } from "./journal-sections";
 
 export const JOURNAL_MEDIA_BUCKET = "journal-media";
 // Long enough that a page render's signed URLs stay valid through normal
@@ -163,7 +164,24 @@ export interface JournalEntryWithRelations {
   // products/events), though every current creation path attaches at
   // most one.
   occurrences: JournalOccurrenceRef[];
+  /** Moments V2 — optional photo sections, in display order. Empty for
+   * every flat Moment. */
+  sections: JournalEntrySectionRow[];
   isOwner: boolean;
+}
+
+/** A Moment's photo sections in display order. Never fatal: any read
+ * error (e.g. a database without the sections migration) yields [] so the
+ * Moment itself still loads exactly as a flat Moment. */
+async function loadEntrySections(supabase: SupabaseClient, entryId: string): Promise<JournalEntrySectionRow[]> {
+  const { data, error } = await supabase
+    .from("journal_entry_sections")
+    .select("*")
+    .eq("journal_entry_id", entryId)
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) return [];
+  return (data ?? []) as JournalEntrySectionRow[];
 }
 
 /** The current signed-in user's id, or null — reads the real session via
@@ -213,7 +231,7 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
   const { data: entry } = await supabase.from("journal_entries").select("*").eq("id", entryId).maybeSingle();
   if (!entry) return null;
 
-  const [{ data: mediaRows }, { data: connectionRows }, locationResult] = await Promise.all([
+  const [{ data: mediaRows }, { data: connectionRows }, locationResult, sections] = await Promise.all([
     supabase.from("journal_entry_media").select("*").eq("journal_entry_id", entryId).order("display_order", { ascending: true }),
     supabase.from("journal_entry_connections").select("*").eq("journal_entry_id", entryId),
     entry.location_id
@@ -223,6 +241,7 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
           .eq("id", entry.location_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    loadEntrySections(supabase, entryId),
   ]);
 
   const media = await attachSignedUrls((mediaRows ?? []) as JournalEntryMediaRow[]);
@@ -237,6 +256,7 @@ export async function getJournalEntryWithRelations(entryId: string): Promise<Jou
     products,
     events,
     occurrences,
+    sections,
     isOwner: Boolean(user && user.id === entry.user_id),
   };
 }
@@ -260,7 +280,7 @@ export async function getJournalEntryWithRelationsForAdmin(entryId: string): Pro
   const { data: entry } = await admin.from("journal_entries").select("*").eq("id", entryId).maybeSingle();
   if (!entry) return null;
 
-  const [{ data: mediaRows }, { data: connectionRows }, locationResult] = await Promise.all([
+  const [{ data: mediaRows }, { data: connectionRows }, locationResult, sections] = await Promise.all([
     admin.from("journal_entry_media").select("*").eq("journal_entry_id", entryId).order("display_order", { ascending: true }),
     admin.from("journal_entry_connections").select("*").eq("journal_entry_id", entryId),
     entry.location_id
@@ -270,6 +290,7 @@ export async function getJournalEntryWithRelationsForAdmin(entryId: string): Pro
           .eq("id", entry.location_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    loadEntrySections(admin, entryId),
   ]);
 
   const media = await attachSignedUrls((mediaRows ?? []) as JournalEntryMediaRow[]);
@@ -284,6 +305,7 @@ export async function getJournalEntryWithRelationsForAdmin(entryId: string): Pro
     products,
     events,
     occurrences,
+    sections,
     isOwner: true,
   };
 }

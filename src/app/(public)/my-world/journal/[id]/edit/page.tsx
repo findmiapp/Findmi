@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getOwnJournalEntryOrNull } from "@/lib/journal";
-import JournalEditForm from "@/components/journal/JournalEditForm";
+import MomentComposer from "@/components/journal/MomentComposer";
+import { momentInitialFromEntry } from "@/lib/moment-composer";
 
 export const dynamic = "force-dynamic";
 
@@ -21,5 +22,5 @@ export default async function EditJournalEntryPage({ params }: { params: Promise
   const result = await getOwnJournalEntryOrNull(id, user.id);
   if (!result) notFound();
 
-  return <JournalEditForm entryId={id} entry={result} />;
+  return <MomentComposer mode="edit" initial={momentInitialFromEntry(result)} cancelHref={`/journal/${id}`} />;
 }

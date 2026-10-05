@@ -86,7 +86,7 @@ export default async function JournalCollectionPage({ searchParams }: { searchPa
     <div className="mx-auto max-w-5xl px-4 pb-16 pt-6 sm:px-6">
       <Link href={subject.href} className="inline-flex items-center gap-1 text-xs font-semibold text-findmi-700 hover:underline">
         <ChevronIcon direction="left" className="h-3 w-3" />
-        {subject.type === "author" ? "Back To Entry" : subject.name}
+        {subject.type === "author" ? "Back To Moment" : subject.name}
       </Link>
       <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{heading}</h1>
       {page.total != null && (

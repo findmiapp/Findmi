@@ -132,7 +132,7 @@ export default async function JournalIndexPage({
         ) : (
           <div className="mt-6 flex flex-col gap-6">
             {monthEntries.length === 0 ? (
-              <EmptyPeriod label="No entries this month." />
+              <EmptyPeriod label="No Moments this month." />
             ) : (
               [...byDate.entries()].map(([ymd, dayEntries]) => (
                 <div key={ymd}>
@@ -163,7 +163,7 @@ export default async function JournalIndexPage({
               <EntryList entries={entriesForDay(weekEntries, selectedDay)} className="mt-3" emptyLabel="No entries this day." />
             </>
           ) : (
-            <EmptyPeriod label="No entries this week." />
+            <EmptyPeriod label="No Moments this week." />
           )}
         </div>
       </>
@@ -175,7 +175,7 @@ export default async function JournalIndexPage({
     body = (
       <div className="mt-6">
         {dayEntries.length === 0 ? (
-          <EmptyPeriod label="No entries this day." />
+          <EmptyPeriod label="No Moments this day." />
         ) : (
           <div className="flex flex-col gap-4">
             {dayEntries.map((e) => (
@@ -200,7 +200,7 @@ export default async function JournalIndexPage({
             <div className="flex items-center justify-between gap-3 py-3.5">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-ink">{m.label}</p>
-                <p className="text-xs text-ink/50">{m.count > 0 ? `${m.count} ${m.count === 1 ? "entry" : "entries"}` : "No entries"}</p>
+                <p className="text-xs text-ink/50">{m.count > 0 ? `${m.count} ${m.count === 1 ? "Moment" : "Moments"}` : "No Moments"}</p>
               </div>
               {m.previewCoverUrls.length > 0 && (
                 <div className="flex shrink-0 -space-x-2">
@@ -246,20 +246,20 @@ export default async function JournalIndexPage({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">Journal</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">My Moments</h1>
           <p className="mt-1.5 max-w-md text-sm text-ink/60">Document your days, places, brands and experiences.</p>
         </div>
         <Link
           href="/my-world/journal/new"
           className="flex h-9 shrink-0 items-center justify-center rounded-full bg-findmi px-3.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
         >
-          + Add Entry
+          + Add Moment
         </Link>
       </div>
 
       {journalIsEmpty ? (
         <div className="mt-10 rounded-2xl border border-dashed border-black/15 p-8 text-center">
-          <p className="font-display text-lg font-bold tracking-tight text-ink">Your Journal starts with a moment.</p>
+          <p className="font-display text-lg font-bold tracking-tight text-ink">Your Moments start here.</p>
           <p className="mx-auto mt-1.5 max-w-xs text-sm text-ink/55">
             Save a place you visited, something you tried, an event you attended or a day you want to remember.
           </p>
@@ -267,7 +267,7 @@ export default async function JournalIndexPage({
             href="/my-world/journal/new"
             className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-findmi px-5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600"
           >
-            Add Your First Entry
+            Add Your First Moment
           </Link>
         </div>
       ) : (
@@ -311,7 +311,7 @@ export default async function JournalIndexPage({
             // two plain links, consistent with this page's existing
             // "whole state lives in the URL, no client component" design.
             <div className="mt-4 flex items-center justify-between gap-2">
-              <p className="text-sm font-bold text-ink">All Entries</p>
+              <p className="text-sm font-bold text-ink">All Moments</p>
               <div className="flex items-center gap-1 rounded-full border border-black/10 bg-white p-1">
                 <Link
                   href={hrefFor({ sort: "newest" })}
@@ -381,7 +381,7 @@ function EmptyPeriod({ label }: { label: string }) {
     <div className="rounded-2xl border border-dashed border-black/15 px-5 py-7 text-center">
       <p className="text-sm text-ink/50">{label}</p>
       <Link href="/my-world/journal/new" className="mt-2 inline-block text-sm font-semibold text-findmi-700 hover:text-findmi-800">
-        + Add Journal Entry
+        + Add Moment
       </Link>
     </div>
   );

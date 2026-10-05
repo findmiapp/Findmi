@@ -38,6 +38,24 @@ export async function GET(request: NextRequest) {
 
   const term = `%${q}%`;
 
+  // Moments V2 — combined, type-labelled search modes for the Moment
+  // composer, so a person never has to pick a database object type first:
+  //   where  Locations + Events             ("Where / What?")
+  //   who    Businesses + Products + Events ("Who / What Was There?")
+  // Every result is something saveJournalLocation / saveJournalConnections
+  // will actually accept (lib/journal.ts validateConnectableObject): a
+  // Business must be live (unlike the shared "businesses" branch below,
+  // which Event Manager uses and is unchanged), a Product's Business must
+  // be live (filtered in the query itself, not after the limit), Events
+  // include past ones (Moments document things that already happened).
+  if (entity === "where" || entity === "who") {
+    const groups =
+      entity === "where"
+        ? await Promise.all([searchMomentLocations(admin, term, 6), searchMomentEvents(admin, term, 6)])
+        : await Promise.all([searchMomentBusinesses(admin, term, 5), searchMomentProducts(admin, term, 5), searchMomentEvents(admin, term, 5)]);
+    return NextResponse.json({ results: groups.flat() });
+  }
+
   if (entity === "businesses") {
     const { data } = await admin
       .from("businesses")
@@ -77,7 +95,7 @@ export async function GET(request: NextRequest) {
     const linkableScope = searchParams.get("scope") === "place";
     let query = admin
       .from("locations")
-      .select("id, name, slug, city, state, address, postal_code, is_demo, category:categories(name)")
+      .select("id, name, slug, city, state, address, postal_code, is_demo, logo_url, cover_image_url, category:categories(name)")
       .is("archived_at", null)
       .is("trashed_at", null);
     if (!linkableScope) query = query.eq("is_demo", false);
@@ -97,6 +115,7 @@ export async function GET(request: NextRequest) {
           postal_code: l.postal_code,
           category: category?.name ?? null,
           is_public: !l.is_demo,
+          image_url: l.logo_url ?? l.cover_image_url ?? null,
         };
       }),
     });
@@ -149,4 +168,76 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ results: [] }, { status: 400 });
+}
+
+// ---------------------------------------------------------------------------
+// Moments V2 combined-search helpers (entity=where / entity=who above).
+// ---------------------------------------------------------------------------
+
+type AdminClient = NonNullable<ReturnType<typeof getAdminSupabase>>;
+type MomentSearchType = "location" | "event" | "business" | "product";
+
+interface MomentSearchResult {
+  value: string;
+  label: string;
+  sublabel?: string;
+  image_url: string | null;
+  type: MomentSearchType;
+}
+
+const place = (city: string | null, state: string | null) => [city, state].filter(Boolean).join(", ") || undefined;
+
+async function searchMomentLocations(admin: AdminClient, term: string, limit: number): Promise<MomentSearchResult[]> {
+  const { data } = await admin
+    .from("locations")
+    .select("id, name, city, state, logo_url, cover_image_url")
+    .eq("is_demo", false)
+    .is("archived_at", null)
+    .is("trashed_at", null)
+    .or(`name.ilike.${term},city.ilike.${term},address.ilike.${term}`)
+    .order("name")
+    .limit(limit);
+  return (data ?? []).map((l) => ({ value: l.id, label: l.name, sublabel: place(l.city, l.state), image_url: l.logo_url ?? l.cover_image_url ?? null, type: "location" }));
+}
+
+async function searchMomentEvents(admin: AdminClient, term: string, limit: number): Promise<MomentSearchResult[]> {
+  const { data } = await admin
+    .from("events")
+    .select("id, name, cover_image_url, start_at, city, state")
+    .eq("is_demo", false)
+    .ilike("name", term)
+    .order("start_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []).map((e) => {
+    const when = e.start_at ? new Date(e.start_at).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }) : null;
+    return { value: e.id, label: e.name, sublabel: [when, place(e.city, e.state)].filter(Boolean).join(" · ") || undefined, image_url: e.cover_image_url ?? null, type: "event" };
+  });
+}
+
+async function searchMomentBusinesses(admin: AdminClient, term: string, limit: number): Promise<MomentSearchResult[]> {
+  const { data } = await admin
+    .from("businesses")
+    .select("id, name, city, state, logo_url")
+    .eq("is_demo", false)
+    .eq("publication_status", "live")
+    .or(`name.ilike.${term},city.ilike.${term}`)
+    .order("name")
+    .limit(limit);
+  return (data ?? []).map((b) => ({ value: b.id, label: b.name, sublabel: place(b.city, b.state), image_url: b.logo_url ?? null, type: "business" }));
+}
+
+async function searchMomentProducts(admin: AdminClient, term: string, limit: number): Promise<MomentSearchResult[]> {
+  const { data } = await admin
+    .from("products")
+    .select("id, name, image_url, business:businesses!inner(name, is_demo, publication_status)")
+    .eq("is_active", true)
+    .eq("business.is_demo", false)
+    .eq("business.publication_status", "live")
+    .ilike("name", term)
+    .order("name")
+    .limit(limit);
+  return (data ?? []).map((p) => {
+    const business = Array.isArray(p.business) ? (p.business[0] ?? null) : p.business;
+    return { value: p.id, label: p.name, sublabel: business?.name ?? undefined, image_url: p.image_url ?? null, type: "product" };
+  });
 }
