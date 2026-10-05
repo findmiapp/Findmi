@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, useRef, useState } from "react";
+import { memo, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
   DndContext,
@@ -281,6 +282,7 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.localId });
   const isBusy = item.status === "preparing" || item.status === "uploading" || item.status === "saving";
   const menuOpen = menuOpenId === item.localId;
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div
@@ -340,6 +342,7 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
 
       <div className="absolute bottom-1 right-1">
         <button
+          ref={menuButtonRef}
           type="button"
           onClick={() => onToggleMenu(item.localId)}
           aria-label="Photo options"
@@ -348,50 +351,102 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
           •••
         </button>
         {menuOpen && (
-          <>
-            {/* Backdrop — closes the menu on an outside tap without
-                building a global click-outside listener. */}
-            <div className="fixed inset-0 z-10" onClick={onCloseMenu} />
-            <div className="absolute bottom-6 right-0 z-20 flex w-32 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg">
-              {!isCover && item.status === "complete" && (
-                <PhotoMenuItem
-                  label="Make Cover"
-                  onClick={() => {
-                    onMakeCover(item.localId);
-                    onCloseMenu();
-                  }}
-                />
-              )}
+          <PhotoMenuPopover anchorRef={menuButtonRef} onClose={onCloseMenu}>
+            {!isCover && item.status === "complete" && (
               <PhotoMenuItem
-                label="Move Earlier"
-                disabled={!canMoveEarlier}
+                label="Make Cover"
                 onClick={() => {
-                  onMoveEarlier(item.localId);
+                  onMakeCover(item.localId);
                   onCloseMenu();
                 }}
               />
-              <PhotoMenuItem
-                label="Move Later"
-                disabled={!canMoveLater}
-                onClick={() => {
-                  onMoveLater(item.localId);
-                  onCloseMenu();
-                }}
-              />
-              <PhotoMenuItem
-                label="Remove"
-                onClick={() => {
-                  onRemove(item.localId);
-                  onCloseMenu();
-                }}
-              />
-            </div>
-          </>
+            )}
+            <PhotoMenuItem
+              label="Move Earlier"
+              disabled={!canMoveEarlier}
+              onClick={() => {
+                onMoveEarlier(item.localId);
+                onCloseMenu();
+              }}
+            />
+            <PhotoMenuItem
+              label="Move Later"
+              disabled={!canMoveLater}
+              onClick={() => {
+                onMoveLater(item.localId);
+                onCloseMenu();
+              }}
+            />
+            <PhotoMenuItem
+              label="Remove"
+              onClick={() => {
+                onRemove(item.localId);
+                onCloseMenu();
+              }}
+            />
+          </PhotoMenuPopover>
         )}
       </div>
     </div>
   );
 });
+
+const MENU_VIEWPORT_MARGIN = 8;
+
+/** The photo action menu, rendered into document.body. It used to live
+ * inside the tile, whose overflow-hidden (needed for the rounded photo)
+ * clipped it: at ~390px a tile is ~114px square while the 4-item menu is
+ * ~128px wide and ~130px tall, so the top item ("Make Cover") and the left
+ * edge were cut off. Now it's positioned (fixed) next to its ••• button and
+ * clamped inside the viewport — above the button when there's room,
+ * otherwise below. Same look as before. Closes on outside tap (backdrop),
+ * scroll or resize, since a fixed menu would otherwise detach from its
+ * photo. */
+function PhotoMenuPopover({ anchorRef, onClose, children }: { anchorRef: RefObject<HTMLButtonElement | null>; onClose: () => void; children: ReactNode }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    const menu = menuRef.current;
+    if (anchor && menu) {
+      const a = anchor.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth;
+      const viewportHeight = window.innerHeight;
+      const width = menu.offsetWidth;
+      const height = menu.offsetHeight;
+      const left = Math.max(MENU_VIEWPORT_MARGIN, Math.min(a.right - width, viewportWidth - width - MENU_VIEWPORT_MARGIN));
+      const above = a.top - 4 - height;
+      const top = above >= MENU_VIEWPORT_MARGIN ? above : Math.max(MENU_VIEWPORT_MARGIN, Math.min(a.bottom + 4, viewportHeight - height - MENU_VIEWPORT_MARGIN));
+      setPosition({ left, top });
+    }
+    const close = () => onCloseRef.current();
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [anchorRef]);
+
+  return createPortal(
+    <>
+      {/* Backdrop — closes the menu on an outside tap without
+          building a global click-outside listener. */}
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        ref={menuRef}
+        style={position ?? { left: 0, top: 0, visibility: "hidden" }}
+        className="fixed z-50 flex w-32 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg"
+      >
+        {children}
+      </div>
+    </>,
+    document.body
+  );
+}
 
 function PhotoMenuItem({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
   return (
