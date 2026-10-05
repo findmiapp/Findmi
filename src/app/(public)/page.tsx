@@ -444,7 +444,7 @@ export default async function HomePage({
           titleClassName={HOMEPAGE_SECTION_TITLE_CLASS}
           subtitleClassName={HOMEPAGE_SECTION_SUBTITLE_CLASS}
         >
-          <div className="flex gap-4 overflow-x-auto px-4 pb-2 snap-x snap-mandatory [overflow-anchor:none] sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex gap-4 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x snap-mandatory [overflow-anchor:none] sm:scroll-px-6 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {featuredLocations.map((location) => (
               <FeaturedLocationCard
                 key={location.id}
