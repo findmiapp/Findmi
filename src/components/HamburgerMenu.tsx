@@ -79,15 +79,9 @@ export default function HamburgerMenu({
   // Log In/Join Findmi are rendered exclusively via the dedicated bottom
   // auth row now — see stripAcquisitionItems's own comment above.
   const visibleItems = stripAcquisitionItems(items);
-  // Every parent group starts expanded (still collapsible via its own
-  // toggle) — a grouping row like "Your Findmi" or "Manage" exists for
-  // scannability, not to add a second tap in front of Account/Messages/
-  // Businesses/Events/Locations. Lazy-initialized once from the items
-  // this component mounted with; nav_items essentially never changes
-  // mid-session, so this never needs to react to `items` changing later.
-  const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(visibleItems.filter((item) => item.children.length > 0).map((item) => item.id))
-  );
+  // Accordion: every group starts collapsed each time the drawer opens
+  // (reset in the trigger's onClick), and at most one group is open.
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -114,15 +108,7 @@ export default function HamburgerMenu({
   }
 
   function toggleExpanded(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      // Multiple sections can stay open at once — a founder-organized
-      // menu is short enough that forcing an accordion (auto-collapsing
-      // siblings) would just cost an extra tap for no real benefit.
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setExpanded((prev) => (prev === id ? null : id));
   }
 
   return (
@@ -130,7 +116,10 @@ export default function HamburgerMenu({
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setExpanded(null);
+          setOpen(true);
+        }}
         aria-label="Menu"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -215,14 +204,16 @@ export default function HamburgerMenu({
                   Journal routes the homepage doorway and Event capture
                   flow already resolve to (/my-world/journal,
                   /my-world/journal/new) — no new Journal creation
-                  architecture. Plain Links, not auth-branched: both
-                  routes already sit behind middleware's own
+                  architecture. Signed-in only (the server-resolved
+                  `authenticated` prop); both routes also sit behind
+                  middleware's own
                   /my-world/journal/:path* gate (see middleware.ts),
                   which bounces a signed-out tap to /login?next=<that
                   route> and returns them straight there after
                   authenticating — the exact same "safe next gateway"
                   pattern QuickCreateMenu's own Business/Venue/Event rows
                   already rely on, reused rather than re-decided here. */}
+              {authenticated && (
               <div className="flex shrink-0 items-center gap-2 border-b border-black/5 px-4 py-2.5">
                 <Link
                   href="/my-world/journal"
@@ -240,6 +231,7 @@ export default function HamburgerMenu({
                   Add Moment
                 </Link>
               </div>
+              )}
 
               {/* Nav body — flex-1 + min-h-0 (belt-and-suspenders with
                   overflow-y-auto, which already exempts a flex item from
@@ -252,7 +244,7 @@ export default function HamburgerMenu({
                     <NavEntry
                       key={item.id}
                       item={item}
-                      expanded={expanded.has(item.id)}
+                      expanded={expanded === item.id}
                       onToggle={() => toggleExpanded(item.id)}
                       onNavigate={close}
                     />
