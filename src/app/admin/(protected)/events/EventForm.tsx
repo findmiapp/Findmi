@@ -11,6 +11,7 @@ import ImageField from "@/components/admin/ImageField";
 import GalleryField from "@/components/admin/GalleryField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
+import EventFormSections from "./EventFormSections";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
 import { RelationField } from "@/components/admin/RelationPicker";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
@@ -122,320 +123,365 @@ export default function EventForm({
         </p>
       )}
 
-      <CheckboxField
-        label="Published"
-        name="published"
-        defaultChecked={event ? !event.is_demo : true}
-        hint="On = visible to the public. Off = hidden (demo/test only)."
+      {/* Admin Event editor mobile UX pass — the same single form, organized
+          into sections (EventFormSections): sticky section chips + a mobile
+          accordion. Every field stays mounted, so Save submits all of them. */}
+      <EventFormSections
+        sections={[
+          {
+            id: "basics",
+            label: "Basics",
+            content: (
+              <>
+                <NameSlugFields
+                  isNew={!event}
+                  nameLabel="Event Name"
+                  defaultName={event?.name}
+                  defaultSlug={event?.slug}
+                  slugHint="Used in the public URL: /event/your-slug"
+                />
+
+                <TextareaField label="Description" name="description" defaultValue={event?.description} />
+
+                <CheckboxList
+                  label="Categories / Experience"
+                  name="category_ids"
+                  defaultSelected={selectedCategoryIds}
+                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                  emptyText="No categories yet — add some in /admin/categories."
+                />
+              </>
+            ),
+          },
+          {
+            id: "dates",
+            label: "Dates & Locations",
+            content: (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <DateTimeField
+                    label="Start Date & Time"
+                    name="start_at"
+                    defaultValue={isoToLocalDateTime(event?.start_at ?? null)}
+                    required
+                    hint="Eastern time (America/New_York)."
+                  />
+                  <DateTimeField
+                    label="End Date & Time"
+                    name="end_at"
+                    defaultValue={isoToLocalDateTime(event?.end_at ?? null)}
+                    required
+                    hint="Required — must be after the start time. Also Eastern time. Used to keep the event visible on the site for its whole real duration, not just until it starts."
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-black/10 p-4">
+                  <EventOccurrencesEditor
+                    eventId={event?.id ?? null}
+                    initialOccurrences={occurrences}
+                    locations={locations}
+                    markets={markets}
+                    eventMarketId={event?.market_id ?? null}
+                    vendorRostersByOccurrence={vendorRostersByOccurrence}
+                  />
+                </div>
+
+                {/* Admin Event Location Relationship UX pass — was five plain, giant
+                    text fields with no relationship to a real Findmi Location at
+                    all. Reuses the exact same EventLocationField the owner-facing
+                    Event Manager already uses (search existing Locations, add a new
+                    one inline, or fall back to manual venue text), passing
+                    createInlineAdminLocation so a new Location created here goes
+                    through Admin's own requireAdminSupabase() authorization rather
+                    than the member-facing createInlineLocation (which needs a
+                    Supabase Auth session Admin doesn't have, and would otherwise
+                    grant personal ownership to whichever user happens to be signed
+                    in — see that action's own doc comment). The hidden inputs it
+                    renders (location_id, venue_name, address, city, state,
+                    postal_code) are read by saveEvent exactly like the old text
+                    fields were, plus the new location_id it also posts. */}
+                <EventLocationField
+                  initialLocation={initialLocation}
+                  initialManual={initialManual}
+                  createLocationAction={createInlineAdminLocation}
+                />
+
+                {/* Event + Appearance Geography Completion pass — Market/Area is
+                    FindMi DISCOVERY geography, deliberately its own section, never
+                    merged with Venue Name/Address/City/State above (PHYSICAL
+                    geography) into one combined "Location" field. */}
+                <div className="rounded-2xl border border-black/10 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Discovery Geography</p>
+                  <p className="mt-1 text-xs text-ink/50">
+                    Market/Area control where this Event appears in Findmi discovery (homepage, /events, /find). Venue/address
+                    above controls where the Event physically happens — the two are independent.
+                  </p>
+                  <div className="mt-3">
+                    <MarketAreaFields
+                      markets={marketsWithAreas}
+                      defaultMarketId={event?.market_id ?? null}
+                      defaultAreaId={event?.market_area_id ?? null}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-ink/40">
+                    Occurrences inherit this Market unless a linked Location or occurrence override supplies another one.
+                  </p>
+                </div>
+
+                {/* Consumer Area Picker + Market Requests V1 — lets an admin
+                    continue creating/saving an event whose physical Market isn't
+                    in the list yet. Leaves market_id/market_area_id exactly as
+                    selected above (Unassigned unless a real Market/Area was also
+                    chosen) and creates a linked, admin-reviewable market_requests
+                    row instead — see saveEvent. Never writes the requested text
+                    into market_id/market_area_id. */}
+                <TextField
+                  label="Request a new Market (optional)"
+                  name="requested_market_text"
+                  defaultValue={undefined}
+                  placeholder="e.g. Austin, TX"
+                  hint="If this event's Market/Area isn't listed above, note it here — the event saves normally and Findmi reviews the request at /admin/market-requests. Leave Market above Unassigned when using this."
+                />
+              </>
+            ),
+          },
+          {
+            id: "host",
+            label: "Host & Businesses",
+            content: (
+              <>
+                {/* Business-Hosted Events V1 — the ONE canonical host Business. Kept
+                    distinct from Participating Businesses (the roster below): setting
+                    a host never adds it to the roster or creates an Appearance, and
+                    a participant is never treated as the host. */}
+                <RelationField
+                  label="Host Business"
+                  name="host_business_id"
+                  entity="businesses"
+                  initial={hostBusiness ? { value: hostBusiness.id, label: hostBusiness.name, image_url: hostBusiness.logo_url } : null}
+                  clearLabel="No Host Business"
+                  placeholder="Search businesses…"
+                  hint="The Business hosting this Event. Its Owners and Managers can manage the Event. Separate from Participating Businesses."
+                />
+
+                <TextField
+                  label="Organizer Name"
+                  name="organizer_name"
+                  defaultValue={event?.organizer_name}
+                />
+
+                <ParticipationRoster
+                  eventId={event?.id ?? null}
+                  occurrences={occurrences}
+                  vendorRostersByOccurrence={vendorRostersByOccurrence}
+                  initialParticipants={participants}
+                />
+              </>
+            ),
+          },
+          {
+            id: "content",
+            label: "Content & Media",
+            content: (
+              <>
+                <ImageField label="Cover Photo" name="cover_image_url" defaultValue={event?.cover_image_url} />
+
+                <div className="rounded-2xl border border-black/10 p-4">
+                  <GalleryField
+                    label="Event Gallery"
+                    name="gallery_image_url"
+                    initialUrls={galleryImages}
+                    hint="Additional photos shown in a compact strip below the cover, opening a swipeable lightbox. The Cover Photo above stays separate and always shows first."
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-black/10 p-4">
+                  <GalleryField
+                    label="About the Venue — Gallery"
+                    name="venue_image_url"
+                    initialUrls={venueImages}
+                    hint="Optional photos of the venue itself, shown under About the Venue. Events don't have a real Findmi Location relationship yet, so this stays event-specific for now."
+                  />
+                </div>
+
+                <TextField
+                  label="External Event Link"
+                  name="external_url"
+                  type="url"
+                  defaultValue={event?.external_url}
+                  placeholder="https://…"
+                  hint="Shown as a plain 'Event Details' link — always visible when set."
+                />
+
+                <div className="rounded-2xl border border-black/10 p-4">
+                  <p className="mb-1 text-sm font-semibold text-ink">Bulletin / Announcement</p>
+                  <p className="mb-3 text-xs text-ink/45">
+                    Same shared component as Business Profile — e.g. &ldquo;Rain or shine&rdquo; or &ldquo;Parking
+                    available in Lot B.&rdquo; Renders nothing publicly unless enabled AND the body has real content.
+                  </p>
+                  <div className="flex flex-col gap-4">
+                    <CheckboxField label="Bulletin Enabled" name="bulletin_enabled" defaultChecked={event?.bulletin_enabled} />
+                    <TextField
+                      label="Heading (optional)"
+                      name="bulletin_heading"
+                      defaultValue={event?.bulletin_heading}
+                      placeholder="Rain or shine"
+                    />
+                    <TextareaField
+                      label="Body"
+                      name="bulletin_body"
+                      defaultValue={event?.bulletin_body}
+                      rows={3}
+                      hint="e.g. This event happens rain or shine — dress accordingly."
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-black/10 p-4">
+                  <TextField
+                    label="Featured Products Heading"
+                    name="featured_products_heading"
+                    defaultValue={event?.featured_products_heading}
+                    placeholder="Featured at This Event"
+                    hint="Optional — defaults to “Featured at This Event” when blank."
+                  />
+                  <div className="mt-4">
+                    <EventProductsRoster initialProducts={featuredProducts} />
+                  </div>
+                </div>
+              </>
+            ),
+          },
+          {
+            id: "actions",
+            label: "Event Actions",
+            content: (
+              <>
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <CheckboxField
+                      label="Get Directions"
+                      name="directions_enabled"
+                      defaultChecked={event ? event.directions_enabled : true}
+                      hint="Derived automatically from the venue/address above — no link to enter."
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <CheckboxField
+                      label="RSVP"
+                      name="rsvp_enabled"
+                      defaultChecked={event?.rsvp_enabled}
+                    />
+                    <TextField label="RSVP Link" name="rsvp_url" type="url" defaultValue={event?.rsvp_url} placeholder="https://…" />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <CheckboxField
+                      label="Tickets"
+                      name="tickets_enabled"
+                      defaultChecked={event?.tickets_enabled}
+                    />
+                    <TextField label="Ticket Link" name="tickets_url" type="url" defaultValue={event?.tickets_url} placeholder="https://…" />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <CheckboxField
+                      label="Vendor Applications"
+                      name="vendor_applications_enabled"
+                      defaultChecked={event?.vendor_applications_enabled}
+                      hint="Shows 'Apply to Vend' — opens an external application form."
+                    />
+                    <TextField
+                      label="Application Link"
+                      name="vendor_application_url"
+                      type="url"
+                      defaultValue={event?.vendor_application_url}
+                      placeholder="https://…"
+                    />
+                    <DateTimeField
+                      label="Application Deadline"
+                      name="vendor_application_deadline"
+                      defaultValue={isoToLocalDateTime(event?.vendor_application_deadline ?? null)}
+                      hint="Optional. After this, 'Apply to Vend' stops showing even if still enabled."
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <CheckboxField
+                      label="Contact Organizer"
+                      name="contact_enabled"
+                      defaultChecked={event?.contact_enabled}
+                    />
+                    <TextField
+                      label="Organizer Email"
+                      name="organizer_email"
+                      type="email"
+                      defaultValue={event?.organizer_email}
+                      placeholder="organizer@email.com"
+                    />
+                    <TextField
+                      label="Or Contact Link"
+                      name="contact_url"
+                      type="url"
+                      defaultValue={event?.contact_url}
+                      placeholder="https://…"
+                      hint="Used instead of email if both are set."
+                    />
+                  </div>
+
+                  <div>
+                    <CheckboxField
+                      label="Follow"
+                      name="follow_enabled"
+                      defaultChecked={event?.follow_enabled}
+                      hint="Lets consumers leave their email for updates about this event."
+                    />
+                  </div>
+                </div>
+              </>
+            ),
+          },
+          {
+            id: "publishing",
+            label: "Discovery & Publishing",
+            content: (
+              <>
+                <CheckboxField
+                  label="Published"
+                  name="published"
+                  defaultChecked={event ? !event.is_demo : true}
+                  hint="On = visible to the public. Off = hidden (demo/test only)."
+                />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <CheckboxField
+                    label="Featured"
+                    name="is_featured"
+                    defaultChecked={event?.is_featured}
+                    hint="Gives this event priority in featured lists."
+                  />
+                  <NumberField
+                    label="Featured Order"
+                    name="featured_sort_order"
+                    defaultValue={event?.featured_sort_order ?? undefined}
+                    hint="Only matters when Featured is on — lower numbers show first."
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <CheckboxField
+                    label="Show on Homepage"
+                    name="show_on_homepage"
+                    defaultChecked={event?.show_on_homepage}
+                    hint="Eligible for the homepage's What's Happening rail. Off by default — independent of Featured and publication status; doesn't change where else this event appears."
+                  />
+                </div>
+              </>
+            ),
+          },
+        ]}
       />
-
-      <NameSlugFields
-        isNew={!event}
-        nameLabel="Event Name"
-        defaultName={event?.name}
-        defaultSlug={event?.slug}
-        slugHint="Used in the public URL: /event/your-slug"
-      />
-
-      <TextareaField label="Description" name="description" defaultValue={event?.description} />
-      <ImageField label="Cover Photo" name="cover_image_url" defaultValue={event?.cover_image_url} />
-
-      <div className="rounded-2xl border border-black/10 p-4">
-        <GalleryField
-          label="Event Gallery"
-          name="gallery_image_url"
-          initialUrls={galleryImages}
-          hint="Additional photos shown in a compact strip below the cover, opening a swipeable lightbox. The Cover Photo above stays separate and always shows first."
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <DateTimeField
-          label="Start Date & Time"
-          name="start_at"
-          defaultValue={isoToLocalDateTime(event?.start_at ?? null)}
-          required
-          hint="Eastern time (America/New_York)."
-        />
-        <DateTimeField
-          label="End Date & Time"
-          name="end_at"
-          defaultValue={isoToLocalDateTime(event?.end_at ?? null)}
-          required
-          hint="Required — must be after the start time. Also Eastern time. Used to keep the event visible on the site for its whole real duration, not just until it starts."
-        />
-      </div>
-
-      <div className="rounded-2xl border border-black/10 p-4">
-        <EventOccurrencesEditor
-          eventId={event?.id ?? null}
-          initialOccurrences={occurrences}
-          locations={locations}
-          markets={markets}
-          eventMarketId={event?.market_id ?? null}
-          vendorRostersByOccurrence={vendorRostersByOccurrence}
-        />
-      </div>
-
-      {/* Admin Event Location Relationship UX pass — was five plain, giant
-          text fields with no relationship to a real Findmi Location at
-          all. Reuses the exact same EventLocationField the owner-facing
-          Event Manager already uses (search existing Locations, add a new
-          one inline, or fall back to manual venue text), passing
-          createInlineAdminLocation so a new Location created here goes
-          through Admin's own requireAdminSupabase() authorization rather
-          than the member-facing createInlineLocation (which needs a
-          Supabase Auth session Admin doesn't have, and would otherwise
-          grant personal ownership to whichever user happens to be signed
-          in — see that action's own doc comment). The hidden inputs it
-          renders (location_id, venue_name, address, city, state,
-          postal_code) are read by saveEvent exactly like the old text
-          fields were, plus the new location_id it also posts. */}
-      <EventLocationField
-        initialLocation={initialLocation}
-        initialManual={initialManual}
-        createLocationAction={createInlineAdminLocation}
-      />
-
-      {/* Event + Appearance Geography Completion pass — Market/Area is
-          FindMi DISCOVERY geography, deliberately its own section, never
-          merged with Venue Name/Address/City/State above (PHYSICAL
-          geography) into one combined "Location" field. */}
-      <div className="rounded-2xl border border-black/10 p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Findmi Discovery Geography</p>
-        <p className="mt-1 text-xs text-ink/50">
-          Market/Area control where this Event appears in Findmi discovery (homepage, /events, /find). Venue/address
-          above controls where the Event physically happens — the two are independent.
-        </p>
-        <div className="mt-3">
-          <MarketAreaFields
-            markets={marketsWithAreas}
-            defaultMarketId={event?.market_id ?? null}
-            defaultAreaId={event?.market_area_id ?? null}
-          />
-        </div>
-        <p className="mt-2 text-xs text-ink/40">
-          Occurrences inherit this Market unless a linked Location or occurrence override supplies another one.
-        </p>
-      </div>
-
-      {/* Consumer Area Picker + Market Requests V1 — lets an admin
-          continue creating/saving an event whose physical Market isn't
-          in the list yet. Leaves market_id/market_area_id exactly as
-          selected above (Unassigned unless a real Market/Area was also
-          chosen) and creates a linked, admin-reviewable market_requests
-          row instead — see saveEvent. Never writes the requested text
-          into market_id/market_area_id. */}
-      <TextField
-        label="Request a new Market (optional)"
-        name="requested_market_text"
-        defaultValue={undefined}
-        placeholder="e.g. Austin, TX"
-        hint="If this event's Market/Area isn't listed above, note it here — the event saves normally and Findmi reviews the request at /admin/market-requests. Leave Market above Unassigned when using this."
-      />
-
-      <div className="rounded-2xl border border-black/10 p-4">
-        <GalleryField
-          label="About the Venue — Gallery"
-          name="venue_image_url"
-          initialUrls={venueImages}
-          hint="Optional photos of the venue itself, shown under About the Venue. Events don't have a real Findmi Location relationship yet, so this stays event-specific for now."
-        />
-      </div>
-
-      {/* Business-Hosted Events V1 — the ONE canonical host Business. Kept
-          distinct from Participating Businesses (the roster below): setting
-          a host never adds it to the roster or creates an Appearance, and
-          a participant is never treated as the host. */}
-      <RelationField
-        label="Host Business"
-        name="host_business_id"
-        entity="businesses"
-        initial={hostBusiness ? { value: hostBusiness.id, label: hostBusiness.name, image_url: hostBusiness.logo_url } : null}
-        clearLabel="No Host Business"
-        placeholder="Search businesses…"
-        hint="The Business hosting this Event. Its Owners and Managers can manage the Event. Separate from Participating Businesses."
-      />
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField
-          label="Organizer Name"
-          name="organizer_name"
-          defaultValue={event?.organizer_name}
-        />
-        <TextField
-          label="External Event Link"
-          name="external_url"
-          type="url"
-          defaultValue={event?.external_url}
-          placeholder="https://…"
-          hint="Shown as a plain 'Event Details' link — always visible when set."
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CheckboxField
-          label="Featured"
-          name="is_featured"
-          defaultChecked={event?.is_featured}
-          hint="Gives this event priority in featured lists."
-        />
-        <NumberField
-          label="Featured Order"
-          name="featured_sort_order"
-          defaultValue={event?.featured_sort_order ?? undefined}
-          hint="Only matters when Featured is on — lower numbers show first."
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CheckboxField
-          label="Show on Homepage"
-          name="show_on_homepage"
-          defaultChecked={event?.show_on_homepage}
-          hint="Eligible for the homepage's What's Happening rail. Off by default — independent of Featured and publication status; doesn't change where else this event appears."
-        />
-      </div>
-
-      <CheckboxList
-        label="Categories / Experience"
-        name="category_ids"
-        defaultSelected={selectedCategoryIds}
-        options={categories.map((c) => ({ value: c.id, label: c.name }))}
-        emptyText="No categories yet — add some in /admin/categories."
-      />
-
-      <div className="rounded-2xl border border-black/10 p-4">
-        <p className="mb-1 text-sm font-semibold text-ink">Bulletin / Announcement</p>
-        <p className="mb-3 text-xs text-ink/45">
-          Same shared component as Business Profile — e.g. &ldquo;Rain or shine&rdquo; or &ldquo;Parking
-          available in Lot B.&rdquo; Renders nothing publicly unless enabled AND the body has real content.
-        </p>
-        <div className="flex flex-col gap-4">
-          <CheckboxField label="Bulletin Enabled" name="bulletin_enabled" defaultChecked={event?.bulletin_enabled} />
-          <TextField
-            label="Heading (optional)"
-            name="bulletin_heading"
-            defaultValue={event?.bulletin_heading}
-            placeholder="Rain or shine"
-          />
-          <TextareaField
-            label="Body"
-            name="bulletin_body"
-            defaultValue={event?.bulletin_body}
-            rows={3}
-            hint="e.g. This event happens rain or shine — dress accordingly."
-          />
-        </div>
-      </div>
-
-      {/* --- Consumer actions --- each toggle only ever shows on the public
-          page when it's on AND has a real destination. */}
-      <div className="rounded-2xl border border-black/10 p-4">
-        <p className="mb-3 text-sm font-semibold text-ink">Event Actions</p>
-        <div className="flex flex-col gap-4">
-          <div>
-            <CheckboxField
-              label="Get Directions"
-              name="directions_enabled"
-              defaultChecked={event ? event.directions_enabled : true}
-              hint="Derived automatically from the venue/address above — no link to enter."
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <CheckboxField
-              label="RSVP"
-              name="rsvp_enabled"
-              defaultChecked={event?.rsvp_enabled}
-            />
-            <TextField label="RSVP Link" name="rsvp_url" type="url" defaultValue={event?.rsvp_url} placeholder="https://…" />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <CheckboxField
-              label="Tickets"
-              name="tickets_enabled"
-              defaultChecked={event?.tickets_enabled}
-            />
-            <TextField label="Ticket Link" name="tickets_url" type="url" defaultValue={event?.tickets_url} placeholder="https://…" />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <CheckboxField
-              label="Vendor Applications"
-              name="vendor_applications_enabled"
-              defaultChecked={event?.vendor_applications_enabled}
-              hint="Shows 'Apply to Vend' — opens an external application form."
-            />
-            <TextField
-              label="Application Link"
-              name="vendor_application_url"
-              type="url"
-              defaultValue={event?.vendor_application_url}
-              placeholder="https://…"
-            />
-            <DateTimeField
-              label="Application Deadline"
-              name="vendor_application_deadline"
-              defaultValue={isoToLocalDateTime(event?.vendor_application_deadline ?? null)}
-              hint="Optional. After this, 'Apply to Vend' stops showing even if still enabled."
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <CheckboxField
-              label="Contact Organizer"
-              name="contact_enabled"
-              defaultChecked={event?.contact_enabled}
-            />
-            <TextField
-              label="Organizer Email"
-              name="organizer_email"
-              type="email"
-              defaultValue={event?.organizer_email}
-              placeholder="organizer@email.com"
-            />
-            <TextField
-              label="Or Contact Link"
-              name="contact_url"
-              type="url"
-              defaultValue={event?.contact_url}
-              placeholder="https://…"
-              hint="Used instead of email if both are set."
-            />
-          </div>
-
-          <div>
-            <CheckboxField
-              label="Follow"
-              name="follow_enabled"
-              defaultChecked={event?.follow_enabled}
-              hint="Lets consumers leave their email for updates about this event."
-            />
-          </div>
-        </div>
-      </div>
-
-      <ParticipationRoster
-        eventId={event?.id ?? null}
-        occurrences={occurrences}
-        vendorRostersByOccurrence={vendorRostersByOccurrence}
-        initialParticipants={participants}
-      />
-
-      <div className="rounded-2xl border border-black/10 p-4">
-        <TextField
-          label="Featured Products Heading"
-          name="featured_products_heading"
-          defaultValue={event?.featured_products_heading}
-          placeholder="Featured at This Event"
-          hint="Optional — defaults to “Featured at This Event” when blank."
-        />
-        <div className="mt-4">
-          <EventProductsRoster initialProducts={featuredProducts} />
-        </div>
-      </div>
 
       <SubmitBar cancelHref="/admin/events" />
     </form>
