@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import type { PublicJournalCard } from "@/lib/journal-distribution";
 import JournalPreviewCard from "@/components/journal/JournalPreviewCard";
+import ChevronIcon from "@/components/ChevronIcon";
 
 /** The one compact Moment-card presentation shared by every public surface
  * that shows Moments (Event, Business, Location, Product) — a Findmi
@@ -47,8 +48,9 @@ export default function MomentsCarousel({
         ))}
       </div>
       {hasMoreRemote && (
-        <Link href={viewAllHref} className="mt-3 inline-block text-metadata font-semibold text-findmi-700 hover:underline">
-          View all Moments →
+        <Link href={viewAllHref} className="mt-3 inline-flex items-center gap-1 text-metadata font-semibold text-findmi-700 hover:underline">
+          View All Moments
+          <ChevronIcon direction="right" className="h-3 w-3" />
         </Link>
       )}
     </div>

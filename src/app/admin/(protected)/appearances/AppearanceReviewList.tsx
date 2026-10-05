@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cityState, formatAppearanceDateRange, formatDateShort } from "@/lib/format";
 import type { AdminAppearanceRow } from "@/lib/admin/queries";
 import { markAppearanceReviewed, markAppearanceUnreviewed, markAppearancesReviewed } from "./actions";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 /** Admin Where I'll Be Review Inbox V1 — the row list plus, on the
  * Unreviewed view only, bulk-selection controls.
@@ -119,9 +120,10 @@ export default function AppearanceReviewList({
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Link
                       href={`/admin/appearances/${a.id}`}
-                      className="text-[11px] font-bold uppercase tracking-wide text-findmi-700 hover:underline"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-findmi-700 hover:underline"
                     >
-                      Open →
+                      Open
+                      <ChevronRightGlyph className="h-3 w-3" />
                     </Link>
                     {reviewed ? (
                       <form action={markAppearanceUnreviewed.bind(null, a.id)}>

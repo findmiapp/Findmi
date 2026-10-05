@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { ChevronLeftGlyph } from "@/components/admin/shell/AdminIcons";
 import {
   billingStatusLabel,
   getAdminMembershipById,
@@ -66,8 +67,9 @@ export default async function MembershipDetailPage({
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
           {membership.business?.name ?? membership.intended_business_name ?? "Onboarding"}
         </h1>
-        <Link href="/admin/onboarding" className="text-xs font-semibold text-ink/50 hover:text-ink">
-          ← All Onboarding
+        <Link href="/admin/onboarding" className="inline-flex items-center gap-1 text-xs font-semibold text-ink/50 hover:text-ink">
+          <ChevronLeftGlyph className="h-3 w-3" />
+          All Onboarding
         </Link>
       </div>
 

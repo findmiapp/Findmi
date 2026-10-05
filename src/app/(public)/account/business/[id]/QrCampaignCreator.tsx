@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import CopyButton from "@/components/CopyButton";
+import ChevronIcon from "@/components/ChevronIcon";
 import { createOwnerQrCampaign, type QrCampaignTarget, type CreatedQrCampaign } from "../qr-actions";
 import { secondaryButtonClass } from "../../owner-ui";
 
@@ -278,7 +279,10 @@ export function QrCampaignContextualPanel({
                 <span className="min-w-0 truncate text-metadata font-semibold text-primary">{c.name}</span>
                 <span className="flex shrink-0 items-center gap-2 text-microcopy text-subtle">
                   {c.scans.toLocaleString()} scans
-                  <span className="font-bold text-accent">View →</span>
+                  <span className="flex items-center gap-0.5 font-bold text-accent">
+                    View
+                    <ChevronIcon direction="right" className="h-3 w-3" />
+                  </span>
                 </span>
               </Link>
             ))}

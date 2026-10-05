@@ -12,6 +12,7 @@ import { getPendingMarketRequestGroups } from "@/lib/admin/market-requests";
 import { formatTime } from "@/lib/format";
 import AdminGlobalSearch from "./AdminGlobalSearch";
 import { MetricCell, ModulePanel } from "./dashboard-ui";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +36,7 @@ function AttentionRow({ count, label, href }: { count: number; label: string; hr
         {count}
       </span>
       <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">{label}</span>
-      <span aria-hidden="true" className="shrink-0 text-ink/25">
-        ›
-      </span>
+      <ChevronRightGlyph className="h-4 w-4 shrink-0 text-ink/25" />
     </Link>
   );
 }
@@ -156,8 +155,9 @@ export default async function AdminDashboardPage() {
                     </Link>
                   ))}
                   {(locationsAwaiting?.total ?? 0) > pendingLocations.length && (
-                    <Link href="/admin/locations" className="block px-4 py-2.5 text-metadata font-semibold text-findmi-700 hover:underline">
-                      {locationsAwaiting!.total - pendingLocations.length} more locations awaiting review →
+                    <Link href="/admin/locations" className="flex items-center gap-1 px-4 py-2.5 text-metadata font-semibold text-findmi-700 hover:underline">
+                      {locationsAwaiting!.total - pendingLocations.length} more locations awaiting review
+                      <ChevronRightGlyph className="h-3.5 w-3.5" />
                     </Link>
                   )}
                 </div>

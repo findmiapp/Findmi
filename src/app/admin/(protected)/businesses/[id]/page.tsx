@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 import { notFound } from "next/navigation";
 import { getAdminBusinessById, getAdminProducts, getAllCategories } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
@@ -627,11 +628,13 @@ export default async function EditBusinessPage({
             <p className="text-sm font-semibold text-ink">Appearances</p>
             <p className="mt-1 text-xs text-ink/45">Findmi Here — where this business is scheduled to appear.</p>
             <div className="mt-3 flex flex-col gap-2">
-              <Link href={`/admin/appearances?business=${id}`} className="text-sm font-semibold text-findmi-700 hover:underline">
-                View Appearances →
+              <Link href={`/admin/appearances?business=${id}`} className="inline-flex items-center gap-1 text-sm font-semibold text-findmi-700 hover:underline">
+                View Appearances
+                <ChevronRightGlyph className="h-3.5 w-3.5" />
               </Link>
-              <Link href={`/admin/appearances/import?business=${id}`} className="text-sm font-semibold text-findmi-700 hover:underline">
-                Import Appearances →
+              <Link href={`/admin/appearances/import?business=${id}`} className="inline-flex items-center gap-1 text-sm font-semibold text-findmi-700 hover:underline">
+                Import Appearances
+                <ChevronRightGlyph className="h-3.5 w-3.5" />
               </Link>
             </div>
           </div>
@@ -1110,8 +1113,9 @@ export default async function EditBusinessPage({
                   {membership.stripe_customer_id && (
                     <p className="text-xs text-ink/45">Stripe customer: {membership.stripe_customer_id}</p>
                   )}
-                  <Link href={`/admin/onboarding/${membership.id}`} className="mt-1 inline-block text-xs font-semibold text-findmi-700 hover:underline">
-                    Manage membership →
+                  <Link href={`/admin/onboarding/${membership.id}`} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-findmi-700 hover:underline">
+                    Manage Membership
+                    <ChevronRightGlyph className="h-3 w-3" />
                   </Link>
                 </div>
               ) : (

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getAccountSession } from "@/lib/accountSession";
 import { requestMissingArea } from "@/app/(public)/actions/area-requests";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export interface AreaChildOption {
   slug: string;
@@ -239,9 +240,10 @@ export default function AreaPicker({
                   <button
                     type="button"
                     onClick={() => setForceShowRequest(true)}
-                    className="mt-3 block w-full px-3 py-1.5 text-center text-xs font-semibold text-findmi-700 hover:underline"
+                    className="mt-3 flex w-full items-center justify-center gap-1 px-3 py-1.5 text-center text-xs font-semibold text-findmi-700 hover:underline"
                   >
-                    Don&rsquo;t see your area? Request Findmi expansion →
+                    Don&rsquo;t see your area? Request Findmi expansion
+                    <ChevronIcon direction="right" className="h-3 w-3" />
                   </button>
                 </>
               ) : (

@@ -5,6 +5,7 @@ import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import CompactCard from "@/components/CompactCard";
 import ProductCard from "@/components/ProductCard";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
+import ChevronIcon from "@/components/ChevronIcon";
 import { getBusinessBySlug, getNextAppearanceHints, getProductsForBusiness, type NextAppearanceHint } from "@/lib/data";
 import { cityState, formatDateShort } from "@/lib/format";
 import type { BusinessWithCategories, Product } from "@/lib/types";
@@ -183,7 +184,7 @@ export default async function JoinPage({
             href={claim.ctaUrl}
             className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ink/60 underline underline-offset-2 hover:text-ink"
           >
-            {claim.body} {claim.ctaLabel} <span aria-hidden>→</span>
+            {claim.body} {claim.ctaLabel} <ChevronIcon direction="right" className="h-3.5 w-3.5" />
           </Link>
         </div>
       </div>
@@ -222,7 +223,7 @@ export default async function JoinPage({
             href={`/business/${PROOF_BUSINESS_SLUG}`}
             className="inline-flex items-center gap-1.5 text-sm font-semibold text-findmi-700 transition hover:text-findmi-800"
           >
-            View live profile <span aria-hidden>→</span>
+            View Live Profile <ChevronIcon direction="right" className="h-3.5 w-3.5" />
           </a>
         </div>
       </div>
@@ -400,7 +401,7 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
             funnel's actual first step (create, don't compare limits). */}
         <p className="mt-1.5 text-xs text-ink/60">Create your business page and start showing up</p>
         <p className="mt-auto flex items-center gap-1 pt-2 text-xs font-bold text-findmi-700">
-          Explore Free <span aria-hidden>→</span>
+          Explore Free <ChevronIcon direction="right" className="h-3 w-3" />
         </p>
       </Link>
       <Link
@@ -418,7 +419,7 @@ function ChoosePathTiles({ proCard, free }: { proCard: ResolvedJoinCard; free: R
             differentiator (see ProCard's own highlight box below). */}
         <p className="mt-1.5 text-xs text-ink/60">Analytics and deeper tools to grow</p>
         <p className="mt-auto flex items-center gap-1 pt-2 text-xs font-bold text-ink/70">
-          Explore Pro <span aria-hidden>→</span>
+          Explore Pro <ChevronIcon direction="right" className="h-3 w-3" />
         </p>
       </Link>
     </div>

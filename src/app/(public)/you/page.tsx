@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export const metadata: Metadata = {
   title: "You",
@@ -24,7 +25,7 @@ export default function YouPage() {
             <p className="text-sm font-semibold text-ink">Saved</p>
             <p className="text-xs text-ink/50">Businesses you&rsquo;ve bookmarked</p>
           </div>
-          <span className="text-ink/30">→</span>
+          <ChevronIcon direction="right" className="h-4 w-4 text-ink/30" />
         </Link>
         <div className="rounded-2xl border border-black/10 p-4">
           <p className="text-sm font-semibold text-ink">Following</p>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronLeftGlyph } from "@/components/admin/shell/AdminIcons";
 import { notFound } from "next/navigation";
 import { CheckboxField, NumberField, TextField } from "@/components/admin/Fields";
 import { getAdminReferralPartnerDetail } from "@/lib/admin/referral-queries";
@@ -44,8 +45,9 @@ export default async function AdminReferralPartnerDetailPage({
 
   return (
     <div>
-      <Link href="/admin/referrals" className="text-sm text-findmi-700">
-        ← Referral Partners
+      <Link href="/admin/referrals" className="inline-flex items-center gap-1 text-sm text-findmi-700">
+        <ChevronLeftGlyph className="h-3.5 w-3.5" />
+        Referral Partners
       </Link>
 
       <div className="mt-3 flex flex-wrap items-start justify-between gap-3">

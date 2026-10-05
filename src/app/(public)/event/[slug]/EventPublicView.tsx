@@ -6,6 +6,7 @@ import BrandHeading from "@/components/BrandHeading";
 import SectionHeading from "@/components/SectionHeading";
 import { EndedStatus, FactsBand, WhenFact, WhereFact } from "@/components/event/KeyFacts";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
+import ChevronIcon from "@/components/ChevronIcon";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
 import EventGalleryMosaic from "@/components/event/EventGalleryMosaic";
 import EventLocationFeature from "@/components/event/EventLocationFeature";
@@ -674,7 +675,8 @@ export async function EventPublicView({ slug }: { slug: string }) {
       )}
       <div className="mt-4">
         <Link href="/my-world/journal" className="inline-flex items-center gap-1 text-metadata font-semibold text-muted transition hover:text-primary">
-          View Your Journal ›
+          View Your Journal
+          <ChevronIcon direction="right" className="h-3 w-3" />
         </Link>
       </div>
     </section>
@@ -724,7 +726,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
               </div>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-card-title-lg font-bold text-primary group-hover:text-findmi-700">{hostBusiness.name}</span>
-                <span className="text-metadata font-semibold text-findmi-700">View Brand ›</span>
+                <span className="flex items-center gap-1 text-metadata font-semibold text-findmi-700">
+                  View Brand
+                  <ChevronIcon direction="right" className="h-3 w-3" />
+                </span>
               </span>
             </Link>
           </>
@@ -746,8 +751,9 @@ export async function EventPublicView({ slug }: { slug: string }) {
         <SectionHeading>The Place</SectionHeading>
         {placeName &&
           (canonicalLocation ? (
-            <Link href={`/location/${canonicalLocation.slug}`} className="mt-0.5 inline-block text-metadata font-semibold text-findmi-700 hover:underline">
-              {placeName} ›
+            <Link href={`/location/${canonicalLocation.slug}`} className="mt-0.5 inline-flex items-center gap-1 text-metadata font-semibold text-findmi-700 hover:underline">
+              {placeName}
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           ) : (
             <p className="mt-0.5 text-metadata text-muted">{placeName}</p>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import SupabaseImage from "./SupabaseImage";
+import ChevronIcon from "./ChevronIcon";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -162,9 +163,10 @@ export default function SearchBar({
               <Link
                 href={`/businesses?q=${encodeURIComponent(term)}${marketSlug ? `&market=${encodeURIComponent(marketSlug)}` : ""}`}
                 onClick={() => setOpen(false)}
-                className="mt-1 block rounded-xl px-3 py-2.5 text-center text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                className="mt-1 flex items-center justify-center gap-1 rounded-xl px-3 py-2.5 text-center text-sm font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
               >
-                View all results →
+                View All Results
+                <ChevronIcon direction="right" className="h-3.5 w-3.5" />
               </Link>
             </>
           )}

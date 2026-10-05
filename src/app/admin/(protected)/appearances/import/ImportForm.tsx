@@ -5,6 +5,7 @@ import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { RelationField, type SearchResult } from "@/components/admin/RelationPicker";
 import { analyzeAppearances, createAppearancesBulk, type CreateRowInput, type DraftRow } from "./actions";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 // Appearance UX Cleanup pass — the server (lib/admin/appearance-import.ts,
 // `import "server-only"`, so a client component can't import its constant
@@ -467,9 +468,10 @@ export default function ImportForm({ initialBusiness }: { initialBusiness: Searc
                         <Link
                           href={`/admin/appearances/${row.duplicateMatch.id}`}
                           target="_blank"
-                          className="mt-1 inline-block text-xs font-semibold text-amber-800 hover:underline"
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-800 hover:underline"
                         >
-                          View existing appearance →
+                          View Existing Appearance
+                          <ChevronRightGlyph className="h-3 w-3" />
                         </Link>
                       </div>
                     )}

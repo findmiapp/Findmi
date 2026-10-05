@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export interface CategoryFilterOption {
   id: string;
@@ -107,9 +108,10 @@ export default function CategoryFilterSheet({
               <Link
                 href={allCategoriesHref}
                 onClick={() => setOpen(false)}
-                className="mt-3 block w-full px-3 py-1.5 text-center text-xs font-semibold text-findmi-700 hover:underline"
+                className="mt-3 flex w-full items-center justify-center gap-1 px-3 py-1.5 text-center text-xs font-semibold text-findmi-700 hover:underline"
               >
-                All Categories →
+                All Categories
+                <ChevronIcon direction="right" className="h-3 w-3" />
               </Link>
             </div>
           </div>

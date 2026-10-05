@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import SupabaseImage from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
+import ChevronIcon from "@/components/ChevronIcon";
 import FindmiUrlCard from "@/components/FindmiUrlCard";
 import type { DashboardAppearance, NeedsAttentionItem } from "@/lib/business-dashboard";
 import { formatTime } from "@/lib/format";
@@ -80,7 +81,7 @@ export default function BusinessHome({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
             </span>
-            Happening now
+            Happening Now
           </h2>
           <div className="mt-3 flex flex-col gap-3">
             {liveNow.map((a) => (
@@ -94,7 +95,7 @@ export default function BusinessHome({
         <section aria-labelledby="needs-attention">
           <div className="flex items-center gap-2">
             <h2 id="needs-attention" className="font-display text-section-title font-bold text-primary">
-              Needs attention
+              Needs Attention
             </h2>
             <Chip tone="amber">{needsAttention.length}</Chip>
           </div>
@@ -103,7 +104,10 @@ export default function BusinessHome({
               <li key={item.id}>
                 <Link href={item.actionHref} className="flex items-center justify-between gap-3 py-3">
                   <span className="min-w-0 text-body text-secondary">{item.message}</span>
-                  <span className="shrink-0 text-metadata font-bold text-accent">{item.actionLabel} →</span>
+                  <span className="flex shrink-0 items-center gap-1 text-metadata font-bold text-accent">
+                    {item.actionLabel}
+                    <ChevronIcon direction="right" className="h-3 w-3" />
+                  </span>
                 </Link>
               </li>
             ))}
@@ -112,7 +116,7 @@ export default function BusinessHome({
       )}
 
       <section aria-labelledby="coming-up">
-        <SectionTitle id="coming-up" title="Coming up" href={`${basePath}?tab=findmi-here`} linkLabel="See all" />
+        <SectionTitle id="coming-up" title="Coming Up" href={`${basePath}?tab=findmi-here`} linkLabel="See All" />
         {comingUp.length > 0 ? (
           <ul className="mt-2 flex flex-col divide-y divide-black/[0.06]">
             {comingUp.map((a) => (
@@ -141,11 +145,11 @@ export default function BusinessHome({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-card-title font-semibold text-primary">
-                  {pendingInvitationCount} event invitation{pendingInvitationCount === 1 ? "" : "s"}
+                  {pendingInvitationCount} Event Invitation{pendingInvitationCount === 1 ? "" : "s"}
                 </span>
                 <span className="block text-metadata text-muted">Waiting for your response</span>
               </span>
-              <span aria-hidden="true" className="text-ink/30">→</span>
+              <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
             </Link>
           )}
           {newOrderCount > 0 && (
@@ -158,11 +162,11 @@ export default function BusinessHome({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-card-title font-semibold text-primary">
-                  {newOrderCount} new order{newOrderCount === 1 ? "" : "s"}
+                  {newOrderCount} New Order{newOrderCount === 1 ? "" : "s"}
                 </span>
                 <span className="block text-metadata text-muted">Ready to confirm</span>
               </span>
-              <span aria-hidden="true" className="text-ink/30">→</span>
+              <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
             </Link>
           )}
         </section>
@@ -174,13 +178,13 @@ export default function BusinessHome({
             id="performance-snapshot"
             title="Performance"
             href={`${basePath}?tab=performance`}
-            linkLabel={pro ? "View performance" : "Unlock full analytics"}
+            linkLabel={pro ? "View Performance" : "Unlock Full Analytics"}
           />
           {metricsRangeLabel && <p className="mt-0.5 text-metadata text-subtle">{metricsRangeLabel}</p>}
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <MetricTile label="Profile views" metric={metrics.profileViews} pro={pro} />
+            <MetricTile label="Profile Views" metric={metrics.profileViews} pro={pro} />
             <MetricTile label="Actions" metric={metrics.actionsTaken} pro={pro} />
-            <MetricTile label="QR scans" metric={metrics.qrScans} pro={pro} />
+            <MetricTile label="QR Scans" metric={metrics.qrScans} pro={pro} />
             <MetricTile label="Followers" metric={{ value: metrics.followers, changeLabel: null }} pro={pro} />
           </div>
         </section>
@@ -190,7 +194,7 @@ export default function BusinessHome({
           Home so the handle editor stays reachable. */}
       <section aria-labelledby="findmi-link">
         <h2 id="findmi-link" className="font-display text-section-title font-bold text-primary">
-          Your Findmi link
+          Your Findmi Link
         </h2>
         <div className="mt-2">
           <FindmiUrlCard entityType="business" entityId={businessId} entityLabel={businessName} currentHandle={businessHandle} action={updateHandleAction} quiet />
@@ -221,8 +225,9 @@ function SectionTitle({ id, title, href, linkLabel }: { id: string; title: strin
       <h2 id={id} className="font-display text-section-title font-bold text-primary">
         {title}
       </h2>
-      <Link href={href} className="shrink-0 text-metadata font-semibold text-accent hover:underline">
-        {linkLabel} →
+      <Link href={href} className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline">
+        {linkLabel}
+        <ChevronIcon direction="right" className="h-3 w-3" />
       </Link>
     </div>
   );
@@ -252,7 +257,10 @@ function LiveCard({ appearance: a }: { appearance: DashboardAppearance }) {
         <p className="text-label font-bold uppercase text-red-600">Live · until {formatTime(a.endAt)}</p>
         <p className="mt-1 line-clamp-2 font-display text-card-title-lg font-semibold leading-snug text-primary">{a.title}</p>
         {place && <p className="mt-0.5 truncate text-metadata text-muted">{place}</p>}
-        <p className="mt-2 text-metadata font-bold text-accent">Manage →</p>
+        <p className="flex items-center gap-1 mt-2 text-metadata font-bold text-accent">
+          Manage
+          <ChevronIcon direction="right" className="h-3 w-3" />
+        </p>
       </div>
     </Link>
   );
@@ -279,9 +287,7 @@ function UpcomingRow({ appearance: a }: { appearance: DashboardAppearance }) {
       {pendingStatus ? (
         <Chip tone="amber">{a.statusLabel}</Chip>
       ) : (
-        <span aria-hidden="true" className="shrink-0 text-ink/25">
-          →
-        </span>
+        <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
       )}
     </Link>
   );

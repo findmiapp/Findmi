@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { login } from "./actions";
+import { ChevronLeftGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,8 @@ export default async function AdminLoginPage({
           href="/"
           className="inline-flex items-center gap-1 text-sm font-semibold text-ink/50 transition hover:text-ink"
         >
-          ← Back to FindMi
+          <ChevronLeftGlyph className="h-3.5 w-3.5" />
+          Back To Findmi
         </Link>
         <p className="mt-4 text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi</p>
         <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ink">

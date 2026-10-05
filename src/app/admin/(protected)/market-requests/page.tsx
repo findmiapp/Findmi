@@ -193,7 +193,7 @@ export default async function AdminMarketRequestsPage({
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <form action={mapMarketRequestGroup} className="flex flex-col gap-2 rounded-xl border border-black/10 p-3">
-                    <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Map to Existing Market</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Map To Existing Market</p>
                     {requestIdInputs}
                     <select
                       name="market_id"
@@ -221,7 +221,7 @@ export default async function AdminMarketRequestsPage({
                     action={mapMarketRequestGroupToArea}
                     className="flex flex-col gap-2 rounded-xl border border-black/10 p-3"
                   >
-                    <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Map to Existing Area/Submarket</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Map To Existing Area/Submarket</p>
                     {requestIdInputs}
                     <select
                       name="area_id"

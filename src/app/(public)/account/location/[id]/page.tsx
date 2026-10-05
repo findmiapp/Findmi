@@ -421,7 +421,7 @@ export default async function ManageLocationPage({
         {tab === "overview" && (
           <div className="flex flex-col gap-5">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Next up</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Next Up</p>
               {nextUp ? (
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">

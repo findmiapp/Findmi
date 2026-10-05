@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default function SiteEditorPage() {
               className="flex items-center justify-between rounded-xl border border-black/5 bg-white px-4 py-3 transition hover:border-black/10"
             >
               <span className="text-sm font-semibold text-ink">{p.label}</span>
-              <span className="text-ink/30">→</span>
+              <ChevronRightGlyph className="h-4 w-4 text-ink/30" />
             </Link>
           ) : (
             <div

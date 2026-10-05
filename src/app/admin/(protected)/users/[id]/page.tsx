@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronLeftGlyph } from "@/components/admin/shell/AdminIcons";
 import { notFound } from "next/navigation";
 import {
   getAdminUserAccount,
@@ -71,8 +72,9 @@ export default async function AdminUserDetailPage({
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
           {account.displayName || account.email || "User"}
         </h1>
-        <Link href="/admin/users" className="text-xs font-semibold text-ink/50 hover:text-ink">
-          ← Back to Users
+        <Link href="/admin/users" className="inline-flex items-center gap-1 text-xs font-semibold text-ink/50 hover:text-ink">
+          <ChevronLeftGlyph className="h-3 w-3" />
+          Back To Users
         </Link>
       </div>
 

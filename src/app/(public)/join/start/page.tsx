@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import OnboardingProgress from "@/components/OnboardingProgress";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export const metadata: Metadata = {
   title: "How would you like to start?",
@@ -74,7 +75,7 @@ export default async function JoinStartPage({
             Discover businesses and events, save what you love, and keep track of everywhere you go.
           </p>
           <span className="mt-3 flex items-center gap-1 text-sm font-bold text-findmi-700">
-            Get started <span aria-hidden>→</span>
+            Get Started <ChevronIcon direction="right" className="h-3.5 w-3.5" />
           </span>
         </Link>
 
@@ -88,7 +89,7 @@ export default async function JoinStartPage({
             Show customers who you are, what you offer, and where you&rsquo;ll be next.
           </p>
           <span className="mt-3 flex items-center gap-1 text-sm font-bold text-ink/70">
-            Get started <span aria-hidden>→</span>
+            Get Started <ChevronIcon direction="right" className="h-3.5 w-3.5" />
           </span>
         </Link>
       </div>

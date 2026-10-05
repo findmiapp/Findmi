@@ -11,6 +11,7 @@ import {
   type ConversationOpportunityCard,
 } from "@/lib/opportunities";
 import { formatDateShort, formatTime } from "@/lib/format";
+import ChevronIcon from "@/components/ChevronIcon";
 import { respondToApplicationInThread, respondToInvitationInThread } from "@/app/(public)/connect/actions";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import PersonalAppShell from "../../PersonalAppShell";
@@ -95,8 +96,9 @@ export default async function ConversationPage({
 
   return (
     <PersonalAppShell displayName={displayName}>
-      <Link href="/account/messages" className="text-metadata font-semibold text-subtle hover:text-muted">
-        ← Inbox
+      <Link href="/account/messages" className="inline-flex items-center gap-1 text-metadata font-semibold text-subtle hover:text-muted">
+        <ChevronIcon direction="left" className="h-3 w-3" />
+        Inbox
       </Link>
       <h1 className="mt-1.5 font-display text-page-title font-bold text-primary">{title}</h1>
       {/* Unify Site-Wide Communications pass — a guest inquiry has no

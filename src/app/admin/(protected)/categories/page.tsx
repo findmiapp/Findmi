@@ -3,6 +3,7 @@ import NameSlugFields from "@/components/admin/NameSlugFields";
 import CategoryList from "@/components/admin/CategoryList";
 import { getAllCategories, getCategoryUsageCounts } from "@/lib/admin/queries";
 import { createBusinessCategory, deleteBusinessCategory, moveBusinessCategory, saveHomeCategories } from "./actions";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function AdminCategoriesPage({
             <span className="block text-sm font-semibold text-findmi-700">Event Categories</span>
             <span className="block text-xs text-ink/50">Tagged onto events.</span>
           </span>
-          <span className="shrink-0 text-findmi-700">→</span>
+          <ChevronRightGlyph className="h-4 w-4 shrink-0 text-findmi-700" />
         </Link>
         <Link
           href="/admin/categories/products"
@@ -62,7 +63,7 @@ export default async function AdminCategoriesPage({
             <span className="block text-sm font-semibold text-findmi-700">Product Categories</span>
             <span className="block text-xs text-ink/50">Tagged onto products.</span>
           </span>
-          <span className="shrink-0 text-findmi-700">→</span>
+          <ChevronRightGlyph className="h-4 w-4 shrink-0 text-findmi-700" />
         </Link>
         <Link
           href="/admin/categories/locations"
@@ -72,7 +73,7 @@ export default async function AdminCategoriesPage({
             <span className="block text-sm font-semibold text-findmi-700">Location Categories</span>
             <span className="block text-xs text-ink/50">Tagged onto venues.</span>
           </span>
-          <span className="shrink-0 text-findmi-700">→</span>
+          <ChevronRightGlyph className="h-4 w-4 shrink-0 text-findmi-700" />
         </Link>
       </div>
 

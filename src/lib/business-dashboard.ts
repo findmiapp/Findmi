@@ -302,7 +302,7 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
     items.push({
       id: "no-appearances",
       message: "Nothing happening yet.",
-      actionLabel: "Add to Findmi Here",
+      actionLabel: "Add To Findmi Here",
       actionHref: `${base}?tab=findmi-here&add=presence`,
     });
   } else {

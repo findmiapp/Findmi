@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { ChevronLeftGlyph } from "@/components/admin/shell/AdminIcons";
 import { getAdminOrderById } from "@/lib/admin/commerce-queries";
 import FulfillmentStatusToggle from "@/components/admin/FulfillmentStatusToggle";
 import RefundForm from "@/components/admin/RefundForm";
@@ -38,8 +39,9 @@ export default async function AdminOrderDetailPage({
     <div>
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">{order.order_number}</h1>
-        <Link href="/admin/orders" className="text-xs font-semibold text-ink/50 hover:text-ink">
-          ← All Orders
+        <Link href="/admin/orders" className="inline-flex items-center gap-1 text-xs font-semibold text-ink/50 hover:text-ink">
+          <ChevronLeftGlyph className="h-3 w-3" />
+          All Orders
         </Link>
       </div>
 

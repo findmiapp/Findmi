@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TextField } from "@/components/admin/Fields";
+import { ChevronLeftGlyph, ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 import { createAdminUser } from "./actions";
 import SetupMethodFields from "./SetupMethodFields";
 
@@ -16,8 +17,9 @@ export default async function NewAdminUserPage({
     <div className="mx-auto max-w-lg">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Create User</h1>
-        <Link href="/admin/users" className="text-xs font-semibold text-ink/50 hover:text-ink">
-          ← Back to Users
+        <Link href="/admin/users" className="inline-flex items-center gap-1 text-xs font-semibold text-ink/50 hover:text-ink">
+          <ChevronLeftGlyph className="h-3 w-3" />
+          Back To Users
         </Link>
       </div>
       <p className="mt-1 text-sm text-ink/50">
@@ -28,8 +30,9 @@ export default async function NewAdminUserPage({
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <p>{error}</p>
           {existing_user_id && (
-            <Link href={`/admin/users/${existing_user_id}`} className="mt-1 inline-block font-semibold hover:underline">
-              Manage that user →
+            <Link href={`/admin/users/${existing_user_id}`} className="mt-1 inline-flex items-center gap-1 font-semibold hover:underline">
+              Manage That User
+              <ChevronRightGlyph className="h-3 w-3" />
             </Link>
           )}
         </div>

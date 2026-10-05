@@ -5,6 +5,7 @@ import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
 import SupabaseImage from "@/components/SupabaseImage";
 import SignOutConfirm from "@/components/SignOutConfirm";
+import ChevronIcon from "@/components/ChevronIcon";
 import { signOut } from "@/app/(public)/account/profile/actions";
 import type { AccountBusinessContext } from "@/lib/accountContext";
 
@@ -103,7 +104,7 @@ export default function AccountContextSwitcher({
         }
       >
         {trigger ?? defaultTrigger}
-        <ChevronGlyph className={`h-3.5 w-3.5 shrink-0 text-ink/40 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronIcon direction="down" className={`h-3.5 w-3.5 shrink-0 text-ink/40 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
@@ -241,14 +242,6 @@ function SwitcherMenu({
         Sign Out
       </SignOutConfirm>
     </div>
-  );
-}
-
-function ChevronGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
 

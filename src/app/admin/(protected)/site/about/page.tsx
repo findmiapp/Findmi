@@ -4,6 +4,7 @@ import { getAdminSiteSections } from "@/lib/admin/site-queries";
 import { resolveAboutHero, resolveAboutContact } from "@/lib/about-page";
 import { getSiteContactInfo } from "@/lib/contact-info";
 import { saveAboutHero, saveAboutContact } from "./actions";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,9 @@ export default async function AboutSiteEditorPage({
       </div>
       <div className="mt-1 flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">About Page</h1>
-        <Link href="/about" target="_blank" className="shrink-0 text-sm font-semibold text-findmi-700 hover:underline">
-          View About Page →
+        <Link href="/about" target="_blank" className="flex shrink-0 items-center gap-1 text-sm font-semibold text-findmi-700 hover:underline">
+          View About Page
+          <ChevronRightGlyph className="h-3.5 w-3.5" />
         </Link>
       </div>
       <p className="mt-1 max-w-xl text-sm text-ink/50">

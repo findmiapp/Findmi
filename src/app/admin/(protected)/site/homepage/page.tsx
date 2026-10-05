@@ -13,6 +13,7 @@ import {
   type SectionDefaults,
 } from "@/lib/site-sections";
 import { saveSiteSection, saveDiscoveryTopics, saveWeatherConfig, moveSectionDown, moveSectionUp } from "./actions";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export default async function HomepageSiteEditorPage({
             Showcase) — no code change needed.
           </span>
         </span>
-        <span className="shrink-0 text-findmi-700">→</span>
+        <ChevronRightGlyph className="h-4 w-4 shrink-0 text-findmi-700" />
       </Link>
 
       <p className="mt-6 text-xs font-bold uppercase tracking-wide text-ink/40">Masthead — always first</p>
@@ -93,7 +94,7 @@ export default async function HomepageSiteEditorPage({
         <DiscoveryTopicsCard overrides={overrides} />
       </div>
 
-      <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">Homepage sections — in order</p>
+      <p className="mt-8 text-xs font-bold uppercase tracking-wide text-ink/40">Homepage Sections — In Order</p>
       <div className="mt-2 flex flex-col gap-3">
         {orderedKeys.map((key, i) => (
           <SectionCard

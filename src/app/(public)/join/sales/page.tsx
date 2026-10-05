@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { submitSalesInquiry } from "./actions";
 import SubmitButton from "./SubmitButton";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export const metadata: Metadata = {
   title: "Talk to Findmi Sales",
@@ -174,8 +175,9 @@ export default async function JoinSalesPage({
       </div>
 
       <div className="mt-6 text-center">
-        <Link href="/join/business" className="text-xs font-semibold text-ink/40 hover:text-ink/70">
-          ← Back to Join Findmi
+        <Link href="/join/business" className="inline-flex items-center gap-1 text-xs font-semibold text-ink/40 hover:text-ink/70">
+          <ChevronIcon direction="left" className="h-3 w-3" />
+          Back to Join Findmi
         </Link>
       </div>
     </div>

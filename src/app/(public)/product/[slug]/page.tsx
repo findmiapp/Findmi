@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SupabaseImage from "@/components/SupabaseImage";
+import ChevronIcon from "@/components/ChevronIcon";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AddToCartForm from "@/components/AddToCartForm";
@@ -218,7 +219,10 @@ export default async function ProductPage({
               <span className="block truncate text-sm font-bold text-ink">{product.business.name}</span>
               {sellerMeta && <span className="block truncate text-xs text-ink/50">{sellerMeta}</span>}
             </span>
-            <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-findmi-700">View →</span>
+            <span className="flex shrink-0 items-center gap-1 text-xs font-bold uppercase tracking-wide text-findmi-700">
+              View
+              <ChevronIcon direction="right" className="h-3 w-3" />
+            </span>
           </Link>
 
           {/* Primary CTA — exactly one, based on real data: Add to Cart
@@ -268,7 +272,7 @@ export default async function ProductPage({
               when none exist (e.g. not purchasable). */}
           {fulfillmentOptions.length > 0 && (
             <div className="mt-4 rounded-2xl border border-black/5 bg-black/[0.015] p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">How to get it</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40">How To Get It</p>
               <ul className="mt-2 flex flex-col gap-1.5">
                 {fulfillmentOptions.map((o, i) => (
                   <li key={i} className="flex items-center gap-2 text-sm text-ink/75">
@@ -344,9 +348,10 @@ export default async function ProductPage({
           </div>
           <Link
             href={`/business/${product.business.slug}`}
-            className="mt-3 inline-block text-sm font-bold uppercase tracking-wide text-findmi-700"
+            className="mt-3 inline-flex items-center gap-1 text-sm font-bold uppercase tracking-wide text-findmi-700"
           >
-            View all appearances →
+            View All Appearances
+            <ChevronIcon direction="right" className="h-3.5 w-3.5" />
           </Link>
         </section>
       )}
@@ -394,9 +399,10 @@ export default async function ProductPage({
       <div className="mt-10 flex justify-center sm:justify-start">
         <Link
           href={`/business/${product.business.slug}`}
-          className="rounded-full border border-black/10 px-6 py-3 text-sm font-semibold text-ink transition hover:border-ink/30"
+          className="flex items-center gap-1 rounded-full border border-black/10 px-6 py-3 text-sm font-semibold text-ink transition hover:border-ink/30"
         >
-          View {product.business.name} on Findmi →
+          View {product.business.name} on Findmi
+          <ChevronIcon direction="right" className="h-3.5 w-3.5" />
         </Link>
       </div>
     </div>

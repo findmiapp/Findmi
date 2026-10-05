@@ -3,6 +3,7 @@
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import LocationFollowButton from "@/components/LocationFollowButton";
+import ChevronIcon from "@/components/ChevronIcon";
 import { useAccountSaved } from "@/lib/useAccountSaved";
 import type { LocationActivityPreviewItem, LocationWithCategory } from "@/lib/data";
 import { cityState, cityStateZip, formatDateShort, formatTime } from "@/lib/format";
@@ -122,8 +123,9 @@ export default function FeaturedLocationCard({
             // truthful (never a fabricated event) in case activityCount
             // and the preview array ever disagree (e.g. a happening
             // canceled between the two batched queries).
-            <Link href={`/location/${location.slug}`} className="mt-auto text-xs font-semibold text-findmi-700 hover:text-findmi-800">
-              Explore this place →
+            <Link href={`/location/${location.slug}`} className="mt-auto flex items-center gap-1 text-xs font-semibold text-findmi-700 hover:text-findmi-800">
+              Explore This Place
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           ) : hasMultiple ? (
             <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

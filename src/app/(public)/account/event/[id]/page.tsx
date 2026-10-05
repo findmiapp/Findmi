@@ -7,6 +7,7 @@ import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireEventMember, resolveBusinessNavContext } from "@/lib/permissions";
 import { getAccountContexts } from "@/lib/accountContext";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
+import ChevronIcon from "@/components/ChevronIcon";
 import { getAdminEventById, getAllCategories, getEventCategoryIds } from "@/lib/admin/queries";
 import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
@@ -465,7 +466,7 @@ export default async function ManageEventPage({
             )}
 
             <div>
-              <p className="text-label font-bold uppercase text-subtle">Next up</p>
+              <p className="text-label font-bold uppercase text-subtle">Next Up</p>
               {nextUp ? (
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -490,13 +491,16 @@ export default async function ManageEventPage({
 
             {pendingParticipants.length > 0 && (
               <div>
-                <p className="text-label font-bold uppercase text-subtle">Needs your attention</p>
+                <p className="text-label font-bold uppercase text-subtle">Needs Your Attention</p>
                 <Link
                   href={appendQuery(`/account/event/${id}`, { tab: "participants" })}
                   className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-black/10 px-3.5 py-2.5 text-body text-secondary transition hover:border-black/20"
                 >
                   {pendingParticipants.length} pending business{pendingParticipants.length === 1 ? "" : "es"}
-                  <span className="shrink-0 text-metadata font-semibold text-accent">Review →</span>
+                  <span className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent">
+                    Review
+                    <ChevronIcon direction="right" className="h-3 w-3" />
+                  </span>
                 </Link>
               </div>
             )}
@@ -551,7 +555,10 @@ export default async function ManageEventPage({
                     className="mt-1.5 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-black/15 px-3.5 py-2.5 text-body text-secondary transition hover:border-black/25"
                   >
                     Add participating businesses
-                    <span className="shrink-0 text-metadata font-semibold text-accent">Optional →</span>
+                    <span className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent">
+                      Optional
+                      <ChevronIcon direction="right" className="h-3 w-3" />
+                    </span>
                   </Link>
                 </div>
               )}
@@ -675,7 +682,7 @@ export default async function ManageEventPage({
                 </div>
               </div>
               <div>
-                <p className="text-label font-bold uppercase text-subtle">About the Venue: Gallery</p>
+                <p className="text-label font-bold uppercase text-subtle">About The Venue: Gallery</p>
                 <div className="mt-2">
                   <MemberEventGalleryField eventId={id} name="venue_image_url" initialUrls={result.venueImages} />
                 </div>

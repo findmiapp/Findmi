@@ -5,6 +5,7 @@ import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { getBusinessQrCreatorOptions } from "@/lib/qr-manager";
 import QrIntelligentCreator from "./QrIntelligentCreator";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +35,9 @@ export default async function NewBusinessQrCampaignPage({ params }: { params: Pr
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6">
-      <Link href={`/account/business/${id}/qr`} className="w-fit text-metadata font-semibold text-muted hover:text-secondary">
-        ← Back
+      <Link href={`/account/business/${id}/qr`} className="flex w-fit items-center gap-1 text-metadata font-semibold text-muted hover:text-secondary">
+        <ChevronIcon direction="left" className="h-3 w-3" />
+        Back
       </Link>
       <QrIntelligentCreator businessId={id} businessName={business.name} options={options} />
     </div>

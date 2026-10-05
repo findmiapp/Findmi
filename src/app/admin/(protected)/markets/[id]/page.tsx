@@ -39,7 +39,7 @@ export default async function EditMarketPage({
       <section className="mt-8">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Areas in this Market</h2>
+            <h2 className="text-xs font-bold uppercase tracking-wide text-ink/40">Areas In This Market</h2>
             <p className="mt-0.5 text-xs text-ink/45">
               {areas.length} Area{areas.length === 1 ? "" : "s"}
             </p>

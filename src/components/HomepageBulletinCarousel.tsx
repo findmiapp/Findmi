@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import HomepageBulletin from "./HomepageBulletin";
+import ChevronIcon from "@/components/ChevronIcon";
 import type { ResolvedHomepageBulletin } from "@/lib/homepage-bulletins";
 
 /** Homepage Bulletin Carousel pass — display interval and transition
@@ -136,9 +137,9 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
           type="button"
           onClick={() => goTo(index - 1)}
           aria-label="Previous announcement"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/10 text-xs text-ink/50 transition hover:border-black/20 hover:text-ink"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/50 transition hover:border-black/20 hover:text-ink"
         >
-          ‹
+          <ChevronIcon direction="left" className="h-3 w-3" />
         </button>
         <div className="flex items-center gap-1.5">
           {bulletins.map((b, i) => (
@@ -156,9 +157,9 @@ export default function HomepageBulletinCarousel({ bulletins }: { bulletins: Res
           type="button"
           onClick={() => goTo(index + 1)}
           aria-label="Next announcement"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/10 text-xs text-ink/50 transition hover:border-black/20 hover:text-ink"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/50 transition hover:border-black/20 hover:text-ink"
         >
-          ›
+          <ChevronIcon direction="right" className="h-3 w-3" />
         </button>
       </div>
     </div>

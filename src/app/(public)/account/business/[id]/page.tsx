@@ -106,6 +106,7 @@ import QrCampaignCreator, { QrCampaignContextualPanel } from "./QrCampaignCreato
 import { getBusinessMarketLimit } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
+import ChevronIcon from "@/components/ChevronIcon";
 import type { EventParticipationStatus } from "@/lib/types";
 
 const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
@@ -1429,8 +1430,9 @@ export default async function ManageBusinessPage({
                   <span className="font-bold">Pending Review</span>: visible to you now, live in discovery after Findmi reviews it.
                 </p>
                 {business.slug && (
-                  <Link href={`/business/${business.slug}`} className="shrink-0 text-metadata font-bold text-amber-800 underline underline-offset-2">
-                    Preview →
+                  <Link href={`/business/${business.slug}`} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-amber-800 underline underline-offset-2">
+                    Preview
+                    <ChevronIcon direction="right" className="h-3 w-3" />
                   </Link>
                 )}
               </div>
@@ -1544,8 +1546,9 @@ export default async function ManageBusinessPage({
                   into this already very large page. Everything below this
                   link is untouched and stays fully functional as a quick-
                   create/quick-list surface. */}
-              <Link href={`/account/business/${id}/qr`} className="shrink-0 text-metadata font-bold text-accent">
-                Open Campaign Manager →
+              <Link href={`/account/business/${id}/qr`} className="flex shrink-0 items-center gap-1 text-metadata font-bold text-accent">
+                Open Campaign Manager
+                <ChevronIcon direction="right" className="h-3 w-3" />
               </Link>
             </div>
 
@@ -1869,9 +1872,10 @@ export default async function ManageBusinessPage({
                 <Row
                   label="Customer Inquiries"
                   value={
-                    business.accepts_inquiries && sanitizeBusinessInquiryTopics(business.inquiry_topics).length > 0
-                      ? "Enabled →"
-                      : "Off →"
+                    <span className="inline-flex items-center gap-1">
+                      {business.accepts_inquiries && sanitizeBusinessInquiryTopics(business.inquiry_topics).length > 0 ? "Enabled" : "Off"}
+                      <ChevronIcon direction="right" className="h-3 w-3" />
+                    </span>
                   }
                   href={`${basePath}?tab=inquiries`}
                 />
@@ -2735,7 +2739,10 @@ export default async function ManageBusinessPage({
               className="flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
             >
               <span className="text-body font-semibold text-primary">View customer conversations in your Inbox</span>
-              <span className="shrink-0 text-label font-bold uppercase text-accent">Open Inbox →</span>
+              <span className="flex shrink-0 items-center gap-1 text-label font-bold uppercase text-accent">
+                Open Inbox
+                <ChevronIcon direction="right" className="h-3 w-3" />
+              </span>
             </Link>
           </div>
         )}
@@ -2833,9 +2840,10 @@ export default async function ManageBusinessPage({
               <div className={cardClass}>
                 <Link
                   href={`${basePath}?tab=orders${orderStatus ? `&order_status=${orderStatus}` : ""}`}
-                  className="text-metadata font-semibold text-muted hover:text-primary"
+                  className="flex items-center gap-1 text-metadata font-semibold text-muted hover:text-primary"
                 >
-                  ← All orders
+                  <ChevronIcon direction="left" className="h-3 w-3" />
+                  All Orders
                 </Link>
 
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">

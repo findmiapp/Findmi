@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { uploadImage } from "@/lib/admin/upload";
+import ChevronIcon from "@/components/ChevronIcon";
 
 /** Final refinement pass, items 9/10 — shared multi-image uploader for
  * both the Event Gallery and the About the Venue gallery (also used by
@@ -104,9 +105,9 @@ export default function GalleryField({
                   onClick={() => move(i, -1)}
                   disabled={i === 0}
                   aria-label="Move earlier"
-                  className="px-1 text-xs font-bold text-white disabled:opacity-30"
+                  className="px-1 text-white disabled:opacity-30"
                 >
-                  ‹
+                  <ChevronIcon direction="left" className="h-3 w-3" />
                 </button>
                 <button
                   type="button"
@@ -121,9 +122,9 @@ export default function GalleryField({
                   onClick={() => move(i, 1)}
                   disabled={i === urls.length - 1}
                   aria-label="Move later"
-                  className="px-1 text-xs font-bold text-white disabled:opacity-30"
+                  className="px-1 text-white disabled:opacity-30"
                 >
-                  ›
+                  <ChevronIcon direction="right" className="h-3 w-3" />
                 </button>
               </div>
             </div>

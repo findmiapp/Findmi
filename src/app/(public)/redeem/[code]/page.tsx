@@ -124,7 +124,7 @@ export default async function RedeemInvitePage({
             <ProUnlockItem>Performance analytics for your business</ProUnlockItem>
             <ProUnlockItem>Discovery source &amp; QR attribution</ProUnlockItem>
             <ProUnlockItem>Follower insights</ProUnlockItem>
-            <ProUnlockItem>Customer inquiries</ProUnlockItem>
+            <ProUnlockItem>Customer Inquiries</ProUnlockItem>
           </ul>
 
           {/* Never implies the public listing itself has been approved —

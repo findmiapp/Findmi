@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import NavIcon from "@/components/NavIcon";
+import ChevronIcon from "@/components/ChevronIcon";
 
 /** /account V2, Pass 1 — "More": every secondary destination that no longer
  * competes for primary navigation, grouped by job. Only real, existing
@@ -21,15 +22,15 @@ export default function MoreMenu({
   showReferral: boolean;
 }) {
   const yourBusiness: MoreLink[] = [
-    { href: `${basePath}?tab=profile`, label: "Business profile", description: "Identity, photos, contact & links", icon: <NavIcon name="storefront" className="h-5 w-5" /> },
+    { href: `${basePath}?tab=profile`, label: "Business Profile", description: "Identity, photos, contact & links", icon: <NavIcon name="storefront" className="h-5 w-5" /> },
     { href: `${basePath}?tab=performance`, label: "Performance", description: "Views, actions and how people find you", icon: <NavIcon name="target" className="h-5 w-5" /> },
     ...(businessSlug
-      ? [{ href: `/business/${businessSlug}`, label: "View public page", icon: <NavIcon name="compass" className="h-5 w-5" /> }]
+      ? [{ href: `/business/${businessSlug}`, label: "View Public Page", icon: <NavIcon name="compass" className="h-5 w-5" /> }]
       : []),
   ];
   const tools: MoreLink[] = [
-    { href: `${basePath}?tab=qr`, label: "QR campaigns", description: "Create and track QR codes", icon: <QrGlyph className="h-5 w-5" /> },
-    { href: `${basePath}?tab=inquiries`, label: "Customer inquiries", description: "How customers can contact you", icon: <ChatGlyph className="h-5 w-5" /> },
+    { href: `${basePath}?tab=qr`, label: "QR Campaigns", description: "Create and track QR codes", icon: <QrGlyph className="h-5 w-5" /> },
+    { href: `${basePath}?tab=inquiries`, label: "Customer Inquiries", description: "How customers can contact you", icon: <ChatGlyph className="h-5 w-5" /> },
     ...(ordersRelevant
       ? [{ href: `${basePath}?tab=orders`, label: "Orders", description: "Marketplace orders to fulfill", icon: <NavIcon name="cart" className="h-5 w-5" /> }]
       : []),
@@ -48,24 +49,24 @@ export default function MoreMenu({
   // Locations together — it's the unified personal view, not a
   // Business-scoped one, so it belongs here too. No route/data change.
   const businessPlan: MoreLink[] = [
-    { href: `${basePath}?tab=settings`, label: "Plan & settings", description: "Findmi Pro, areas and business settings", icon: <GearGlyph className="h-5 w-5" /> },
-    ...(showReferral ? [{ href: `${basePath}?tab=referral`, label: "Referral program", icon: <NavIcon name="person" className="h-5 w-5" /> }] : []),
+    { href: `${basePath}?tab=settings`, label: "Plan & Settings", description: "Findmi Pro, areas and business settings", icon: <GearGlyph className="h-5 w-5" /> },
+    ...(showReferral ? [{ href: `${basePath}?tab=referral`, label: "Referral Program", icon: <NavIcon name="person" className="h-5 w-5" /> }] : []),
   ];
   const yourAccount: MoreLink[] = [
     { href: "/account/schedule", label: "Schedule", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
     { href: "/account/saved", label: "Saved", icon: <NavIcon name="bookmark" className="h-5 w-5" /> },
     { href: "/account/following", label: "Following", icon: <NavIcon name="person" className="h-5 w-5" /> },
-    { href: "/account/orders", label: "Your purchases", icon: <NavIcon name="cart" className="h-5 w-5" /> },
-    { href: "/account/profile", label: "Your profile & sign out", icon: <NavIcon name="person" className="h-5 w-5" /> },
+    { href: "/account/orders", label: "Your Purchases", icon: <NavIcon name="cart" className="h-5 w-5" /> },
+    { href: "/account/profile", label: "Your Profile & Sign Out", icon: <NavIcon name="person" className="h-5 w-5" /> },
   ];
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <h1 className="font-display text-page-title-lg font-bold text-primary">More</h1>
-      <MoreGroup title="Your business" links={yourBusiness} />
+      <MoreGroup title="Your Business" links={yourBusiness} />
       <MoreGroup title="Tools" links={tools} />
-      <MoreGroup title="Business plan" links={businessPlan} />
-      <MoreGroup title="Your account" links={yourAccount} />
+      <MoreGroup title="Business Plan" links={businessPlan} />
+      <MoreGroup title="Your Account" links={yourAccount} />
     </div>
   );
 }
@@ -86,9 +87,7 @@ function MoreGroup({ title, links }: { title: string; links: MoreLink[] }) {
                 <span className="block truncate text-card-title font-semibold text-primary">{l.label}</span>
                 {l.description && <span className="block truncate text-metadata text-muted">{l.description}</span>}
               </span>
-              <span aria-hidden="true" className="shrink-0 text-ink/25">
-                ›
-              </span>
+              <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/25" />
             </Link>
           </li>
         ))}

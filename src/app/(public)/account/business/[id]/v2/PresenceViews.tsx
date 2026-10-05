@@ -1,5 +1,6 @@
 import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
+import ChevronIcon from "@/components/ChevronIcon";
 import { formatTime } from "@/lib/format";
 import type { BusinessLocationItem, ManagedLocationItem } from "@/lib/business-locations";
 import { connectBusinessLocation, makePrimaryBusinessLocation, removeBusinessLocation } from "../../location-actions";
@@ -102,9 +103,7 @@ export function PastPresence({ items }: { items: PastPresenceItem[] }) {
             {a.eventSlug ? (
               <Link href={`/event/${a.eventSlug}`} className="flex items-center gap-3 py-3">
                 {body}
-                <span aria-hidden="true" className="shrink-0 text-ink/25">
-                  →
-                </span>
+                <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
               </Link>
             ) : (
               <div className="flex items-center gap-3 py-3">{body}</div>
@@ -234,9 +233,7 @@ export function LocationsPresence({
               <span className="block text-card-title font-semibold text-primary">Create a new location</span>
               <span className="block text-metadata text-muted">Add a place that isn&rsquo;t on Findmi yet</span>
             </span>
-            <span aria-hidden="true" className="shrink-0 text-ink/25">
-              ›
-            </span>
+            <ChevronIcon direction="right" className="h-3.5 w-3.5 shrink-0 text-ink/25" />
           </Link>
           {connectable.length > 0 && (
             <>
@@ -330,13 +327,15 @@ function LocationCard({
             // no path back to the Business they came from.
             <Link
               href={`/account/location/${item.locationId}?business_id=${encodeURIComponent(businessId)}`}
-              className="mt-2 inline-flex items-center text-metadata font-semibold text-findmi-700 hover:underline"
+              className="mt-2 inline-flex items-center gap-1 text-metadata font-semibold text-findmi-700 hover:underline"
             >
-              Manage location →
+              Manage Location
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           ) : publicHref ? (
-            <Link href={publicHref} className="mt-2 inline-flex items-center text-metadata font-semibold text-findmi-700 hover:underline">
-              View page →
+            <Link href={publicHref} className="mt-2 inline-flex items-center gap-1 text-metadata font-semibold text-findmi-700 hover:underline">
+              View Page
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           ) : null}
         </div>

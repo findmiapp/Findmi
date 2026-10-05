@@ -20,6 +20,7 @@ import { getPublicOrigin } from "@/lib/site-url";
 import LiveDot from "@/components/LiveDot";
 import ShareButton from "@/components/ShareButton";
 import SupabaseImage from "@/components/SupabaseImage";
+import ChevronIcon from "@/components/ChevronIcon";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import PersonalAppShell from "./PersonalAppShell";
@@ -472,8 +473,9 @@ export default async function AccountHomePage({
         <OwnerModule
           title="Coming Up For You"
           meta={
-            <Link href="/my-world" className="text-metadata font-bold text-accent underline underline-offset-2">
-              Your World →
+            <Link href="/my-world" className="flex items-center gap-1 text-metadata font-bold text-accent underline underline-offset-2">
+              Your World
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           }
         >
@@ -525,8 +527,9 @@ export default async function AccountHomePage({
         <OwnerModule
           title="Your Collections"
           meta={
-            <Link href="/my-world" className="text-metadata font-bold text-accent underline underline-offset-2">
-              Your World →
+            <Link href="/my-world" className="flex items-center gap-1 text-metadata font-bold text-accent underline underline-offset-2">
+              Your World
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           }
         >
@@ -568,8 +571,9 @@ export default async function AccountHomePage({
         <OwnerModule
           title="Inbox"
           meta={
-            <Link href="/account/messages" className="text-metadata font-bold text-accent underline underline-offset-2">
-              View Inbox →
+            <Link href="/account/messages" className="flex items-center gap-1 text-metadata font-bold text-accent underline underline-offset-2">
+              View Inbox
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           }
         >
@@ -629,12 +633,13 @@ export default async function AccountHomePage({
 
       {/* Footer utility links — demoted, unchanged destinations. */}
       <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-black/5 pt-4">
-        <Link href="/find" className="text-metadata font-semibold text-muted underline underline-offset-2 hover:text-primary">
-          Explore what&rsquo;s happening on Findmi →
+        <Link href="/find" className="flex items-center gap-1 text-metadata font-semibold text-muted underline underline-offset-2 hover:text-primary">
+          Explore what&rsquo;s happening on Findmi
+          <ChevronIcon direction="right" className="h-3 w-3" />
         </Link>
         <details className="group">
           <summary className="w-fit cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 transition hover:text-secondary [&::-webkit-details-marker]:hidden">
-            Redeem invite code
+            Redeem Invite Code
           </summary>
           <form action={goToRedeemCode} className="mt-2 flex max-w-sm flex-col gap-2 sm:flex-row">
             <input type="hidden" name="return_to" value="/account" />

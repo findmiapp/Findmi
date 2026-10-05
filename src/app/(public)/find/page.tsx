@@ -14,6 +14,7 @@ import {
 import AreaPicker from "@/components/discover/AreaPicker";
 import EventCard from "@/components/EventCard";
 import LiveDot from "@/components/LiveDot";
+import ChevronIcon from "@/components/ChevronIcon";
 import AnalyticsLink from "@/components/analytics/AnalyticsLink";
 import SearchFilterAnalytics from "@/components/analytics/SearchFilterAnalytics";
 
@@ -505,8 +506,9 @@ function FindCarouselCard({ item, position }: { item: AppearanceFeedItem; positi
         <p className="truncate text-sm font-bold text-white">{item.business.name}</p>
         <p className="line-clamp-1 text-xs text-white/85">{item.title}</p>
         {dateAndPlace && <p className="truncate text-[11px] text-white/70">{dateAndPlace}</p>}
-        <span className="mt-0.5 w-fit text-[11px] font-bold uppercase tracking-wide text-white/90 underline underline-offset-2">
-          See where they&rsquo;ll be →
+        <span className="mt-0.5 flex w-fit items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-white/90 underline underline-offset-2">
+          See where they&rsquo;ll be
+          <ChevronIcon direction="right" className="h-2.5 w-2.5" />
         </span>
       </div>
     </AnalyticsLink>
@@ -548,7 +550,10 @@ function FindAppearanceRow({ item, position }: { item: AppearanceFeedItem; posit
           {location && ` · ${location}`} · {formatAppearanceDateRange(item.start_at, item.end_at, item.description)}
         </p>
       </div>
-      <span className="shrink-0 text-[11px] font-bold uppercase text-findmi-700">View Business →</span>
+      <span className="flex shrink-0 items-center gap-1 text-[11px] font-bold uppercase text-findmi-700">
+        View Business
+        <ChevronIcon direction="right" className="h-2.5 w-2.5" />
+      </span>
     </AnalyticsLink>
   );
 }

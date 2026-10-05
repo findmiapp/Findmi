@@ -6,6 +6,7 @@ import { getCustomerOrderDetail, CUSTOMER_STATUS_LABELS } from "@/lib/customer-o
 import { FULFILLMENT_LABELS } from "@/lib/commerce/quote";
 import { formatDateShort } from "@/lib/format";
 import SupabaseImage from "@/components/SupabaseImage";
+import ChevronIcon from "@/components/ChevronIcon";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import PersonalAppShell from "../../PersonalAppShell";
 
@@ -38,8 +39,9 @@ export default async function AccountOrderDetailPage({ params }: { params: Promi
 
   return (
     <PersonalAppShell displayName={displayName}>
-      <Link href="/account/orders" className="text-metadata font-semibold text-muted hover:text-primary">
-        ← All orders
+      <Link href="/account/orders" className="inline-flex items-center gap-1 text-metadata font-semibold text-muted hover:text-primary">
+        <ChevronIcon direction="left" className="h-3 w-3" />
+        All Orders
       </Link>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">

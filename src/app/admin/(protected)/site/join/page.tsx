@@ -171,7 +171,7 @@ export default async function JoinSiteEditorPage({
       {tab === "additional" && (
         <div className="mt-4 flex flex-col gap-6">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Top reassurance line</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Top Reassurance Line</p>
             <p className="mt-1 text-xs text-ink/45">The small line shown above the Free/Pro cards.</p>
             <ReassuranceEditor reassurance={reassurance} />
           </div>
@@ -185,7 +185,7 @@ export default async function JoinSiteEditorPage({
           </div>
 
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Other options (secondary cards)</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Other Options (Secondary Cards)</p>
             <p className="mt-1 text-xs text-ink/45">
               Each card below is an additional option shown further down the page when enabled. Hiding a card
               removes it from the public page entirely.

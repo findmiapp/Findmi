@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ChevronLeftGlyph } from "@/components/admin/shell/AdminIcons";
 import { getAdminConversationDetail } from "@/lib/admin/conversations";
 import { formatDateShort, formatTime } from "@/lib/format";
 
@@ -19,8 +20,9 @@ export default async function AdminConversationDetailPage({ params }: { params: 
 
   return (
     <div>
-      <Link href="/admin/conversations" className="text-xs font-semibold text-ink/50 hover:text-ink">
-        ← Communications
+      <Link href="/admin/conversations" className="inline-flex items-center gap-1 text-xs font-semibold text-ink/50 hover:text-ink">
+        <ChevronLeftGlyph className="h-3 w-3" />
+        Communications
       </Link>
 
       <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-findmi-700">{conversation.typeLabel}</p>

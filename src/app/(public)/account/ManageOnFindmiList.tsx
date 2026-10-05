@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import NavIcon from "@/components/NavIcon";
 import type { NavIconKey } from "@/lib/navigation";
 import SupabaseImage from "@/components/SupabaseImage";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export type ManagedEntityKind = "business" | "event" | "location";
 
@@ -123,9 +124,10 @@ export default function ManageOnFindmiList({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 text-metadata font-bold text-accent underline underline-offset-2"
+          className="mt-2 flex items-center gap-1 text-metadata font-bold text-accent underline underline-offset-2"
         >
-          View All ({entities.length}) →
+          View All ({entities.length})
+          <ChevronIcon direction="right" className="h-3 w-3" />
         </button>
       )}
     </>
@@ -169,7 +171,10 @@ function EntityRow({ entity, showType }: { entity: ManagedEntity; showType: bool
           </div>
         )}
       </div>
-      <span className="shrink-0 text-microcopy font-bold text-accent">{entity.cta} →</span>
+      <span className="flex shrink-0 items-center gap-1 text-microcopy font-bold text-accent">
+        {entity.cta}
+        <ChevronIcon direction="right" className="h-3 w-3" />
+      </span>
     </Link>
   );
 }

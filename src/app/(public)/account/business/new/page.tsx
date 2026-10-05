@@ -453,7 +453,7 @@ function ProPlanOption({ dominant }: { dominant: boolean }) {
         <PlanBullet>Performance analytics</PlanBullet>
         <PlanBullet>Discovery source &amp; QR attribution</PlanBullet>
         <PlanBullet>Follower insights</PlanBullet>
-        <PlanBullet>Customer inquiries</PlanBullet>
+        <PlanBullet>Customer Inquiries</PlanBullet>
         <PlanBullet>Expanded discovery</PlanBullet>
       </ul>
     </label>

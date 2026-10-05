@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ChevronIcon from "@/components/ChevronIcon";
 import {
   applyToEventPublic,
   inviteBusinessToEventPublic,
@@ -507,8 +508,9 @@ export default function MessageButton({
                       >
                         {submitting ? "…" : "Apply to Vend"}
                       </button>
-                      <button type="button" onClick={() => setMode("message")} className="text-center text-xs font-semibold text-ink/50 transition hover:text-ink">
-                        ← Back to message
+                      <button type="button" onClick={() => setMode("message")} className="flex items-center justify-center gap-1 text-center text-xs font-semibold text-ink/50 transition hover:text-ink">
+                        <ChevronIcon direction="left" className="h-3 w-3" />
+                        Back to Message
                       </button>
                     </div>
                   )}
@@ -531,8 +533,9 @@ export default function MessageButton({
                       >
                         {submitting ? "…" : "Send Invite"}
                       </button>
-                      <button type="button" onClick={() => setMode("message")} className="text-center text-xs font-semibold text-ink/50 transition hover:text-ink">
-                        ← Back to message
+                      <button type="button" onClick={() => setMode("message")} className="flex items-center justify-center gap-1 text-center text-xs font-semibold text-ink/50 transition hover:text-ink">
+                        <ChevronIcon direction="left" className="h-3 w-3" />
+                        Back to Message
                       </button>
                     </div>
                   )}

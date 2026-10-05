@@ -2,6 +2,7 @@ import Link from "next/link";
 import { TextField } from "@/components/admin/Fields";
 import { getAdminBulletins, type HomepageBulletin } from "@/lib/homepage-bulletins";
 import { createBulletin, moveBulletin } from "./actions";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +76,7 @@ function BulletinRow({ b, canMoveUp, canMoveDown }: { b: HomepageBulletin; canMo
         </form>
       </div>
       <Link href={`/admin/bulletins/${b.id}`} className="shrink-0 text-ink/30">
-        →
+        <ChevronRightGlyph className="h-4 w-4" />
       </Link>
     </div>
   );

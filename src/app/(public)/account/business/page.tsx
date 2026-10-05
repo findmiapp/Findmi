@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getPersonalDisplayName } from "@/lib/personalGraph";
 import PersonalAppShell from "../PersonalAppShell";
 import { resolveBusinessScopedHref } from "../businessScope";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export const metadata: Metadata = {
   title: "Business",
@@ -75,7 +76,10 @@ export default async function AccountBusinessPage() {
             className="flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white p-3.5 shadow-sm transition hover:border-black/10"
           >
             <p className="truncate text-body font-semibold text-primary">{b.name}</p>
-            <span className="shrink-0 text-label font-bold uppercase text-accent">Manage →</span>
+            <span className="flex shrink-0 items-center gap-1 text-label font-bold uppercase text-accent">
+              Manage
+              <ChevronIcon direction="right" className="h-3 w-3" />
+            </span>
           </Link>
         ))}
       </div>

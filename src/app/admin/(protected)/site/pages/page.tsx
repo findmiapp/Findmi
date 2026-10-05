@@ -2,6 +2,7 @@ import Link from "next/link";
 import { TextField, TextareaField } from "@/components/admin/Fields";
 import { getAdminDiscoveryPages } from "@/lib/discovery-pages";
 import { createDiscoveryPage } from "./actions";
+import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,7 @@ export default async function DiscoveryPagesListPage({
                 {p.is_system ? "Route: /" : `Internal slug: ${p.slug} (no public route yet)`}
               </span>
             </span>
-            <span className="shrink-0 text-ink/30">→</span>
+            <ChevronRightGlyph className="h-4 w-4 shrink-0 text-ink/30" />
           </Link>
         ))}
       </div>

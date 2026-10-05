@@ -369,7 +369,7 @@ export default function QrIntelligentCreator({
                 <p className="text-body text-primary">{effectivePlacement()}</p>
               </>
             )}
-            <p className="mt-2 text-label font-bold uppercase text-subtle">Sends to</p>
+            <p className="mt-2 text-label font-bold uppercase text-subtle">Sends To</p>
             <p className="text-body text-primary">{labelForDestination()}</p>
           </div>
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import JournalCollection from "@/components/journal/JournalCollection";
+import ChevronIcon from "@/components/ChevronIcon";
 import { getBusinessBySlug, getEventBySlug, getLocationBySlug, getProductBySlug } from "@/lib/data";
 import { getPublicJournalCollection, momentsHeading, type JournalSubjectType } from "@/lib/journal-distribution";
 import { resolvePublicJournalAuthor } from "@/lib/journal-author";
@@ -83,8 +84,9 @@ export default async function JournalCollectionPage({ searchParams }: { searchPa
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-16 pt-6 sm:px-6">
-      <Link href={subject.href} className="text-xs font-semibold text-findmi-700 hover:underline">
-        ← {subject.type === "author" ? "Back to entry" : subject.name}
+      <Link href={subject.href} className="inline-flex items-center gap-1 text-xs font-semibold text-findmi-700 hover:underline">
+        <ChevronIcon direction="left" className="h-3 w-3" />
+        {subject.type === "author" ? "Back To Entry" : subject.name}
       </Link>
       <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{heading}</h1>
       {page.total != null && (
@@ -104,15 +106,17 @@ export default async function JournalCollectionPage({ searchParams }: { searchPa
       {(page.nextCursor || cursor) && (
         <nav className="mt-8 flex items-center justify-between gap-3 text-sm font-semibold">
           {cursor ? (
-            <Link href={base} className="text-ink/60 hover:text-ink">
-              ← Newest
+            <Link href={base} className="inline-flex items-center gap-1 text-ink/60 hover:text-ink">
+              <ChevronIcon direction="left" className="h-3 w-3" />
+              Newest
             </Link>
           ) : (
             <span />
           )}
           {page.nextCursor && (
-            <Link href={`${base}&cursor=${encodeURIComponent(page.nextCursor)}`} className="text-findmi-700 hover:underline">
-              Older moments →
+            <Link href={`${base}&cursor=${encodeURIComponent(page.nextCursor)}`} className="inline-flex items-center gap-1 text-findmi-700 hover:underline">
+              Older Moments
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           )}
         </nav>

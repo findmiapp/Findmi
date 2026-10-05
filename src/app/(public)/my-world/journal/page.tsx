@@ -25,6 +25,7 @@ import {
   type JournalArchiveView,
 } from "@/lib/journalArchive";
 import JournalArchiveCard from "@/components/journal/JournalArchiveCard";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -337,7 +338,7 @@ export default async function JournalIndexPage({
                 aria-label="Previous"
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:border-ink/30 hover:text-ink"
               >
-                ‹
+                <ChevronIcon direction="left" className="h-4 w-4" />
               </Link>
               <p className="text-sm font-bold text-ink">{temporalLabel}</p>
               <Link
@@ -345,7 +346,7 @@ export default async function JournalIndexPage({
                 aria-label="Next"
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-ink/60 transition hover:border-ink/30 hover:text-ink"
               >
-                ›
+                <ChevronIcon direction="right" className="h-4 w-4" />
               </Link>
             </div>
           )}

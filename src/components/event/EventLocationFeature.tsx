@@ -1,6 +1,7 @@
 import Link from "next/link";
 import SupabaseImage from "@/components/SupabaseImage";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
+import ChevronIcon from "@/components/ChevronIcon";
 import type { FindmiLocation } from "@/lib/types";
 import type { LocationPlaceContext } from "@/lib/data";
 import { cityState } from "@/lib/format";
@@ -53,8 +54,9 @@ export default function EventLocationFeature({
           {addressLine && <p className="mt-0.5 truncate text-metadata text-muted">{addressLine}</p>}
           {parentName && <p className="mt-0.5 truncate text-metadata text-subtle">Inside {parentName}</p>}
           <div className="mt-2 flex items-center gap-4">
-            <Link href={`/location/${location.slug}`} className="text-metadata font-semibold text-findmi-700 hover:underline">
-              View Location ›
+            <Link href={`/location/${location.slug}`} className="flex items-center gap-1 text-metadata font-semibold text-findmi-700 hover:underline">
+              View Location
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
             {directionsHref && (
               <DirectionsIconLink

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import AdminEditButton from "@/components/AdminEditButton";
 import CompactCard from "@/components/CompactCard";
+import ChevronIcon from "@/components/ChevronIcon";
 import { getBusinessesForPerson, getPersonBySlug } from "@/lib/data";
 
 export const revalidate = 60;
@@ -101,8 +102,9 @@ export default async function PersonPage({
       </section>
 
       <p className="mt-10 text-sm text-ink/40">
-        <Link href="/people" className="font-medium text-ink underline underline-offset-2">
-          ← All People
+        <Link href="/people" className="inline-flex items-center gap-1 font-medium text-ink underline underline-offset-2">
+          <ChevronIcon direction="left" className="h-3 w-3" />
+          All People
         </Link>
       </p>
     </div>

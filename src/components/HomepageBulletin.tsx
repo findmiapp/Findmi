@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import SupabaseImage from "./SupabaseImage";
+import ChevronIcon from "./ChevronIcon";
 import { trackEvent } from "@/lib/analytics/track";
 import type { ResolvedHomepageBulletin } from "@/lib/homepage-bulletins";
 
@@ -58,8 +59,9 @@ export default function HomepageBulletin({ bulletin }: { bulletin: ResolvedHomep
           <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
             {bulletin.metaText && <p className="text-microcopy text-ink/40">{bulletin.metaText}</p>}
             {showCta && (
-              <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold text-findmi-700">
-                {bulletin.ctaText} ›
+              <span className="flex shrink-0 items-center gap-0.5 whitespace-nowrap text-[11px] font-semibold text-findmi-700">
+                {bulletin.ctaText}
+                <ChevronIcon direction="right" className="h-2.5 w-2.5" />
               </span>
             )}
           </div>

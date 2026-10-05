@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CopyButton from "@/components/CopyButton";
 import ShareButton from "@/components/ShareButton";
+import ChevronIcon from "@/components/ChevronIcon";
 import { Panel, Stat, StatusDot, primaryButtonClass, secondaryButtonClass } from "../../owner-ui";
 import type { QrCampaignStats, QrDestinationType as QrContextKind } from "@/lib/analytics/qrCampaignDetail";
 import type { QrCampaignStatus, QrDestinationType } from "@/lib/qr-v2";
@@ -174,8 +175,9 @@ export default function QrCampaignDetailView({
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 px-4 py-6">
-      <Link href={backHref} className="w-fit text-metadata font-semibold text-muted hover:text-secondary">
-        ← Back
+      <Link href={backHref} className="flex w-fit items-center gap-1 text-metadata font-semibold text-muted hover:text-secondary">
+        <ChevronIcon direction="left" className="h-3 w-3" />
+        Back
       </Link>
 
       <Panel padded={false}>
@@ -197,7 +199,7 @@ export default function QrCampaignDetailView({
               <p className="text-metadata text-subtle">{CONTEXT_TYPE_LABELS[destinationType]}</p>
             </div>
             <div>
-              <p className="text-label font-bold uppercase text-subtle">Sends to</p>
+              <p className="text-label font-bold uppercase text-subtle">Sends To</p>
               <p className="text-body font-semibold text-primary">{destinationSummary}</p>
             </div>
             {placement && (
@@ -381,14 +383,15 @@ export default function QrCampaignDetailView({
         {!pro && (
           <p className="mt-3 text-metadata text-subtle">
             Unique visitors and downstream actions are a Pro feature.{" "}
-            <Link href="/account" className="font-semibold text-accent">
-              Upgrade to see full attribution →
+            <Link href="/account" className="inline-flex items-center gap-1 font-semibold text-accent">
+              Upgrade to see full attribution
+              <ChevronIcon direction="right" className="h-3 w-3" />
             </Link>
           </p>
         )}
         {pro && stats.actionBreakdown.length > 0 && (
           <div className="mt-3 flex flex-col gap-1.5 border-t border-black/[0.06] pt-3">
-            <p className="text-label font-bold uppercase text-subtle">From this QR</p>
+            <p className="text-label font-bold uppercase text-subtle">From This QR</p>
             {stats.actionBreakdown.map((a) => (
               <div key={a.label} className="flex items-center justify-between text-body">
                 <span className="text-secondary">{a.label}</span>
