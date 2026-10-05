@@ -99,6 +99,15 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
   const [occurrence, setOccurrence] = useState<JournalOccurrenceRef | null>(entry.occurrences[0] ?? null);
   const [visibility, setVisibility] = useState<"private" | "public">(entry.entry.visibility);
 
+  // Moment V1A / Contextual Moment Composer V1 — a real connection
+  // (Business/Product/Event, or a canonical Location) makes this
+  // contextually a "Moment"; zero connections keeps it a purely personal
+  // Journal Entry. Named once here and reused everywhere this form's
+  // copy needs to agree (heading, Location/Connections section labels,
+  // Visibility copy, Save/Publish buttons) rather than recomputed per
+  // spot.
+  const isMoment = entry.businesses.length > 0 || entry.products.length > 0 || entry.events.length > 0 || Boolean(entry.location);
+
   // Journal V2 Pass 2B — entry_date vs. location are deliberately handled
   // differently on occurrence selection. `location` is already an
   // explicit nullable field, so "has the owner already set one?" is
@@ -167,7 +176,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
 
   async function handleSave() {
     setError(null);
-    if (!title.trim()) return setError("Give this entry a title.");
+    if (!title.trim()) return setError(isMoment ? "Give this Moment a title." : "Give this entry a title.");
     if (!entryDate) return setError("Choose a date.");
     setSaving(true);
 
@@ -190,7 +199,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
   // represents has actually landed (see persistAll's own note).
   async function handlePublish() {
     setError(null);
-    if (!title.trim()) return setError("Give this entry a title.");
+    if (!title.trim()) return setError(isMoment ? "Give this Moment a title." : "Give this entry a title.");
     if (!entryDate) return setError("Choose a date.");
     setPublishing(true);
 
@@ -218,21 +227,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
     <div className="mx-auto max-w-lg px-4 py-5 sm:px-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          {/* Moment V1A — broadened from "has an Event connection" (the
-              only contextual Add Moment entry point that existed before
-              this pass) to any real connection — Business/Product/Event
-              or a canonical Location — since Business/Location/Product
-              now each have their own Add Moment entry point too. An
-              entry with zero connections is a purely personal Journal
-              Entry; any connection makes it contextually a "Moment." The
-              underlying Journal architecture/route/model is unchanged,
-              this is copy only — every field used here is already loaded
-              by getOwnJournalEntryOrNull, so no new query. */}
-          <h1 className="font-display text-lg font-bold tracking-tight text-ink">
-            {entry.businesses.length > 0 || entry.products.length > 0 || entry.events.length > 0 || entry.location
-              ? "Edit Moment"
-              : "Edit Journal Entry"}
-          </h1>
+          <h1 className="font-display text-lg font-bold tracking-tight text-ink">{isMoment ? "Edit Moment" : "Edit Journal Entry"}</h1>
           {status === "draft" && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">Draft</span>
           )}
@@ -296,7 +291,13 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
       </EditSection>
 
       <EditSection label="Location">
-        <JournalLocationPicker location={location} onLocationChange={setLocation} manual={manualLocation} onManualChange={setManualLocation} />
+        <JournalLocationPicker
+          location={location}
+          onLocationChange={setLocation}
+          manual={manualLocation}
+          onManualChange={setManualLocation}
+          selectedActionLabel={isMoment ? "Change" : undefined}
+        />
       </EditSection>
 
       <EditSection label="Connections">
@@ -313,6 +314,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
           onRemoveEvent={(id) => setEvents((prev) => prev.filter((r) => r.value !== id))}
           onSelectOccurrence={handleSelectOccurrence}
           onClearOccurrence={handleClearOccurrence}
+          momentMode={isMoment}
         />
       </EditSection>
 
@@ -346,7 +348,11 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
             just not an effective state yet. Published entries get the
             plain, accurate "Public"/"Private" they already had. */}
         <p className="mt-1.5 text-xs text-ink/50">
-          {status === "draft" && visibility === "public" ? "Public when published — not yet visible to anyone else." : visibility === "public" ? "Public — anyone can view this entry." : "Private — only you can view this entry."}
+          {status === "draft" && visibility === "public"
+            ? `Public when published — not yet visible to anyone else.`
+            : visibility === "public"
+              ? `Public — anyone can view this ${isMoment ? "Moment" : "entry"}.`
+              : `Private — only you can view this ${isMoment ? "Moment" : "entry"}.`}
         </p>
       </EditSection>
 
@@ -356,7 +362,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
         disabled={saving || publishing}
         className="mt-6 flex h-12 w-full items-center justify-center rounded-2xl bg-findmi text-sm font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600 disabled:opacity-60"
       >
-        {saving ? "Saving…" : "Save Changes"}
+        {saving ? "Saving…" : isMoment ? "Save Moment" : "Save Changes"}
       </button>
 
       {/* Journal V2 Pass 1 — the missing Publish action. Only rendered for
@@ -373,7 +379,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
           {/* Publishing While Uploads Are Active — never publish while a
               selected photo is still mid-upload; Save Changes above is
               unaffected since it never touches photo/media state. */}
-          {publishing ? "Publishing…" : hasActiveUploads ? "Finishing your photos…" : "Publish Entry"}
+          {publishing ? "Publishing…" : hasActiveUploads ? "Finishing your photos…" : isMoment ? "Publish Moment" : "Publish Entry"}
         </button>
       )}
     </div>

@@ -42,11 +42,19 @@ export default function JournalLocationPicker({
   onLocationChange,
   manual,
   onManualChange,
+  selectedActionLabel,
 }: {
   location: JournalSearchResult | null;
   onLocationChange: (location: JournalSearchResult | null) => void;
   manual: JournalManualLocationState;
   onManualChange: (manual: JournalManualLocationState) => void;
+  /** Contextual Moment Composer V1 — "Change" reads more honestly than
+   * "Remove" when this Location arrived as a known, already-connected
+   * context (not something the owner is being asked to add) — tapping it
+   * still does the exact same thing (clear the selection, reveal search)
+   * either way. Defaults to "Remove" so every existing caller (native
+   * Journal create, Edit) is unaffected. */
+  selectedActionLabel?: string;
 }) {
   const [manualOpen, setManualOpen] = useState(() => manualLocationHasText(manual));
 
@@ -77,7 +85,7 @@ export default function JournalLocationPicker({
   }
 
   if (location) {
-    return <SelectedLocationCard location={location} onRemove={() => onLocationChange(null)} />;
+    return <SelectedLocationCard location={location} onRemove={() => onLocationChange(null)} actionLabel={selectedActionLabel} />;
   }
 
   if (!manualOpen) {
@@ -127,7 +135,15 @@ export default function JournalLocationPicker({
   );
 }
 
-export function SelectedLocationCard({ location, onRemove }: { location: JournalSearchResult; onRemove: () => void }) {
+export function SelectedLocationCard({
+  location,
+  onRemove,
+  actionLabel = "Remove",
+}: {
+  location: JournalSearchResult;
+  onRemove: () => void;
+  actionLabel?: string;
+}) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white p-3">
       <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-black/5">
@@ -138,7 +154,7 @@ export function SelectedLocationCard({ location, onRemove }: { location: Journal
         {location.sublabel && <p className="truncate text-xs text-ink/55">{location.sublabel}</p>}
       </div>
       <button type="button" onClick={onRemove} className="shrink-0 text-xs font-semibold text-ink/50 hover:text-ink">
-        Remove
+        {actionLabel}
       </button>
     </div>
   );

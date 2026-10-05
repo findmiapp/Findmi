@@ -2,6 +2,7 @@
 
 import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import type { JournalSearchResult } from "./JournalSearchSelect";
 import JournalConnectionsPicker from "./JournalConnectionsPicker";
 import JournalLocationPicker, { EMPTY_MANUAL_LOCATION, manualLocationHasText, type JournalManualLocationState } from "./JournalLocationPicker";
@@ -35,11 +36,16 @@ export default function JournalCreateWizard({
   prefillBusiness,
   prefillProduct,
   prefillEvent,
+  cancelHref,
 }: {
   prefillLocation?: JournalSearchResult | null;
   prefillBusiness?: JournalSearchResult | null;
   prefillProduct?: JournalSearchResult | null;
   prefillEvent?: JournalSearchResult | null;
+  /** Contextual Moment Composer V1 — where Cancel returns to. Defaults to
+   * the native Journal archive so an existing caller that doesn't pass
+   * this (none currently, but kept optional defensively) is unaffected. */
+  cancelHref?: string;
 }) {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -111,6 +117,24 @@ export default function JournalCreateWizard({
   // vs "Edit Journal Entry" distinction.
   const isContextual = Boolean(prefillLocation || prefillBusiness || prefillProduct || prefillEvent);
 
+  // Contextual Moment Composer V1 — "what am I documenting, and what's it
+  // already connected to" must stay visible on every step, not just the
+  // first one (live QA: the known context "felt like form data" once the
+  // person moved past Step 1). Picks whichever single prefill resolved —
+  // in practice exactly one ever does, since each entity page's own
+  // "+ Add Moment" link sets only its own query param (business=/
+  // location=/product=/event=) — never a guess, just reusing whichever
+  // already-validated prop this wizard received.
+  const contextEntity: { relation: "at" | "with"; result: JournalSearchResult } | null = prefillLocation
+    ? { relation: "at", result: prefillLocation }
+    : prefillBusiness
+      ? { relation: "with", result: prefillBusiness }
+      : prefillProduct
+        ? { relation: "with", result: prefillProduct }
+        : prefillEvent
+          ? { relation: "with", result: prefillEvent }
+          : null;
+
   function handleSelectOccurrence(occ: JournalOccurrenceOption) {
     setOccurrence({ id: occ.id, event_id: occ.event_id, start_at: occ.start_at, end_at: occ.end_at, timezone: occ.timezone, location_id: occ.location?.id ?? null });
     setEntryDate(occ.localDate);
@@ -130,7 +154,7 @@ export default function JournalCreateWizard({
 
   async function goToStep2() {
     setError(null);
-    if (!title.trim()) return setError("Give this entry a title.");
+    if (!title.trim()) return setError(isContextual ? "Give this Moment a title." : "Give this entry a title.");
     if (!entryDate) return setError("Choose a date.");
     setSaving(true);
     const id = await ensureEntryId();
@@ -211,17 +235,37 @@ export default function JournalCreateWizard({
     <div className="mx-auto max-w-lg px-4 py-5 sm:px-6">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-lg font-bold tracking-tight text-ink">{isContextual ? "Add Moment" : "Create Journal Entry"}</h1>
-        <button type="button" onClick={() => router.push("/my-world/journal")} className="text-xs font-semibold text-ink/50 hover:text-ink">
+        <button type="button" onClick={() => router.push(cancelHref ?? "/my-world/journal")} className="text-xs font-semibold text-ink/50 hover:text-ink">
           Cancel
         </button>
       </div>
+
+      {/* Contextual Moment Composer V1 — compact, persistent across every
+          step (never another giant card) so the person never has to
+          rediscover why they opened this composer. */}
+      {contextEntity && (
+        <div className="mt-2.5 flex items-center gap-2.5 rounded-xl border border-findmi/20 bg-findmi-50/50 p-2.5">
+          <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-white">
+            {contextEntity.result.image_url && (
+              <Image src={contextEntity.result.image_url} alt="" fill unoptimized sizes="36px" className="object-cover" />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-findmi-700">
+              {contextEntity.relation} {contextEntity.result.label}
+            </p>
+            {contextEntity.result.sublabel && <p className="truncate text-[11px] text-ink/50">{contextEntity.result.sublabel}</p>}
+          </div>
+        </div>
+      )}
+
       <JournalStepProgress step={step} />
 
       {error && <p className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</p>}
 
       {step === 1 && (
         <div className="mt-4 flex flex-col gap-3.5">
-          <h2 className="font-display text-base font-bold tracking-tight text-ink">1. Add the basics</h2>
+          <h2 className="font-display text-base font-bold tracking-tight text-ink">{isContextual ? "1. Your Moment" : "1. Add the basics"}</h2>
 
           <JournalPhotoStrip
             items={photoItems}
@@ -284,8 +328,14 @@ export default function JournalCreateWizard({
 
       {step === 2 && (
         <div className="mt-4 flex flex-col gap-3.5">
-          <h2 className="font-display text-base font-bold tracking-tight text-ink">2. Add a location</h2>
-          <JournalLocationPicker location={location} onLocationChange={setLocation} manual={manualLocation} onManualChange={setManualLocation} />
+          <h2 className="font-display text-base font-bold tracking-tight text-ink">{isContextual ? "2. Where" : "2. Add a location"}</h2>
+          <JournalLocationPicker
+            location={location}
+            onLocationChange={setLocation}
+            manual={manualLocation}
+            onManualChange={setManualLocation}
+            selectedActionLabel={isContextual ? "Change" : undefined}
+          />
 
           <div className="mt-1 flex gap-2">
             <button
@@ -310,8 +360,10 @@ export default function JournalCreateWizard({
       {step === 3 && (
         <div className="mt-4 flex flex-col gap-4">
           <div>
-            <h2 className="font-display text-base font-bold tracking-tight text-ink">3. Add to this experience</h2>
-            <p className="mt-0.5 text-xs text-ink/50">Connect anything that was part of your day.</p>
+            <h2 className="font-display text-base font-bold tracking-tight text-ink">{isContextual ? "3. Connect" : "3. Add to this experience"}</h2>
+            <p className="mt-0.5 text-xs text-ink/50">
+              {isContextual ? "Connect anything else that was part of this Moment." : "Connect anything that was part of your day."}
+            </p>
           </div>
 
           <JournalConnectionsPicker
@@ -327,6 +379,7 @@ export default function JournalCreateWizard({
             onRemoveEvent={(id) => setEvents((prev) => prev.filter((r) => r.value !== id))}
             onSelectOccurrence={handleSelectOccurrence}
             onClearOccurrence={handleClearOccurrence}
+            momentMode={isContextual}
           />
 
           <div className="mt-1 flex gap-2">
@@ -351,21 +404,25 @@ export default function JournalCreateWizard({
 
       {step === 4 && (
         <div className="mt-4 flex flex-col gap-3">
-          <h2 className="font-display text-base font-bold tracking-tight text-ink">4. Set visibility</h2>
+          <h2 className="font-display text-base font-bold tracking-tight text-ink">{isContextual ? "4. Visibility" : "4. Set visibility"}</h2>
 
           <VisibilityOption
             active={visibility === "private"}
             onClick={() => setVisibility("private")}
             icon={<LockGlyph className="h-4 w-4" />}
             title="Private"
-            description="Only you can see this entry."
+            description={isContextual ? "Only you can see this Moment." : "Only you can see this entry."}
           />
           <VisibilityOption
             active={visibility === "public"}
             onClick={() => setVisibility("public")}
             icon={<GlobeGlyph className="h-4 w-4" />}
             title="Public"
-            description="Anyone can see this entry. It may also appear alongside places, brands, products and events you've connected."
+            description={
+              isContextual
+                ? "Anyone can see this Moment. It may also appear alongside the places, brands, products and events you've connected."
+                : "Anyone can see this entry. It may also appear alongside places, brands, products and events you've connected."
+            }
           />
 
           <div className="mt-1 flex gap-2">
@@ -388,7 +445,7 @@ export default function JournalCreateWizard({
                   button simply stays disabled with an honest reason until
                   every active upload settles, rather than attempting a
                   background "publish once ready" state machine. */}
-              {saving ? "Saving…" : hasActiveUploads ? "Finishing your photos…" : "Save Journal Entry"}
+              {saving ? "Saving…" : hasActiveUploads ? "Finishing your photos…" : isContextual ? "Save Moment" : "Save Journal Entry"}
             </button>
           </div>
         </div>

@@ -61,6 +61,27 @@ export default function SiteChrome({
   ]);
   const isOnboardingEntry = AUTH_JOURNEY_ROUTES.has(pathname);
 
+  // Contextual Moment Composer V1 — the focused Journal/Moment create and
+  // edit surfaces (never the archive/index at /my-world/journal itself,
+  // which stays a normal browsing page). Live mobile QA found the full
+  // public footer (About/For Business/Privacy/Terms/©) rendering directly
+  // beneath a sparse wizard step, making a focused creation flow read like
+  // an ordinary webpage. The public header/nav is deliberately preserved
+  // here (unlike the /account branch below) — the QA finding was about the
+  // footer and lost Moment context, not the header, and this route isn't
+  // an app shell with its own nav to avoid doubling up with.
+  const isJournalComposer = pathname === "/my-world/journal/new" || /^\/my-world\/journal\/[^/]+\/edit$/.test(pathname);
+  if (isJournalComposer) {
+    return (
+      <>
+        {adminToolbar}
+        {mobileHeader}
+        {navDesktop}
+        <div className={`flex-1 ${isAdmin ? "pt-[calc(3.5rem+1.75rem)]" : "pt-14"} md:pt-0`}>{children}</div>
+      </>
+    );
+  }
+
   if (isOwner) {
     // /account V2 — the Business app shell has a fixed bottom tab bar on
     // mobile (/account/business/<id>), so the footer gets matching bottom

@@ -56,6 +56,7 @@ export default function JournalConnectionsPicker({
   onRemoveEvent,
   onSelectOccurrence,
   onClearOccurrence,
+  momentMode,
 }: {
   businesses: JournalSearchResult[];
   products: JournalSearchResult[];
@@ -69,6 +70,12 @@ export default function JournalConnectionsPicker({
   onRemoveEvent: (id: string) => void;
   onSelectOccurrence: (occ: JournalOccurrenceOption) => void;
   onClearOccurrence: () => void;
+  /** Contextual Moment Composer V1 — "Connected" reads as acknowledging
+   * context the person already brought with them, vs. "Added to This
+   * Experience" which reads like a running tally. Presentation only, same
+   * list/state/handlers either way. Defaults to false so native Journal
+   * creation/edit (no entity-originated context) is unaffected. */
+  momentMode?: boolean;
 }) {
   const [active, setActive] = useState<ConnectionKind | null>(null);
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null);
@@ -119,7 +126,7 @@ export default function JournalConnectionsPicker({
     <div className="flex flex-col gap-3">
       {added.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink/50">Added to This Experience</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-ink/50">{momentMode ? "Connected" : "Added to This Experience"}</p>
           <div className="flex flex-col gap-1.5">
             {added.map((r) => (
               <div key={`${r.kind}-${r.value}`} className="flex items-center gap-2.5 rounded-xl border border-black/10 bg-white p-2.5">
