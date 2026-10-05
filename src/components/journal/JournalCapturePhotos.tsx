@@ -18,7 +18,7 @@ export default function JournalCapturePhotos({
   initialPhotos,
 }: {
   entryId: string;
-  initialPhotos: { id: string; url: string; isCover: boolean }[];
+  initialPhotos: { id: string; url: string; isCover: boolean; sectionId?: string | null }[];
 }) {
   // Mobile QA Repair pass — stable across renders so the photo hook's own
   // per-tile handlers stay stable too (see useJournalPhotoUpload's note on

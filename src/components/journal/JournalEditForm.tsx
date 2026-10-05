@@ -59,7 +59,7 @@ export default function JournalEditForm({ entryId, entry }: { entryId: string; e
     moveLater,
     makeCover,
   } = useJournalPhotoUpload(
-    entry.media.map((m) => ({ id: m.id, url: m.url ?? "", isCover: m.is_cover })),
+    entry.media.map((m) => ({ id: m.id, url: m.url ?? "", isCover: m.is_cover, sectionId: m.section_id ?? null })),
     ensureEntryId
   );
 

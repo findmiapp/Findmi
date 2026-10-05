@@ -77,7 +77,7 @@ export default async function JournalCapturePage({ params }: { params: Promise<{
       <div className="mt-5">
         <JournalCapturePhotos
           entryId={entry.id}
-          initialPhotos={media.map((m) => ({ id: m.id, url: m.url ?? "", isCover: m.is_cover }))}
+          initialPhotos={media.map((m) => ({ id: m.id, url: m.url ?? "", isCover: m.is_cover, sectionId: m.section_id ?? null }))}
         />
       </div>
 

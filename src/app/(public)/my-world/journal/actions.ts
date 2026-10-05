@@ -10,6 +10,13 @@ import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
 import { getAllOccurrencesForEvent } from "@/lib/data";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
+import {
+  isJournalSectionType,
+  JOURNAL_PHOTO_CAPTION_MAX,
+  JOURNAL_SECTION_NOTES_MAX,
+  JOURNAL_SECTION_TITLE_MAX,
+  type JournalEntrySectionRow,
+} from "@/lib/journal-sections";
 
 // Journal V1 Server Actions — every mutation here re-derives the caller's
 // real id from their own session (getServerSupabase().auth.getUser()) and
@@ -128,6 +135,8 @@ export async function uploadJournalPhoto(
 ): Promise<{ id: string; url: string; isCover: boolean } | { error: string }> {
   try {
     const { admin, userId } = await requireOwnEntry(entryId);
+    const sectionId = await resolveUploadSectionId(admin, entryId, formData.get("sectionId"));
+    if (sectionId && "error" in sectionId) return sectionId;
     const file = formData.get("file");
     if (!(file instanceof File)) return { error: "No file selected." };
 
@@ -186,12 +195,22 @@ export async function uploadJournalPhoto(
     // signing failure alone was already non-fatal before this change (the
     // caller simply got back an empty `url`) and still is — no new orphan
     // risk, just less time spent waiting.
+    //
+    // Moments V2 — cover is explicit is_cover, independent of position. A
+    // new photo only claims the cover when it's at position 0 AND this
+    // Moment has no cover yet (i.e. the first photo into an empty Moment);
+    // a client-supplied position 0 alone never steals an existing cover.
+    const claimCover = displayOrder === 0 && !(await entryHasCover(admin, entryId));
     const [{ data: mediaRow, error: insertError }, { data: signed }] = await Promise.all([
-      admin
-        .from("journal_entry_media")
-        .insert({ journal_entry_id: entryId, storage_path: path, display_order: displayOrder, is_cover: displayOrder === 0 })
-        .select("id")
-        .single(),
+      insertMediaRows(admin, [
+        {
+          journal_entry_id: entryId,
+          storage_path: path,
+          display_order: displayOrder,
+          is_cover: claimCover,
+          ...(sectionId ? { section_id: sectionId.id } : {}),
+        },
+      ]).then(({ data, error }) => ({ data: data?.[0] ?? null, error })),
       admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrl(path, 60 * 60),
     ]);
     if (insertError || !mediaRow) {
@@ -199,13 +218,20 @@ export async function uploadJournalPhoto(
       return { error: insertError?.message ?? "Couldn't save that photo." };
     }
 
-    return { id: mediaRow.id, url: signed?.signedUrl ?? "", isCover: displayOrder === 0 };
+    return { id: mediaRow.id, url: signed?.signedUrl ?? "", isCover: mediaRow.is_cover };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't upload that photo." };
   }
 }
 
-export async function removeJournalPhoto(entryId: string, mediaId: string): Promise<{ ok: true } | { error: string }> {
+/** Deletes one photo (row + Storage object). If it was the cover, the
+ * Moment's first remaining photo (global display_order) becomes the cover.
+ * Returns the Moment's resulting cover id so the editor can sync its
+ * explicit cover state. */
+export async function removeJournalPhoto(
+  entryId: string,
+  mediaId: string
+): Promise<{ ok: true; coverMediaId: string | null } | { error: string }> {
   try {
     const { admin } = await requireOwnEntry(entryId);
     const { data: media } = await admin
@@ -225,11 +251,12 @@ export async function removeJournalPhoto(entryId: string, mediaId: string): Prom
         .select("id")
         .eq("journal_entry_id", entryId)
         .order("display_order", { ascending: true })
+        .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
       if (next) await admin.from("journal_entry_media").update({ is_cover: true }).eq("id", next.id);
     }
-    return { ok: true };
+    return { ok: true, coverMediaId: await currentCoverId(admin, entryId) };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't remove that photo." };
   }
@@ -312,6 +339,8 @@ export interface JournalBatchFinalizeItem {
   ok: boolean;
   mediaId?: string;
   url?: string;
+  /** Whether this photo is the Moment's cover (explicit is_cover). */
+  isCover?: boolean;
   errorMessage?: string;
 }
 
@@ -359,7 +388,7 @@ export interface JournalBatchFinalizeItem {
  * logs without guessing — see this pass's own QA instrumentation note. */
 export async function finalizeJournalPhotoBatch(
   entryId: string,
-  items: { localId: string; storagePath: string; displayOrder: number }[]
+  items: { localId: string; storagePath: string; displayOrder: number; sectionId?: string | null }[]
 ): Promise<{ results: JournalBatchFinalizeItem[] } | { error: string }> {
   const perfStart = Date.now();
   try {
@@ -373,8 +402,16 @@ export async function finalizeJournalPhotoBatch(
     const expectedPrefix = `journal/${userId}/${entryId}/`;
     const results: JournalBatchFinalizeItem[] = [];
     const safeItems: typeof items = [];
+    // Moments V2 — optional target section per photo; every one must be a
+    // section of THIS Moment (the composite FK enforces it too).
+    const requestedSectionIds = [...new Set(items.map((it) => it.sectionId).filter((id): id is string => typeof id === "string" && id.length > 0))];
+    const validSectionIds = new Set(
+      requestedSectionIds.length > 0 ? (await loadEntrySections(admin, entryId)).map((s) => s.id).filter((id) => requestedSectionIds.includes(id)) : []
+    );
     for (const item of items) {
-      if (!item.storagePath.startsWith(expectedPrefix) || item.storagePath.includes("..")) {
+      if (item.sectionId && !validSectionIds.has(item.sectionId)) {
+        results.push({ localId: item.localId, ok: false, errorMessage: "That section isn't part of this Moment." });
+      } else if (!item.storagePath.startsWith(expectedPrefix) || item.storagePath.includes("..")) {
         results.push({ localId: item.localId, ok: false, errorMessage: "That upload couldn't be verified." });
       } else {
         safeItems.push(item);
@@ -388,27 +425,38 @@ export async function finalizeJournalPhotoBatch(
     const paths = safeItems.map((it) => it.storagePath);
     const { data: existingRows } = await admin
       .from("journal_entry_media")
-      .select("id, storage_path")
+      .select("id, storage_path, is_cover")
       .eq("journal_entry_id", entryId)
       .in("storage_path", paths);
     const mediaIdByPath = new Map<string, string>((existingRows ?? []).map((r) => [r.storage_path as string, r.id as string]));
+    const coverIds = new Set<string>((existingRows ?? []).filter((r) => r.is_cover).map((r) => r.id as string));
     const idempotencyMs = Date.now() - idempotencyStart;
 
     const insertStart = Date.now();
     const needsInsert = safeItems.filter((it) => !mediaIdByPath.has(it.storagePath));
     if (needsInsert.length > 0) {
-      const rows = needsInsert.map((item) => ({
-        journal_entry_id: entryId,
-        storage_path: item.storagePath,
-        display_order: Number.isInteger(item.displayOrder) && item.displayOrder >= 0 ? item.displayOrder : 0,
-        is_cover: item.displayOrder === 0,
-      }));
-      const { data: insertedRows, error: insertError } = await admin.from("journal_entry_media").insert(rows).select("id, storage_path");
+      // Moments V2 — explicit cover: only the position-0 photo of a Moment
+      // that has NO cover yet claims it (see uploadJournalPhoto's note).
+      const hasCover = await entryHasCover(admin, entryId);
+      const rows = needsInsert.map((item) => {
+        const displayOrder = Number.isInteger(item.displayOrder) && item.displayOrder >= 0 ? item.displayOrder : 0;
+        return {
+          journal_entry_id: entryId,
+          storage_path: item.storagePath,
+          display_order: displayOrder,
+          is_cover: !hasCover && displayOrder === 0,
+          ...(item.sectionId ? { section_id: item.sectionId } : {}),
+        };
+      });
+      const { data: insertedRows, error: insertError } = await insertMediaRows(admin, rows);
       if (insertError) {
         console.error("[journal] finalizeJournalPhotoBatch insert failed", { entryId, message: insertError.message });
         for (const item of needsInsert) results.push({ localId: item.localId, ok: false, errorMessage: "Couldn't save that photo." });
       } else {
-        for (const row of insertedRows ?? []) mediaIdByPath.set(row.storage_path as string, row.id as string);
+        for (const row of insertedRows ?? []) {
+          mediaIdByPath.set(row.storage_path, row.id);
+          if (row.is_cover) coverIds.add(row.id);
+        }
       }
     }
     const insertMs = Date.now() - insertStart;
@@ -427,7 +475,7 @@ export async function finalizeJournalPhotoBatch(
     for (const item of safeItems) {
       const mediaId = mediaIdByPath.get(item.storagePath);
       if (!mediaId) continue; // already pushed an error result above
-      results.push({ localId: item.localId, ok: true, mediaId, url: urlByPath.get(item.storagePath) ?? "" });
+      results.push({ localId: item.localId, ok: true, mediaId, url: urlByPath.get(item.storagePath) ?? "", isCover: coverIds.has(mediaId) });
     }
 
     console.log("[journal] finalizeJournalPhotoBatch perf", {
@@ -469,58 +517,355 @@ export async function discardJournalUpload(entryId: string, storagePath: string)
   }
 }
 
-/** Journal Photo Experience V2 — persists the owner's current photo order
- * (drag, the fallback Move Earlier/Later/Make Cover menu, or the automatic
- * end-of-batch reconciliation after a set of uploads settles). The client
- * array is authoritative for the editing session; this call makes it
- * authoritative in the database too, for exactly the media rows it names.
- *
- * Every id in `orderedMediaIds` is re-verified against this entry before
- * anything is written — an id belonging to another entry (another user's
- * or this owner's own different entry) is silently dropped rather than
- * trusted, so this can never be used to reorder media it doesn't own.
- *
- * Cover is re-derived from position (index 0 = cover), never a separate
- * field the client sets directly — "Make Cover" is just "move to the
- * front, then call this." journal_entry_media_one_cover_idx is a unique
- * partial index (at most one is_cover=true row per entry), so every row's
- * is_cover is cleared in one pass BEFORE any row is set back to true —
- * interleaving those two would risk two rows briefly both claiming
- * is_cover=true and colliding on that index. The second pass (display_order
- * + is_cover for each row) is safe to run concurrently once phase one has
- * cleared every row, since at most one of these updates ever sets
- * is_cover=true again.
- *
- * This is deliberately NOT one atomic transaction/RPC — no migration was
- * needed for this pass (see this action's own audit note): a single owner
- * never edits the same entry concurrently from two places, so the only
- * failure window is a rare partial write that leaves a stale-but-
- * recoverable order (the next successful reorder/reconciliation overwrites
- * it completely) — never cross-entry or cross-user corruption, since every
- * update stays scoped to a verified id AND this entryId. */
-export async function reorderJournalMedia(entryId: string, orderedMediaIds: string[]): Promise<{ ok: true } | { error: string }> {
+// ============================================================================
+// Moments V2 — photo sections foundation (media layout, explicit cover,
+// captions, section CRUD). No consumer UI uses sections yet; the flat
+// photo editor goes through saveJournalMediaLayout / setJournalCover.
+//
+// Invariants these maintain:
+//   - COVER = explicit is_cover (one per Moment — journal_entry_media_one_
+//     cover_idx). Never derived from position; layout saves never touch it.
+//   - ORDER = one global display_order per Moment, flattened as section 1's
+//     photos, section 2's, …, then unsectioned photos.
+//   - A photo's section_id is NULL or a section of the SAME Moment (also
+//     enforced by the composite FK in the database).
+//
+// Deploy-order safety: until the 20261006000000 migration reaches a given
+// database, reads tolerate the missing journal_entry_sections table /
+// section_id column (treated as "no sections"), and no write includes
+// section_id unless a section was explicitly requested — so the flat
+// editor keeps working either way.
+// ============================================================================
+
+type JournalAdminClient = Awaited<ReturnType<typeof requireOwnEntry>>["admin"];
+
+interface MediaLayoutRow {
+  id: string;
+  display_order: number;
+  created_at: string;
+  section_id: string | null;
+}
+
+function isMissingSectionsSchema(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "42P01" || error.code === "PGRST205" || /journal_entry_sections/.test(error.message ?? "");
+}
+
+/** This Moment's sections in display order (ties: creation time). */
+async function loadEntrySections(admin: JournalAdminClient, entryId: string): Promise<JournalEntrySectionRow[]> {
+  const { data, error } = await admin
+    .from("journal_entry_sections")
+    .select("*")
+    .eq("journal_entry_id", entryId)
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) {
+    if (isMissingSectionsSchema(error)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []) as JournalEntrySectionRow[];
+}
+
+/** Every photo of this Moment in its current global order. select("*") so
+ * this works whether or not section_id exists yet in this database. */
+async function loadEntryMediaLayout(admin: JournalAdminClient, entryId: string): Promise<MediaLayoutRow[]> {
+  const { data, error } = await admin.from("journal_entry_media").select("*").eq("journal_entry_id", entryId);
+  if (error) throw new Error(error.message);
+  return (data ?? [])
+    .map((r) => ({
+      id: r.id as string,
+      display_order: r.display_order as number,
+      created_at: r.created_at as string,
+      section_id: (r.section_id as string | null | undefined) ?? null,
+    }))
+    .sort((a, b) => a.display_order - b.display_order || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+}
+
+async function entryHasCover(admin: JournalAdminClient, entryId: string): Promise<boolean> {
+  return (await currentCoverId(admin, entryId)) !== null;
+}
+
+async function currentCoverId(admin: JournalAdminClient, entryId: string): Promise<string | null> {
+  const { data } = await admin.from("journal_entry_media").select("id").eq("journal_entry_id", entryId).eq("is_cover", true).limit(1).maybeSingle();
+  return (data?.id as string | undefined) ?? null;
+}
+
+/** Inserts media rows. If a concurrent upload claimed the cover between
+ * the caller's "does this Moment have a cover?" check and this insert, the
+ * one-cover unique index rejects the batch (23505) — retry once with no
+ * row claiming the cover rather than failing the photos. */
+async function insertMediaRows(
+  admin: JournalAdminClient,
+  rows: Record<string, unknown>[]
+): Promise<{ data: { id: string; storage_path: string; is_cover: boolean }[] | null; error: { message: string } | null }> {
+  const attempt = await admin.from("journal_entry_media").insert(rows).select("id, storage_path, is_cover");
+  if (attempt.error?.code === "23505" && rows.some((r) => r.is_cover)) {
+    const retry = await admin
+      .from("journal_entry_media")
+      .insert(rows.map((r) => ({ ...r, is_cover: false })))
+      .select("id, storage_path, is_cover");
+    return { data: (retry.data ?? null) as { id: string; storage_path: string; is_cover: boolean }[] | null, error: retry.error };
+  }
+  return { data: (attempt.data ?? null) as { id: string; storage_path: string; is_cover: boolean }[] | null, error: attempt.error };
+}
+
+/** Validates an optional upload target section (FormData value) against
+ * this Moment. Returns null when none was requested. */
+async function resolveUploadSectionId(
+  admin: JournalAdminClient,
+  entryId: string,
+  raw: FormDataEntryValue | null
+): Promise<{ id: string } | { error: string } | null> {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const sections = await loadEntrySections(admin, entryId);
+  return sections.some((s) => s.id === raw) ? { id: raw } : { error: "That section isn't part of this Moment." };
+}
+
+/** Rejects media ids that belong to ANOTHER Moment; silently drops ids that
+ * no longer exist at all (e.g. a photo removed while this save was in
+ * flight), so a stale-but-honest client never hard-fails. */
+async function screenForeignMediaIds(admin: JournalAdminClient, entryId: string, ids: string[], known: Set<string>): Promise<string | null> {
+  const unknown = [...new Set(ids.filter((id) => !known.has(id)))];
+  if (unknown.length === 0) return null;
+  const { data } = await admin.from("journal_entry_media").select("id, journal_entry_id").in("id", unknown);
+  return (data ?? []).some((r) => r.journal_entry_id !== entryId) ? "That photo isn't part of this Moment." : null;
+}
+
+/** The one layout writer. Applies an optional new section order, optional
+ * per-photo section assignments and an optional photo order, then rewrites
+ * every photo's display_order to the flattened global order. Only changed
+ * rows are written. Never touches is_cover. Not one atomic transaction
+ * (same trade-off the previous reorder accepted): a partial failure leaves
+ * a recoverable order the next save rewrites completely. */
+async function writeJournalMediaLayout(
+  admin: JournalAdminClient,
+  entryId: string,
+  opts: { sectionOrder?: string[]; mediaOrder?: string[]; sectionAssignments?: Map<string, string | null> }
+): Promise<{ ok: true } | { error: string }> {
+  const sections = await loadEntrySections(admin, entryId);
+  const sectionIds = new Set(sections.map((s) => s.id));
+
+  let orderedSections = sections;
+  if (opts.sectionOrder) {
+    if (opts.sectionOrder.some((id) => !sectionIds.has(id))) return { error: "That section isn't part of this Moment." };
+    const named = [...new Set(opts.sectionOrder)];
+    const rest = sections.filter((s) => !named.includes(s.id));
+    orderedSections = [...named.map((id) => sections.find((s) => s.id === id)!), ...rest];
+    const sectionWrites = orderedSections
+      .map((s, index) => ({ s, index }))
+      .filter(({ s, index }) => s.display_order !== index)
+      .map(({ s, index }) => admin.from("journal_entry_sections").update({ display_order: index }).eq("id", s.id).eq("journal_entry_id", entryId));
+    const sectionResults = await Promise.all(sectionWrites);
+    const sectionFailed = sectionResults.find((r) => r.error);
+    if (sectionFailed?.error) return { error: sectionFailed.error.message };
+  }
+
+  const media = await loadEntryMediaLayout(admin, entryId);
+  const mediaById = new Map(media.map((m) => [m.id, m]));
+  const known = new Set(mediaById.keys());
+  const referencedIds = [...(opts.mediaOrder ?? []), ...(opts.sectionAssignments ? [...opts.sectionAssignments.keys()] : [])];
+  const foreign = await screenForeignMediaIds(admin, entryId, referencedIds, known);
+  if (foreign) return { error: foreign };
+
+  const assignments = new Map<string, string | null>();
+  for (const [mediaId, sectionId] of opts.sectionAssignments ?? []) {
+    if (!known.has(mediaId)) continue;
+    if (sectionId !== null && !sectionIds.has(sectionId)) return { error: "That section isn't part of this Moment." };
+    assignments.set(mediaId, sectionId);
+  }
+
+  const namedOrder = [...new Set((opts.mediaOrder ?? []).filter((id) => known.has(id)))];
+  const namedSet = new Set(namedOrder);
+  const baseSequence = [...namedOrder.map((id) => mediaById.get(id)!), ...media.filter((m) => !namedSet.has(m.id))];
+
+  const effectiveSection = (m: MediaLayoutRow): string | null => {
+    const sectionId = assignments.has(m.id) ? assignments.get(m.id)! : m.section_id;
+    return sectionId && sectionIds.has(sectionId) ? sectionId : null;
+  };
+  const flattened: MediaLayoutRow[] = [
+    ...orderedSections.flatMap((s) => baseSequence.filter((m) => effectiveSection(m) === s.id)),
+    ...baseSequence.filter((m) => effectiveSection(m) === null),
+  ];
+
+  const mediaWrites = flattened.flatMap((m, index) => {
+    const patch: { display_order?: number; section_id?: string | null } = {};
+    if (m.display_order !== index) patch.display_order = index;
+    if (assignments.has(m.id) && assignments.get(m.id) !== m.section_id) patch.section_id = assignments.get(m.id)!;
+    if (Object.keys(patch).length === 0) return [];
+    return [admin.from("journal_entry_media").update(patch).eq("id", m.id).eq("journal_entry_id", entryId)];
+  });
+  const mediaResults = await Promise.all(mediaWrites);
+  const mediaFailed = mediaResults.find((r) => r.error);
+  if (mediaFailed?.error) return { error: mediaFailed.error.message };
+  return { ok: true };
+}
+
+export interface JournalMediaLayoutInput {
+  /** Optional new section order (ids of this Moment's sections). Sections
+   * not named keep their relative order after the named ones. */
+  sectionOrder?: string[];
+  /** Photos in the desired order. `sectionId` omitted = keep the photo's
+   * current section; null = unsectioned; a string = that section. Photos
+   * not named keep their relative order after the named ones. */
+  items: { mediaId: string; sectionId?: string | null }[];
+}
+
+/** Saves section order, each photo's section membership, and the flattened
+ * global photo order. Never changes the cover. */
+export async function saveJournalMediaLayout(entryId: string, layout: JournalMediaLayoutInput): Promise<{ ok: true } | { error: string }> {
   try {
     const { admin } = await requireOwnEntry(entryId);
-    if (orderedMediaIds.length === 0) return { ok: true };
-
-    const { data: existing } = await admin.from("journal_entry_media").select("id").eq("journal_entry_id", entryId).in("id", orderedMediaIds);
-    const validIds = new Set((existing ?? []).map((r) => r.id as string));
-    const safeOrder = orderedMediaIds.filter((id) => validIds.has(id));
-    if (safeOrder.length === 0) return { ok: true };
-
-    const { error: clearError } = await admin.from("journal_entry_media").update({ is_cover: false }).eq("journal_entry_id", entryId);
-    if (clearError) return { error: clearError.message };
-
-    const results = await Promise.all(
-      safeOrder.map((mediaId, index) =>
-        admin.from("journal_entry_media").update({ display_order: index, is_cover: index === 0 }).eq("id", mediaId).eq("journal_entry_id", entryId)
-      )
-    );
-    const failed = results.find((r) => r.error);
-    if (failed?.error) return { error: failed.error.message };
-    return { ok: true };
+    const sectionAssignments = new Map<string, string | null>();
+    for (const item of layout.items) {
+      if (item.sectionId !== undefined) sectionAssignments.set(item.mediaId, item.sectionId);
+    }
+    return await writeJournalMediaLayout(admin, entryId, {
+      sectionOrder: layout.sectionOrder,
+      mediaOrder: layout.items.map((it) => it.mediaId),
+      sectionAssignments: sectionAssignments.size > 0 ? sectionAssignments : undefined,
+    });
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't update photo order." };
+  }
+}
+
+/** Makes one photo the Moment's cover without moving it: its position and
+ * section stay exactly as they are. Clears the old cover first so the
+ * one-cover unique index never sees two. */
+export async function setJournalCover(entryId: string, mediaId: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { admin } = await requireOwnEntry(entryId);
+    const { data: media } = await admin.from("journal_entry_media").select("id, is_cover").eq("id", mediaId).eq("journal_entry_id", entryId).maybeSingle();
+    if (!media) return { error: "That photo isn't part of this Moment." };
+    if (media.is_cover) return { ok: true };
+    const { error: clearError } = await admin.from("journal_entry_media").update({ is_cover: false }).eq("journal_entry_id", entryId).eq("is_cover", true);
+    if (clearError) return { error: clearError.message };
+    const { error: setError } = await admin.from("journal_entry_media").update({ is_cover: true }).eq("id", mediaId).eq("journal_entry_id", entryId);
+    if (setError) return { error: setError.message };
+    return { ok: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't set the cover." };
+  }
+}
+
+/** Saves one photo's caption (trimmed; empty = no caption). */
+export async function saveJournalMediaCaption(entryId: string, mediaId: string, caption: string | null): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { admin } = await requireOwnEntry(entryId);
+    const value = typeof caption === "string" ? caption.trim() : "";
+    if (value.length > JOURNAL_PHOTO_CAPTION_MAX) return { error: `Keep photo notes under ${JOURNAL_PHOTO_CAPTION_MAX} characters.` };
+    const { data, error } = await admin
+      .from("journal_entry_media")
+      .update({ caption: value.length > 0 ? value : null })
+      .eq("id", mediaId)
+      .eq("journal_entry_id", entryId)
+      .select("id");
+    if (error) return { error: error.message };
+    if (!data || data.length === 0) return { error: "That photo isn't part of this Moment." };
+    return { ok: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't save that note." };
+  }
+}
+
+function cleanSectionText(value: string | null | undefined, max: number, label: string): { value: string | null } | { error: string } {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (trimmed.length > max) return { error: `Keep the section ${label} under ${max} characters.` };
+  return { value: trimmed.length > 0 ? trimmed : null };
+}
+
+export interface JournalSectionInput {
+  sectionType: string;
+  title?: string | null;
+  notes?: string | null;
+}
+
+/** Adds an (empty) section at the end of this Moment's sections. */
+export async function createJournalSection(
+  entryId: string,
+  input: JournalSectionInput
+): Promise<{ section: JournalEntrySectionRow } | { error: string }> {
+  try {
+    const { admin } = await requireOwnEntry(entryId);
+    if (!isJournalSectionType(input.sectionType)) return { error: "Choose a section type." };
+    const title = cleanSectionText(input.title, JOURNAL_SECTION_TITLE_MAX, "title");
+    if ("error" in title) return title;
+    const notes = cleanSectionText(input.notes, JOURNAL_SECTION_NOTES_MAX, "note");
+    if ("error" in notes) return notes;
+    const existing = await loadEntrySections(admin, entryId);
+    const nextOrder = existing.reduce((max, s) => Math.max(max, s.display_order + 1), 0);
+    const { data, error } = await admin
+      .from("journal_entry_sections")
+      .insert({ journal_entry_id: entryId, section_type: input.sectionType, title: title.value, notes: notes.value, display_order: nextOrder })
+      .select("*")
+      .single();
+    if (error || !data) return { error: error?.message ?? "Couldn't add that section." };
+    return { section: data as JournalEntrySectionRow };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't add that section." };
+  }
+}
+
+/** Updates a section's type, title and/or note — only the fields given. */
+export async function updateJournalSection(
+  entryId: string,
+  sectionId: string,
+  patch: Partial<JournalSectionInput>
+): Promise<{ section: JournalEntrySectionRow } | { error: string }> {
+  try {
+    const { admin } = await requireOwnEntry(entryId);
+    const update: { section_type?: string; title?: string | null; notes?: string | null } = {};
+    if (patch.sectionType !== undefined) {
+      if (!isJournalSectionType(patch.sectionType)) return { error: "Choose a section type." };
+      update.section_type = patch.sectionType;
+    }
+    if (patch.title !== undefined) {
+      const title = cleanSectionText(patch.title, JOURNAL_SECTION_TITLE_MAX, "title");
+      if ("error" in title) return title;
+      update.title = title.value;
+    }
+    if (patch.notes !== undefined) {
+      const notes = cleanSectionText(patch.notes, JOURNAL_SECTION_NOTES_MAX, "note");
+      if ("error" in notes) return notes;
+      update.notes = notes.value;
+    }
+    const query =
+      Object.keys(update).length > 0
+        ? admin.from("journal_entry_sections").update(update).eq("id", sectionId).eq("journal_entry_id", entryId).select("*")
+        : admin.from("journal_entry_sections").select("*").eq("id", sectionId).eq("journal_entry_id", entryId);
+    const { data, error } = await query;
+    if (error) return { error: error.message };
+    const section = data?.[0];
+    if (!section) return { error: "That section isn't part of this Moment." };
+    return { section: section as JournalEntrySectionRow };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't update that section." };
+  }
+}
+
+/** Reorders this Moment's sections and re-flattens the global photo order
+ * to match. */
+export async function reorderJournalSections(entryId: string, orderedSectionIds: string[]): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { admin } = await requireOwnEntry(entryId);
+    return await writeJournalMediaLayout(admin, entryId, { sectionOrder: orderedSectionIds });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't reorder sections." };
+  }
+}
+
+/** Deletes a section. Its photos are never deleted: the database clears
+ * their section_id (ON DELETE SET NULL (section_id)), and the global order
+ * is re-flattened so they sit with the other unsectioned photos. */
+export async function deleteJournalSection(entryId: string, sectionId: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { admin } = await requireOwnEntry(entryId);
+    const { data, error } = await admin.from("journal_entry_sections").delete().eq("id", sectionId).eq("journal_entry_id", entryId).select("id");
+    if (error) return { error: error.message };
+    if (!data || data.length === 0) return { error: "That section isn't part of this Moment." };
+    return await writeJournalMediaLayout(admin, entryId, {});
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't delete that section." };
   }
 }
 

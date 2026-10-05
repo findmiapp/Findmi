@@ -71,6 +71,11 @@ export interface JournalEntryMediaRow {
   is_cover: boolean;
   caption: string | null;
   created_at: string;
+  /** Moments V2 — optional photo section (journal_entry_sections). NULL =
+   * unsectioned; every pre-sections photo is NULL. Optional in the type
+   * so this row shape stays valid before the column reaches a given
+   * database. */
+  section_id?: string | null;
 }
 
 export interface JournalMediaWithUrl extends JournalEntryMediaRow {

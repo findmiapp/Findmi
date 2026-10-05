@@ -5,7 +5,8 @@ import { arrayMove } from "@dnd-kit/sortable";
 import {
   uploadJournalPhoto,
   removeJournalPhoto,
-  reorderJournalMedia,
+  saveJournalMediaLayout,
+  setJournalCover,
   authorizeJournalPhotoUploadBatch,
   finalizeJournalPhotoBatch,
   discardJournalUpload,
@@ -65,12 +66,19 @@ export interface JournalPhotoItem {
    * for a photo that uploaded but was removed before (or during) finalize. */
   storagePath?: string;
   errorMessage?: string;
+  /** Moments V2 — explicit cover (journal_entry_media.is_cover), never
+   * derived from grid position. */
+  isCover: boolean;
+  /** Moments V2 — target/current photo section. Undefined/null =
+   * unsectioned. Only sent to the server when set. */
+  sectionId?: string | null;
 }
 
 export interface JournalInitialPhoto {
   id: string;
   url: string;
   isCover: boolean;
+  sectionId?: string | null;
 }
 
 /** Current-batch upload progress, surfaced separately from `items` so the
@@ -136,23 +144,18 @@ interface JournalItemTiming {
   preparedBytes?: number;
 }
 
-/** Legacy-data reconciliation — a photo's cover status before this pass
- * lived entirely in is_cover (set via the old setJournalCoverPhoto star
- * button), independent of display_order. V2's model treats "whichever
- * photo is first in the grid" as the cover, so an existing entry whose
- * real cover isn't already first has it moved to the front on load — a
- * one-time visual correction; the first reorder/add/remove afterward
- * persists it back to the database via persistOrder. Array.prototype.sort
- * is spec-stable, so every non-cover photo keeps its existing relative
- * (display_order) order. */
+/** Moments V2 — the editor's photo order is exactly the authored
+ * display_order the caller already sorted by; the cover is carried as its
+ * own explicit flag and is never moved to the front. */
 function buildInitialItems(initial: JournalInitialPhoto[]): JournalPhotoItem[] {
-  const sorted = [...initial].sort((a, b) => Number(b.isCover) - Number(a.isCover));
-  return sorted.map((p) => ({
+  return initial.map((p) => ({
     localId: p.id,
     status: "complete",
     previewUrl: p.url,
     isObjectUrl: false,
     mediaId: p.id,
+    isCover: p.isCover,
+    sectionId: p.sectionId ?? null,
   }));
 }
 
@@ -244,11 +247,44 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     return index === -1 ? itemsRef.current.length : index;
   }, []);
 
+  /** Persists the grid's current photo ORDER only — never the cover
+   * (explicit is_cover) and never section membership (no sectionId is
+   * sent, so every photo keeps its current section). */
   const persistOrder = useCallback(async (entryId: string) => {
     const orderedMediaIds = itemsRef.current.filter((it) => it.status === "complete" && it.mediaId).map((it) => it.mediaId as string);
     if (orderedMediaIds.length === 0) return;
-    await reorderJournalMedia(entryId, orderedMediaIds);
+    await saveJournalMediaLayout(entryId, { items: orderedMediaIds.map((mediaId) => ({ mediaId })) });
   }, []);
+
+  /** Mirrors the server's resulting cover into local state. */
+  const syncCover = useCallback(
+    (coverMediaId: string | null) => {
+      updateItems((prev) =>
+        prev.some((it) => it.isCover !== (coverMediaId !== null && it.mediaId === coverMediaId))
+          ? prev.map((it) => {
+              const isCover = coverMediaId !== null && it.mediaId === coverMediaId;
+              return it.isCover === isCover ? it : { ...it, isCover };
+            })
+          : prev
+      );
+    },
+    [updateItems]
+  );
+
+  /** A Moment with photos always has a cover: if none is set once a batch
+   * settles (e.g. the position-0 photo failed), the first saved photo in
+   * the grid becomes the cover — the same "first photo" the previous
+   * position-based model would have chosen. */
+  const ensureCover = useCallback(
+    async (entryId: string) => {
+      const complete = itemsRef.current.filter((it) => it.status === "complete" && it.mediaId);
+      if (complete.length === 0 || complete.some((it) => it.isCover)) return;
+      const first = complete[0];
+      const result = await setJournalCover(entryId, first.mediaId as string);
+      if ("ok" in result) syncCover(first.mediaId as string);
+    },
+    [syncCover]
+  );
 
   const prepareOne = useCallback(
     async (localId: string, originalFile: File): Promise<File | null> => {
@@ -304,7 +340,15 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
           prev.map((it) => {
             if (it.localId !== result.localId) return it;
             if (it.isObjectUrl) URL.revokeObjectURL(it.previewUrl);
-            return { ...it, status: "complete", mediaId: result.mediaId, previewUrl: result.url || it.previewUrl, isObjectUrl: false, errorMessage: undefined };
+            return {
+              ...it,
+              status: "complete",
+              mediaId: result.mediaId,
+              previewUrl: result.url || it.previewUrl,
+              isObjectUrl: false,
+              errorMessage: undefined,
+              isCover: Boolean(result.isCover),
+            };
           })
         );
       } else {
@@ -339,10 +383,12 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         const formData = new FormData();
         formData.set("file", originalFile);
         formData.set("displayOrder", String(currentPosition(localId)));
+        const sectionId = itemsRef.current.find((it) => it.localId === localId)?.sectionId;
+        if (sectionId) formData.set("sectionId", sectionId);
         const result = await uploadLimit(() => uploadJournalPhoto(entryId, formData));
         if (timing) timing.uploadEnd = performance.now();
         if ("error" in result) throw new Error(result.error);
-        const { id: mediaId, url } = result;
+        const { id: mediaId, url, isCover } = result;
 
         if (removedRef.current.has(localId)) {
           await removeJournalPhoto(entryId, mediaId);
@@ -352,7 +398,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
           prev.map((it) => {
             if (it.localId !== localId) return it;
             if (it.isObjectUrl) URL.revokeObjectURL(it.previewUrl);
-            return { ...it, status: "complete", mediaId, previewUrl: url, isObjectUrl: false, errorMessage: undefined };
+            return { ...it, status: "complete", mediaId, previewUrl: url, isObjectUrl: false, errorMessage: undefined, isCover };
           })
         );
       } catch (err) {
@@ -406,7 +452,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       }
       const authByLocalId = new Map<string, JournalBatchAuthItem>(authResult.results.map((r) => [r.localId, r]));
 
-      const toFinalize: { localId: string; storagePath: string; displayOrder: number }[] = [];
+      const toFinalize: { localId: string; storagePath: string; displayOrder: number; sectionId?: string | null }[] = [];
       await Promise.all(
         chunkItems.map(async (item) => {
           if (removedRef.current.has(item.localId)) {
@@ -429,7 +475,12 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
               onSettle(item.localId);
               return;
             }
-            toFinalize.push({ localId: item.localId, storagePath: auth.path, displayOrder: currentPosition(item.localId) });
+            toFinalize.push({
+              localId: item.localId,
+              storagePath: auth.path,
+              displayOrder: currentPosition(item.localId),
+              ...(item.sectionId ? { sectionId: item.sectionId } : {}),
+            });
           } catch (err) {
             if (removedRef.current.has(item.localId)) {
               onSettle(item.localId);
@@ -470,8 +521,11 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     [prepareOne, uploadOneDirect, currentPosition, applyFinalizeResult, updateItems]
   );
 
+  /** `options.sectionId` (Moments V2) uploads the selection straight into
+   * one of this Moment's sections; omitted = unsectioned, exactly as
+   * before. */
   const handleFiles = useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | null, options?: { sectionId?: string | null }) => {
       if (!files || files.length === 0) return;
       // The Add Photos control stays protected from overlapping, uncontrolled
       // batches — JournalPhotoStrip also disables the trigger while any photo
@@ -495,6 +549,8 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         previewUrl: URL.createObjectURL(file),
         isObjectUrl: true,
         file,
+        isCover: false,
+        sectionId: options?.sectionId ?? null,
       }));
       updateItems((prev) => [...prev, ...newItems]);
       const previewsReadyAt = performance.now();
@@ -534,9 +590,11 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
 
       // Final Order Reconciliation — regardless of completion-order races or
       // any reordering the owner did while this batch was still in flight,
-      // persist display_order/is_cover from the grid's CURRENT order for
-      // every photo that's actually persisted now.
+      // persist display_order from the grid's CURRENT order for every photo
+      // that's actually persisted now (the cover is explicit and untouched;
+      // ensureCover only fills it in when the Moment has none).
       await persistOrder(entryId);
+      await ensureCover(entryId);
 
       // V3.1 — derive batch-level spans from each item's own timestamps
       // (see JournalBatchPerf's own doc comment on why a single shared
@@ -568,7 +626,7 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         setError(`${stillErrored} photo${stillErrored === 1 ? "" : "s"} couldn't be uploaded. Tap Retry on ${stillErrored === 1 ? "it" : "any of them"}.`);
       }
     },
-    [hasActiveUploads, ensureEntryId, updateItems, processChunk, runHeicItem, persistOrder]
+    [hasActiveUploads, ensureEntryId, updateItems, processChunk, runHeicItem, persistOrder, ensureCover]
   );
 
   // Mobile QA Repair pass — these are invoked once per photo tile
@@ -589,7 +647,9 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         // idempotency check means this is always safe even if the
         // earlier attempt actually succeeded server-side.
         updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "saving", errorMessage: undefined } : it)));
-        const result = await finalizeJournalPhotoBatch(entryId, [{ localId, storagePath: item.storagePath, displayOrder: currentPosition(localId) }]);
+        const result = await finalizeJournalPhotoBatch(entryId, [
+          { localId, storagePath: item.storagePath, displayOrder: currentPosition(localId), ...(item.sectionId ? { sectionId: item.sectionId } : {}) },
+        ]);
         if ("error" in result) {
           updateItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, status: "error", errorMessage: result.error } : it)));
         } else {
@@ -604,8 +664,9 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         await processChunk(entryId, [item], () => {});
       }
       await persistOrder(entryId);
+      await ensureCover(entryId);
     },
-    [ensureEntryId, currentPosition, applyFinalizeResult, runHeicItem, processChunk, persistOrder, updateItems]
+    [ensureEntryId, currentPosition, applyFinalizeResult, runHeicItem, processChunk, persistOrder, ensureCover, updateItems]
   );
 
   const handleRemove = useCallback(
@@ -635,7 +696,8 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
       }
 
       // status === "complete" — reuse the existing, already-correct
-      // deletion behavior (Storage removal + cover failover) unchanged.
+      // deletion behavior (Storage removal + cover failover) unchanged; the
+      // server reports the resulting cover so the editor stays in sync.
       const entryId = await ensureEntryId();
       if (!entryId || !item.mediaId) return;
       updateItems((prev) => prev.filter((it) => it.localId !== localId));
@@ -644,9 +706,10 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
         setError(result.error);
         return;
       }
+      syncCover(result.coverMediaId);
       await persistOrder(entryId);
     },
-    [ensureEntryId, updateItems, persistOrder]
+    [ensureEntryId, updateItems, persistOrder, syncCover]
   );
 
   const reorder = useCallback(
@@ -698,15 +761,27 @@ export function useJournalPhotoUpload(initialPhotos: JournalInitialPhoto[], ensu
     [reorder]
   );
 
+  /** Moments V2 — Make Cover marks the photo as the cover WITHOUT moving
+   * it (position and section are untouched). Only a saved photo can be the
+   * cover; on failure the previous cover is restored. */
   const makeCover = useCallback(
-    (localId: string) => {
-      reorder((prev) => {
-        const index = prev.findIndex((it) => it.localId === localId);
-        if (index <= 0) return prev;
-        return arrayMove(prev, index, 0);
-      });
+    async (localId: string) => {
+      const target = itemsRef.current.find((it) => it.localId === localId);
+      if (!target || target.status !== "complete" || !target.mediaId || target.isCover) return;
+      const previousCoverId = itemsRef.current.find((it) => it.isCover)?.mediaId ?? null;
+      syncCover(target.mediaId);
+      const entryId = await ensureEntryId();
+      if (!entryId) {
+        syncCover(previousCoverId);
+        return;
+      }
+      const result = await setJournalCover(entryId, target.mediaId);
+      if ("error" in result) {
+        syncCover(previousCoverId);
+        setError(result.error);
+      }
     },
-    [reorder]
+    [ensureEntryId, syncCover]
   );
 
   return {

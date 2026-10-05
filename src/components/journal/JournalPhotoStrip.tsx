@@ -109,6 +109,11 @@ export default function JournalPhotoStrip({
   }
 
   const activeItem = activeId ? items.find((it) => it.localId === activeId) : null;
+  // Moments V2 — the cover is explicit (item.isCover), independent of grid
+  // position. Until one is set (e.g. the very first upload is still in
+  // flight), the first photo shows as the cover — the same fallback every
+  // reader of journal_entry_media uses.
+  const coverLocalId = (items.find((it) => it.isCover) ?? items[0])?.localId ?? null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -135,7 +140,7 @@ export default function JournalPhotoStrip({
                 <JournalPhotoTile
                   key={item.localId}
                   item={item}
-                  isCover={index === 0}
+                  isCover={item.localId === coverLocalId}
                   canMoveEarlier={index > 0}
                   canMoveLater={index < items.length - 1}
                   menuOpenId={openMenuId}
@@ -348,7 +353,7 @@ const JournalPhotoTile = memo(function JournalPhotoTile({
                 building a global click-outside listener. */}
             <div className="fixed inset-0 z-10" onClick={onCloseMenu} />
             <div className="absolute bottom-6 right-0 z-20 flex w-32 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg">
-              {!isCover && (
+              {!isCover && item.status === "complete" && (
                 <PhotoMenuItem
                   label="Make Cover"
                   onClick={() => {
