@@ -4,7 +4,8 @@
  * is a new destination except the four section hubs themselves, which
  * are just indexes of these same links.
  *
- *   Home       /admin                — command center
+ *   Admin Home /admin                — command center (distinct from
+ *              "View Findmi", which leaves Admin for the public site, /)
  *   Directory  /admin/directory      — the structural graph (who/what/where)
  *   Activity   /admin/activity       — real-world, time-based activity
  *   Requests   /admin/requests       — inbound things waiting on Findmi
@@ -39,7 +40,7 @@ export interface AdminSection {
 }
 
 export const ADMIN_SECTIONS: AdminSection[] = [
-  { key: "home", label: "Home", href: "/admin", groups: [] },
+  { key: "home", label: "Admin Home", href: "/admin", groups: [] },
   {
     key: "directory",
     label: "Directory",

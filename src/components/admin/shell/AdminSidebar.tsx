@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import SignOutConfirm from "@/components/SignOutConfirm";
+import NavIcon from "@/components/NavIcon";
 import { logout } from "@/app/admin/login/actions";
 import { ADMIN_SECTIONS, isActive, resolveAdminRoute } from "../adminNavItems";
 import { AdminSectionIcon, ExternalGlyph } from "./AdminIcons";
@@ -11,8 +12,9 @@ import AdminQuickCreate from "./AdminQuickCreate";
 /** Admin V2 — the desktop (lg+) persistent rail. Every section is a
  * labelled group whose destinations stay visible (Admin is denser than
  * /account: one click to any area, no dropdowns). The section heading
- * itself opens that section's hub. Utility links (public site, account,
- * sign out) sit quietly at the bottom. */
+ * itself opens that section's hub. Utility links sit at the bottom, led by
+ * View Findmi (leave Admin for the public site, /) — never confused with
+ * Admin Home (/admin). */
 export default function AdminSidebar() {
   const pathname = usePathname();
   const { section: activeSection, item: activeItem } = resolveAdminRoute(pathname);
@@ -71,19 +73,19 @@ export default function AdminSidebar() {
       </nav>
 
       <div className="shrink-0 border-t border-black/[0.06] p-3 text-[13px]">
-        <Link href="/" className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 font-medium text-muted transition hover:bg-black/[0.03] hover:text-primary">
-          <ExternalGlyph className="h-4 w-4" />
+        <Link href="/" className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 font-semibold text-primary transition hover:bg-black/[0.03]">
+          <NavIcon name="compass" className="h-4 w-4 text-findmi-700" />
           View Findmi
         </Link>
         <Link href="/account" className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 font-medium text-muted transition hover:bg-black/[0.03] hover:text-primary">
           <ExternalGlyph className="h-4 w-4" />
-          Your account
+          Your Account
         </Link>
         <SignOutConfirm
           action={logout}
           className="block w-full rounded-lg px-2.5 py-1.5 text-left font-medium text-muted transition hover:bg-black/[0.03] hover:text-primary"
         >
-          Sign out
+          Sign Out
         </SignOutConfirm>
       </div>
     </aside>
