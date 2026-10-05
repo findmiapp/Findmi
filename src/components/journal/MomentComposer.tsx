@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import MomentContextStage from "./MomentContextStage";
 import MomentPhotosStage from "./MomentPhotosStage";
 import MomentSheet from "./MomentSheet";
+import TimeSelect from "@/components/scheduling/TimeSelect";
 import { useJournalPhotoUpload } from "./useJournalPhotoUpload";
 import {
   startJournalDraft,
@@ -384,16 +385,18 @@ export default function MomentComposer({
                     fieldError === "date" ? "border-red-400" : "border-black/10 focus:border-findmi/50"
                   }`}
                 />
-                <input
-                  type="time"
-                  value={entryTime}
-                  onChange={(e) => {
-                    setEntryTime(e.target.value);
-                    setDateTouched(true);
-                  }}
-                  aria-label="Time (optional)"
-                  className="h-11 w-32 shrink-0 rounded-xl border border-black/10 bg-white px-3 text-sm text-ink focus:border-findmi/50 focus:outline-none"
-                />
+                <div className="w-36 shrink-0">
+                  <TimeSelect
+                    value={entryTime}
+                    onChange={(t) => {
+                      setEntryTime(t);
+                      setDateTouched(true);
+                    }}
+                    placeholder="Add Time"
+                    ariaLabel="Time (optional)"
+                    className="h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm text-ink focus:border-findmi/50 focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
           </div>

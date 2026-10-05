@@ -8,6 +8,7 @@ import { formatDateShortInZone, formatTimeInZone } from "@/lib/format";
 import { resolveEffectiveEventMarket } from "@/lib/event-markets";
 import { RelationField } from "./RelationPicker";
 import OccurrenceVendorManager from "./OccurrenceVendorManager";
+import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 
 const inputClass =
   "rounded-lg border border-black/10 bg-white px-2.5 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none";
@@ -255,27 +256,17 @@ export default function EventOccurrencesEditor({
                 <p className="mt-1 text-[11px] text-ink/40">Save this event before managing vendors for this date.</p>
               )}
 
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-ink/60">Start</span>
-                  <input
-                    type="datetime-local"
-                    name={`start_at_${row.id}`}
-                    value={row.start_at}
-                    onChange={(e) => updateRow(row.id, { start_at: e.target.value })}
-                    className={`${inputClass} w-full`}
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-ink/60">End</span>
-                  <input
-                    type="datetime-local"
-                    name={`end_at_${row.id}`}
-                    value={row.end_at}
-                    onChange={(e) => updateRow(row.id, { end_at: e.target.value })}
-                    className={`${inputClass} w-full`}
-                  />
-                </label>
+              <div className="mt-2">
+                <DateTimeRangeFields
+                  key={row.id}
+                  startName={`start_at_${row.id}`}
+                  endName={`end_at_${row.id}`}
+                  defaultStart={row.start_at}
+                  defaultEnd={row.end_at}
+                  inputClassName={`${inputClass} w-full`}
+                  labelClassName="mb-1 block text-xs font-medium text-ink/60"
+                  onChange={({ start, end }) => updateRow(row.id, { start_at: start, end_at: end })}
+                />
               </div>
 
               <div className="mt-2">

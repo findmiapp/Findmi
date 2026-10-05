@@ -2,6 +2,7 @@ import {
   CheckboxField,
   CheckboxList,
   DateTimeField,
+  DateTimeRangeField,
   NumberField,
   SelectField,
   TextField,
@@ -158,22 +159,16 @@ export default function EventForm({
             label: "Dates & Locations",
             content: (
               <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <DateTimeField
-                    label="Start Date & Time"
-                    name="start_at"
-                    defaultValue={isoToLocalDateTime(event?.start_at ?? null)}
-                    required
-                    hint="Eastern time (America/New_York)."
-                  />
-                  <DateTimeField
-                    label="End Date & Time"
-                    name="end_at"
-                    defaultValue={isoToLocalDateTime(event?.end_at ?? null)}
-                    required
-                    hint="Required — must be after the start time. Also Eastern time. Used to keep the event visible on the site for its whole real duration, not just until it starts."
-                  />
-                </div>
+                <DateTimeRangeField
+                  startLabel="Start Date & Time"
+                  endLabel="End Date & Time"
+                  startName="start_at"
+                  endName="end_at"
+                  defaultStart={isoToLocalDateTime(event?.start_at ?? null)}
+                  defaultEnd={isoToLocalDateTime(event?.end_at ?? null)}
+                  required
+                  hint="Eastern time (America/New_York). End must be after Start; it keeps the event visible for its whole real duration, not just until it starts."
+                />
 
                 <div className="rounded-2xl border border-black/10 p-4">
                   <EventOccurrencesEditor

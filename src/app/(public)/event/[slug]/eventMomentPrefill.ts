@@ -3,6 +3,7 @@ import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { getBusinessesForEvent, getAllOccurrencesForEvent, findLocationByExactVenue } from "@/lib/data";
 import type { FindmiEvent } from "@/lib/types";
 import { resolveAppearanceHostBusiness, resolveCanonicalHostBusiness } from "./EventPublicView";
+import { pickTodayOccurrence } from "@/lib/schedule-time";
 
 // Moments V2 — Event → Add Moment is a PREFILL for a brand-new Moment
 // (/my-world/journal/new?event=<id>), never "reopen my latest Moment for
@@ -12,10 +13,11 @@ import { resolveAppearanceHostBusiness, resolveCanonicalHostBusiness } from "./E
 // writes anything. Server-only (imported by the new-Moment page).
 //
 // Same determinism rules as before:
-//   - an occurrence is only prefilled when the Event has exactly ONE real
-//     occurrence (past included — Moments document things that already
-//     happened); with 2+ the composer asks "Which date was this?" instead
-//     of guessing;
+//   - an occurrence is only prefilled when it's unambiguous: the Event's
+//     only occurrence (past included), or today's single occurrence /
+//     the single one happening right now (in the Event's timezone); else
+//     the composer asks "Which date was this?", opening at today / the
+//     nearest date, instead of guessing;
 //   - the Location comes from that occurrence, else from any occurrence
 //     with a Location, else from an exact venue match;
 //   - a host Business is only prefilled when unambiguous: the canonical
@@ -43,14 +45,16 @@ export async function resolveEventMomentPrefill(
   event: Pick<FindmiEvent, "id" | "venue_name" | "address"> & { host_business_id?: string | null }
 ): Promise<EventMomentPrefill> {
   const [occurrences, businesses, matchedLocation, appearanceHost, canonicalHost] = await Promise.all([
-    getAllOccurrencesForEvent(event.id),
+    getAllOccurrencesForEvent(event.id, 500),
     getBusinessesForEvent(event.id),
     event.venue_name ? findLocationByExactVenue(event.venue_name, event.address) : Promise.resolve(null),
     resolveAppearanceHostBusiness(event.id),
     resolveCanonicalHostBusiness(event.host_business_id),
   ]);
 
-  const single = occurrences.length === 1 ? occurrences[0] : null;
+  // Field QA UX Pass 1 — the one date, or else today's date when it's
+  // unambiguous (judged in the Event's own timezone); otherwise none.
+  const single = occurrences.length === 1 ? occurrences[0] : pickTodayOccurrence(occurrences).auto;
   const occurrenceLocation = single?.location ?? occurrences.find((o) => o.location)?.location ?? null;
   const locationCandidate = occurrenceLocation
     ? { id: occurrenceLocation.id, name: occurrenceLocation.name, city: occurrenceLocation.city, state: occurrenceLocation.state, image: occurrenceLocation.logo_url ?? occurrenceLocation.cover_image_url }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -788,28 +789,17 @@ export default async function ManageEventPage({
                     </summary>
                     <div className="mt-3 flex flex-col gap-4 rounded-2xl border border-black/10 p-4">
                       <form action={updateMemberEventPrimaryDate.bind(null, id)} className="flex flex-col gap-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <label className="block">
-                            <span className="mb-1.5 block text-metadata font-medium text-secondary">Starts</span>
-                            <input
-                              type="datetime-local"
-                              name="start_at"
-                              required
-                              defaultValue={isoToLocalDateTime(event.start_at)}
-                              className={inputClass}
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="mb-1.5 block text-metadata font-medium text-secondary">Ends</span>
-                            <input
-                              type="datetime-local"
-                              name="end_at"
-                              required
-                              defaultValue={isoToLocalDateTime(event.end_at)}
-                              className={inputClass}
-                            />
-                          </label>
-                        </div>
+                        <DateTimeRangeFields
+                          startName="start_at"
+                          endName="end_at"
+                          defaultStart={isoToLocalDateTime(event.start_at)}
+                          defaultEnd={isoToLocalDateTime(event.end_at)}
+                          startLabel="Starts"
+                          endLabel="Ends"
+                          required
+                          inputClassName={inputClass}
+                          labelClassName="mb-1.5 block text-metadata font-medium text-secondary"
+                        />
                         <button type="submit" className={`w-fit ${primaryButtonClass}`}>
                           Save Date
                         </button>

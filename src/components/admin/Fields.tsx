@@ -3,6 +3,8 @@
 // library needed. Consistent full-width, mobile-friendly sizing (text-base
 // avoids iOS Safari auto-zoom on focus) and human-language labels.
 
+import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
+
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none disabled:bg-black/[0.03] disabled:text-ink/40";
 
@@ -114,6 +116,46 @@ export function DateTimeField({
         className={inputClass}
       />
     </Wrap>
+  );
+}
+
+/** Field QA UX Pass 1 — a Start/End pair (shared DateTimeRangeFields):
+ * End follows Start and can't be before it; 15-minute time choices with an
+ * exact-time escape. Submits the same "YYYY-MM-DDTHH:mm" values under the
+ * same names as two DateTimeFields would. */
+export function DateTimeRangeField({
+  startLabel,
+  endLabel,
+  startName,
+  endName,
+  defaultStart,
+  defaultEnd,
+  required,
+  hint,
+}: {
+  startLabel: string;
+  endLabel: string;
+  startName: string;
+  endName: string;
+  defaultStart?: string | null;
+  defaultEnd?: string | null;
+  required?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div className="block">
+      <DateTimeRangeFields
+        startName={startName}
+        endName={endName}
+        defaultStart={defaultStart}
+        defaultEnd={defaultEnd}
+        startLabel={startLabel}
+        endLabel={endLabel}
+        required={required}
+        inputClassName={inputClass}
+      />
+      {hint && <span className="mt-1 block text-xs text-ink/45">{hint}</span>}
+    </div>
   );
 }
 

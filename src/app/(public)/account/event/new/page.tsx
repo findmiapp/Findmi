@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getHostEventEligibility } from "@/lib/entitlements";
+import DateTimeRangeFields from "@/components/scheduling/DateTimeRangeFields";
 import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
 import { createMemberEvent } from "../actions";
@@ -188,28 +189,17 @@ export default async function AddEventPage({
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block">
-              <span className="mb-1.5 block text-body font-medium text-primary">Start date &amp; time</span>
-              <input
-                type="datetime-local"
-                name="start_at"
-                required
-                defaultValue={submittedStartAt ?? ""}
-                className={inputClass}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-body font-medium text-primary">End date &amp; time</span>
-              <input
-                type="datetime-local"
-                name="end_at"
-                required
-                defaultValue={submittedEndAt ?? ""}
-                className={inputClass}
-              />
-            </label>
-          </div>
+          <DateTimeRangeFields
+            startName="start_at"
+            endName="end_at"
+            defaultStart={submittedStartAt}
+            defaultEnd={submittedEndAt}
+            startLabel="Starts"
+            endLabel="Ends"
+            required
+            inputClassName={inputClass}
+            labelClassName="mb-1.5 block text-body font-medium text-primary"
+          />
 
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Event

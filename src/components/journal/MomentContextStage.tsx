@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
 import NavIcon from "@/components/NavIcon";
 import MomentSearch, { MOMENT_TYPE_ICON, MOMENT_TYPE_LABEL, type MomentObjectType, type MomentSearchResult } from "./MomentSearch";
 import { getEventOccurrencesForJournal, type JournalOccurrenceOption } from "@/app/(public)/my-world/journal/actions";
+import { pickTodayOccurrence } from "@/lib/schedule-time";
 import { EMPTY_MANUAL_LOCATION, manualLocationHasText, type JournalManualLocationState, type MomentEventPick, type MomentPick } from "@/lib/moment-composer";
 
 export function formatOccurrence(occ: { start_at: string; end_at: string; timezone: string }): string {
@@ -58,11 +59,16 @@ export default function MomentContextStage({
   const [manualOpen, setManualOpen] = useState(() => manualLocationHasText(manual));
   const [choices, setChoices] = useState<Record<string, JournalOccurrenceOption[] | "loading">>({});
 
-  async function resolveDates(eventId: string) {
+  /** Field QA UX Pass 1 — documenting a visit usually means TODAY:
+   * one date → it; exactly one today (or exactly one happening now) → it;
+   * otherwise the chooser opens at today / the nearest date, never a
+   * guess. `choose` (Change Date) always opens the chooser. */
+  async function resolveDates(eventId: string, choose = false) {
     setChoices((prev) => ({ ...prev, [eventId]: "loading" }));
     const options = await getEventOccurrencesForJournal(eventId);
-    if (options.length === 1) {
-      onSelectOccurrence(options[0]);
+    const auto = options.length === 1 ? options[0] : pickTodayOccurrence(options).auto;
+    if (!choose && auto) {
+      onSelectOccurrence(auto);
       setChoices((prev) => omitKey(prev, eventId));
       return;
     }
@@ -137,30 +143,17 @@ export default function MomentContextStage({
         )}
         {state === "loading" && <p className="mt-2 text-xs text-ink/40">Checking dates…</p>}
         {Array.isArray(state) && (
-          <div className="mt-2 flex flex-col gap-1.5">
-            <p className="text-xs font-semibold text-ink/60">Which date was this?</p>
-            <div className="flex max-h-56 flex-col gap-1.5 overflow-y-auto">
-              {state.map((occ) => (
-                <button
-                  key={occ.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectOccurrence(occ);
-                    setChoices((prev) => omitKey(prev, event.value));
-                  }}
-                  className={`rounded-xl border px-3 py-2 text-left text-sm transition hover:border-findmi/40 hover:bg-findmi-50 ${
-                    event.occurrence?.id === occ.id ? "border-findmi bg-findmi-50" : "border-black/10 bg-white"
-                  }`}
-                >
-                  {formatOccurrence(occ)}
-                  {occ.location && <span className="block truncate text-xs text-ink/50">{occ.location.name}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
+          <OccurrenceChooser
+            options={state}
+            selectedId={event.occurrence?.id ?? null}
+            onPick={(occ) => {
+              onSelectOccurrence(occ);
+              setChoices((prev) => omitKey(prev, event.value));
+            }}
+          />
         )}
         {event.occurrence && state === undefined && (
-          <button type="button" onClick={() => void resolveDates(event.value)} className="mt-1.5 text-[11px] font-semibold text-ink/45 hover:text-ink">
+          <button type="button" onClick={() => void resolveDates(event.value, true)} className="mt-1.5 text-[11px] font-semibold text-ink/45 hover:text-ink">
             Change Date
           </button>
         )}
@@ -279,6 +272,80 @@ export default function MomentContextStage({
         )}
         {whoEvents.map(eventCard)}
       </section>
+    </div>
+  );
+}
+
+/** Field QA UX Pass 1 — compact date chooser for Events with many dates:
+ * one line per date, month dividers, today's date(s) marked, and the list
+ * opens scrolled to today (else the next upcoming, else the latest past)
+ * instead of the oldest date. Every date stays reachable. */
+function OccurrenceChooser({
+  options,
+  selectedId,
+  onPick,
+}: {
+  options: JournalOccurrenceOption[];
+  selectedId: string | null;
+  onPick: (occ: JournalOccurrenceOption) => void;
+}) {
+  const sorted = [...options].sort((a, b) => a.start_at.localeCompare(b.start_at));
+  const { todayIds, anchorId } = pickTodayOccurrence(sorted);
+  const focusId = selectedId && sorted.some((o) => o.id === selectedId) ? selectedId : anchorId;
+  const listRef = useRef<HTMLDivElement>(null);
+  const focusRef = useRef<HTMLButtonElement>(null);
+  const locations = new Set(sorted.map((o) => o.location?.name ?? ""));
+  const showLocation = locations.size > 1;
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const target = focusRef.current;
+    if (list && target) list.scrollTop = Math.max(0, target.offsetTop - 28);
+  }, []);
+
+  let lastMonth = "";
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      <p className="text-xs font-semibold text-ink/60">
+        Which date was this? <span className="font-normal text-ink/40">· {sorted.length} dates</span>
+      </p>
+      <div ref={listRef} className="relative max-h-64 overflow-y-auto rounded-xl border border-black/10 bg-white">
+        {sorted.map((occ) => {
+          const month = new Date(occ.start_at).toLocaleDateString("en-US", { timeZone: occ.timezone, month: "long", year: "numeric" });
+          const header = month !== lastMonth ? month : null;
+          lastMonth = month;
+          const isToday = todayIds.has(occ.id);
+          const isSelected = occ.id === selectedId;
+          const day = new Date(occ.start_at).toLocaleDateString("en-US", { timeZone: occ.timezone, weekday: "short", month: "short", day: "numeric" });
+          const time = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { timeZone: occ.timezone, hour: "numeric", minute: "2-digit" });
+          return (
+            <div key={occ.id}>
+              {header && <p className="sticky top-0 z-10 bg-mist/95 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/45">{header}</p>}
+              <button
+                ref={occ.id === focusId ? focusRef : undefined}
+                type="button"
+                onClick={() => onPick(occ)}
+                aria-pressed={isSelected}
+                className={`flex w-full items-center gap-2 border-t border-black/[0.05] px-3 py-2 text-left transition hover:bg-findmi-50 ${
+                  isSelected ? "bg-findmi-50" : isToday ? "bg-findmi-50/50" : ""
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className={`text-sm ${isSelected || isToday ? "font-semibold text-ink" : "text-ink/80"}`}>{day}</span>
+                    {isToday && <span className="rounded-full bg-findmi px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">Today</span>}
+                  </span>
+                  {showLocation && occ.location && <span className="block truncate text-[11px] text-ink/45">{occ.location.name}</span>}
+                </span>
+                <span className="shrink-0 text-xs text-ink/55">
+                  {time(occ.start_at)}–{time(occ.end_at)}
+                </span>
+                {isSelected && <span className="shrink-0 text-xs font-bold text-findmi-700">Selected</span>}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -6,6 +6,8 @@ import EventLocationField, {
   type SelectedLocationDetail,
 } from "@/components/account/EventLocationField";
 import { crossesMidnight } from "@/lib/schedule-dates";
+import TimeSelect from "@/components/scheduling/TimeSelect";
+import { addMinutesLocal, DEFAULT_DURATION_MINUTES, splitLocalDateTime } from "@/lib/schedule-time";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -44,6 +46,16 @@ export default function EventDateFieldsForm({
   const [timeError, setTimeError] = useState<string | null>(null);
   const [endTime, setEndTime] = useState(defaultValues.end_time);
   const [startTime, setStartTime] = useState(defaultValues.start_time);
+  // Field QA UX Pass 1 — End follows Start until it's deliberately set
+  // (an existing date's End counts as set, so loading changes nothing).
+  const [endTouched, setEndTouched] = useState(Boolean(defaultValues.end_time));
+
+  function changeStartTime(next: string) {
+    setStartTime(next);
+    if (next && (!endTouched || !endTime || endTime === next)) {
+      setEndTime(splitLocalDateTime(addMinutesLocal(`2000-01-01T${next}`, DEFAULT_DURATION_MINUTES)).time);
+    }
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     const form = e.currentTarget;
@@ -60,22 +72,19 @@ export default function EventDateFieldsForm({
 
   return (
     <form action={action} onSubmit={handleSubmit} className="flex flex-col gap-2">
-      <div className="grid grid-cols-3 gap-2">
-        <input type="date" name="date" required defaultValue={defaultValues.date} className={inputClass} />
-        <input
-          type="time"
-          name="start_time"
-          required
-          defaultValue={defaultValues.start_time}
-          onChange={(e) => setStartTime(e.target.value)}
-          className={inputClass}
-        />
-        <input
-          type="time"
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <input type="date" name="date" required defaultValue={defaultValues.date} aria-label="Date" className={`${inputClass} col-span-2 sm:col-span-1`} />
+        <TimeSelect name="start_time" required value={startTime} onChange={changeStartTime} placeholder="Start" ariaLabel="Start time" className={inputClass} />
+        <TimeSelect
           name="end_time"
           required
-          defaultValue={defaultValues.end_time}
-          onChange={(e) => setEndTime(e.target.value)}
+          value={endTime}
+          onChange={(next) => {
+            setEndTime(next);
+            setEndTouched(true);
+          }}
+          placeholder="End"
+          ariaLabel="End time"
           className={inputClass}
         />
       </div>

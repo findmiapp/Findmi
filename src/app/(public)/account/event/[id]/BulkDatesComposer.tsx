@@ -6,6 +6,17 @@ import EventLocationField, {
   type SelectedLocationDetail,
 } from "@/components/account/EventLocationField";
 import EventDateFieldsForm, { type EventDateFieldValues } from "./EventDateFieldsForm";
+import TimeSelect from "@/components/scheduling/TimeSelect";
+import { addMinutesLocal, DEFAULT_DURATION_MINUTES, splitLocalDateTime } from "@/lib/schedule-time";
+
+// Field QA UX Pass 1 — a range's End date never starts before its Start
+// date, and an empty End time follows a newly chosen Start time.
+function endDateFor(start: string, end: string): string {
+  return start && (!end || end < start) ? start : end;
+}
+function endTimeFor(start: string, end: string): string {
+  return start && !end ? splitLocalDateTime(addMinutesLocal(`2000-01-01T${start}`, DEFAULT_DURATION_MINUTES)).time : end;
+}
 import {
   bulkGenerateEventDates,
   addMemberEventDate,
@@ -363,21 +374,37 @@ export default function BulkDatesComposer({
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Starts</span>
-                <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} className={inputClass} />
+                <input
+                  type="date"
+                  value={rangeStart}
+                  onChange={(e) => {
+                    setRangeStart(e.target.value);
+                    setRangeEnd((end) => endDateFor(e.target.value, end));
+                  }}
+                  className={inputClass}
+                />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Ends</span>
-                <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} className={inputClass} />
+                <input type="date" value={rangeEnd} min={rangeStart || undefined} onChange={(e) => setRangeEnd(e.target.value)} className={inputClass} />
               </label>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Start time</span>
-                <input type="time" value={rangeStartTime} onChange={(e) => setRangeStartTime(e.target.value)} className={inputClass} />
+                <TimeSelect
+                  value={rangeStartTime}
+                  onChange={(t) => {
+                    setRangeStartTime(t);
+                    setRangeEndTime((end) => endTimeFor(t, end));
+                  }}
+                  ariaLabel="Start time"
+                  className={inputClass}
+                />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">End time</span>
-                <input type="time" value={rangeEndTime} onChange={(e) => setRangeEndTime(e.target.value)} className={inputClass} />
+                <TimeSelect value={rangeEndTime} onChange={setRangeEndTime} ariaLabel="End time" className={inputClass} />
               </label>
             </div>
             {rangeStartTime && rangeEndTime && crossesMidnight(rangeStartTime, rangeEndTime) && (
@@ -402,11 +429,19 @@ export default function BulkDatesComposer({
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Starts</span>
-                <input type="date" value={recurStart} onChange={(e) => setRecurStart(e.target.value)} className={inputClass} />
+                <input
+                  type="date"
+                  value={recurStart}
+                  onChange={(e) => {
+                    setRecurStart(e.target.value);
+                    setRecurEnd((end) => endDateFor(e.target.value, end));
+                  }}
+                  className={inputClass}
+                />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Ends</span>
-                <input type="date" value={recurEnd} onChange={(e) => setRecurEnd(e.target.value)} className={inputClass} />
+                <input type="date" value={recurEnd} min={recurStart || undefined} onChange={(e) => setRecurEnd(e.target.value)} className={inputClass} />
               </label>
             </div>
             <div>
@@ -429,11 +464,19 @@ export default function BulkDatesComposer({
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">Start time</span>
-                <input type="time" value={recurStartTime} onChange={(e) => setRecurStartTime(e.target.value)} className={inputClass} />
+                <TimeSelect
+                  value={recurStartTime}
+                  onChange={(t) => {
+                    setRecurStartTime(t);
+                    setRecurEndTime((end) => endTimeFor(t, end));
+                  }}
+                  ariaLabel="Start time"
+                  className={inputClass}
+                />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-ink/70">End time</span>
-                <input type="time" value={recurEndTime} onChange={(e) => setRecurEndTime(e.target.value)} className={inputClass} />
+                <TimeSelect value={recurEndTime} onChange={setRecurEndTime} ariaLabel="End time" className={inputClass} />
               </label>
             </div>
             {recurStartTime && recurEndTime && crossesMidnight(recurStartTime, recurEndTime) && (
@@ -486,11 +529,19 @@ export default function BulkDatesComposer({
               <div className="flex flex-wrap items-end gap-2 rounded-xl border border-black/10 bg-mist/30 p-3">
                 <label className="block">
                   <span className="mb-1 block text-[11px] font-medium text-ink/60">Start</span>
-                  <input type="time" value={bulkStartTime} onChange={(e) => setBulkStartTime(e.target.value)} className={`${inputClass} w-32`} />
+                  <TimeSelect
+                    value={bulkStartTime}
+                    onChange={(t) => {
+                      setBulkStartTime(t);
+                      setBulkEndTime((end) => endTimeFor(t, end));
+                    }}
+                    ariaLabel="Start time"
+                    className={`${inputClass} w-36`}
+                  />
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-[11px] font-medium text-ink/60">End</span>
-                  <input type="time" value={bulkEndTime} onChange={(e) => setBulkEndTime(e.target.value)} className={`${inputClass} w-32`} />
+                  <TimeSelect value={bulkEndTime} onChange={setBulkEndTime} ariaLabel="End time" className={`${inputClass} w-36`} />
                 </label>
                 <button type="button" onClick={applyBulkHoursToDraft} className={secondaryButtonClass}>
                   Apply hours to {selectedIds.size}

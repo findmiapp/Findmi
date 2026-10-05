@@ -32,8 +32,10 @@ function typeLabel(type: string): string {
 }
 
 /** Moments V2 — Stage 2, "Photos". The simple path stays simple: Add
- * Photos → they appear → Continue. Notes on individual photos and
- * organizing into sections are optional and quiet. Built entirely on the
+ * Photos → they appear → Continue. Field QA UX Pass 1 — organizing is
+ * still optional but no longer hidden: once a photo is saved, a clear
+ * "Organize Your Photos" area offers + Add Section (and points to photo
+ * notes); once a section exists, that area becomes the section manager. Built entirely on the
  * existing photo pipeline (useJournalPhotoUpload / JournalPhotoStrip) and
  * the photo-section foundation actions; the cover stays explicit and
  * independent of order and sections. */
@@ -50,7 +52,6 @@ export default function MomentPhotosStage({
   ensureEntryId: () => Promise<string | null>;
   onError: (message: string | null) => void;
 }) {
-  const [organizing, setOrganizing] = useState(false);
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -90,7 +91,6 @@ export default function MomentPhotosStage({
       return;
     }
     setSections((prev) => [...prev, result.section]);
-    setOrganizing(true);
     const hasLoose = items.some((it) => it.status === "complete" && groupOf(it.sectionId) === null);
     setSheet(hasLoose ? { kind: "assign", sectionId: result.section.id } : null);
   }
@@ -143,7 +143,7 @@ export default function MomentPhotosStage({
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="font-display text-base font-bold tracking-tight text-ink">Photos</h2>
-        <p className="text-sm text-ink/55">Add as many as you like. Notes and sections are optional.</p>
+        <p className="text-sm text-ink/55">Add as many as you like.</p>
       </div>
 
       {!grouped ? (
@@ -164,6 +164,10 @@ export default function MomentPhotosStage({
             </p>
           )}
           {photos.error && <p className="text-xs text-red-600">{photos.error}</p>}
+          <div>
+            <h3 className="font-display text-base font-bold tracking-tight text-ink">Organize Your Photos</h3>
+            <p className="text-sm text-ink/55">Tap &bull;&bull;&bull; on a photo to move it to a section or add a note.</p>
+          </div>
           {sections.map((section, index) => (
             <SectionBlock
               key={section.id}
@@ -206,21 +210,32 @@ export default function MomentPhotosStage({
         </>
       )}
 
-      {(grouped || organizing) && (
+      {grouped && (
         <button
           type="button"
           onClick={() => setSheet({ kind: "addSection" })}
           disabled={busy}
-          className="flex h-11 items-center justify-center rounded-2xl border border-dashed border-black/20 text-sm font-semibold text-ink/70 transition hover:border-findmi/50 hover:text-findmi-700 disabled:opacity-60"
+          className="flex h-11 items-center justify-center rounded-2xl border border-findmi/40 bg-white text-sm font-semibold text-findmi-700 transition hover:bg-findmi-50 disabled:opacity-60"
         >
           + Add Section
         </button>
       )}
-      {!grouped && organizing && <p className="-mt-2 text-xs text-ink/50">Group photos into parts of the story, like the place, the food or the people.</p>}
-      {!grouped && !organizing && savedCount > 0 && (
-        <button type="button" onClick={() => setOrganizing(true)} className="w-fit text-xs font-semibold text-ink/50 transition hover:text-findmi-700">
-          Organize Into Sections
-        </button>
+      {!grouped && savedCount > 0 && (
+        <section aria-label="Organize Your Photos" className="flex flex-col gap-3 rounded-2xl border border-findmi/25 bg-findmi-50/50 p-4">
+          <div>
+            <h3 className="font-display text-base font-bold tracking-tight text-ink">Organize Your Photos</h3>
+            <p className="mt-0.5 text-sm text-ink/60">Group photos into parts of your experience, like the place, the food or the people. Optional.</p>
+            <p className="mt-1.5 text-xs text-ink/50">Tip: tap &bull;&bull;&bull; on any photo to add a note.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSheet({ kind: "addSection" })}
+            disabled={busy}
+            className="flex h-11 items-center justify-center rounded-2xl border border-findmi/40 bg-white text-sm font-semibold text-findmi-700 transition hover:bg-findmi-50 disabled:opacity-60"
+          >
+            + Add Section
+          </button>
+        </section>
       )}
 
       {noteItem && <NoteSheet item={noteItem} onClose={() => setSheet(null)} onSave={(text) => photos.saveCaption(noteItem.localId, text)} />}

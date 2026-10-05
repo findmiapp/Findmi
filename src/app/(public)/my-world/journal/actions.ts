@@ -1032,8 +1032,13 @@ export interface JournalOccurrenceOption {
  * filtered to "upcoming only" the way public discovery surfaces correctly
  * are. This is a Journal-specific retrieval mode, not a change to how
  * Events are discovered anywhere else. */
+const MOMENT_OCCURRENCE_LIMIT = 500;
+
 export async function getEventOccurrencesForJournal(eventId: string): Promise<JournalOccurrenceOption[]> {
-  const occurrences = await getAllOccurrencesForEvent(eventId);
+  // Field QA UX Pass 1 — the default cap (60, oldest first) could cut off
+  // today's date for a long-running daily Event; a Moment's date picker
+  // needs the whole schedule.
+  const occurrences = await getAllOccurrencesForEvent(eventId, MOMENT_OCCURRENCE_LIMIT);
   return occurrences.map((o) => ({
     id: o.id,
     event_id: o.event_id,
