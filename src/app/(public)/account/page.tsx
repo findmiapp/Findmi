@@ -24,7 +24,9 @@ import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import PersonalAppShell from "./PersonalAppShell";
 import AccountErrorBanner from "./AccountErrorBanner";
-import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
+import type { ManagedEntity } from "./ManageOnFindmiList";
+import NavIcon from "@/components/NavIcon";
+import type { NavIconKey } from "@/lib/navigation";
 import Greeting from "./business/[id]/v2/Greeting";
 import { Chip } from "./owner-ui";
 
@@ -41,6 +43,7 @@ export const dynamic = "force-dynamic";
 const COMING_UP_LIMIT = 6;
 const UPCOMING_FETCH_LIMIT = 24;
 const WORLD_LIMIT = 8;
+const MANAGING_PREVIEW = 3;
 
 /** Horizontal rail on phones (bleeding to the screen edge, snap-scrolling),
  * a modest grid on desktop where the content column has room. */
@@ -417,7 +420,9 @@ export default async function AccountHomePage({
 
       {/* Identity is the shell's Account Context trigger — the greeting
           doesn't repeat the name. */}
-      <header>
+      {/* Warm, not a page title: the shared Business V2 Greeting is restyled
+          here (smaller, calmer) without changing that component. */}
+      <header className="[&>h1]:text-page-title [&>h1]:font-semibold [&>h1]:text-secondary">
         <Greeting />
       </header>
 
@@ -443,7 +448,7 @@ export default async function AccountHomePage({
         </div>
       )}
 
-      <div className="mt-6 flex flex-col gap-8">
+      <div className="mt-5 flex flex-col gap-7">
         {isNewWorld && (
           <section aria-labelledby="start-your-world" className="rounded-3xl bg-findmi-50 px-5 py-6 sm:px-7 sm:py-8">
             <h2 id="start-your-world" className="font-display text-section-title-lg font-bold text-primary">
@@ -540,12 +545,30 @@ export default async function AccountHomePage({
           </HomeSection>
         )}
 
-        {/* Managing — secondary; compact 3-entity preview (ManageOnFindmiList
-            owns the reveal behavior). Only when this person manages
-            something. */}
+        {/* Managing — a secondary utility list (not cards): up to 3 rows,
+            the rest behind a native View All disclosure. Only when this
+            person manages something. */}
         {hasAnyManaged && (
           <HomeSection id="managing" title="Managing">
-            <ManageOnFindmiList entities={managedEntities} previewLimit={3} />
+            <div className="divide-y divide-black/[0.06]">
+              {managedEntities.slice(0, MANAGING_PREVIEW).map((entity) => (
+                <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
+              ))}
+            </div>
+            {managedEntities.length > MANAGING_PREVIEW && (
+              <details className="group">
+                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 py-2 text-metadata font-semibold text-accent hover:underline [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">View All ({managedEntities.length})</span>
+                  <span className="hidden group-open:inline">Show Less</span>
+                  <ChevronIcon direction="down" className="h-3 w-3 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="divide-y divide-black/[0.06] border-t border-black/[0.06]">
+                  {managedEntities.slice(MANAGING_PREVIEW).map((entity) => (
+                    <ManagedRow key={`${entity.kind}-${entity.id}`} entity={entity} />
+                  ))}
+                </div>
+              </details>
+            )}
           </HomeSection>
         )}
 
@@ -572,20 +595,21 @@ export default async function AccountHomePage({
         )}
       </div>
 
-      {/* Footer utility links — unchanged destinations. The Explore link is
-          omitted only while Start Your World already offers it. */}
-      <div className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-black/5 pt-4">
+      {/* Footer utilities — compact rows, unchanged destinations. The Explore
+          row is omitted only while Start Your World already offers it. */}
+      <div className="mt-8 divide-y divide-black/[0.06] border-t border-black/[0.06]">
         {!isNewWorld && (
-          <Link href="/find" className="flex items-center gap-1 text-metadata font-semibold text-muted underline underline-offset-2 hover:text-primary">
-            Explore what&rsquo;s happening on Findmi
-            <ChevronIcon direction="right" className="h-3 w-3" />
+          <Link href="/find" className="flex items-center justify-between gap-3 py-3 text-body font-semibold text-secondary transition hover:text-primary">
+            Explore What&rsquo;s Happening On Findmi
+            <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
           </Link>
         )}
         <details className="group">
-          <summary className="w-fit cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 transition hover:text-secondary [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-body font-semibold text-secondary transition hover:text-primary [&::-webkit-details-marker]:hidden">
             Redeem Invite Code
+            <ChevronIcon direction="down" className="h-4 w-4 shrink-0 text-ink/30 transition-transform group-open:rotate-180" />
           </summary>
-          <form action={goToRedeemCode} className="mt-2 flex max-w-sm flex-col gap-2 sm:flex-row">
+          <form action={goToRedeemCode} className="mb-3 flex max-w-sm flex-col gap-2 sm:flex-row">
             <input type="hidden" name="return_to" value="/account" />
             <input
               type="text"
@@ -688,7 +712,7 @@ function HomeSection({
           trailing
         )}
       </div>
-      <div className="mt-3">{children}</div>
+      <div className="mt-2.5">{children}</div>
     </section>
   );
 }
@@ -707,8 +731,8 @@ function ScheduleCard({ item }: { item: PersonalUpcomingItem }) {
     : `${label} · ${formatTime(item.startAt)}`;
   const context = item.where ?? (item.relatedTo.length > 0 ? item.relatedTo.join(" · ") : null);
   return (
-    <Link href={item.href} className="group flex w-[172px] shrink-0 snap-start flex-col gap-2 lg:w-auto">
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-black/[0.04]">
+    <Link href={item.href} className="group flex w-[172px] shrink-0 snap-start flex-col gap-1.5 lg:w-auto">
+      <div className="relative aspect-[3/2] w-full overflow-hidden rounded-2xl bg-black/[0.04]">
         {item.imageUrl ? (
           <SupabaseImage
             src={item.imageUrl}
@@ -777,6 +801,40 @@ function WorldTileCard({ tile }: { tile: WorldTile }) {
         <p className="truncate text-metadata font-bold text-primary">{tile.name}</p>
         <p className="truncate text-microcopy text-subtle">{WORLD_KIND_LABEL[tile.kind]}</p>
       </div>
+    </Link>
+  );
+}
+
+const MANAGED_ICON: Record<ManagedEntity["kind"], NavIconKey> = { business: "storefront", event: "calendar", location: "pin" };
+const MANAGED_TYPE_LABEL: Record<ManagedEntity["kind"], string> = { business: "Business", event: "Event", location: "Location" };
+
+/** Managing row — a compact utility row: small image (or the entity
+ * type's icon), name, restrained type/status metadata, chevron. The whole
+ * row is the link; no per-row CTA label. */
+function ManagedRow({ entity }: { entity: ManagedEntity }) {
+  const pills = entity.pills.filter((p): p is { label: string; tone: "warning" | "pro" } => Boolean(p));
+  return (
+    <Link href={entity.href} className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-black/[0.03]">
+      <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-findmi-50 text-findmi-700">
+        {entity.imageUrl ? (
+          <SupabaseImage src={entity.imageUrl} alt="" fill sizes="36px" className="object-cover" />
+        ) : (
+          <NavIcon name={MANAGED_ICON[entity.kind]} className="h-4 w-4" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-body font-semibold text-primary">{entity.name}</p>
+        <p className="truncate text-metadata text-subtle">
+          {MANAGED_TYPE_LABEL[entity.kind]}
+          {pills.map((p) => (
+            <span key={p.label} className={p.tone === "warning" ? "text-amber-700" : "font-semibold text-accent"}>
+              {" · "}
+              {p.label}
+            </span>
+          ))}
+        </p>
+      </div>
+      <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
     </Link>
   );
 }
