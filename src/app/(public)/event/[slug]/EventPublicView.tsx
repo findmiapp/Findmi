@@ -131,6 +131,24 @@ export async function resolveAppearanceHostBusiness(eventId: string): Promise<Ap
   return byId.size === 1 ? Array.from(byId.values())[0] : null;
 }
 
+/** Business-Hosted Events V1 — the Event's canonical host Business
+ * (events.host_business_id), when it is publicly visible (live, not demo).
+ * Read through the anon client, same visibility every public Business
+ * page uses. */
+export async function resolveCanonicalHostBusiness(hostBusinessId: string | null | undefined): Promise<AppearanceHostBusiness | null> {
+  if (!hostBusinessId) return null;
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("businesses")
+    .select("id, name, slug, logo_url")
+    .eq("id", hostBusinessId)
+    .eq("is_demo", false)
+    .eq("publication_status", "live")
+    .maybeSingle();
+  return (data as AppearanceHostBusiness | null) ?? null;
+}
+
 export async function generateEventMetadata(slug: string): Promise<Metadata> {
   const event = await getEventBySlug(slug);
   if (!event) return { title: "Event not found" };
@@ -154,7 +172,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, journal] =
+  const [businesses, [eventWithCategories], featuredProducts, images, hasOccurrences, matchedLocation, appearanceHostBusiness, journal, canonicalHostBusiness] =
     await Promise.all([
       getBusinessesForEvent(event.id),
       attachEventCategories([event]),
@@ -185,6 +203,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
       // more" reveal has real local batches to expand through before
       // falling back to "View all Moments" (see MomentsCarousel).
       getPublicJournalCollection({ subjectType: "event", subjectId: event.id, limit: 12, withCount: true }),
+      resolveCanonicalHostBusiness(event.host_business_id),
     ]);
   // Multi-Date Business Participation Pass 2B — Primary Date Integrity.
   // Only ever synthesizes/includes the Primary Date entry when this Event
@@ -283,8 +302,15 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // businesses) stays attribution-less rather than guessing. Used for
   // both the hero byline and the "Hosted By" card near the bottom of the
   // page.
-  const hostBusiness =
-    businesses.find((b) => b.featured) ?? appearanceHostBusiness ?? (businesses.length === 1 ? businesses[0] : null);
+  //
+  // Business-Hosted Events V1 — the canonical host (events.host_business_id)
+  // always wins when set, over every tier above. The legacy inference runs
+  // ONLY for Events with no canonical host; a canonical host that isn't
+  // publicly visible yields no host Business (the organizer_name text
+  // fallback still applies) rather than a guessed one.
+  const hostBusiness = event.host_business_id
+    ? canonicalHostBusiness
+    : (businesses.find((b) => b.featured) ?? appearanceHostBusiness ?? (businesses.length === 1 ? businesses[0] : null));
   // Status reuses the nearest still-scheduled occurrence's real start/end
   // when one exists (a recurring event's own start_at/end_at can be stale
   // once occurrences exist) — same getTemporalLabel() every other

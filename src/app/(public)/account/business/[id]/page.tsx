@@ -823,6 +823,27 @@ export default async function ManageBusinessPage({
   // Activity Integrity — Event ids for which this business has per-date
   // official projections (see withoutSupersededEventProjections).
   let eventIdsWithOccurrenceProjections = new Set<string>();
+  // Business-Hosted Events V1 — Events this Business HOSTS, sourced ONLY
+  // from events.host_business_id (never participation, appearances, a
+  // featured flag or organizer_name). Split by the same "has an upcoming
+  // (non-cancelled) date" rule the rest of Findmi Here uses; an Event whose
+  // dates are all past joins the existing Past list.
+  type HostedEventRow = {
+    id: string;
+    name: string;
+    slug: string;
+    startAt: string;
+    endAt: string | null;
+    where: string | null;
+    venueName: string | null;
+    city: string | null;
+    state: string | null;
+    upcomingCount: number;
+    statusLabel: string | null;
+  };
+  const hostedUpcoming: HostedEventRow[] = [];
+  const hostedPast: HostedEventRow[] = [];
+  const hostedEventIds = new Set<string>();
   const SCHEDULE_PAGE_SIZE = 25;
   let scheduleLimitUsed = SCHEDULE_PAGE_SIZE;
 
@@ -1047,6 +1068,88 @@ export default async function ManageBusinessPage({
       pendingSchedule.push({ key: `pending-occurrence:${occ.id}`, title: ev.name, startAt: occ.start_at, endAt: null, where: venueFor(ev), href: `/event/${ev.slug}` });
     }
     pendingSchedule.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+
+    const { data: hostedEvents } = await admin
+      .from("events")
+      .select("id, name, slug, start_at, end_at, venue_name, city, state, is_demo, publication_status")
+      .eq("host_business_id", id)
+      .is("trashed_at", null);
+    const hostedIds = (hostedEvents ?? []).map((ev) => ev.id as string);
+    const { data: hostedOccurrences } = hostedIds.length
+      ? await admin
+          .from("event_occurrences")
+          .select("event_id, start_at, end_at, status, venue_name, city, state, location:locations(name, city, state)")
+          .in("event_id", hostedIds)
+          .neq("status", "cancelled")
+          .order("start_at", { ascending: true })
+      : { data: [] };
+    type HostedOccurrence = {
+      event_id: string;
+      start_at: string;
+      end_at: string;
+      venue_name: string | null;
+      city: string | null;
+      state: string | null;
+      location: { name: string; city: string | null; state: string | null } | { name: string; city: string | null; state: string | null }[] | null;
+    };
+    const hostedOccByEvent = new Map<string, HostedOccurrence[]>();
+    for (const occ of (hostedOccurrences ?? []) as HostedOccurrence[]) {
+      const list = hostedOccByEvent.get(occ.event_id) ?? [];
+      list.push(occ);
+      hostedOccByEvent.set(occ.event_id, list);
+    }
+    const nowMs = Date.now();
+    for (const ev of hostedEvents ?? []) {
+      hostedEventIds.add(ev.id);
+      const occs = hostedOccByEvent.get(ev.id) ?? [];
+      const statusLabel = !ev.is_demo ? null : ev.publication_status === "rejected" ? "Needs Changes" : "In Review";
+      const place = (p: { venue_name: string | null; city: string | null; state: string | null }) =>
+        [p.venue_name, [p.city, p.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || null;
+      if (occs.length > 0) {
+        const upcoming = occs.filter((o) => new Date(o.end_at).getTime() > nowMs);
+        const pick = upcoming[0] ?? occs[occs.length - 1];
+        const loc = Array.isArray(pick.location) ? (pick.location[0] ?? null) : pick.location;
+        const row: HostedEventRow = {
+          id: ev.id,
+          name: ev.name,
+          slug: ev.slug,
+          startAt: pick.start_at,
+          endAt: pick.end_at,
+          where: loc ? place({ venue_name: loc.name, city: loc.city, state: loc.state }) : place(pick),
+          venueName: loc?.name ?? pick.venue_name,
+          city: loc?.city ?? pick.city,
+          state: loc?.state ?? pick.state,
+          upcomingCount: upcoming.length,
+          statusLabel,
+        };
+        (upcoming.length > 0 ? hostedUpcoming : hostedPast).push(row);
+      } else {
+        const ends = ev.end_at ?? ev.start_at;
+        const row: HostedEventRow = {
+          id: ev.id,
+          name: ev.name,
+          slug: ev.slug,
+          startAt: ev.start_at,
+          endAt: ev.end_at,
+          where: place(ev),
+          venueName: ev.venue_name,
+          city: ev.city,
+          state: ev.state,
+          upcomingCount: ends && new Date(ends).getTime() > nowMs ? 1 : 0,
+          statusLabel,
+        };
+        (row.upcomingCount > 0 ? hostedUpcoming : hostedPast).push(row);
+      }
+    }
+    hostedUpcoming.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+
+    // Read-side dedupe only (no data changes): an Event this Business hosts
+    // is represented once, by its Hosting row — its Event-level
+    // participation placeholders don't repeat it. Date-level rows stay.
+    eventOnlySchedule = eventOnlySchedule.filter((e) => !(e.key.startsWith("event:") && hostedEventIds.has(e.key.slice("event:".length))));
+    pendingSchedule = pendingSchedule.filter(
+      (e) => !(e.key.startsWith("pending-event:") && hostedEventIds.has(e.key.slice("pending-event:".length)))
+    );
   }
 
   // Command Center V1 — resolves the same appearances array above
@@ -1070,7 +1173,12 @@ export default async function ManageBusinessPage({
   // Pass A — the same id-based integrity rule for Presence → Upcoming:
   // a superseded Event-level projection (e.g. Lavazza TABLÌ) isn't listed
   // beside its per-date rows. Display only; records untouched.
-  const presenceAppearances = canonicalAppearances;
+  // Business-Hosted Events V1 — a hosted Event's Event-level projection
+  // (participation-derived, not one the owner typed in manually) is already
+  // represented by its Hosting row; date-level and manual rows stay.
+  const presenceAppearances = canonicalAppearances.filter(
+    (a) => !(a.event_id && hostedEventIds.has(a.event_id) && !a.event_occurrence_id && a.source !== "manual")
+  );
   const todayAppearances = dashboardAppearances.filter((a) => a.isToday);
   const upcomingAppearances = dashboardAppearances.filter((a) => !a.isToday).slice(0, 5);
   // "Materially affects discovery" — the same fields a visitor would
@@ -2117,16 +2225,35 @@ export default async function ManageBusinessPage({
         {activeTab === "findmi-here" && presenceView === "past" && (
           <div className="lg:max-w-3xl">
             <PastPresence
-              items={pastAppearances.map((a) => ({
-                id: a.id,
-                title: a.title,
-                startAt: a.start_at,
-                endAt: a.end_at,
-                venueName: a.venue_name,
-                city: a.city,
-                state: a.state,
-                eventSlug: a.event?.slug ?? null,
-              }))}
+              items={[
+                ...pastAppearances
+                  // A hosted Event is represented once (its Hosting row
+                  // below); its Event-level participation projection is
+                  // not repeated. Date-level and manual rows stay.
+                  .filter((a) => !(a.event_id && hostedEventIds.has(a.event_id) && !a.event_occurrence_id && a.source !== "manual"))
+                  .map((a) => ({
+                    id: a.id,
+                    title: a.title,
+                    startAt: a.start_at,
+                    endAt: a.end_at,
+                    venueName: a.venue_name,
+                    city: a.city,
+                    state: a.state,
+                    eventSlug: a.event?.slug ?? null,
+                  })),
+                // Business-Hosted Events V1 — hosted Events whose dates have
+                // all passed, at their last date.
+                ...hostedPast.map((h) => ({
+                  id: `hosted:${h.id}`,
+                  title: h.name,
+                  startAt: h.startAt,
+                  endAt: h.endAt,
+                  venueName: h.venueName,
+                  city: h.city,
+                  state: h.state,
+                  eventSlug: h.slug,
+                })),
+              ].sort((x, y) => new Date(y.startAt).getTime() - new Date(x.startAt).getTime())}
             />
           </div>
         )}
@@ -2212,7 +2339,47 @@ export default async function ManageBusinessPage({
               </div>
             )}
 
-            {presenceAppearances.length + eventOnlySchedule.length + pendingSchedule.length === 0 && (
+            {/* Business-Hosted Events V1 — Events this Business hosts
+                (events.host_business_id only), kept apart from Happening
+                (where it participates or appears). Each opens the one Event
+                Manager with this Business as context. */}
+            {hostedUpcoming.length > 0 && (
+              <Panel title="Hosting" padded={false}>
+                <ul className="flex flex-col divide-y divide-black/[0.05]">
+                  {hostedUpcoming.map((h) => (
+                    <li key={h.id} className="flex items-center gap-3 px-4 py-3 first:pt-0 last:pb-0">
+                      <ScheduleDateBadge iso={h.startAt} live={getTemporalLabel(h.startAt, h.endAt).live} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-body font-semibold text-primary">{h.name}</p>
+                        <p className="mt-0.5 truncate text-metadata text-muted">
+                          {formatTime(h.startAt)}
+                          {h.endAt && `–${formatTime(h.endAt)}`}
+                          {h.where && ` · ${h.where}`}
+                        </p>
+                        <p className="mt-0.5 text-microcopy text-subtle">
+                          Hosting
+                          {h.upcomingCount > 1 && ` · ${h.upcomingCount} upcoming dates`}
+                          {h.statusLabel && (
+                            <>
+                              {" · "}
+                              <span className="font-semibold text-findmi-700">{h.statusLabel}</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/account/event/${h.id}?business_id=${encodeURIComponent(id)}`}
+                        className="shrink-0 text-metadata font-semibold text-accent hover:underline"
+                      >
+                        Manage
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+            )}
+
+            {hostedUpcoming.length + presenceAppearances.length + eventOnlySchedule.length + pendingSchedule.length === 0 && (
               <Panel padded={false}>
                 <EmptyLine>Nothing upcoming yet. Add what you&rsquo;re hosting or where you&rsquo;ll be to show it on your public profile.</EmptyLine>
               </Panel>

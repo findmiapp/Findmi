@@ -169,13 +169,16 @@ export default async function ManageEventPage({
     : [[], null];
   const personalLabel = personalDisplayName || "Your Findmi Account";
 
-  // Account Shell V1 — a Business V2 owner who arrived via an explicit
-  // ?business_id= navigation hint sees a quiet way back to that Business.
-  // Never treated as evidence this Business hosts/owns the Event — an
-  // Event genuinely has no single canonical owning Business (see
-  // event_businesses/event_occurrence_businesses), only participants.
-  const [businessContext, result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, eventHandle, addLocationHint, pendingApplicationNotes] = await Promise.all([
-    resolveBusinessNavContext(admin, businessIdParam),
+  // Account Shell V1 — a quiet way back to a Business the viewer belongs
+  // to. Business-Hosted Events V1: for a hosted Event the canonical host
+  // (events.host_business_id) is the ONLY Business context — a URL
+  // ?business_id= never overrides it — and it applies whenever the viewer
+  // belongs to that host, however they arrived. For an Event with no host
+  // the existing ?business_id= navigation hint still applies. Navigation
+  // only, never authorization (requireEventMember above already decided
+  // access).
+  const [{ businessContext, hostBusiness }, result, categories, selectedCategoryIds, markets, marketsWithAreas, pendingMarketRequest, eventHandle, addLocationHint, pendingApplicationNotes] = await Promise.all([
+    resolveEventBusinessContext(admin, id, businessIdParam),
     getAdminEventById(id),
     getAllCategories("event"),
     getEventCategoryIds(id),
@@ -398,6 +401,11 @@ export default async function ManageEventPage({
         <div>
           <p className="text-label font-bold uppercase text-accent">Event Manager</p>
           <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">{event.name}</h1>
+          {hostBusiness && (
+            <p className="mt-1 text-metadata text-muted">
+              <span className="font-semibold text-secondary">Hosted By</span> {hostBusiness.name}
+            </p>
+          )}
         </div>
         {publicHref ? (
           <Link
@@ -429,7 +437,7 @@ export default async function ManageEventPage({
           items={OWNER_TABS}
           activeKey={tab}
           basePath={`/account/event/${id}`}
-          extraParams={businessIdParam ? { business_id: businessIdParam } : undefined}
+          extraParams={businessContext ? { business_id: businessContext.id } : undefined}
         />
       </div>
 
@@ -1040,4 +1048,27 @@ function CheckGlyph({ className }: { className?: string }) {
       />
     </svg>
   );
+}
+
+/** Business-Hosted Events V1 — the Event Manager's Business navigation
+ * context. A hosted Event resolves ONLY to its canonical host Business
+ * (when the viewer belongs to it); the URL hint is consulted only for an
+ * Event with no host. `hostBusiness` (the canonical host's display name)
+ * is returned regardless of the viewer's own membership, for the
+ * "Hosted By" line. Navigation/display only — never authorization. */
+async function resolveEventBusinessContext(
+  admin: NonNullable<ReturnType<typeof getAdminSupabase>>,
+  eventId: string,
+  businessIdParam: string | undefined
+): Promise<{ businessContext: { id: string; name: string } | null; hostBusiness: { id: string; name: string } | null }> {
+  const { data: event } = await admin.from("events").select("host_business_id").eq("id", eventId).maybeSingle();
+  const hostBusinessId = (event as { host_business_id: string | null } | null)?.host_business_id ?? null;
+  if (!hostBusinessId) {
+    return { businessContext: await resolveBusinessNavContext(admin, businessIdParam), hostBusiness: null };
+  }
+  const [{ data: host }, businessContext] = await Promise.all([
+    admin.from("businesses").select("id, name").eq("id", hostBusinessId).maybeSingle(),
+    resolveBusinessNavContext(admin, hostBusinessId),
+  ]);
+  return { businessContext, hostBusiness: (host as { id: string; name: string } | null) ?? null };
 }
