@@ -215,8 +215,7 @@ export async function createMemberEvent(formData: FormData) {
   const preservedFields = {
     // Business-Hosted Events V1 — the Business this Event is being hosted
     // AS (Host Something). Never trusted on its own: validated below
-    // (owner/manager of THIS Business + THIS Business has Pro) and again
-    // inside create_owned_event().
+    // (owner/manager of THIS Business) and again inside create_owned_event().
     business_id: str(formData, "business_id"),
     name,
     start_at: startLocal,
@@ -231,17 +230,15 @@ export async function createMemberEvent(formData: FormData) {
 
   const hostBusinessId = preservedFields.business_id;
   if (hostBusinessId) {
-    // Hosting is scoped to the host Business itself — never unlocked by
-    // membership in some other Pro Business or an account-level grant.
+    // Hosting is scoped to the host Business itself: Owner or Manager of
+    // it. Not a Pro feature.
     const eligibility = await getHostEventEligibility(admin, user.id, hostBusinessId);
     if (!eligibility.ok) {
       const businessName = eligibility.business?.name ?? "this Business";
       fail(
-        eligibility.reason === "not_pro"
-          ? `Hosting Events is a Findmi Pro feature. Upgrade ${businessName} to Pro to host an Event.`
-          : eligibility.reason === "role"
-            ? `Only an Owner or Manager of ${businessName} can host an Event for it.`
-            : "You don't have access to host an Event for that Business."
+        eligibility.reason === "role"
+          ? `Only an Owner or Manager of ${businessName} can host an Event for it.`
+          : "You don't have access to host an Event for that Business."
       );
     }
   } else {

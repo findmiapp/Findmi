@@ -7,7 +7,6 @@ import { canCurrentUserManageEvents, getHostEventEligibility } from "@/lib/entit
 import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
 import { createMemberEvent } from "../actions";
-import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 
 /** Multi-Entity Self-Service V1, Stage 3 — Create Event From Venue. A
  * Location owner's "+ Add an Event Here" link (see the Location Manager's
@@ -112,15 +111,13 @@ export default async function AddEventPage({
   const admin = getAdminSupabase();
   // Business-Hosted Events V1 — "+ Add → Host Something" opens this flow
   // with the originating Business as the Event's HOST. Hosting is scoped
-  // to that Business alone: an owner/manager of it, and it must itself
-  // have Pro (never another Business's Pro, never the account-level
-  // grant). A member without those still sees the Business context (back
-  // link + wording) with the reason it can't host; anyone who isn't a
-  // member at all just sees the plain form, as before.
+  // to that Business alone — an owner/manager of it — and is not a Pro
+  // feature. A staff member still sees the Business context (back link +
+  // wording) with the reason they can't host; anyone who isn't a member at
+  // all just sees the plain form, as before.
   const hostEligibility = businessIdParam && admin ? await getHostEventEligibility(admin, user.id, businessIdParam) : null;
   const businessContext =
     hostEligibility && (hostEligibility.ok || hostEligibility.reason !== "not_member") ? hostEligibility.business : null;
-  const hostBlockedByRole = Boolean(businessContext && hostEligibility && !hostEligibility.ok && hostEligibility.reason === "role");
   const entitled = businessContext
     ? Boolean(hostEligibility?.ok)
     : admin
@@ -144,19 +141,9 @@ export default async function AddEventPage({
         </h1>
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
           {businessContext ? (
-            hostBlockedByRole ? (
-              <p className="text-body font-semibold text-primary">
-                Only an Owner or Manager of {businessContext.name} can host Events for it.
-              </p>
-            ) : (
-              <>
-                <p className="text-body font-semibold text-primary">Hosting Events is a Findmi Pro feature.</p>
-                <p className="mt-2 text-body text-muted">
-                  Upgrade {businessContext.name} to Findmi Pro (or redeem a Pro Invite for it) to host Events as{" "}
-                  {businessContext.name}, with no separate Event fee.
-                </p>
-              </>
-            )
+            <p className="text-body font-semibold text-primary">
+              Only an Owner or Manager of {businessContext.name} can host Events for it.
+            </p>
           ) : (
             <>
               <p className="text-body font-semibold text-primary">Event management is included with qualifying Findmi membership.</p>
@@ -171,31 +158,7 @@ export default async function AddEventPage({
               Once you have Organizer Access, come back here to add your event at {locationHint.name} directly.
             </p>
           )}
-          {/* "Host Something" CTA fix — a signed-in member who got here
-              with an existing business context (the "+ Add → Host
-              something" flow on that Business's own Findmi Here tab)
-              needs to upgrade THIS business, not be sent to create a new
-              one. Same /upgrade/pro?business= handoff + Pro Invite
-              redemption Plan & Status already uses on the Business
-              Manager (see account/business/[id]/page.tsx) — no new
-              billing/entitlement architecture, just routed in context. A
-              visitor with no business context at all (reached /account/
-              event/new directly) still sees the original Add a Business
-              path, unchanged. */}
-          {businessContext && hostBlockedByRole ? null : businessContext ? (
-            <>
-              <Link href={`/upgrade/pro?business=${businessContext.id}`} className={`mt-5 ${primaryButtonClass}`}>
-                Upgrade {businessContext.name} to Pro
-              </Link>
-              <div className="mt-3">
-                <ProInviteCodeEntry
-                  returnTo={`/account/event/new?business_id=${businessContext.id}`}
-                  businessId={businessContext.id}
-                  heading="Have a Pro Invite or Promo Code?"
-                />
-              </div>
-            </>
-          ) : (
+          {businessContext ? null : (
             <>
               <Link href="/account/business/new" className={`mt-5 ${primaryButtonClass}`}>
                 Add a Business
@@ -279,9 +242,11 @@ export default async function AddEventPage({
           <button type="submit" className={`mt-2 ${primaryButtonClass}`}>
             Create My Event
           </button>
-          <p className="text-center text-metadata text-subtle">
-            No separate Event fee. Included with your qualifying Findmi membership.
-          </p>
+          {!businessContext && (
+            <p className="text-center text-metadata text-subtle">
+              No separate Event fee. Included with your qualifying Findmi membership.
+            </p>
+          )}
         </form>
       </div>
     </div>
