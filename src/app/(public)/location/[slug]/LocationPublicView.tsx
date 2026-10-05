@@ -174,6 +174,10 @@ export async function LocationPublicView({ slug }: { slug: string }) {
     />
   ) : null;
 
+  const followButton = (
+    <LocationFollowButton locationId={location.id} locationSlug={location.slug} locationName={location.name} size="compact" tone="accent" />
+  );
+
   return (
     <div className="relative mx-auto max-w-4xl px-0 pb-10 sm:px-6">
       <PageViewTracker
@@ -225,43 +229,41 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* 2. Logo + identity — Visual implementation pass: the logo now
-          stands alone on its own line, overlapping the hero's bottom edge
-          (left-aligned, bigger/more substantial), with Name + Follow
-          recomposed into their own row directly beneath it — Follow
-          sits beside the NAME now (vertically centered against it),
-          matching the approved reference, rather than beside the logo as
-          before. No fabricated follower count: LocationFollowButton has
-          no such count to report, so none is shown (never invented). */}
+      {/* 2. Logo + identity — Location Hero Follow Composition pass: with
+          a logo, the overlapping logo and Follow form one profile-header
+          row (logo left, Follow on the far right of the content gutter),
+          and the Location name gets its own full line beneath. Same
+          normal-flow pattern as the Business profile header: only the
+          LOGO carries the negative margin that overlaps the cover;
+          items-start keeps Follow on the cover's bottom edge, and a small
+          top margin centers it in the exposed strip beside the logo
+          (56px strip, 36px button -> mt-2.5; sm: 64px strip -> mt-3.5).
+          No logo -> no profile row to anchor to, so Follow stays beside
+          the name exactly as before. No fabricated follower count. */}
       <div className="px-4 sm:px-0">
-        <div className="max-w-xl">
-          {location.logo_url && (
-            // Small Public UI Polish pass — border-paper (#F8F8F6) is the
-            // same color as the page's own bg-paper background, so the
-            // tile had no visible edge at all against it — a white/light
-            // logo (e.g. Hudson Yards) disappeared entirely. border-white
-            // keeps the clean white frame against the logo itself, and a
-            // subtle ring gives the tile a real edge against the page,
-            // regardless of whether the logo artwork is light or
-            // colorful. Overlap geometry/size/shadow unchanged.
+        {location.logo_url && (
+          <div className="flex items-start justify-between gap-3">
+            {/* Small Public UI Polish pass — border-white + subtle ring so a
+                light logo keeps a real edge against the page. Overlap
+                geometry/size/shadow unchanged. */}
             <div className="relative -mt-14 h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-sm ring-1 ring-black/[0.08] sm:-mt-16 sm:h-32 sm:w-32">
               <SupabaseImage src={location.logo_url} alt={location.name} fill sizes="128px" className="object-cover" />
               <ImageZoomTrigger images={[location.logo_url]} alt={location.name} label={`View larger logo for ${location.name}`} />
             </div>
-          )}
-
-          <div className={`flex items-start justify-between gap-3 ${location.logo_url ? "mt-3" : ""}`}>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
-            <div className="shrink-0 pt-0.5">
-              <LocationFollowButton
-                locationId={location.id}
-                locationSlug={location.slug}
-                locationName={location.name}
-                size="compact"
-                tone="quiet"
-              />
+            <div className="mt-2.5 shrink-0 sm:mt-3.5">
+              {followButton}
             </div>
           </div>
+        )}
+        <div className="max-w-xl">
+          {location.logo_url ? (
+            <h1 className="mt-3 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
+          ) : (
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
+              <div className="shrink-0 pt-0.5">{followButton}</div>
+            </div>
+          )}
 
           {/* Physical Presence Pass 2 — where this place physically sits
               (nearest parent first), e.g. "Madison Square Park · Flatiron,
