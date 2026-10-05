@@ -23,6 +23,9 @@ export interface PersonalEntityRef {
   slug: string;
   name: string;
   imageUrl: string | null;
+  /** When this person saved/followed it (the relationship row's own
+   * created_at) — rows are returned newest-first. */
+  relatedAt: string;
 }
 export interface PersonalEventRef extends PersonalEntityRef {
   startAt: string;
@@ -94,61 +97,71 @@ export async function getPersonalGraphSummary(supabase: SupabaseClient, userId: 
   const [savedBiz, savedProd, savedEvt, savedLoc, followedBiz, followedEvt, followedLoc] = await Promise.all([
     supabase
       .from("account_saved_businesses")
-      .select("business:businesses(id, slug, name, logo_url, cover_image_url)")
-      .eq("user_id", userId),
-    supabase.from("account_saved_products").select("product:products(id, slug, name, image_url)").eq("user_id", userId),
+      .select("created_at, business:businesses(id, slug, name, logo_url, cover_image_url)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("account_saved_products")
+      .select("created_at, product:products(id, slug, name, image_url)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
     supabase
       .from("account_saved_events")
-      .select("event:events(id, slug, name, start_at, end_at, cover_image_url)")
-      .eq("user_id", userId),
+      .select("created_at, event:events(id, slug, name, start_at, end_at, cover_image_url)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
     supabase
       .from("account_saved_locations")
-      .select("location:locations(id, slug, name, logo_url, cover_image_url)")
-      .eq("user_id", userId),
+      .select("created_at, location:locations(id, slug, name, logo_url, cover_image_url)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
     supabase
       .from("account_followed_businesses")
-      .select("business:businesses(id, slug, name, logo_url, cover_image_url)")
-      .eq("user_id", userId),
+      .select("created_at, business:businesses(id, slug, name, logo_url, cover_image_url)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
     supabase
       .from("account_followed_events")
-      .select("event:events(id, slug, name, start_at, end_at, cover_image_url)")
-      .eq("user_id", userId),
+      .select("created_at, event:events(id, slug, name, start_at, end_at, cover_image_url)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
     supabase
       .from("account_followed_locations")
-      .select("location:locations(id, slug, name, logo_url, cover_image_url)")
-      .eq("user_id", userId),
+      .select("created_at, location:locations(id, slug, name, logo_url, cover_image_url)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
   ]);
 
-  const businesses = (rows: { business: Embedded<BusinessEmbed> }[] | null): PersonalEntityRef[] =>
-    ((rows ?? []) as { business: Embedded<BusinessEmbed> }[])
-      .map((r) => one(r.business))
-      .filter((b): b is BusinessEmbed => Boolean(b))
-      .map((b) => ({ id: b.id, slug: b.slug, name: b.name, imageUrl: b.logo_url ?? b.cover_image_url }));
+  const businesses = (rows: { created_at: string; business: Embedded<BusinessEmbed> }[] | null): PersonalEntityRef[] =>
+    ((rows ?? []) as { created_at: string; business: Embedded<BusinessEmbed> }[])
+      .map((r) => ({ at: r.created_at, b: one(r.business) }))
+      .filter((r): r is { at: string; b: BusinessEmbed } => Boolean(r.b))
+      .map(({ at, b }) => ({ id: b.id, slug: b.slug, name: b.name, imageUrl: b.logo_url ?? b.cover_image_url, relatedAt: at }));
 
-  const locations = (rows: { location: Embedded<LocationEmbed> }[] | null): PersonalEntityRef[] =>
-    ((rows ?? []) as { location: Embedded<LocationEmbed> }[])
-      .map((r) => one(r.location))
-      .filter((l): l is LocationEmbed => Boolean(l))
-      .map((l) => ({ id: l.id, slug: l.slug, name: l.name, imageUrl: l.logo_url ?? l.cover_image_url }));
+  const locations = (rows: { created_at: string; location: Embedded<LocationEmbed> }[] | null): PersonalEntityRef[] =>
+    ((rows ?? []) as { created_at: string; location: Embedded<LocationEmbed> }[])
+      .map((r) => ({ at: r.created_at, l: one(r.location) }))
+      .filter((r): r is { at: string; l: LocationEmbed } => Boolean(r.l))
+      .map(({ at, l }) => ({ id: l.id, slug: l.slug, name: l.name, imageUrl: l.logo_url ?? l.cover_image_url, relatedAt: at }));
 
-  const events = (rows: { event: Embedded<EventEmbed> }[] | null): PersonalEventRef[] =>
-    ((rows ?? []) as { event: Embedded<EventEmbed> }[])
-      .map((r) => one(r.event))
-      .filter((e): e is EventEmbed => Boolean(e))
-      .map((e) => ({ id: e.id, slug: e.slug, name: e.name, imageUrl: e.cover_image_url, startAt: e.start_at, endAt: e.end_at }));
+  const events = (rows: { created_at: string; event: Embedded<EventEmbed> }[] | null): PersonalEventRef[] =>
+    ((rows ?? []) as { created_at: string; event: Embedded<EventEmbed> }[])
+      .map((r) => ({ at: r.created_at, e: one(r.event) }))
+      .filter((r): r is { at: string; e: EventEmbed } => Boolean(r.e))
+      .map(({ at, e }) => ({ id: e.id, slug: e.slug, name: e.name, imageUrl: e.cover_image_url, startAt: e.start_at, endAt: e.end_at, relatedAt: at }));
 
-  const products = ((savedProd.data ?? []) as { product: Embedded<ProductEmbed> }[])
-    .map((r) => one(r.product))
-    .filter((p): p is ProductEmbed => Boolean(p))
-    .map((p) => ({ id: p.id, slug: p.slug, name: p.name, imageUrl: p.image_url }));
+  const products = ((savedProd.data ?? []) as { created_at: string; product: Embedded<ProductEmbed> }[])
+    .map((r) => ({ at: r.created_at, p: one(r.product) }))
+    .filter((r): r is { at: string; p: ProductEmbed } => Boolean(r.p))
+    .map(({ at, p }) => ({ id: p.id, slug: p.slug, name: p.name, imageUrl: p.image_url, relatedAt: at }));
 
   return {
-    savedBusinesses: businesses(savedBiz.data as { business: Embedded<BusinessEmbed> }[] | null),
+    savedBusinesses: businesses(savedBiz.data as { created_at: string; business: Embedded<BusinessEmbed> }[] | null),
     savedProducts: products,
-    savedEvents: events(savedEvt.data as { event: Embedded<EventEmbed> }[] | null),
-    savedLocations: locations(savedLoc.data as { location: Embedded<LocationEmbed> }[] | null),
-    followedBusinesses: businesses(followedBiz.data as { business: Embedded<BusinessEmbed> }[] | null),
-    followedEvents: events(followedEvt.data as { event: Embedded<EventEmbed> }[] | null),
-    followedLocations: locations(followedLoc.data as { location: Embedded<LocationEmbed> }[] | null),
+    savedEvents: events(savedEvt.data as { created_at: string; event: Embedded<EventEmbed> }[] | null),
+    savedLocations: locations(savedLoc.data as { created_at: string; location: Embedded<LocationEmbed> }[] | null),
+    followedBusinesses: businesses(followedBiz.data as { created_at: string; business: Embedded<BusinessEmbed> }[] | null),
+    followedEvents: events(followedEvt.data as { created_at: string; event: Embedded<EventEmbed> }[] | null),
+    followedLocations: locations(followedLoc.data as { created_at: string; location: Embedded<LocationEmbed> }[] | null),
   };
 }

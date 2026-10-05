@@ -9,24 +9,23 @@ import { conversationContextLabel } from "@/lib/admin/conversations";
 import {
   getAccountCommandCenter,
   getPersonalUpcoming,
-  type ScheduleItem,
   type AttentionItem,
   type PersonalUpcomingItem,
 } from "@/lib/dashboard";
 import { getPersonalGraphSummary, type PersonalEntityRef } from "@/lib/personalGraph";
-import { getTemporalLabel, formatDateShort } from "@/lib/format";
+import { getJournalArchiveEntries } from "@/lib/journal";
+import { getTemporalLabel, formatDateShort, formatTime } from "@/lib/format";
 import type { EventPublicationStatus } from "@/lib/types";
-import { getPublicOrigin } from "@/lib/site-url";
 import LiveDot from "@/components/LiveDot";
-import ShareButton from "@/components/ShareButton";
 import SupabaseImage from "@/components/SupabaseImage";
 import ChevronIcon from "@/components/ChevronIcon";
+import JournalArchiveCard from "@/components/journal/JournalArchiveCard";
 import { goToRedeemCode } from "@/app/(public)/redeem/actions";
 import AccountSync from "./AccountSync";
 import PersonalAppShell from "./PersonalAppShell";
 import AccountErrorBanner from "./AccountErrorBanner";
 import ManageOnFindmiList, { type ManagedEntity } from "./ManageOnFindmiList";
-import { CompactStatus, OwnerModule, SoftZone } from "./dashboard-ui";
+import Greeting from "./business/[id]/v2/Greeting";
 import { Chip } from "./owner-ui";
 
 export const metadata: Metadata = {
@@ -36,6 +35,33 @@ export const metadata: Metadata = {
 // Authenticated, per-user content — must never be statically or
 // ISR-cached; every response here is specific to whoever is signed in.
 export const dynamic = "force-dynamic";
+
+/** Personal Home V2 caps — Home summarizes; each See All destination
+ * holds the depth. */
+const COMING_UP_LIMIT = 6;
+const UPCOMING_FETCH_LIMIT = 24;
+const WORLD_LIMIT = 8;
+
+/** Horizontal rail on phones (bleeding to the screen edge, snap-scrolling),
+ * a modest grid on desktop where the content column has room. */
+const RAIL_CLASS =
+  "-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:mx-0 lg:grid lg:overflow-visible lg:px-0 [&::-webkit-scrollbar]:hidden";
+
+type WorldTile = {
+  key: string;
+  kind: "business" | "product" | "event" | "location";
+  name: string;
+  imageUrl: string | null;
+  href: string;
+  relatedAt: string;
+};
+
+const WORLD_KIND_LABEL: Record<WorldTile["kind"], string> = {
+  business: "Business",
+  product: "Product",
+  event: "Event",
+  location: "Location",
+};
 
 /** Launch V2 Pass 1 — plan_tier isn't in the public anon/authenticated
  * column grant (see lib/entitlements.ts's own comment), so showing a
@@ -70,13 +96,15 @@ async function getProBusinessIdSet(
  * own account_saved_* / account_followed_* relationships (lib/
  * personalGraph.ts, lib/dashboard.ts's getPersonalUpcoming).
  *
- * DOM order is now simply the priority order at every width (single
- * column, no explicit CSS grid placement) — identity -> Coming Up For
- * You (personal) -> Needs Attention (operational, only when non-empty)
- * -> Your Collections (personal) -> quick actions -> What You're
- * Managing + its own Schedule (management, only when hasAnyManaged) ->
- * Inbox. "Your Findmi" (View Public Page/Share) stays folded into the
- * compacted identity header for the common single-business case. */
+ * Personal Home V2 — the living front door to this person's Findmi
+ * world, not an operational dashboard. Identity lives once, in the
+ * shell's Account Context trigger; Business context (public page, share,
+ * workspace) lives behind that switcher. Content earns space: DOM order
+ * is the priority order at every width — Coming Up -> Recent Moments ->
+ * My World -> Needs Your Attention -> Inbox -> Managing -> Pending
+ * Claims — and every section renders only when it has real content. A
+ * person with nothing yet gets ONE "Start Your World" starter instead of
+ * a stack of empty modules. */
 export default async function AccountHomePage({
   searchParams,
 }: {
@@ -134,8 +162,8 @@ export default async function AccountHomePage({
     // Universal Account V1 foundation — this person's real, durable
     // account-bound Saves/Follows (never business_members/event_members/
     // location_members — those are management, not personal interest;
-    // see getPersonalUpcoming's own doc comment). Feeds both the Personal
-    // Collections teaser and the Personal Upcoming query below.
+    // see getPersonalUpcoming's own doc comment). Feeds both My World and
+    // the Personal Upcoming (Coming Up) query below.
     getPersonalGraphSummary(supabase, user.id),
   ]);
 
@@ -229,115 +257,110 @@ export default async function AccountHomePage({
 
   const admin = getAdminSupabase();
   const businessIds = myBusinesses.map((b) => b.id);
-  const proBusinessIds = await getProBusinessIdSet(admin, businessIds);
 
-  // Launch V2 Pass 1.1 — the Inbox preview is now the ONLY customer-
-  // conversation signal on Home (see Needs Your Attention below); no
-  // separate recency-windowed count is computed anymore. Excludes
-  // 'opportunity'-subject_type Conversations (created only when a note is
-  // attached to an invitation/application) — that interaction already
-  // has a structured representation under Needs Your Attention/
-  // Opportunities, so it never doubles up here.
-  // Mobile Command Center V2 — passes the managed-entity ids this page
-  // already fetched above (myBusinesses/myEvents/myLocations), so
-  // listConversationsForUser skips its own internal re-fetch of
-  // business_members/event_members/location_members (the confirmed
-  // duplicate query from the read-only audit). See that function's own
-  // doc comment in lib/opportunities.ts.
-  const conversations = (
-    admin ? await listConversationsForUser(admin, user.id, { businesses: myBusinesses, events: myEvents, locations: myLocations }) : []
-  ).filter((c) => c.subjectType !== "opportunity");
+  // Personal Home V2 — every read below depends only on the first batch
+  // above, never on each other, so they run together instead of one after
+  // another. Same helpers, same arguments, same results; a rejection still
+  // fails the page exactly as each sequential await did before.
+  //
+  // - Pro set: plan_tier isn't in the public column grant (see
+  //   getProBusinessIdSet's own comment).
+  // - Conversations: excludes 'opportunity'-subject_type Conversations
+  //   (that interaction already has a structured representation under
+  //   Needs Your Attention/Opportunities); passes the managed-entity ids
+  //   this page already fetched so listConversationsForUser skips its own
+  //   re-fetch of the membership tables.
+  // - Command center: only `attention` is used on Home; the management
+  //   schedule stays at /account/schedule.
+  // - Personal Upcoming: sourced ONLY from real account-bound Saves/
+  //   Follows (see getPersonalUpcoming's own doc comment). Fetched wider
+  //   than the rail shows so the per-Event collapse below still fills it.
+  // - Recent Moments: the owner's own 3 latest Journal entries (bounded —
+  //   media/signing only for those 3).
+  const [proBusinessIds, allConversations, commandCenter, upcomingRaw, recentMoments] = await Promise.all([
+    getProBusinessIdSet(admin, businessIds),
+    admin ? listConversationsForUser(admin, user.id, { businesses: myBusinesses, events: myEvents, locations: myLocations }) : Promise.resolve([]),
+    admin
+      ? getAccountCommandCenter(admin, {
+          businesses: myBusinesses,
+          events: myEvents,
+          locations: myLocations,
+          pendingClaimsCount: myPendingClaims.length,
+        })
+      : Promise.resolve({ attention: [] as AttentionItem[] }),
+    getPersonalUpcoming(
+      {
+        savedEvents: personalGraph.savedEvents.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, endAt: e.endAt, imageUrl: e.imageUrl })),
+        followedBusinesses: personalGraph.followedBusinesses.map((b) => ({ id: b.id, slug: b.slug, name: b.name, imageUrl: b.imageUrl })),
+        followedEvents: personalGraph.followedEvents.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, endAt: e.endAt, imageUrl: e.imageUrl })),
+        followedLocations: personalGraph.followedLocations.map((l) => ({ id: l.id, name: l.name })),
+      },
+      UPCOMING_FETCH_LIMIT
+    ),
+    getJournalArchiveEntries(user.id, { limit: 3 }),
+  ]);
+
+  const conversations = allConversations.filter((c) => c.subjectType !== "opportunity");
   const inboxPreview = conversations.slice(0, 3);
 
-  // Mobile Home Composition Correction pass — getAccountCommandCenter
-  // itself is untouched (still computes both attention and the
-  // management-side schedule internally, unchanged), but Home no longer
-  // renders a "Your Schedule" module, so only `attention` is used here
-  // now. The management schedule remains fully available at its own
-  // existing destination, /account/schedule (untouched).
-  const { attention: attentionItems } = admin
-    ? await getAccountCommandCenter(admin, {
-        businesses: myBusinesses,
-        events: myEvents,
-        locations: myLocations,
-        pendingClaimsCount: myPendingClaims.length,
-      })
-    : { attention: [] };
-
-  const hasAnyManaged = myBusinesses.length > 0 || myEvents.length > 0 || myLocations.length > 0;
-  // Updates Information Architecture pass — split by the category
-  // getAccountCommandCenter already classified each item's real
-  // underlying status into (see dashboard.ts). Rendering order below
-  // always puts Action Required first within the module; each
-  // subsection is only rendered when it actually has items.
+  const attentionItems = commandCenter.attention;
+  // Split by the category getAccountCommandCenter already classified each
+  // item into — Action Required always first; each subsection only when
+  // it has items.
   const actionRequiredItems = attentionItems.filter((i) => i.category === "action_required");
   const awaitingApprovalItems = attentionItems.filter((i) => i.category === "awaiting_approval");
   const hasUpdates = actionRequiredItems.length > 0 || awaitingApprovalItems.length > 0;
 
-  // Universal Account V1 foundation — Personal Upcoming (Goal 3). Sourced
-  // ONLY from this person's real account-bound Saves/Follows (never
-  // business_members/event_members/location_members — see
-  // getPersonalUpcoming's own doc comment for why that would be a
-  // personal-interest fabrication). A genuinely different question from
-  // the management-side "Your Schedule" below.
-  const personalUpcoming = await getPersonalUpcoming(
-    {
-      savedEvents: personalGraph.savedEvents.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, endAt: e.endAt, imageUrl: e.imageUrl })),
-      followedBusinesses: personalGraph.followedBusinesses.map((b) => ({ id: b.id, slug: b.slug, name: b.name, imageUrl: b.imageUrl })),
-      followedEvents: personalGraph.followedEvents.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, endAt: e.endAt, imageUrl: e.imageUrl })),
-      followedLocations: personalGraph.followedLocations.map((l) => ({ id: l.id, name: l.name })),
-    },
-    6
-  );
+  // Coming Up — page-level collapse so one multi-date Event (or a followed
+  // Business's run of dates at one Event) can't monopolize the rail: one
+  // card per destination+title, keeping its earliest (live-first, since
+  // the helper already sorts by start) date and merging every
+  // relationship label that reached it. The shared helper is untouched.
+  const comingUp: PersonalUpcomingItem[] = [];
+  const comingUpByGroup = new Map<string, PersonalUpcomingItem>();
+  for (const item of upcomingRaw) {
+    const group = `${item.href}|${item.title}`;
+    const existing = comingUpByGroup.get(group);
+    if (existing) {
+      for (const label of item.relatedTo) if (!existing.relatedTo.includes(label)) existing.relatedTo.push(label);
+      continue;
+    }
+    const copy = { ...item, relatedTo: [...item.relatedTo] };
+    comingUpByGroup.set(group, copy);
+    comingUp.push(copy);
+  }
+  const comingUpCards = comingUp.slice(0, COMING_UP_LIMIT);
 
-  // Personal Collections teaser (Goal 4) — a small, truthful mix across
-  // every category this person actually has something in, each tile
-  // linking straight to the real public page (never a fabricated status
-  // or count). Capped well below what /my-world itself shows — this is a
-  // teaser, not a second copy of that page.
-  type CollectionTile = { key: string; name: string; imageUrl: string | null; href: string };
-  const toTiles = (refs: PersonalEntityRef[], hrefFor: (r: PersonalEntityRef) => string, prefix: string): CollectionTile[] =>
-    refs.map((r) => ({ key: `${prefix}:${r.id}`, name: r.name, imageUrl: r.imageUrl, href: hrefFor(r) }));
-  const collectionTiles: CollectionTile[] = [
-    ...toTiles(personalGraph.savedProducts, (r) => `/product/${r.slug}`, "product"),
-    ...toTiles(personalGraph.savedEvents, (r) => `/event/${r.slug}`, "saved-event"),
-    ...toTiles(personalGraph.followedBusinesses, (r) => `/business/${r.slug}`, "followed-business"),
-    ...toTiles(personalGraph.savedBusinesses, (r) => `/business/${r.slug}`, "saved-business"),
-    ...toTiles(personalGraph.savedLocations, (r) => `/location/${r.slug}`, "saved-location"),
-    ...toTiles(personalGraph.followedEvents, (r) => `/event/${r.slug}`, "followed-event"),
-    ...toTiles(personalGraph.followedLocations, (r) => `/location/${r.slug}`, "followed-location"),
-  ].slice(0, 8);
-  const hasAnyCollection = collectionTiles.length > 0;
+  // My World — this person's real Saves/Follows across every supported
+  // entity type, newest relationship first. An entity both Saved and
+  // Followed appears once (keyed by entity type + id, keeping its most
+  // recent relationship), each tile linking to its public page.
+  const worldByEntity = new Map<string, WorldTile>();
+  const addWorld = (refs: PersonalEntityRef[], kind: WorldTile["kind"], hrefFor: (r: PersonalEntityRef) => string) => {
+    for (const r of refs) {
+      const key = `${kind}:${r.id}`;
+      const existing = worldByEntity.get(key);
+      if (existing && existing.relatedAt >= r.relatedAt) continue;
+      worldByEntity.set(key, { key, kind, name: r.name, imageUrl: r.imageUrl, href: hrefFor(r), relatedAt: r.relatedAt });
+    }
+  };
+  addWorld(personalGraph.savedBusinesses, "business", (r) => `/business/${r.slug}`);
+  addWorld(personalGraph.followedBusinesses, "business", (r) => `/business/${r.slug}`);
+  addWorld(personalGraph.savedProducts, "product", (r) => `/product/${r.slug}`);
+  addWorld(personalGraph.savedEvents, "event", (r) => `/event/${r.slug}`);
+  addWorld(personalGraph.followedEvents, "event", (r) => `/event/${r.slug}`);
+  addWorld(personalGraph.savedLocations, "location", (r) => `/location/${r.slug}`);
+  addWorld(personalGraph.followedLocations, "location", (r) => `/location/${r.slug}`);
+  const worldTiles = [...worldByEntity.values()]
+    .sort((a, b) => (a.relatedAt < b.relatedAt ? 1 : a.relatedAt > b.relatedAt ? -1 : 0))
+    .slice(0, WORLD_LIMIT);
 
-  // Mobile Command Center V2 — imageUrl precedence per the read-only
-  // audit's documented recommendation, deliberately DIFFERENT from the
-  // schedule rail's own precedence below: a compact management-list row
-  // is a small square-ish thumbnail, where a brand logo (designed for
-  // recognition at small sizes) reads more clearly than a wide cover
-  // photo — Business and Location both use logo_url first, for visual
-  // consistency within this one unified list. Events have no logo_url
-  // column at all, so cover_image_url is their only option.
+  // Managing — secondary on Personal Home. The Account Context Switcher is
+  // already the primary way into each Business, but it doesn't represent
+  // standalone managed Events/Locations, so those lead the compact
+  // preview here. imageUrl precedence unchanged: a small management row
+  // reads a logo more clearly than a wide cover (Events have no logo).
   const managedEntities: ManagedEntity[] = [
-    ...myBusinesses.map(
-      (b): ManagedEntity => ({
-        kind: "business",
-        id: b.id,
-        name: b.name,
-        pills: [
-          b.pendingReview ? { label: "Pending Review", tone: "warning" as const } : null,
-          proBusinessIds.has(b.id) ? { label: "Pro", tone: "pro" as const } : null,
-        ],
-        href: `/account/business/${b.id}`,
-        // Account Command Center V2 — "Open Workspace" for the normal
-        // case, matching this pass's own /account/business/[id] = THIS
-        // BUSINESS = individual business operating workspace language.
-        // "Finish Your Business" is a distinct real state (onboarding
-        // incomplete), left unchanged — a label/copy change only, same
-        // destination either way.
-        cta: b.pendingReview ? "Finish Your Business" : "Open Workspace",
-        imageUrl: b.logoUrl ?? b.coverImageUrl,
-      })
-    ),
     ...myEvents.map(
       (e): ManagedEntity => ({
         kind: "event",
@@ -360,73 +383,43 @@ export default async function AccountHomePage({
         imageUrl: l.logoUrl ?? l.coverImageUrl,
       })
     ),
+    ...myBusinesses.map(
+      (b): ManagedEntity => ({
+        kind: "business",
+        id: b.id,
+        name: b.name,
+        pills: [
+          b.pendingReview ? { label: "Pending Review", tone: "warning" as const } : null,
+          proBusinessIds.has(b.id) ? { label: "Pro", tone: "pro" as const } : null,
+        ],
+        href: `/account/business/${b.id}`,
+        cta: b.pendingReview ? "Finish Your Business" : "Open Workspace",
+        imageUrl: b.logoUrl ?? b.coverImageUrl,
+      })
+    ),
   ];
+  const hasAnyManaged = managedEntities.length > 0;
 
-  const singleBusiness = myBusinesses.length === 1 ? myBusinesses[0] : null;
+  // New user: nothing personal, nothing to manage, nothing waiting — one
+  // intentional starter instead of a page of empty modules.
+  const isNewWorld =
+    comingUpCards.length === 0 &&
+    recentMoments.length === 0 &&
+    worldTiles.length === 0 &&
+    !hasUpdates &&
+    inboxPreview.length === 0 &&
+    !hasAnyManaged &&
+    myPendingClaims.length === 0;
 
   return (
     <PersonalAppShell displayName={profile?.display_name ?? null}>
       <AccountSync />
 
-      {/* IDENTITY — Mobile Command Center V2 pass: the read-only audit
-          found this compact header still accounted for roughly the top
-          half of the first mobile viewport before any real operational
-          content appeared. The "Your Findmi" eyebrow is removed outright
-          (pure decoration, zero information) and the greeting drops from
-          a bold h1 heading to a single quiet line — still a real h1 for
-          document structure/accessibility, just no longer visually
-          competing with Needs Attention / Today's schedule below it.
-          The multi-business pill strip is REMOVED per this pass's own
-          explicit product decision: it carried strictly less information
-          than What You're Managing further down (same businesses, no
-          status/Pro pills, no distinguishing behavior — just a second,
-          redundant way to reach the same destinations) and created an
-          unbounded, affordance-less horizontal strip for accounts with
-          several businesses. No active-business selection/state replaces
-          it in this pass. Single-business View Public Page/Share is
-          unchanged. */}
-      <div className="lg:flex lg:items-start lg:justify-between lg:gap-6">
-        <header className="min-w-0">
-          {/* Mobile Home Composition Correction pass — lightened further:
-              the previous compact contextual line ("Here's what's
-              happening across Findmi") is removed outright, same reasoning
-              this header's own earlier pass already applied to the old
-              "Your Findmi" eyebrow — real estate that named the page
-              without contributing information. A plain, light greeting is
-              enough; Sign Out and other account controls live in the
-              personal shell (PersonalAppShell, see this page's own
-              return), never on this line. */}
-          <h1 className="text-body font-semibold text-secondary">
-            Welcome Back{profile?.display_name ? `, ${profile.display_name}` : ""}
-          </h1>
-          {singleBusiness && (
-            <p className="mt-1 flex items-center gap-2 text-body text-muted">
-              <span className="truncate font-semibold text-primary">{singleBusiness.name}</span>
-              {singleBusiness.pendingReview && (
-                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-label font-bold uppercase text-amber-800">
-                  Pending Review
-                </span>
-              )}
-            </p>
-          )}
-        </header>
-
-        {singleBusiness && !singleBusiness.pendingReview && (
-          <div className="mt-3 flex shrink-0 gap-2 lg:mt-0">
-            <Link
-              href={`/business/${singleBusiness.slug}`}
-              className="flex h-9 items-center justify-center rounded-xl border border-black/10 px-3.5 text-button font-bold text-primary transition hover:border-black/20"
-            >
-              View Public Page
-            </Link>
-            <ShareButton
-              url={`${getPublicOrigin()}/business/${singleBusiness.slug}`}
-              title={singleBusiness.name}
-              track={{ subject_type: "business", subject_id: singleBusiness.id, business_id: singleBusiness.id }}
-            />
-          </div>
-        )}
-      </div>
+      {/* Identity is the shell's Account Context trigger — the greeting
+          doesn't repeat the name. */}
+      <header>
+        <Greeting />
+      </header>
 
       {error && <AccountErrorBanner error={error} />}
       {eventManagementGranted === "1" && !error && (
@@ -450,140 +443,85 @@ export default async function AccountHomePage({
         </div>
       )}
 
-      {/* Universal Account V1 — recomposed information hierarchy, tightened
-          by the Mobile Home Composition Correction pass. DOM order IS the
-          priority order at every width (single column, no explicit CSS
-          grid placement): COMING UP FOR YOU (personal) -> NEEDS ATTENTION
-          (operational, only when non-empty) -> YOUR COLLECTIONS (personal)
-          -> WHAT YOU'RE MANAGING (management, compact 3-entity preview,
-          only when hasAnyManaged) -> INBOX. The former large quick-action
-          row (Where I'll Be/Analytics) and the "Your Schedule" module are
-          both removed from Home per this pass — Home summarizes, dedicated
-          destinations (each entity's own workspace, /account/schedule)
-          hold the depth. Nothing below is a new query — every module here
-          reads data this page (or lib/dashboard.ts/lib/personalGraph.ts)
-          already fetched above. */}
-      <div className="mt-6 flex flex-col gap-5">
-        {/* PERSONAL UPCOMING — Goal 3. Deliberately NOT the management
-            Schedule (see getPersonalUpcoming's own doc comment): sourced
-            only from this person's real Saves/Follows, never from
-            business_members/event_members/location_members. Compact,
-            discovery-oriented empty state — never a giant empty card —
-            when there's genuinely nothing coming up yet. */}
-        <OwnerModule
-          title="Coming Up For You"
-          meta={
-            <Link href="/my-world" className="flex items-center gap-1 text-metadata font-bold text-accent underline underline-offset-2">
-              Your World
-              <ChevronIcon direction="right" className="h-3 w-3" />
+      <div className="mt-6 flex flex-col gap-8">
+        {isNewWorld && (
+          <section aria-labelledby="start-your-world" className="rounded-3xl bg-findmi-50 px-5 py-6 sm:px-7 sm:py-8">
+            <h2 id="start-your-world" className="font-display text-section-title-lg font-bold text-primary">
+              Start Your World
+            </h2>
+            <p className="mt-1.5 max-w-md text-body text-secondary">
+              Save the Brands, Products, Places and Events you want to keep up with. They&rsquo;ll show up here.
+            </p>
+            <Link
+              href="/find"
+              className="mt-5 inline-flex h-11 items-center gap-1.5 rounded-xl bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600"
+            >
+              Explore Findmi
+              <ChevronIcon direction="right" className="h-4 w-4" />
             </Link>
-          }
-        >
-          {personalUpcoming.length === 0 ? (
-            <CompactStatus label="Save or follow something to see what's coming up for you here." />
-          ) : (
-            <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {personalUpcoming.map((item) => (
+          </section>
+        )}
+
+        {comingUpCards.length > 0 && (
+          <HomeSection id="coming-up" title="Coming Up" href="/my-world" linkLabel="See All">
+            <div className={RAIL_CLASS + " lg:grid-cols-3"}>
+              {comingUpCards.map((item) => (
                 <ScheduleCard key={item.key} item={item} />
               ))}
             </div>
-          )}
-        </OwnerModule>
-
-        {/* NEEDS YOUR ATTENTION — unchanged data/logic (getAccountCommandCenter),
-            only its position in the page changed. Operational only —
-            omitted entirely when there's nothing genuinely requiring or
-            awaiting action, never a reserved empty card. */}
-        {hasUpdates && (
-          <SoftZone
-            title="Needs Your Attention"
-            meta={<Chip tone="amber">{actionRequiredItems.length + awaitingApprovalItems.length}</Chip>}
-          >
-            <div className="flex flex-col gap-3">
-              {actionRequiredItems.length > 0 && (
-                <UpdateSubsection
-                  label="Action Required"
-                  items={actionRequiredItems}
-                  countClassName="bg-red-50 text-red-700"
-                />
-              )}
-              {awaitingApprovalItems.length > 0 && (
-                <UpdateSubsection
-                  label="Awaiting Approval"
-                  items={awaitingApprovalItems}
-                  countClassName="bg-findmi-50 text-findmi-700"
-                />
-              )}
-            </div>
-          </SoftZone>
+          </HomeSection>
         )}
 
-        {/* PERSONAL COLLECTIONS — Goal 4. A compact, truthful mix across
-            whatever this person has actually saved/followed (real
-            entities, real images, never a fabricated count/status),
-            leading to the full /my-world surface rather than reproducing
-            it here. Same compact-rail visual language as Coming Up For
-            You above, not a new pattern. */}
-        <OwnerModule
-          title="Your Collections"
-          meta={
-            <Link href="/my-world" className="flex items-center gap-1 text-metadata font-bold text-accent underline underline-offset-2">
-              Your World
-              <ChevronIcon direction="right" className="h-3 w-3" />
-            </Link>
-          }
-        >
-          {hasAnyCollection ? (
-            <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {collectionTiles.map((tile) => (
-                <CollectionTileCard key={tile.key} tile={tile} />
+        {recentMoments.length > 0 && (
+          <HomeSection id="recent-moments" title="Recent Moments" href="/my-world/journal" linkLabel="See All">
+            <div className="flex flex-col gap-2.5">
+              {recentMoments.map((entry) => (
+                <JournalArchiveCard key={entry.id} entry={entry} />
               ))}
             </div>
-          ) : (
-            <CompactStatus label="Save a business, product, event, or location to build your world." />
-          )}
-        </OwnerModule>
-
-        {/* WHAT YOU MANAGE — Mobile Home Composition Correction pass. Zero
-            managed entities -> this section simply doesn't render: no
-            empty "Get Started" card, no reserved management module for
-            someone who manages nothing. Universal creation lives globally
-            in QuickCreateMenu (untouched) either way.
-            The former large "Where I'll Be"/"Analytics" quick-action row
-            and the "Your Schedule" module are both REMOVED from Home per
-            this pass — same underlying capabilities, still fully reachable
-            from each entity's own specialized workspace and from
-            /account/schedule (both untouched), just no longer occupying
-            major Home real estate. previewLimit={3} caps the default
-            teaser to at most 3 entities regardless of portfolio size (a
-            person managing 1 vs. 15 entities gets the same Home height) —
-            see ManageOnFindmiList's own doc comment for the reveal
-            behavior; the filter tabs only appear once expanded. */}
-        {hasAnyManaged && (
-          <OwnerModule title="What You're Managing">
-            <ManageOnFindmiList entities={managedEntities} previewLimit={3} />
-          </OwnerModule>
+          </HomeSection>
         )}
 
-        {/* INBOX — preserved access, unchanged data (listConversationsForUser),
-            repositioned to the low-visual-weight operational tail of the
-            page rather than competing with the personal content above. */}
-        <OwnerModule
-          title="Inbox"
-          meta={
-            <Link href="/account/messages" className="flex items-center gap-1 text-metadata font-bold text-accent underline underline-offset-2">
-              View Inbox
-              <ChevronIcon direction="right" className="h-3 w-3" />
-            </Link>
-          }
-        >
-          {inboxPreview.length > 0 ? (
-            <div className="flex flex-col gap-2">
+        {worldTiles.length > 0 && (
+          <HomeSection id="my-world" title="My World" href="/my-world" linkLabel="See All">
+            <div className={RAIL_CLASS + " lg:grid-cols-4"}>
+              {worldTiles.map((tile) => (
+                <WorldTileCard key={tile.key} tile={tile} />
+              ))}
+            </div>
+          </HomeSection>
+        )}
+
+        {/* Needs Your Attention — unchanged data/logic (getAccountCommandCenter)
+            and urgency semantics; only when there's something genuinely
+            requiring or awaiting action. Follows the personal content. */}
+        {hasUpdates && (
+          <HomeSection
+            id="needs-attention"
+            title="Needs Your Attention"
+            trailing={<Chip tone="amber">{actionRequiredItems.length + awaitingApprovalItems.length}</Chip>}
+          >
+            <div className="flex flex-col gap-3 rounded-xl bg-black/[0.025] p-3.5">
+              {actionRequiredItems.length > 0 && (
+                <UpdateSubsection label="Action Required" items={actionRequiredItems} countClassName="bg-red-50 text-red-700" />
+              )}
+              {awaitingApprovalItems.length > 0 && (
+                <UpdateSubsection label="Awaiting Approval" items={awaitingApprovalItems} countClassName="bg-findmi-50 text-findmi-700" />
+              )}
+            </div>
+          </HomeSection>
+        )}
+
+        {/* Inbox — unchanged data (listConversationsForUser); only when there
+            is at least one conversation. No unread state exists. */}
+        {inboxPreview.length > 0 && (
+          <HomeSection id="inbox" title="Inbox" href="/account/messages" linkLabel="See All">
+            <div className="flex flex-col gap-1">
               {inboxPreview.map((c) => (
                 <Link
                   key={c.id}
                   href={`/account/messages/${c.id}`}
-                  className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]"
+                  className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-black/[0.03]"
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-metadata font-bold uppercase text-accent">
                     {c.otherPartyLabel.slice(0, 1)}
@@ -599,44 +537,50 @@ export default async function AccountHomePage({
                 </Link>
               ))}
             </div>
-          ) : (
-            <CompactStatus label="Your Findmi conversations will appear here." />
-          )}
-        </OwnerModule>
+          </HomeSection>
+        )}
+
+        {/* Managing — secondary; compact 3-entity preview (ManageOnFindmiList
+            owns the reveal behavior). Only when this person manages
+            something. */}
+        {hasAnyManaged && (
+          <HomeSection id="managing" title="Managing">
+            <ManageOnFindmiList entities={managedEntities} previewLimit={3} />
+          </HomeSection>
+        )}
+
+        {myPendingClaims.length > 0 && (
+          <HomeSection id="pending-claims" title="Pending Claims">
+            <div className="flex flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
+              {myPendingClaims.map((c) => (
+                <div key={c.id} className="flex flex-col gap-3 rounded-2xl border border-findmi/20 bg-findmi-50/50 p-4">
+                  <Link href={`/business/${c.slug}`} className="flex flex-col gap-1">
+                    <p className="text-card-title font-bold text-primary">{c.name}</p>
+                    <p className="text-metadata font-semibold text-accent">Claim under review</p>
+                    <p className="text-metadata text-muted">Typically reviewed within 48–72 hours.</p>
+                  </Link>
+                  <Link
+                    href="/join/business"
+                    className="flex h-9 w-fit items-center justify-center rounded-xl bg-findmi px-4 text-label font-bold uppercase text-white transition hover:bg-findmi-600"
+                  >
+                    Upgrade to Pro
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </HomeSection>
+        )}
       </div>
 
-      {myPendingClaims.length > 0 && (
-        <section id="pending-claims" className="mt-6">
-          <h2 className="text-label font-bold uppercase text-subtle">Pending Claims</h2>
-          <div className="mt-2 flex flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0 lg:grid-cols-3">
-            {myPendingClaims.map((c) => (
-              <div
-                key={c.id}
-                className="flex flex-col gap-3 rounded-2xl border border-findmi/20 bg-findmi-50/50 p-4 shadow-sm"
-              >
-                <Link href={`/business/${c.slug}`} className="flex flex-col gap-1">
-                  <p className="text-card-title font-bold text-primary">{c.name}</p>
-                  <p className="text-metadata font-semibold text-accent">Claim under review</p>
-                  <p className="text-metadata text-muted">Typically reviewed within 48–72 hours.</p>
-                </Link>
-                <Link
-                  href="/join/business"
-                  className="flex h-9 w-fit items-center justify-center rounded-xl bg-findmi px-4 text-label font-bold uppercase text-white transition hover:bg-findmi-600"
-                >
-                  Upgrade to Pro
-                </Link>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Footer utility links — demoted, unchanged destinations. */}
-      <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-black/5 pt-4">
-        <Link href="/find" className="flex items-center gap-1 text-metadata font-semibold text-muted underline underline-offset-2 hover:text-primary">
-          Explore what&rsquo;s happening on Findmi
-          <ChevronIcon direction="right" className="h-3 w-3" />
-        </Link>
+      {/* Footer utility links — unchanged destinations. The Explore link is
+          omitted only while Start Your World already offers it. */}
+      <div className="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-black/5 pt-4">
+        {!isNewWorld && (
+          <Link href="/find" className="flex items-center gap-1 text-metadata font-semibold text-muted underline underline-offset-2 hover:text-primary">
+            Explore what&rsquo;s happening on Findmi
+            <ChevronIcon direction="right" className="h-3 w-3" />
+          </Link>
+        )}
         <details className="group">
           <summary className="w-fit cursor-pointer text-metadata font-semibold text-muted underline underline-offset-2 transition hover:text-secondary [&::-webkit-details-marker]:hidden">
             Redeem Invite Code
@@ -695,12 +639,10 @@ function UpdateSubsection({
 
 /** One Updates row — the entity/thing's own name gets its own primary
  * line, the status/explanation its own secondary line (never
- * concatenated into one truncating sentence — the real-device QA
- * problem this pass fixes). Both lines wrap rather than truncate, so a
- * real long name ("San Gennaro 100th Anniversary") stays fully
- * readable. Every current source always carries a real, useful href
- * (see dashboard.ts's own push sites), so every row stays tappable with
- * its chevron — never a fake destination invented here. */
+ * concatenated into one truncating sentence). Both lines wrap rather than
+ * truncate, so a real long name stays fully readable. Every current
+ * source always carries a real, useful href (see dashboard.ts's own push
+ * sites), so every row stays tappable with its chevron. */
 function UpdateRow({ item }: { item: AttentionItem }) {
   return (
     <Link href={item.href} className="flex items-start gap-3 rounded-xl px-2 py-1.5 transition hover:bg-black/[0.03]">
@@ -708,65 +650,97 @@ function UpdateRow({ item }: { item: AttentionItem }) {
         <span className="block text-body font-semibold text-primary">{item.title}</span>
         {item.subtitle && <span className="mt-0.5 block text-metadata text-muted">{item.subtitle}</span>}
       </span>
-      <ChevronGlyph className="mt-0.5 h-4 w-4 shrink-0 text-ink/30" />
+      <ChevronIcon direction="right" className="mt-0.5 h-4 w-4 shrink-0 text-ink/30" />
     </Link>
   );
 }
 
-/** Mobile Command Center V2 — the Today/Coming Up rail's own card,
- * built local to this page rather than importing AppearanceFeedCard/
- * CompactCard: those are consumer-discovery components that fire
- * entity_impression/entity_click analytics via buildEntityEventFields,
- * which owner-dashboard cards must never do (this pass's own hard
- * scope boundary). This mirrors their visual grammar instead — a
- * shrink-0 image-first card in a horizontal rail, a live badge reusing
- * the exact same getTemporalLabel this app already treats as the one
- * source of truth for "happening now" — without importing either
- * component or any analytics call. Routes to the exact same item.href
- * every prior text row used; only the presentation changed. */
-/** Shared by both the management-side Schedule rail and the Personal
- * Upcoming rail above — both item shapes carry exactly these fields, and
- * both are read-only "here's what's coming up" cards with no owner
- * mutation affordance, so one structural type covers either caller
- * without a duplicated component. */
-type ScheduleCardItem = Pick<ScheduleItem, "key" | "startAt" | "endAt" | "title" | "relatedTo" | "href" | "imageUrl">;
-function ScheduleCard({ item }: { item: ScheduleCardItem | PersonalUpcomingItem }) {
-  const { label, live } = getTemporalLabel(item.startAt, item.endAt);
+/** Personal Home V2 — one section on the open page canvas: a display
+ * title, an optional See All (shared chevron) or trailing element, then
+ * its content. No bordered card around every section. */
+function HomeSection({
+  id,
+  title,
+  href,
+  linkLabel,
+  trailing,
+  children,
+}: {
+  id: string;
+  title: string;
+  href?: string;
+  linkLabel?: string;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <Link
-      href={item.href}
-      className={`flex w-[128px] shrink-0 flex-col gap-2 rounded-2xl border p-2 transition active:scale-[0.98] ${
-        live ? "border-findmi/50 bg-findmi-50" : "border-black/5 bg-white hover:shadow-md hover:shadow-black/5"
-      }`}
-    >
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-black/[0.04]">
+    <section aria-labelledby={id}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id={id} className="min-w-0 truncate font-display text-section-title font-bold text-primary">
+          {title}
+        </h2>
+        {href && linkLabel ? (
+          <Link href={href} className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline">
+            {linkLabel}
+            <ChevronIcon direction="right" className="h-3 w-3" />
+          </Link>
+        ) : (
+          trailing
+        )}
+      </div>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+/** Coming Up card — image-first, built local to this page rather than
+ * importing AppearanceFeedCard/CompactCard (consumer-discovery components
+ * that fire entity_impression/entity_click analytics, which Home must
+ * never do). Live state reuses getTemporalLabel (the one source of truth
+ * for HERE NOW) with the restrained glass + glowing-dot treatment. */
+function ScheduleCard({ item }: { item: PersonalUpcomingItem }) {
+  const { label, live } = getTemporalLabel(item.startAt, item.endAt);
+  const when = live
+    ? item.endAt
+      ? `Until ${formatTime(item.endAt)}`
+      : null
+    : `${label} · ${formatTime(item.startAt)}`;
+  const context = item.where ?? (item.relatedTo.length > 0 ? item.relatedTo.join(" · ") : null);
+  return (
+    <Link href={item.href} className="group flex w-[172px] shrink-0 snap-start flex-col gap-2 lg:w-auto">
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-black/[0.04]">
         {item.imageUrl ? (
-          <SupabaseImage src={item.imageUrl} alt={item.title} fill sizes="128px" className="object-cover" />
+          <SupabaseImage
+            src={item.imageUrl}
+            alt=""
+            fill
+            sizes="(min-width: 1024px) 240px, 172px"
+            className="object-cover transition duration-300 group-hover:scale-[1.02]"
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <ScheduleFallbackGlyph className="h-7 w-7 text-black/15" />
+            <PlaceFallbackGlyph className="h-7 w-7 text-black/15" />
           </div>
         )}
-        <span
-          className={`absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-label font-bold uppercase ${
-            live ? "bg-red-600 text-white" : "bg-white/90 text-secondary"
-          }`}
-        >
-          {live && <LiveDot className="text-white" />}
-          {live ? "Now" : label}
-        </span>
+        {live && (
+          <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-md">
+            <LiveDot className="animate-happening-now-glow rounded-full text-red-500" />
+            {label}
+          </span>
+        )}
       </div>
-      <div className="min-w-0 px-0.5 pb-0.5">
-        <p className="truncate text-metadata font-bold text-primary">{item.title}</p>
-        <p className="truncate text-microcopy text-subtle">{item.relatedTo.join(" · ")}</p>
+      <div className="min-w-0 px-0.5">
+        {when && <p className="truncate text-label font-bold uppercase text-accent">{when}</p>}
+        <p className="mt-0.5 line-clamp-2 text-body font-semibold leading-snug text-primary">{item.title}</p>
+        {context && <p className="mt-0.5 truncate text-metadata text-muted">{context}</p>}
       </div>
     </Link>
   );
 }
 
-function ScheduleFallbackGlyph({ className }: { className?: string }) {
+function PlaceFallbackGlyph({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
       <path
         d="M12 21s-7-5.686-7-11a7 7 0 1 1 14 0c0 5.314-7 11-7 11Z"
         stroke="currentColor"
@@ -779,36 +753,30 @@ function ScheduleFallbackGlyph({ className }: { className?: string }) {
   );
 }
 
-/** Universal Account V1 foundation — one small tile in the Your
- * Collections rail (Goal 4). Deliberately simpler than ScheduleCard
- * (no live/temporal badge — a saved/followed thing has no start/end
- * time of its own) — just a real image and a real name, linking straight
- * to that entity's own public page. */
-function CollectionTileCard({ tile }: { tile: { name: string; imageUrl: string | null; href: string } }) {
+/** My World tile — a real image, the entity's real name and what kind of
+ * thing it is, linking straight to its own public page. */
+function WorldTileCard({ tile }: { tile: WorldTile }) {
   return (
-    <Link
-      href={tile.href}
-      className="flex w-[104px] shrink-0 flex-col gap-2 rounded-2xl border border-black/5 bg-white p-2 transition active:scale-[0.98] hover:shadow-md hover:shadow-black/5"
-    >
-      <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-black/[0.04]">
+    <Link href={tile.href} className="group flex w-[116px] shrink-0 snap-start flex-col gap-2 lg:w-auto">
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl border border-black/[0.05] bg-black/[0.04]">
         {tile.imageUrl ? (
-          <SupabaseImage src={tile.imageUrl} alt={tile.name} fill sizes="104px" className="object-cover" />
+          <SupabaseImage
+            src={tile.imageUrl}
+            alt=""
+            fill
+            sizes="(min-width: 1024px) 180px, 116px"
+            className="object-cover transition duration-300 group-hover:scale-[1.02]"
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <ScheduleFallbackGlyph className="h-6 w-6 text-black/15" />
+            <PlaceFallbackGlyph className="h-6 w-6 text-black/15" />
           </div>
         )}
       </div>
-      <p className="truncate px-0.5 pb-0.5 text-metadata font-bold text-primary">{tile.name}</p>
+      <div className="min-w-0 px-0.5">
+        <p className="truncate text-metadata font-bold text-primary">{tile.name}</p>
+        <p className="truncate text-microcopy text-subtle">{WORLD_KIND_LABEL[tile.kind]}</p>
+      </div>
     </Link>
   );
 }
-
-function ChevronGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-

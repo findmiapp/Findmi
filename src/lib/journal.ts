@@ -373,9 +373,9 @@ export type JournalArchiveFilter = "all" | "places" | "brands" | "products" | "e
  * of batched queries (entries once, media once, connections once, signed
  * URLs once) no matter how many periods a visitor pages through in one
  * request, and still zero N+1 regardless of how many entries exist. */
-export async function getJournalArchiveEntries(userId: string): Promise<JournalIndexEntry[]> {
+export async function getJournalArchiveEntries(userId: string, options?: { limit?: number }): Promise<JournalIndexEntry[]> {
   const supabase = await getServerSupabase();
-  const { data: entries } = await supabase
+  let query = supabase
     .from("journal_entries")
     .select(
       "id, title, entry_date, entry_time, visibility, status, location_id, manual_location_name, manual_location_city, location:locations(name)"
@@ -383,6 +383,11 @@ export async function getJournalArchiveEntries(userId: string): Promise<JournalI
     .eq("user_id", userId)
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
+  // Personal Home V2 — optional bound (Home shows the 3 most recent), so
+  // media/connections/cover signing only run for the entries shown. No
+  // limit (every existing caller) is the unchanged full archive.
+  if (options?.limit) query = query.limit(options.limit);
+  const { data: entries } = await query;
   if (!entries || entries.length === 0) return [];
 
   const entryIds = entries.map((e) => e.id);

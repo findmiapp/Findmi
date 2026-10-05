@@ -172,13 +172,32 @@ function PersonalContextBar({
   businesses: AccountBusinessContext[];
 }) {
   const label = displayName || "Your Findmi Account";
+  const initial = displayName?.trim().charAt(0).toUpperCase() ?? "";
+  // Personal Home V2 — ONE identity: the switcher's own trigger (same
+  // `trigger` mechanism BusinessAppShell uses for its logo/name block),
+  // never a separate name block beside a second name pill. No avatar
+  // upload flow exists, so a restrained monogram (or the person glyph
+  // when there's no display name to take an initial from).
+  const identity = (
+    <>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-findmi-50 font-display text-card-title font-bold text-accent">
+        {initial || <NavIcon name="person" className="h-5 w-5" />}
+      </span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate font-display text-section-title-lg font-bold text-primary">{label}</span>
+        <span className="block text-metadata text-subtle">Personal</span>
+      </span>
+    </>
+  );
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-label font-bold uppercase text-subtle">Personal</p>
-        <p className="mt-0.5 truncate font-display text-section-title-lg font-bold text-primary">{label}</p>
-      </div>
-      <AccountContextSwitcher current={{ kind: "personal" }} personalLabel={label} businesses={businesses} />
+      <AccountContextSwitcher
+        current={{ kind: "personal" }}
+        personalLabel={label}
+        businesses={businesses}
+        trigger={identity}
+        triggerClassName="min-w-0 flex-1"
+      />
     </div>
   );
 }
