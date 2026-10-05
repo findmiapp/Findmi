@@ -63,6 +63,10 @@ export default function AccountContextSwitcher({
       if (e.key === "Escape") setOpen(false);
     }
     function onClickOutside(e: MouseEvent) {
+      // The Sign Out confirmation dialog is portaled to <body>, outside
+      // this container — a press inside it must not close the switcher,
+      // or the dialog unmounts before its confirm click can fire.
+      if ((e.target as Element | null)?.closest?.('[role="alertdialog"]')) return;
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("keydown", onKeyDown);
