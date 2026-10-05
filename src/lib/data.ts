@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { withoutRangeMirrors } from "./event-range-mirror";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { isBusinessPro } from "./entitlements";
 import {
@@ -3969,7 +3970,7 @@ async function queryUpcomingHappenings(
   const [{ data: occurrenceRows }, { data: linkedAppearances }, galleryImages] = await Promise.all([
     supabase
       .from("event_occurrences")
-      .select("location_id, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo)")
+      .select("location_id, start_at, end_at, event:events(id, slug, name, cover_image_url, organizer_name, is_demo, start_at, end_at)")
       .in("location_id", locationIds)
       .eq("status", "scheduled")
       .gt("end_at", nowIso)
@@ -3987,10 +3988,29 @@ async function queryUpcomingHappenings(
     galleryImagesSource,
   ]);
 
+  // Field QA UX Pass 2B — an Event's range-mirror occurrence (its whole
+  // multi-day span, beside real per-day dates) must not become a permanent
+  // "Happening Now" / nearest item here (Featured + What's Happening Here).
+  // Shared lib/event-range-mirror rule, applied per Event over the rows
+  // fetched; a lone multi-day occurrence is kept.
+  type OccurrenceRow = NonNullable<typeof occurrenceRows>[number];
+  const eventOf = (row: OccurrenceRow) => (Array.isArray(row.event) ? row.event[0] : row.event);
+  const rowsByEvent = new Map<string, OccurrenceRow[]>();
+  for (const row of occurrenceRows ?? []) {
+    const e = eventOf(row);
+    if (!e) continue;
+    rowsByEvent.set(e.id, [...(rowsByEvent.get(e.id) ?? []), row]);
+  }
+  const keptOccurrenceRows = new Set<OccurrenceRow>();
+  for (const rows of rowsByEvent.values()) {
+    const e = eventOf(rows[0])!;
+    for (const row of withoutRangeMirrors(rows, e)) keptOccurrenceRows.add(row);
+  }
+
   const fromOccurrences: HappeningRow[] = [];
   for (const row of occurrenceRows ?? []) {
-    const e = Array.isArray(row.event) ? row.event[0] : row.event;
-    if (!e || e.is_demo) continue;
+    const e = eventOf(row);
+    if (!e || e.is_demo || !keptOccurrenceRows.has(row)) continue;
     fromOccurrences.push({
       id: `occurrence-${e.id}-${row.start_at}`,
       idSuffix: row.location_id as string,

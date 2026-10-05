@@ -30,7 +30,7 @@ import {
 } from "@/lib/data";
 import { cityStateZip, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
 import { hasAnyHours } from "@/lib/locationHours";
-import { LocationHoursCard, LocationHoursStatusPill } from "@/components/LocationHours";
+import { LocationHoursStatus } from "@/components/LocationHours";
 import ImageZoomTrigger from "@/components/ImageZoomTrigger";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
@@ -304,12 +304,17 @@ export async function LocationPublicView({ slug }: { slug: string }) {
 
           {/* 8. Category / subcategory — the single most-specific pick
               (parent or its chosen subcategory), no internal id, no tag
-              list. Paired with Open Now/Closed only when real hours data
-              makes that reliable — never guessed. */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            {location.category && <CategoryPill>{location.category.name}</CategoryPill>}
-            {showHours && <LocationHoursStatusPill hours={location.hours} />}
-          </div>
+              list. */}
+          {location.category && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <CategoryPill>{location.category.name}</CategoryPill>
+            </div>
+          )}
+
+          {/* Field QA UX Pass 2B — Open Now / Closed is the one Hours entry
+              point: it expands the compact week inline right here (visitor's
+              own clock); no separate Hours card anywhere on the page. */}
+          {showHours && <LocationHoursStatus hours={location.hours} />}
 
           {fullAddress && (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-ink/60">
@@ -336,15 +341,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
             />
           </div>
-          {/* Field QA UX Pass 2 — Hours sits directly under the actions:
-              a compact card (Today's hours + View All Hours), collapsed by
-              default, that the Open Now / Closed pill above expands and
-              scrolls to. Computed in the visitor's own clock (client). */}
-          {showHours && (
-            <div className="mt-3">
-              <LocationHoursCard hours={location.hours} />
-            </div>
-          )}
         </div>
       </div>
 

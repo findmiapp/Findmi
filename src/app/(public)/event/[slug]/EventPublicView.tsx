@@ -1,3 +1,4 @@
+import { isRangeMirrorOccurrence, withoutRangeMirrors } from "@/lib/event-range-mirror";
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 import Image from "next/image";
@@ -263,16 +264,9 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // permanent "Live" date. Display-only: it's left out of the dates the
   // visitor sees/selects whenever other real dates exist. The row itself
   // (and anything attached to it) is untouched.
-  const eventStartMs = new Date(event.start_at).getTime();
-  const eventEndMs = event.end_at ? new Date(event.end_at).getTime() : NaN;
-  const isRangeMirror = (o: { start_at: string; end_at: string }) =>
-    new Date(o.start_at).getTime() === eventStartMs &&
-    new Date(o.end_at).getTime() === eventEndMs &&
-    eventEndMs - eventStartMs > 24 * 60 * 60 * 1000;
-  const datedOccurrences = (() => {
-    const kept = realOccurrences.filter((o) => !isRangeMirror(o));
-    return kept.length > 0 ? kept : realOccurrences;
-  })();
+  // Shared rule: lib/event-range-mirror.
+  const isRangeMirror = (o: { start_at: string; end_at: string }) => isRangeMirrorOccurrence(o, event);
+  const datedOccurrences = withoutRangeMirrors(realOccurrences, event);
   const rostersByOccurrence = hasOccurrences ? await getOccurrenceBusinessRosters(realOccurrenceIds) : {};
   const primaryEntry = upcomingOccurrences.find((o) => isPrimaryDateId(o.id));
   if (primaryEntry) {
