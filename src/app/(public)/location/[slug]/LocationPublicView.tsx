@@ -286,28 +286,28 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             </p>
           )}
 
-          {/* /account V2 Pass 2 — "Operated by": quiet context line, each
-              Business linking to its own page. Absent when none. */}
-          {operators.items.length > 0 && (
-            <p className="mt-1 text-sm leading-snug text-ink/55">
-              Operated by{" "}
-              {operators.items.map((b, i) => (
-                <span key={b.businessId}>
-                  {i > 0 && (i === operators.items.length - 1 ? " & " : ", ")}
-                  <Link href={`/business/${b.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
-                    {b.name}
-                  </Link>
-                </span>
-              ))}
-            </p>
-          )}
-
-          {/* 8. Category / subcategory — the single most-specific pick
-              (parent or its chosen subcategory), no internal id, no tag
-              list. */}
-          {location.category && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <CategoryPill>{location.category.name}</CategoryPill>
+          {/* Location Hero Metadata Micro-polish — "Operated by" (quiet
+              context line, each Business linking to its own page) and the
+              single most-specific category pill share ONE wrapping row:
+              side by side when they fit, wrapping naturally when they
+              don't (no truncation, no font shrinking). Each piece is
+              absent when its data is; the row is absent when both are. */}
+          {(operators.items.length > 0 || location.category) && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+              {operators.items.length > 0 && (
+                <p className="min-w-0 text-sm leading-snug text-ink/55">
+                  Operated by{" "}
+                  {operators.items.map((b, i) => (
+                    <span key={b.businessId}>
+                      {i > 0 && (i === operators.items.length - 1 ? " & " : ", ")}
+                      <Link href={`/business/${b.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
+                        {b.name}
+                      </Link>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {location.category && <CategoryPill>{location.category.name}</CategoryPill>}
             </div>
           )}
 
