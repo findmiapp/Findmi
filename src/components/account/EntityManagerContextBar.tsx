@@ -1,4 +1,6 @@
 import Link from "next/link";
+import AccountContextSwitcher, { type SwitcherCurrent } from "@/components/account/AccountContextSwitcher";
+import type { AccountBusinessContext } from "@/lib/accountContext";
 
 /** Account Shell V1 — Event + Location Manager pass. Replaces the old
  * <AccountNav /> (a full Home/Schedule/Business/Inbox grid + Create menu
@@ -10,6 +12,15 @@ import Link from "next/link";
  * What an Entity Manager genuinely still needs beyond its own body:
  *   - Findmi brand identity — already provided globally by OwnerHeader
  *     on every /account/* route, so this component doesn't repeat it.
+ *   - Global Account Context Switcher V1 — Event/Location are NOT account
+ *     contexts (see CLAUDE.md's architecture model), so this is the one
+ *     place a Manager page exposes Personal/Business switching and the
+ *     app's only reachable Sign Out for these two pages (previously a
+ *     real gap: an Entity Manager had no sign-out at all). `current` is
+ *     derived by the caller from the SAME already-resolved
+ *     `businessContext` (the `?business_id=` hint via
+ *     resolveBusinessNavContext) the back-link below already uses — a
+ *     navigation hint, never new inference.
  *   - A way BACK — `backHref`/`backLabel`, resolved by the caller from an
  *     explicit `?business_id=` navigation hint (never guessed/inferred —
  *     see lib/permissions.ts's own resolveBusinessNavContext) when one
@@ -25,15 +36,25 @@ export default function EntityManagerContextBar({
   isAdminElevated,
   adminExitHref,
   entityName,
+  current,
+  personalLabel,
+  businesses,
 }: {
   backHref: string;
   backLabel: string;
   isAdminElevated: boolean;
   adminExitHref: string;
   entityName: string;
+  current: SwitcherCurrent;
+  personalLabel: string;
+  businesses: AccountBusinessContext[];
 }) {
   return (
     <>
+      <div className="mb-3 flex justify-end">
+        <AccountContextSwitcher current={current} personalLabel={personalLabel} businesses={businesses} />
+      </div>
+
       <Link href={backHref} className="mb-3 inline-flex items-center text-metadata font-semibold text-muted hover:text-primary">
         &larr; {backLabel}
       </Link>

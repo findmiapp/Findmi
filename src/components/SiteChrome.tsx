@@ -106,6 +106,13 @@ export default function SiteChrome({
     const hasPersonalShellTabBar =
       PERSONAL_SHELL_ROUTES.has(pathname) || pathname.startsWith("/account/orders/") || pathname.startsWith("/account/messages/");
     const hasFixedBottomNav = hasBusinessTabBar || hasPersonalShellTabBar;
+    // Global Account Context Switcher V1, Section 25 footer audit — Event
+    // and Location Manager (EntityManagerContextBar, no fixed bottom nav
+    // of their own) had the exact same stray public footer problem as the
+    // Business shell above, just never addressed when that pass scoped
+    // itself to Business only. Plain suppression, no bottom-clearance div
+    // needed — unlike hasBusinessTabBar, there's no fixed nav here to clear.
+    const isEntityManager = /^\/account\/(event|location)\/[^/]+$/.test(pathname);
     // Business Account Correction Pass (#10) — the public About/For
     // Business/Privacy/Terms footer was rendering inside BusinessAppShell
     // destinations too, sitting right above the fixed bottom tab bar
@@ -121,7 +128,7 @@ export default function SiteChrome({
         <div className="flex-1">{children}</div>
         {hasBusinessTabBar ? (
           <div className="pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" />
-        ) : (
+        ) : isEntityManager ? null : (
           <div className={hasFixedBottomNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0" : undefined}>{footer}</div>
         )}
       </>

@@ -6,7 +6,18 @@ import { usePathname } from "next/navigation";
 import { useBusinesses } from "@/components/BusinessesContext";
 import NavIcon from "@/components/NavIcon";
 import SignOutConfirm from "@/components/SignOutConfirm";
+import AccountContextSwitcher from "@/components/account/AccountContextSwitcher";
+import type { AccountBusinessContext } from "@/lib/accountContext";
 import { signOut } from "./profile/actions";
+
+/** Global Account Context Switcher V1 — useBusinesses() already carries
+ * slug/logoUrl/role now that (public)/layout.tsx feeds it via the shared
+ * getAccountContexts helper; BusinessOption's fields stay optional so
+ * every other existing consumer of that context keeps compiling, so this
+ * is just a narrowing map, never a second Supabase read. */
+function toSwitcherBusinesses(businesses: { id: string; name: string; slug?: string | null; logoUrl?: string | null; role?: AccountBusinessContext["role"] }[]): AccountBusinessContext[] {
+  return businesses.map((b) => ({ id: b.id, name: b.name, slug: b.slug ?? null, logoUrl: b.logoUrl ?? null, role: b.role ?? "owner" }));
+}
 
 /** Account Shell Pass 1 — the Personal/shared account shell. Same
  * product family as Business V2's BusinessAppShell (compact nav, filled-
@@ -67,7 +78,7 @@ export default function PersonalAppShell({ displayName, children }: { displayNam
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 pb-24 pt-4 sm:px-6 lg:pb-10 lg:pt-6">
-      <PersonalContextBar displayName={displayName} businesses={businesses} />
+      <PersonalContextBar displayName={displayName} businesses={toSwitcherBusinesses(businesses)} />
 
       <div className="mt-5 lg:grid lg:grid-cols-[192px_1fr] lg:items-start lg:gap-10">
         {/* Desktop rail — every item, no desktop "More" (8 short labels
@@ -147,7 +158,7 @@ export default function PersonalAppShell({ displayName, children }: { displayNam
       </nav>
 
       {moreOpen && (
-        <MorePanel items={secondaryItems} pathname={pathname} businesses={businesses} onClose={() => setMoreOpen(false)} />
+        <MorePanel items={secondaryItems} pathname={pathname} onClose={() => setMoreOpen(false)} />
       )}
     </div>
   );
@@ -158,27 +169,16 @@ function PersonalContextBar({
   businesses,
 }: {
   displayName: string | null;
-  businesses: { id: string; name: string }[];
+  businesses: AccountBusinessContext[];
 }) {
+  const label = displayName || "Your Findmi Account";
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
         <p className="text-label font-bold uppercase text-subtle">Personal</p>
-        <p className="mt-0.5 truncate font-display text-section-title-lg font-bold text-primary">{displayName || "Your Findmi account"}</p>
+        <p className="mt-0.5 truncate font-display text-section-title-lg font-bold text-primary">{label}</p>
       </div>
-      {businesses.length > 0 && (
-        <Link
-          href="/account/business"
-          className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-white px-3.5 text-metadata font-semibold text-secondary transition hover:border-black/20 hover:text-primary"
-        >
-          <NavIcon name="storefront" className="h-4 w-4 shrink-0" />
-          <span className="hidden max-w-[12rem] truncate sm:inline">
-            {businesses.length === 1 ? businesses[0].name : `${businesses.length} Businesses`}
-          </span>
-          <span className="sm:hidden">Businesses</span>
-          <ChevronGlyph className="h-3.5 w-3.5 shrink-0 text-ink/40" />
-        </Link>
-      )}
+      <AccountContextSwitcher current={{ kind: "personal" }} personalLabel={label} businesses={businesses} />
     </div>
   );
 }
@@ -192,12 +192,10 @@ function PersonalContextBar({
 function MorePanel({
   items,
   pathname,
-  businesses,
   onClose,
 }: {
   items: NavItem[];
   pathname: string;
-  businesses: { id: string; name: string }[];
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -256,21 +254,6 @@ function MorePanel({
           })}
         </ul>
 
-        {businesses.length > 0 && (
-          <div className="mt-1 border-t border-black/[0.06] pt-1">
-            <Link
-              href="/account/business"
-              onClick={onClose}
-              className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-body font-semibold text-primary transition hover:bg-black/[0.04]"
-            >
-              <span className="shrink-0 text-ink/50">
-                <NavIcon name="storefront" className="h-5 w-5" />
-              </span>
-              <span className="truncate">{businesses.length === 1 ? businesses[0].name : "Businesses"}</span>
-            </Link>
-          </div>
-        )}
-
         <div className="mt-1 border-t border-black/[0.06] pt-1">
           <SignOutConfirm
             action={signOut}
@@ -314,10 +297,3 @@ function MoreGlyph({ className }: { className?: string }) {
   );
 }
 
-function ChevronGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}

@@ -8,6 +8,8 @@ import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireBusinessMember } from "@/lib/permissions";
 import { isAdminSession } from "@/lib/admin/auth";
 import { isBusinessPro } from "@/lib/entitlements";
+import { getAccountContexts } from "@/lib/accountContext";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
 import {
   deriveEventIdsWithOccurrenceProjections,
   getCategories,
@@ -466,22 +468,20 @@ export default async function ManageBusinessPage({
   // scoped query shape /account and /account/business already use
   // (`.eq("user_id", user.id)`, plain `supabase` client, never `admin`),
   // so this can never surface a Business the visitor doesn't manage.
-  let managedBusinesses: { id: string; name: string }[] = [];
+  // Global Account Context Switcher V1 — same shared helper every shell
+  // uses now, replacing this page's own bespoke {id,name}-only query with
+  // the richer slug/logoUrl/role shape the switcher needs. personalLabel
+  // is the same canonical display-name helper every other /account page
+  // already calls (never the user's email).
+  let managedBusinesses: Awaited<ReturnType<typeof getAccountContexts>> = [];
+  let personalLabel = "Your Findmi Account";
   if (user) {
-    const { data: membershipRows } = await supabase
-      .from("business_members")
-      .select("business_id, businesses(id, name)")
-      .eq("user_id", user.id);
-    type MembershipRow = {
-      business_id: string;
-      businesses: { id: string; name: string } | { id: string; name: string }[] | null;
-    };
-    managedBusinesses = ((membershipRows ?? []) as MembershipRow[])
-      .map((m) => {
-        const b = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
-        return b ? { id: b.id, name: b.name } : null;
-      })
-      .filter((b): b is { id: string; name: string } => Boolean(b));
+    const [contexts, displayName] = await Promise.all([
+      getAccountContexts(supabase, user.id),
+      getPersonalDisplayName(supabase, user.id),
+    ]);
+    managedBusinesses = contexts;
+    personalLabel = displayName || "Your Findmi Account";
   }
 
   const [{ data: business }, categories, { data: businessCategoryRows }, { data: galleryRows }, businessHandle] = await Promise.all([
@@ -1300,15 +1300,6 @@ export default async function ManageBusinessPage({
   scheduleLoadMoreParams.set("tab", "findmi-here");
   scheduleLoadMoreParams.set("schedule_limit", String(scheduleLimitUsed + SCHEDULE_PAGE_SIZE));
   const scheduleLoadMoreHref = `${basePath}?${scheduleLoadMoreParams.toString()}`;
-  // Owner Shell V3 — the Business switcher only ever carries the current
-  // tab over to another Business when that destination is universally
-  // safe (exists, renders something meaningful, and needs no per-Business
-  // eligibility check like Orders' own ordersRelevant). Anything else
-  // falls back to Overview rather than risking a dead/empty destination
-  // on the target Business.
-  const SWITCHABLE_TABS = new Set(["overview", "findmi-here", "performance", "profile", "products", "qr", "opportunities", "more"]);
-  const switcherTab = SWITCHABLE_TABS.has(activeTab) ? activeTab : "overview";
-
   // First-Class QR Campaigns tab — resolves each campaign's destination
   // label now that `appearances`/`products` are populated, reusing the
   // exact same title/name fields the existing qrEligibleAppearances/
@@ -1346,8 +1337,8 @@ export default async function ManageBusinessPage({
       business={{ id, name: business.name, slug: business.slug, logoUrl: business.logo_url }}
       pro={pro}
       isExpiredPro={isExpiredPro}
+      personalLabel={personalLabel}
       managedBusinesses={managedBusinesses}
-      switcherTab={switcherTab}
       activeSection={sectionForTab(activeTab)}
       isAdminElevated={isAdminElevated}
     >

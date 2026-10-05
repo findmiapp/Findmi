@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl, isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { requireEventMember, resolveBusinessNavContext } from "@/lib/permissions";
+import { getAccountContexts } from "@/lib/accountContext";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
 import { getAdminEventById, getAllCategories, getEventCategoryIds } from "@/lib/admin/queries";
 import { getAllMarketsForAdmin } from "@/lib/admin/business-markets";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
@@ -148,6 +151,22 @@ export default async function ManageEventPage({
 
   const admin = getAdminSupabase();
   if (!admin) redirect(errorRedirectUrl("/account", "Server isn't configured."));
+
+  // Global Account Context Switcher V1 — Event Manager is one of the two
+  // pages that never had a reachable Sign Out or a way to switch Personal/
+  // Business context at all. sessionUser is the same real Supabase Auth
+  // session requireEventMember() above already re-derives internally; an
+  // admin-elevated session with no real user simply gets the generic
+  // Personal fallback label and an empty Business list (same "nothing to
+  // switch between" posture every other admin-elevated path already has).
+  const sessionSupabase = await getServerSupabase();
+  const {
+    data: { user: sessionUser },
+  } = await sessionSupabase.auth.getUser();
+  const [accountBusinesses, personalDisplayName] = sessionUser
+    ? await Promise.all([getAccountContexts(sessionSupabase, sessionUser.id), getPersonalDisplayName(sessionSupabase, sessionUser.id)])
+    : [[], null];
+  const personalLabel = personalDisplayName || "Your Findmi Account";
 
   // Account Shell V1 — a Business V2 owner who arrived via an explicit
   // ?business_id= navigation hint sees a quiet way back to that Business.
@@ -369,6 +388,9 @@ export default async function ManageEventPage({
         isAdminElevated={isAdminElevated}
         adminExitHref={`/admin/events/${id}`}
         entityName={event.name}
+        current={businessContext ? { kind: "business", id: businessContext.id } : { kind: "personal" }}
+        personalLabel={personalLabel}
+        businesses={accountBusinesses}
       />
 
       <div className="flex flex-wrap items-start justify-between gap-3">

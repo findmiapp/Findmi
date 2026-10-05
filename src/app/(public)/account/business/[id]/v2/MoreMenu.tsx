@@ -52,7 +52,6 @@ export default function MoreMenu({
     ...(showReferral ? [{ href: `${basePath}?tab=referral`, label: "Referral program", icon: <NavIcon name="person" className="h-5 w-5" /> }] : []),
   ];
   const yourAccount: MoreLink[] = [
-    { href: "/account?view=personal", label: "Personal account", description: "Your plans, saves and follows", icon: <NavIcon name="home" className="h-5 w-5" /> },
     { href: "/account/schedule", label: "Schedule", icon: <NavIcon name="calendar" className="h-5 w-5" /> },
     { href: "/account/saved", label: "Saved", icon: <NavIcon name="bookmark" className="h-5 w-5" /> },
     { href: "/account/following", label: "Following", icon: <NavIcon name="person" className="h-5 w-5" /> },

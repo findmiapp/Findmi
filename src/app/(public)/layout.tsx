@@ -8,6 +8,7 @@ import { filterNavItemsForAudience, getVisibleNavItems } from "@/lib/navigation"
 import { isAdminSession } from "@/lib/admin/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { BusinessOption } from "@/app/(public)/account/BusinessScopedAction";
+import { getAccountContexts } from "@/lib/accountContext";
 
 // Nav rarely changes — cache it site-wide for a minute rather than
 // querying nav_items on every single page request (same revalidate
@@ -58,16 +59,14 @@ export default async function PublicLayout({ children }: { children: React.React
   // second round trip each. Empty/unfetched whenever signed out — a
   // signed-out visitor's business-scoped quick-create actions route
   // through login instead (see QuickCreateMenu), never through this list.
-  type BusinessMembershipRow = { business_id: string; businesses: { name: string } | { name: string }[] | null };
+  // Global Account Context Switcher V1 — the same shared helper the new
+  // switcher uses, now feeding BusinessesProvider too, so every consumer
+  // of useBusinesses() (QuickCreateMenu, NavDesktop, MobileHeader, the
+  // Personal/Business account shells) gets slug/logoUrl/role for free
+  // from the ONE query already made here, no second round trip.
   let businesses: BusinessOption[] = [];
   if (authenticated) {
-    const { data } = await supabase.from("business_members").select("business_id, businesses(name)").eq("user_id", user!.id);
-    businesses = ((data ?? []) as BusinessMembershipRow[])
-      .map((m) => {
-        const business = Array.isArray(m.businesses) ? m.businesses[0] : m.businesses;
-        return business ? { id: m.business_id, name: business.name } : null;
-      })
-      .filter((b): b is BusinessOption => Boolean(b));
+    businesses = await getAccountContexts(supabase, user!.id);
   }
 
   return (

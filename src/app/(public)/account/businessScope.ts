@@ -14,6 +14,14 @@
 export interface BusinessOption {
   id: string;
   name: string;
+  /** Global Account Context Switcher V1 — optional so every existing
+   * `{id, name}` call site (QuickCreateMenu, NavDesktop, MobileHeader,
+   * the admin-side chooser, etc.) keeps compiling unchanged; only the
+   * shared switcher's own data source (getAccountContexts) actually
+   * populates these. */
+  slug?: string | null;
+  logoUrl?: string | null;
+  role?: "owner" | "manager" | "staff";
 }
 
 /** Zero/one/many routing decision for every Business-scoped action on

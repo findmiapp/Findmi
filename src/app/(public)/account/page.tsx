@@ -79,9 +79,9 @@ async function getProBusinessIdSet(
 export default async function AccountHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; event_management?: string; view?: string }>;
+  searchParams: Promise<{ error?: string; event_management?: string }>;
 }) {
-  const { error, event_management: eventManagementGranted, view } = await searchParams;
+  const { error, event_management: eventManagementGranted } = await searchParams;
 
   const supabase = await getServerSupabase();
   const {
@@ -163,20 +163,6 @@ export default async function AccountHomePage({
       (b): b is { id: string; name: string; slug: string; pendingReview: boolean; logoUrl: string | null; coverImageUrl: string | null } =>
         Boolean(b)
     );
-
-  // Recovery pass — a business owner's account home IS the V2 Business
-  // app (/account/business/[id]); this personal page stays for accounts
-  // with no business, and for owners who explicitly ask for it
-  // (?view=personal — the V2 More menu's "Personal account" link). Never
-  // redirect while showing an error/notice handed back to this page.
-  if (myBusinesses.length > 0 && view !== "personal" && !error && !eventManagementGranted) {
-    if (myBusinesses.length === 1) redirect(`/account/business/${myBusinesses[0].id}`);
-    const rows = (businessMemberships ?? []) as BusinessMembershipRow[];
-    const liveIds = rows
-      .filter((m) => (Array.isArray(m.businesses) ? m.businesses[0] : m.businesses)?.publication_status === "live")
-      .map((m) => m.business_id);
-    redirect(liveIds.length === 1 ? `/account/business/${liveIds[0]}` : "/account/business");
-  }
 
   type PendingClaimRow = {
     id: string;

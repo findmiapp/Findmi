@@ -6,6 +6,8 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { errorRedirectUrl } from "@/lib/admin/form-helpers";
 import { requireLocationMember, resolveBusinessNavContext } from "@/lib/permissions";
 import { canCurrentUserManageEvents } from "@/lib/entitlements";
+import { getAccountContexts } from "@/lib/accountContext";
+import { getPersonalDisplayName } from "@/lib/personalGraph";
 import { getAdminLocationById, getAllCategories } from "@/lib/admin/queries";
 import { getActiveMarketsWithAreaOptions } from "@/lib/admin/market-areas";
 import { getPendingMarketRequestForLocation } from "@/lib/market-requests";
@@ -173,6 +175,15 @@ export default async function ManageLocationPage({
     data: { user: sessionUser },
   } = await sessionSupabase.auth.getUser();
   const eventEligible = sessionUser ? await canCurrentUserManageEvents(admin, sessionUser.id) : false;
+
+  // Global Account Context Switcher V1 — Location Manager is the other
+  // page that never had a reachable Sign Out or Personal/Business
+  // switching. Reuses the sessionUser already derived above for
+  // eventEligible — no second auth re-check.
+  const [accountBusinesses, personalDisplayName] = sessionUser
+    ? await Promise.all([getAccountContexts(sessionSupabase, sessionUser.id), getPersonalDisplayName(sessionSupabase, sessionUser.id)])
+    : [[], null];
+  const personalLabel = personalDisplayName || "Your Findmi Account";
 
   // Venue Command Center pass — "What's Happening Here" becomes a real
   // operational view: every upcoming Event occurrence AND standalone
@@ -357,6 +368,9 @@ export default async function ManageLocationPage({
         isAdminElevated={isAdminElevated}
         adminExitHref={`/admin/locations/${id}`}
         entityName={location.name}
+        current={businessContext ? { kind: "business", id: businessContext.id } : { kind: "personal" }}
+        personalLabel={personalLabel}
+        businesses={accountBusinesses}
       />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
