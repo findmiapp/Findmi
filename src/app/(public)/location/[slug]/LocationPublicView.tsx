@@ -15,6 +15,7 @@ import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import EventShareButton from "@/components/EventShareButton";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
+import LocationPhotoPreview from "@/components/LocationPhotoPreview";
 import ReadMoreText from "@/components/ReadMoreText";
 import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
@@ -204,9 +205,12 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           bump (aspect-[4/3] -> aspect-[5/4]) so the environmental photo
           has more presence before the overlapping logo/identity content;
           still image-first, still edge-to-edge, still a modest crop, not
-          a takeover hero. Desktop (sm:aspect-[21/9]) is untouched. */}
+          a takeover hero. Desktop (sm:aspect-[21/9]) is untouched.
+          Location Public Page Composition pass — mobile 5/4 -> 3/2 (~17%
+          shorter) so identity and activity reach the first screen sooner;
+          same object-cover crop, desktop unchanged. */}
       <div className="sm:px-0 sm:pt-6">
-        <div className="relative aspect-[5/4] w-full overflow-hidden rounded-b-3xl bg-mist shadow-sm sm:aspect-[21/9] sm:rounded-3xl sm:border sm:border-black/5">
+        <div className="relative aspect-[3/2] w-full overflow-hidden rounded-b-3xl bg-mist shadow-sm sm:aspect-[21/9] sm:rounded-3xl sm:border sm:border-black/5">
           {heroImages.length > 0 ? (
             <EventCoverLightbox images={heroImages} alt={location.name} />
           ) : (
@@ -229,90 +233,81 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* 2. Logo + identity — Location Hero Follow Composition pass: with
-          a logo, the overlapping logo and Follow form one profile-header
-          row (logo left, Follow on the far right of the content gutter),
-          and the Location name gets its own full line beneath. Same
-          normal-flow pattern as the Business profile header: only the
-          LOGO carries the negative margin that overlaps the cover;
-          items-start keeps Follow on the cover's bottom edge, and a small
-          top margin centers it in the exposed strip beside the logo
-          (56px strip, 36px button -> mt-2.5; sm: 64px strip -> mt-3.5).
-          No logo -> no profile row to anchor to, so Follow stays beside
-          the name exactly as before. No fabricated follower count. */}
+      {/* 2. Logo + identity — Location Public Page Composition pass: ONE
+          compact profile block. The logo (88px mobile, 112px sm+) still
+          overlaps the cover's bottom edge, and the name / place context /
+          operator / category sit BESIDE it, with Follow at the far right
+          of that column (top-aligned with the name) — no separate logo
+          band. Normal flow only: the logo alone carries the negative
+          margin. Long names wrap within their column; Follow never
+          shrinks. No logo -> the same column simply spans the full width
+          (Follow still beside the name). No fabricated follower count. */}
       <div className="px-4 sm:px-0">
-        {location.logo_url && (
-          <div className="flex items-start justify-between gap-3">
-            {/* Small Public UI Polish pass — border-white + subtle ring so a
-                light logo keeps a real edge against the page. Overlap
-                geometry/size/shadow unchanged. */}
-            <div className="relative -mt-14 h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-sm ring-1 ring-black/[0.08] sm:-mt-16 sm:h-32 sm:w-32">
-              <SupabaseImage src={location.logo_url} alt={location.name} fill sizes="128px" className="object-cover" />
+        <div className={location.logo_url ? "flex items-start gap-2.5 sm:gap-4" : ""}>
+          {location.logo_url && (
+            // Small Public UI Polish pass — border-white + subtle ring so a
+            // light logo keeps a real edge against the page.
+            <div className="relative -mt-8 h-[88px] w-[88px] shrink-0 overflow-hidden rounded-2xl border-[3px] border-white bg-white shadow-sm ring-1 ring-black/[0.08] sm:-mt-12 sm:h-28 sm:w-28 sm:border-4">
+              <SupabaseImage src={location.logo_url} alt={location.name} fill sizes="112px" className="object-cover" />
               <ImageZoomTrigger images={[location.logo_url]} alt={location.name} label={`View larger logo for ${location.name}`} />
             </div>
-            <div className="mt-2.5 shrink-0 sm:mt-3.5">
-              {followButton}
-            </div>
-          </div>
-        )}
-        <div className="max-w-xl">
-          {location.logo_url ? (
-            <h1 className="mt-3 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
-          ) : (
-            <div className="flex items-start justify-between gap-3">
-              <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
+          )}
+          <div className={`min-w-0 flex-1 ${location.logo_url ? "pt-2 sm:pt-3" : ""}`}>
+            <div className="flex items-start justify-between gap-2">
+              <h1 className="min-w-0 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
               <div className="shrink-0 pt-0.5">{followButton}</div>
             </div>
-          )}
 
-          {/* Physical Presence Pass 2 — where this place physically sits
-              (nearest parent first), e.g. "Madison Square Park · Flatiron,
-              New York". Context, not navigation chrome: quiet text, each
-              parent linking to its own page. Absent for a flat Location. */}
-          {placeContext && (
-            <p className="mt-1 text-sm leading-snug text-ink/55">
-              {placeContext.ancestors.map((a, i) => (
-                <span key={a.id}>
-                  {i > 0 && <span aria-hidden="true"> · </span>}
-                  <Link href={`/location/${a.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
-                    {a.name}
-                  </Link>
-                </span>
-              ))}
-              {placeContext.geography && (
-                <>
-                  <span aria-hidden="true"> · </span>
-                  {placeContext.geography}
-                </>
-              )}
-            </p>
-          )}
+            {/* Physical Presence Pass 2 — where this place physically sits
+                (nearest parent first), e.g. "Madison Square Park · Flatiron,
+                New York". Context, not navigation chrome: quiet text, each
+                parent linking to its own page. Absent for a flat Location. */}
+            {placeContext && (
+              <p className="mt-1 text-sm leading-snug text-ink/55">
+                {placeContext.ancestors.map((a, i) => (
+                  <span key={a.id}>
+                    {i > 0 && <span aria-hidden="true"> · </span>}
+                    <Link href={`/location/${a.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
+                      {a.name}
+                    </Link>
+                  </span>
+                ))}
+                {placeContext.geography && (
+                  <>
+                    <span aria-hidden="true"> · </span>
+                    {placeContext.geography}
+                  </>
+                )}
+              </p>
+            )}
 
-          {/* Location Hero Metadata Micro-polish — "Operated by" (quiet
-              context line, each Business linking to its own page) and the
-              single most-specific category pill share ONE wrapping row:
-              side by side when they fit, wrapping naturally when they
-              don't (no truncation, no font shrinking). Each piece is
-              absent when its data is; the row is absent when both are. */}
-          {(operators.items.length > 0 || location.category) && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-              {operators.items.length > 0 && (
-                <p className="min-w-0 text-sm leading-snug text-ink/55">
-                  Operated by{" "}
-                  {operators.items.map((b, i) => (
-                    <span key={b.businessId}>
-                      {i > 0 && (i === operators.items.length - 1 ? " & " : ", ")}
-                      <Link href={`/business/${b.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
-                        {b.name}
-                      </Link>
-                    </span>
-                  ))}
-                </p>
-              )}
-              {location.category && <CategoryPill>{location.category.name}</CategoryPill>}
-            </div>
-          )}
+            {/* "Operated by" (quiet context line, each Business linking to
+                its own page) + the single most-specific category pill: one
+                wrapping row — side by side when they fit, stacked when the
+                column beside the logo is too narrow. Never truncated. Each
+                is absent when its data is; the row when both are. */}
+            {(operators.items.length > 0 || location.category) && (
+              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                {operators.items.length > 0 && (
+                  <p className="min-w-0 text-sm leading-snug text-ink/55">
+                    Operated by{" "}
+                    {operators.items.map((b, i) => (
+                      <span key={b.businessId}>
+                        {i > 0 && (i === operators.items.length - 1 ? " & " : ", ")}
+                        <Link href={`/business/${b.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
+                          {b.name}
+                        </Link>
+                      </span>
+                    ))}
+                  </p>
+                )}
+                {location.category && <CategoryPill>{location.category.name}</CategoryPill>}
+              </div>
+            )}
+          </div>
+        </div>
 
+        <div className="max-w-xl">
           {/* Field QA UX Pass 2B — Open Now / Closed is the one Hours entry
               point: it expands the compact week inline right here (visitor's
               own clock); no separate Hours card anywhere on the page. */}
@@ -332,7 +327,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           directionsAction above). Message/Website/Call/Contact stay in
           the compact contact row. */}
       <div className="px-4 sm:px-0">
-        <div className="mt-4">
+        <div className="mt-3.5">
           <div className="flex items-center gap-1.5 sm:gap-2">
             {directionsAction && <div className="flex min-w-0 flex-1">{directionsAction}</div>}
             <LocationSaveButton slug={location.slug} id={location.id} layout="square" />
@@ -344,6 +339,14 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             />
           </div>
         </div>
+        {/* Location Public Page Composition pass — a compact early peek at
+            this Location's OWN gallery (location_images; same >1 threshold
+            as the full Gallery section below, which stays). */}
+        {galleryImages.length > 1 && (
+          <div className="mt-3.5">
+            <LocationPhotoPreview images={galleryImages} alt={location.name} />
+          </div>
+        )}
       </div>
 
       {/* "Events" (Visual implementation pass) — the one resolved featured
@@ -361,7 +364,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           one -> the featured card alone, no remainder section at all;
           more -> featured card + a real remainder rail. */}
       <div className="px-4 sm:px-0">
-        <section id="events" className="mt-5 scroll-mt-20">
+        <section id="events" className="mt-4 scroll-mt-20">
           {featuredHappening ? (
             <FeaturedLocationHappeningCard
               kindLabel={featuredHappening.type === "event" ? "Featured Event" : "Featured Appearance"}
