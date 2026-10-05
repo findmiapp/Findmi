@@ -11,7 +11,6 @@ import { shouldShowMessageButton } from "@/lib/message-visibility";
 import LocationFollowButton from "@/components/LocationFollowButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import LocationSaveButton from "@/components/LocationSaveButton";
-import AddToCalendarButton from "@/components/AddToCalendarButton";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import EventShareButton from "@/components/EventShareButton";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
@@ -30,7 +29,9 @@ import {
   type LocationHappening,
 } from "@/lib/data";
 import { cityStateZip, formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
-import { LOCATION_WEEKDAYS, formatDayHours, getHoursSummaryLabel, hasAnyHours, isOpenNow } from "@/lib/locationHours";
+import { hasAnyHours } from "@/lib/locationHours";
+import { LocationHoursCard, LocationHoursStatusPill } from "@/components/LocationHours";
+import ImageZoomTrigger from "@/components/ImageZoomTrigger";
 import { getPublicHandleForEntity } from "@/lib/handles";
 import { getPublicOrigin } from "@/lib/site-url";
 import { getSupabase } from "@/lib/supabase";
@@ -142,8 +143,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   const mapsQuery = encodeURIComponent([location.name, fullAddress].filter(Boolean).join(", "));
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}` : null;
   const showHours = hasAnyHours(location.hours);
-  const openNow = showHours ? isOpenNow(location.hours) : null;
-  const hoursSummary = showHours ? getHoursSummaryLabel(location.hours) : null;
   const website = isSafeExternalUrl(location.website_url) ? location.website_url : null;
   // Public Graph Integrity Pass 1 — same canonical-URL resolution
   // generateLocationMetadata already uses (handle-first, /location/slug
@@ -161,26 +160,17 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   // Action row — the same approved action family as the Event page
   // (EventActionRow): Directions as the wide primary (Location has no
   // ticket/RSVP-style transactional action), then compact rounded-square
-  // utilities: Save, Add to Calendar (ONLY when the already-resolved
-  // featuredHappening gives it something truthful to add — never a
-  // fabricated "add this Location" entry), Share. Same components/variants
-  // Event uses; nothing invented to fill the row.
+  // utilities: Save, Share. Field QA UX Pass 2 — the hero Add to Calendar
+  // square was removed: it only ever added the featured happening, which
+  // its own card directly below already offers, so it read as "add this
+  // Location" and duplicated that card. Same components/variants Event
+  // uses; nothing invented to fill the row.
   const directionsAction = directionsHref ? (
     <DirectionsIconLink
       href={directionsHref}
       placeName={location.name}
       variant="expanded"
       trackPayload={{ event_name: "click_directions", subject_type: "location", subject_id: location.id, location_id: location.id }}
-    />
-  ) : null;
-  const calendarAction = featuredHappening ? (
-    <AddToCalendarButton
-      title={featuredHappening.title}
-      description={featuredHappening.description}
-      location={location.name}
-      startAt={featuredHappening.start_at}
-      endAt={featuredHappening.end_at}
-      layout="icon"
     />
   ) : null;
 
@@ -256,6 +246,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             // colorful. Overlap geometry/size/shadow unchanged.
             <div className="relative -mt-14 h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-sm ring-1 ring-black/[0.08] sm:-mt-16 sm:h-32 sm:w-32">
               <SupabaseImage src={location.logo_url} alt={location.name} fill sizes="128px" className="object-cover" />
+              <ImageZoomTrigger images={[location.logo_url]} alt={location.name} label={`View larger logo for ${location.name}`} />
             </div>
           )}
 
@@ -267,6 +258,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
                 locationSlug={location.slug}
                 locationName={location.name}
                 size="compact"
+                tone="quiet"
               />
             </div>
           </div>
@@ -316,15 +308,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               makes that reliable — never guessed. */}
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {location.category && <CategoryPill>{location.category.name}</CategoryPill>}
-            {showHours && openNow != null && (
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${
-                  openNow ? "bg-findmi-50 text-findmi-700" : "bg-black/[0.04] text-ink/50"
-                }`}
-              >
-                {openNow ? "Open Now" : "Closed"}
-              </span>
-            )}
+            {showHours && <LocationHoursStatusPill hours={location.hours} />}
           </div>
 
           {fullAddress && (
@@ -337,15 +321,14 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       </div>
 
       {/* 3. Action row — the Event page's approved action family
-          (wide Directions primary + Save / Calendar / Share squares; see
+          (wide Directions primary + quiet Save / Share squares; see
           directionsAction above). Message/Website/Call/Contact stay in
-          the compact contact row ahead of Hours. */}
+          the compact contact row. */}
       <div className="px-4 sm:px-0">
         <div className="mt-4">
           <div className="flex items-center gap-1.5 sm:gap-2">
             {directionsAction && <div className="flex min-w-0 flex-1">{directionsAction}</div>}
             <LocationSaveButton slug={location.slug} id={location.id} layout="square" />
-            {calendarAction}
             <EventShareButton
               url={canonicalUrl}
               title={location.name}
@@ -353,6 +336,15 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               track={{ subject_type: "location", subject_id: location.id, location_id: location.id }}
             />
           </div>
+          {/* Field QA UX Pass 2 — Hours sits directly under the actions:
+              a compact card (Today's hours + View All Hours), collapsed by
+              default, that the Open Now / Closed pill above expands and
+              scrolls to. Computed in the visitor's own clock (client). */}
+          {showHours && (
+            <div className="mt-3">
+              <LocationHoursCard hours={location.hours} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -528,37 +520,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           </div>
         )}
 
-        {/* Hours — moved above About/Gallery (Location Detail V1):
-            "is this place open" is a more immediate, actionable question
-            than its description/photos. Still a compact, collapsed-by-
-            default accordion, not a big permanently-open block. Native
-            <details>/<summary> gives real disclosure semantics for free,
-            no dependency. The summary line reuses the same reliable
-            "Open Until X" / "Closed now" computation as the identity
-            badge above — never shown when isOpenNow can't say for sure.
-            No holiday exceptions/split shifts/timezone overhaul. */}
-        {showHours && (
-          <section className="mt-8">
-            <details className="group rounded-2xl border border-black/5 bg-white shadow-sm">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden sm:p-5">
-                <span className="font-display text-lg font-bold tracking-tight text-ink">Hours</span>
-                <span className="flex items-center gap-2 text-sm text-ink/60">
-                  {hoursSummary}
-                  <ChevronGlyph className="h-4 w-4 shrink-0 text-ink/40 transition group-open:rotate-180" />
-                </span>
-              </summary>
-              <dl className="flex flex-col gap-1 border-t border-black/5 p-4 pt-3 sm:p-5 sm:pt-4">
-                {LOCATION_WEEKDAYS.map(({ key, label }) => (
-                  <div key={key} className="flex items-center justify-between text-sm">
-                    <dt className="text-ink/60">{label}</dt>
-                    <dd className="font-medium text-ink">{formatDayHours(location.hours?.[key])}</dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
-          </section>
-        )}
-
         {/* About — hidden entirely when no description. Never repeats
             address/hours/contact. The short preview directly under the
             featured happening (above) already covers the "is this place
@@ -646,17 +607,6 @@ function PhoneGlyph({ className }: { className?: string }) {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-// Same glyph/sizing convention as Event's own Directions pill (h-3.5 w-3.5,
-// strokeWidth 1.8, currentColor).
-
-function ChevronGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

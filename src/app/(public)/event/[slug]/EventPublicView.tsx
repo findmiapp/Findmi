@@ -255,6 +255,24 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // roster keying, Message's own date list) is unchanged.
   const realOccurrences = upcomingOccurrences.filter((o) => !isPrimaryDateId(o.id));
   const realOccurrenceIds = realOccurrences.map((o) => o.id);
+  // Field QA UX Pass 2 — some multi-date events also carry a REAL
+  // occurrence row that merely mirrors the whole event's own start/end
+  // range (the seed row created alongside the event, e.g. "Sep 23 – Oct
+  // 24"), sitting beside the genuine per-day dates. Presented as a date it
+  // reads as one month-long session — and, while the range is underway, a
+  // permanent "Live" date. Display-only: it's left out of the dates the
+  // visitor sees/selects whenever other real dates exist. The row itself
+  // (and anything attached to it) is untouched.
+  const eventStartMs = new Date(event.start_at).getTime();
+  const eventEndMs = event.end_at ? new Date(event.end_at).getTime() : NaN;
+  const isRangeMirror = (o: { start_at: string; end_at: string }) =>
+    new Date(o.start_at).getTime() === eventStartMs &&
+    new Date(o.end_at).getTime() === eventEndMs &&
+    eventEndMs - eventStartMs > 24 * 60 * 60 * 1000;
+  const datedOccurrences = (() => {
+    const kept = realOccurrences.filter((o) => !isRangeMirror(o));
+    return kept.length > 0 ? kept : realOccurrences;
+  })();
   const rostersByOccurrence = hasOccurrences ? await getOccurrenceBusinessRosters(realOccurrenceIds) : {};
   const primaryEntry = upcomingOccurrences.find((o) => isPrimaryDateId(o.id));
   if (primaryEntry) {
@@ -316,7 +334,11 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // once occurrences exist) — same getTemporalLabel() every other
   // live-status pill in this codebase (BusinessPublicView/HomeEventCard/
   // HappeningCard) already computes from, never a hardcoded/guessed status.
-  const heroTemporalSource = upcomingOccurrences[0] ?? { start_at: event.start_at, end_at: event.end_at };
+  const heroTemporalSource =
+    upcomingOccurrences.find((o) => datedOccurrences.length === realOccurrences.length || !isRangeMirror(o)) ?? {
+      start_at: event.start_at,
+      end_at: event.end_at,
+    };
   const heroTemporal = getTemporalLabel(heroTemporalSource.start_at, heroTemporalSource.end_at ?? undefined);
 
   // Event Top Hierarchy Final Micro-pass — the hero no longer shows any
@@ -636,10 +658,10 @@ export async function EventPublicView({ slug }: { slug: string }) {
     ) : null;
 
   const datesSection =
-    realOccurrences.length > 0 ? (
+    datedOccurrences.length > 0 ? (
       <section id="dates" className="scroll-mt-24">
         <UpcomingDatesRail
-          occurrences={realOccurrences}
+          occurrences={datedOccurrences}
           eventName={event.name}
           eventId={event.id}
           canonicalLocation={canonicalLocation}
@@ -955,7 +977,7 @@ export async function EventPublicView({ slug }: { slug: string }) {
           genuine occurrence rows are selectable (never the synthesized
           whole-event range — see the Final Event Experience Polish note in
           git history). */}
-      {hasOccurrences ? <EventOccurrenceProvider occurrences={realOccurrences}>{body}</EventOccurrenceProvider> : body}
+      {hasOccurrences ? <EventOccurrenceProvider occurrences={datedOccurrences}>{body}</EventOccurrenceProvider> : body}
     </div>
   );
 }

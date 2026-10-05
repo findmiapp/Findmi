@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ProgressiveListFooter, useProgressiveReveal } from "./ProgressiveList";
 import Link from "next/link";
 import type { LocationHappening } from "@/lib/data";
 import { formatAppearanceDateRange, getTemporalLabel } from "@/lib/format";
@@ -56,7 +57,11 @@ export default function LocationHappeningCollection({
       </div>
 
       <div className="mt-3">
-        {view === "cards" ? <LocationMomentCards happenings={happenings} /> : <LocationMomentList happenings={happenings} />}
+        {view === "cards" ? (
+          <LocationMomentCards happenings={happenings} />
+        ) : (
+          <LocationMomentList happenings={happenings} noun={allEvents ? "Events" : allAppearances ? "Appearances" : "Upcoming"} />
+        )}
       </div>
     </div>
   );
@@ -155,13 +160,19 @@ function LocationMomentCardBody({ item, className }: { item: LocationHappening; 
   );
 }
 
-function LocationMomentList({ happenings }: { happenings: LocationHappening[] }) {
+/** Field QA UX Pass 2 — LIST view reveals 3 at a time (shared
+ * ProgressiveList rule); Cards are unchanged. */
+function LocationMomentList({ happenings, noun }: { happenings: LocationHappening[]; noun: string }) {
+  const reveal = useProgressiveReveal(happenings.length);
   return (
-    <ul className="flex flex-col divide-y divide-black/[0.05] overflow-hidden rounded-2xl border border-black/5 bg-white">
-      {happenings.map((item) => (
-        <LocationMomentRow key={item.id} item={item} />
-      ))}
-    </ul>
+    <>
+      <ul className="flex flex-col divide-y divide-black/[0.05] overflow-hidden rounded-2xl border border-black/5 bg-white">
+        {happenings.slice(0, reveal.visible).map((item) => (
+          <LocationMomentRow key={item.id} item={item} />
+        ))}
+      </ul>
+      <ProgressiveListFooter visible={reveal.visible} total={happenings.length} onMore={reveal.showMore} onAll={reveal.showAll} noun={noun} />
+    </>
   );
 }
 

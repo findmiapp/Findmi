@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SupabaseImage from "@/components/SupabaseImage";
+import ImageZoomTrigger from "@/components/ImageZoomTrigger";
 import ChevronIcon from "@/components/ChevronIcon";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -181,6 +182,9 @@ export default async function ProductPage({
                 <span className="line-clamp-2 text-sm font-medium text-white/50">{product.name}</span>
               </div>
             )}
+            {/* Field QA UX Pass 2 — the real photo opens the shared lightbox;
+                the placeholder never does. */}
+            {product.image_url && <ImageZoomTrigger images={[product.image_url]} alt={product.name} label={`View larger image of ${product.name}`} />}
           </div>
           <AdminEditButton href={`/admin/products/${product.id}`} className="absolute right-3 top-3 z-10" />
         </div>

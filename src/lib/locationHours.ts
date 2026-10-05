@@ -49,14 +49,7 @@ const JS_DAY_TO_KEY: LocationWeekday[] = ["sun", "mon", "tue", "wed", "thu", "fr
  * occurrences — see lib/format.ts's APP_TIMEZONE note). Never guessed for
  * a day with no hours entered at all. */
 export function isOpenNow(hours: LocationHours | null | undefined): boolean | null {
-  if (!hasAnyHours(hours)) return null;
-  const now = new Date();
-  const today = hours![JS_DAY_TO_KEY[now.getDay()]];
-  if (!today || today.closed || !today.open || !today.close) return false;
-  const [openH, openM] = today.open.split(":").map(Number);
-  const [closeH, closeM] = today.close.split(":").map(Number);
-  const minutesNow = now.getHours() * 60 + now.getMinutes();
-  return minutesNow >= openH * 60 + openM && minutesNow < closeH * 60 + closeM;
+  return isOpenNowAt(hours, new Date());
 }
 
 /** Compact collapsed-accordion summary — "Open Until 6:00 PM" / "Closed
@@ -71,4 +64,43 @@ export function getHoursSummaryLabel(hours: LocationHours | null | undefined): s
   if (!open) return "Closed now";
   const today = hours![JS_DAY_TO_KEY[new Date().getDay()]];
   return today?.close ? `Open Until ${formatClock(today.close)}` : "Open now";
+}
+
+/** Field QA UX Pass 2 — the weekday key for a given moment, in the
+ * visitor's local wall-clock time (same convention as isOpenNow). */
+export function weekdayKeyFor(date: Date): LocationWeekday {
+  return JS_DAY_TO_KEY[date.getDay()];
+}
+
+/** Field QA UX Pass 2 — status pill copy, built only from what the stored
+ * hours say for sure (same open/closed rule as isOpenNow — no overnight or
+ * holiday guessing):
+ *   open now            → "Open Now" + "Until 4:00 PM"
+ *   closed, opens later → "Closed" + "Opens 7:00 AM"
+ *   closed for today    → "Closed" + "Opens 7:00 AM Tomorrow" (only when
+ *                         tomorrow has real hours), else no detail.
+ * Returns null when there are no hours at all. */
+export function getHoursStatus(hours: LocationHours | null | undefined, now: Date = new Date()): { open: boolean; detail: string | null } | null {
+  const open = isOpenNowAt(hours, now);
+  if (open === null) return null;
+  const today = hours![weekdayKeyFor(now)];
+  const valid = (d: LocationDayHours | undefined): d is LocationDayHours & { open: string; close: string } => Boolean(d && !d.closed && d.open && d.close);
+  if (open) return { open: true, detail: valid(today) && today.close > today.open ? `Until ${formatClock(today.close)}` : null };
+  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  if (valid(today)) {
+    const [h, m] = today.open.split(":").map(Number);
+    if (minutesNow < h * 60 + m) return { open: false, detail: `Opens ${formatClock(today.open)}` };
+  }
+  const tomorrow = hours![weekdayKeyFor(new Date(now.getTime() + 24 * 60 * 60 * 1000))];
+  return { open: false, detail: valid(tomorrow) ? `Opens ${formatClock(tomorrow.open)} Tomorrow` : null };
+}
+
+function isOpenNowAt(hours: LocationHours | null | undefined, now: Date): boolean | null {
+  if (!hasAnyHours(hours)) return null;
+  const today = hours![weekdayKeyFor(now)];
+  if (!today || today.closed || !today.open || !today.close) return false;
+  const [openH, openM] = today.open.split(":").map(Number);
+  const [closeH, closeM] = today.close.split(":").map(Number);
+  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  return minutesNow >= openH * 60 + openM && minutesNow < closeH * 60 + closeM;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SectionHeading from "./SectionHeading";
 import ViewToggle, { useStoredView } from "./ViewToggle";
 import type { EventBusinessListing, EventOccurrenceWithLocation } from "@/lib/data";
@@ -13,6 +13,8 @@ import { resolveAppearanceDisplayImage } from "@/lib/appearance-image";
 import { useEventOccurrence } from "./EventOccurrenceContext";
 import EventOccurrenceQuickView from "./EventOccurrenceQuickView";
 import type { EventLocationCardLocation } from "./EventLocationCard";
+import { ProgressiveListFooter, useProgressiveReveal } from "./ProgressiveList";
+import { pickTodayOccurrence } from "@/lib/schedule-time";
 
 const VISIBLE_COUNT = 10;
 const VIEW_STORAGE_KEY = "findmi:event-dates-view";
@@ -87,6 +89,16 @@ export default function UpcomingDatesRail({
   // ViewToggle / useStoredView).
   const [view, chooseView] = useStoredView(VIEW_STORAGE_KEY);
 
+  // Field QA UX Pass 2 — LIST view reveals 3 at a time (shared
+  // ProgressiveList rule); Cards keep their own bounded rail below.
+  const listReveal = useProgressiveReveal(occurrences.length);
+  // Today's date(s) — read from the visitor's clock after mount (never the
+  // server's), so "Today" never mismatches hydration or the real day.
+  const [todayIds, setTodayIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setTodayIds(pickTodayOccurrence(occurrences).todayIds);
+  }, [occurrences]);
+
   const hasMore = occurrences.length > VISIBLE_COUNT;
   const visible = expanded || !hasMore ? occurrences : occurrences.slice(0, VISIBLE_COUNT);
   const openOccurrence = occurrences.find((o) => o.id === openId) ?? null;
@@ -115,30 +127,29 @@ export default function UpcomingDatesRail({
       </div>
 
       {view === "list" ? (
-        <ul className="mt-3 flex flex-col gap-2">
-          {visible.map((occ) => (
-            <li key={occ.id}>
-              <OccurrenceListRow
-                occurrence={occ}
-                canonicalLocation={canonicalLocation}
-                coverImageUrl={coverImageUrl}
-                galleryImages={galleryImages}
-                onOpenQuickView={setOpenId}
-              />
-            </li>
-          ))}
-          {hasMore && !expanded && (
-            <li>
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className="flex h-10 w-full items-center justify-center gap-1 rounded-xl text-metadata font-bold text-findmi-700 transition hover:bg-findmi-50/60"
-              >
-                View all {count} dates
-              </button>
-            </li>
-          )}
-        </ul>
+        <>
+          <ul className="mt-3 flex flex-col gap-2">
+            {occurrences.slice(0, listReveal.visible).map((occ) => (
+              <li key={occ.id}>
+                <OccurrenceListRow
+                  occurrence={occ}
+                  canonicalLocation={canonicalLocation}
+                  coverImageUrl={coverImageUrl}
+                  galleryImages={galleryImages}
+                  isToday={todayIds.has(occ.id)}
+                  onOpenQuickView={setOpenId}
+                />
+              </li>
+            ))}
+          </ul>
+          <ProgressiveListFooter
+            visible={listReveal.visible}
+            total={count}
+            onMore={listReveal.showMore}
+            onAll={listReveal.showAll}
+            noun="Dates"
+          />
+        </>
       ) : (
         // Edge alignment: the rail bleeds to the page edge on phones and
         // tablets (first card starts exactly at the page gutter, snapping
@@ -207,12 +218,14 @@ function OccurrenceListRow({
   canonicalLocation,
   coverImageUrl,
   galleryImages,
+  isToday,
   onOpenQuickView,
 }: {
   occurrence: EventOccurrenceWithLocation;
   canonicalLocation: EventLocationCardLocation | null;
   coverImageUrl: string | null;
   galleryImages: string[];
+  isToday: boolean;
   onOpenQuickView: (id: string) => void;
 }) {
   const { selected, select } = useEventOccurrence();
@@ -251,6 +264,9 @@ function OccurrenceListRow({
               <LiveDot className="text-red-500" />
               Live
             </span>
+          )}
+          {isToday && !live && !cancelled && (
+            <span className="shrink-0 rounded-full bg-findmi-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-findmi-700">Today</span>
           )}
         </span>
         {cancelled ? (

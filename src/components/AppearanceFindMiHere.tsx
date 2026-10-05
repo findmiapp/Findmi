@@ -5,6 +5,7 @@ import AppearanceCarousel, { type AppearanceCarouselAppearance } from "./Appeara
 import AppearanceList from "./AppearanceList";
 import AppearanceQuickView, { type AppearanceQuickViewBusiness } from "./AppearanceQuickView";
 import { useStoredView } from "./ViewToggle";
+import { ProgressiveListFooter, useProgressiveReveal } from "./ProgressiveList";
 import { trackEvent } from "@/lib/analytics/track";
 import type { AnalyticsPlacementContext } from "@/lib/analytics/context";
 
@@ -41,6 +42,8 @@ export default function AppearanceFindMiHere({
   // Per-device Cards/List preference (Cards on first paint; the stored
   // choice applies after mount — shared useStoredView).
   const [view, setView] = useStoredView("findmi:business-findmi-here-view");
+  // Field QA UX Pass 2 — LIST view reveals 3 at a time (shared rule).
+  const listReveal = useProgressiveReveal(appearances.length);
   const [openId, setOpenId] = useState<string | null>(null);
   const openAppearance = appearances.find((a) => a.id === openId) ?? null;
 
@@ -81,7 +84,21 @@ export default function AppearanceFindMiHere({
             analyticsContext={analyticsContext}
           />
         ) : (
-          <AppearanceList appearances={appearances} business={business} onOpen={setOpenId} analyticsContext={analyticsContext} />
+          <>
+            <AppearanceList
+              appearances={appearances.slice(0, listReveal.visible)}
+              business={business}
+              onOpen={setOpenId}
+              analyticsContext={analyticsContext}
+            />
+            <ProgressiveListFooter
+              visible={listReveal.visible}
+              total={appearances.length}
+              onMore={listReveal.showMore}
+              onAll={listReveal.showAll}
+              noun="Appearances"
+            />
+          </>
         )}
       </div>
 

@@ -8,6 +8,7 @@ import BusinessLogoCard from "@/components/BusinessLogoCard";
 import BusinessShopSection from "@/components/BusinessShopSection";
 import Bulletin from "@/components/Bulletin";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
+import ImageZoomTrigger from "@/components/ImageZoomTrigger";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
@@ -538,6 +539,16 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               <StorefrontGlyph className="h-12 w-12 text-white/15" />
             </div>
           )}
+          {/* Field QA UX Pass 2 — the real cover opens the shared lightbox
+              (cover first, then this Business's own gallery). The
+              placeholder never does. */}
+          {business.cover_image_url && (
+            <ImageZoomTrigger
+              images={[business.cover_image_url, ...galleryImages.filter((u) => u !== business.cover_image_url)]}
+              alt={business.name}
+              label={`View larger image of ${business.name}`}
+            />
+          )}
           <AdminEditButton href={`/admin/businesses/${business.id}`} className="absolute right-3 top-3 z-10" />
         </div>
       </div>
@@ -572,6 +583,7 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
             {business.logo_url && (
               <div className="relative -mt-10 h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-4 border-paper bg-white shadow-sm sm:-mt-12 sm:h-28 sm:w-28">
                 <SupabaseImage src={business.logo_url} alt={business.name} fill sizes="112px" className="object-cover" />
+                <ImageZoomTrigger images={[business.logo_url]} alt={business.name} label={`View larger logo for ${business.name}`} />
               </div>
             )}
             <div

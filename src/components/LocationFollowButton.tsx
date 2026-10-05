@@ -21,11 +21,15 @@ export default function LocationFollowButton({
   locationSlug,
   locationName,
   size = "default",
+  tone = "primary",
 }: {
   locationId: string;
   locationSlug: string;
   locationName: string;
   size?: "default" | "compact";
+  /** Field QA UX Pass 2 — "quiet" (white, bordered) where another action
+   * on the page is the aqua primary (the Location page's Directions). */
+  tone?: "primary" | "quiet";
 }) {
   const [following, setFollowing] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -138,6 +142,7 @@ export default function LocationFollowButton({
   const compact = size === "compact";
   const h = compact ? "h-9" : "h-12";
   const text = compact ? "text-xs" : "text-sm";
+  const quiet = tone === "quiet";
 
   if (following) {
     return (
@@ -145,7 +150,9 @@ export default function LocationFollowButton({
         role="status"
         aria-label="Following"
         title="Following"
-        className={`flex ${h} w-9 shrink-0 items-center justify-center rounded-lg bg-findmi text-white`}
+        className={`flex ${h} w-9 shrink-0 items-center justify-center rounded-lg ${
+          quiet ? "border border-findmi/40 bg-white text-findmi-700" : "bg-findmi text-white"
+        }`}
       >
         <CheckGlyph className="h-4 w-4" />
       </span>
@@ -160,7 +167,9 @@ export default function LocationFollowButton({
         onClick={authed ? handleAuthedFollow : openModal}
         aria-haspopup={authed ? undefined : "dialog"}
         aria-expanded={authed ? undefined : open}
-        className={`flex ${h} shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-findmi px-2.5 ${text} font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600`}
+        className={`flex ${h} shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-2.5 ${text} font-bold uppercase tracking-wide transition ${
+          quiet ? "border border-black/10 bg-white text-ink hover:border-ink/30" : "bg-findmi text-white hover:bg-findmi-600"
+        }`}
       >
         Follow
       </button>
