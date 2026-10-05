@@ -3,10 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { canCurrentUserManageEvents } from "@/lib/entitlements";
+import { canCurrentUserManageEvents, getHostEventEligibility } from "@/lib/entitlements";
 import { getActiveMarkets } from "@/lib/data";
 import EventGeographyFields from "@/components/EventGeographyFields";
-import { requireBusinessMember } from "@/lib/permissions";
 import { createMemberEvent } from "../actions";
 import ProInviteCodeEntry from "@/components/ProInviteCodeEntry";
 
@@ -111,12 +110,22 @@ export default async function AddEventPage({
   }
 
   const admin = getAdminSupabase();
-  const entitled = admin ? await canCurrentUserManageEvents(admin, user.id) : false;
-  // Business Manager V2 Pass A — "+ Add → Host something" opens this
-  // same flow with the originating business as CONTEXT only
-  // (back link + wording). It does not make that business the Event's
-  // host — no host relationship exists until Pass C.
-  const businessContext = await resolveBusinessContext(businessIdParam);
+  // Business-Hosted Events V1 — "+ Add → Host Something" opens this flow
+  // with the originating Business as the Event's HOST. Hosting is scoped
+  // to that Business alone: an owner/manager of it, and it must itself
+  // have Pro (never another Business's Pro, never the account-level
+  // grant). A member without those still sees the Business context (back
+  // link + wording) with the reason it can't host; anyone who isn't a
+  // member at all just sees the plain form, as before.
+  const hostEligibility = businessIdParam && admin ? await getHostEventEligibility(admin, user.id, businessIdParam) : null;
+  const businessContext =
+    hostEligibility && (hostEligibility.ok || hostEligibility.reason !== "not_member") ? hostEligibility.business : null;
+  const hostBlockedByRole = Boolean(businessContext && hostEligibility && !hostEligibility.ok && hostEligibility.reason === "role");
+  const entitled = businessContext
+    ? Boolean(hostEligibility?.ok)
+    : admin
+      ? await canCurrentUserManageEvents(admin, user.id)
+      : false;
   const backToBusiness = businessContext ? (
     <Link
       href={`/account/business/${businessContext.id}?tab=findmi-here`}
@@ -131,14 +140,32 @@ export default async function AddEventPage({
       <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
         {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
         <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-          {businessContext ? "Host something" : "Add an Event"}
+          {businessContext ? "Host Something" : "Add an Event"}
         </h1>
         <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
-          <p className="text-body font-semibold text-primary">Event management is included with qualifying Findmi membership.</p>
-          <p className="mt-2 text-body text-muted">
-            Get Findmi Pro (or redeem a Pro Invite) on a business you manage to create and manage Events, with no
-            separate Event fee.
-          </p>
+          {businessContext ? (
+            hostBlockedByRole ? (
+              <p className="text-body font-semibold text-primary">
+                Only an Owner or Manager of {businessContext.name} can host Events for it.
+              </p>
+            ) : (
+              <>
+                <p className="text-body font-semibold text-primary">Hosting Events is a Findmi Pro feature.</p>
+                <p className="mt-2 text-body text-muted">
+                  Upgrade {businessContext.name} to Findmi Pro (or redeem a Pro Invite for it) to host Events as{" "}
+                  {businessContext.name}, with no separate Event fee.
+                </p>
+              </>
+            )
+          ) : (
+            <>
+              <p className="text-body font-semibold text-primary">Event management is included with qualifying Findmi membership.</p>
+              <p className="mt-2 text-body text-muted">
+                Get Findmi Pro (or redeem a Pro Invite) on a business you manage to create and manage Events, with no
+                separate Event fee.
+              </p>
+            </>
+          )}
           {locationHint && (
             <p className="mt-2 text-body text-muted">
               Once you have Organizer Access, come back here to add your event at {locationHint.name} directly.
@@ -155,7 +182,7 @@ export default async function AddEventPage({
               visitor with no business context at all (reached /account/
               event/new directly) still sees the original Add a Business
               path, unchanged. */}
-          {businessContext ? (
+          {businessContext && hostBlockedByRole ? null : businessContext ? (
             <>
               <Link href={`/upgrade/pro?business=${businessContext.id}`} className={`mt-5 ${primaryButtonClass}`}>
                 Upgrade {businessContext.name} to Pro
@@ -189,7 +216,7 @@ export default async function AddEventPage({
     <div className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       {backToBusiness ?? <p className="text-label font-bold uppercase text-accent">Your Findmi</p>}
       <h1 className="mt-1 font-display text-page-title font-bold text-primary sm:text-display">
-        {businessContext ? "Host something" : "Add an Event"}
+        {businessContext ? "Host Something" : "Add an Event"}
       </h1>
       <p className="mt-2 text-body text-muted">
         {businessContext
@@ -259,19 +286,4 @@ export default async function AddEventPage({
       </div>
     </div>
   );
-}
-
-/** Pass A — the originating business, honored only for one of its own
- * members (or an admin session); anyone else just sees the plain form. */
-async function resolveBusinessContext(businessId: string | undefined): Promise<{ id: string; name: string } | null> {
-  if (!businessId) return null;
-  try {
-    await requireBusinessMember(businessId);
-  } catch {
-    return null;
-  }
-  const admin = getAdminSupabase();
-  if (!admin) return null;
-  const { data } = await admin.from("businesses").select("id, name").eq("id", businessId).maybeSingle();
-  return (data as { id: string; name: string } | null) ?? null;
 }

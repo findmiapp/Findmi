@@ -7,7 +7,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { isEmailVerified, requireEventMember } from "@/lib/permissions";
 import { createOpportunity, resolveEventApplicationDecision, resolveOpportunityByContext } from "@/lib/opportunities";
-import { canCurrentUserManageEvents } from "@/lib/entitlements";
+import { canCurrentUserManageEvents, getHostEventEligibility } from "@/lib/entitlements";
 import { errorRedirectUrl, errorRedirectUrlWithFields, isoToLocalDateTime, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
 import { isSlugTaken } from "@/lib/admin/queries";
 import { ensureUniqueSlug, resolveSlugInput } from "@/lib/slug";
@@ -164,6 +164,7 @@ const CREATE_EVENT_FRIENDLY_ERROR: Record<string, string> = {
   invalid_end: "End date/time must be after the start date/time.",
   market_choice_ambiguous: "Choose an existing Market OR request one, not both.",
   invalid_market: "That market isn't available. Choose another.",
+  host_not_authorized: "Only an Owner or Manager of this Business can host an Event for it.",
 };
 
 /** Creates a brand-new event natively — free, no separate Event fee,
@@ -212,9 +213,10 @@ export async function createMemberEvent(formData: FormData) {
     postal_code: str(formData, "postal_code"),
   };
   const preservedFields = {
-    // Pass A — Business Manager context round-trips through error
-    // redirects only; it is never written to the Event (no host
-    // relationship until Pass C).
+    // Business-Hosted Events V1 — the Business this Event is being hosted
+    // AS (Host Something). Never trusted on its own: validated below
+    // (owner/manager of THIS Business + THIS Business has Pro) and again
+    // inside create_owned_event().
     business_id: str(formData, "business_id"),
     name,
     start_at: startLocal,
@@ -227,11 +229,28 @@ export async function createMemberEvent(formData: FormData) {
     redirect(errorRedirectUrlWithFields(CREATE_EVENT_PATH, message, preservedFields));
   };
 
-  const entitled = await canCurrentUserManageEvents(admin, user.id);
-  if (!entitled) {
-    fail(
-      "Event management is included with qualifying Findmi membership. Get Findmi Pro (or redeem a Pro Invite) on a business you manage first."
-    );
+  const hostBusinessId = preservedFields.business_id;
+  if (hostBusinessId) {
+    // Hosting is scoped to the host Business itself — never unlocked by
+    // membership in some other Pro Business or an account-level grant.
+    const eligibility = await getHostEventEligibility(admin, user.id, hostBusinessId);
+    if (!eligibility.ok) {
+      const businessName = eligibility.business?.name ?? "this Business";
+      fail(
+        eligibility.reason === "not_pro"
+          ? `Hosting Events is a Findmi Pro feature. Upgrade ${businessName} to Pro to host an Event.`
+          : eligibility.reason === "role"
+            ? `Only an Owner or Manager of ${businessName} can host an Event for it.`
+            : "You don't have access to host an Event for that Business."
+      );
+    }
+  } else {
+    const entitled = await canCurrentUserManageEvents(admin, user.id);
+    if (!entitled) {
+      fail(
+        "Event management is included with qualifying Findmi membership. Get Findmi Pro (or redeem a Pro Invite) on a business you manage first."
+      );
+    }
   }
 
   if (!name) fail("Event name is required.");
@@ -280,6 +299,7 @@ export async function createMemberEvent(formData: FormData) {
     p_end_at: endIso,
     p_market_id: effectiveMarketId,
     p_requested_market_text: effectiveRequestedMarketText,
+    p_host_business_id: hostBusinessId ?? null,
   });
 
   if (error || !created) {
@@ -393,7 +413,7 @@ export async function createMemberEvent(formData: FormData) {
   });
 
   revalidatePath("/account");
-  redirect(`/account/event/${eventId}`);
+  redirect(hostBusinessId ? `/account/event/${eventId}?business_id=${encodeURIComponent(hostBusinessId)}` : `/account/event/${eventId}`);
 }
 
 // ── EVENT DETAILS ─────────────────────────────────────────────────────────

@@ -56,7 +56,19 @@ export default async function EditEventPage({
     getActiveMarketsWithAreaOptions(),
   ]);
   if (!result) notFound();
-  const vendorRostersByOccurrence = await getAdminOccurrenceVendorRosters(result.occurrences.map((o) => o.id));
+  const [vendorRostersByOccurrence, hostBusiness] = await Promise.all([
+    getAdminOccurrenceVendorRosters(result.occurrences.map((o) => o.id)),
+    // Business-Hosted Events V1 — the canonical host's display fields for
+    // the Host Business picker's current value (null when no host).
+    result.event.host_business_id && marketsAdmin
+      ? marketsAdmin
+          .from("businesses")
+          .select("id, name, logo_url")
+          .eq("id", result.event.host_business_id)
+          .maybeSingle()
+          .then(({ data }) => (data as { id: string; name: string; logo_url: string | null } | null) ?? null)
+      : Promise.resolve(null),
+  ]);
   const publicHref = !result.event.is_demo ? `/event/${result.event.slug}` : null;
   const followerCount = await getEventFollowerCount(id);
   // Event Rejection State pass — the EXACT SAME "needsReview" definition
@@ -122,6 +134,7 @@ export default async function EditEventPage({
       <div className="mt-5">
         <EventForm
           event={result.event}
+          hostBusiness={hostBusiness}
           participants={result.participants}
           featuredProducts={result.featuredProducts}
           galleryImages={result.galleryImages}

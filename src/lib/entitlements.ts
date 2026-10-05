@@ -184,6 +184,38 @@ export async function canCurrentUserManageEvents(admin: SupabaseClient, userId: 
   );
 }
 
+/** Business-Hosted Events V1 — whether `userId` may host an Event AS
+ * `businessId` (Business Workspace → Findmi Here → Host Something). Scoped
+ * entirely to THAT Business, never to any other one the person belongs to:
+ *   - they must be an owner or manager of it (staff cannot host);
+ *   - it must itself currently have Pro, via the canonical isBusinessPro()
+ *     (so an expired dated Pro does not count).
+ * Deliberately NOT canCurrentUserManageEvents() above — membership in some
+ * other Pro Business, or an account-level event_management grant, never
+ * unlocks hosting for this one. create_owned_event() re-checks the role in
+ * the same transaction. */
+export type HostEventEligibility =
+  | { ok: true; business: { id: string; name: string } }
+  | { ok: false; reason: "not_member" | "role" | "not_pro"; business: { id: string; name: string } | null };
+
+export async function getHostEventEligibility(
+  admin: SupabaseClient,
+  userId: string,
+  businessId: string
+): Promise<HostEventEligibility> {
+  const [{ data: membership }, { data: business }] = await Promise.all([
+    admin.from("business_members").select("role").eq("user_id", userId).eq("business_id", businessId).maybeSingle(),
+    admin.from("businesses").select("id, name, plan_tier, plan_expires_at").eq("id", businessId).maybeSingle(),
+  ]);
+  const row = business as (Pick<Business, "plan_tier" | "plan_expires_at"> & { id: string; name: string }) | null;
+  const ref = row ? { id: row.id, name: row.name } : null;
+  if (!membership || !ref) return { ok: false, reason: "not_member", business: ref };
+  const role = (membership as { role: string }).role;
+  if (role !== "owner" && role !== "manager") return { ok: false, reason: "role", business: ref };
+  if (!isBusinessPro(row!)) return { ok: false, reason: "not_pro", business: ref };
+  return { ok: true, business: ref };
+}
+
 /** Bare-value counterpart to getBusinessMarketLimit, same relationship as
  * isPlanTierPro above — for a caller that only has the plan_tier column
  * (e.g. a narrow admin query) rather than a full Business row. Reads the

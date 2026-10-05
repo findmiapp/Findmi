@@ -569,6 +569,10 @@ export interface FindmiEvent {
   // replacement — event Market resolution precedence (lib/event-markets.ts)
   // is unchanged and does not read this field.
   market_area_id: string | null;
+  // Business-Hosted Events V1 — the canonical host Business (zero or one).
+  // Not participation (event_businesses), not a Location, not membership.
+  // Optional on the type so hand-built Event objects keep compiling.
+  host_business_id?: string | null;
   // Configurable consumer actions — each _enabled flag gates whether its
   // button/link appears at all; the public event page never renders a
   // disabled or destination-less action.

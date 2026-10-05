@@ -12,6 +12,7 @@ import GalleryField from "@/components/admin/GalleryField";
 import NameSlugFields from "@/components/admin/NameSlugFields";
 import SubmitBar from "@/components/admin/SubmitBar";
 import ParticipationRoster from "@/components/admin/ParticipationRoster";
+import { RelationField } from "@/components/admin/RelationPicker";
 import EventProductsRoster from "@/components/admin/EventProductsRoster";
 import EventOccurrencesEditor from "@/components/admin/EventOccurrencesEditor";
 import MarketAreaFields, { type MarketWithAreaOptions } from "@/components/MarketAreaFields";
@@ -36,6 +37,7 @@ import { createInlineAdminLocation } from "../locations/actions";
 
 export default function EventForm({
   event,
+  hostBusiness = null,
   participants,
   featuredProducts,
   galleryImages,
@@ -50,6 +52,10 @@ export default function EventForm({
   error,
 }: {
   event: AdminEvent | null;
+  /** Business-Hosted Events V1 — the Event's canonical host Business, if
+   * any (display fields only; the saved value is the picker's hidden
+   * host_business_id input). */
+  hostBusiness?: { id: string; name: string; logo_url: string | null } | null;
   participants: EventParticipant[];
   featuredProducts: EventFeaturedProduct[];
   galleryImages: string[];
@@ -236,6 +242,20 @@ export default function EventForm({
           hint="Optional photos of the venue itself, shown under About the Venue. Events don't have a real Findmi Location relationship yet, so this stays event-specific for now."
         />
       </div>
+
+      {/* Business-Hosted Events V1 — the ONE canonical host Business. Kept
+          distinct from Participating Businesses (the roster below): setting
+          a host never adds it to the roster or creates an Appearance, and
+          a participant is never treated as the host. */}
+      <RelationField
+        label="Host Business"
+        name="host_business_id"
+        entity="businesses"
+        initial={hostBusiness ? { value: hostBusiness.id, label: hostBusiness.name, image_url: hostBusiness.logo_url } : null}
+        clearLabel="No Host Business"
+        placeholder="Search businesses…"
+        hint="The Business hosting this Event. Its Owners and Managers can manage the Event. Separate from Participating Businesses."
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField

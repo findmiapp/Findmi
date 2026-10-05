@@ -9,9 +9,9 @@ import NavIcon from "@/components/NavIcon";
  * model (Event vs Appearance vs Location):
  *
  *   Hosting something   → the existing Event creation flow, opened with
- *                         this business as context (?business_id=). It does
- *                         NOT make the business the Event's host — that is
- *                         Pass C (events.host_business_id).
+ *                         this business as its canonical host
+ *                         (?business_id= → events.host_business_id, validated
+ *                         server-side: owner/manager of a Pro business).
  *   Going somewhere     → the existing Event search / request-to-join
  *                         composer in Presence, with the manual "add where
  *                         you'll be" fallback (a manual Appearance).

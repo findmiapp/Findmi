@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { isAdminSession } from "@/lib/admin/auth";
+import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 
 export type MemberRole = "owner" | "manager" | "staff";
 
@@ -19,6 +20,13 @@ export interface Membership {
    * by this field's presence; a caller that needs to render an "Admin
    * mode" banner reads it explicitly. */
   viaAdmin?: boolean;
+  /** Business-Hosted Events V1 — set only on an EVENT authorization
+   * result derived from the Event's canonical host Business
+   * (events.host_business_id): the caller has NO event_members row but is
+   * an owner or manager of that host Business. Like viaAdmin, this is
+   * never a real row — `id` is a sentinel, never an event_members id (no
+   * caller of requireEventMember reads `id`; confirmed by inspection). */
+  viaHost?: { businessId: string };
 }
 
 /** Foundation helpers for authenticated business/event workspace features.
@@ -56,6 +64,18 @@ async function requireMembership(
   if (user) {
     const { data } = await supabase.from(table).select("id, role").eq("user_id", user.id).eq(column, entityId).maybeSingle();
     if (data) return data as Membership;
+
+    // Business-Hosted Events V1 — the ONE additional Event grant: an owner
+    // or manager of the Event's canonical host Business. Checked after the
+    // real event_members row (a genuine member is never routed through
+    // this path) and before the admin fallback. Only events.host_business_id
+    // counts — never participation (event_businesses /
+    // event_occurrence_businesses), appearances, or a URL business_id —
+    // and staff never qualify.
+    if (table === "event_members") {
+      const hostBusinessId = await getHostBusinessManagedBy(supabase, user.id, entityId);
+      if (hostBusinessId) return { id: "host-business", role: "manager", viaHost: { businessId: hostBusinessId } };
+    }
   }
 
   if (await isAdminSession()) {
@@ -65,6 +85,31 @@ async function requireMembership(
   throw new Error("You don't have access to this business, event, or location.");
 }
 
+/** Business-Hosted Events V1 — the Event's canonical host Business id,
+ * but only when `userId` is an owner or manager of it; otherwise null.
+ * The host is read with the service-role client (never depends on the
+ * events public-read policy); the membership is read through the
+ * session's own client, which RLS already scopes to the caller's rows. */
+async function getHostBusinessManagedBy(
+  supabase: SupabaseClient,
+  userId: string,
+  eventId: string
+): Promise<string | null> {
+  const admin = getAdminSupabase();
+  if (!admin) return null;
+  const { data: event } = await admin.from("events").select("host_business_id").eq("id", eventId).maybeSingle();
+  const hostBusinessId = (event as { host_business_id: string | null } | null)?.host_business_id ?? null;
+  if (!hostBusinessId) return null;
+  const { data: member } = await supabase
+    .from("business_members")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("business_id", hostBusinessId)
+    .in("role", ["owner", "manager"])
+    .maybeSingle();
+  return member ? hostBusinessId : null;
+}
+
 /** Throws unless the current authenticated session has a business_members
  * row for this business. Returns that row (id + role) on success. */
 export async function requireBusinessMember(businessId: string): Promise<Membership> {
@@ -72,7 +117,9 @@ export async function requireBusinessMember(businessId: string): Promise<Members
 }
 
 /** Throws unless the current authenticated session has an event_members
- * row for this event. Returns that row (id + role) on success. */
+ * row for this event, OR is an owner/manager of the Event's canonical host
+ * Business (viaHost), OR holds a founder admin session (viaAdmin). Returns
+ * the real row (id + role) when one exists. */
 export async function requireEventMember(eventId: string): Promise<Membership> {
   return requireMembership("event_members", "event_id", eventId);
 }

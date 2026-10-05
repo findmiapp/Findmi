@@ -198,6 +198,10 @@ export async function saveEvent(id: string | null, formData: FormData) {
     market_id: effectiveMarketId,
     market_area_id: effectiveAreaId,
     organizer_name: str(formData, "organizer_name"),
+    // Business-Hosted Events V1 — the canonical host (empty = cleared).
+    // Never inferred from participants; never adds a roster row or an
+    // Appearance.
+    host_business_id: str(formData, "host_business_id"),
     external_url: str(formData, "external_url"),
     is_featured: bool(formData, "is_featured"),
     featured_sort_order: num(formData, "featured_sort_order"),
