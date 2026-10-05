@@ -229,7 +229,7 @@ export default function HamburgerMenu({
                   onClick={close}
                   className="flex h-9 flex-1 items-center justify-center rounded-xl border border-black/10 text-[11px] font-bold uppercase tracking-wide text-ink/70 transition hover:bg-black/[0.03]"
                 >
-                  My Journal
+                  My Moments
                 </Link>
                 <Link
                   href="/my-world/journal/new"
@@ -237,7 +237,7 @@ export default function HamburgerMenu({
                   className="flex h-9 flex-[1.2] items-center justify-center gap-1.5 rounded-xl border border-findmi/30 bg-findmi-50 text-[11px] font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-100"
                 >
                   <PencilGlyph className="h-3.5 w-3.5" />
-                  Create Entry
+                  Add Moment
                 </Link>
               </div>
 

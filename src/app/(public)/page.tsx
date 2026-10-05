@@ -296,7 +296,7 @@ export default async function HomePage({
             </span>
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1">
-                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">My Journal</span>
+                <span className="min-w-0 flex-1 text-[11px] font-bold leading-snug text-ink sm:text-xs">My Moments</span>
                 <ChevronGlyph className="h-3 w-3 shrink-0 text-ink/40" />
               </span>
               <span className="mt-0.5 block text-[10px] leading-snug text-ink/55 sm:text-[11px]">Document your experiences.</span>

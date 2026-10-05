@@ -133,14 +133,14 @@ function JournalNavActions() {
   return (
     <div className="flex shrink-0 items-center gap-2">
       <Link href="/my-world/journal" className={linkClass}>
-        My Journal
+        My Moments
       </Link>
       <Link
         href="/my-world/journal/new"
         className="flex items-center gap-1.5 rounded-full border border-findmi/30 bg-findmi-50 px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-100"
       >
         <PencilGlyph className="h-3.5 w-3.5" />
-        Create Entry
+        Add Moment
       </Link>
     </div>
   );
