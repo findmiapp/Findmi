@@ -18,19 +18,19 @@ const SLIDES = [
   {
     id: "profile",
     src: "/seed/native-rose-profile-top.jpg",
-    caption: "Your profile",
+    caption: "Your Profile",
     alt: "The Native Rose's Findmi profile: cover photo, name, category, location and description",
   },
   {
     id: "schedule",
     src: "/seed/native-rose-findmi-here-gallery.jpg",
-    caption: "Show where you'll be",
+    caption: "Show Where You'll Be",
     alt: "The Native Rose's Findmi Here schedule of upcoming appearances, and the start of its Gallery",
   },
   {
     id: "connect",
     src: "/seed/native-rose-gallery-about.jpg",
-    caption: "Give people more ways to connect",
+    caption: "Give People More Ways to Connect",
     alt: "The Native Rose's Gallery, About section, and contact details",
   },
 ] as const;

@@ -4,6 +4,7 @@ import HomeEventCard from "@/components/HomeEventCard";
 import HomeWeather from "@/components/HomeWeather";
 import HomeHero from "@/components/HomeHero";
 import HomepageBulletinCarousel from "@/components/HomepageBulletinCarousel";
+import ChevronIcon from "@/components/ChevronIcon";
 import BusinessShowcaseCarousel from "@/components/BusinessShowcaseCarousel";
 import Section, { HorizontalScroller } from "@/components/Section";
 import SearchBar from "@/components/SearchBar";
@@ -510,9 +511,9 @@ export default async function HomePage({
               two homepage CTAs. Everything else unchanged. */}
           <a
             href={`/business/${NATIVE_ROSE_SLUG}`}
-            className="inline-flex items-center gap-1.5 rounded-full border border-findmi/30 bg-findmi-50 px-4 py-2 text-sm font-semibold text-findmi-700 transition hover:border-findmi/50 hover:bg-findmi-100"
+            className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-primary transition hover:border-black/20 hover:bg-black/[0.02]"
           >
-            View {NATIVE_ROSE_NAME} Live Profile <ChevronGlyph className="h-3 w-3" />
+            View {NATIVE_ROSE_NAME} Live Profile <ChevronIcon direction="right" className="h-3.5 w-3.5 text-findmi-600" />
           </a>
         </div>
       </div>
