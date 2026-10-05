@@ -200,7 +200,7 @@ function PersonalContextBar({
         // interactive context selector it is (hairline border, white
         // surface, no shadow/fill). The padding lands on the switcher's
         // own button, so the whole bounded area stays the tap target.
-        triggerClassName="min-w-0 max-w-full rounded-2xl border border-black/[0.08] bg-white transition hover:border-black/15 [&>button]:px-3 [&>button]:py-1.5"
+        triggerClassName="min-w-0 flex-1 rounded-2xl border border-black/[0.08] bg-white transition hover:border-black/15 [&>button]:px-3 [&>button]:py-1.5"
       />
     </div>
   );

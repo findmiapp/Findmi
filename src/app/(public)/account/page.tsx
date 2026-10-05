@@ -45,10 +45,13 @@ const UPCOMING_FETCH_LIMIT = 24;
 const WORLD_LIMIT = 8;
 const MANAGING_PREVIEW = 3;
 
-/** Horizontal rail on phones (bleeding to the screen edge, snap-scrolling),
- * a modest grid on desktop where the content column has room. */
+/** Horizontal rail on phones (scrolling through to the screen edge,
+ * snap-scrolling), a modest grid on desktop where the content column has
+ * room. The scroll-padding matches the page gutter so the snap resting
+ * position puts the first card on the same left line as the headings,
+ * not flush against the viewport edge. */
 const RAIL_CLASS =
-  "-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:mx-0 lg:grid lg:overflow-visible lg:px-0 [&::-webkit-scrollbar]:hidden";
+  "-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:grid lg:scroll-px-0 lg:overflow-visible lg:px-0 [&::-webkit-scrollbar]:hidden";
 
 type WorldTile = {
   key: string;
