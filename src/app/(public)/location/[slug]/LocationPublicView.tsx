@@ -15,7 +15,6 @@ import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import EventShareButton from "@/components/EventShareButton";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
-import LocationPhotoPreview from "@/components/LocationPhotoPreview";
 import ReadMoreText from "@/components/ReadMoreText";
 import SupabaseImage from "@/components/SupabaseImage";
 import { CategoryPill } from "@/components/Badge";
@@ -176,7 +175,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
   ) : null;
 
   const followButton = (
-    <LocationFollowButton locationId={location.id} locationSlug={location.slug} locationName={location.name} size="compact" tone="accent" />
+    <LocationFollowButton locationId={location.id} locationSlug={location.slug} locationName={location.name} size="action" tone="accent" />
   );
 
   return (
@@ -236,12 +235,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
       {/* 2. Logo + identity — Location Public Page Composition pass: ONE
           compact profile block. The logo (88px mobile, 112px sm+) still
           overlaps the cover's bottom edge, and the name / place context /
-          operator / category sit BESIDE it, with Follow at the far right
-          of that column (top-aligned with the name) — no separate logo
-          band. Normal flow only: the logo alone carries the negative
-          margin. Long names wrap within their column; Follow never
-          shrinks. No logo -> the same column simply spans the full width
-          (Follow still beside the name). No fabricated follower count. */}
+          operator / category sit BESIDE it — no separate logo band. Normal
+          flow only: the logo alone carries the negative margin. Identity
+          only: Follow lives in the action row (Location Page Final
+          Composition), so the name gets the column's full width and wraps
+          naturally. No logo -> the same column spans the full width. */}
       <div className="px-4 sm:px-0">
         <div className={location.logo_url ? "flex items-start gap-2.5 sm:gap-4" : ""}>
           {location.logo_url && (
@@ -253,10 +251,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             </div>
           )}
           <div className={`min-w-0 flex-1 ${location.logo_url ? "pt-2 sm:pt-3" : ""}`}>
-            <div className="flex items-start justify-between gap-2">
-              <h1 className="min-w-0 font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
-              <div className="shrink-0 pt-0.5">{followButton}</div>
-            </div>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
 
             {/* Physical Presence Pass 2 — where this place physically sits
                 (nearest parent first), e.g. "Madison Square Park · Flatiron,
@@ -322,14 +317,16 @@ export async function LocationPublicView({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* 3. Action row — the Event page's approved action family
-          (wide Directions primary + quiet Save / Share squares; see
-          directionsAction above). Message/Website/Call/Contact stay in
-          the compact contact row. */}
+      {/* 3. Action row — Directions (the one aqua-filled primary, flex-1)
+          | Follow (aqua-outline text button, labelled Following state) |
+          Save | Share squares. Featured Event follows directly — nothing
+          is placed between the two. Message/Website/Call/Contact stay in
+          the compact contact row. No fabricated follower count. */}
       <div className="px-4 sm:px-0">
         <div className="mt-3.5">
           <div className="flex items-center gap-1.5 sm:gap-2">
             {directionsAction && <div className="flex min-w-0 flex-1">{directionsAction}</div>}
+            {followButton}
             <LocationSaveButton slug={location.slug} id={location.id} layout="square" />
             <EventShareButton
               url={canonicalUrl}
@@ -339,14 +336,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             />
           </div>
         </div>
-        {/* Location Public Page Composition pass — a compact early peek at
-            this Location's OWN gallery (location_images; same >1 threshold
-            as the full Gallery section below, which stays). */}
-        {galleryImages.length > 1 && (
-          <div className="mt-3.5">
-            <LocationPhotoPreview images={galleryImages} alt={location.name} />
-          </div>
-        )}
       </div>
 
       {/* "Events" (Visual implementation pass) — the one resolved featured

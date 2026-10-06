@@ -26,7 +26,10 @@ export default function LocationFollowButton({
   locationId: string;
   locationSlug: string;
   locationName: string;
-  size?: "default" | "compact";
+  /** "action" (Location Page Final Composition): sized to sit in the
+   * Location action row beside Directions / Save / Share (h-10, sm:h-11,
+   * rounded-xl like those squares), with a labelled "Following" state. */
+  size?: "default" | "compact" | "action";
   /** "accent" (Location Hero Follow Composition pass; was Pass 2's
    * "quiet") — aqua text + aqua border on white, for a page where another
    * action is the aqua-filled primary (the Location page's Directions).
@@ -142,9 +145,30 @@ export default function LocationFollowButton({
   }
 
   const compact = size === "compact";
-  const h = compact ? "h-9" : "h-12";
-  const text = compact ? "text-xs" : "text-sm";
+  const action = size === "action";
+  const h = action ? "h-10 sm:h-11" : compact ? "h-9" : "h-12";
+  const text = action ? "text-[13px]" : compact ? "text-xs" : "text-sm";
+  const radius = action ? "rounded-xl" : "rounded-lg";
   const accent = tone === "accent";
+
+  if (following && action) {
+    // Spelled out ("Following"), never an icon-only square here: in a row
+    // of icon buttons a bare check would read as ambiguous. Title Case like
+    // Directions; the check is decorative and drops below 375px so the
+    // label never crowds the primary Directions button.
+    return (
+      <span
+        role="status"
+        aria-label="Following"
+        className={`flex ${h} shrink-0 items-center justify-center gap-1 whitespace-nowrap ${radius} px-2.5 ${text} font-bold ${
+          accent ? "border border-findmi/40 bg-findmi-50 text-findmi-700" : "bg-findmi text-white"
+        }`}
+      >
+        <CheckGlyph className="hidden h-3.5 w-3.5 shrink-0 min-[375px]:block" />
+        Following
+      </span>
+    );
+  }
 
   if (following) {
     return (
@@ -169,7 +193,7 @@ export default function LocationFollowButton({
         onClick={authed ? handleAuthedFollow : openModal}
         aria-haspopup={authed ? undefined : "dialog"}
         aria-expanded={authed ? undefined : open}
-        className={`flex ${h} shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-2.5 ${text} font-bold uppercase tracking-wide transition ${
+        className={`flex ${h} shrink-0 items-center justify-center whitespace-nowrap ${radius} ${action ? "px-3" : "px-2.5 uppercase tracking-wide"} ${text} font-bold transition ${
           accent ? "border border-findmi bg-white text-findmi-700 hover:bg-findmi-50" : "bg-findmi text-white hover:bg-findmi-600"
         }`}
       >
