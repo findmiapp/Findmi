@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
-import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText, momentsHeading } from "@/lib/journal-distribution";
+import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText } from "@/lib/journal-distribution";
 import { notFound } from "next/navigation";
 import AdminEditButton from "@/components/AdminEditButton";
 import ClaimButton from "@/components/ClaimButton";
@@ -356,12 +356,14 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           Nearby/Map tabs). "Coming Up Here" (the genuine remainder, never
           re-including the featured item) comes after the nav, exactly
           the zero/one/multiple states this architecture already
-          established: zero happenings -> one empty-state line; exactly
+          established: zero happenings -> nothing rendered; exactly
           one -> the featured card alone, no remainder section at all;
           more -> featured card + a real remainder rail. */}
       <div className="px-4 sm:px-0">
-        <section id="events" className="mt-4 scroll-mt-20">
-          {featuredHappening ? (
+        {/* No public empty-state line: with nothing scheduled the section is
+            simply omitted (and its spacing collapses). */}
+        {featuredHappening && (
+          <section id="events" className="mt-4 scroll-mt-20">
             <FeaturedLocationHappeningCard
               kindLabel={featuredHappening.type === "event" ? "Featured Event" : "Featured Appearance"}
               title={featuredHappening.title}
@@ -377,15 +379,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               locationLine={location.name}
               live={featuredLive}
             />
-          ) : withinHappenings.length === 0 ? (
-            // Physical Presence Pass 3 — only truly empty when there is
-            // nothing exactly here AND nothing within this place.
-            <p className="text-sm text-ink/50">Nothing scheduled here yet. Check back soon.</p>
-          ) : null}
-        </section>
+          </section>
+        )}
 
         {location.description && (
-          <div className="mt-4 max-w-2xl">
+          <div className="mt-3 max-w-2xl">
             <ReadMoreText text={location.description} />
           </div>
         )}
@@ -394,13 +392,8 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             Featured card directly above it and read as an orphan label, so
             it's gone; the nav (and its divider) only renders when it has a
             real section further down to jump to. */}
-        {(location.description || galleryImages.length > 1) && (
+        {galleryImages.length > 1 && (
           <nav className="mt-5 flex items-center gap-5 overflow-x-auto border-b border-black/5 pb-2.5 text-sm font-semibold text-ink/50 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {location.description && (
-              <a href="#about" className="shrink-0 transition hover:text-ink">
-                About
-              </a>
-            )}
             {galleryImages.length > 1 && (
               <a href="#photos" className="shrink-0 transition hover:text-ink">
                 Photos
@@ -420,10 +413,8 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           FindMi Here too). Cards/List toggle, additive Location-only
           implementation (see LocationHappeningCollection's own note on
           why it doesn't reuse Business's Appearance components directly).
-          Renders nothing when there's nothing upcoming — the Featured
-          section's own empty-state line above already covers that
-          truthfully; a second identical message here would be
-          redundant. */}
+          Renders nothing when there's nothing upcoming — there is no public
+          empty-state copy on this page; the section simply collapses. */}
       {happenings.length > 0 && (
         <section className="mt-6 px-4 sm:px-0">
           <LocationHappeningCollection happenings={happenings} />
@@ -450,9 +441,12 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           action; uses the exact Location row's REAL id (never manual
           location text, never a Market/Area inference) via the existing
           validated /my-world/journal/new?location=<id> contextual route. */}
-      <section className="mt-6 px-4 sm:px-0">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink">{momentsHeading("location", location.name)}</h2>
+      <section className="mt-5 px-4 sm:px-0">
+        {/* "Findmi Moments" eyebrow (+ Add Moment beside it), then "at
+            {name}" full width beneath — a long Location name wraps across
+            the whole column instead of squeezing beside the button. */}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Moments</p>
           <Link
             href={addMomentHref("location", location.id)}
             className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
@@ -460,6 +454,7 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             + Add Moment
           </Link>
         </div>
+        <h2 className="mt-0.5 break-words font-display text-lg font-bold leading-snug tracking-tight text-ink">at {location.name}</h2>
         <div className="mt-3">
           <MomentsCarousel
             entries={journal.entries}
@@ -528,20 +523,17 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             interesting" question above the fold; this is the same full
             text for anyone who taps through from the section nav or the
             preview's own "Read more". */}
-        {(location.description || operators.items.length > 0) && (
+        {/* No "About" heading and no second copy of the description — the
+            description reads once, as supporting text under the Location's
+            primary information (ReadMoreText above). */}
+        {operators.items.length > 0 && (
           <section id="about" className="mt-8 scroll-mt-20">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About</h2>
-            {location.description && (
-              <p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
-                {location.description}
-              </p>
-            )}
             {/* Location Final Hero Hierarchy pass — operator attribution
                 lives here, lower-priority than identity/activity: the same
                 business_locations relationship, each Business linking to
                 its own page. Absent when there is none. */}
             {operators.items.length > 0 && (
-              <div className="mt-3">
+              <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-ink/45">Operated By</p>
                 <p className="mt-0.5 text-sm text-ink/70">
                   {operators.items.map((b, i) => (
