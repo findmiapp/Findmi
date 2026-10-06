@@ -10,6 +10,8 @@ import {
   getBusinessVisibility,
   emptyRecipientCounts,
   summarizeRecipientCounts,
+  toBusinessOpportunityView,
+  type BusinessOpportunityView,
   type BusinessResponseStatus,
   type RecipientCounts,
   type BusinessVisibility,
@@ -324,4 +326,95 @@ export async function getAdminOpportunityContext(listing: {
     location: (location?.data as OpportunityPlace | null) ?? null,
     event: (event?.data as OpportunityEventRef | null) ?? null,
   };
+}
+
+// ---------------------------------------------------------------- business views
+
+/** Public context columns embedded with a Business read — the same public
+ * fields any visitor sees on the Location/Event pages. */
+const BUSINESS_CONTEXT_EMBEDS = "location:locations(name, slug, address, city, state), event:events(name, slug, start_at)";
+
+export interface BusinessOpportunityPlace {
+  name: string;
+  slug: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+}
+
+export interface BusinessOpportunityEvent {
+  name: string;
+  slug: string | null;
+  start_at: string | null;
+}
+
+export interface BusinessOpportunityItem {
+  view: BusinessOpportunityView;
+  visibility: Exclude<BusinessVisibility, "hidden">;
+  place: BusinessOpportunityPlace | null;
+  event: BusinessOpportunityEvent | null;
+}
+
+type BusinessRow = BusinessOpportunityRecipient & {
+  listing:
+    | (BusinessOpportunityListing & { location: BusinessOpportunityPlace | BusinessOpportunityPlace[] | null; event: BusinessOpportunityEvent | BusinessOpportunityEvent[] | null })
+    | null;
+};
+
+const one = <T>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
+
+/** Raw row -> Business-safe item, or null when not visible. Location/Event
+ * are re-picked to their public fields. */
+function toBusinessItem(row: BusinessRow): BusinessOpportunityItem | null {
+  const listing = one(row.listing);
+  if (!listing) return null;
+  const visibility = getBusinessVisibility(listing.status, row.status);
+  if (visibility === "hidden") return null;
+  const loc = one(listing.location);
+  const ev = one(listing.event);
+  return {
+    view: toBusinessOpportunityView(row, listing),
+    visibility,
+    place: loc ? { name: loc.name, slug: loc.slug, address: loc.address, city: loc.city, state: loc.state } : null,
+    event: ev ? { name: ev.name, slug: ev.slug, start_at: ev.start_at } : null,
+  };
+}
+
+/** This Business's commercial Opportunities as Business-safe items, split
+ * Active / Past. Any member role may read. Scoped to business_id in SQL
+ * (never another Business's rows); drafts/withdrawn excluded in SQL and by
+ * the canonical visibility rule. */
+export async function getBusinessOpportunityItems(businessId: string): Promise<{ active: BusinessOpportunityItem[]; past: BusinessOpportunityItem[] }> {
+  await requireBusinessMember(businessId);
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("opportunity_recipients")
+    .select(`${BUSINESS_RECIPIENT_COLUMNS}, listing:opportunity_listings!inner(${BUSINESS_LISTING_COLUMNS}, ${BUSINESS_CONTEXT_EMBEDS})`)
+    .eq("business_id", businessId)
+    .neq("status", "withdrawn")
+    .neq("listing.status", "draft")
+    .order("offered_at", { ascending: false });
+  if (error || !data) return { active: [], past: [] };
+  const active: BusinessOpportunityItem[] = [];
+  const past: BusinessOpportunityItem[] = [];
+  for (const row of data as unknown as BusinessRow[]) {
+    const item = toBusinessItem(row);
+    if (item) (item.visibility === "active" ? active : past).push(item);
+  }
+  return { active, past };
+}
+
+/** One relationship for one Business (detail page), or null when it isn't
+ * this Business's or isn't visible to it. The recipient id alone is never
+ * enough: the row must also carry this business_id. */
+export async function getBusinessOpportunityItem(businessId: string, recipientId: string): Promise<BusinessOpportunityItem | null> {
+  await requireBusinessMember(businessId);
+  const admin = requireAdminClient();
+  const { data } = await admin
+    .from("opportunity_recipients")
+    .select(`${BUSINESS_RECIPIENT_COLUMNS}, listing:opportunity_listings!inner(${BUSINESS_LISTING_COLUMNS}, ${BUSINESS_CONTEXT_EMBEDS})`)
+    .eq("id", recipientId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  return data ? toBusinessItem(data as unknown as BusinessRow) : null;
 }

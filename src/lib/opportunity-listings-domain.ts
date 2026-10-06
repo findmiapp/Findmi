@@ -628,3 +628,101 @@ export function getOpportunityLifecycle(listingStatus: ListingStatus, counts: Re
     state: i < at ? "done" : i === at ? "current" : "upcoming",
   }));
 }
+
+// ---------------------------------------------------------------- business-facing state
+
+/** Business-facing names for the Business's OWN relationship. `offered` is
+ * presented as "Recommended" (Findmi recommended it); withdrawn rows are
+ * never shown to a Business (see getBusinessVisibility). */
+export const BUSINESS_RECIPIENT_LABELS: Record<RecipientStatus, string> = {
+  offered: "Recommended",
+  interested: "Interested",
+  not_interested: "Not Interested",
+  confirmed: "Confirmed",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  withdrawn: "Withdrawn",
+};
+
+export type BusinessOpportunityTone = "aqua" | "aquaSoft" | "positive" | "neutral" | "muted";
+
+export interface BusinessOpportunityState {
+  /** Badge text for the Business's relationship. */
+  label: string;
+  tone: BusinessOpportunityTone;
+  /** The listing still takes Business responses and this relationship is
+   * still answerable (role is checked separately). */
+  answerable: boolean;
+  /** Response choices offered right now (never more than the canonical
+   * checkBusinessResponse allows). */
+  choices: BusinessResponseStatus[];
+  /** One short sentence for the decision area. */
+  message: string;
+}
+
+/** THE Business-facing view of one relationship, from the listing status
+ * and the Business's own recipient status. Mirrors checkBusinessResponse
+ * (listing open + offered/interested/not_interested) so the page never
+ * offers a choice the server would refuse. */
+export function getBusinessOpportunityState(listingStatus: ListingStatus, recipientStatus: RecipientStatus): BusinessOpportunityState {
+  const open = listingStatus === "open";
+  switch (recipientStatus) {
+    case "offered":
+      return open
+        ? { label: "Recommended", tone: "aqua", answerable: true, choices: ["interested", "not_interested"], message: "Let Findmi know if you'd like to pursue this. It's not a binding commitment." }
+        : { label: "No Longer Available", tone: "muted", answerable: false, choices: [], message: "This Opportunity is no longer taking responses." };
+    case "interested":
+      return open
+        ? { label: "Interested", tone: "aquaSoft", answerable: true, choices: ["not_interested"], message: "You've let Findmi know you're interested. Findmi will be in touch about next steps." }
+        : { label: "Interested", tone: "aquaSoft", answerable: false, choices: [], message: "You let Findmi know you're interested. This Opportunity is no longer taking new responses." };
+    case "not_interested":
+      return open
+        ? { label: "Not Interested", tone: "muted", answerable: true, choices: ["interested"], message: "You've passed on this Opportunity. You can change your mind while it's still open." }
+        : { label: "Not Interested", tone: "muted", answerable: false, choices: [], message: "You passed on this Opportunity." };
+    case "confirmed":
+      return { label: "Confirmed", tone: "positive", answerable: false, choices: [], message: "You're confirmed. Findmi will coordinate the details with you." };
+    case "completed":
+      return { label: "Completed", tone: "neutral", answerable: false, choices: [], message: "This Opportunity is complete." };
+    case "cancelled":
+      return { label: "Cancelled", tone: "muted", answerable: false, choices: [], message: "This Opportunity was cancelled." };
+    case "withdrawn":
+      return { label: "Withdrawn", tone: "muted", answerable: false, choices: [], message: "This Opportunity is no longer available." };
+  }
+}
+
+/** Can this member respond (UI gate; respondToOpportunityListing re-checks
+ * everything server-side). */
+export function canMemberRespond(role: BusinessResponseRole, viaAdmin?: boolean): boolean {
+  return !viaAdmin && (role === "owner" || role === "manager");
+}
+
+/** Business-safe card/detail model for ONE relationship. Built field by
+ * field: the Business's own status, fit note and timestamps plus the
+ * presentable listing. Never internal notes, responder ids, listing
+ * status, other recipients or counts. */
+export interface BusinessOpportunityView {
+  recipientId: string;
+  status: RecipientStatus;
+  state: BusinessOpportunityState;
+  fitNote: string | null;
+  offeredAt: string;
+  respondedAt: string | null;
+  opportunity: PresentableOpportunity;
+}
+
+export function toBusinessOpportunityView(
+  recipient: { id: string; status: RecipientStatus; fit_note: string | null; offered_at: string; responded_at: string | null },
+  listing: PresentableOpportunity & { status: ListingStatus }
+): BusinessOpportunityView {
+  return {
+    recipientId: recipient.id,
+    status: recipient.status,
+    state: getBusinessOpportunityState(listing.status, recipient.status),
+    fitNote: recipient.fit_note,
+    offeredAt: recipient.offered_at,
+    respondedAt: recipient.responded_at,
+    opportunity: toPresentableOpportunity(listing),
+  };
+}
+
+export const isBusinessResponseStatus = isOneOf(BUSINESS_RESPONSE_STATUSES);

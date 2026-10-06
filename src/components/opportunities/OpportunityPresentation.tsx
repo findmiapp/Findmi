@@ -29,40 +29,45 @@ export interface PresentableEvent {
 
 // ---------------------------------------------------------------- icons
 
-function Icon({ children }: { children: ReactNode }) {
+type IconSize = "md" | "sm";
+
+function Icon({ children, size = "md" }: { children: ReactNode; size?: IconSize }) {
   return (
-    <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+    <span
+      aria-hidden="true"
+      className={`flex shrink-0 items-center justify-center rounded-full bg-findmi-50 text-findmi-700 ${size === "sm" ? "h-6 w-6" : "h-8 w-8"}`}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"}>
         {children}
       </svg>
     </span>
   );
 }
-const TagIcon = () => (
-  <Icon>
+export const TagIcon = ({ size }: { size?: IconSize } = {}) => (
+  <Icon size={size}>
     <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" />
     <circle cx="7.5" cy="7.5" r="1.5" />
   </Icon>
 );
-const CreditIcon = () => (
-  <Icon>
+export const CreditIcon = ({ size }: { size?: IconSize } = {}) => (
+  <Icon size={size}>
     <path d="m12 3 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9Z" />
   </Icon>
 );
-const PinIcon = () => (
-  <Icon>
+export const PinIcon = ({ size }: { size?: IconSize } = {}) => (
+  <Icon size={size}>
     <path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z" />
     <circle cx="12" cy="9.5" r="2.5" />
   </Icon>
 );
-const ClockIcon = () => (
-  <Icon>
+export const ClockIcon = ({ size }: { size?: IconSize } = {}) => (
+  <Icon size={size}>
     <circle cx="12" cy="12" r="9" />
     <path d="M12 7v5l3 2" />
   </Icon>
 );
-const DeadlineIcon = () => (
-  <Icon>
+export const DeadlineIcon = ({ size }: { size?: IconSize } = {}) => (
+  <Icon size={size}>
     <rect x="3.5" y="5" width="17" height="15" rx="2" />
     <path d="M3.5 10h17M8 3v4M16 3v4" />
   </Icon>
@@ -99,6 +104,8 @@ function Fact({ icon, title, detail, children }: { icon: ReactNode; title: React
 // ---------------------------------------------------------------- hero
 
 /** Key commercial facts: investment, credits, place/host, timing, deadline. */
+export { placeLine as formatPlaceLine };
+
 export function OpportunityFacts({ o, place }: { o: PresentableOpportunity; place: PresentablePlace | null }) {
   const price = opportunityPriceParts(o);
   const placeName = place?.name ?? o.place_text;
@@ -135,8 +142,10 @@ export function OpportunityHero({
         {o.image_url && (
           // Admin-uploaded Storage URL of arbitrary host — same reasoning as
           // ImageField's preview for not using next/image here.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={o.image_url} alt="" className="h-44 w-full object-cover sm:h-56 md:h-full md:min-h-[16rem]" />
+          <div className="relative md:min-h-[16rem]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={o.image_url} alt="" className="h-44 w-full object-cover sm:h-56 md:absolute md:inset-0 md:h-full" />
+          </div>
         )}
         <div className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
           <div>

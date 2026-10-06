@@ -46,6 +46,7 @@ import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } fr
 import AddToPresence from "./v2/AddToPresence";
 import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
 import { getApplicationsForBusiness, getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
+import { getBusinessOpportunityItems } from "@/lib/opportunity-listings";
 import {
   addAppearanceFromEvent,
   addManualAppearance,
@@ -713,6 +714,12 @@ export default async function ManageBusinessPage({
           activeTab === "opportunities" ? getApplicationsForBusiness(admin, id) : Promise.resolve([] as OpportunityListItem[]),
         ])
       : [[] as OpportunityListItem[], [] as OpportunityListItem[]];
+  // Business-Facing Opportunities V1 — commercial Opportunities Findmi
+  // recommended to THIS Business (separate system from the Event
+  // invitations/applications above). Business-safe items only; any member
+  // role may view.
+  const recommendedOpportunities =
+    activeTab === "opportunities" ? await getBusinessOpportunityItems(id) : { active: [], past: [] };
   const businessOpportunities = [...pendingInvitations, ...businessApplications].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -3109,7 +3116,7 @@ export default async function ManageBusinessPage({
 
         {/* ── /account V2 — Opportunities (in-shell) ─────────────────── */}
         {activeTab === "opportunities" && (
-          <OpportunitiesView basePath={basePath} businessId={id} opportunities={businessOpportunities} />
+          <OpportunitiesView basePath={basePath} businessId={id} opportunities={businessOpportunities} recommended={recommendedOpportunities} />
         )}
 
         {/* ── /account V2 — More (secondary destinations) ───────────── */}
