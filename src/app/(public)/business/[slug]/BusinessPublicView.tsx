@@ -24,7 +24,7 @@ import { shouldShowMessageButton } from "@/lib/message-visibility";
 import { VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
-import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText, momentsHeading } from "@/lib/journal-distribution";
+import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText } from "@/lib/journal-distribution";
 import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
   attachCategories,
@@ -935,8 +935,12 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               creates it is always the author — this link never makes the
               Business the author of anything. */}
           <section className="mt-8">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="font-display text-lg font-bold tracking-tight text-ink">{momentsHeading("business", business.name)}</h2>
+            <div className="flex items-start justify-between gap-3">
+              {/* Public Moment Density Polish — eyebrow + "With {name}". */}
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Moments</p>
+                <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">With {business.name}</h2>
+              </div>
               <Link
                 href={addMomentHref("business", business.id)}
                 className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"

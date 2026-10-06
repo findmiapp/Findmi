@@ -282,7 +282,7 @@ export default async function HomePage({
           Business/Venue/Event rows already use for signed-in-or-out
           navigation. /join/start itself is untouched and still reachable
           from generic (non-explicit-intent) onboarding entry points. */}
-      <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
+      <div className="mx-auto max-w-6xl px-4 pb-1 pt-4 sm:px-6 sm:pb-2 sm:pt-5">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
         <p className="mt-1 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:text-xl">
           Find what you love. Get discovered.
@@ -322,7 +322,7 @@ export default async function HomePage({
             </span>
           </Link>
         </div>
-        <p className="mt-2 truncate text-xs text-ink/50">Free to get started · No credit card required</p>
+        <p className="mt-2 text-xs text-ink/50">Free to start · No credit card or app download required.</p>
       </div>
 
       {/* Search — behavior/route/sizing unchanged; only its position

@@ -111,6 +111,18 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
     .filter((m): m is typeof m & { url: string } => Boolean(m.url))
     .map((m) => ({ id: m.id, src: m.url, alt: entry.title, caption: m.caption }));
   const viewerIndex = (id: string) => viewerItems.findIndex((v) => v.id === id);
+  // The hero's photo-count link jumps here: the first rendered photo
+  // block (first section with photos, else More Photos / the flat gallery).
+  // Null when no photo renders below the hero (e.g. a cover-only Moment).
+  const firstPhotosAnchor = hasSections
+    ? photoSections.some((g) => g.photos.length > 0)
+      ? `section-${photoSections.find((g) => g.photos.length > 0)!.section.id}`
+      : unsectioned.length > 0
+        ? "more-photos"
+        : null
+    : unsectioned.length > 0
+      ? "moment-photos"
+      : null;
   const toGalleryItems = (list: typeof media) =>
     list.map((m) => ({ id: m.id, url: m.url, caption: m.caption, category: null, mediaIndex: m.url ? viewerIndex(m.id) : -1 }));
   const coverIndex = cover?.url ? viewerItems.findIndex((v) => v.id === cover.id) : -1;
@@ -184,8 +196,6 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
       : null;
   const directionsHref = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${mapsQuery}` : null;
 
-  const heroLocationLabel = location?.name ?? manualLocationName;
-
   const pageBody = (
     <>
       {/* Hero */}
@@ -226,26 +236,33 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
               Natural wrapping + the gradient's own generous bottom padding
               keep even a long title readable. */}
           <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{entry.title}</h1>
-          {/* Author attribution — links to the author's public Journal
-              (public entries only). Never an empty byline row. */}
-          {authorLabel &&
-            (isPublicEntry ? (
-              <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
-                <Link href={journalAuthorHref(entry.id)} className="pointer-events-auto underline-offset-2 hover:text-white hover:underline">
-                  By {authorLabel}
-                </Link>
-              </p>
-            ) : (
-              <p className="text-xs font-semibold uppercase tracking-wide text-white/70">By {authorLabel}</p>
-            ))}
-          <p className="text-sm font-medium text-white/80">
-            {dateLabel}
-            {heroLocationLabel ? ` · ${heroLocationLabel}` : ""}
-          </p>
-          {media.length > 0 && (
-            <p className="text-xs text-white/60">
-              {media.length} photo{media.length === 1 ? "" : "s"}
-            </p>
+          {/* Public Moment Density Polish — date directly under the title
+              (Location is carried by the experience row below), then ONE
+              row: author (left) · photo count (right). Author links to the
+              author's public Moments (public Moments only — the existing
+              journalAuthorHref destination); the photo count jumps to the
+              photos. The date has no destination of its own, so it stays
+              plain text. */}
+          <p className="text-sm font-medium text-white/80">{dateLabel}</p>
+          {(authorLabel || firstPhotosAnchor) && (
+            <div className="mt-0.5 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-white/70">
+              {authorLabel ? (
+                isPublicEntry ? (
+                  <Link href={journalAuthorHref(entry.id)} className="pointer-events-auto min-w-0 truncate underline-offset-2 hover:text-white hover:underline">
+                    By {authorLabel}
+                  </Link>
+                ) : (
+                  <span className="min-w-0 truncate">By {authorLabel}</span>
+                )
+              ) : (
+                <span />
+              )}
+              {firstPhotosAnchor && (
+                <a href={`#${firstPhotosAnchor}`} className="pointer-events-auto shrink-0 underline-offset-2 hover:text-white hover:underline">
+                  {media.length} Photo{media.length === 1 ? "" : "s"}
+                </a>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -259,33 +276,38 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
 
         {/* Public Moment V2 — the primary experience context, before any
             photos: "what real-world experience was this?" */}
-        {primaryKind === "event" && primaryEvent && (
+        {primaryKind && (
           <div className="mt-4">
-            <ContextCard
-              href={`/event/${primaryEvent.slug}`}
-              kicker="Event"
-              imageUrl={primaryEvent.cover_image_url}
-              title={primaryEvent.name}
-              lines={[eventWhen, eventPlaceName]}
-              action="View Event"
-            />
-          </div>
-        )}
-        {primaryKind === "location" && location && (
-          <div className="mt-4">
-            <ContextCard
-              href={`/location/${location.slug}`}
-              kicker="Location"
-              imageUrl={location.logo_url ?? location.cover_image_url}
-              title={location.name}
-              lines={[[location.address, [location.city, location.state].filter(Boolean).join(", ")].filter(Boolean).join(", ") || null]}
-              action="View Location"
-            />
-          </div>
-        )}
-        {primaryKind === "business" && businesses[0] && (
-          <div className="mt-4">
-            <ContextCard href={`/business/${businesses[0].slug}`} kicker="Business" imageUrl={businesses[0].logo_url} title={businesses[0].name} lines={[]} action="View Business" />
+            <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">This Moment Is From</p>
+            <div className="mt-1.5">
+              {primaryKind === "event" && primaryEvent && (
+                <ContextCard
+                  href={`/event/${primaryEvent.slug}`}
+                  imageUrl={primaryEvent.cover_image_url}
+                  title={primaryEvent.name}
+                  lines={[eventWhen, eventPlaceName]}
+                  actionLabel={`View Event: ${primaryEvent.name}`}
+                />
+              )}
+              {primaryKind === "location" && location && (
+                <ContextCard
+                  href={`/location/${location.slug}`}
+                  imageUrl={location.logo_url ?? location.cover_image_url}
+                  title={location.name}
+                  lines={[[location.address, [location.city, location.state].filter(Boolean).join(", ")].filter(Boolean).join(", ") || null]}
+                  actionLabel={`View Location: ${location.name}`}
+                />
+              )}
+              {primaryKind === "business" && businesses[0] && (
+                <ContextCard
+                  href={`/business/${businesses[0].slug}`}
+                  imageUrl={businesses[0].logo_url}
+                  title={businesses[0].name}
+                  lines={[]}
+                  actionLabel={`View Business: ${businesses[0].name}`}
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -299,7 +321,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
         {hasSections ? (
           <>
             {photoSections.map(({ section, photos }) => (
-              <section key={section.id} className="mt-8">
+              <section key={section.id} id={`section-${section.id}`} className="mt-8 scroll-mt-20">
                 <h2 className="font-display text-lg font-bold tracking-tight text-ink">{journalSectionLabel(section)}</h2>
                 {section.notes?.trim() && <p className="mt-1.5 max-w-xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{section.notes.trim()}</p>}
                 {photos.length > 0 && (
@@ -310,7 +332,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
               </section>
             ))}
             {unsectioned.length > 0 && (
-              <section className="mt-8">
+              <section id="more-photos" className="mt-8 scroll-mt-20">
                 <h2 className="font-display text-lg font-bold tracking-tight text-ink">More Photos</h2>
                 <div className="mt-3">
                   <JournalPhotoGallery items={toGalleryItems(unsectioned)} />
@@ -320,7 +342,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </>
         ) : (
           unsectioned.length > 0 && (
-            <section className="mt-6">
+            <section id="moment-photos" className="mt-6 scroll-mt-20">
               <JournalPhotoGallery items={toGalleryItems(unsectioned)} />
             </section>
           )
@@ -336,19 +358,34 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
                 {dateLabel}
                 {occurrenceTimeLabel ? ` · ${occurrenceTimeLabel}` : timeLabel ? ` · ${timeLabel}` : ""}
               </p>
+              {/* Density Polish — ONE Location row: the row itself opens
+                  the Location page; Directions is its own separate link
+                  inside the same row (never the whole row). */}
               {location && primaryKind !== "location" && (
-                <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <ConnectedRow href={`/location/${location.slug}`} imageUrl={location.logo_url ?? location.cover_image_url} name={location.name} meta={[location.city, location.state].filter(Boolean).join(", ")} />
-                  </div>
+                <div className="flex items-center gap-3 rounded-xl border border-black/5 bg-white p-2.5 transition hover:border-black/10">
+                  <Link href={`/location/${location.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-black/5">
+                      {(location.logo_url ?? location.cover_image_url) && (
+                        <Image src={(location.logo_url ?? location.cover_image_url)!} alt="" fill unoptimized sizes="40px" className="object-cover" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink">{location.name}</span>
+                      {(location.city || location.state) && (
+                        <span className="block truncate text-xs uppercase tracking-wide text-ink/50">{[location.city, location.state].filter(Boolean).join(", ")}</span>
+                      )}
+                    </span>
+                  </Link>
                   {directionsHref && (
                     <a
                       href={directionsHref}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex h-10 shrink-0 items-center justify-center rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                      aria-label={`Directions to ${location.name}`}
+                      className="flex h-9 shrink-0 items-center gap-0.5 rounded-lg px-1.5 text-xs font-semibold text-findmi-700 transition hover:bg-findmi-50"
                     >
                       Directions
+                      <ChevronIcon direction="right" className="h-3 w-3" />
                     </a>
                   )}
                 </div>
@@ -446,42 +483,44 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   );
 }
 
-/** Public Moment V2 — the compact primary-context card under the hero:
- * thumbnail, kicker, name, up to two real detail lines, and a clear
- * action. The whole card is the link. */
+/** Public Moment V2 — the compact primary-context row under the hero
+ * (Density Polish: a relationship row, not a feature card): 64px
+ * thumbnail, name, up to two short detail lines, and "View" on the right.
+ * The whole row is the one link; its accessible name says where it goes. */
 function ContextCard({
   href,
-  kicker,
   imageUrl,
   title,
   lines,
-  action,
+  actionLabel,
 }: {
   href: string;
-  kicker: string;
   imageUrl: string | null;
   title: string;
   lines: (string | null)[];
-  action: string;
+  actionLabel: string;
 }) {
   const shown = lines.filter((l): l is string => Boolean(l));
   return (
-    <Link href={href} className="flex items-center gap-3 rounded-2xl border border-black/[0.06] bg-white p-3 shadow-sm transition hover:border-black/10">
+    <Link
+      href={href}
+      aria-label={actionLabel}
+      className="flex items-center gap-3 rounded-2xl border border-black/[0.06] bg-white p-2 pr-3 transition hover:border-black/10 hover:bg-findmi-50/40"
+    >
       <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-mist">
         {imageUrl && <Image src={imageUrl} alt="" fill unoptimized sizes="64px" className="object-cover" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[11px] font-bold uppercase tracking-wide text-findmi-700">{kicker}</span>
-        <span className="mt-0.5 block font-display text-base font-bold leading-snug tracking-tight text-ink">{title}</span>
+        <span className="block truncate text-sm font-bold leading-snug text-ink">{title}</span>
         {shown.map((l) => (
-          <span key={l} className="mt-0.5 block text-sm leading-snug text-ink/60">
+          <span key={l} className="block truncate text-xs leading-snug text-ink/55">
             {l}
           </span>
         ))}
-        <span className="mt-1 inline-flex items-center gap-0.5 text-sm font-semibold text-findmi-700">
-          {action}
-          <ChevronIcon direction="right" className="h-3.5 w-3.5" />
-        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-findmi-700">
+        View
+        <ChevronIcon direction="right" className="h-3 w-3" />
       </span>
     </Link>
   );
