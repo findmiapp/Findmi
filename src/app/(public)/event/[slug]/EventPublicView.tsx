@@ -695,17 +695,19 @@ export async function EventPublicView({ slug }: { slug: string }) {
   // only the carousel itself is conditional.
   const momentsSection = (
     <section id="moments" className="scroll-mt-24">
-      <BrandHeading
-        accent="Moments"
-        trailing={
-          <Link
-            href={`/event/${event.slug}/journal`}
-            className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
-          >
-            + Add Moment
-          </Link>
-        }
-      />
+      {/* Same heading + context line ("from {Event}") as Location/Business. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+        <div className="min-w-[11rem] flex-1">
+          <BrandHeading accent="Moments" />
+          <p className="mt-0.5 break-words font-display text-base font-bold leading-snug tracking-tight text-ink">from {event.name}</p>
+        </div>
+        <Link
+          href={`/event/${event.slug}/journal`}
+          className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
+        >
+          + Add Moment
+        </Link>
+      </div>
       <p className="mt-1.5 max-w-xl text-metadata text-muted">
         Share moments from your experience that will appear in your Journal.{" "}
         <span className="italic text-subtle">They may be featured on brand pages.</span>

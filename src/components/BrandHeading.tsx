@@ -11,6 +11,7 @@ export default function BrandHeading({
   id,
   className = "",
   trailing,
+  size = "default",
 }: {
   accent: string;
   as?: "h1" | "h2" | "h3";
@@ -18,9 +19,13 @@ export default function BrandHeading({
   className?: string;
   /** Optional right-aligned slot (e.g. a "See all" link). */
   trailing?: ReactNode;
+  /** "home": the homepage's peer section-title scale (text-2xl / sm:text-3xl,
+   * same as HOMEPAGE_SECTION_TITLE_CLASS) — same treatment, larger size. */
+  size?: "default" | "home";
 }) {
+  const sizeClass = size === "home" ? "text-2xl tracking-tight sm:text-3xl" : "text-section-title-lg sm:text-page-title";
   const heading = (
-    <Tag id={id} className={`font-display text-section-title-lg font-bold text-primary sm:text-page-title ${trailing ? "" : className}`}>
+    <Tag id={id} className={`font-display font-bold text-primary ${sizeClass} ${trailing ? "" : className}`}>
       Findmi <span className="text-findmi-600">{accent}</span>
     </Tag>
   );

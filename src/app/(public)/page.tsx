@@ -12,6 +12,9 @@ import AreaPicker from "@/components/discover/AreaPicker";
 import FeaturedLocationCard from "@/components/discover/FeaturedLocationCard";
 import HomeTimeFilterRail from "@/components/HomeTimeFilterRail";
 import NavIcon from "@/components/NavIcon";
+import BrandHeading from "@/components/BrandHeading";
+import MomentsDiscovery from "@/components/moments/MomentsDiscovery";
+import { getMomentFeed } from "@/lib/moment-discovery";
 import {
   attachEventCategories,
   getBusinessGalleryImagesMap,
@@ -100,7 +103,7 @@ export default async function HomePage({
   // applyOccurrenceOverride, getBusinessesForEvent,
   // getOccurrenceBusinessRosters) are untouched in lib/data.ts — this page
   // simply doesn't need their extra detail anymore.
-  const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations, bulletins] = await Promise.all([
+  const [nextRaw, heroFallbackBrands, homepageRows, siteSections, markets, featuredLocations, bulletins, momentFeed] = await Promise.all([
     getUpcomingEvents(10, WINDOW_BY_TIME_KEY[timeKey], marketSlug, areaSlug),
     getFeaturedBusinesses(3), // hero collage fallback imagery only, see below — NEVER Market-filtered (editorial/decorative, see homepage-rows.ts's own note on curated content)
     getVisibleHomepageRows(),
@@ -108,6 +111,7 @@ export default async function HomePage({
     getConsumerVisibleMarketsWithAreas(), // Consumer Area Picker V1/V2 — same public list /businesses already uses
     getFeaturedLocations(8), // Public Experience Consolidation pass — Featured Locations carousel
     getPublishedHomepageBulletins(), // Homepage Bulletin Carousel — every published editorial announcement, ordered for display
+    getMomentFeed({ limit: 12 }), // Findmi Moments — newest public Moments (lib/moment-discovery.ts)
   ]);
 
   const nextEvents = await attachEventCategories(nextRaw);
@@ -461,6 +465,33 @@ export default async function HomePage({
             ))}
           </div>
         </Section>
+      )}
+
+      {/* Findmi Moments — real people's public Moments, after the primary
+          discovery rows and before the business promo. Hidden entirely
+          when no public Moment exists (never a fake/empty showcase). */}
+      {momentFeed.cards.length > 0 && (
+        <section className="py-6" aria-labelledby="home-moments-heading">
+          <div className="mb-3 px-4 sm:px-6">
+            <BrandHeading
+              id="home-moments-heading"
+              accent="Moments"
+              size="home"
+              trailing={
+                <Link
+                  href="/moments"
+                  className="text-xs font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 transition hover:text-ink hover:decoration-ink/50"
+                >
+                  See All
+                </Link>
+              }
+            />
+            <p className={HOMEPAGE_SECTION_SUBTITLE_CLASS}>Real experiences, shared by people who were there.</p>
+          </div>
+          <div className="px-4 sm:px-6">
+            <MomentsDiscovery cards={momentFeed.cards} layout="carousel" />
+          </div>
+        </section>
       )}
 
       {/* Homepage Content Priority pass — NATIVE ROSE DEMO, fourth and

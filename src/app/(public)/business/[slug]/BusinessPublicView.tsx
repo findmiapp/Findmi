@@ -25,6 +25,7 @@ import { shouldShowMessageButton } from "@/lib/message-visibility";
 import { VerifiedBadge } from "@/components/Badge";
 import Link from "next/link";
 import MomentsCarousel from "@/components/journal/MomentsCarousel";
+import BrandHeading from "@/components/BrandHeading";
 import { addMomentHref, getPublicJournalCollection, journalCollectionHref, momentsEmptyStateText } from "@/lib/journal-distribution";
 import type { Business, BusinessWithCategories } from "@/lib/types";
 import {
@@ -950,11 +951,13 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
               creates it is always the author — this link never makes the
               Business the author of anything. */}
           <section className="mt-8">
-            <div className="flex items-start justify-between gap-3">
-              {/* Public Moment Density Polish — eyebrow + "With {name}". */}
-              <div className="min-w-0">
-                <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Moments</p>
-                <h2 className="mt-1 font-display text-lg font-bold tracking-tight text-ink">With {business.name}</h2>
+            {/* Same "Findmi Moments" BrandHeading + context line as the
+                Event/Location pages; the name wraps in the left column and
+                never runs under + Add Moment. */}
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+              <div className="min-w-[11rem] flex-1">
+                <BrandHeading accent="Moments" />
+                <p className="mt-0.5 break-words font-display text-base font-bold leading-snug tracking-tight text-ink">with {business.name}</p>
               </div>
               <Link
                 href={addMomentHref("business", business.id)}
