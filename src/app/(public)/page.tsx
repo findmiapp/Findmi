@@ -322,7 +322,13 @@ export default async function HomePage({
             </span>
           </Link>
         </div>
-        <p className="mt-1 text-[11px] italic text-ink/50 sm:mt-2">Free to start · No credit card or app download required.</p>
+        <p className="mt-1 text-[11px] sm:mt-2">
+          <Link href="/join" className="mr-1.5 inline-flex items-center gap-0.5 font-semibold text-findmi-700 hover:underline">
+            Start for free here
+            <ChevronIcon direction="right" className="h-2.5 w-2.5" />
+          </Link>
+          <span className="italic text-ink/50">No credit card or app download required.</span>
+        </p>
       </div>
 
       {/* Search — behavior/route/sizing unchanged; only its position
