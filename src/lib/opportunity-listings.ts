@@ -8,8 +8,14 @@ import {
   BUSINESS_RECIPIENT_COLUMNS,
   checkBusinessResponse,
   getBusinessVisibility,
+  checkExploreInterest,
   emptyRecipientCounts,
+  isExplorable,
+  matchesExploreFilters,
   summarizeRecipientCounts,
+  toPresentableOpportunity,
+  type ExploreFilters,
+  type PresentableOpportunity,
   toBusinessOpportunityView,
   type BusinessOpportunityView,
   type BusinessResponseStatus,
@@ -85,6 +91,8 @@ export interface BusinessOpportunity {
 
 /** Full rows — Admin only. */
 export interface AdminOpportunityListing extends BusinessOpportunityListing {
+  /** Opportunities V2 — absent until the V2 migration is applied. */
+  visibility?: "private" | "discoverable";
   internal_notes: string | null;
   created_at: string;
   updated_at: string;
@@ -418,4 +426,105 @@ export async function getBusinessOpportunityItem(businessId: string, recipientId
     .eq("business_id", businessId)
     .maybeSingle();
   return data ? toBusinessItem(data as unknown as BusinessRow) : null;
+}
+
+// ---------------------------------------------------------------- explore (V2)
+
+export interface ExploreItem {
+  listingId: string;
+  opportunity: PresentableOpportunity;
+  place: BusinessOpportunityPlace | null;
+  event: BusinessOpportunityEvent | null;
+  /** This Business's own recipient row for the listing, when one exists —
+   * the card then opens that relationship instead. */
+  linkedRecipientId: string | null;
+}
+
+type ExploreRow = BusinessOpportunityListing & {
+  visibility?: string | null;
+  location: BusinessOpportunityPlace | BusinessOpportunityPlace[] | null;
+  event: BusinessOpportunityEvent | BusinessOpportunityEvent[] | null;
+};
+
+const EXPLORE_COLUMNS = `${BUSINESS_LISTING_COLUMNS}, visibility, ${BUSINESS_CONTEXT_EMBEDS}`;
+
+function toExploreItem(row: ExploreRow, linked: Map<string, string>): ExploreItem {
+  const loc = one(row.location);
+  const ev = one(row.event);
+  return {
+    listingId: row.id,
+    opportunity: toPresentableOpportunity(row),
+    place: loc ? { name: loc.name, slug: loc.slug, address: loc.address, city: loc.city, state: loc.state } : null,
+    event: ev ? { name: ev.name, slug: ev.slug, start_at: ev.start_at } : null,
+    linkedRecipientId: linked.get(row.id) ?? null,
+  };
+}
+
+async function linkedRecipients(admin: ReturnType<typeof requireAdminClient>, businessId: string, listingIds: string[]) {
+  if (listingIds.length === 0) return new Map<string, string>();
+  const { data } = await admin.from("opportunity_recipients").select("id, listing_id").eq("business_id", businessId).in("listing_id", listingIds);
+  return new Map(((data ?? []) as { id: string; listing_id: string }[]).map((r) => [r.listing_id, r.id]));
+}
+
+/** Explore inventory for one Business: ONLY listings explicitly
+ * discoverable, open and not past their deadline (isExplorable), filtered
+ * server-side. Business-safe columns only. `available` is false when the
+ * discoverability column doesn't exist yet (migration not applied) — the
+ * page then shows its empty state instead of failing. */
+export async function getExploreItems(businessId: string, filters: ExploreFilters): Promise<{ available: boolean; items: ExploreItem[] }> {
+  await requireBusinessMember(businessId);
+  const admin = requireAdminClient();
+  let query = admin
+    .from("opportunity_listings")
+    .select(EXPLORE_COLUMNS)
+    .eq("visibility", "discoverable")
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (filters.type) query = query.eq("opportunity_type", filters.type);
+  const { data, error } = await query;
+  if (error || !data) return { available: false, items: [] };
+  const now = new Date();
+  const rows = (data as unknown as ExploreRow[]).filter(
+    (r) => isExplorable({ visibility: r.visibility, status: r.status, response_deadline: r.response_deadline }, now) && matchesExploreFilters({ ...r, location: one(r.location) }, filters, now)
+  );
+  const linked = await linkedRecipients(admin, businessId, rows.map((r) => r.id));
+  return { available: true, items: rows.map((r) => toExploreItem(r, linked)) };
+}
+
+/** One explorable listing, or null when it isn't explorable (private,
+ * not open, past deadline, missing). */
+export async function getExploreItem(businessId: string, listingId: string): Promise<ExploreItem | null> {
+  await requireBusinessMember(businessId);
+  const admin = requireAdminClient();
+  const { data, error } = await admin.from("opportunity_listings").select(EXPLORE_COLUMNS).eq("id", listingId).maybeSingle();
+  if (error || !data) return null;
+  const row = data as unknown as ExploreRow;
+  if (!isExplorable({ visibility: row.visibility, status: row.status, response_deadline: row.response_deadline }, new Date())) return null;
+  return toExploreItem(row, await linkedRecipients(admin, businessId, [row.id]));
+}
+
+/** "I'm Interested" on an Explore listing the Business has no relationship
+ * with yet: owner/manager, real verified user, never Admin Manage-As,
+ * listing still explorable, no existing row. Creates the Business's own
+ * recipient row as `interested` with a real response record. No email or
+ * notification. The unique (listing_id, business_id) key prevents
+ * duplicates under a race. */
+export async function expressExploreInterest(args: { businessId: string; listingId: string }): Promise<{ ok: true; recipientId: string } | { ok: false; error: string }> {
+  const membership = await requireBusinessMember(args.businessId);
+  const userId = await getCurrentUserId();
+  if (!userId && !membership.viaAdmin) return { ok: false, error: "Please sign in to respond." };
+  const admin = requireAdminClient();
+  const item = await getExploreItem(args.businessId, args.listingId);
+  const check = checkExploreInterest({ role: membership.role, viaAdmin: membership.viaAdmin, explorable: Boolean(item), alreadyLinked: Boolean(item?.linkedRecipientId) });
+  if (!check.ok) return { ok: false, error: check.reason };
+  if (!userId || !(await isEmailVerified(admin, userId))) return { ok: false, error: "Verify your email to respond to Opportunities." };
+  const now = new Date().toISOString();
+  const { data, error } = await admin
+    .from("opportunity_recipients")
+    .insert({ listing_id: args.listingId, business_id: args.businessId, status: "interested", offered_at: now, status_changed_at: now, responded_at: now, responded_by_user_id: userId })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: "Couldn't save your interest. Please try again." };
+  return { ok: true, recipientId: data.id as string };
 }

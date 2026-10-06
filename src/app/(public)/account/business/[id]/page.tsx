@@ -41,12 +41,15 @@ import { Panel, Row, Stat, Chip, EmptyLine, SectionEyebrow } from "../../owner-u
 import BusinessAppShell, { sectionForTab } from "./v2/BusinessAppShell";
 import BusinessHome from "./v2/BusinessHome";
 import MoreMenu from "./v2/MoreMenu";
-import OpportunitiesView from "./v2/OpportunitiesView";
+import OpportunitiesView, { OPPORTUNITY_VIEWS, type OpportunityView } from "./v2/OpportunitiesView";
 import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "./v2/PresenceViews";
 import AddToPresence from "./v2/AddToPresence";
 import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
 import { getApplicationsForBusiness, getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
-import { getBusinessOpportunityItems } from "@/lib/opportunity-listings";
+import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
+import { getBusinessGoals } from "@/lib/opportunity-goals";
+import { canManageGoals, type GoalRole } from "@/lib/opportunity-goals-domain";
+import { isExploreBudget, isExploreTiming, isOpportunityType, type ExploreFilters } from "@/lib/opportunity-listings-domain";
 import {
   addAppearanceFromEvent,
   addManualAppearance,
@@ -346,6 +349,13 @@ export default async function ManageBusinessPage({
     // Pass A — Presence success states.
     request_sent?: string;
     presence_added?: string;
+    // Opportunities V2 — Explore filters + goal notices (view= is shared).
+    q?: string;
+    type?: string;
+    where?: string;
+    timing?: string;
+    budget?: string;
+    goal?: string;
   }>;
 }) {
   const { id } = await params;
@@ -714,12 +724,47 @@ export default async function ManageBusinessPage({
           activeTab === "opportunities" ? getApplicationsForBusiness(admin, id) : Promise.resolve([] as OpportunityListItem[]),
         ])
       : [[] as OpportunityListItem[], [] as OpportunityListItem[]];
-  // Business-Facing Opportunities V1 — commercial Opportunities Findmi
+  // Business-Facing Opportunities — commercial Opportunities Findmi
   // recommended to THIS Business (separate system from the Event
   // invitations/applications above). Business-safe items only; any member
-  // role may view.
+  // role may view. Also loaded for Home (Opportunities preview).
   const recommendedOpportunities =
-    activeTab === "opportunities" ? await getBusinessOpportunityItems(id) : { active: [], past: [] };
+    activeTab === "opportunities" || activeTab === "overview" ? await getBusinessOpportunityItems(id) : { active: [], past: [] };
+  // Opportunities V2 — the page's four views. Explore and Goals data are
+  // only read when that view is open; both tolerate the V2 migration not
+  // being applied yet (available: false).
+  const opportunityView: OpportunityView =
+    activeTab === "opportunities" && OPPORTUNITY_VIEWS.includes(viewParam as OpportunityView) ? (viewParam as OpportunityView) : "for-you";
+  const exploreFilters: ExploreFilters = {
+    q: rawSearchParams.q?.slice(0, 100) ?? null,
+    type: isOpportunityType(rawSearchParams.type) ? rawSearchParams.type : null,
+    where: rawSearchParams.where?.slice(0, 100) ?? null,
+    timing: isExploreTiming(rawSearchParams.timing) ? rawSearchParams.timing : null,
+    budget: isExploreBudget(rawSearchParams.budget) ? rawSearchParams.budget : null,
+  };
+  const [exploreData, goalsData] =
+    activeTab === "opportunities"
+      ? await Promise.all([
+          opportunityView === "explore" ? getExploreItems(id, exploreFilters) : Promise.resolve(null),
+          opportunityView === "goals" ? getBusinessGoals(id) : Promise.resolve(null),
+        ])
+      : [null, null];
+  const canManageOpportunityGoals = canManageGoals((membershipRole ?? "staff") as GoalRole, isAdminElevated);
+  const goalManageNote = canManageOpportunityGoals
+    ? null
+    : isAdminElevated
+      ? "Viewing as a Findmi Admin. Goals come from the Business, so they can't be created or changed here."
+      : "Only a Business owner or manager can add or change goals.";
+  const goalNotice =
+    rawSearchParams.goal === "saved"
+      ? "Goal saved."
+      : rawSearchParams.goal === "paused"
+        ? "Goal paused."
+        : rawSearchParams.goal === "closed"
+          ? "Goal closed."
+          : rawSearchParams.goal === "active"
+            ? "Goal is active."
+            : null;
   const businessOpportunities = [...pendingInvitations, ...businessApplications].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -1590,6 +1635,7 @@ export default async function ManageBusinessPage({
               newOrderCount={orderSummary.newCount}
               businessHandle={businessHandle}
               updateHandleAction={updateBusinessHandle.bind(null, id)}
+              opportunityItems={[...recommendedOpportunities.active, ...recommendedOpportunities.past]}
             />
           </div>
         )}
@@ -3116,7 +3162,19 @@ export default async function ManageBusinessPage({
 
         {/* ── /account V2 — Opportunities (in-shell) ─────────────────── */}
         {activeTab === "opportunities" && (
-          <OpportunitiesView basePath={basePath} businessId={id} opportunities={businessOpportunities} recommended={recommendedOpportunities} />
+          <OpportunitiesView
+            basePath={basePath}
+            businessId={id}
+            view={opportunityView}
+            opportunities={businessOpportunities}
+            recommended={recommendedOpportunities}
+            explore={exploreData}
+            filters={exploreFilters}
+            goals={goalsData}
+            canManage={canManageOpportunityGoals}
+            manageNote={goalManageNote}
+            notice={goalNotice}
+          />
         )}
 
         {/* ── /account V2 — More (secondary destinations) ───────────── */}

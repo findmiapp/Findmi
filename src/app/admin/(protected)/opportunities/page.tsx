@@ -11,6 +11,7 @@ import {
   type RecipientStatus,
 } from "@/lib/opportunity-listings-domain";
 import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
+import OpportunitiesAdminTabs from "./OpportunitiesAdminTabs";
 import { STATUS_BADGE, formatOpportunityDate, formatOpportunityTiming } from "./format";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,9 @@ function OpportunityRow({ o }: { o: AdminOpportunityListingSummary }) {
             <span className="shrink-0 rounded-full border border-findmi/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-findmi-700">
               Credits Eligible
             </span>
+          )}
+          {o.visibility === "discoverable" && (
+            <span className="shrink-0 rounded-full bg-findmi-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-findmi-700">Discoverable</span>
           )}
         </span>
         <span className="mt-1 block text-sm font-semibold text-ink">{o.title}</span>
@@ -96,7 +100,9 @@ export default async function OpportunitiesListPage({ searchParams }: { searchPa
         </Link>
       </div>
 
-      <nav aria-label="Filter by status" className="-mx-4 mt-5 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+      <OpportunitiesAdminTabs active="listings" />
+
+      <nav aria-label="Filter by status" className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
         {filters.map((f) => {
           const active = f.value === status;
           return (

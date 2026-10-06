@@ -112,7 +112,7 @@ test("the Business view model carries no Admin-only or private fields", () => {
     assert.equal(json.includes(`"${k}"`), false, k);
   }
   assert.equal("status" in view.opportunity, false, "listing status is not exposed");
-  assert.deepEqual(Object.keys(view).sort(), ["offeredAt", "opportunity", "recipientId", "respondedAt", "state", "status"]);
+  assert.deepEqual(Object.keys(view).sort(), ["group", "offeredAt", "opportunity", "recipientId", "respondedAt", "state", "status"]);
   assert.equal(json.includes("Fit"), false, "fit note text never carried");
 });
 

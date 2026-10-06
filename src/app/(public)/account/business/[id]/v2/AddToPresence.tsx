@@ -3,21 +3,24 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import NavIcon from "@/components/NavIcon";
+import { GoalGlyph, MomentGlyph } from "@/components/opportunities/OpportunityGlyphs";
 
-/** Business Manager V2, Pass A — the ONE activity creation entry for a
- * business owner. Owners choose by intent, never by Findmi's internal
- * model (Event vs Appearance vs Location):
+/** The ONE "+ Add" entry for a Business owner — choose by intent, never by
+ * Findmi's internal model:
+ *   Add Moment          → the canonical Moment composer (/my-world/journal/
+ *                         new), prefilled with this Business.
+ *   Host Something      → the existing Event creation flow, with this
+ *                         Business as host (?business_id=, validated
+ *                         server-side).
+ *   Go Somewhere        → the existing Event search / request-to-join
+ *                         composer in Presence (manual Appearance fallback).
+ *   Add A Location      → the existing Business Locations add panel.
+ * Grow Your Business:
+ *   Find An Opportunity → Opportunities, Explore view.
+ *   Tell Findmi Your Goals → the Business goal flow.
  *
- *   Hosting something   → the existing Event creation flow, opened with
- *                         this business as its canonical host
- *                         (?business_id= → events.host_business_id, validated
- *                         server-side: owner/manager of a Pro business).
- *   Going somewhere     → the existing Event search / request-to-join
- *                         composer in Presence, with the manual "add where
- *                         you'll be" fallback (a manual Appearance).
- *   One of our locations → the existing Business Locations add panel.
- *
- * Mobile: bottom sheet. sm+: centered dialog. Esc / backdrop closes. */
+ * Mobile: bottom sheet (scrolls when tall). sm+: centered dialog. Esc /
+ * backdrop closes. */
 export default function AddToPresence({
   basePath,
   businessId,
@@ -40,25 +43,44 @@ export default function AddToPresence({
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const options: { href: string; title: string; copy: string; icon: ReactNode }[] = [
-    {
-      href: `/account/event/new?business_id=${encodeURIComponent(businessId)}`,
-      title: "Host something",
-      copy: "Create an activation, pop-up, tasting, class, launch or event you’re organizing.",
-      icon: <SparkGlyph className="h-5 w-5" />,
-    },
-    {
-      href: `${basePath}?tab=findmi-here&compose=1`,
-      title: "Go somewhere",
-      copy: "Add a festival, market, retailer sampling, trade show or somewhere else you’ll be.",
-      icon: <NavIcon name="compass" className="h-5 w-5" />,
-    },
-    {
-      href: `${basePath}?tab=findmi-here&view=locations&add=1`,
-      title: "Add a location",
-      copy: "Add or connect a store, café, showroom or other ongoing location for this business.",
-      icon: <NavIcon name="pin" className="h-5 w-5" />,
-    },
+  const option = (href: string, title: string, copy: string, icon: ReactNode) => ({ href, title, copy, icon });
+  // Same icon for the same action everywhere: pencil = Moment (Quick
+  // Create), calendar = an Event (Quick Create's Add An Event), compass =
+  // going somewhere, pin = Location, spark = Opportunities (Business nav).
+  const doOptions = [
+    option(
+      `/my-world/journal/new?business=${encodeURIComponent(businessId)}`,
+      "Add Moment",
+      "Document something your Business experienced.",
+      <MomentGlyph className="h-5 w-5" />
+    ),
+    option(
+      `/account/event/new?business_id=${encodeURIComponent(businessId)}`,
+      "Host Something",
+      "Create an activation, pop-up, tasting, class, launch or Event you’re organizing.",
+      <NavIcon name="calendar" className="h-5 w-5" />
+    ),
+    option(
+      `${basePath}?tab=findmi-here&compose=1`,
+      "Go Somewhere",
+      "Add a festival, market, retailer sampling, trade show or somewhere else you’ll be.",
+      <NavIcon name="compass" className="h-5 w-5" />
+    ),
+    option(
+      `${basePath}?tab=findmi-here&view=locations&add=1`,
+      "Add A Location",
+      "Add or connect a store, café, showroom or other ongoing Location for this Business.",
+      <NavIcon name="pin" className="h-5 w-5" />
+    ),
+  ];
+  const growOptions = [
+    option(`${basePath}?tab=opportunities&view=explore`, "Find An Opportunity", "Explore Opportunities available to your Business.", <SparkGlyph className="h-5 w-5" />),
+    option(
+      `${basePath}/opportunities/goals/new`,
+      "Tell Findmi Your Goals",
+      "Share what you’re trying to accomplish and we’ll find relevant Opportunities.",
+      <GoalGlyph className="h-5 w-5" />
+    ),
   ];
 
   return (
@@ -85,12 +107,12 @@ export default function AddToPresence({
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-to-presence-title"
-            className="relative w-full max-w-md rounded-t-3xl bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-xl sm:rounded-3xl sm:p-5"
+            className="relative max-h-[88vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-3xl bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-xl sm:max-h-[90vh] sm:rounded-3xl sm:p-5"
           >
             <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-full bg-black/10 sm:hidden" />
             <div className="flex items-center justify-between gap-3 px-1">
               <h2 id="add-to-presence-title" className="font-display text-section-title font-bold text-primary">
-                What would you like to add?
+                What Would You Like To Do?
               </h2>
               <button
                 type="button"
@@ -103,29 +125,35 @@ export default function AddToPresence({
                 </svg>
               </button>
             </div>
-            <ul className="mt-2 flex flex-col gap-2">
-              {options.map((o) => (
-                <li key={o.title}>
-                  <Link
-                    href={o.href}
-                    onClick={() => setOpen(false)}
-                    className="flex min-h-[72px] items-start gap-3 rounded-2xl border border-black/[0.07] px-4 py-3.5 transition hover:border-findmi/40 hover:bg-findmi-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
-                  >
-                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
-                      {o.icon}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-card-title font-semibold text-primary">{o.title}</span>
-                      <span className="mt-0.5 block text-metadata text-muted">{o.copy}</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <OptionList options={doOptions} onPick={() => setOpen(false)} />
+            <p className="mt-4 px-1 text-label font-bold uppercase text-subtle">Grow Your Business</p>
+            <OptionList options={growOptions} onPick={() => setOpen(false)} />
           </div>
         </div>
       )}
     </>
+  );
+}
+
+function OptionList({ options, onPick }: { options: { href: string; title: string; copy: string; icon: ReactNode }[]; onPick: () => void }) {
+  return (
+    <ul className="mt-2 flex flex-col gap-2">
+      {options.map((o) => (
+        <li key={o.title}>
+          <Link
+            href={o.href}
+            onClick={onPick}
+            className="flex min-h-[64px] items-start gap-3 rounded-2xl border border-black/[0.07] px-4 py-3 transition hover:border-findmi/40 hover:bg-findmi-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi/40"
+          >
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">{o.icon}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-card-title font-semibold text-primary">{o.title}</span>
+              <span className="mt-0.5 block text-metadata text-muted">{o.copy}</span>
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -706,6 +706,9 @@ export interface BusinessOpportunityView {
   recipientId: string;
   status: RecipientStatus;
   state: BusinessOpportunityState;
+  /** Opportunities-page group (derived; the listing status itself is never
+   * exposed to the Business). */
+  group: BusinessOpportunityGroup;
   offeredAt: string;
   respondedAt: string | null;
   opportunity: PresentableOpportunity;
@@ -719,6 +722,7 @@ export function toBusinessOpportunityView(
     recipientId: recipient.id,
     status: recipient.status,
     state: getBusinessOpportunityState(listing.status, recipient.status),
+    group: businessOpportunityGroup(listing.status, recipient.status),
     offeredAt: recipient.offered_at,
     respondedAt: recipient.responded_at,
     opportunity: toPresentableOpportunity(listing),
@@ -726,3 +730,133 @@ export function toBusinessOpportunityView(
 }
 
 export const isBusinessResponseStatus = isOneOf(BUSINESS_RESPONSE_STATUSES);
+
+// ---------------------------------------------------------------- discoverability (V2)
+
+/** Mirrors opportunity_listings_visibility_check. 'private' (default) =
+ * reachable only by its recipients; 'discoverable' = also listed in the
+ * Business Explore view while open. */
+export const LISTING_VISIBILITIES = ["private", "discoverable"] as const;
+export type ListingVisibility = (typeof LISTING_VISIBILITIES)[number];
+export const isListingVisibility = isOneOf(LISTING_VISIBILITIES);
+
+/** THE Explore eligibility rule: explicitly discoverable AND open AND not
+ * past its response deadline. Recipients reach private listings through
+ * their own recipient row, never through this. */
+export function isExplorable(listing: { visibility?: string | null; status: ListingStatus; response_deadline: string | null }, now: Date): boolean {
+  if (listing.visibility !== "discoverable" || listing.status !== "open") return false;
+  if (listing.response_deadline && new Date(listing.response_deadline).getTime() < now.getTime()) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------- explore filters
+
+export const EXPLORE_BUDGETS = ["complimentary", "under_500", "500_2500", "2500_plus"] as const;
+export type ExploreBudget = (typeof EXPLORE_BUDGETS)[number];
+export const EXPLORE_BUDGET_LABELS: Record<ExploreBudget, string> = {
+  complimentary: "Complimentary",
+  under_500: "Under $500",
+  "500_2500": "$500–$2.5K",
+  "2500_plus": "$2.5K+",
+};
+
+export const EXPLORE_TIMINGS = ["next_30_days", "next_90_days", "flexible"] as const;
+export type ExploreTiming = (typeof EXPLORE_TIMINGS)[number];
+export const EXPLORE_TIMING_LABELS: Record<ExploreTiming, string> = {
+  next_30_days: "Next 30 Days",
+  next_90_days: "Next 90 Days",
+  flexible: "Flexible Timing",
+};
+
+export const isExploreBudget = isOneOf(EXPLORE_BUDGETS);
+export const isExploreTiming = isOneOf(EXPLORE_TIMINGS);
+
+export interface ExploreFilters {
+  q?: string | null;
+  type?: OpportunityType | null;
+  where?: string | null;
+  timing?: ExploreTiming | null;
+  budget?: ExploreBudget | null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Pure filter for one explorable listing. Custom pricing never matches a
+ * budget filter (no amount to compare). */
+export function matchesExploreFilters(
+  listing: {
+    opportunity_type: OpportunityType;
+    title: string;
+    summary: string | null;
+    place_text: string | null;
+    host_name: string | null;
+    starts_at: string | null;
+    pricing_mode: PricingMode;
+    price_cents: number | null;
+    location?: { name: string; city: string | null; state: string | null } | null;
+  },
+  filters: ExploreFilters,
+  now: Date
+): boolean {
+  const lc = (s: string | null | undefined) => (s ?? "").toLowerCase();
+  if (filters.type && listing.opportunity_type !== filters.type) return false;
+  const q = lc(filters.q).trim();
+  if (q && ![listing.title, listing.summary, listing.place_text, listing.host_name, listing.location?.name].some((f) => lc(f).includes(q))) return false;
+  const where = lc(filters.where).trim();
+  if (where && ![listing.place_text, listing.location?.name, listing.location?.city, listing.location?.state].some((f) => lc(f).includes(where))) return false;
+  if (filters.timing) {
+    if (filters.timing === "flexible") {
+      if (listing.starts_at) return false;
+    } else {
+      if (!listing.starts_at) return false;
+      const start = new Date(listing.starts_at).getTime();
+      const horizon = now.getTime() + (filters.timing === "next_30_days" ? 30 : 90) * DAY_MS;
+      if (start > horizon) return false;
+    }
+  }
+  if (filters.budget) {
+    if (filters.budget === "complimentary") return listing.pricing_mode === "complimentary";
+    if (listing.pricing_mode === "complimentary" || listing.pricing_mode === "custom" || listing.price_cents == null) return false;
+    const c = listing.price_cents;
+    if (filters.budget === "under_500" && c >= 50_000) return false;
+    if (filters.budget === "500_2500" && (c < 50_000 || c > 250_000)) return false;
+    if (filters.budget === "2500_plus" && c <= 250_000) return false;
+  }
+  return true;
+}
+
+/** A Business expressing interest in an Explore listing it has no
+ * relationship with yet. Same authority as responding (owner/manager, not
+ * Admin Manage-As) and the listing must still be explorable. Creates the
+ * Business's own recipient row directly as `interested` — the existing
+ * pipeline (Admin confirms) takes over from there. */
+export function checkExploreInterest(args: {
+  role: BusinessResponseRole;
+  viaAdmin?: boolean;
+  explorable: boolean;
+  alreadyLinked: boolean;
+}): ResponseCheck {
+  if (args.viaAdmin) return { ok: false, reason: "Findmi admins update Opportunities from Admin, not by responding as the Business." };
+  if (args.role !== "owner" && args.role !== "manager") return { ok: false, reason: "Only an owner or manager can respond to this Opportunity." };
+  if (!args.explorable) return { ok: false, reason: "This Opportunity isn't available." };
+  if (args.alreadyLinked) return { ok: false, reason: "This Opportunity is already in Your Opportunities." };
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------- business grouping (V2 IA)
+
+export type BusinessOpportunityGroup = "for_you" | "interested" | "confirmed" | "past";
+
+/** Which Opportunities-page group a Business relationship belongs to:
+ *   For You    — Recommended and still answerable;
+ *   Interested — the Business said yes (or passed and can still change);
+ *                not_interested on an open listing stays in Past instead;
+ *   Confirmed  — confirmed;
+ *   Past       — everything else visible (completed, cancelled, not
+ *                interested, no longer available). */
+export function businessOpportunityGroup(listingStatus: ListingStatus, recipientStatus: RecipientStatus): BusinessOpportunityGroup {
+  if (recipientStatus === "offered" && listingStatus === "open") return "for_you";
+  if (recipientStatus === "interested" && (listingStatus === "open" || listingStatus === "closed")) return "interested";
+  if (recipientStatus === "confirmed") return "confirmed";
+  return "past";
+}

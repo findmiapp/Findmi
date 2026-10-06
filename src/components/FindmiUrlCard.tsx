@@ -68,7 +68,7 @@ export default function FindmiUrlCard({
       ) : (
         <>
           <p className="mt-2 text-sm text-ink/60">
-            {currentHandle ? `Choose a new FindMi URL for ${entityLabel}.` : `Create an easy-to-share FindMi link for ${entityLabel}.`}
+            {currentHandle ? `Choose a new Findmi URL for ${entityLabel}.` : `Create an easy-to-share Findmi link for ${entityLabel}.`}
           </p>
           <form action={action} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1">

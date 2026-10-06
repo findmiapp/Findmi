@@ -10,6 +10,9 @@ import { Chip } from "../../../owner-ui";
 import { SparkGlyph } from "./BusinessAppShell";
 import Greeting from "./Greeting";
 import AddToPresence from "./AddToPresence";
+import type { BusinessOpportunityItem } from "@/lib/opportunity-listings";
+import BusinessOpportunityCard from "@/components/opportunities/BusinessOpportunityCard";
+import { GoalGlyph } from "@/components/opportunities/OpportunityGlyphs";
 
 // Same zone lib/format.ts formats every owner/public time in.
 const APP_TIMEZONE = "America/New_York";
@@ -40,6 +43,7 @@ export default function BusinessHome({
   newOrderCount,
   businessHandle,
   updateHandleAction,
+  opportunityItems,
 }: {
   basePath: string;
   businessId: string;
@@ -54,6 +58,8 @@ export default function BusinessHome({
   newOrderCount: number;
   businessHandle: string | null;
   updateHandleAction: (formData: FormData) => void | Promise<void>;
+  /** This Business's own commercial Opportunities (Business-safe items). */
+  opportunityItems: BusinessOpportunityItem[];
 }) {
   const liveNow = todayAppearances.filter((a) => a.temporal.live);
   const laterToday = todayAppearances.filter((a) => !a.temporal.live);
@@ -73,6 +79,8 @@ export default function BusinessHome({
         <AddToPresence basePath={basePath} businessId={businessId} variant="chip" />
         <QuickAction href={`${basePath}?tab=products&compose=1`} icon={<NavIcon name="tag" className="h-[18px] w-[18px]" />} label="Product" />
       </nav>
+
+      <HomeOpportunities basePath={basePath} items={opportunityItems} />
 
       {liveNow.length > 0 && (
         <section aria-labelledby="happening-now">
@@ -201,6 +209,76 @@ export default function BusinessHome({
         </div>
       </section>
     </div>
+  );
+}
+
+/** Home's Opportunities section — directly under the greeting/actions.
+ * With recommendations: ONE compact preview of the most current
+ * relationship (a new Recommendation first, then Confirmed, then
+ * Interested) plus an "N New" count; View All opens Opportunities. Without:
+ * a productive Explore card and a Tell Findmi What You Need action, never a
+ * bare empty box. */
+function HomeOpportunities({ basePath, items }: { basePath: string; items: BusinessOpportunityItem[] }) {
+  const newOnes = items.filter((i) => i.view.group === "for_you");
+  const top = newOnes[0] ?? items.find((i) => i.view.group === "confirmed") ?? items.find((i) => i.view.group === "interested") ?? null;
+  return (
+    <section aria-labelledby="home-opportunities">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 id="home-opportunities" className="flex items-center gap-2 font-display text-section-title font-bold text-primary">
+          Opportunities
+          {newOnes.length > 0 && <Chip tone="aqua">{newOnes.length} New</Chip>}
+        </h2>
+        <Link href={`${basePath}?tab=opportunities`} className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline">
+          View All
+          <ChevronIcon direction="right" className="h-3 w-3" />
+        </Link>
+      </div>
+      {top ? (
+        <>
+          <p className="mt-0.5 text-metadata text-muted">Opportunities Findmi recommends for your Business.</p>
+          <div className="mt-3 sm:max-w-md">
+            <BusinessOpportunityCard item={top.view} place={top.place} href={`${basePath}/opportunities/${top.view.recipientId}`} compact />
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="mt-0.5 text-metadata text-muted">Find new ways to grow your Business.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <Link
+              href={`${basePath}?tab=opportunities&view=explore`}
+              className="group flex flex-col justify-between gap-3 rounded-2xl border border-findmi/20 bg-findmi-50/60 p-4 transition hover:border-findmi/40"
+            >
+              <span className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-findmi-700 shadow-sm">
+                  <SparkGlyph className="h-5 w-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-card-title font-semibold text-primary">Explore Opportunities</span>
+                  <span className="mt-0.5 block text-metadata text-secondary">Discover activations, pop-ups, sampling, vending, partnerships and more.</span>
+                </span>
+              </span>
+              <span className="flex h-10 w-fit items-center gap-1.5 rounded-xl bg-findmi px-4 text-button font-bold text-white transition group-hover:bg-findmi-600">
+                Browse Opportunities
+                <span aria-hidden="true">→</span>
+              </span>
+            </Link>
+            <Link
+              href={`${basePath}/opportunities/goals/new`}
+              className="flex items-center gap-3 rounded-2xl border border-black/[0.07] bg-white p-4 transition hover:border-black/15"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
+                <GoalGlyph className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-card-title font-semibold text-primary">Tell Findmi What You Need</span>
+                <span className="mt-0.5 block text-metadata text-muted">Share your goals and we&rsquo;ll surface relevant Opportunities.</span>
+              </span>
+              <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
+            </Link>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

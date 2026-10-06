@@ -298,14 +298,11 @@ export function buildNeedsAttentionItems(input: NeedsAttentionInput): NeedsAtten
     );
   }
 
-  if (input.upcomingAppearances.length === 0) {
-    items.push({
-      id: "no-appearances",
-      message: "Nothing happening yet.",
-      actionLabel: "Add To Findmi Here",
-      actionHref: `${base}?tab=findmi-here&add=presence`,
-    });
-  } else {
+  // Opportunities V2 — an empty schedule is NOT an attention item ("Nothing
+  // happening yet." was informational, not actionable, and made Needs
+  // Attention render on every new Business). Home's Coming Up section
+  // already says so in its own empty state.
+  if (input.upcomingAppearances.length > 0) {
     const missingImage = input.upcomingAppearances.find((a) => !a.hasImage);
     if (missingImage) {
       items.push({

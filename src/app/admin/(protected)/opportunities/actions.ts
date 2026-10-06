@@ -10,6 +10,7 @@ import {
   canListingTransition,
   canManageRecipients,
   isListingStatus,
+  isListingVisibility,
   isRecipientStatus,
   planRecipientSend,
   validateListingInput,
@@ -248,4 +249,20 @@ export async function saveRecipientNotes(listingId: string, recipientId: string,
 
   revalidateListing(listingId);
   redirect(`${base}?saved=notes#recipient-${recipientId}`);
+}
+
+/** Opportunities V2 — Make Discoverable / Make Private. Discoverable open
+ * listings appear in the Business Explore view; private listings are only
+ * reachable by their recipients. Writes only `visibility` (a separate
+ * action so the main edit form keeps working before the V2 migration). */
+export async function setListingVisibility(id: string, visibility: string) {
+  await requireAdmin();
+  const base = detail(id);
+  if (!isListingVisibility(visibility)) fail(base, "Unknown visibility.");
+  const supabase = client(base);
+  const { data, error } = await supabase.from("opportunity_listings").update({ visibility }).eq("id", id).select("id").maybeSingle();
+  if (error) fail(base, /visibility/.test(error.message) ? "Discoverability needs the pending database migration." : error.message);
+  if (!data) fail(base, "Opportunity not found.");
+  revalidateListing(id);
+  redirect(`${base}?saved=visibility-${visibility}`);
 }

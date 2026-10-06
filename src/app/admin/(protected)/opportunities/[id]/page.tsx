@@ -26,7 +26,7 @@ import RecipientCard from "../RecipientCard";
 import ConfirmSubmitButton from "../ConfirmSubmitButton";
 import OpportunityLifecycle from "../OpportunityLifecycle";
 import { STATUS_BADGE } from "../format";
-import { sendOpportunity, setOpportunityStatus } from "../actions";
+import { sendOpportunity, setListingVisibility, setOpportunityStatus } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +48,8 @@ function savedMessage(saved: string, sent?: string): string {
   if (saved === "status-archived") return "Opportunity archived. Nothing was deleted.";
   if (saved === "recipient") return "Recipient updated.";
   if (saved === "notes") return "Internal note saved.";
+  if (saved === "visibility-discoverable") return "Discoverable — Businesses can find this in Explore while it's open.";
+  if (saved === "visibility-private") return "Private — only Businesses it's sent to can see it.";
   return "Saved.";
 }
 
@@ -88,6 +90,9 @@ export default async function OpportunityDetailPage({
   const secondaryMoves = moves.filter((m) => m !== primary && m !== "archived");
   const editHref = `/admin/opportunities/${listing.id}/edit`;
 
+  // Opportunities V2 — discoverability (absent before the V2 migration =
+  // private, the default).
+  const discoverable = listing.visibility === "discoverable";
   const actions = (
     <div className="flex flex-wrap items-center gap-2 border-t border-black/5 pt-4">
       {primary && (
@@ -112,6 +117,13 @@ export default async function OpportunityDetailPage({
           </button>
         </form>
       ))}
+      {listing.status !== "archived" && (
+        <form action={setListingVisibility.bind(null, listing.id, discoverable ? "private" : "discoverable")}>
+          <button type="submit" className={secondaryBtn}>
+            {discoverable ? "Make Private" : "Make Discoverable"}
+          </button>
+        </form>
+      )}
       {moves.includes("archived") && (
         <div className="ml-auto">
           <ConfirmSubmitButton
@@ -156,9 +168,17 @@ export default async function OpportunityDetailPage({
         o={o}
         place={location}
         badges={
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_BADGE[listing.status]}`}>
-            {LISTING_STATUS_LABELS[listing.status]}
-          </span>
+          <>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_BADGE[listing.status]}`}>
+              {LISTING_STATUS_LABELS[listing.status]}
+            </span>
+            <span
+              title={discoverable ? "Listed in the Business Explore view while open" : "Only reachable by Businesses it's sent to"}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${discoverable ? "border border-findmi/30 text-findmi-700" : "bg-black/5 text-ink/45"}`}
+            >
+              {discoverable ? "Discoverable" : "Private"}
+            </span>
+          </>
         }
         actions={actions}
       />
