@@ -37,9 +37,9 @@ const PRICING_OPTIONS: { value: PricingMode; label: string }[] = [
   { value: "custom", label: "Custom" },
 ];
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({ id, title, hint, children }: { id?: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-black/10 bg-white/60 p-4">
+    <section id={id} className="scroll-mt-20 rounded-2xl border border-black/10 bg-white/60 p-4">
       <h2 className="text-sm font-semibold text-ink">{title}</h2>
       {hint && <p className="mt-0.5 text-xs text-ink/50">{hint}</p>}
       <div className="mt-3 flex flex-col gap-4">{children}</div>
@@ -193,7 +193,7 @@ export default function OpportunityForm({
         />
       </Section>
 
-      <Section title="Internal" hint="Admin only — never shown to Businesses.">
+      <Section id="internal" title="Internal" hint="Admin only — never shown to Businesses.">
         <TextareaField label="Internal Notes" name="internal_notes" defaultValue={listing?.internal_notes} rows={3} />
       </Section>
 

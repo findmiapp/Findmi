@@ -499,3 +499,132 @@ export const BUSINESS_LISTING_COLUMNS =
 /** Recipient columns the Business may see on ITS OWN row. Deliberately
  * excludes internal_notes and responded_by_user_id. */
 export const BUSINESS_RECIPIENT_COLUMNS = "id, listing_id, business_id, status, fit_note, response_note, offered_at, responded_at, status_changed_at";
+
+// ---------------------------------------------------------------- presentation
+
+/** Display headings for the commercial presentation. The database columns
+ * keep their names (whats_included / requirements); only the reader-facing
+ * labels differ. Shared by Admin and the future Business view. */
+export const OPPORTUNITY_SECTION_LABELS = {
+  description: "About This Opportunity",
+  location: "Location & Host",
+  whats_included: "What Findmi Provides",
+  requirements: "What Your Brand Provides",
+  timing: "Timing",
+  investment: "Investment",
+  event: "Related Event",
+} as const;
+
+export const PRICING_MODE_LABELS: Record<PricingMode, string> = {
+  fixed: "Fixed",
+  starting_at: "Starting At",
+  complimentary: "Complimentary",
+  custom: "Custom",
+};
+
+/** Big value + small qualifier for a price display: "$750" / "Fixed",
+ * "$1,500" / "Starting At", "Complimentary" / null, "Contact Findmi" /
+ * "Custom". */
+export function opportunityPriceParts(listing: { pricing_mode: PricingMode; price_cents: number | null; currency: string }): {
+  amount: string;
+  qualifier: string | null;
+} {
+  if (listing.pricing_mode === "complimentary") return { amount: "Complimentary", qualifier: null };
+  if (listing.pricing_mode === "custom" || listing.price_cents == null) return { amount: "Contact Findmi", qualifier: "Custom" };
+  const amount = formatOpportunityPrice({ ...listing, pricing_mode: "fixed" });
+  return { amount, qualifier: PRICING_MODE_LABELS[listing.pricing_mode] };
+}
+
+/** The read-only commercial presentation's input. Built field-by-field
+ * (never spread from a row) so Admin-only columns — internal_notes,
+ * created/updated stamps — can never reach a shared presentation
+ * component, even when the source object is a full Admin row. */
+export interface PresentableOpportunity {
+  opportunity_type: OpportunityType;
+  title: string;
+  summary: string | null;
+  description: string | null;
+  image_url: string | null;
+  place_text: string | null;
+  host_name: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  timing_note: string | null;
+  response_deadline: string | null;
+  pricing_mode: PricingMode;
+  price_cents: number | null;
+  currency: string;
+  credits_eligible: boolean;
+  whats_included: string | null;
+  requirements: string | null;
+}
+
+export function toPresentableOpportunity(row: PresentableOpportunity): PresentableOpportunity {
+  return {
+    opportunity_type: row.opportunity_type,
+    title: row.title,
+    summary: row.summary,
+    description: row.description,
+    image_url: row.image_url,
+    place_text: row.place_text,
+    host_name: row.host_name,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    timing_note: row.timing_note,
+    response_deadline: row.response_deadline,
+    pricing_mode: row.pricing_mode,
+    price_cents: row.price_cents,
+    currency: row.currency,
+    credits_eligible: row.credits_eligible,
+    whats_included: row.whats_included,
+    requirements: row.requirements,
+  };
+}
+
+/** Send / Add Businesses is only available on an open listing. */
+export function canSendOpportunity(listingStatus: ListingStatus): boolean {
+  return listingStatus === "open";
+}
+
+// ---------------------------------------------------------------- lifecycle (presentational)
+
+export const LIFECYCLE_STAGES = ["draft", "open", "responses", "confirmed", "completed"] as const;
+export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
+
+export interface LifecycleStep {
+  key: LifecycleStage;
+  label: string;
+  hint: string;
+  state: "done" | "current" | "upcoming";
+}
+
+const LIFECYCLE_COPY: Record<LifecycleStage, { label: string; hint: string }> = {
+  draft: { label: "Draft", hint: "Build and review details" },
+  open: { label: "Open", hint: "Send to Businesses" },
+  responses: { label: "Responses", hint: "Review interest" },
+  confirmed: { label: "Confirmed", hint: "Move forward" },
+  completed: { label: "Completed", hint: "Mark as complete" },
+};
+
+/** PRESENTATIONAL lifecycle: Draft → Open → Responses → Confirmed →
+ * Completed, derived from the real listing status plus recipient counts —
+ * nothing here is persisted. A draft is always at Draft. Otherwise the
+ * furthest stage any recipient has reached is current (completed >
+ * confirmed > any Business response > Open), earlier stages are done. A
+ * closed/archived listing keeps the progress it reached; its own status
+ * badge says it is closed/archived. */
+export function getOpportunityLifecycle(listingStatus: ListingStatus, counts: Record<RecipientStatus, number>): LifecycleStep[] {
+  let reached: LifecycleStage = "draft";
+  if (listingStatus !== "draft") {
+    if (counts.completed > 0) reached = "completed";
+    else if (counts.confirmed > 0) reached = "confirmed";
+    else if (counts.interested + counts.not_interested > 0) reached = "responses";
+    else reached = "open";
+  }
+  const at = LIFECYCLE_STAGES.indexOf(reached);
+  return LIFECYCLE_STAGES.map((key, i) => ({
+    key,
+    ...LIFECYCLE_COPY[key],
+    state: i < at ? "done" : i === at ? "current" : "upcoming",
+  }));
+}

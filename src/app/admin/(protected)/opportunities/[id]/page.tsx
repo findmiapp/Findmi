@@ -1,33 +1,44 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAdminOpportunityListing, type AdminOpportunityRecipient } from "@/lib/opportunity-listings";
-import { getEventOptionById, getLocationOptionById } from "@/lib/admin/queries";
+import { getAdminOpportunityContext, getAdminOpportunityListing } from "@/lib/opportunity-listings";
 import {
-  ADMIN_TRANSITIONS,
   LISTING_STATUS_LABELS,
   LISTING_TRANSITIONS,
-  OPPORTUNITY_TYPE_LABELS,
   RECIPIENT_STATUS_LABELS,
-  adminTransitionLabel,
   canManageRecipients,
-  formatOpportunityPrice,
+  canSendOpportunity,
+  getOpportunityLifecycle,
   listingTransitionLabel,
+  summarizeRecipientCounts,
+  emptyRecipientCounts,
+  toPresentableOpportunity,
   type ListingStatus,
+  type RecipientStatus,
 } from "@/lib/opportunity-listings-domain";
-import OpportunityForm from "../OpportunityForm";
+import {
+  OpportunityAsideSections,
+  OpportunityHero,
+  OpportunityMainSections,
+  OpportunitySection,
+} from "@/components/opportunities/OpportunityPresentation";
 import RecipientSender from "../RecipientSender";
+import RecipientCard from "../RecipientCard";
 import ConfirmSubmitButton from "../ConfirmSubmitButton";
-import { RECIPIENT_BADGE, STATUS_BADGE, formatOpportunityDate, formatOpportunityTiming } from "../format";
-import { saveOpportunity, saveRecipientNotes, sendOpportunity, setOpportunityStatus, setRecipientStatus } from "../actions";
+import OpportunityLifecycle from "../OpportunityLifecycle";
+import { STATUS_BADGE } from "../format";
+import { sendOpportunity, setOpportunityStatus } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-const primaryBtn = "rounded-full bg-findmi px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
-const secondaryBtn = "rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/70 transition hover:border-ink/30 hover:text-ink";
-const smallBtn = "rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink/75 transition hover:border-ink/30 hover:text-ink";
+const primaryBtn =
+  "inline-flex items-center justify-center rounded-full bg-findmi px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-findmi-600";
+const secondaryBtn =
+  "inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink/75 transition hover:border-ink/30 hover:text-ink";
+const quietBtn = "rounded-full px-2 py-2 text-xs font-semibold text-ink/45 transition hover:text-ink";
 
 function savedMessage(saved: string, sent?: string): string {
   if (saved === "created") return "Draft saved. Open it when it's ready to send.";
+  if (saved === "updated") return "Changes saved.";
   if (saved === "sent") {
     const n = Number(sent ?? 0);
     return n > 0 ? `Opportunity sent to ${n} ${n === 1 ? "Business" : "Businesses"}.` : "No new Businesses — nothing was sent.";
@@ -40,92 +51,19 @@ function savedMessage(saved: string, sent?: string): string {
   return "Saved.";
 }
 
-function DateLine({ label, iso }: { label: string; iso: string | null }) {
-  if (!iso) return null;
-  return (
-    <span className="whitespace-nowrap">
-      {label} {formatOpportunityDate(iso)}
-    </span>
-  );
+/** Which listing move is the hero's primary action. Open listings lead with
+ * Add Businesses instead (the operational action), so Close is secondary. */
+function primaryMove(status: ListingStatus): ListingStatus | null {
+  if (status === "draft" || status === "closed") return "open";
+  return null;
 }
 
-function RecipientCard({ r, listingId, manageable }: { r: AdminOpportunityRecipient; listingId: string; manageable: boolean }) {
-  const moves = manageable ? ADMIN_TRANSITIONS[r.status] : [];
-  return (
-    <li id={`recipient-${r.id}`} className="scroll-mt-20 rounded-xl border border-black/10 bg-white p-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          {r.business ? (
-            <Link href={`/admin/businesses/${r.business.id}`} className="block truncate text-sm font-semibold text-ink hover:underline">
-              {r.business.name}
-            </Link>
-          ) : (
-            <span className="block text-sm font-semibold text-ink/50">Business unavailable</span>
-          )}
-          <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink/50">
-            <DateLine label="Offered" iso={r.offered_at} />
-            <DateLine label="Responded" iso={r.responded_at} />
-            <DateLine label="Status changed" iso={r.status_changed_at} />
-          </span>
-        </div>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${RECIPIENT_BADGE[r.status]}`}>
-          {RECIPIENT_STATUS_LABELS[r.status]}
-        </span>
-      </div>
+const COUNTED: RecipientStatus[] = ["offered", "interested", "not_interested", "confirmed", "completed", "cancelled", "withdrawn"];
 
-      {(r.fit_note || r.response_note) && (
-        <dl className="mt-2.5 flex flex-col gap-1.5 text-sm">
-          {r.fit_note && (
-            <div>
-              <dt className="text-xs font-semibold text-ink/50">Fit Note</dt>
-              <dd className="whitespace-pre-line text-ink/80">{r.fit_note}</dd>
-            </div>
-          )}
-          {r.response_note && (
-            <div>
-              <dt className="text-xs font-semibold text-ink/50">Business Response Note</dt>
-              <dd className="whitespace-pre-line text-ink/80">{r.response_note}</dd>
-            </div>
-          )}
-        </dl>
-      )}
-
-      {moves.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {moves.map((to) => (
-            <form key={to} action={setRecipientStatus.bind(null, listingId, r.id, to)}>
-              <button type="submit" className={smallBtn}>
-                {adminTransitionLabel(r.status, to)}
-              </button>
-            </form>
-          ))}
-        </div>
-      )}
-
-      <details className="group mt-3 border-t border-black/5 pt-2.5">
-        <summary className="cursor-pointer list-none text-xs font-semibold text-ink/55 hover:text-ink">
-          {r.internal_notes ? "Internal Note" : "+ Internal Note"}
-          {r.internal_notes && <span className="ml-1 font-normal text-ink/45 group-open:hidden">— {r.internal_notes.slice(0, 80)}{r.internal_notes.length > 80 ? "…" : ""}</span>}
-        </summary>
-        <form action={saveRecipientNotes.bind(null, listingId, r.id)} className="mt-2 flex flex-col gap-2">
-          <textarea
-            name="internal_notes"
-            defaultValue={r.internal_notes ?? ""}
-            rows={2}
-            placeholder="Admin only — never shown to the Business"
-            className="w-full resize-y rounded-xl border border-black/10 bg-white px-3 py-2 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
-          />
-          <button type="submit" className={`${smallBtn} self-start`}>
-            Save Note
-          </button>
-        </form>
-      </details>
-    </li>
-  );
-}
-
-/** Opportunities V1 Pass 2 — one listing: status controls, recipients
- * (Send + Findmi-controlled outcomes + internal notes) and the edit form. */
+/** Opportunities — Admin command center for one commercial Opportunity:
+ * hero (shared read-only presentation + Admin actions), presentational
+ * lifecycle, Recipients, the commercial content, then Admin-only notes.
+ * Editing lives at ./edit (the existing OpportunityForm). */
 export default async function OpportunityDetailPage({
   params,
   searchParams,
@@ -138,85 +76,139 @@ export default async function OpportunityDetailPage({
   const result = await getAdminOpportunityListing(id);
   if (!result) notFound();
   const { listing, recipients } = result;
+  const { location, event } = await getAdminOpportunityContext(listing);
 
-  const [initialLocation, initialEvent] = await Promise.all([getLocationOptionById(listing.location_id), getEventOptionById(listing.event_id)]);
-
-  const moves = LISTING_TRANSITIONS[listing.status];
+  const o = toPresentableOpportunity(listing);
+  const counts = summarizeRecipientCounts(recipients.map((r) => ({ listing_id: listing.id, status: r.status }))).get(listing.id) ?? emptyRecipientCounts();
+  const lifecycle = getOpportunityLifecycle(listing.status, counts);
   const manageable = canManageRecipients(listing.status);
-  const timing = formatOpportunityTiming(listing);
-  const place = initialLocation?.label ?? listing.place_text;
+  const canSend = canSendOpportunity(listing.status);
+  const moves = LISTING_TRANSITIONS[listing.status];
+  const primary = primaryMove(listing.status);
+  const secondaryMoves = moves.filter((m) => m !== primary && m !== "archived");
+  const editHref = `/admin/opportunities/${listing.id}/edit`;
+
+  const actions = (
+    <div className="flex flex-wrap items-center gap-2 border-t border-black/5 pt-4">
+      {primary && (
+        <form action={setOpportunityStatus.bind(null, listing.id, primary)}>
+          <button type="submit" className={primaryBtn}>
+            {listingTransitionLabel(listing.status, primary)}
+          </button>
+        </form>
+      )}
+      {canSend && (
+        <a href="#recipients" className={primaryBtn}>
+          + Add Businesses
+        </a>
+      )}
+      <Link href={editHref} className={secondaryBtn}>
+        Edit Opportunity
+      </Link>
+      {secondaryMoves.map((to) => (
+        <form key={to} action={setOpportunityStatus.bind(null, listing.id, to)}>
+          <button type="submit" className={secondaryBtn}>
+            {listingTransitionLabel(listing.status, to)}
+          </button>
+        </form>
+      ))}
+      {moves.includes("archived") && (
+        <div className="ml-auto">
+          <ConfirmSubmitButton
+            action={setOpportunityStatus.bind(null, listing.id, "archived")}
+            confirmMessage="Archive this Opportunity? It's hidden from active lists but nothing is deleted, and it can be unarchived."
+            label="Archive"
+            className={quietBtn}
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  const lifecycleNote =
+    listing.status === "closed"
+      ? "Closed — no longer taking responses. Outcomes can still be updated."
+      : listing.status === "archived"
+        ? "Archived — hidden from active lists. Nothing was deleted."
+        : null;
+
+  const shownCounts = COUNTED.filter((s) => counts[s] > 0);
 
   return (
-    <div>
-      <div className="flex items-center gap-2 text-sm text-ink/45">
-        <Link href="/admin/opportunities" className="hover:underline">
+    <div className="flex flex-col gap-4">
+      <div className="flex min-w-0 items-center gap-2 text-sm text-ink/45">
+        <Link href="/admin/opportunities" className="shrink-0 hover:underline">
           Opportunities
         </Link>
         <span>/</span>
         <span className="truncate">{listing.title}</span>
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        <h1 className="min-w-0 font-display text-2xl font-semibold tracking-tight text-ink">{listing.title}</h1>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_BADGE[listing.status]}`}>
-          {LISTING_STATUS_LABELS[listing.status]}
-        </span>
-      </div>
-      <p className="mt-1 text-sm text-ink/60">
-        {[OPPORTUNITY_TYPE_LABELS[listing.opportunity_type], formatOpportunityPrice(listing), listing.credits_eligible ? "Credits Eligible" : null, place]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-      {(timing || listing.host_name) && (
-        <p className="mt-0.5 text-xs text-ink/50">{[listing.host_name ? `Hosted by ${listing.host_name}` : null, timing].filter(Boolean).join(" · ")}</p>
-      )}
 
-      {error && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
       {saved && !error && (
-        <div className="mt-3 rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
+        <div className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-sm text-findmi-700">
           <p>{savedMessage(saved, sent)}</p>
           {skipped && <p className="mt-1 text-xs">Already sent, skipped: {skipped}</p>}
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {moves.map((to: ListingStatus) =>
-          to === "archived" ? (
-            <ConfirmSubmitButton
-              key={to}
-              action={setOpportunityStatus.bind(null, listing.id, to)}
-              confirmMessage="Archive this Opportunity? It's hidden from active lists but nothing is deleted, and it can be unarchived."
-              label={listingTransitionLabel(listing.status, to)}
-              className={secondaryBtn}
-            />
-          ) : (
-            <form key={to} action={setOpportunityStatus.bind(null, listing.id, to)}>
-              <button type="submit" className={to === "open" ? primaryBtn : secondaryBtn}>
-                {listingTransitionLabel(listing.status, to)}
-              </button>
-            </form>
-          )
-        )}
-      </div>
+      <OpportunityHero
+        o={o}
+        place={location}
+        badges={
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_BADGE[listing.status]}`}>
+            {LISTING_STATUS_LABELS[listing.status]}
+          </span>
+        }
+        actions={actions}
+      />
 
-      <section id="recipients" className="mt-8 scroll-mt-20">
-        <h2 className="text-base font-semibold text-ink">Recipients ({recipients.length})</h2>
+      <OpportunityLifecycle steps={lifecycle} note={lifecycleNote} />
 
-        {listing.status === "open" ? (
-          <div className="mt-3 rounded-2xl border border-dashed border-black/15 bg-black/[0.015] p-4">
+      <section id="recipients" aria-labelledby="recipients-heading" className="scroll-mt-20">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h2 id="recipients-heading" className="text-lg font-semibold text-ink">
+            Recipients ({recipients.length})
+          </h2>
+          {shownCounts.length > 0 && (
+            <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink/55">
+              {shownCounts.map((s) => (
+                <span key={s} className="whitespace-nowrap">
+                  <span className="font-semibold tabular-nums text-ink">{counts[s]}</span> {RECIPIENT_STATUS_LABELS[s]}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
+
+        {canSend ? (
+          <div className="mt-3 rounded-2xl border border-findmi/25 bg-findmi-50/40 p-4">
             <p className="text-sm font-semibold text-ink">Recommend To Businesses</p>
-            <p className="mt-0.5 text-xs text-ink/50">Nothing is sent until you press Send. Businesses that already have this Opportunity are skipped.</p>
+            <p className="mt-0.5 text-xs text-ink/55">
+              Search and add Businesses, with an optional private fit note for each. Nothing is sent until you press Send.
+            </p>
             <div className="mt-3">
               <RecipientSender action={sendOpportunity.bind(null, listing.id)} alreadySentIds={recipients.map((r) => r.business_id)} />
             </div>
           </div>
         ) : (
-          <p className="mt-2 text-xs text-ink/50">
-            {listing.status === "draft"
-              ? "Open this Opportunity to send it to Businesses."
-              : listing.status === "closed"
-                ? "Reopen this Opportunity to send it to more Businesses. Outcomes below can still be updated."
-                : "Archived — unarchive to update recipients."}
-          </p>
+          <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-dashed border-black/15 bg-white/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-ink/60">
+              {listing.status === "draft"
+                ? "This Opportunity is currently a Draft. Open it to send to Businesses."
+                : listing.status === "closed"
+                  ? "This Opportunity is Closed. Reopen it to send to more Businesses."
+                  : "This Opportunity is Archived. Unarchive it to update recipients."}
+            </p>
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              className="shrink-0 cursor-not-allowed self-start rounded-full border border-black/10 bg-black/[0.03] px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/35 sm:self-auto"
+            >
+              + Add Businesses
+            </button>
+          </div>
         )}
 
         {recipients.length > 0 && (
@@ -228,17 +220,41 @@ export default async function OpportunityDetailPage({
         )}
       </section>
 
-      <section className="mt-10">
-        <h2 className="mb-3 text-base font-semibold text-ink">Opportunity Details</h2>
-        <OpportunityForm
-          listing={listing}
-          initialLocation={initialLocation}
-          initialEvent={initialEvent}
-          action={saveOpportunity.bind(null, listing.id)}
-          saveLabel="Save"
-          cancelHref="/admin/opportunities"
-        />
-      </section>
+      <div className="mt-2 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-4">
+          <OpportunityMainSections o={o} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-4">
+          <OpportunityAsideSections
+            o={o}
+            place={location}
+            locationHref={location ? `/admin/locations/${location.id}` : null}
+            event={event}
+            eventHref={event ? `/admin/events/${event.id}` : null}
+          />
+        </div>
+      </div>
+
+      <OpportunitySection
+        title={
+          <span className="flex items-center gap-2">
+            Internal Notes
+            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">Admin Only</span>
+          </span>
+        }
+        aside={
+          <Link href={`${editHref}#internal`} className="text-xs font-semibold text-findmi-700 hover:underline">
+            Edit
+          </Link>
+        }
+      >
+        {listing.internal_notes ? (
+          <p className="whitespace-pre-line break-words rounded-xl bg-black/[0.03] px-3.5 py-3 text-sm leading-relaxed text-ink/75">{listing.internal_notes}</p>
+        ) : (
+          <p className="text-sm text-ink/45">No internal notes.</p>
+        )}
+        <p className="mt-2 text-xs text-ink/40">Never shown to Businesses.</p>
+      </OpportunitySection>
     </div>
   );
 }

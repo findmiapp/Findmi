@@ -288,3 +288,40 @@ export async function getAdminOpportunityListingSummaries(status?: ListingStatus
     counts: counts.get(l.id) ?? emptyRecipientCounts(),
   }));
 }
+
+/** Display context for the commercial presentation. Public-facing columns
+ * only, so the same shape can serve the future Business view. */
+export interface OpportunityPlace {
+  id: string;
+  name: string;
+  slug: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+}
+
+export interface OpportunityEventRef {
+  id: string;
+  name: string;
+  slug: string | null;
+  start_at: string | null;
+}
+
+/** The linked Location and Event for one listing — Admin only. */
+export async function getAdminOpportunityContext(listing: {
+  location_id: string | null;
+  event_id: string | null;
+}): Promise<{ location: OpportunityPlace | null; event: OpportunityEventRef | null }> {
+  await requireAdmin();
+  const admin = requireAdminClient();
+  const [location, event] = await Promise.all([
+    listing.location_id
+      ? admin.from("locations").select("id, name, slug, address, city, state").eq("id", listing.location_id).maybeSingle()
+      : null,
+    listing.event_id ? admin.from("events").select("id, name, slug, start_at").eq("id", listing.event_id).maybeSingle() : null,
+  ]);
+  return {
+    location: (location?.data as OpportunityPlace | null) ?? null,
+    event: (event?.data as OpportunityEventRef | null) ?? null,
+  };
+}

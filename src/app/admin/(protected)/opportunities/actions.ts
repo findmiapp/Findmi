@@ -99,10 +99,11 @@ export async function createOpportunity(formData: FormData) {
   redirect(`${detail(data!.id)}?saved=created`);
 }
 
-/** Edit — every field except status. */
+/** Edit — every field except status. Errors return to the edit form;
+ * success returns to the detail page. */
 export async function saveOpportunity(id: string, formData: FormData) {
   await requireAdmin();
-  const base = detail(id);
+  const base = `${detail(id)}/edit`;
   const parsed = readListingForm(formData);
   if (!parsed.ok) fail(base, parsed.error);
   const fields = (parsed as { ok: true; value: ListingFields }).value;
@@ -114,7 +115,8 @@ export async function saveOpportunity(id: string, formData: FormData) {
   if (error || !data) fail(base, error?.message ?? "Opportunity not found.");
 
   revalidateListing(id);
-  redirect(`${base}?saved=1`);
+  revalidatePath(base);
+  redirect(`${detail(id)}?saved=updated`);
 }
 
 /** Open / Close / Reopen / Archive / Unarchive. Canonical transitions only,
