@@ -282,12 +282,12 @@ export default async function HomePage({
           Business/Venue/Event rows already use for signed-in-or-out
           navigation. /join/start itself is untouched and still reachable
           from generic (non-explicit-intent) onboarding entry points. */}
-      <div className="mx-auto max-w-6xl px-4 pb-1 pt-4 sm:px-6 sm:pb-2 sm:pt-5">
+      <div className="mx-auto max-w-6xl px-4 pb-1 pt-3 sm:px-6 sm:pb-2 sm:pt-5">
         <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">New to Findmi? Start here</p>
-        <p className="mt-1 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:text-xl">
+        <p className="mt-0.5 font-display text-lg font-bold leading-snug tracking-tight text-ink sm:mt-1 sm:text-xl">
           Find what you love. Get discovered.
         </p>
-        <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+        <div className="mt-1.5 grid grid-cols-2 gap-2.5 sm:mt-2.5">
           <Link
             href="/my-world/journal"
             className="flex items-center gap-2 rounded-2xl border border-black/10 bg-white p-2.5 shadow-sm transition hover:border-black/20 sm:p-3"
@@ -322,14 +322,14 @@ export default async function HomePage({
             </span>
           </Link>
         </div>
-        <p className="mt-2 text-xs text-ink/50">Free to start · No credit card or app download required.</p>
+        <p className="mt-1 text-xs text-ink/50 sm:mt-2">Free to start · No credit card or app download required.</p>
       </div>
 
       {/* Search — behavior/route/sizing unchanged; only its position
           (now after the Bulletin, was before) and this local top padding
           moved, so it reads as related to but distinct from the
           Bulletin above it. */}
-      <div className="mx-auto max-w-6xl px-4 pt-3 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6 sm:pt-3">
         <SearchBar marketSlug={marketSlug} placeholder="Search anything you're into…" />
       </div>
 
@@ -487,10 +487,10 @@ export default async function HomePage({
         <p className={`${HOMEPAGE_SECTION_SUBTITLE_CLASS} max-w-md`}>
           Your profile brings together who you are, what you offer and where you&rsquo;ll be next.
         </p>
-        <div className="mt-4">
+        <div className="mt-3 sm:mt-4">
           <BusinessShowcaseCarousel />
         </div>
-        <div className="mt-3 flex justify-start">
+        <div className="mt-2.5 flex justify-start sm:mt-3">
           {/* Small Public UI Polish pass — was a bare text link, reading as
               visually unfinished in the whitespace above the black JOIN
               FINDMI card. Now the same pale-Aqua "soft highlight panel"

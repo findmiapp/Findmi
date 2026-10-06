@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabase";
-import { withoutRangeMirrors } from "./event-range-mirror";
+import { isRangeMirrorOccurrence, withoutRangeMirrors } from "./event-range-mirror";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { isBusinessPro } from "./entitlements";
 import {
@@ -1768,6 +1768,10 @@ export async function getEffectiveUpcomingEvents(
   // own start_at/end_at.
   const { data: occEventRows } = await supabase.from("event_occurrences").select("event_id");
   const eventsWithOccurrences = new Set((occEventRows ?? []).map((r) => r.event_id as string));
+  // How many occurrence rows each event has in total — a range-mirror row
+  // (lib/event-range-mirror) is only set aside when other rows exist.
+  const occurrenceCountByEvent = new Map<string, number>();
+  for (const r of occEventRows ?? []) occurrenceCountByEvent.set(r.event_id as string, (occurrenceCountByEvent.get(r.event_id as string) ?? 0) + 1);
 
   // Qualifying occurrence rows for this window: never cancelled, and
   // either overlapping the given window or (bounds === null, "anytime")
@@ -1829,19 +1833,7 @@ export async function getEffectiveUpcomingEvents(
     });
   }
 
-  // Keep only the nearest (and, separately, nearest-featured) qualifying
-  // occurrence per event — rows already arrive start_at-ascending, so the
-  // first one seen per event_id is the nearest. When Market-scoped, this
-  // is the nearest occurrence WITHIN the selected Market, never the
-  // globally-nearest one — see eligibleOccRows above.
-  const nearestByEvent = new Map<string, EventOccurrence>();
-  const nearestFeaturedByEvent = new Map<string, EventOccurrence>();
-  for (const row of eligibleOccRows) {
-    if (!nearestByEvent.has(row.event_id)) nearestByEvent.set(row.event_id, row);
-    if (row.featured && !nearestFeaturedByEvent.has(row.event_id)) nearestFeaturedByEvent.set(row.event_id, row);
-  }
-
-  let occurrenceEventIds = Array.from(nearestByEvent.keys());
+  let occurrenceEventIds = Array.from(new Set(eligibleOccRows.map((o) => o.event_id)));
   if (options.eventIds) {
     const allowed = new Set(options.eventIds);
     occurrenceEventIds = occurrenceEventIds.filter((id) => allowed.has(id));
@@ -1855,6 +1847,39 @@ export async function getEffectiveUpcomingEvents(
     evQuery = applyEventTextFilters(evQuery, options);
     const { data } = await evQuery;
     occurrenceEvents = data ?? [];
+  }
+  const eventById = new Map(occurrenceEvents.map((e) => [e.id, e]));
+
+  // The ONE occurrence each event is shown (and judged live/today) by —
+  // rows already arrive start_at-ascending. Homepage Finishing pass:
+  //   1. an event's range-mirror row (its whole multi-day span copied into
+  //      an occurrence, beside real per-day dates — lib/event-range-mirror)
+  //      is never chosen while other occurrence rows exist; it made a
+  //      recurring event read "Happening Now" with its first-ever date;
+  //   2. the earliest one that hasn't ENDED wins (live now -> later today
+  //      -> next future), so a window that starts at midnight never shows
+  //      an occurrence that already ended earlier today; only if every
+  //      qualifying occurrence has ended does the earliest stand.
+  // A legitimate single multi-day occurrence is unaffected. When
+  // Market-scoped, this is the pick WITHIN the selected Market — see
+  // eligibleOccRows above. The nearest-FEATURED pick follows the same rule.
+  const nowMs = Date.now();
+  const candidatesByEvent = new Map<string, EventOccurrence[]>();
+  for (const row of eligibleOccRows) {
+    const event = eventById.get(row.event_id);
+    if (!event) continue;
+    if ((occurrenceCountByEvent.get(row.event_id) ?? 0) > 1 && isRangeMirrorOccurrence(row, event)) continue;
+    const list = candidatesByEvent.get(row.event_id) ?? [];
+    list.push(row);
+    candidatesByEvent.set(row.event_id, list);
+  }
+  const pick = (list: EventOccurrence[]) => list.find((o) => new Date(o.end_at).getTime() > nowMs) ?? list[0];
+  const nearestByEvent = new Map<string, EventOccurrence>();
+  const nearestFeaturedByEvent = new Map<string, EventOccurrence>();
+  for (const [eventId, list] of candidatesByEvent) {
+    nearestByEvent.set(eventId, pick(list));
+    const featured = list.filter((o) => o.featured);
+    if (featured.length > 0) nearestFeaturedByEvent.set(eventId, pick(featured));
   }
 
   // Legacy branch — events with zero event_occurrences rows, matched by

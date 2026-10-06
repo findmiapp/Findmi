@@ -39,7 +39,7 @@ export default function BusinessShowcaseCarousel() {
   return (
     <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {SLIDES.map((slide) => (
-        <div key={slide.id} className="w-[80%] max-w-[280px] shrink-0 snap-center sm:w-72">
+        <div key={slide.id} className="w-[62%] max-w-[224px] shrink-0 snap-center sm:w-72 sm:max-w-[280px]">
           <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-black/10 bg-mist shadow-sm">
             <Image
               src={slide.src}
