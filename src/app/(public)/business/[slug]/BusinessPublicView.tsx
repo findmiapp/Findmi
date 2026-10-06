@@ -9,6 +9,7 @@ import BusinessShopSection from "@/components/BusinessShopSection";
 import Bulletin from "@/components/Bulletin";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
 import ImageZoomTrigger from "@/components/ImageZoomTrigger";
+import BusinessShortDescription from "@/components/BusinessShortDescription";
 import PersonCard from "@/components/PersonCard";
 import FollowButton from "@/components/FollowButton";
 import SaveButton from "@/components/SaveButton";
@@ -663,38 +664,52 @@ export async function BusinessPublicView({ slug }: { slug: string }) {
                 Area stays quiet text on the same row. Both halves are
                 independently optional — no empty pill, no dangling
                 separator — and this still carries only the real,
-                dynamic category/location data already resolved above. */}
-            <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
-              {primaryCategory && (
-                <span className="inline-flex items-center rounded-full bg-findmi-50 px-2.5 py-1 text-xs font-bold text-findmi-700">
-                  {primaryCategory.name}
-                </span>
-              )}
-              {/* Free shows exactly 1 category — the "+N" extra-category
-                  count is Pro-only, regardless of how many category rows
-                  the business actually has (a Free business is limited to
-                  one going forward, but a legacy row could still carry
-                  more from before that rule existed). */}
-              {pro && primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
-              {/* Free/Pro Entitlement Realignment pass — city/state/ZIP
-                  are Free-public now (FREE = GET FOUND: a consumer
-                  discovery platform needs a business's location
-                  regardless of plan tier), so `location` renders for both
-                  tiers here. The "+N" extra-category count above stays
-                  Pro-only — unrelated field, unchanged by this pass. */}
-              {primaryCategory && location && <span aria-hidden="true">·</span>}
-              {location && (
-                <span>
-                  {location}
-                  {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
-                </span>
-              )}
-            </p>
-            {/* Free profile correction — short description is identity-level
-                copy (like name/category), not promotional profile content,
-                so it now shows for both tiers; everything else in this
-                identity block stays pro-gated as before. */}
-            {business.short_description && <p className="text-base text-ink/65">{business.short_description}</p>}
+                dynamic category/location data already resolved above.
+                Business Info Block pass — category/location + the short
+                description now sit together in ONE lightweight bordered
+                block (white, hairline border, no shadow); the description
+                clamps to 2 lines with an inline Read More. */}
+            {(primaryCategory || location || business.short_description) && (
+              <div className="rounded-xl border border-black/[0.08] bg-white px-3 py-2.5">
+                {(primaryCategory || location) && (
+                  <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink/55">
+                    {primaryCategory && (
+                      <span className="inline-flex items-center rounded-full bg-findmi-50 px-2.5 py-1 text-xs font-bold text-findmi-700">
+                        {primaryCategory.name}
+                      </span>
+                    )}
+                    {/* Free shows exactly 1 category — the "+N" extra-category
+                        count is Pro-only, regardless of how many category rows
+                        the business actually has (a Free business is limited to
+                        one going forward, but a legacy row could still carry
+                        more from before that rule existed). */}
+                    {pro && primaryCategory && extraCategoryCount > 0 && <span className="text-ink/40">+{extraCategoryCount}</span>}
+                    {/* Free/Pro Entitlement Realignment pass — city/state/ZIP
+                        are Free-public now (FREE = GET FOUND: a consumer
+                        discovery platform needs a business's location
+                        regardless of plan tier), so `location` renders for both
+                        tiers here. The "+N" extra-category count above stays
+                        Pro-only — unrelated field, unchanged by this pass. */}
+                    {primaryCategory && location && <span aria-hidden="true">·</span>}
+                    {location && (
+                      <span>
+                        {location}
+                        {business.service_radius_miles ? ` · serves within ${business.service_radius_miles} mi` : ""}
+                      </span>
+                    )}
+                  </p>
+                )}
+                {/* Free profile correction — short description is identity-level
+                    copy (like name/category), not promotional profile content,
+                    so it now shows for both tiers; everything else in this
+                    identity block stays pro-gated as before. */}
+                {business.short_description && (
+                  <div className={primaryCategory || location ? "mt-1.5" : ""}>
+                    <BusinessShortDescription text={business.short_description} />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
