@@ -223,12 +223,21 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               1/{heroImages.length}
             </div>
           )}
+          {/* Location Final Hero Hierarchy pass — the category rides on the
+              photo (bottom-right: the logo overlaps bottom-left, the
+              gallery count sits top-right). Light pill, dark text,
+              pointer-events-none so taps still open the cover lightbox.
+              Only over a real photo; without one it stays in identity. */}
+          {heroImages.length > 0 && location.category && (
+            <span className="pointer-events-none absolute bottom-3 right-3 z-[2] max-w-[calc(100%-8.5rem)] rounded-2xl bg-white/90 leading-snug sm:max-w-[calc(100%-10rem)] px-2.5 py-1 text-xs font-semibold text-ink shadow-sm backdrop-blur-sm">
+              {location.category.name}
+            </span>
+          )}
           {/* 14. Edit affordance — same affordance as Business's own
               AdminEditButton, only ever visible to an authorized manager/
-              admin session; moved to the opposite corner from the new
-              consumer-facing gallery-count badge above so the two never
-              overlap. */}
-          <AdminEditButton href={`/admin/locations/${location.id}`} className="absolute bottom-3 right-3 z-10" />
+              admin session; top-left, the one corner no consumer-facing
+              cover element (gallery count, category, logo) uses. */}
+          <AdminEditButton href={`/admin/locations/${location.id}`} className="absolute left-3 top-3 z-10" />
         </div>
       </div>
 
@@ -253,6 +262,15 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           <div className={`min-w-0 flex-1 ${location.logo_url ? "pt-2 sm:pt-3" : ""}`}>
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
 
+            {/* Location Final Hero Hierarchy pass — WHERE sits directly under
+                WHAT: the address joins the identity block (wraps naturally). */}
+            {fullAddress && (
+              <p className="mt-1 flex items-start gap-1.5 text-sm leading-snug text-ink/60">
+                <PinGlyph className="mt-px h-4 w-4 shrink-0 text-ink/40" />
+                <span className="min-w-0">{fullAddress}</span>
+              </p>
+            )}
+
             {/* Physical Presence Pass 2 — where this place physically sits
                 (nearest parent first), e.g. "Madison Square Park · Flatiron,
                 New York". Context, not navigation chrome: quiet text, each
@@ -276,52 +294,23 @@ export async function LocationPublicView({ slug }: { slug: string }) {
               </p>
             )}
 
-            {/* "Operated by" (quiet context line, each Business linking to
-                its own page) + the single most-specific category pill: one
-                wrapping row — side by side when they fit, stacked when the
-                column beside the logo is too narrow. Never truncated. Each
-                is absent when its data is; the row when both are. */}
-            {(operators.items.length > 0 || location.category) && (
-              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                {operators.items.length > 0 && (
-                  <p className="min-w-0 text-sm leading-snug text-ink/55">
-                    Operated by{" "}
-                    {operators.items.map((b, i) => (
-                      <span key={b.businessId}>
-                        {i > 0 && (i === operators.items.length - 1 ? " & " : ", ")}
-                        <Link href={`/business/${b.slug}`} className="font-medium text-ink/70 hover:text-findmi-700 hover:underline">
-                          {b.name}
-                        </Link>
-                      </span>
-                    ))}
-                  </p>
-                )}
-                {location.category && <CategoryPill>{location.category.name}</CategoryPill>}
+            {/* No real cover photo -> no overlay to carry the category, so
+                it stays here, compact. */}
+            {heroImages.length === 0 && location.category && (
+              <div className="mt-1.5">
+                <CategoryPill>{location.category.name}</CategoryPill>
               </div>
             )}
           </div>
-        </div>
-
-        <div className="max-w-xl">
-          {/* Field QA UX Pass 2B — Open Now / Closed is the one Hours entry
-              point: it expands the compact week inline right here (visitor's
-              own clock); no separate Hours card anywhere on the page. */}
-          {showHours && <LocationHoursStatus hours={location.hours} />}
-
-          {fullAddress && (
-            <p className="mt-2 flex items-center gap-1.5 text-sm text-ink/60">
-              <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
-              {fullAddress}
-            </p>
-          )}
         </div>
       </div>
 
       {/* 3. Action row — Directions (the one aqua-filled primary, flex-1)
           | Follow (aqua-outline text button, labelled Following state) |
-          Save | Share squares. Featured Event follows directly — nothing
-          is placed between the two. Message/Website/Call/Contact stay in
-          the compact contact row. No fabricated follower count. */}
+          Save | Share squares, then the Hours bar. Featured Event follows
+          directly — nothing else is placed between them. Message/
+          Website/Call/Contact stay in the compact contact row. No
+          fabricated follower count. */}
       <div className="px-4 sm:px-0">
         <div className="mt-3.5">
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -336,6 +325,11 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             />
           </div>
         </div>
+        {/* Location Final Hero Hierarchy pass — Hours as one full-width
+            compact status bar under the actions (same inline weekly
+            expansion, visitor's own clock); omitted without real hours.
+            Featured Event follows directly. */}
+        {showHours && <LocationHoursStatus hours={location.hours} />}
       </div>
 
       {/* "Events" (Visual implementation pass) — the one resolved featured
@@ -510,18 +504,41 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           </div>
         )}
 
-        {/* About — hidden entirely when no description. Never repeats
+        {/* About — hidden entirely when there's neither a description nor
+            an operator (Final Hero Hierarchy: "Operated By" lives here,
+            not in the hero). Never repeats
             address/hours/contact. The short preview directly under the
             featured happening (above) already covers the "is this place
             interesting" question above the fold; this is the same full
             text for anyone who taps through from the section nav or the
             preview's own "Read more". */}
-        {location.description && (
+        {(location.description || operators.items.length > 0) && (
           <section id="about" className="mt-8 scroll-mt-20">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">About</h2>
-            <p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
-              {location.description}
-            </p>
+            {location.description && (
+              <p className="mt-2 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink/70">
+                {location.description}
+              </p>
+            )}
+            {/* Location Final Hero Hierarchy pass — operator attribution
+                lives here, lower-priority than identity/activity: the same
+                business_locations relationship, each Business linking to
+                its own page. Absent when there is none. */}
+            {operators.items.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/45">Operated By</p>
+                <p className="mt-0.5 text-sm text-ink/70">
+                  {operators.items.map((b, i) => (
+                    <span key={b.businessId}>
+                      {i > 0 && (i === operators.items.length - 1 ? " & " : ", ")}
+                      <Link href={`/business/${b.slug}`} className="font-semibold text-ink hover:text-findmi-700 hover:underline">
+                        {b.name}
+                      </Link>
+                    </span>
+                  ))}
+                </p>
+              </div>
+            )}
           </section>
         )}
 

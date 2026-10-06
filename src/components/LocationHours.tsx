@@ -18,19 +18,22 @@ function useClientNow(): Date | null {
   return now;
 }
 
-/** Field QA UX Pass 2B — the Location's single Hours entry point: the
- * Open Now / Closed pill ("Closed · Opens 7 AM Tomorrow") is a real
- * button that expands a compact weekly schedule inline, directly beneath
- * it, and collapses it again (pill or Hide). Collapsed, there is no
- * Hours container at all. Same stored hours and open/closed rule as
- * before — nothing invented. Renders nothing until the visitor's clock is
- * known, and nothing at all without real hours. */
+/** The Location's single Hours entry point (Final Hero Hierarchy pass:
+ * a full-width compact status bar under the action row). The whole bar
+ * is one real button — "OPEN NOW · Until 4 PM" / "CLOSED · Opens 7 AM
+ * Tomorrow" with a chevron — that expands the compact week inline
+ * directly beneath it and collapses it again. Collapsed, nothing else is
+ * shown. Same stored hours and open/closed rule as before — nothing
+ * invented. Until the visitor's clock is known it reserves the bar's
+ * height (no layout jump for the Featured Event below); without real
+ * hours the caller doesn't render it at all. */
 export function LocationHoursStatus({ hours }: { hours: LocationHoursValue | null | undefined }) {
   const now = useClientNow();
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
   const status = now ? getHoursStatus(hours, now) : null;
-  if (!now || !status) return null;
+  if (!now) return <div aria-hidden="true" className="mt-2 h-11 rounded-xl bg-black/[0.03]" />;
+  if (!status) return null;
   const todayKey = weekdayKeyFor(now);
   const label = status.open ? "Open Now" : "Closed";
 
@@ -42,50 +45,31 @@ export function LocationHoursStatus({ hours }: { hours: LocationHoursValue | nul
         aria-expanded={expanded}
         aria-controls={panelId}
         aria-label={`${label}${status.detail ? ` · ${status.detail}` : ""} — ${expanded ? "Hide" : "Show"} Hours`}
-        className={`inline-flex min-h-[32px] items-center gap-1 rounded-full px-3 py-1 text-xs transition ${
-          status.open ? "bg-findmi-50 text-findmi-700 hover:bg-findmi-100" : "bg-black/[0.04] text-ink/60 hover:bg-black/[0.07]"
-        }`}
+        className="flex h-11 w-full items-center gap-3 rounded-xl bg-black/[0.04] px-3.5 text-left transition hover:bg-black/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi"
       >
-        <span className="font-bold uppercase tracking-wide">{label}</span>
-        {status.detail && (
-          <>
-            <span aria-hidden="true">·</span>
-            <span className="font-medium">{status.detail}</span>
-          </>
-        )}
-        <ChevronIcon direction={expanded ? "up" : "down"} className="h-3 w-3 shrink-0 opacity-60" />
+        <span className={`shrink-0 text-xs font-bold uppercase tracking-wide ${status.open ? "text-findmi-700" : "text-ink/70"}`}>{label}</span>
+        <span className="ml-auto min-w-0 truncate text-sm text-ink/60">{status.detail}</span>
+        <ChevronIcon direction={expanded ? "up" : "down"} className="h-4 w-4 shrink-0 text-ink/40" />
       </button>
 
       {expanded && (
-        <div id={panelId} className="mt-2 max-w-sm rounded-xl border border-black/5 bg-white px-3 py-2 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wide text-ink/50">Hours</h2>
-            <button
-              type="button"
-              onClick={() => setExpanded(false)}
-              className="-mr-1.5 flex min-h-[32px] items-center px-1.5 text-xs font-semibold text-findmi-700 transition hover:text-findmi-800"
-            >
-              Hide
-            </button>
-          </div>
-          <dl className="flex flex-col gap-0.5 pb-0.5">
-            {LOCATION_WEEKDAYS.map(({ key, short }) => {
-              const isToday = key === todayKey;
-              return (
-                <div
-                  key={key}
-                  className={`-mx-1.5 flex items-center justify-between rounded-md px-1.5 py-0.5 text-sm ${isToday ? "bg-findmi-50/70 font-semibold text-ink" : "text-ink/75"}`}
-                >
-                  <dt>
-                    {short}
-                    {isToday && <span className="text-findmi-700"> · Today</span>}
-                  </dt>
-                  <dd className="tabular-nums">{formatDayHoursCompact(hours?.[key])}</dd>
-                </div>
-              );
-            })}
-          </dl>
-        </div>
+        <dl id={panelId} aria-label="Hours" className="mt-1.5 flex flex-col gap-0.5 rounded-xl border border-black/5 bg-white px-3.5 py-2">
+          {LOCATION_WEEKDAYS.map(({ key, label: dayLabel }) => {
+            const isToday = key === todayKey;
+            return (
+              <div
+                key={key}
+                className={`-mx-1.5 flex items-center justify-between rounded-md px-1.5 py-0.5 text-sm ${isToday ? "bg-findmi-50/70 font-semibold text-ink" : "text-ink/75"}`}
+              >
+                <dt>
+                  {dayLabel}
+                  {isToday && <span className="text-findmi-700"> · Today</span>}
+                </dt>
+                <dd className="tabular-nums">{formatDayHoursCompact(hours?.[key])}</dd>
+              </div>
+            );
+          })}
+        </dl>
       )}
     </div>
   );
