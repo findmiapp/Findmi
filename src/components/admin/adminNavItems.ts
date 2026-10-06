@@ -11,8 +11,9 @@
  *   Requests   /admin/requests       — inbound things waiting on Findmi
  *   More       /admin/more           — accounts, commerce, growth, site, legacy
  *
- * Opportunities has no dedicated Admin surface of its own (opportunity
- * threads live inside Communications), so it isn't a primary section;
+ * Commercial Opportunities (Findmi-authored, sent to Businesses) live
+ * under Activity at /admin/opportunities. Event participation opportunity
+ * threads still live inside Communications. Neither is a primary section;
  * Requests is the truthful fourth tab. Journal entries are edited at
  * /admin/journal/[id] (reached from the public entry) — there is no
  * Admin Journal list, so none is linked here. */
@@ -75,6 +76,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
           { href: "/admin/events", label: "Events", hint: "Events, dates & participating businesses" },
           { href: "/admin/appearances", label: "Appearances", hint: "Where businesses will be" },
           { href: "/admin/activations", label: "Activations", hint: "Experiences Findmi produces" },
+          { href: "/admin/opportunities", label: "Opportunities", hint: "Commercial Opportunities Findmi recommends" },
         ],
       },
       {

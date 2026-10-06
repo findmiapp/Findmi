@@ -4,9 +4,14 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { getCurrentUserId } from "@/lib/journal";
 import {
+  BUSINESS_LISTING_COLUMNS,
+  BUSINESS_RECIPIENT_COLUMNS,
   checkBusinessResponse,
   getBusinessVisibility,
+  emptyRecipientCounts,
+  summarizeRecipientCounts,
   type BusinessResponseStatus,
+  type RecipientCounts,
   type BusinessVisibility,
   type ListingStatus,
   type OpportunityType,
@@ -31,14 +36,9 @@ import {
 
 // ---------------------------------------------------------------- select shapes
 
-/** Listing columns a recipient Business may see. Deliberately excludes
- * internal_notes. */
-export const BUSINESS_LISTING_COLUMNS =
-  "id, status, opportunity_type, title, summary, description, image_url, location_id, place_text, host_name, event_id, starts_at, ends_at, timing_note, response_deadline, pricing_mode, price_cents, currency, credits_eligible, whats_included, requirements";
-
-/** Recipient columns the Business may see on ITS OWN row. Deliberately
- * excludes internal_notes and responded_by_user_id. */
-export const BUSINESS_RECIPIENT_COLUMNS = "id, listing_id, business_id, status, fit_note, response_note, offered_at, responded_at, status_changed_at";
+// The explicit Business-safe column lists live in the domain module (so
+// tests can check them); re-exported here for existing callers.
+export { BUSINESS_LISTING_COLUMNS, BUSINESS_RECIPIENT_COLUMNS };
 
 export interface BusinessOpportunityListing {
   id: string;
@@ -254,4 +254,37 @@ export async function getAdminOpportunityListing(
       (r) => ({ ...r, business: Array.isArray(r.business) ? (r.business[0] ?? null) : r.business })
     ),
   };
+}
+
+export interface AdminOpportunityListingSummary extends AdminOpportunityListing {
+  location: { id: string; name: string } | null;
+  counts: RecipientCounts;
+}
+
+/** Admin list: listings (optionally by status) with their Location name and
+ * recipient counts. Two queries total — the listings, then one flat
+ * (listing_id, status) read of their recipients aggregated in memory. No
+ * per-listing queries, no stored aggregates. */
+export async function getAdminOpportunityListingSummaries(status?: ListingStatus): Promise<AdminOpportunityListingSummary[]> {
+  await requireAdmin();
+  const admin = requireAdminClient();
+  let query = admin.from("opportunity_listings").select("*, location:locations(id, name)").order("updated_at", { ascending: false });
+  if (status) query = query.eq("status", status);
+  const { data } = await query;
+  const listings = (data ?? []) as (AdminOpportunityListing & { location: { id: string; name: string } | { id: string; name: string }[] | null })[];
+  if (listings.length === 0) return [];
+
+  const { data: recipientRows } = await admin
+    .from("opportunity_recipients")
+    .select("listing_id, status")
+    .in(
+      "listing_id",
+      listings.map((l) => l.id)
+    );
+  const counts = summarizeRecipientCounts((recipientRows ?? []) as { listing_id: string; status: RecipientStatus }[]);
+  return listings.map((l) => ({
+    ...l,
+    location: Array.isArray(l.location) ? (l.location[0] ?? null) : l.location,
+    counts: counts.get(l.id) ?? emptyRecipientCounts(),
+  }));
 }

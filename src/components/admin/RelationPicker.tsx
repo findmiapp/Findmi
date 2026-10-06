@@ -25,10 +25,14 @@ function ResultsDropdown({
   loading,
   results,
   onPick,
+  badgeFor,
 }: {
   loading: boolean;
   results: SearchResult[];
   onPick: (r: SearchResult) => void;
+  /** Optional — a short label (e.g. "Already Added") shown on a result
+   * that is listed but can't be picked. Omitted by existing callers. */
+  badgeFor?: (r: SearchResult) => string | null;
 }) {
   return (
     <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-black/10 bg-white shadow-lg">
@@ -37,25 +41,30 @@ function ResultsDropdown({
       ) : results.length === 0 ? (
         <p className="px-3.5 py-2.5 text-sm text-ink/40">No matches.</p>
       ) : (
-        results.map((r) => (
-          <button
-            key={r.value}
-            type="button"
-            // onMouseDown (not onClick) fires before the input's onBlur, so
-            // the dropdown-close-on-blur below doesn't swallow the pick.
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onPick(r);
-            }}
-            className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-black/[0.03]"
-          >
-            <Avatar url={r.image_url} label={r.label} />
-            <span className="min-w-0">
-              <span className="block truncate text-sm text-ink">{r.label}</span>
-              {r.sublabel && <span className="block truncate text-xs text-ink/45">{r.sublabel}</span>}
-            </span>
-          </button>
-        ))
+        results.map((r) => {
+          const badge = badgeFor?.(r) ?? null;
+          return (
+            <button
+              key={r.value}
+              type="button"
+              disabled={badge !== null}
+              // onMouseDown (not onClick) fires before the input's onBlur, so
+              // the dropdown-close-on-blur below doesn't swallow the pick.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                if (badge === null) onPick(r);
+              }}
+              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-black/[0.03] disabled:cursor-default disabled:hover:bg-transparent"
+            >
+              <Avatar url={r.image_url} label={r.label} />
+              <span className="min-w-0 flex-1">
+                <span className={`block truncate text-sm ${badge ? "text-ink/50" : "text-ink"}`}>{r.label}</span>
+                {r.sublabel && <span className="block truncate text-xs text-ink/45">{r.sublabel}</span>}
+              </span>
+              {badge && <span className="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/50">{badge}</span>}
+            </button>
+          );
+        })
       )}
     </div>
   );
@@ -185,11 +194,18 @@ export function EntitySearchAdd({
   placeholder,
   excludeIds,
   onAdd,
+  addedIds,
+  addedLabel = "Already Added",
 }: {
   entity: "businesses" | "events" | "products" | "people" | "locations";
   placeholder: string;
   excludeIds: Set<string>;
   onAdd: (r: SearchResult) => void;
+  /** Optional — ids still LISTED in results but marked `addedLabel` and
+   * not pickable (vs excludeIds, which hides them). Existing callers omit
+   * it and are unchanged. */
+  addedIds?: Set<string>;
+  addedLabel?: string;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -216,6 +232,7 @@ export function EntitySearchAdd({
         <ResultsDropdown
           loading={loading}
           results={filtered}
+          badgeFor={addedIds ? (r) => (addedIds.has(r.value) ? addedLabel : null) : undefined}
           onPick={(r) => {
             onAdd(r);
             setQuery("");

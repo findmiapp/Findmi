@@ -188,3 +188,314 @@ export function getBusinessVisibility(listingStatus: ListingStatus, recipientSta
   if (listingStatus === "open" && (recipientStatus === "offered" || recipientStatus === "interested")) return "active";
   return "past";
 }
+
+// ---------------------------------------------------------------- listing transitions
+
+/** Admin listing lifecycle. Archive is housekeeping, never a delete, and
+ * can be undone (archived -> closed). A listing can only be Opened once it
+ * leaves Draft; a Closed listing can be Reopened. */
+export const LISTING_TRANSITIONS: Record<ListingStatus, readonly ListingStatus[]> = {
+  draft: ["open", "archived"],
+  open: ["closed", "archived"],
+  closed: ["open", "archived"],
+  archived: ["closed"],
+};
+
+export function canListingTransition(from: ListingStatus, to: ListingStatus): boolean {
+  return LISTING_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+export const LISTING_STATUS_LABELS: Record<ListingStatus, string> = {
+  draft: "Draft",
+  open: "Open",
+  closed: "Closed",
+  archived: "Archived",
+};
+
+/** Button copy for a listing move. */
+export function listingTransitionLabel(from: ListingStatus, to: ListingStatus): string {
+  if (to === "open") return from === "draft" ? "Open Opportunity" : "Reopen Opportunity";
+  if (to === "closed") return from === "archived" ? "Unarchive" : "Close Opportunity";
+  if (to === "archived") return "Archive";
+  return LISTING_STATUS_LABELS[to];
+}
+
+// ---------------------------------------------------------------- recipient labels
+
+export const RECIPIENT_STATUS_LABELS: Record<RecipientStatus, string> = {
+  offered: "Offered",
+  interested: "Interested",
+  not_interested: "Not Interested",
+  confirmed: "Confirmed",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  withdrawn: "Withdrawn",
+};
+
+/** Button copy for an Admin recipient move (one entry per ADMIN_TRANSITIONS
+ * edge). */
+export function adminTransitionLabel(from: RecipientStatus, to: RecipientStatus): string {
+  if (to === "confirmed") return from === "completed" || from === "cancelled" ? "Set Back to Confirmed" : "Confirm";
+  if (to === "interested") return "Set Back to Interested";
+  if (to === "offered") return "Re-offer";
+  if (to === "withdrawn") return "Withdraw";
+  if (to === "cancelled") return "Cancel";
+  if (to === "completed") return "Complete";
+  return RECIPIENT_STATUS_LABELS[to];
+}
+
+/** Recipient outcomes can be managed while a listing is open or closed.
+ * An archived listing is read-only until it is unarchived. */
+export function canManageRecipients(listingStatus: ListingStatus): boolean {
+  return listingStatus === "open" || listingStatus === "closed";
+}
+
+/** The exact column patch an Admin recipient move writes, or null when the
+ * move isn't canonical. Deliberately status + status_changed_at only —
+ * never responded_at / responded_by_user_id / response_note, which only
+ * ever record a real Business response. */
+export function buildAdminRecipientUpdate(
+  from: RecipientStatus,
+  to: RecipientStatus,
+  now: string
+): { status: RecipientStatus; status_changed_at: string } | null {
+  if (!canAdminTransition(from, to)) return null;
+  return { status: to, status_changed_at: now };
+}
+
+// ---------------------------------------------------------------- send
+
+export interface RecipientInsert {
+  listing_id: string;
+  business_id: string;
+  status: "offered";
+  fit_note: string | null;
+  offered_at: string;
+  status_changed_at: string;
+}
+
+export type SendPlan =
+  | { ok: true; rows: RecipientInsert[]; skippedBusinessIds: string[] }
+  | { ok: false; error: string };
+
+export const FIT_NOTE_MAX = 1000;
+
+/** Plans a Send: only an open listing; at least one Business; duplicates in
+ * the selection collapse; Businesses that already have a row on this
+ * listing are skipped (reported, never an error). Every new row starts
+ * offered with offered_at = status_changed_at = now. */
+export function planRecipientSend(args: {
+  listingId: string;
+  listingStatus: ListingStatus;
+  businessIds: readonly string[];
+  existingBusinessIds: readonly string[];
+  fitNotes?: Readonly<Record<string, string | null | undefined>>;
+  now: string;
+}): SendPlan {
+  if (args.listingStatus !== "open") return { ok: false, error: "Open this Opportunity before sending it to Businesses." };
+  const unique = [...new Set(args.businessIds.map((id) => id.trim()).filter(Boolean))];
+  if (unique.length === 0) return { ok: false, error: "Choose at least one Business." };
+  const existing = new Set(args.existingBusinessIds);
+  const rows: RecipientInsert[] = [];
+  const skippedBusinessIds: string[] = [];
+  for (const businessId of unique) {
+    if (existing.has(businessId)) {
+      skippedBusinessIds.push(businessId);
+      continue;
+    }
+    const note = args.fitNotes?.[businessId]?.trim();
+    rows.push({
+      listing_id: args.listingId,
+      business_id: businessId,
+      status: "offered",
+      fit_note: note ? note.slice(0, FIT_NOTE_MAX) : null,
+      offered_at: args.now,
+      status_changed_at: args.now,
+    });
+  }
+  return { ok: true, rows, skippedBusinessIds };
+}
+
+// ---------------------------------------------------------------- counts
+
+export type RecipientCounts = { total: number } & Record<RecipientStatus, number>;
+
+export function emptyRecipientCounts(): RecipientCounts {
+  return { total: 0, offered: 0, interested: 0, not_interested: 0, confirmed: 0, completed: 0, cancelled: 0, withdrawn: 0 };
+}
+
+/** Per-listing, per-status recipient counts from ONE flat (listing_id,
+ * status) read — no per-listing queries, no stored aggregates. */
+export function summarizeRecipientCounts(rows: readonly { listing_id: string; status: RecipientStatus }[]): Map<string, RecipientCounts> {
+  const out = new Map<string, RecipientCounts>();
+  for (const r of rows) {
+    const c = out.get(r.listing_id) ?? emptyRecipientCounts();
+    c.total += 1;
+    if (r.status in c) c[r.status] += 1;
+    out.set(r.listing_id, c);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- listing form
+
+export const LISTING_TEXT_LIMITS = {
+  title: 120,
+  summary: 280,
+  description: 8000,
+  place_text: 160,
+  host_name: 120,
+  timing_note: 160,
+  whats_included: 4000,
+  requirements: 4000,
+} as const;
+
+/** Raw form values (strings as posted; times already ISO or null). */
+export interface ListingFormInput {
+  opportunity_type: string | null;
+  title: string | null;
+  summary: string | null;
+  description: string | null;
+  image_url: string | null;
+  location_id: string | null;
+  place_text: string | null;
+  host_name: string | null;
+  event_id: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  timing_note: string | null;
+  response_deadline: string | null;
+  pricing_mode: string | null;
+  price: string | null;
+  currency: string | null;
+  credits_eligible: boolean;
+  whats_included: string | null;
+  requirements: string | null;
+  internal_notes: string | null;
+}
+
+export interface ListingFields {
+  opportunity_type: OpportunityType;
+  title: string;
+  summary: string | null;
+  description: string | null;
+  image_url: string | null;
+  location_id: string | null;
+  place_text: string | null;
+  host_name: string | null;
+  event_id: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  timing_note: string | null;
+  response_deadline: string | null;
+  pricing_mode: PricingMode;
+  price_cents: number | null;
+  currency: string;
+  credits_eligible: boolean;
+  whats_included: string | null;
+  requirements: string | null;
+  internal_notes: string | null;
+}
+
+/** "$1,500" / "750" / "750.5" / "750.00" -> cents; null when blank;
+ * NaN when not a valid amount. */
+export function parsePriceToCents(raw: string | null): number | null {
+  const s = raw?.replace(/[$,\s]/g, "") ?? "";
+  if (!s) return null;
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return Number.NaN;
+  const [whole, frac = ""] = s.split(".");
+  return Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+}
+
+const blank = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null);
+
+/** Server-side validation of a create/edit payload — the same rules as the
+ * table CHECKs, as friendly messages. Amount is only read for Fixed /
+ * Starting At; Complimentary is never credits eligible. Referenced
+ * Location/Event existence is checked by the caller (needs the database). */
+export function validateListingInput(input: ListingFormInput): { ok: true; value: ListingFields } | { ok: false; error: string } {
+  if (!isOpportunityType(input.opportunity_type)) return { ok: false, error: "Choose an Opportunity type." };
+  const title = blank(input.title);
+  if (!title) return { ok: false, error: "Title is required." };
+
+  const text: Record<keyof typeof LISTING_TEXT_LIMITS, string | null> = {
+    title,
+    summary: blank(input.summary),
+    description: blank(input.description),
+    place_text: blank(input.place_text),
+    host_name: blank(input.host_name),
+    timing_note: blank(input.timing_note),
+    whats_included: blank(input.whats_included),
+    requirements: blank(input.requirements),
+  };
+  for (const [key, max] of Object.entries(LISTING_TEXT_LIMITS) as [keyof typeof LISTING_TEXT_LIMITS, number][]) {
+    if ((text[key]?.length ?? 0) > max) return { ok: false, error: `${FIELD_LABELS[key]} must be ${max.toLocaleString("en-US")} characters or fewer.` };
+  }
+
+  if (!isPricingMode(input.pricing_mode)) return { ok: false, error: "Choose a pricing mode." };
+  const needsAmount = input.pricing_mode === "fixed" || input.pricing_mode === "starting_at";
+  const price_cents = needsAmount ? parsePriceToCents(input.price) : null;
+  if (needsAmount && (price_cents == null || Number.isNaN(price_cents))) return { ok: false, error: "Enter a price greater than $0." };
+  const credits_eligible = input.pricing_mode === "complimentary" ? false : input.credits_eligible;
+  const pricingError = validatePricing({ pricing_mode: input.pricing_mode, price_cents, credits_eligible });
+  if (pricingError) return { ok: false, error: pricingError };
+
+  const currency = (blank(input.currency) ?? "USD").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) return { ok: false, error: "Currency must be a 3-letter code, like USD." };
+
+  for (const key of ["starts_at", "ends_at", "response_deadline"] as const) {
+    const v = input[key];
+    if (v && Number.isNaN(new Date(v).getTime())) return { ok: false, error: "One of the dates isn't valid." };
+  }
+  if (input.starts_at && input.ends_at && new Date(input.ends_at) < new Date(input.starts_at)) {
+    return { ok: false, error: "Ends At can't be before Starts At." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      opportunity_type: input.opportunity_type,
+      title,
+      summary: text.summary,
+      description: text.description,
+      image_url: blank(input.image_url),
+      location_id: blank(input.location_id),
+      place_text: text.place_text,
+      host_name: text.host_name,
+      event_id: blank(input.event_id),
+      starts_at: input.starts_at || null,
+      ends_at: input.ends_at || null,
+      timing_note: text.timing_note,
+      response_deadline: input.response_deadline || null,
+      pricing_mode: input.pricing_mode,
+      price_cents,
+      currency,
+      credits_eligible,
+      whats_included: text.whats_included,
+      requirements: text.requirements,
+      internal_notes: blank(input.internal_notes),
+    },
+  };
+}
+
+const FIELD_LABELS: Record<keyof typeof LISTING_TEXT_LIMITS, string> = {
+  title: "Title",
+  summary: "Summary",
+  description: "Description",
+  place_text: "Place",
+  host_name: "Host name",
+  timing_note: "Timing note",
+  whats_included: "What's Included",
+  requirements: "Requirements",
+};
+
+// ---------------------------------------------------------------- business-safe shapes
+
+/** Listing columns a recipient Business may see. Deliberately excludes
+ * internal_notes. */
+export const BUSINESS_LISTING_COLUMNS =
+  "id, status, opportunity_type, title, summary, description, image_url, location_id, place_text, host_name, event_id, starts_at, ends_at, timing_note, response_deadline, pricing_mode, price_cents, currency, credits_eligible, whats_included, requirements";
+
+/** Recipient columns the Business may see on ITS OWN row. Deliberately
+ * excludes internal_notes and responded_by_user_id. */
+export const BUSINESS_RECIPIENT_COLUMNS = "id, listing_id, business_id, status, fit_note, response_note, offered_at, responded_at, status_changed_at";
