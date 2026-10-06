@@ -150,6 +150,10 @@ export interface JournalOccurrenceRef {
   // correctly rather than assuming a fixed zone — see
   // JournalConnectionsPicker's own formatOccurrenceDate/Time.
   timezone: string;
+  /** Public Moment V2 — the occurrence's own Location (name/slug), embedded
+   * in the same occurrence query, so the Moment's experience card can say
+   * where that specific date happened without another round trip. */
+  location?: { name: string; slug: string } | null;
 }
 
 export interface JournalEntryWithRelations {
@@ -341,7 +345,7 @@ async function resolveConnectedObjects(
       ? supabase.from("events").select("id, name, slug, cover_image_url, start_at, city, state").in("id", eventIds)
       : Promise.resolve({ data: [] }),
     occurrenceIds.length
-      ? supabase.from("event_occurrences").select("id, event_id, start_at, end_at, location_id, timezone").in("id", occurrenceIds)
+      ? supabase.from("event_occurrences").select("id, event_id, start_at, end_at, location_id, timezone, location:locations(name, slug)").in("id", occurrenceIds)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -351,7 +355,9 @@ async function resolveConnectedObjects(
       (p) => ({ ...p, business: Array.isArray(p.business) ? (p.business[0] ?? null) : p.business })
     ),
     events: (events ?? []) as JournalEventRef[],
-    occurrences: (occurrences ?? []) as JournalOccurrenceRef[],
+    occurrences: ((occurrences ?? []) as (Omit<JournalOccurrenceRef, "location"> & { location: JournalOccurrenceRef["location"] | NonNullable<JournalOccurrenceRef["location"]>[] })[]).map(
+      (o) => ({ ...o, location: Array.isArray(o.location) ? (o.location[0] ?? null) : (o.location ?? null) })
+    ),
   };
 }
 

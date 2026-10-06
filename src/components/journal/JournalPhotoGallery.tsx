@@ -95,29 +95,27 @@ function EditorialGrid({ items }: { items: JournalGalleryItem[] }) {
 }
 
 function GalleryTile({ item, className, sizes }: { item: JournalGalleryItem; className: string; sizes: string }) {
-  const content = (
-    <>
-      {item.url && <Image src={item.url} alt={item.caption ?? ""} fill unoptimized sizes={sizes} className="object-cover" />}
-      {item.caption && (
-        <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 p-2"
-          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 70%)" }}
-        >
-          <p className="truncate text-[11px] font-medium text-white">{item.caption}</p>
-        </div>
-      )}
-    </>
-  );
+  const image = item.url && <Image src={item.url} alt={item.caption ?? ""} fill unoptimized sizes={sizes} className="object-cover" />;
 
   // No URL at all (nothing to view full-screen) — a plain, non-interactive
   // tile, same as before this pass.
-  if (!item.url || item.mediaIndex < 0) {
-    return <div className={`relative overflow-hidden rounded-xl bg-mist ${className}`}>{content}</div>;
-  }
+  const tile =
+    !item.url || item.mediaIndex < 0 ? (
+      <div className={`relative overflow-hidden rounded-xl bg-mist ${className}`}>{image}</div>
+    ) : (
+      <JournalPhotoTrigger index={item.mediaIndex} label="View photo" className={`relative overflow-hidden rounded-xl bg-mist ${className}`}>
+        {image}
+      </JournalPhotoTrigger>
+    );
 
+  // Public Moment V2 — the author's own photo note reads as supporting
+  // text directly under its photo (in full), not a one-line truncated
+  // overlay; no label, no field name.
+  if (!item.caption) return tile;
   return (
-    <JournalPhotoTrigger index={item.mediaIndex} label="View photo" className={`relative overflow-hidden rounded-xl bg-mist ${className}`}>
-      {content}
-    </JournalPhotoTrigger>
+    <figure className="min-w-0">
+      {tile}
+      <figcaption className="mt-1.5 whitespace-pre-line text-sm leading-snug text-ink/70">{item.caption}</figcaption>
+    </figure>
   );
 }

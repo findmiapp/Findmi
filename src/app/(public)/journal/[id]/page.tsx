@@ -12,6 +12,10 @@ import { JournalMediaViewerRoot, JournalPhotoTrigger } from "@/components/journa
 import type { MediaViewerItem } from "@/components/MediaViewer";
 import ReadMoreText from "@/components/ReadMoreText";
 import { formatDateShortInZone, formatTimeRangeInZone } from "@/lib/format";
+import { journalSectionLabel } from "@/lib/journal-sections";
+import { getRelatedPublicMoments } from "@/lib/journal-distribution";
+import MomentsCarousel from "@/components/journal/MomentsCarousel";
+import ChevronIcon from "@/components/ChevronIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +56,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const [result, isAuthorizedAdmin] = await Promise.all([getJournalEntryWithRelations(id), isAdminSession()]);
   if (!result) notFound();
-  const { entry, media, location, businesses, products, events, occurrences, isOwner } = result;
+  const { entry, media, location, businesses, products, events, occurrences, sections, isOwner } = result;
   // Recovery pass — the byline names the real author (profile display
   // name), not the stale "Findmi" label an admin-cookie capture stamped.
   const authorNames = await resolveJournalAuthorNames([entry.user_id]);
@@ -75,16 +79,40 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
     : null;
 
   const cover = media.find((m) => m.is_cover) ?? media[0] ?? null;
-  const gallery = media.filter((m) => m.id !== cover?.id);
 
-  // Global Media Viewer V1 — the viewer's own collection, in the SAME
-  // display_order-ascending order already used everywhere else on this
-  // page (never reinvented). Only media with a real signed URL can ever
-  // be opened full-screen; everything else keeps rendering exactly as it
-  // did before this pass (a plain, non-interactive tile/fallback).
-  const viewerItems: MediaViewerItem[] = media
+  // Public Moment V2 — the author's photo sections (journal_entry_sections,
+  // already loaded in their stored display_order), each with its own
+  // photos in their stored display_order. A photo whose section_id points
+  // at no loaded section is treated as unsectioned (never dropped). The
+  // cover stays in its section when it has one (the section reads
+  // complete); unsectioned, it's shown by the hero only — exactly as the
+  // flat gallery always treated it.
+  const sectionIds = new Set(sections.map((sec) => sec.id));
+  const photoSections = sections
+    .map((sec) => ({ section: sec, photos: media.filter((m) => m.section_id === sec.id) }))
+    .filter((g) => g.photos.length > 0 || Boolean(g.section.notes?.trim()));
+  const hasSections = photoSections.length > 0;
+  const unsectioned = media.filter((m) => !(m.section_id && sectionIds.has(m.section_id)) && m.id !== cover?.id);
+
+  // Global Media Viewer V1 — ONE viewer for the whole Moment, now in the
+  // order the page renders photos (an unsectioned cover first, then each
+  // section's photos, then More Photos), so Next from the last photo of
+  // one section continues into the next section. Without sections this is
+  // exactly the previous display_order order. Only media with a real
+  // signed URL can be opened full-screen.
+  const renderedOrder = hasSections
+    ? [
+        ...(cover && !(cover.section_id && sectionIds.has(cover.section_id)) ? [cover] : []),
+        ...photoSections.flatMap((g) => g.photos),
+        ...unsectioned,
+      ]
+    : media;
+  const viewerItems: MediaViewerItem[] = renderedOrder
     .filter((m): m is typeof m & { url: string } => Boolean(m.url))
     .map((m) => ({ id: m.id, src: m.url, alt: entry.title, caption: m.caption }));
+  const viewerIndex = (id: string) => viewerItems.findIndex((v) => v.id === id);
+  const toGalleryItems = (list: typeof media) =>
+    list.map((m) => ({ id: m.id, url: m.url, caption: m.caption, category: null, mediaIndex: m.url ? viewerIndex(m.id) : -1 }));
   const coverIndex = cover?.url ? viewerItems.findIndex((v) => v.id === cover.id) : -1;
   const dateLabel = new Date(entry.entry_date + "T00:00:00").toLocaleDateString("en-US", {
     weekday: "long",
@@ -96,8 +124,35 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
     ? new Date(`${entry.entry_date}T${entry.entry_time}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
     : null;
 
-  const connectedCount = businesses.length + products.length + events.length;
-  const connectionsHeading = events.length > 0 ? "Connected to This Experience" : "Places, Brands & Products";
+  // Public Moment V2 — the ONE primary real-world context, directly under
+  // the hero: the linked Event (dated by its connected occurrence when
+  // there is one — never the Event's overall range), else the Location,
+  // else the Business. It is never repeated as a card further down.
+  const primaryEvent = events[0] ?? null;
+  const primaryKind: "event" | "location" | "business" | null = primaryEvent
+    ? "event"
+    : location
+      ? "location"
+      : businesses.length > 0
+        ? "business"
+        : null;
+  const otherEvents = events.slice(1);
+  const otherBusinesses = primaryKind === "business" ? businesses.slice(1) : businesses;
+  const eventPlaceName = primaryOccurrence?.location?.name ?? location?.name ?? null;
+  const eventWhen = primaryEvent
+    ? primaryOccurrence
+      ? `${formatDateShortInZone(primaryOccurrence.start_at, primaryOccurrence.timezone)} · ${formatTimeRangeInZone(primaryOccurrence.start_at, primaryOccurrence.end_at, primaryOccurrence.timezone)}`
+      : null
+    : null;
+
+  // More Findmi Moments — same date -> Event -> Location -> Business.
+  const relatedMoments = await getRelatedPublicMoments({
+    currentId: entry.id,
+    occurrenceId: primaryOccurrence?.id ?? null,
+    eventId: primaryEvent?.id ?? null,
+    locationId: location?.id ?? null,
+    businessId: businesses[0]?.id ?? null,
+  });
 
   // V1.1 — a manual Journal location (no canonical Location row) still
   // gets a truthful name for the hero subtitle and a Directions link when
@@ -202,75 +257,86 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           </div>
         )}
 
-        {entry.notes && (
-          <section className="mt-6 max-w-xl">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">About This Visit</h2>
-            <div className="mt-2">
-              <ReadMoreText text={entry.notes} />
-            </div>
-          </section>
-        )}
-
-        {gallery.length > 0 && (
-          <section className="mt-6">
-            <JournalPhotoGallery
-              items={gallery.map((m) => ({
-                id: m.id,
-                url: m.url,
-                caption: m.caption,
-                category: null,
-                mediaIndex: m.url ? viewerItems.findIndex((v) => v.id === m.id) : -1,
-              }))}
+        {/* Public Moment V2 — the primary experience context, before any
+            photos: "what real-world experience was this?" */}
+        {primaryKind === "event" && primaryEvent && (
+          <div className="mt-4">
+            <ContextCard
+              href={`/event/${primaryEvent.slug}`}
+              kicker="Event"
+              imageUrl={primaryEvent.cover_image_url}
+              title={primaryEvent.name}
+              lines={[eventWhen, eventPlaceName]}
+              action="View Event"
             />
-          </section>
+          </div>
+        )}
+        {primaryKind === "location" && location && (
+          <div className="mt-4">
+            <ContextCard
+              href={`/location/${location.slug}`}
+              kicker="Location"
+              imageUrl={location.logo_url ?? location.cover_image_url}
+              title={location.name}
+              lines={[[location.address, [location.city, location.state].filter(Boolean).join(", ")].filter(Boolean).join(", ") || null]}
+              action="View Location"
+            />
+          </div>
+        )}
+        {primaryKind === "business" && businesses[0] && (
+          <div className="mt-4">
+            <ContextCard href={`/business/${businesses[0].slug}`} kicker="Business" imageUrl={businesses[0].logo_url} title={businesses[0].name} lines={[]} action="View Business" />
+          </div>
         )}
 
-        {connectedCount > 0 && (
-          <section className="mt-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink">{connectionsHeading}</h2>
-            <div className="mt-3 flex flex-col gap-4">
-              {businesses.length > 0 && (
-                <ConnectedGroup label="Businesses">
-                  {businesses.map((b) => (
-                    <ConnectedRow key={`business-${b.id}`} href={`/business/${b.slug}`} imageUrl={b.logo_url} name={b.name} />
-                  ))}
-                </ConnectedGroup>
-              )}
-              {products.length > 0 && (
-                <ConnectedGroup label="Products">
-                  {products.map((p) => (
-                    <ConnectedRow key={`product-${p.id}`} href={`/product/${p.slug}`} imageUrl={p.image_url} name={p.name} meta={p.business?.name} />
-                  ))}
-                </ConnectedGroup>
-              )}
-              {events.length > 0 && (
-                <ConnectedGroup label="Events">
-                  {events.map((e) => {
-                    // The Event (e) stays canonical for name/slug/image/URL;
-                    // a connected Event Occurrence is authoritative for the
-                    // specific attended date/time (never the parent Event's
-                    // own start_at) — see this file's occurrenceForEvent note.
-                    const occ = occurrenceForEvent(e.id);
-                    const meta = occ
-                      ? `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeRangeInZone(occ.start_at, occ.end_at, occ.timezone)}`
-                      : new Date(e.start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                    return <ConnectedRow key={`event-${e.id}`} href={`/event/${e.slug}`} imageUrl={e.cover_image_url} name={e.name} meta={meta} />;
-                  })}
-                </ConnectedGroup>
-              )}
-            </div>
-          </section>
+        {/* The author's overall story — plain, restrained text. */}
+        {entry.notes && (
+          <div className="mt-5 max-w-xl">
+            <ReadMoreText text={entry.notes} />
+          </div>
         )}
 
-        {(location || hasManualLocation || timeLabel || occurrenceTimeLabel) && (
-          <section className="mt-8">
+        {hasSections ? (
+          <>
+            {photoSections.map(({ section, photos }) => (
+              <section key={section.id} className="mt-8">
+                <h2 className="font-display text-lg font-bold tracking-tight text-ink">{journalSectionLabel(section)}</h2>
+                {section.notes?.trim() && <p className="mt-1.5 max-w-xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{section.notes.trim()}</p>}
+                {photos.length > 0 && (
+                  <div className="mt-3">
+                    <JournalPhotoGallery items={toGalleryItems(photos)} />
+                  </div>
+                )}
+              </section>
+            ))}
+            {unsectioned.length > 0 && (
+              <section className="mt-8">
+                <h2 className="font-display text-lg font-bold tracking-tight text-ink">More Photos</h2>
+                <div className="mt-3">
+                  <JournalPhotoGallery items={toGalleryItems(unsectioned)} />
+                </div>
+              </section>
+            )}
+          </>
+        ) : (
+          unsectioned.length > 0 && (
+            <section className="mt-6">
+              <JournalPhotoGallery items={toGalleryItems(unsectioned)} />
+            </section>
+          )
+        )}
+
+        {/* Visit Details — where/when, plus whatever else is connected
+            (never the primary context card again). */}
+        {(location || hasManualLocation || timeLabel || occurrenceTimeLabel || otherBusinesses.length > 0 || products.length > 0 || otherEvents.length > 0) && (
+          <section className="mt-10">
             <h2 className="font-display text-lg font-bold tracking-tight text-ink">Visit Details</h2>
             <div className="mt-3 flex flex-col gap-2">
               <p className="text-sm text-ink/70">
                 {dateLabel}
                 {occurrenceTimeLabel ? ` · ${occurrenceTimeLabel}` : timeLabel ? ` · ${timeLabel}` : ""}
               </p>
-              {location && (
+              {location && primaryKind !== "location" && (
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <ConnectedRow href={`/location/${location.slug}`} imageUrl={location.logo_url ?? location.cover_image_url} name={location.name} meta={[location.city, location.state].filter(Boolean).join(", ")} />
@@ -310,6 +376,59 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
                   )}
                 </div>
               )}
+              {/* Location is the primary context card above — keep just
+                  its Directions here rather than a second Location row. */}
+              {location && primaryKind === "location" && directionsHref && (
+                <a
+                  href={directionsHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-10 w-fit items-center justify-center rounded-lg border border-findmi/40 px-3 text-xs font-bold uppercase tracking-wide text-findmi-700 transition hover:bg-findmi-50"
+                >
+                  Directions
+                </a>
+              )}
+              {(otherBusinesses.length > 0 || products.length > 0 || otherEvents.length > 0) && (
+                <div className="mt-2 flex flex-col gap-4">
+                  {otherEvents.length > 0 && (
+                    <ConnectedGroup label="Also Connected">
+                      {otherEvents.map((e) => {
+                        const occ = occurrenceForEvent(e.id);
+                        const meta = occ
+                          ? `${formatDateShortInZone(occ.start_at, occ.timezone)} · ${formatTimeRangeInZone(occ.start_at, occ.end_at, occ.timezone)}`
+                          : undefined;
+                        return <ConnectedRow key={`event-${e.id}`} href={`/event/${e.slug}`} imageUrl={e.cover_image_url} name={e.name} meta={meta} />;
+                      })}
+                    </ConnectedGroup>
+                  )}
+                  {otherBusinesses.length > 0 && (
+                    <ConnectedGroup label="Businesses">
+                      {otherBusinesses.map((b) => (
+                        <ConnectedRow key={`business-${b.id}`} href={`/business/${b.slug}`} imageUrl={b.logo_url} name={b.name} />
+                      ))}
+                    </ConnectedGroup>
+                  )}
+                  {products.length > 0 && (
+                    <ConnectedGroup label="Products">
+                      {products.map((p) => (
+                        <ConnectedRow key={`product-${p.id}`} href={`/product/${p.slug}`} imageUrl={p.image_url} name={p.name} meta={p.business?.name} />
+                      ))}
+                    </ConnectedGroup>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* More Findmi Moments — other public Moments from this same
+            experience (date -> Event -> Location -> Business); hidden
+            entirely when none qualify. */}
+        {relatedMoments.length > 0 && (
+          <section className="mt-10">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink">More Findmi Moments</h2>
+            <div className="mt-3">
+              <MomentsCarousel entries={relatedMoments} total={null} viewAllHref="/journal" />
             </div>
           </section>
         )}
@@ -324,6 +443,47 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
           this pass's own requirement on that). */}
       {viewerItems.length > 0 ? <JournalMediaViewerRoot items={viewerItems}>{pageBody}</JournalMediaViewerRoot> : pageBody}
     </div>
+  );
+}
+
+/** Public Moment V2 — the compact primary-context card under the hero:
+ * thumbnail, kicker, name, up to two real detail lines, and a clear
+ * action. The whole card is the link. */
+function ContextCard({
+  href,
+  kicker,
+  imageUrl,
+  title,
+  lines,
+  action,
+}: {
+  href: string;
+  kicker: string;
+  imageUrl: string | null;
+  title: string;
+  lines: (string | null)[];
+  action: string;
+}) {
+  const shown = lines.filter((l): l is string => Boolean(l));
+  return (
+    <Link href={href} className="flex items-center gap-3 rounded-2xl border border-black/[0.06] bg-white p-3 shadow-sm transition hover:border-black/10">
+      <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-mist">
+        {imageUrl && <Image src={imageUrl} alt="" fill unoptimized sizes="64px" className="object-cover" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] font-bold uppercase tracking-wide text-findmi-700">{kicker}</span>
+        <span className="mt-0.5 block font-display text-base font-bold leading-snug tracking-tight text-ink">{title}</span>
+        {shown.map((l) => (
+          <span key={l} className="mt-0.5 block text-sm leading-snug text-ink/60">
+            {l}
+          </span>
+        ))}
+        <span className="mt-1 inline-flex items-center gap-0.5 text-sm font-semibold text-findmi-700">
+          {action}
+          <ChevronIcon direction="right" className="h-3.5 w-3.5" />
+        </span>
+      </span>
+    </Link>
   );
 }
 

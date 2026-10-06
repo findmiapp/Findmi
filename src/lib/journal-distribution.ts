@@ -84,7 +84,7 @@ export async function getPublicJournalCollection({
 }: {
   /** "author": subjectId is the author's user id (server-resolved from a
    * public entry — see resolvePublicJournalAuthor; never from the URL). */
-  subjectType: JournalSubjectType | "author";
+  subjectType: JournalSubjectType | "author" | "occurrence";
   subjectId: string;
   limit?: number;
   cursor?: string | null;
@@ -117,6 +117,10 @@ export async function getPublicJournalCollection({
     query = query.eq("user_id", subjectId);
   } else if (subjectType === "location") {
     query = query.eq("location_id", subjectId);
+  } else if (subjectType === "occurrence") {
+    // Public Moment V2 — one specific Event date (a connection's own
+    // event_occurrence_id), for "More Findmi Moments" on a Moment page.
+    query = query.eq("journal_entry_connections.event_occurrence_id", subjectId);
   } else if (subjectType === "event" && occurrenceIds.length > 0) {
     query = query.or(`event_id.eq.${subjectId},event_occurrence_id.in.(${occurrenceIds.join(",")})`, {
       referencedTable: "journal_entry_connections",
@@ -199,6 +203,53 @@ export async function getPublicJournalCollection({
     nextCursor: hasMore ? `${last.entry_date}_${last.id}` : null,
     total: withCount ? (count ?? null) : null,
   };
+}
+
+/** Public Moment V2 — "More Findmi Moments" for one Moment page: OTHER
+ * public, published Moments from the same experience, found through ONE
+ * fallback ladder — same Event date -> same Event -> same Location ->
+ * same Business. Each rung is only consulted while the rail is still
+ * short; results are de-duplicated (a Moment can qualify on several
+ * rungs) and the current Moment is always excluded. Never padded with
+ * unrelated Moments: if nothing qualifies, the result is empty and the
+ * caller renders nothing. Reads go through getPublicJournalCollection
+ * (anon client + explicit public/published filters), so drafts and
+ * private Moments can never appear. */
+export async function getRelatedPublicMoments({
+  currentId,
+  occurrenceId,
+  eventId,
+  locationId,
+  businessId,
+  limit = 6,
+}: {
+  currentId: string;
+  occurrenceId?: string | null;
+  eventId?: string | null;
+  locationId?: string | null;
+  businessId?: string | null;
+  limit?: number;
+}): Promise<PublicJournalCard[]> {
+  const rungs: { subjectType: "occurrence" | JournalSubjectType; subjectId: string }[] = [];
+  if (occurrenceId) rungs.push({ subjectType: "occurrence", subjectId: occurrenceId });
+  if (eventId) rungs.push({ subjectType: "event", subjectId: eventId });
+  if (locationId) rungs.push({ subjectType: "location", subjectId: locationId });
+  if (businessId) rungs.push({ subjectType: "business", subjectId: businessId });
+
+  const found: PublicJournalCard[] = [];
+  const seen = new Set<string>([currentId]);
+  for (const rung of rungs) {
+    if (found.length >= limit) break;
+    // +1 so excluding the current Moment can't leave a rung short.
+    const page = await getPublicJournalCollection({ ...rung, limit: limit + 1 });
+    for (const card of page.entries) {
+      if (seen.has(card.id)) continue;
+      seen.add(card.id);
+      found.push(card);
+      if (found.length >= limit) break;
+    }
+  }
+  return found;
 }
 
 /** Public distribution copy: Journal entries surface as "Moments" on
