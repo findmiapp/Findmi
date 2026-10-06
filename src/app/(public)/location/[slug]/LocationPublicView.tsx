@@ -13,6 +13,7 @@ import PageViewTracker from "@/components/analytics/PageViewTracker";
 import LocationSaveButton from "@/components/LocationSaveButton";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
 import ChevronIcon from "@/components/ChevronIcon";
+import BrandHeading from "@/components/BrandHeading";
 import EventShareButton from "@/components/EventShareButton";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
@@ -442,11 +443,16 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           location text, never a Market/Area inference) via the existing
           validated /my-world/journal/new?location=<id> contextual route. */}
       <section className="mt-5 px-4 sm:px-0">
-        {/* "Findmi Moments" eyebrow (+ Add Moment beside it), then "at
-            {name}" full width beneath — a long Location name wraps across
-            the whole column instead of squeezing beside the button. */}
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-findmi-700">Findmi Moments</p>
+        {/* Same "Findmi Moments" BrandHeading as the Event page, with "at
+            {name}" beneath it in the LEFT column only — the column ends
+            before + Add Moment (top-right), so a long name wraps within it
+            and never runs under the button. Very narrow screens wrap the
+            button below instead of overlapping. */}
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <div className="min-w-[11rem] flex-1">
+            <BrandHeading accent="Moments" />
+            <p className="mt-0.5 break-words font-display text-base font-bold leading-snug tracking-tight text-ink">at {location.name}</p>
+          </div>
           <Link
             href={addMomentHref("location", location.id)}
             className="inline-flex h-8 shrink-0 items-center rounded-full border border-findmi/40 bg-white px-3.5 text-metadata font-bold text-findmi-700 transition hover:border-findmi/60 hover:bg-findmi-50"
@@ -454,7 +460,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             + Add Moment
           </Link>
         </div>
-        <h2 className="mt-0.5 break-words font-display text-lg font-bold leading-snug tracking-tight text-ink">at {location.name}</h2>
         <div className="mt-3">
           <MomentsCarousel
             entries={journal.entries}
