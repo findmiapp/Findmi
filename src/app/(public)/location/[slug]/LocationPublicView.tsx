@@ -377,21 +377,24 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           </div>
         )}
 
-        <nav className="mt-5 flex items-center gap-5 overflow-x-auto border-b border-black/5 pb-2.5 text-sm font-semibold text-ink/50 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <a href="#events" className="shrink-0 transition hover:text-ink">
-            Events
-          </a>
-          {location.description && (
-            <a href="#about" className="shrink-0 transition hover:text-ink">
-              About
-            </a>
-          )}
-          {galleryImages.length > 1 && (
-            <a href="#photos" className="shrink-0 transition hover:text-ink">
-              Photos
-            </a>
-          )}
-        </nav>
+        {/* Location Final Micro-cleanup — the "Events" anchor pointed at the
+            Featured card directly above it and read as an orphan label, so
+            it's gone; the nav (and its divider) only renders when it has a
+            real section further down to jump to. */}
+        {(location.description || galleryImages.length > 1) && (
+          <nav className="mt-5 flex items-center gap-5 overflow-x-auto border-b border-black/5 pb-2.5 text-sm font-semibold text-ink/50 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {location.description && (
+              <a href="#about" className="shrink-0 transition hover:text-ink">
+                About
+              </a>
+            )}
+            {galleryImages.length > 1 && (
+              <a href="#photos" className="shrink-0 transition hover:text-ink">
+                Photos
+              </a>
+            )}
+          </nav>
+        )}
       </div>
 
       {/* What's Happening Here collection (Location + Event Moment
