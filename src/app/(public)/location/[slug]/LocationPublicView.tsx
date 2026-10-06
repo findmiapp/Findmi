@@ -12,6 +12,7 @@ import LocationFollowButton from "@/components/LocationFollowButton";
 import PageViewTracker from "@/components/analytics/PageViewTracker";
 import LocationSaveButton from "@/components/LocationSaveButton";
 import DirectionsIconLink from "@/components/event/DirectionsIconLink";
+import ChevronIcon from "@/components/ChevronIcon";
 import EventShareButton from "@/components/EventShareButton";
 import EventCoverLightbox from "@/components/EventCoverLightbox";
 import ImageGalleryStrip from "@/components/ImageGalleryStrip";
@@ -262,15 +263,6 @@ export async function LocationPublicView({ slug }: { slug: string }) {
           <div className={`min-w-0 flex-1 ${location.logo_url ? "pt-2 sm:pt-3" : ""}`}>
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{location.name}</h1>
 
-            {/* Location Final Hero Hierarchy pass — WHERE sits directly under
-                WHAT: the address joins the identity block (wraps naturally). */}
-            {fullAddress && (
-              <p className="mt-1 flex items-start gap-1.5 text-sm leading-snug text-ink/60">
-                <PinGlyph className="mt-px h-4 w-4 shrink-0 text-ink/40" />
-                <span className="min-w-0">{fullAddress}</span>
-              </p>
-            )}
-
             {/* Physical Presence Pass 2 — where this place physically sits
                 (nearest parent first), e.g. "Madison Square Park · Flatiron,
                 New York". Context, not navigation chrome: quiet text, each
@@ -325,6 +317,27 @@ export async function LocationPublicView({ slug }: { slug: string }) {
             />
           </div>
         </div>
+        {/* Address as one full-width compact row under the actions (moved
+            out of the identity block to give the name room). Opens the same
+            maps destination as Directions; wraps rather than truncates. */}
+        {fullAddress &&
+          (directionsHref ? (
+            <a
+              href={directionsHref}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-left transition hover:border-ink/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-findmi"
+            >
+              <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+              <span className="min-w-0 flex-1 text-sm leading-snug text-ink/70">{fullAddress}</span>
+              <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/40" />
+            </a>
+          ) : (
+            <p className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl border border-black/10 bg-white px-3.5 py-2.5">
+              <PinGlyph className="h-4 w-4 shrink-0 text-ink/40" />
+              <span className="min-w-0 flex-1 text-sm leading-snug text-ink/70">{fullAddress}</span>
+            </p>
+          ))}
         {/* Location Final Hero Hierarchy pass — Hours as one full-width
             compact status bar under the actions (same inline weekly
             expansion, visitor's own clock); omitted without real hours.
