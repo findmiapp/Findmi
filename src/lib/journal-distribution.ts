@@ -177,7 +177,7 @@ export async function getPublicJournalCollection({
     if (cover) coverPathByEntry.set(entryId, cover.storage_path);
   }
   const [signed, authorNames] = await Promise.all([
-    resolveSignedUrls([...coverPathByEntry.values()]),
+    resolveSignedUrls([...coverPathByEntry.values()], "card"),
     resolveJournalAuthorNames(pageRows.map((r) => r.user_id)),
   ]);
 

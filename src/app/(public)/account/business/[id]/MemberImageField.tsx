@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { uploadMemberBusinessImage } from "../actions";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 /** Member-facing counterpart to admin's ImageField.tsx — same preview +
  * upload-button shape, but calls uploadMemberBusinessImage (gated by
@@ -162,7 +163,7 @@ export default function MemberImageField({
         {url && (
           <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-black/10 bg-black/5">
             {/* eslint-disable-next-line @next/next/no-img-element -- preview only, a live Storage URL */}
-            <img src={url} alt="" className="h-full w-full object-cover" />
+            <img src={imageVariantUrl(url, "card")} alt="" className="h-full w-full object-cover" />
           </div>
         )}
         <input type="hidden" name={name} value={url} />

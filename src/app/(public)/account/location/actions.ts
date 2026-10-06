@@ -17,6 +17,7 @@ import { isAreaInMarket } from "@/lib/admin/market-areas";
 import { claimEntityHandle } from "@/lib/handles";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { findLikelyDuplicateLocations, type CreateInlineLocationResult } from "@/lib/locationCreation";
+import { storePublicImage } from "@/lib/image-variants-server";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -82,24 +83,14 @@ export async function uploadMemberLocationImage(
   const admin = getAdminSupabase();
   if (!admin) return { error: "Storage isn't configured on the server." };
 
-  const path = `${crypto.randomUUID()}.${validated.extension}`;
-  // Content type always comes from validateImageFile's own byte-detected
-  // result, never the original file.type — see that function's own
-  // comment on why the claimed MIME can disagree with the actual bytes.
-  const uploadBody = validated.converted?.buffer ?? file;
-  const uploadContentType = validated.contentType;
+  // Original + 160/800/1600 WebP variants via the shared Findmi
+  // pipeline (lib/image-variants-server.ts). Server-generated UUID path,
+  // byte-detected content type, 1-year cache; a variant failure never
+  // fails the upload — the original alone is stored, as before.
+  const stored = await storePublicImage(admin, UPLOAD_BUCKET, validated, file);
+  if ("error" in stored) return { error: stored.error };
 
-  const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, uploadBody, {
-    contentType: uploadContentType,
-    upsert: false,
-    // Image Performance V1 — path is a fresh randomUUID, never overwritten
-    // (upsert: false), so a 1-year cache lifetime is safe; Supabase's own
-    // default (3600s) was needlessly short for content that never changes.
-    cacheControl: "31536000",
-  });
-  if (error) return { error: error.message };
-
-  const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(path);
+  const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(stored.path);
   return { url: data.publicUrl };
 }
 

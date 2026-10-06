@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/SupabaseImage";
 import Link from "next/link";
 import type { EventWithCategories, FindmiEvent } from "@/lib/types";
 import { cityState, formatDateShort, formatTime, getTemporalLabel } from "@/lib/format";

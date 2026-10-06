@@ -2,6 +2,7 @@ import type { AdminProduct } from "@/lib/admin/queries";
 import type { Category, ProductPendingChanges } from "@/lib/types";
 import { formatPrice } from "@/lib/format";
 import { approveProduct, rejectProduct } from "../actions";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 /** Product Moderation pass — the admin-side review surface for
  * owner-submitted Product content. Renders three states:
@@ -57,7 +58,7 @@ export default function ProductModerationPanel({
       {product.image_url && (
         <div className="mt-3 h-16 w-16 overflow-hidden rounded-lg border border-black/10 bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element -- small review preview only */}
-          <img src={product.image_url} alt="" className="h-full w-full object-cover" />
+          <img src={imageVariantUrl(product.image_url, "card")} alt="" className="h-full w-full object-cover" />
         </div>
       )}
 

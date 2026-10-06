@@ -9,6 +9,7 @@ import {
 } from "@/lib/opportunity-listings-domain";
 import { formatOpportunityDate } from "@/lib/opportunity-format";
 import { ClockIcon, CreditIcon, PinIcon, TagIcon, type PresentablePlace } from "./OpportunityPresentation";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 // Business-facing cards for commercial Opportunities. They only ever
 // receive Business-safe data: a PresentableOpportunity (field-picked, no
@@ -62,7 +63,7 @@ export function OpportunityCard({
       {o.image_url && (
         // Admin-uploaded Storage URL (arbitrary host) — plain <img>, same as the detail hero.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={o.image_url} alt="" className={`w-full object-cover ${compact ? "h-28 sm:h-32" : "h-36 sm:h-40"}`} />
+        <img src={imageVariantUrl(o.image_url, "card")} alt="" className={`w-full object-cover ${compact ? "h-28 sm:h-32" : "h-36 sm:h-40"}`} />
       )}
       {corner && <div className="absolute right-3 top-3">{corner}</div>}
       <div className={`flex flex-col ${compact ? "gap-2.5 p-3.5" : "gap-3 p-4"}`}>

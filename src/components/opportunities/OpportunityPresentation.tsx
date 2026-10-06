@@ -7,6 +7,7 @@ import {
   type PresentableOpportunity,
 } from "@/lib/opportunity-listings-domain";
 import { formatOpportunityDate, formatOpportunityDateTime } from "@/lib/opportunity-format";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 // Opportunities V1 — the READ-ONLY commercial presentation of one
 // Opportunity, shared by Admin (/admin/opportunities/[id]) and the future
@@ -144,7 +145,7 @@ export function OpportunityHero({
           // ImageField's preview for not using next/image here.
           <div className="relative md:min-h-[16rem]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={o.image_url} alt="" className="h-44 w-full object-cover sm:h-56 md:absolute md:inset-0 md:h-full" />
+            <img src={imageVariantUrl(o.image_url, "large")} alt="" className="h-44 w-full object-cover sm:h-56 md:absolute md:inset-0 md:h-full" />
           </div>
         )}
         <div className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">

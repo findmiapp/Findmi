@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import Image from "@/components/SupabaseImage";
 
 // Shared presentational lightbox/slider — final refinement pass, item 15:
 // the Event Gallery, the Event Venue Gallery, and the event cover trigger
@@ -152,6 +152,7 @@ export default function ImageLightbox({
             alt={alt}
             fill
             unoptimized
+            variant="original"
             sizes="100vw"
             className="object-contain"
             onError={() => setFailedIndices((prev) => new Set(prev).add(index))}

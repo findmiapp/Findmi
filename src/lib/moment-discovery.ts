@@ -130,7 +130,7 @@ export async function getMomentFeed({ limit = 12, cursor }: { limit?: number; cu
   const previewPaths = new Map<string, string[]>();
   for (const [entryId, list] of mediaByEntry) previewPaths.set(entryId, orderPreviewMedia(list).slice(0, MAX_COLLAGE_REGIONS).map((m) => m.storage_path));
 
-  const [signed, authors] = await Promise.all([resolveSignedUrls([...previewPaths.values()].flat()), resolveAuthors(page.map((r) => r.user_id))]);
+  const [signed, authors] = await Promise.all([resolveSignedUrls([...previewPaths.values()].flat(), "card"), resolveAuthors(page.map((r) => r.user_id))]);
 
   const cards: MomentFeedCard[] = page.map((r) => {
     const location = one(r.location as EntryRow["location"]) as { id: string; name: string; category: unknown } | null;

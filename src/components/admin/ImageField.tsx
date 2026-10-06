@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Image from "next/image";
 import { uploadImage } from "@/lib/admin/upload";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 /** A URL text field plus an optional file-upload shortcut that fills it in.
  * Either path works: paste a URL directly, or upload a file and the field
@@ -65,7 +66,7 @@ export default function ImageField({
         {url && (
           <div className="relative h-28 w-28 overflow-hidden rounded-xl border border-black/10 bg-black/5">
             {/* eslint-disable-next-line @next/next/no-img-element -- preview only, arbitrary/mid-edit URLs shouldn't need next/image's remote-host allowlist */}
-            <img src={url} alt="" className="h-full w-full object-cover" />
+            <img src={imageVariantUrl(url, "card")} alt="" className="h-full w-full object-cover" />
           </div>
         )}
         <input

@@ -2,6 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
@@ -9,6 +10,8 @@ import { isAdminSession } from "@/lib/admin/auth";
 import { requireAdminSupabase } from "@/lib/admin/requireAdminSupabase";
 import { validateImageFile, validateConnectableObject, JOURNAL_MEDIA_BUCKET } from "@/lib/journal";
 import { getAllOccurrencesForEvent } from "@/lib/data";
+import { canGenerateVariants, mapLimit, storePrivateVariants, variantPathsFor } from "@/lib/image-variants-server";
+import { isVariantPath } from "@/lib/image-variants";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import {
   isJournalSectionType,
@@ -218,6 +221,14 @@ export async function uploadJournalPhoto(
       return { error: insertError?.message ?? "Couldn't save that photo." };
     }
 
+    // Private 160/800/1600 variants, generated after the response so the
+    // upload isn't slowed; until they exist, readers fall back to the
+    // original (see lib/signed-image-urls.ts). Never touches the original.
+    if (canGenerateVariants(validated.contentType)) {
+      const source = validated.converted?.buffer ?? Buffer.from(await file.arrayBuffer());
+      after(() => storePrivateVariants(admin, JOURNAL_MEDIA_BUCKET, path, source));
+    }
+
     return { id: mediaRow.id, url: signed?.signedUrl ?? "", isCover: mediaRow.is_cover };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't upload that photo." };
@@ -243,7 +254,7 @@ export async function removeJournalPhoto(
     if (!media) return { error: "That photo is already gone." };
 
     await admin.from("journal_entry_media").delete().eq("id", mediaId);
-    await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([media.storage_path]);
+    await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([media.storage_path, ...variantPathsFor(media.storage_path)]);
 
     if (media.is_cover) {
       const { data: next } = await admin
@@ -411,7 +422,7 @@ export async function finalizeJournalPhotoBatch(
     for (const item of items) {
       if (item.sectionId && !validSectionIds.has(item.sectionId)) {
         results.push({ localId: item.localId, ok: false, errorMessage: "That section isn't part of this Moment." });
-      } else if (!item.storagePath.startsWith(expectedPrefix) || item.storagePath.includes("..")) {
+      } else if (!item.storagePath.startsWith(expectedPrefix) || item.storagePath.includes("..") || isVariantPath(item.storagePath)) {
         results.push({ localId: item.localId, ok: false, errorMessage: "That upload couldn't be verified." });
       } else {
         safeItems.push(item);
@@ -457,6 +468,12 @@ export async function finalizeJournalPhotoBatch(
           mediaIdByPath.set(row.storage_path, row.id);
           if (row.is_cover) coverIds.add(row.id);
         }
+        // Private 160/800/1600 variants for the photos just confirmed —
+        // after the response (finalize stays fast; see the V3.1 timing
+        // note above), two at a time. Readers fall back to the original
+        // until a variant exists. Originals are never modified.
+        const newPaths = (insertedRows ?? []).map((row) => row.storage_path as string);
+        if (newPaths.length > 0) after(() => mapLimit(newPaths, 2, (p) => storePrivateVariants(admin, JOURNAL_MEDIA_BUCKET, p)));
       }
     }
     const insertMs = Date.now() - insertStart;
@@ -510,7 +527,7 @@ export async function discardJournalUpload(entryId: string, storagePath: string)
     if (!storagePath.startsWith(expectedPrefix) || storagePath.includes("..")) {
       return { error: "That upload couldn't be verified." };
     }
-    await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([storagePath]);
+    await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove([storagePath, ...variantPathsFor(storagePath)]);
     return { ok: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't clean up that upload." };
@@ -1097,7 +1114,7 @@ export async function deleteJournalEntryAction(entryId: string): Promise<{ error
   const { admin } = await requireOwnEntry(entryId);
   const { data: mediaRows } = await admin.from("journal_entry_media").select("storage_path").eq("journal_entry_id", entryId);
   const paths = (mediaRows ?? []).map((m) => m.storage_path);
-  if (paths.length > 0) await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove(paths);
+  if (paths.length > 0) await admin.storage.from(JOURNAL_MEDIA_BUCKET).remove(paths.flatMap((p) => [p, ...variantPathsFor(p)]));
   // journal_entry_media/journal_entry_connections rows are removed via
   // their own `on delete cascade` FK to journal_entries — only the Storage
   // objects (which the database has no way to clean up on its own) need

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { uploadMemberLocationImage } from "../actions";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 /** Member-facing image field for the Location Manager — same shape as
  * account/business/[id]/MemberImageField.tsx / account/event/[id]/
@@ -42,7 +43,7 @@ export default function MemberLocationImageField({
         {url && (
           <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-black/10 bg-black/5">
             {/* eslint-disable-next-line @next/next/no-img-element -- preview only, a live Storage URL */}
-            <img src={url} alt="" className="h-full w-full object-cover" />
+            <img src={imageVariantUrl(url, "card")} alt="" className="h-full w-full object-cover" />
           </div>
         )}
         <input type="hidden" name={name} value={url} />

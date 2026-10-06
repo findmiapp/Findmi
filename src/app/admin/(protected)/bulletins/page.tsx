@@ -3,6 +3,7 @@ import { TextField } from "@/components/admin/Fields";
 import { getAdminBulletins, type HomepageBulletin } from "@/lib/homepage-bulletins";
 import { createBulletin, moveBulletin } from "./actions";
 import { ChevronRightGlyph } from "@/components/admin/shell/AdminIcons";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ function BulletinRow({ b, canMoveUp, canMoveDown }: { b: HomepageBulletin; canMo
           // reasoning as ImageField's own preview: not worth next/image's
           // remote-host allowlist for a small list icon.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={b.thumbnail_url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+          <img src={imageVariantUrl(b.thumbnail_url, "thumb")} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
         ) : (
           <div className="h-10 w-10 shrink-0 rounded-lg bg-black/5" />
         )}

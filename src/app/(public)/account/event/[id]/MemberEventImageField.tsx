@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { uploadMemberEventImage } from "../actions";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 /** Event-Manager counterpart to account/business/[id]/MemberImageField.tsx
  * — identical preview + upload-button shape, calling
@@ -43,7 +44,7 @@ export default function MemberEventImageField({
         {url && (
           <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-black/10 bg-black/5">
             {/* eslint-disable-next-line @next/next/no-img-element -- preview only, a live Storage URL */}
-            <img src={url} alt="" className="h-full w-full object-cover" />
+            <img src={imageVariantUrl(url, "card")} alt="" className="h-full w-full object-cover" />
           </div>
         )}
         <input type="hidden" name={name} value={url} />

@@ -16,6 +16,7 @@ import { getFollowedEventIds } from "@/lib/followedEvents";
 import { getFollowedLocationIds } from "@/lib/followedLocations";
 import ChevronIcon from "@/components/ChevronIcon";
 import MomentDiscoveryCard from "./MomentDiscoveryCard";
+import { useNearViewport } from "./useNearViewport";
 
 const NO_FOLLOWS: MomentFollowKeys = { businessSlugs: [], eventIds: [], locationIds: [] };
 
@@ -109,22 +110,9 @@ export default function MomentsDiscovery({
         {visible.length === 0 ? (
           <p className="rounded-2xl bg-black/[0.03] px-4 py-6 text-sm text-ink/55">{empty}</p>
         ) : layout === "carousel" ? (
-          <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:scroll-px-6 sm:gap-4 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {visible.map((m) => (
-              <MomentDiscoveryCard
-                key={m.id}
-                moment={m}
-                sizes="(min-width: 1024px) 380px, (min-width: 640px) 45vw, 85vw"
-                className="w-[85vw] shrink-0 snap-start sm:w-[45%] lg:w-[31%]"
-              />
-            ))}
-          </div>
+          <MomentCarousel cards={visible} />
         ) : (
-          <div className="grid grid-cols-1 gap-x-4 gap-y-7 sm:grid-cols-2 lg:grid-cols-3">
-            {visible.map((m, i) => (
-              <MomentDiscoveryCard key={m.id} moment={m} priority={i < 2} sizes="(min-width: 1024px) 340px, (min-width: 640px) 50vw, 100vw" />
-            ))}
-          </div>
+          <MomentGrid cards={visible} />
         )}
       </div>
 
@@ -146,6 +134,122 @@ export default function MomentsDiscovery({
           )}
         </nav>
       )}
+    </div>
+  );
+}
+
+// Loading — only the Moments a visitor can actually see (or is about to)
+// request their photos; the rest keep their placeholder collage until they
+// approach. Hero first: the first card's hero loads alone, then its
+// supporting regions and the next cards (or after HERO_HEAD_START_MS at
+// most), so the first photo gets the whole connection instead of a tenth
+// of it. Appearance is identical either way.
+
+const HERO_HEAD_START_MS = 2500;
+
+/** True once the first hero has loaded/failed, `startWhen` has been true
+ * for HERO_HEAD_START_MS, or immediately without a first card. */
+function useHeroHeadStart(startWhen: boolean): [boolean, () => void] {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (settled || !startWhen) return;
+    const t = setTimeout(() => setSettled(true), HERO_HEAD_START_MS);
+    return () => clearTimeout(t);
+  }, [settled, startWhen]);
+  return [settled, () => setSettled(true)];
+}
+
+/** Homepage rail: nothing loads until the rail itself is within 400px of
+ * the viewport; then the first card's hero (high priority), then the rest
+ * of that card and any card within half a rail-width of the visible area
+ * (the peeking next card), and further cards as the visitor scrolls. */
+function MomentCarousel({ cards }: { cards: MomentFeedCard[] }) {
+  const [rail, setRail] = useState<HTMLDivElement | null>(null);
+  const railNear = useNearViewport(rail, { rootMargin: "400px 0px" });
+  const [heroSettled, settleHero] = useHeroHeadStart(railNear);
+  return (
+    <div
+      ref={setRail}
+      className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:scroll-px-6 sm:gap-4 sm:px-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {cards.map((m, i) => (
+        <CarouselMoment
+          key={m.id}
+          moment={m}
+          first={i === 0}
+          rail={rail}
+          railNear={railNear}
+          heroSettled={heroSettled}
+          onHeroSettled={i === 0 ? settleHero : undefined}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CarouselMoment({
+  moment,
+  first,
+  rail,
+  railNear,
+  heroSettled,
+  onHeroSettled,
+}: {
+  moment: MomentFeedCard;
+  first: boolean;
+  rail: HTMLDivElement | null;
+  railNear: boolean;
+  heroSettled: boolean;
+  onHeroSettled?: () => void;
+}) {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const near = useNearViewport(el, { root: rail, rootMargin: "0px 50% 0px 0px", waitForRoot: true });
+  return (
+    <div ref={setEl} className="w-[85vw] shrink-0 snap-start sm:w-[45%] lg:w-[31%]">
+      <MomentDiscoveryCard
+        moment={moment}
+        className="h-full"
+        load={railNear && (first || (near && heroSettled))}
+        heroOnly={first && !heroSettled}
+        onHeroSettled={onHeroSettled}
+        eager
+        heroFetchPriority={first ? "high" : undefined}
+        sizes="(min-width: 1024px) 380px, (min-width: 640px) 45vw, 85vw"
+      />
+    </div>
+  );
+}
+
+/** /moments feed: the first card's hero loads with the page (preloaded,
+ * high priority); then the rest of that card, and every other card once
+ * it is within 150px of the viewport — offscreen cards never compete with
+ * the first view. */
+function MomentGrid({ cards }: { cards: MomentFeedCard[] }) {
+  const [heroSettled, settleHero] = useHeroHeadStart(cards.length > 0);
+  return (
+    <div className="grid grid-cols-1 gap-x-4 gap-y-7 sm:grid-cols-2 lg:grid-cols-3">
+      {cards.map((m, i) => (
+        <GridMoment key={m.id} moment={m} first={i === 0} heroSettled={heroSettled} onHeroSettled={i === 0 ? settleHero : undefined} />
+      ))}
+    </div>
+  );
+}
+
+function GridMoment({ moment, first, heroSettled, onHeroSettled }: { moment: MomentFeedCard; first: boolean; heroSettled: boolean; onHeroSettled?: () => void }) {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const near = useNearViewport(el, { rootMargin: "150px 0px" });
+  return (
+    <div ref={setEl} className="min-w-0">
+      <MomentDiscoveryCard
+        moment={moment}
+        className="h-full"
+        priority={first}
+        eager
+        load={first || (near && heroSettled)}
+        heroOnly={first && !heroSettled}
+        onHeroSettled={onHeroSettled}
+        sizes="(min-width: 1024px) 340px, (min-width: 640px) 50vw, 100vw"
+      />
     </div>
   );
 }

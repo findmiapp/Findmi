@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import Image from "@/components/SupabaseImage";
 import ImageLightbox from "./ImageLightbox";
 
 // Final refinement pass, item 9 — now a real multi-image slider (not the

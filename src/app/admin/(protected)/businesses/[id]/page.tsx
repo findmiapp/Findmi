@@ -63,6 +63,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { getBusinessMarketLimit, isBusinessPro, isBusinessProSeller } from "@/lib/entitlements";
 import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import type { PublicationStatus } from "@/lib/types";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 export const dynamic = "force-dynamic";
 
@@ -583,7 +584,7 @@ export default async function EditBusinessPage({
                         {p.image_url ? (
                           <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
                             {/* eslint-disable-next-line @next/next/no-img-element -- small preview only */}
-                            <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                            <img src={imageVariantUrl(p.image_url, "thumb")} alt="" className="h-full w-full object-cover" />
                           </div>
                         ) : (
                           <div className="h-10 w-10 shrink-0 rounded-lg border border-black/10 bg-black/5" />

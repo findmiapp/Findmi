@@ -23,11 +23,21 @@ export default function MomentDiscoveryCard({
   className = "",
   sizes,
   priority = false,
+  heroFetchPriority,
+  eager = false,
+  load = true,
+  heroOnly = false,
+  onHeroSettled,
 }: {
   moment: Pick<MomentFeedCard, "title" | "href" | "entryDate" | "contextLabel" | "media" | "photoCount" | "author">;
   className?: string;
   sizes?: string;
   priority?: boolean;
+  heroFetchPriority?: "high";
+  eager?: boolean;
+  load?: boolean;
+  heroOnly?: boolean;
+  onHeroSettled?: () => void;
 }) {
   const initial = moment.author?.name.trim().charAt(0).toUpperCase() ?? "";
   return (
@@ -36,7 +46,19 @@ export default function MomentDiscoveryCard({
       className={`group block min-w-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-findmi focus-visible:ring-offset-2 ${className}`}
     >
       <div className="transition-opacity group-hover:opacity-95 motion-safe:group-active:scale-[0.99]">
-        <MomentMediaCollage items={moment.media} total={moment.photoCount} variant="card" sizes={sizes} priority={priority} label={moment.title} />
+        <MomentMediaCollage
+          items={moment.media}
+          total={moment.photoCount}
+          variant="card"
+          sizes={sizes}
+          priority={priority}
+          heroFetchPriority={heroFetchPriority}
+          eager={eager}
+          load={load}
+          heroOnly={heroOnly}
+          onHeroSettled={onHeroSettled}
+          label={moment.title}
+        />
       </div>
       <div className="px-0.5 pt-2.5">
         <p className="line-clamp-2 break-words font-display text-[15px] font-semibold leading-snug text-ink">{moment.title}</p>

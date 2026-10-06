@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Image from "@/components/SupabaseImage";
 import Link from "next/link";
 import { cityState } from "@/lib/format";
 

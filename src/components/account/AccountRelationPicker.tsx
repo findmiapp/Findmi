@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useAccountSearch, type AccountSearchResult } from "./useAccountSearch";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -11,7 +12,7 @@ function Avatar({ url, label }: { url?: string | null; label: string }) {
     <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/5 text-xs font-bold text-ink/40">
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="h-full w-full object-cover" />
+        <img src={imageVariantUrl(url, "thumb")} alt="" className="h-full w-full object-cover" />
       ) : (
         label.charAt(0).toUpperCase()
       )}

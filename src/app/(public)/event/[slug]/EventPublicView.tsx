@@ -1,7 +1,7 @@
 import { isRangeMirrorOccurrence, withoutRangeMirrors } from "@/lib/event-range-mirror";
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
-import Image from "next/image";
+import Image from "@/components/SupabaseImage";
 import { getPublicJournalCollection, journalCollectionHref } from "@/lib/journal-distribution";
 import BrandHeading from "@/components/BrandHeading";
 import SectionHeading from "@/components/SectionHeading";

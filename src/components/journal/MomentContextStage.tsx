@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import Image from "next/image";
+import Image from "@/components/SupabaseImage";
 import NavIcon from "@/components/NavIcon";
 import MomentSearch, { MOMENT_TYPE_ICON, MOMENT_TYPE_LABEL, type MomentObjectType, type MomentSearchResult } from "./MomentSearch";
 import { getEventOccurrencesForJournal, type JournalOccurrenceOption } from "@/app/(public)/my-world/journal/actions";

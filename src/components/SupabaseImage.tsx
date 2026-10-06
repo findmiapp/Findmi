@@ -1,4 +1,5 @@
 import Image, { type ImageProps } from "next/image";
+import { imageVariantUrl, inferImageSize, type ImageSize } from "@/lib/image-variants";
 
 // Every DB-driven business/product/event/person/appearance image in this
 // app is stored in and served from Supabase Storage (the findmi-media
@@ -18,10 +19,22 @@ import Image, { type ImageProps } from "next/image";
 // always wins (the already-fixed components above keep their own literal
 // `unoptimized` rather than being migrated here, precisely so this stays
 // an additive helper, not a rewrite of working code).
+//
+// Image Performance Foundation — this is also where Findmi's own display
+// variants are chosen (lib/image-variants.ts): a Supabase public URL whose
+// original has 160/800/1600 WebP variants is swapped for the smallest one
+// that suits the slot — `variant` when given, otherwise inferred from the
+// caller's existing `sizes`/`width`. Every other URL (existing originals
+// without variants, other hosts, local assets) renders exactly as before.
+// Fullscreen viewers pass variant="original".
 function isSupabaseStorageUrl(src: ImageProps["src"]): boolean {
   return typeof src === "string" && src.includes(".supabase.co/");
 }
 
-export default function SupabaseImage({ unoptimized, ...props }: ImageProps) {
-  return <Image {...props} unoptimized={unoptimized ?? isSupabaseStorageUrl(props.src)} />;
+export default function SupabaseImage({ unoptimized, variant, ...props }: ImageProps & { variant?: ImageSize }) {
+  const src =
+    typeof props.src === "string"
+      ? imageVariantUrl(props.src, variant ?? inferImageSize({ sizes: props.sizes, width: props.width, fill: props.fill }))
+      : props.src;
+  return <Image {...props} src={src} unoptimized={unoptimized ?? isSupabaseStorageUrl(props.src)} />;
 }

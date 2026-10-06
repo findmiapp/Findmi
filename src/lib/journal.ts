@@ -25,12 +25,14 @@ import { getServerSupabase } from "./supabase/server";
 import { getAdminSupabase } from "./admin/supabase-admin";
 import { validateImageFile } from "./imageUploadValidation";
 import type { JournalEntrySectionRow } from "./journal-sections";
+import type { ImageSize } from "./image-variants";
+import { createSignedUrlCache, signImageUrls, type Signer } from "./signed-image-urls";
 
 export const JOURNAL_MEDIA_BUCKET = "journal-media";
-// Long enough that a page render's signed URLs stay valid through normal
-// viewing/scrolling; short enough that a leaked link doesn't stay useful
-// for long. Re-signed fresh on every render — never cached across requests.
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
+// Signed URLs live 60 minutes (long enough for normal viewing/scrolling,
+// short enough that a leaked link doesn't stay useful for long) and are
+// reused across renders for at most 45 of them — see lib/signed-image-urls.ts.
+const signedUrlCache = createSignedUrlCache();
 
 export type JournalVisibility = "private" | "public";
 export type JournalStatus = "draft" | "published";
@@ -80,7 +82,12 @@ export interface JournalEntryMediaRow {
 }
 
 export interface JournalMediaWithUrl extends JournalEntryMediaRow {
+  /** The original — fullscreen/zoom viewers only. */
   url: string | null;
+  /** 800px variant (gallery tiles, cards); the original when none exists. */
+  cardUrl: string | null;
+  /** 1600px variant (cover, large single image); the original when none exists. */
+  largeUrl: string | null;
 }
 
 export interface JournalConnectionRow {
@@ -199,24 +206,31 @@ export async function getCurrentUserId(): Promise<string | null> {
 }
 
 /** Batched signed-URL resolution — ONE storage call for however many paths
- * are passed (createSignedUrls), never one call per photo. Returns null
- * for any path that failed to sign (a deleted/missing object) rather than
- * throwing, so one bad row never breaks an entire gallery. */
-export async function resolveSignedUrls(paths: string[]): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
-  if (paths.length === 0) return result;
+ * are passed (createSignedUrls), never one call per photo, and cached
+ * signed URLs are reused (see lib/signed-image-urls.ts). `size` picks the
+ * display variant, falling back to the original wherever no variant
+ * exists. A path that fails to sign (a deleted/missing object) is simply
+ * absent from the map rather than throwing, so one bad row never breaks
+ * an entire gallery. */
+export async function resolveSignedUrls(paths: string[], size: ImageSize = "original"): Promise<Map<string, string>> {
+  return (await resolveSignedImageUrls(paths, [size])).get(size) ?? new Map();
+}
+
+/** Several display sizes for the same paths, still one signing call. */
+export async function resolveSignedImageUrls(paths: string[], sizes: ImageSize[]): Promise<Map<ImageSize, Map<string, string>>> {
   const admin = getAdminSupabase();
-  if (!admin) return result;
-  const { data } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
-  for (const row of data ?? []) {
-    if (row.path && row.signedUrl && !row.error) result.set(row.path, row.signedUrl);
-  }
-  return result;
+  if (paths.length === 0 || !admin) return new Map(sizes.map((s) => [s, new Map()]));
+  const sign: Signer = async (toSign, ttl) => {
+    const { data, error } = await admin.storage.from(JOURNAL_MEDIA_BUCKET).createSignedUrls(toSign, ttl);
+    return error ? null : (data ?? []);
+  };
+  return signImageUrls(paths, sizes, sign, signedUrlCache);
 }
 
 async function attachSignedUrls(media: JournalEntryMediaRow[]): Promise<JournalMediaWithUrl[]> {
-  const urls = await resolveSignedUrls(media.map((m) => m.storage_path));
-  return media.map((m) => ({ ...m, url: urls.get(m.storage_path) ?? null }));
+  const urls = await resolveSignedImageUrls(media.map((m) => m.storage_path), ["original", "card", "large"]);
+  const get = (s: ImageSize, p: string) => urls.get(s)?.get(p) ?? null;
+  return media.map((m) => ({ ...m, url: get("original", m.storage_path), cardUrl: get("card", m.storage_path), largeUrl: get("large", m.storage_path) }));
 }
 
 /** One Journal Entry plus everything its Detail page needs, resolved
@@ -449,7 +463,7 @@ export async function getJournalArchiveEntries(userId: string, options?: { limit
     const cover = list.find((m) => m.is_cover) ?? [...list].sort((a, b) => a.display_order - b.display_order)[0];
     if (cover) coverPaths.push(cover.storage_path);
   }
-  const signedUrls = await resolveSignedUrls(coverPaths);
+  const signedUrls = await resolveSignedUrls(coverPaths, "card");
 
   return entries.map((e) => {
     const list = mediaByEntry.get(e.id) ?? [];

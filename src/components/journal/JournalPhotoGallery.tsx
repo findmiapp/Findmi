@@ -5,7 +5,10 @@ import { JournalPhotoTrigger } from "./JournalMediaViewer";
 
 export interface JournalGalleryItem {
   id: string;
+  /** Card-size (800px) display URL — the original when no variant exists. */
   url: string | null;
+  /** Large (1600px) display URL for the full-width anchor/single photo. */
+  largeUrl?: string | null;
   caption: string | null;
   /** No schema field for this exists yet (Journal V1 ships with one
    * editorial gallery, not per-photo categories — see the migration's own
@@ -70,7 +73,7 @@ function groupByCategory(items: JournalGalleryItem[]): { key: string; label: str
 
 function EditorialGrid({ items }: { items: JournalGalleryItem[] }) {
   if (items.length === 1) {
-    return <GalleryTile item={items[0]} className="aspect-[4/3] w-full" sizes="(min-width: 640px) 672px, 100vw" />;
+    return <GalleryTile item={items[0]} large className="aspect-[4/3] w-full" sizes="(min-width: 640px) 672px, 100vw" />;
   }
   if (items.length === 2) {
     return (
@@ -85,7 +88,7 @@ function EditorialGrid({ items }: { items: JournalGalleryItem[] }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       <div className="col-span-2">
-        <GalleryTile item={anchor} className="aspect-[16/10] w-full" sizes="(min-width: 640px) 672px, 100vw" />
+        <GalleryTile item={anchor} large className="aspect-[16/10] w-full" sizes="(min-width: 640px) 672px, 100vw" />
       </div>
       {rest.map((item) => (
         <GalleryTile key={item.id} item={item} className="aspect-square" sizes="(min-width: 640px) 33vw, 50vw" />
@@ -94,8 +97,9 @@ function EditorialGrid({ items }: { items: JournalGalleryItem[] }) {
   );
 }
 
-function GalleryTile({ item, className, sizes }: { item: JournalGalleryItem; className: string; sizes: string }) {
-  const image = item.url && <Image src={item.url} alt={item.caption ?? ""} fill unoptimized sizes={sizes} className="object-cover" />;
+function GalleryTile({ item, className, sizes, large = false }: { item: JournalGalleryItem; className: string; sizes: string; large?: boolean }) {
+  const src = (large ? item.largeUrl : null) ?? item.url;
+  const image = src && <Image src={src} alt={item.caption ?? ""} fill unoptimized sizes={sizes} className="object-cover" />;
 
   // No URL at all (nothing to view full-screen) — a plain, non-interactive
   // tile, same as before this pass.

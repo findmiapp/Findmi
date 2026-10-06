@@ -24,6 +24,7 @@ import { claimEntityHandle } from "@/lib/handles";
 import type { ProductPendingChanges, ProductType } from "@/lib/types";
 import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import { reverseSyncEventParticipation } from "@/lib/appearance-event-sync";
+import { storePublicImage } from "@/lib/image-variants-server";
 
 const UPLOAD_BUCKET = "findmi-media";
 
@@ -111,31 +112,14 @@ export async function uploadMemberBusinessImage(
     const admin = getAdminSupabase();
     if (!admin) return { error: "Storage isn't configured on the server." };
 
-    // Same server-generated-path convention as uploadImage() — a random
-    // UUID plus the validated extension, never anything derived from the
-    // submitted filename or businessId.
-    const path = `${crypto.randomUUID()}.${validated.extension}`;
+    // Original + 160/800/1600 WebP variants via the shared Findmi
+    // pipeline (lib/image-variants-server.ts). Server-generated UUID path,
+    // byte-detected content type, 1-year cache; a variant failure never
+    // fails the upload — the original alone is stored, as before.
+    const stored = await storePublicImage(admin, UPLOAD_BUCKET, validated, file);
+    if ("error" in stored) return { error: stored.error };
 
-    // A HEIC/HEIF upload was already converted to JPEG bytes above (see
-    // validateImageFile) — upload THOSE, never the original File. Content
-    // type always comes from validateImageFile's own byte-detected result,
-    // never the original file.type — see that function's own comment on
-    // why the claimed MIME can disagree with the actual bytes.
-    const uploadBody = validated.converted?.buffer ?? file;
-    const uploadContentType = validated.contentType;
-
-    const { error } = await admin.storage.from(UPLOAD_BUCKET).upload(path, uploadBody, {
-      contentType: uploadContentType,
-      upsert: false,
-      // Image Performance V1 — path is a fresh randomUUID, never
-      // overwritten (upsert: false), so a 1-year cache lifetime is safe;
-      // Supabase's own default (3600s) was needlessly short for content
-      // that never changes.
-      cacheControl: "31536000",
-    });
-    if (error) return { error: error.message };
-
-    const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(path);
+    const { data } = admin.storage.from(UPLOAD_BUCKET).getPublicUrl(stored.path);
     return { url: data.publicUrl };
   } catch {
     return { error: "Upload failed. Please try again." };

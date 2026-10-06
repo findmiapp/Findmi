@@ -4,6 +4,7 @@ import ChevronIcon from "@/components/ChevronIcon";
 import { formatTime } from "@/lib/format";
 import type { BusinessLocationItem, ManagedLocationItem } from "@/lib/business-locations";
 import { connectBusinessLocation, makePrimaryBusinessLocation, removeBusinessLocation } from "../../location-actions";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 /** /account V2, Pass 1 — Presence. Establishes the structure the next pass
  * builds on (Upcoming · Past · Locations) while reusing what exists today:
@@ -298,7 +299,7 @@ function LocationCard({
       <div className="flex items-start gap-3 px-4 py-3.5">
         {item.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.logoUrl} alt="" className="h-11 w-11 shrink-0 rounded-xl border border-black/[0.06] object-cover" />
+          <img src={imageVariantUrl(item.logoUrl, "thumb")} alt="" className="h-11 w-11 shrink-0 rounded-xl border border-black/[0.06] object-cover" />
         ) : (
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
             <NavIcon name="pin" className="h-5 w-5" />

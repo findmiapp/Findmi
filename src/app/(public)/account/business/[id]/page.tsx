@@ -112,6 +112,7 @@ import { getPendingMarketRequestForBusiness } from "@/lib/market-requests";
 import SupabaseImage from "@/components/SupabaseImage";
 import ChevronIcon from "@/components/ChevronIcon";
 import type { EventParticipationStatus } from "@/lib/types";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 const PARTICIPATION_LABEL: Record<EventParticipationStatus, string> = {
   invited: "Invited",
@@ -2129,7 +2130,7 @@ export default async function ManageBusinessPage({
                             {p.image_url ? (
                               <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-black/10 bg-black/5">
                                 {/* eslint-disable-next-line @next/next/no-img-element -- small preview only, a live Storage URL */}
-                                <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                                <img src={imageVariantUrl(p.image_url, "thumb")} alt="" className="h-full w-full object-cover" />
                               </div>
                             ) : (
                               <div className="hidden h-10 w-10 shrink-0 rounded-lg bg-black/[0.03] sm:block" />

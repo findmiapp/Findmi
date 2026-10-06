@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useAdminSearch, type SearchResult } from "./useAdminSearch";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 const inputClass =
   "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
@@ -13,7 +14,7 @@ function Avatar({ url, label }: { url?: string | null; label: string }) {
         // Tiny fixed-size avatar in a dropdown/row — next/image's
         // remote-domain config and layout machinery aren't worth it here.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="h-full w-full object-cover" />
+        <img src={imageVariantUrl(url, "thumb")} alt="" className="h-full w-full object-cover" />
       ) : (
         label.charAt(0).toUpperCase()
       )}

@@ -9,6 +9,7 @@ import {
   resumeMarketplaceListing,
   returnProductToCatalog,
 } from "../actions";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 /** Product Marketplace Distribution pass, extended by Admin Product
  * Distribution Control V1 — the admin-side surface for BOTH an owner's
@@ -98,7 +99,7 @@ export default function MarketplaceReviewPanel({
       {product.image_url && (
         <div className="mt-3 h-16 w-16 overflow-hidden rounded-lg border border-black/10 bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element -- small review preview only */}
-          <img src={product.image_url} alt="" className="h-full w-full object-cover" />
+          <img src={imageVariantUrl(product.image_url, "card")} alt="" className="h-full w-full object-cover" />
         </div>
       )}
 

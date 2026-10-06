@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import Image from "next/image";
+import Image from "@/components/SupabaseImage";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJournalEntryWithRelations } from "@/lib/journal";
@@ -124,7 +124,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
       ? "moment-photos"
       : null;
   const toGalleryItems = (list: typeof media) =>
-    list.map((m) => ({ id: m.id, url: m.url, caption: m.caption, category: null, mediaIndex: m.url ? viewerIndex(m.id) : -1 }));
+    list.map((m) => ({ id: m.id, url: m.cardUrl, largeUrl: m.largeUrl, caption: m.caption, category: null, mediaIndex: m.url ? viewerIndex(m.id) : -1 }));
   const coverIndex = cover?.url ? viewerItems.findIndex((v) => v.id === cover.id) : -1;
   const dateLabel = new Date(entry.entry_date + "T00:00:00").toLocaleDateString("en-US", {
     weekday: "long",
@@ -202,7 +202,7 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink sm:rounded-b-3xl">
         {cover?.url ? (
           <JournalPhotoTrigger index={coverIndex} label={`View photo${media.length === 1 ? "" : "s"}`} className="absolute inset-0 h-full w-full">
-            <Image src={cover.url} alt={entry.title} fill unoptimized priority sizes="(min-width: 768px) 672px, 100vw" className="object-cover" />
+            <Image src={cover.largeUrl ?? cover.url} alt={entry.title} fill unoptimized priority sizes="(min-width: 768px) 672px, 100vw" className="object-cover" />
           </JournalPhotoTrigger>
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-ink">

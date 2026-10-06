@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { uploadImage } from "@/lib/admin/upload";
 import ChevronIcon from "@/components/ChevronIcon";
+import { imageVariantUrl } from "@/lib/image-variants";
 
 /** Final refinement pass, items 9/10 — shared multi-image uploader for
  * both the Event Gallery and the About the Venue gallery (also used by
@@ -98,7 +99,7 @@ export default function GalleryField({
             <div key={`${url}-${i}`} className="relative h-20 w-20 overflow-hidden rounded-xl border border-black/10 bg-black/5">
               <input type="hidden" name={name} value={url} />
               {/* eslint-disable-next-line @next/next/no-img-element -- preview only, arbitrary/mid-edit URLs shouldn't need next/image's remote-host allowlist */}
-              <img src={url} alt="" className="h-full w-full object-cover" />
+              <img src={imageVariantUrl(url, "card")} alt="" className="h-full w-full object-cover" />
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/55 px-1 py-0.5">
                 <button
                   type="button"
