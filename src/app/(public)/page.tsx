@@ -322,7 +322,7 @@ export default async function HomePage({
             </span>
           </Link>
         </div>
-        <p className="mt-1 text-xs text-ink/50 sm:mt-2">Free to start · No credit card or app download required.</p>
+        <p className="mt-1 text-[11px] italic text-ink/50 sm:mt-2">Free to start · No credit card or app download required.</p>
       </div>
 
       {/* Search — behavior/route/sizing unchanged; only its position
