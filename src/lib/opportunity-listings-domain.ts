@@ -497,8 +497,10 @@ export const BUSINESS_LISTING_COLUMNS =
   "id, status, opportunity_type, title, summary, description, image_url, location_id, place_text, host_name, event_id, starts_at, ends_at, timing_note, response_deadline, pricing_mode, price_cents, currency, credits_eligible, whats_included, requirements";
 
 /** Recipient columns the Business may see on ITS OWN row. Deliberately
- * excludes internal_notes and responded_by_user_id. */
-export const BUSINESS_RECIPIENT_COLUMNS = "id, listing_id, business_id, status, fit_note, response_note, offered_at, responded_at, status_changed_at";
+ * excludes internal_notes, responded_by_user_id and fit_note — fit_note is
+ * an Admin-only Findmi field (it can carry sales/account context) and is
+ * never selected for, or shown to, a Business. */
+export const BUSINESS_RECIPIENT_COLUMNS = "id, listing_id, business_id, status, response_note, offered_at, responded_at, status_changed_at";
 
 // ---------------------------------------------------------------- presentation
 
@@ -697,28 +699,26 @@ export function canMemberRespond(role: BusinessResponseRole, viaAdmin?: boolean)
 }
 
 /** Business-safe card/detail model for ONE relationship. Built field by
- * field: the Business's own status, fit note and timestamps plus the
- * presentable listing. Never internal notes, responder ids, listing
+ * field: the Business's own status and timestamps plus the presentable
+ * listing. Never fit notes, internal notes, responder ids, listing
  * status, other recipients or counts. */
 export interface BusinessOpportunityView {
   recipientId: string;
   status: RecipientStatus;
   state: BusinessOpportunityState;
-  fitNote: string | null;
   offeredAt: string;
   respondedAt: string | null;
   opportunity: PresentableOpportunity;
 }
 
 export function toBusinessOpportunityView(
-  recipient: { id: string; status: RecipientStatus; fit_note: string | null; offered_at: string; responded_at: string | null },
+  recipient: { id: string; status: RecipientStatus; offered_at: string; responded_at: string | null },
   listing: PresentableOpportunity & { status: ListingStatus }
 ): BusinessOpportunityView {
   return {
     recipientId: recipient.id,
     status: recipient.status,
     state: getBusinessOpportunityState(listing.status, recipient.status),
-    fitNote: recipient.fit_note,
     offeredAt: recipient.offered_at,
     respondedAt: recipient.responded_at,
     opportunity: toPresentableOpportunity(listing),

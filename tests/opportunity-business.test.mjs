@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  BUSINESS_RECIPIENT_COLUMNS,
   BUSINESS_RECIPIENT_LABELS,
   LISTING_STATUSES,
   RECIPIENT_STATUSES,
@@ -107,11 +108,12 @@ test("the Business view model carries no Admin-only or private fields", () => {
   );
   const json = JSON.stringify(view);
   assert.equal(json.includes("SECRET"), false);
-  for (const k of ["internal_notes", "responded_by_user_id", "listing_id", "business_id", "location_id", "event_id", "created_at", "updated_at"]) {
+  for (const k of ["fit_note", "fitNote", "internal_notes", "responded_by_user_id", "listing_id", "business_id", "location_id", "event_id", "created_at", "updated_at"]) {
     assert.equal(json.includes(`"${k}"`), false, k);
   }
   assert.equal("status" in view.opportunity, false, "listing status is not exposed");
-  assert.deepEqual(Object.keys(view).sort(), ["fitNote", "offeredAt", "opportunity", "recipientId", "respondedAt", "state", "status"]);
+  assert.deepEqual(Object.keys(view).sort(), ["offeredAt", "opportunity", "recipientId", "respondedAt", "state", "status"]);
+  assert.equal(json.includes("Fit"), false, "fit note text never carried");
 });
 
 test("Business reads are scoped to the Business and use explicit safe columns", () => {
@@ -148,4 +150,25 @@ test("Event Invitations & Applications stay on the existing workflow", () => {
   assert.match(VIEW, /respondToEventInvitation\.bind\(null, businessId, o\.id, "declined"\)/);
   assert.match(VIEW, /Recommended For You/);
   assert.equal(/from\("opportunities"\)/.test(LIB), false);
+});
+
+// ---------------------------------------------------------------- fit note is Admin-only
+test("fit_note is never selected, modelled or rendered for a Business", () => {
+  const cols = BUSINESS_RECIPIENT_COLUMNS.split(",").map((c) => c.trim());
+  assert.equal(cols.includes("fit_note"), false);
+  for (const src of [DETAIL, VIEW, CARD, ACTION]) {
+    assert.equal(/fit_note|fitNote|Why Findmi Recommended/i.test(strip(src)), false);
+  }
+  // Business server reads only ever use the explicit Business column list.
+  const businessFns = ["getBusinessOpportunityItems", "getBusinessOpportunityItem", "getBusinessOpportunities", "getBusinessOpportunity"];
+  for (const name of businessFns) {
+    const at = LIB.indexOf(`export async function ${name}(`);
+    const body = LIB.slice(at, LIB.indexOf("\n}\n", at));
+    assert.equal(/fit_note/.test(body), false, name);
+  }
+  // The Business recipient interface has no fit_note; only the Admin one does.
+  const bizIface = LIB.slice(LIB.indexOf("export interface BusinessOpportunityRecipient"), LIB.indexOf("}", LIB.indexOf("export interface BusinessOpportunityRecipient")));
+  assert.equal(/fit_note/.test(bizIface), false);
+  const adminIface = LIB.slice(LIB.indexOf("export interface AdminOpportunityRecipient"), LIB.indexOf("}", LIB.indexOf("export interface AdminOpportunityRecipient")));
+  assert.match(adminIface, /fit_note/);
 });

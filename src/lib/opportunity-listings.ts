@@ -71,7 +71,6 @@ export interface BusinessOpportunityRecipient {
   listing_id: string;
   business_id: string;
   status: RecipientStatus;
-  fit_note: string | null;
   response_note: string | null;
   offered_at: string;
   responded_at: string | null;
@@ -92,6 +91,8 @@ export interface AdminOpportunityListing extends BusinessOpportunityListing {
 }
 
 export interface AdminOpportunityRecipient extends BusinessOpportunityRecipient {
+  /** Admin-only — never part of the Business shape. */
+  fit_note: string | null;
   internal_notes: string | null;
   responded_by_user_id: string | null;
   created_at: string;

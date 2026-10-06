@@ -66,7 +66,7 @@ export default function RecipientSender({
                 name={`fit_note_${b.value}`}
                 rows={2}
                 maxLength={1000}
-                placeholder="Why this is a fit (optional) — shown to this Business only"
+                placeholder="Fit note (optional) — Admin only, never shown to the Business"
                 className="mt-2 w-full resize-y rounded-xl border border-black/10 bg-white px-3 py-2 text-base text-ink placeholder:text-ink/35 focus:border-ink/30 focus:outline-none"
               />
             </li>

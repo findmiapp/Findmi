@@ -8,7 +8,6 @@ import {
   OpportunityAsideSections,
   OpportunityHero,
   OpportunityMainSections,
-  OpportunitySection,
 } from "@/components/opportunities/OpportunityPresentation";
 import { BusinessStateBadge } from "@/components/opportunities/BusinessOpportunityCard";
 import { loadBusinessShell } from "../loadBusinessShell";
@@ -156,12 +155,6 @@ export default async function BusinessOpportunityDetailPage({
           badges={<BusinessStateBadge tone={view.state.tone} label={view.state.label} />}
           actions={<DecisionArea state={view.state} action={action} mayRespond={mayRespond} viaAdmin={Boolean(membership.viaAdmin)} />}
         />
-
-        {view.fitNote && (
-          <OpportunitySection title="Why Findmi Recommended This">
-            <p className="whitespace-pre-line break-words text-sm leading-relaxed text-ink/75">{view.fitNote}</p>
-          </OpportunitySection>
-        )}
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
           <div className="flex min-w-0 flex-col gap-4">
