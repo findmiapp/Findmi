@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
-import { CALIBRATION_ORIGINALS, MOMENT_PHOTO_REGISTRY_NOTE, preflightCalibration, runCalibration } from "@/lib/admin/media-calibration";
+import { CALIBRATION_ORIGINALS, MOMENT_PHOTO_REGISTRY_NOTE, isCalibrationExecutionEnabled, preflightCalibration, runCalibration } from "@/lib/admin/media-calibration";
 
 // Legacy-variant CALIBRATION runner — a one-time, tightly scoped admin
 // tool to validate the media_variants registry architecture
@@ -21,14 +21,21 @@ import { CALIBRATION_ORIGINALS, MOMENT_PHOTO_REGISTRY_NOTE, preflightCalibration
 // GET  — read-only preflight: verifies all 11 originals are still
 //        referenced, their source objects still exist, and prints
 //        whether each already has an unexpected registry row. Writes
-//        nothing, ever. Safe to call freely.
+//        nothing, ever. Safe to call freely. Admin-only, same as POST,
+//        but needs no extra flag since it never writes.
 // POST — the actual write pipeline (download → generate role-required
-//        sizes only → validate → upload → verify → register). Requires
-//        the exact body {"confirm":"RUN_CALIBRATION"} so it can never be
-//        triggered by an accidental GET/empty POST/health check. Even
-//        then, each original is re-preflighted immediately before being
-//        touched (see runCalibration) — stale state blocks that one
-//        original rather than the whole batch.
+//        sizes only → validate → upload → verify → register). TWO
+//        independent gates must both be satisfied, in addition to admin
+//        auth: (1) the server-side env var MEDIA_CALIBRATION_ENABLED must
+//        literally equal "true" — absent, empty, or any other value fails
+//        closed — so calibration can never run just because someone with
+//        an admin session discovers/guesses this URL; a human has to
+//        deliberately set and deploy that var first. (2) the request body
+//        must be exactly {"confirm":"RUN_CALIBRATION"}, so it can't be
+//        triggered by an accidental GET/empty POST/health check once the
+//        flag IS on. Even then, each original is re-preflighted
+//        immediately before being touched (see runCalibration) — stale
+//        state blocks that one original rather than the whole batch.
 //
 // DELETE THIS FILE (or gate it further) once the calibration run this
 // exists for has been reviewed and a go/no-go decision on the full
@@ -41,6 +48,18 @@ function unauthorized() {
 
 function noAdminClient() {
   return NextResponse.json({ error: "Storage/DB isn't configured on the server." }, { status: 500 });
+}
+
+/** Mandatory execution gate for POST — defaults to disabled. Must be set
+ * to the exact string "true" in this deployment's environment (and
+ * redeployed) before any calibration write can run; absent, "false", or
+ * any other value fails closed. Independent of, and in addition to,
+ * requireAdmin() and the request-body confirm phrase below. */
+function calibrationDisabled() {
+  return NextResponse.json(
+    { error: 'Refused: calibration execution is disabled. Set MEDIA_CALIBRATION_ENABLED=true in this environment and redeploy before POST can run.' },
+    { status: 403 },
+  );
 }
 
 export async function GET() {
@@ -67,6 +86,9 @@ export async function POST(request: Request) {
     await requireAdmin();
   } catch {
     return unauthorized();
+  }
+  if (!isCalibrationExecutionEnabled(process.env)) {
+    return calibrationDisabled();
   }
   const admin = getAdminSupabase();
   if (!admin) return noAdminClient();

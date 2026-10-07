@@ -51,6 +51,44 @@ test("CALIBRATION_ORIGINALS: exactly 11 unique entries, role sizes match the spe
   assert.equal(buckets.filter((b) => b === "findmi-media").length, 10);
 });
 
+// ── POST execution gate (MEDIA_CALIBRATION_ENABLED) ───────────────────────
+test("isCalibrationExecutionEnabled: fails closed on anything but the literal string \"true\"", () => {
+  assert.equal(M.isCalibrationExecutionEnabled({}), false, "missing entirely");
+  assert.equal(M.isCalibrationExecutionEnabled({ MEDIA_CALIBRATION_ENABLED: undefined }), false);
+  assert.equal(M.isCalibrationExecutionEnabled({ MEDIA_CALIBRATION_ENABLED: "" }), false, "empty string");
+  assert.equal(M.isCalibrationExecutionEnabled({ MEDIA_CALIBRATION_ENABLED: "false" }), false);
+  assert.equal(M.isCalibrationExecutionEnabled({ MEDIA_CALIBRATION_ENABLED: "0" }), false);
+  assert.equal(M.isCalibrationExecutionEnabled({ MEDIA_CALIBRATION_ENABLED: "1" }), false);
+  assert.equal(M.isCalibrationExecutionEnabled({ MEDIA_CALIBRATION_ENABLED: "TRUE" }), false, "wrong case is refused, not normalized");
+  assert.equal(M.isCalibrationExecutionEnabled({ MEDIA_CALIBRATION_ENABLED: " true" }), false, "whitespace is refused, not trimmed");
+  assert.equal(M.isCalibrationExecutionEnabled({ MEDIA_CALIBRATION_ENABLED: "true" }), true, "only the exact literal enables it");
+});
+
+test("static guard: POST is rejected by the MEDIA_CALIBRATION_ENABLED gate before any write path is reachable; GET is unaffected", () => {
+  const route = readFileSync("src/app/admin/api/media-calibration/route.ts", "utf8");
+  assert.match(route, /isCalibrationExecutionEnabled/);
+
+  const postStart = route.indexOf("export async function POST");
+  assert.ok(postStart !== -1, "POST handler exists");
+  const postBody = route.slice(postStart);
+
+  const gateAt = postBody.indexOf("isCalibrationExecutionEnabled(process.env)");
+  const runAt = postBody.indexOf("runCalibration(");
+  assert.ok(gateAt !== -1, "POST checks isCalibrationExecutionEnabled");
+  assert.ok(runAt !== -1, "POST calls runCalibration");
+  assert.ok(gateAt < runAt, "the enablement gate is checked BEFORE runCalibration can ever be reached");
+
+  // The gate must return early (403) rather than merely being observed.
+  const gateLine = postBody.slice(gateAt - 10, gateAt + 60);
+  assert.match(gateLine, /!isCalibrationExecutionEnabled/, "POST refuses when the flag is NOT enabled");
+  assert.match(postBody.slice(gateAt, runAt), /calibrationDisabled\(\)/, "the false branch returns the disabled response, not a silent continue");
+  assert.match(route, /status:\s*403/, "the disabled response is a real HTTP refusal, not a 200");
+
+  const getStart = route.indexOf("export async function GET");
+  const getBody = route.slice(getStart, postStart);
+  assert.doesNotMatch(getBody, /MEDIA_CALIBRATION_ENABLED|isCalibrationExecutionEnabled/, "GET (read-only) must stay unaffected by this write-only gate");
+});
+
 test("static guard: media-calibration's local JOURNAL_MEDIA_BUCKET literal matches lib/journal.ts's own constant", () => {
   const journal = readFileSync("src/lib/journal.ts", "utf8");
   assert.match(journal, /JOURNAL_MEDIA_BUCKET\s*=\s*"journal-media"/);

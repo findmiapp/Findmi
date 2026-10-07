@@ -72,6 +72,21 @@ const PUBLIC_URL_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/${PUBLIC_MED
 export const MOMENT_PHOTO_REGISTRY_NOTE =
   "journal-media already resolves variant-vs-original dynamically (lib/journal.ts batches a signed-URL request for the original AND its would-be variant path together, and Storage's own per-path answer in that batch IS the existence check) — it has no filename-marker gap for the registry to fill, so writing a media_variants row for a private Moment photo would be unused, redundant state. Its generated 800/1600 variants still live in journal-media, next to the original, immediately usable by the existing private resolver with zero code changes.";
 
+/** Mandatory execution gate for the POST (write) side of
+ * /admin/api/media-calibration — a second, independent, server-side-only
+ * switch on top of requireAdmin() and the request's confirm phrase. Fails
+ * closed on anything other than the literal string "true": unset, empty,
+ * "false", "1", wrong case, all refused. A human has to deliberately set
+ * MEDIA_CALIBRATION_ENABLED=true in this deployment's environment AND
+ * redeploy before calibration can run at all — an admin session and the
+ * right request body are never enough by themselves. Exported as a pure
+ * function (rather than read inline in the route) so it's directly
+ * testable without importing route.ts, which pulls in next/headers via
+ * requireAdmin() and can't resolve outside the Next.js runtime. */
+export function isCalibrationExecutionEnabled(env: Record<string, string | undefined>): boolean {
+  return env.MEDIA_CALIBRATION_ENABLED === "true";
+}
+
 export type CalibrationBucket = typeof PUBLIC_MEDIA_BUCKET | typeof JOURNAL_MEDIA_BUCKET;
 
 export interface CalibrationEntry {
