@@ -327,20 +327,21 @@ export default async function JournalEntryPage({ params }: { params: Promise<{ i
               // marker, not an ordinary page subheading — scoped to ONLY
               // this h2 (journalSectionLabel(section)); "More Photos"
               // directly below, "Visit Details", and "More Findmi Moments"
-              // elsewhere on this page keep their original text-lg. Bumped
-              // from text-lg (18px) to text-3xl (30px, the same existing
-              // font-display token already used by the Moment hero h1 at
-              // its own sm:+ size — no arbitrary one-off size): held at
-              // this one size across every breakpoint (no sm: bump), so a
-              // short title like "The Place" reads with real chapter-level
-              // prominence rather than a slightly-larger subheading. mt-10
-              // (was mt-8, matching this page's OTHER major structural
-              // breaks — Visit Details/More Findmi Moments) and mt-4 before
-              // the carousel (was mt-3) give the larger heading
-              // proportionate breathing room without adding a third new
-              // spacing scale.
+              // elsewhere on this page keep their original text-lg.
+              // text-page-title-lg (26px) is an existing Findmi type-scale
+              // token (see tailwind.config.ts — same one AdminSectionHub's
+              // own page h1 uses), chosen over text-3xl (30px, tried and
+              // found too dominant once several sections repeat down the
+              // page) and over text-2xl (24px, a smaller step) — it already
+              // bundles the correct letter-spacing, so no separate
+              // tracking-tight utility is needed alongside it. Held at this
+              // one size across every breakpoint (no sm: bump). mt-10 (was
+              // mt-8, matching this page's OTHER major structural breaks —
+              // Visit Details/More Findmi Moments) and mt-4 before the
+              // carousel (was mt-3) give the heading proportionate
+              // breathing room without adding a third new spacing scale.
               <section key={section.id} id={`section-${section.id}`} className="mt-10 scroll-mt-20">
-                <h2 className="font-display text-3xl font-bold tracking-tight text-ink">{journalSectionLabel(section)}</h2>
+                <h2 className="font-display text-page-title-lg font-bold text-ink">{journalSectionLabel(section)}</h2>
                 {section.notes?.trim() && <p className="mt-1.5 max-w-xl whitespace-pre-line text-sm leading-relaxed text-ink/70">{section.notes.trim()}</p>}
                 {photos.length > 0 && (
                   <div className="mt-4">
