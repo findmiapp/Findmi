@@ -97,7 +97,12 @@ function EditorialGrid({ items }: { items: JournalGalleryItem[] }) {
   );
 }
 
-function GalleryTile({ item, className, sizes, large = false }: { item: JournalGalleryItem; className: string; sizes: string; large?: boolean }) {
+/** Exported so JournalSectionCarousel (named-section horizontal carousel)
+ * can reuse the EXACT same image/caption/click-to-open-viewer rendering
+ * this flat editorial gallery already uses, rather than a second
+ * reimplementation that could drift from it — only the surrounding
+ * layout differs between the two. */
+export function GalleryTile({ item, className, sizes, large = false }: { item: JournalGalleryItem; className: string; sizes: string; large?: boolean }) {
   const src = (large ? item.largeUrl : null) ?? item.url;
   const image = src && <Image src={src} alt={item.caption ?? ""} fill unoptimized sizes={sizes} className="object-cover" />;
 
