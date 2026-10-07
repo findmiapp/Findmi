@@ -23,6 +23,7 @@ import {
   getFeaturedBusinesses,
   getFeaturedLocations,
   getMarketAreaLabel,
+  getUpcomingAppearanceCounts,
   getUpcomingAppearanceHints,
   getUpcomingEvents,
 } from "@/lib/data";
@@ -663,11 +664,17 @@ async function HomepageRowSection({
       ? await getCategoriesForDynamicBusinessRow(row.featured_only, marketSlug, areaSlug)
       : dedupeCategories(resolved.items.flatMap((b) => b.categories));
     const businessIds = resolved.items.map((b) => b.id);
-    const [appearanceHintsMap, businessGalleriesMap] = await Promise.all([
+    // Homepage Appearance Count Accuracy pass — fetched independently of
+    // the bounded hints preview (its own per-business query, see
+    // getUpcomingAppearanceCounts' own doc) so the card can show the TRUE
+    // total in its heading/CTA, not the 4-card preview's own length.
+    const [appearanceHintsMap, appearanceCountsMap, businessGalleriesMap] = await Promise.all([
       getUpcomingAppearanceHints(businessIds),
+      getUpcomingAppearanceCounts(businessIds),
       getBusinessGalleryImagesMap(businessIds),
     ]);
     const appearanceHints = Object.fromEntries(appearanceHintsMap);
+    const appearanceCounts = Object.fromEntries(appearanceCountsMap);
     const businessGalleries = Object.fromEntries(businessGalleriesMap);
     const viewAllHref = (() => {
       if (!isDynamic) return "/businesses";
@@ -708,6 +715,7 @@ async function HomepageRowSection({
           initialItems={resolved.items}
           categories={rowCategories}
           appearanceHints={appearanceHints}
+          appearanceCounts={appearanceCounts}
           businessGalleries={businessGalleries}
           marketSlug={isDynamic ? marketSlug : undefined}
         />

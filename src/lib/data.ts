@@ -3336,6 +3336,71 @@ export async function getUpcomingAppearanceHints(
   });
 }
 
+/** Resolves ONE business's exact qualifying-Appearance count. */
+export type AppearanceCountFetcher = (businessId: string) => Promise<number>;
+
+/** The per-business-FAIR core of getUpcomingAppearanceCounts, with the
+ * actual count query abstracted behind `fetchCount` — same DI pattern,
+ * same reasoning, as resolveUpcomingAppearanceHints just above (and the
+ * same reused mapWithConcurrency): one business's TOTAL must never depend
+ * on how many Appearances any other business has, exactly like its
+ * preview. Kept as an entirely separate resolver from
+ * resolveUpcomingAppearanceHints (not merged into one combined fetch) so
+ * the preview and the count are independently fetchable/testable — a
+ * caller that only needs one never has to resolve the other. */
+export async function resolveUpcomingAppearanceCounts(businessIds: string[], fetchCount: AppearanceCountFetcher): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (businessIds.length === 0) return result;
+  const uniqueIds = [...new Set(businessIds)];
+
+  const counts = await mapWithConcurrency(uniqueIds, UPCOMING_APPEARANCE_QUERY_CONCURRENCY, async (businessId) => ({
+    businessId,
+    count: await fetchCount(businessId),
+  }));
+
+  for (const { businessId, count } of counts) {
+    if (count > 0) result.set(businessId, count);
+  }
+  return result;
+}
+
+/** Homepage Appearance Count Accuracy pass — the TRUE total number of
+ * qualifying upcoming Appearances per business (same canonical
+ * definition as getUpcomingAppearanceHints/getBusinessIdsWithUpcoming
+ * Appearance: status <> 'canceled', end_at > now()), used alongside (not
+ * instead of) getUpcomingAppearanceHints: the card's visual preview stays
+ * capped at UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS regardless of this
+ * number — this only fixes what the heading/CTA TEXT says. Root cause
+ * this corrects: BusinessLogoCard previously read its displayed count
+ * straight off the bounded preview array's own .length, so a business
+ * with more qualifying Appearances than the 4-card preview limit (e.g.
+ * Free Bean, 10+) showed "4 Upcoming Appearances" — the preview cap, not
+ * the real total.
+ *
+ * Deliberately an exact COUNT query (`{ count: "exact", head: true }` —
+ * Postgres COUNT(*), no rows returned/fetched) per business, never a scan
+ * of every Appearance row: getting the total must not cost anywhere near
+ * what fetching every row would. Same per-business-bounded-query
+ * architecture as getUpcomingAppearanceHints (see that function's own
+ * root-cause doc) — one independent query per business, never a shared/
+ * global budget a high-volume business could consume at another
+ * business's expense. */
+export async function getUpcomingAppearanceCounts(businessIds: string[]): Promise<Map<string, number>> {
+  const supabase = getSupabase();
+  if (!supabase || businessIds.length === 0) return new Map();
+  const nowIso = new Date().toISOString();
+
+  return resolveUpcomingAppearanceCounts(businessIds, async (businessId) => {
+    const { count } = await supabase
+      .from("appearances")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId)
+      .neq("status", "canceled")
+      .gt("end_at", nowIso);
+    return count ?? 0;
+  });
+}
+
 export interface MarketplaceProduct extends Product {
   business: { id: string; name: string; slug: string; logo_url: string | null; commerce_enabled: boolean };
 }

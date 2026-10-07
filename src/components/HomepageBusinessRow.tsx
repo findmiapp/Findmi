@@ -36,6 +36,7 @@ export default function HomepageBusinessRow({
   initialItems,
   categories,
   appearanceHints,
+  appearanceCounts,
   businessGalleries,
   marketSlug,
 }: {
@@ -47,8 +48,17 @@ export default function HomepageBusinessRow({
    * nothing upcoming just has no entry, so BusinessLogoCard's appearance
    * module correctly omits itself rather than fabricating anything.
    * Business Card Redesign pass — plural per business (was a single
-   * hint), via lib/data.ts's getUpcomingAppearanceHints. */
+   * hint), via lib/data.ts's getUpcomingAppearanceHints. This is the
+   * BOUNDED PREVIEW only (up to 4) — see appearanceCounts for the true
+   * total. */
   appearanceHints: Record<string, NextAppearanceHint[]>;
+  /** Homepage Appearance Count Accuracy pass — the TRUE total number of
+   * qualifying upcoming Appearances per business (lib/data.ts's
+   * getUpcomingAppearanceCounts), independent of the bounded preview
+   * above. A business with no entry here has zero — BusinessLogoCard
+   * falls back to its preview array's own length only when this prop
+   * isn't supplied at all (other, non-homepage reuses of that card). */
+  appearanceCounts: Record<string, number>;
   /** Gallery-Image Fallback experiment — same bulk-fetched-once-per-row
    * shape as appearanceHints (lib/data.ts's getBusinessGalleryImagesMap).
    * A business with no gallery images just has no entry, so
@@ -67,12 +77,14 @@ export default function HomepageBusinessRow({
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cache, setCache] = useState<Record<string, BusinessWithCategories[]>>({});
   const [hintsCache, setHintsCache] = useState<Record<string, Record<string, NextAppearanceHint[]>>>({});
+  const [countsCache, setCountsCache] = useState<Record<string, Record<string, number>>>({});
   const [galleriesCache, setGalleriesCache] = useState<Record<string, Record<string, string[]>>>({});
   const [loading, setLoading] = useState(false);
   const [failedCategory, setFailedCategory] = useState<string | null>(null);
 
   const items = activeCategory ? (cache[activeCategory] ?? []) : initialItems;
   const hints = activeCategory ? (hintsCache[activeCategory] ?? {}) : appearanceHints;
+  const counts = activeCategory ? (countsCache[activeCategory] ?? {}) : appearanceCounts;
   const galleries = activeCategory ? (galleriesCache[activeCategory] ?? {}) : businessGalleries;
   const failed = activeCategory !== null && failedCategory === activeCategory;
 
@@ -90,10 +102,12 @@ export default function HomepageBusinessRow({
       const data: {
         businesses: BusinessWithCategories[];
         appearanceHints: Record<string, NextAppearanceHint[]>;
+        appearanceCounts?: Record<string, number>;
         businessGalleries?: Record<string, string[]>;
       } = await res.json();
       setCache((prev) => ({ ...prev, [slug]: data.businesses }));
       setHintsCache((prev) => ({ ...prev, [slug]: data.appearanceHints }));
+      setCountsCache((prev) => ({ ...prev, [slug]: data.appearanceCounts ?? {} }));
       setGalleriesCache((prev) => ({ ...prev, [slug]: data.businessGalleries ?? {} }));
       // Public Experience Consolidation pass — a curated homepage module
       // should never advertise an empty state. The chip list itself is
@@ -177,6 +191,7 @@ export default function HomepageBusinessRow({
               <BusinessLogoCard
                 business={b}
                 upcomingAppearances={hints[b.id]}
+                totalUpcomingAppearances={counts[b.id]}
                 galleryImages={galleries[b.id]}
                 analyticsContext={{
                   pageType: "home",

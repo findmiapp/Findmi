@@ -70,6 +70,18 @@ export default function BusinessLogoCard({
    * of which still work fine without it — a clean identity card is a
    * perfectly good state, never a placeholder). */
   upcomingAppearances,
+  /** Homepage Appearance Count Accuracy pass — the TRUE total number of
+   * qualifying upcoming Appearances this business has (lib/data.ts's
+   * getUpcomingAppearanceCounts), independent of how many are in
+   * `upcomingAppearances` above. Drives the heading ("12 Upcoming
+   * Appearances") and the "See all N appearances" CTA — the PREVIEW
+   * itself (which cards render, wide-vs-rail layout) is still governed
+   * entirely by `upcomingAppearances`' own length, never by this number;
+   * this only corrects the TEXT. When a caller doesn't wire this up (every
+   * non-homepage reuse of this card), falls back to
+   * `upcomingAppearances.length` — exactly this card's behavior before
+   * this pass, so nothing else changes. */
+  totalUpcomingAppearances,
   /** Gallery-Image Fallback experiment — the business's own existing
    * gallery (business_images), bulk-fetched by the caller (lib/data.ts's
    * getBusinessGalleryImagesMap, same batched-query discipline as
@@ -85,6 +97,7 @@ export default function BusinessLogoCard({
   ctaLabel?: string;
   ctaHref?: string;
   upcomingAppearances?: NextAppearanceHint[];
+  totalUpcomingAppearances?: number;
   galleryImages?: string[];
   analyticsContext?: AnalyticsPlacementContext;
 }) {
@@ -103,6 +116,10 @@ export default function BusinessLogoCard({
   const href = ctaHref ?? `/business/${business.slug}`;
   const appearancesHref = `/business/${business.slug}#findmi-here`;
   const upcoming = upcomingAppearances ?? [];
+  // Homepage Appearance Count Accuracy pass — the heading/CTA TEXT uses
+  // the true total (see this prop's own doc); the preview module's own
+  // layout/content below still comes entirely from `upcoming` itself.
+  const totalUpcoming = totalUpcomingAppearances ?? upcoming.length;
 
   // Gallery-Image Fallback experiment — deterministic, render-time-only
   // rotation across the business's own gallery: only an appearance that
@@ -255,7 +272,7 @@ export default function BusinessLogoCard({
           <div className="relative z-20 mt-1.5 rounded-2xl bg-findmi-50 p-2.5">
             <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700">
               <CalendarGlyph className="h-3.5 w-3.5 shrink-0" />
-              {upcoming.length === 1 ? "1 Upcoming Appearance" : `${upcoming.length} Upcoming Appearances`}
+              {totalUpcoming === 1 ? "1 Upcoming Appearance" : `${totalUpcoming} Upcoming Appearances`}
             </p>
 
             {upcoming.length === 1 ? (
@@ -287,7 +304,7 @@ export default function BusinessLogoCard({
               href={upcoming.length === 1 ? (upcoming[0].href ?? appearancesHref) : appearancesHref}
               className="relative z-20 mt-2 flex items-center gap-0.5 text-[11px] font-bold uppercase tracking-wide text-findmi-700"
             >
-              {upcoming.length === 1 ? "View appearance" : "See all appearances"}
+              {upcoming.length === 1 ? "View appearance" : `See all ${totalUpcoming} appearances`}
               <ChevronGlyph className="h-2.5 w-2.5" />
             </Link>
           </div>
