@@ -76,22 +76,59 @@ export function sizeToVariant(size: ImageSize): VariantSize | null {
   return size === "original" ? null : IMAGE_SIZE_PX[size];
 }
 
-/** The URL to request for a stored image URL at a display size. Only a
- * marked findmi-media public URL is rewritten; everything else (existing
- * unmarked objects, Tally/Unsplash/local assets, signed URLs, null) is
- * returned unchanged — the safe original fallback. */
-export function imageVariantUrl<T extends string | null | undefined>(url: T, size: ImageSize): T {
+/** The URL to request for a stored image URL at a display size.
+ *
+ * Priority (the first case never touches a database):
+ *   1. A `.fv1.`-marked original — resolved purely from its filename, exactly
+ *      as before `registeredSizes` existed. `registeredSizes` is irrelevant
+ *      here and isn't even consulted.
+ *   2. An unmarked legacy original WITH a registry entry — resolved to the
+ *      requested variant only if that size is present in `registeredSizes`
+ *      (a caller's batched media_variants lookup — see
+ *      media-variants-registry.ts). Missing from the set → falls through to
+ *      the original, same as case 3.
+ *   3. Everything else (unmarked with no registry entry, non-findmi-media
+ *      URLs, null) — returned unchanged, the pre-existing safe fallback. */
+export function imageVariantUrl<T extends string | null | undefined>(
+  url: T,
+  size: ImageSize,
+  registeredSizes?: ReadonlySet<VariantSize> | null,
+): T {
   if (!url || size === "original") return url;
   const i = url.indexOf(PUBLIC_OBJECT_SEGMENT);
   if (i === -1) return url;
   const [pathPart, rest = ""] = splitSuffix(url.slice(i + PUBLIC_OBJECT_SEGMENT.length));
-  if (!hasPublicVariants(pathPart)) return url;
-  return `${url.slice(0, i + PUBLIC_OBJECT_SEGMENT.length)}${variantPath(pathPart, IMAGE_SIZE_PX[size])}${rest}` as T;
+  const variantSize = IMAGE_SIZE_PX[size];
+  const hasVariant = hasPublicVariants(pathPart) || (registeredSizes?.has(variantSize) ?? false);
+  if (!hasVariant) return url;
+  return `${url.slice(0, i + PUBLIC_OBJECT_SEGMENT.length)}${variantPath(pathPart, variantSize)}${rest}` as T;
 }
 
 function splitSuffix(s: string): [string, string] {
   const j = s.search(/[?#]/);
   return j === -1 ? [s, ""] : [s.slice(0, j), s.slice(j)];
+}
+
+/** The findmi-media object path inside a public URL, or null if the URL
+ * isn't a findmi-media public object (a different host, a signed/private
+ * URL, a non-Supabase asset, null). This is the key a caller passes to the
+ * media_variants registry lookup in media-variants-registry.ts. */
+export function publicMediaPath(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const i = url.indexOf(PUBLIC_OBJECT_SEGMENT);
+  if (i === -1) return null;
+  const [pathPart] = splitSuffix(url.slice(i + PUBLIC_OBJECT_SEGMENT.length));
+  return pathPart;
+}
+
+/** Whether a findmi-media object path is a legacy original that could
+ * benefit from a registry lookup — i.e. NOT already `.fv1.`-marked (a
+ * marked original's variants resolve for free from its filename, so
+ * looking it up in the registry would be wasted work) and not itself a
+ * variant path. Callers use this to build the (small) list of paths worth
+ * batch-querying for a page, instead of querying every image path. */
+export function isLegacyPublicPath(path: string): boolean {
+  return !hasPublicVariants(path) && !isVariantPath(path);
 }
 
 /** Display size for a slot, inferred from the `sizes`/`width` a component
