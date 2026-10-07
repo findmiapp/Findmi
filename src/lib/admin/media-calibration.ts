@@ -240,19 +240,29 @@ export const CALIBRATION_ORIGINALS: CalibrationEntry[] = [
     },
   },
   {
+    // Replacement pass — the original candidate here
+    // (c51e16e3-670a-43b0-8ce9-b8b92b974f3c.jpg) was found unreferenced
+    // during the live GET preflight and was never processed/registered;
+    // see this module's own history for that finding. Replaced with
+    // another real, currently-referenced business_images row on the SAME
+    // business (06e975a6-...), picked as the single largest-by-bytes
+    // referenced public original found (~3.85MB, essentially tied with
+    // the original candidate's size) so the "unusually large source"
+    // calibration case is still covered.
     key: "business_gallery_large_source",
     bucket: PUBLIC_MEDIA_BUCKET,
-    path: "c51e16e3-670a-43b0-8ce9-b8b92b974f3c.jpg",
+    path: "aadd76a9-3061-4eab-bbaf-8039e2e8f715.jpg",
     roles: ["business_gallery"],
     verify: async (admin) => {
       const { data, error } = await admin
         .from("business_images")
         .select("id")
+        .eq("id", "d8283bf8-5d34-4476-ba42-2af22645d731")
         .eq("business_id", "06e975a6-a748-4de6-8ba6-3b11b77fd354")
-        .eq("url", expectedPublicUrl("c51e16e3-670a-43b0-8ce9-b8b92b974f3c.jpg"))
+        .eq("url", expectedPublicUrl("aadd76a9-3061-4eab-bbaf-8039e2e8f715.jpg"))
         .maybeSingle();
       if (error) return { referenced: false, detail: `query error: ${error.message}` };
-      return { referenced: !!data, detail: data ? "business_images.url still matches (large-source gallery image, ~3.86MB original)" : "business_images.url no longer matches" };
+      return { referenced: !!data, detail: data ? "business_images.url still matches (large-source gallery image, ~3.85MB original)" : "business_images.url no longer matches" };
     },
   },
   {
