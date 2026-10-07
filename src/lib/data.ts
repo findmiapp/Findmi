@@ -3192,14 +3192,60 @@ export async function getNextAppearanceHints(businessIds: string[]): Promise<Map
   return hints;
 }
 
-// Business Card Redesign pass — same over-fetch-then-group-and-slice-in-JS
-// discipline getLocationActivitySummaries' own ACTIVITY_PREVIEW_FETCH_PER_
-// LOCATION/ACTIVITY_PREVIEW_ITEMS_PER_LOCATION pair already established:
-// one bulk query across every business on the page (never one per card),
-// over-fetching a generous multiple of the final per-business cap before
-// grouping/slicing to the soonest N per business in JS.
-const UPCOMING_APPEARANCE_FETCH_PER_BUSINESS = 8;
 const UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS = 4;
+// Homepage Appearance Hints Fairness pass — this function is only ever
+// called with one homepage row's own (founder-configured, typically
+// single-digit-to-low-teens) business list, never an unbounded fan-out —
+// this is a defensive concurrency ceiling, not a sign this is meant for a
+// large list.
+const UPCOMING_APPEARANCE_QUERY_CONCURRENCY = 6;
+
+/** Runs `task` over `items` with at most `limit` in flight at once,
+ * returning results in the original order. Local to this fairness fix —
+ * distinct from image-variants-server.ts's own mapLimit (fire-and-forget/
+ * void, and part of the media pipeline this pass must not touch). */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        results[i] = await task(items[i]);
+      }
+    })
+  );
+  return results;
+}
+
+export interface AppearanceHintRow {
+  business_id: string;
+  title: string;
+  start_at: string;
+  flyer_image_url: string | null;
+  venue_name: string | null;
+  city: string | null;
+  state: string | null;
+  description: string | null;
+  event:
+    | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }
+    | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }[]
+    | null;
+}
+
+function toAppearanceHint(r: AppearanceHintRow): NextAppearanceHint {
+  const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
+  return {
+    venue: r.title || event?.name || "",
+    startAt: r.start_at,
+    href: event && !event.is_demo ? `/event/${event.slug}` : null,
+    imageUrl: (event && !event.is_demo ? event.cover_image_url : null) ?? r.flyer_image_url ?? null,
+    venueName: r.venue_name ?? null,
+    city: r.city ?? null,
+    state: r.state ?? null,
+    description: r.description ?? null,
+  };
+}
 
 /** Bulk "upcoming appearances" (plural) per business — BusinessLogoCard's
  * appearance-preview module (single wide card when there's exactly one,
@@ -3210,62 +3256,84 @@ const UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS = 4;
  * ascending: an appearance already in progress (start_at in the past,
  * end_at still in the future) sorts first for free, exactly matching
  * "happening now, then nearest upcoming, then chronological" with no
- * separate "is this live right now" branch needed. */
+ * separate "is this live right now" branch needed.
+ *
+ * Homepage Appearance Hints Fairness pass — root-caused against Fox Den
+ * LeatherCraft: the previous implementation fetched every business's
+ * appearances in ONE query under a single SHARED, GLOBAL `.limit()`,
+ * ordered by start_at across every business combined, and only grouped
+ * per business AFTER that cutoff. A high-volume business (e.g. one with
+ * 20 earlier-dated appearances) could fully consume that shared budget
+ * before a lower-volume business's own later-dated — but perfectly real
+ * and qualifying — appearance was ever fetched at all (see this pass's
+ * root-cause report: 43 other appearances consumed a 40-row shared cap
+ * before Fox Den's single row was ever reached). Fixed by giving EACH
+ * business its own independent query with its OWN `.limit(limitPerBusiness)`
+ * — correctness for business X now depends only on business X's own rows,
+ * never on how many appearances any other business has. Same canonical
+ * eligibility rule, same chronological ordering, same public Map<string,
+ * NextAppearanceHint[]> contract and up-to-4-per-business cap; only the
+ * FETCH STRATEGY changed (bounded per-business queries, run with capped
+ * concurrency via mapWithConcurrency, rather than one shared-budget
+ * query). */
+/** Fetches ONE business's own candidate rows (already status/date-filtered
+ * and ordered server-side, capped at `limit`) — the only thing abstracted
+ * behind dependency injection below. */
+export type AppearanceHintFetcher = (businessId: string, limit: number) => Promise<AppearanceHintRow[]>;
+
+/** The per-business-FAIR core of getUpcomingAppearanceHints, with the
+ * actual Storage/DB call abstracted behind `fetch` — same dependency-
+ * injection pattern already used elsewhere for this exact reason
+ * (signed-image-urls.ts's Signer, media-variants-registry.ts's Fetcher):
+ * this fairness fix is directly unit-testable, including reproducing the
+ * exact production failure (one high-volume business starving another),
+ * without a live Supabase client. `fetch` is responsible for the
+ * status<>'canceled' / end_at>now() filter and the chronological
+ * `start_at` ordering (getUpcomingAppearanceHints below wires the real
+ * Supabase query); this function's own job is purely the fan-out/
+ * concurrency/grouping — never a second eligibility definition. */
+export async function resolveUpcomingAppearanceHints(
+  businessIds: string[],
+  limitPerBusiness: number,
+  fetch: AppearanceHintFetcher
+): Promise<Map<string, NextAppearanceHint[]>> {
+  const result = new Map<string, NextAppearanceHint[]>();
+  if (businessIds.length === 0) return result;
+  const uniqueIds = [...new Set(businessIds)];
+
+  const perBusiness = await mapWithConcurrency(uniqueIds, UPCOMING_APPEARANCE_QUERY_CONCURRENCY, async (businessId) => ({
+    businessId,
+    rows: await fetch(businessId, limitPerBusiness),
+  }));
+
+  for (const { businessId, rows } of perBusiness) {
+    if (rows.length === 0) continue;
+    result.set(businessId, rows.map(toAppearanceHint));
+  }
+  return result;
+}
+
 export async function getUpcomingAppearanceHints(
   businessIds: string[],
   limitPerBusiness: number = UPCOMING_APPEARANCE_ITEMS_PER_BUSINESS
 ): Promise<Map<string, NextAppearanceHint[]>> {
-  const result = new Map<string, NextAppearanceHint[]>();
   const supabase = getSupabase();
-  if (!supabase || businessIds.length === 0) return result;
+  if (!supabase || businessIds.length === 0) return new Map();
+  const nowIso = new Date().toISOString();
 
-  const { data } = await supabase
-    .from("appearances")
-    .select(
-      "business_id, title, start_at, flyer_image_url, venue_name, city, state, description, event:events(slug, is_demo, name, cover_image_url)"
-    )
-    .in("business_id", businessIds)
-    .neq("status", "canceled")
-    .gt("end_at", new Date().toISOString())
-    .order("start_at", { ascending: true })
-    .limit(UPCOMING_APPEARANCE_FETCH_PER_BUSINESS * businessIds.length);
-
-  const byBusiness = new Map<string, NextAppearanceHint[]>();
-  for (const row of (data ?? []) as never[]) {
-    const r = row as {
-      business_id: string;
-      title: string;
-      start_at: string;
-      flyer_image_url: string | null;
-      venue_name: string | null;
-      city: string | null;
-      state: string | null;
-      description: string | null;
-      event:
-        | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }
-        | { slug: string; is_demo: boolean; name: string; cover_image_url: string | null }[]
-        | null;
-    };
-    const event = Array.isArray(r.event) ? (r.event[0] ?? null) : r.event;
-    const list = byBusiness.get(r.business_id) ?? [];
-    list.push({
-      venue: r.title || event?.name || "",
-      startAt: r.start_at,
-      href: event && !event.is_demo ? `/event/${event.slug}` : null,
-      imageUrl: (event && !event.is_demo ? event.cover_image_url : null) ?? r.flyer_image_url ?? null,
-      venueName: r.venue_name ?? null,
-      city: r.city ?? null,
-      state: r.state ?? null,
-      description: r.description ?? null,
-    });
-    byBusiness.set(r.business_id, list);
-  }
-
-  for (const id of businessIds) {
-    const list = (byBusiness.get(id) ?? []).slice(0, limitPerBusiness);
-    if (list.length > 0) result.set(id, list);
-  }
-  return result;
+  return resolveUpcomingAppearanceHints(businessIds, limitPerBusiness, async (businessId, limit) => {
+    const { data } = await supabase
+      .from("appearances")
+      .select(
+        "business_id, title, start_at, flyer_image_url, venue_name, city, state, description, event:events(slug, is_demo, name, cover_image_url)"
+      )
+      .eq("business_id", businessId)
+      .neq("status", "canceled")
+      .gt("end_at", nowIso)
+      .order("start_at", { ascending: true })
+      .limit(limit);
+    return (data ?? []) as unknown as AppearanceHintRow[];
+  });
 }
 
 export interface MarketplaceProduct extends Product {
