@@ -2,7 +2,7 @@ import Link from "next/link";
 import HomepageRowCard from "@/components/admin/HomepageRowCard";
 import { TextField } from "@/components/admin/Fields";
 import { getAllCategories, getCuratedItemPreviews } from "@/lib/admin/queries";
-import { getAdminHomepageRows } from "@/lib/homepage-rows";
+import { findPrimaryBusinessesRowId, getAdminHomepageRows } from "@/lib/homepage-rows";
 import { createHomepageRow, deleteHomepageRow, moveHomepageRowDown, moveHomepageRowUp, saveHomepageRow } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,14 @@ export default async function HomepageRowsPage({
     getAllCategories("product"),
   ]);
   const categoriesByKind = { business: businessCategories, event: eventCategories, product: productCategories };
+  // Homepage Appearance Eligibility pass — admin UX fix: only this ONE
+  // row (whichever is currently first/top/visible with Content Type =
+  // Businesses) silently requires a qualifying current/upcoming
+  // Appearance, independent of Featured Only, Curated picks, or Pinned
+  // items (see lib/homepage-rows.ts/lib/data.ts). Surfaced per-card below
+  // so a founder editing a DIFFERENT businesses row never sees a note
+  // that doesn't apply to it.
+  const primaryBusinessesRowId = findPrimaryBusinessesRowId(rows);
 
   // Curated previews only make sense for content types the search picker
   // supports (business_showcase rows never have curated_ids) — fetched
@@ -80,6 +88,7 @@ export default async function HomepageRowsPage({
             <HomepageRowCard
               key={row.id}
               row={row}
+              isPrimaryBusinessesRow={row.id === primaryBusinessesRowId}
               categoriesByKind={categoriesByKind}
               curatedPreview={previews[i]}
               saveAction={saveHomepageRow.bind(null, row.id)}

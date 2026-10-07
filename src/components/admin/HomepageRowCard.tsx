@@ -33,6 +33,7 @@ type CategoryOption = { slug: string; name: string };
 
 export default function HomepageRowCard({
   row,
+  isPrimaryBusinessesRow,
   categoriesByKind,
   curatedPreview,
   saveAction,
@@ -43,6 +44,13 @@ export default function HomepageRowCard({
   canMoveDown,
 }: {
   row: HomepageRow;
+  /** Homepage Appearance Eligibility pass — true only for the one
+   * Businesses row (page.tsx's primaryBusinessesRowId /
+   * lib/homepage-rows.ts's findPrimaryBusinessesRowId) that silently
+   * requires every Business shown to have a qualifying current/upcoming
+   * Appearance, independent of Featured Only / Curated / Pinned. Drives
+   * the explanatory note below — never passed true for any other row. */
+  isPrimaryBusinessesRow?: boolean;
   /** Kept split by kind (taxonomy foundation pass) — a row's Category
    * dropdown must only ever offer categories that its own content type
    * could actually match (getHomepageRowBusinesses/Events/Products are
@@ -114,6 +122,15 @@ export default function HomepageRowCard({
           </select>
         </label>
 
+        {contentType === "businesses" && isPrimaryBusinessesRow && (
+          <p className="rounded-xl border border-findmi/20 bg-findmi-50 px-3.5 py-3 text-xs text-findmi-700">
+            This is your homepage&rsquo;s primary Businesses row. Regardless of Feed mode, Featured Only,
+            or any Curated/Pinned picks below, a Business only shows here while it has a qualifying
+            current or upcoming Appearance — Featured Only (if on) narrows that pool further to
+            is_featured Businesses, it doesn&rsquo;t cause or replace the Appearance requirement.
+          </p>
+        )}
+
         {isShowcase ? (
           <p className="rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-3 text-xs text-ink/50">
             This row shows Findmi&rsquo;s existing business-acquisition showcase, no items to pick. Use
@@ -168,7 +185,11 @@ export default function HomepageRowCard({
                   defaultChecked={row.featured_only}
                   hint={`Only show ${contentType} with their own "Featured" checkbox turned on (edit that on each ${
                     contentType === "businesses" ? "Business" : contentType === "events" ? "Event" : "Product"
-                  }'s own page). This is the manual-selection option for a Dynamic row. Switch Feed to Curated above to hand-pick an exact, ordered list instead.`}
+                  }'s own page). This is the manual-selection option for a Dynamic row. Switch Feed to Curated above to hand-pick an exact, ordered list instead.${
+                    contentType === "businesses"
+                      ? " This is purely editorial — it has no effect on whether a Business currently has a qualifying upcoming Appearance."
+                      : ""
+                  }`}
                 />
 
                 <NumberField label="Items" name="item_limit" defaultValue={row.item_limit} step="1" hint="How many to show in this row." />

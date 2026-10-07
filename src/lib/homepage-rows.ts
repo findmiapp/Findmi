@@ -25,6 +25,7 @@ import { getAdminSupabase } from "./admin/supabase-admin";
 import { getHomepageDiscoveryPageId } from "./discovery-pages";
 import {
   attachEventCategories,
+  filterBusinessesWithUpcomingAppearance,
   getBusinessesByIds,
   getEventsByIds,
   getEventsDiscovery,
@@ -135,6 +136,36 @@ export async function getVisibleHomepageRows(pageId?: string): Promise<HomepageR
   return (data as HomepageRow[]) ?? [];
 }
 
+/** Homepage Appearance Eligibility pass — pure: the PRIMARY businesses
+ * discovery row among a page's rows is the first VISIBLE, TOP-LEVEL
+ * content_type==="businesses" row, by sort_order. Filters defensively
+ * (is_visible/parent_id/sort) so it's safe to call with either
+ * getVisibleHomepageRows' own output (already filtered/sorted — a no-op
+ * here) or getAdminHomepageRows' full unfiltered list (the admin editor).
+ * This is exactly the rule page.tsx's own brandsRowIndex already uses to
+ * single out "Brands We Love" for its UI treatment — exported here so the
+ * NEW temporal-eligibility rule (only this one row requires a qualifying
+ * upcoming Appearance) and the UI's own "which row is this" question can
+ * never define "primary" two different ways. Any OTHER businesses row —
+ * a second one on the same page, or a row on a different Discovery Page —
+ * is never "primary" and stays a plain editorial/dynamic feed, unaffected. */
+export function findPrimaryBusinessesRowId(rows: HomepageRow[]): string | null {
+  const candidates = rows
+    .filter((r) => r.is_visible && r.parent_id === null && r.content_type === "businesses")
+    .sort((a, b) => a.sort_order - b.sort_order);
+  return candidates[0]?.id ?? null;
+}
+
+/** Same question as findPrimaryBusinessesRowId, for ONE row already
+ * fetched independently of its page's full list (e.g. by id, as
+ * /api/homepage-business-row does for a client-side category re-fetch) —
+ * re-fetches that page's visible top-level rows and reuses the identical
+ * predicate, so the two never drift apart. */
+export async function isPrimaryBusinessesRow(row: HomepageRow): Promise<boolean> {
+  const rows = await getVisibleHomepageRows(row.page_id);
+  return findPrimaryBusinessesRowId(rows) === row.id;
+}
+
 export type ResolvedHomepageRow =
   | { contentType: "businesses"; items: BusinessWithCategories[] }
   | { contentType: "events"; items: EventWithCategories[] }
@@ -182,11 +213,21 @@ export type ResolvedHomepageRow =
  * same rule as `marketSlug` above: only ever applied to a DYNAMIC or
  * HYBRID "businesses" row (getHomepageRowBusinesses), never to curated
  * rows, business_showcase, events, or products in this pass. Omitted
- * preserves exact prior (Market-only, or unfiltered) behavior. */
+ * preserves exact prior (Market-only, or unfiltered) behavior.
+ *
+ * Homepage Appearance Eligibility pass — `requireUpcomingAppearance`
+ * (only ever passed true for the homepage's PRIMARY businesses discovery
+ * row — see findPrimaryBusinessesRowId) applies to ALL THREE "businesses"
+ * modes, not just dynamic: curation/pinning decides which ELIGIBLE
+ * businesses are preferred/ordered, it never resurrects one that no
+ * longer has a qualifying Appearance. Ignored for every other content
+ * type (events/products/business_showcase) and for any OTHER businesses
+ * row, which stay exactly as before. */
 export async function resolveHomepageRowItems(
   row: HomepageRow,
   marketSlug?: string,
-  areaSlug?: string
+  areaSlug?: string,
+  options?: { requireUpcomingAppearance?: boolean }
 ): Promise<ResolvedHomepageRow> {
   if (row.section_type === "group") {
     return { contentType: "group", items: [] };
@@ -197,17 +238,19 @@ export async function resolveHomepageRowItems(
   }
 
   if (row.content_type === "businesses") {
+    const requireUpcomingAppearance = options?.requireUpcomingAppearance ?? false;
     const items =
       row.mode === "curated"
-        ? await getBusinessesByIds(row.curated_ids)
+        ? await resolveCuratedBusinesses(row, requireUpcomingAppearance)
         : row.mode === "hybrid"
-          ? await resolveHybridBusinesses(row, marketSlug, areaSlug)
+          ? await resolveHybridBusinesses(row, marketSlug, areaSlug, requireUpcomingAppearance)
           : await getHomepageRowBusinesses({
               categorySlug: row.category_slug ?? undefined,
               featuredOnly: row.featured_only,
               limit: row.item_limit,
               marketSlug,
               areaSlug,
+              requireUpcomingAppearance,
             });
     return { contentType: "businesses", items };
   }
@@ -243,12 +286,29 @@ export async function resolveHomepageRowItems(
   return { contentType: "products", items };
 }
 
+/** Curated-mode businesses for a "businesses" Homepage Row. The founder's
+ * exact picks, in their chosen order — getBusinessesByIds already drops a
+ * deleted/unpublished pick (never errors); when `requireUpcomingAppearance`
+ * is set (the homepage's PRIMARY row only), additionally drops any pick
+ * that no longer has a qualifying current/upcoming Appearance — curation
+ * decides preference/order among ELIGIBLE businesses, it never resurrects
+ * an ineligible one (see resolveHomepageRowItems's own doc). */
+async function resolveCuratedBusinesses(row: HomepageRow, requireUpcomingAppearance: boolean): Promise<BusinessWithCategories[]> {
+  const curated = await getBusinessesByIds(row.curated_ids);
+  return requireUpcomingAppearance ? filterBusinessesWithUpcomingAppearance(curated) : curated;
+}
+
 async function resolveHybridBusinesses(
   row: HomepageRow,
-  marketSlug?: string,
-  areaSlug?: string
+  marketSlug: string | undefined,
+  areaSlug: string | undefined,
+  requireUpcomingAppearance: boolean
 ): Promise<BusinessWithCategories[]> {
-  const pinned = await getBusinessesByIds(row.pinned_ids);
+  const pinnedAll = await getBusinessesByIds(row.pinned_ids);
+  // Same eligibility rule as resolveCuratedBusinesses, applied to the
+  // PINNED portion specifically — a founder-pinned business that no
+  // longer has a qualifying Appearance is dropped, not resurrected.
+  const pinned = requireUpcomingAppearance ? await filterBusinessesWithUpcomingAppearance(pinnedAll) : pinnedAll;
   const remaining = Math.max(0, row.item_limit - pinned.length);
   if (remaining === 0) return pinned;
   const pinnedIdSet = new Set(row.pinned_ids);
@@ -261,6 +321,7 @@ async function resolveHybridBusinesses(
     limit: row.item_limit,
     marketSlug,
     areaSlug,
+    requireUpcomingAppearance,
   });
   const fill = auto.filter((b) => !pinnedIdSet.has(b.id)).slice(0, remaining);
   return [...pinned, ...fill];

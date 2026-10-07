@@ -420,6 +420,15 @@ export async function getFeaturedBusinesses(limit = 8): Promise<BusinessWithCate
 
 export interface HomepageRowBusinessParams {
   categorySlug?: string;
+  /** Editorial restriction ONLY: when true, additionally requires
+   * is_featured=true. Independent of requireUpcomingAppearance below —
+   * composable with it, never a substitute for it and never itself a
+   * reason an appearance check runs. (Homepage Appearance Eligibility
+   * pass: an earlier version of this function made requireUpcomingAppearance
+   * implicit in featuredOnly, which meant a non-featured dynamic row had
+   * no temporal gate at all — a business with no current/upcoming
+   * Appearance could still appear in the homepage's primary businesses
+   * discovery carousel. The two are now fully decoupled.) */
   featuredOnly?: boolean;
   limit?: number;
   /** Homepage Market Filtering V1 — DYNAMIC rows only (see
@@ -435,6 +444,69 @@ export interface HomepageRowBusinessParams {
    * meaningful alongside marketSlug; omitted preserves exact prior
    * (Market-only, or unfiltered) behavior. */
   areaSlug?: string;
+  /** Homepage Appearance Eligibility pass — when true, a business must
+   * have >=1 qualifying current/upcoming Appearance (the one canonical
+   * definition — status <> 'canceled' AND end_at > now(), see
+   * getBusinessIdsWithUpcomingAppearance) to be eligible at all. Only ever
+   * set true for the homepage's PRIMARY businesses discovery row (see
+   * lib/homepage-rows.ts's findPrimaryBusinessesRowId) — every other
+   * businesses row (a second row on the same page, or a row on any other
+   * Discovery Page) omits this and stays a plain editorial/dynamic feed,
+   * exactly as before. */
+  requireUpcomingAppearance?: boolean;
+}
+
+/** Pure composition of this function's two independent eligibility flags
+ * over an already-resolved candidate id set — exported standalone so the
+ * actual rule (requireUpcomingAppearance AND featuredOnly each narrow the
+ * pool independently; neither implies the other) is unit-testable without
+ * a live Supabase client. `upcomingIds`/`featuredIds` are pre-resolved
+ * Sets (getBusinessIdsWithUpcomingAppearance / an is_featured id query);
+ * this function itself never touches Supabase. */
+export function composeEligibleBusinessIds(
+  candidateIds: string[],
+  rules: {
+    requireUpcomingAppearance?: boolean;
+    featuredOnly?: boolean;
+    upcomingIds?: ReadonlySet<string>;
+    featuredIds?: ReadonlySet<string>;
+  }
+): string[] {
+  let eligible = candidateIds;
+  if (rules.requireUpcomingAppearance) {
+    const upcoming = rules.upcomingIds ?? new Set<string>();
+    eligible = eligible.filter((id) => upcoming.has(id));
+  }
+  if (rules.featuredOnly) {
+    const featured = rules.featuredIds ?? new Set<string>();
+    eligible = eligible.filter((id) => featured.has(id));
+  }
+  return eligible;
+}
+
+/** Pure: keeps only the businesses whose id is in `upcomingIds` — the
+ * object-list counterpart to composeEligibleBusinessIds' id-set version,
+ * for callers (curated/pinned lists) that already have full business
+ * objects rather than a bare candidate id array. Order is preserved. */
+export function selectBusinessesWithUpcomingAppearance<T extends { id: string }>(
+  businesses: T[],
+  upcomingIds: ReadonlySet<string>
+): T[] {
+  return businesses.filter((b) => upcomingIds.has(b.id));
+}
+
+/** Async convenience wrapping selectBusinessesWithUpcomingAppearance: Homepage
+ * Appearance Eligibility pass — filters an already-resolved business list
+ * (a founder's curated picks, or a hybrid row's pinned ids) down to just
+ * those with a qualifying current/upcoming Appearance. Unlike a dynamic
+ * query, a curated/pinned list has no query-time filter of its own, so
+ * eligibility has to be enforced as a post-filter here — reuses the exact
+ * same getBusinessIdsWithUpcomingAppearance definition as every other
+ * caller, never a second "upcoming" rule. */
+export async function filterBusinessesWithUpcomingAppearance<T extends { id: string }>(businesses: T[]): Promise<T[]> {
+  if (businesses.length === 0) return businesses;
+  const upcomingIds = await getBusinessIdsWithUpcomingAppearance(businesses.map((b) => b.id));
+  return selectBusinessesWithUpcomingAppearance(businesses, upcomingIds);
 }
 
 /** Dynamic-mode businesses feed for a founder-configured homepage row
@@ -474,27 +546,41 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
     if (categoryBusinessIds.length === 0) return [];
   }
 
-  // Active Featured Business Promotional Eligibility pass — every caller
-  // of this function that sets featuredOnly IS a promotional Homepage Row
-  // (see lib/homepage-rows.ts's resolveHomepageRowItems, this function's
-  // only caller) — unlike searchBusinesses, there's no separate "plain
-  // filter" use of featuredOnly here to preserve, so eligibility applies
-  // unconditionally rather than needing a second opt-in flag. Same
-  // candidate-scoped resolver, same reasoning, as searchBusinesses'
+  // Homepage Appearance Eligibility pass — requireUpcomingAppearance and
+  // featuredOnly are two fully INDEPENDENT restrictions (see
+  // HomepageRowBusinessParams' own doc on each): candidate-scoped to the
+  // live/non-demo pool first (cheapest filter), then each flag narrows
+  // that pool further if set, composed by the pure
+  // composeEligibleBusinessIds — never re-derived inline here, so this
+  // stays the one place that composition can drift from its test
+  // coverage. Same "resolve a bounded candidate list first" discipline as
+  // category/marketBusinessIds above and as searchBusinesses'
   // promotionallyEligibleOnly handling.
-  let eligibleFeaturedIds: string[] | null = null;
-  if (params.featuredOnly) {
-    const { data: featuredRows } = await supabase
-      .from("businesses")
-      .select("id")
-      .eq("is_featured", true)
-      .eq("is_demo", false)
-      .eq("publication_status", "live");
-    const featuredIds = (featuredRows ?? []).map((r) => r.id as string);
-    if (featuredIds.length === 0) return [];
-    const upcomingIds = await getBusinessIdsWithUpcomingAppearance(featuredIds);
-    eligibleFeaturedIds = featuredIds.filter((id) => upcomingIds.has(id));
-    if (eligibleFeaturedIds.length === 0) return [];
+  let eligibleIds: string[] | null = null;
+  if (params.requireUpcomingAppearance || params.featuredOnly) {
+    const { data: liveRows } = await supabase.from("businesses").select("id").eq("is_demo", false).eq("publication_status", "live");
+    const liveIds = (liveRows ?? []).map((r) => r.id as string);
+    if (liveIds.length === 0) return [];
+
+    const [upcomingIds, featuredIds] = await Promise.all([
+      params.requireUpcomingAppearance ? getBusinessIdsWithUpcomingAppearance(liveIds) : Promise.resolve(new Set<string>()),
+      params.featuredOnly
+        ? supabase
+            .from("businesses")
+            .select("id")
+            .eq("is_featured", true)
+            .in("id", liveIds)
+            .then(({ data: featuredRows }) => new Set((featuredRows ?? []).map((r) => r.id as string)))
+        : Promise.resolve(new Set<string>()),
+    ]);
+
+    eligibleIds = composeEligibleBusinessIds(liveIds, {
+      requireUpcomingAppearance: params.requireUpcomingAppearance,
+      featuredOnly: params.featuredOnly,
+      upcomingIds,
+      featuredIds,
+    });
+    if (eligibleIds.length === 0) return [];
   }
 
   let query = supabase.from("businesses").select(PUBLIC_BUSINESS_COLUMNS).eq("is_demo", false).eq("publication_status", "live");
@@ -502,7 +588,7 @@ export async function getHomepageRowBusinesses(params: HomepageRowBusinessParams
   // Second .in("id", ...) call ANDs with the category one above — same
   // idiom searchBusinesses already uses to intersect the id sets.
   if (marketBusinessIds) query = query.in("id", marketBusinessIds);
-  if (eligibleFeaturedIds) query = query.in("id", eligibleFeaturedIds);
+  if (eligibleIds) query = query.in("id", eligibleIds);
 
   // Homepage closing-flow pass — businesses has no dedicated sort/order
   // column (checked against the live schema; none exists), so the only
@@ -826,11 +912,14 @@ export async function getBusinessIdsInArea(marketSlug: string, areaSlug: string)
   return (activeMarketRows ?? []).map((r) => r.business_id as string);
 }
 
-/** Active Featured Business Promotional Eligibility pass — the one
- * centralized resolver for "does this Business have at least one
- * qualifying upcoming Where You'll Be," reused by both searchBusinesses
- * (Discover's Featured Brands rail) and getHomepageRowBusinesses (a
- * featured_only Homepage Row) rather than duplicating this check in each.
+/** The one centralized resolver for "does this Business have at least one
+ * qualifying upcoming Where You'll Be," reused by searchBusinesses
+ * (Discover's Featured Brands rail, via promotionallyEligibleOnly),
+ * getHomepageRowBusinesses (requireUpcomingAppearance — the homepage's
+ * primary businesses discovery row, independent of featuredOnly — see
+ * that param's own doc), and filterBusinessesWithUpcomingAppearance (the
+ * same row's curated/pinned paths) rather than duplicating this check in
+ * each.
  *
  * Deliberately reuses the EXACT SAME public definition
  * getUpcomingAppearancesForBusiness/getFindMiHereFeed already use —

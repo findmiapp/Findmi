@@ -27,7 +27,7 @@ import {
   getUpcomingEvents,
 } from "@/lib/data";
 import { getPublishedHomepageBulletins } from "@/lib/homepage-bulletins";
-import { getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
+import { findPrimaryBusinessesRowId, getVisibleHomepageRows, resolveHomepageRowItems, type HomepageRow } from "@/lib/homepage-rows";
 import {
   getSiteSections,
   resolveHeroImageSlots,
@@ -116,11 +116,22 @@ export default async function HomePage({
 
   const nextEvents = await attachEventCategories(nextRaw);
 
+  // Homepage Appearance Eligibility pass — resolved BEFORE resolvedRows so
+  // the one row it identifies can require a qualifying current/upcoming
+  // Appearance at the data layer (see resolveHomepageRowItems), not as a
+  // card-level "return null." Any OTHER businesses row on this page keeps
+  // its exact prior (non-appearance-gated) behavior.
+  const primaryBusinessesRowId = findPrimaryBusinessesRowId(homepageRows);
+
   // Each row's content is resolved in parallel — one query per row
   // (dynamic mode) or a curated-id lookup (curated mode), same shared
   // query functions every other feed on the site already uses. See
   // lib/homepage-rows.ts.
-  const resolvedRows = await Promise.all(homepageRows.map((row) => resolveHomepageRowItems(row, marketSlug, areaSlug)));
+  const resolvedRows = await Promise.all(
+    homepageRows.map((row) =>
+      resolveHomepageRowItems(row, marketSlug, areaSlug, { requireUpcomingAppearance: row.id === primaryBusinessesRowId })
+    )
+  );
 
   // Brands We Love — identified by content type (the first "businesses"
   // row), not by its founder-editable title text, since that title isn't
@@ -129,7 +140,10 @@ export default async function HomePage({
   // specifically, using its exact existing selection/ordering logic
   // (is_featured/founding_member tiering, shuffle within tier only — see
   // shuffleWithinFeaturedTiers in lib/data.ts) and its exact existing
-  // uniform-card-width fix, completely untouched.
+  // uniform-card-width fix, completely untouched. Always the same row
+  // primaryBusinessesRowId just identified above (both use the identical
+  // "first visible top-level businesses row" rule — see
+  // findPrimaryBusinessesRowId's own doc).
   const brandsRowIndex = homepageRows.findIndex((row) => row.content_type === "businesses");
 
   // Any OTHER founder-managed row — neither the products rail above nor

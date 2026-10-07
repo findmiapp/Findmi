@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import {
+  filterBusinessesWithUpcomingAppearance,
   getBusinessesByIds,
   getBusinessGalleryImagesMap,
   getHomepageRowBusinesses,
   getUpcomingAppearanceHints,
 } from "@/lib/data";
-import type { HomepageRow } from "@/lib/homepage-rows";
+import { isPrimaryBusinessesRow, type HomepageRow } from "@/lib/homepage-rows";
 
 export const dynamic = "force-dynamic";
 
@@ -50,10 +51,18 @@ export async function GET(request: NextRequest) {
   if (!row) return NextResponse.json({ businesses: [] });
 
   const typedRow = row as HomepageRow;
+  // Homepage Appearance Eligibility pass — same rule as the initial
+  // server render (page.tsx): only the homepage's PRIMARY businesses row
+  // requires a qualifying current/upcoming Appearance. Re-derived here
+  // (rather than trusting a client-supplied flag) via the identical
+  // "first visible top-level businesses row" predicate, so this can never
+  // be requested out of sync with what actually rendered.
+  const requireUpcomingAppearance = await isPrimaryBusinessesRow(typedRow);
 
   if (typedRow.mode === "curated") {
     const curated = await getBusinessesByIds(typedRow.curated_ids);
-    const filtered = category ? curated.filter((b) => b.categories.some((c) => c.slug === category)) : curated;
+    const eligible = requireUpcomingAppearance ? await filterBusinessesWithUpcomingAppearance(curated) : curated;
+    const filtered = category ? eligible.filter((b) => b.categories.some((c) => c.slug === category)) : eligible;
     const filteredIds = filtered.map((b) => b.id);
     const [appearanceHintsMap, galleriesMap] = await Promise.all([
       getUpcomingAppearanceHints(filteredIds),
@@ -71,6 +80,7 @@ export async function GET(request: NextRequest) {
     featuredOnly: typedRow.featured_only,
     limit: typedRow.item_limit,
     marketSlug,
+    requireUpcomingAppearance,
   });
   // Bulk-fetched here too (not per card) so BusinessLogoCard's appearance
   // module keeps working after a live category-chip re-fetch, not just on
