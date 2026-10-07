@@ -34,14 +34,18 @@ export function canGenerateVariants(contentType: string): boolean {
   return /^image\/(jpeg|png|webp)$/i.test(contentType);
 }
 
-/** 160/800/1600 WebP variants: longest edge ≤ size, aspect ratio kept,
- * never upscaled, EXIF orientation applied (then stripped), alpha kept,
- * converted to sRGB. Throws on undecodable/animated input. */
-export async function generateImageVariants(input: Buffer): Promise<GeneratedVariant[]> {
+/** WebP variants at exactly `sizes` (any subset/order of VARIANT_SIZES):
+ * longest edge ≤ size, aspect ratio kept, never upscaled, EXIF orientation
+ * applied (then stripped), alpha kept, converted to sRGB. Throws on
+ * undecodable/animated input. `generateImageVariants` (below) is this
+ * with every size — the upload path always wants all three; a role-scoped
+ * backfill/calibration run wants only the sizes that role actually needs
+ * (see media-backfill-roles.ts), never generating a size nothing displays. */
+export async function generateImageVariantsForSizes(input: Buffer, sizes: readonly VariantSize[]): Promise<GeneratedVariant[]> {
   const meta = await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
   if ((meta.pages ?? 1) > 1) throw new Error("animated image — variants skipped");
   return Promise.all(
-    VARIANT_SIZES.map(async (size) => {
+    sizes.map(async (size) => {
       const { data, info } = await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS })
         .rotate()
         .resize({ width: size, height: size, fit: "inside", withoutEnlargement: true })
@@ -52,10 +56,20 @@ export async function generateImageVariants(input: Buffer): Promise<GeneratedVar
   );
 }
 
+/** 160/800/1600 WebP variants — see generateImageVariantsForSizes above. */
+export async function generateImageVariants(input: Buffer): Promise<GeneratedVariant[]> {
+  return generateImageVariantsForSizes(input, VARIANT_SIZES);
+}
+
 /** Uploads generated variants for `originalPath`. All-or-nothing: on any
  * failure the variants already written are removed again, so a path
- * either has every variant or none. Never touches the original. */
-async function uploadVariants(admin: SupabaseClient, bucket: string, originalPath: string, variants: GeneratedVariant[]): Promise<boolean> {
+ * either has every variant that was asked for or none. Never touches the
+ * original. Exported so a role-scoped backfill/calibration run can reuse
+ * the exact same upload/rollback semantics for a partial (non-160/800/1600)
+ * set of variants, without going through storePublicImage/
+ * storePrivateVariants (which always assume the full set, and also handle
+ * concerns — original validation/upload — a backfill never needs). */
+export async function uploadVariants(admin: SupabaseClient, bucket: string, originalPath: string, variants: GeneratedVariant[]): Promise<boolean> {
   const paths = variants.map((v) => variantPath(originalPath, v.size));
   const results = await Promise.all(
     variants.map((v, i) =>
