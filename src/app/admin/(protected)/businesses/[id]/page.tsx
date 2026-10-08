@@ -825,7 +825,7 @@ export default async function EditBusinessPage({
                 name="plan_expires_at"
                 type="date"
                 defaultValue={business.plan_expires_at ? business.plan_expires_at.slice(0, 10) : null}
-                hint="Optional — not currently enforced anywhere."
+                hint="Optional — leave blank for a permanent grant. Once set, Pro access is treated as expired after this date, even though plan_tier stays Pro — change this intentionally."
               />
             </div>
             <SubmitBar cancelHref="/admin/businesses" saveLabel="Save Plan" />

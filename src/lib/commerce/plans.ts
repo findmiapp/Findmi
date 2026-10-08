@@ -89,6 +89,12 @@ export const FREE_PLAN: PlanDefinition = {
 };
 
 // ── PRO — $20/mo or $149/yr, "Understand and grow your discovery." ─────
+// Account/Billing Copy Truth Pass — "Enhanced Links & Contact",
+// "Multi-image Gallery", and "Vanity Findmi URL" were removed from this
+// list: all three were already made Free by the Free Tier Entitlement
+// Reset V1 (see account/business/actions.ts), so listing them here
+// overstated what a Pro purchase actually adds. Only genuinely Pro-gated
+// capabilities belong in `features` — see lib/entitlements.ts.
 export const PRO_PLAN: PlanDefinition = {
   key: "pro",
   name: "Findmi Pro",
@@ -105,9 +111,6 @@ export const PRO_PLAN: PlanDefinition = {
     "Appearance performance",
     "Product performance",
     "Customer Inquiries",
-    "Enhanced Links & Contact",
-    "Multi-image Gallery",
-    "Vanity Findmi URL",
     "Findmi Pro badge",
   ],
   // QR & Tools is an intended Pro capability — owner self-service QR

@@ -2032,7 +2032,7 @@ export default async function ManageBusinessPage({
                   the public page's own canInquire check reads. */}
               <div className="border-t border-black/[0.05] px-4 py-3">
                 <Row
-                  label="Customer Inquiries"
+                  label="Inquiry Settings"
                   value={
                     <span className="inline-flex items-center gap-1">
                       {business.accepts_inquiries && sanitizeBusinessInquiryTopics(business.inquiry_topics).length > 0 ? "Enabled" : "Off"}

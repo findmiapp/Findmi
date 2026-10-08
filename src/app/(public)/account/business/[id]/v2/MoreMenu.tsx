@@ -30,7 +30,7 @@ export default function MoreMenu({
   ];
   const tools: MoreLink[] = [
     { href: `${basePath}?tab=qr`, label: "QR Campaigns", description: "Create and track QR codes", icon: <QrGlyph className="h-5 w-5" /> },
-    { href: `${basePath}?tab=inquiries`, label: "Customer Inquiries", description: "How customers can contact you", icon: <ChatGlyph className="h-5 w-5" /> },
+    { href: `${basePath}?tab=inquiries`, label: "Inquiry Settings", description: "How customers can contact you", icon: <ChatGlyph className="h-5 w-5" /> },
     ...(ordersRelevant
       ? [{ href: `${basePath}?tab=orders`, label: "Orders", description: "Marketplace orders to fulfill", icon: <NavIcon name="cart" className="h-5 w-5" /> }]
       : []),
