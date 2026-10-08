@@ -149,8 +149,13 @@ export default function BusinessHome({
       {(pendingInvitationCount > 0 || newOrderCount > 0) && (
         <section className="grid gap-2 sm:grid-cols-2">
           {pendingInvitationCount > 0 && (
+            // Opportunities Cleanup Pass A — routes to the canonical Event-
+            // participation destination (Inbox's Event Invitations filter),
+            // not the commercial Opportunities tab these invitations are
+            // unrelated to. Query value stays "opportunities" (route/param
+            // unchanged); only the Inbox's own label is no longer that word.
             <Link
-              href={`${basePath}?tab=opportunities`}
+              href="/account/messages?filter=opportunities"
               className="flex items-center gap-3 rounded-2xl border border-black/[0.07] bg-white px-4 py-3.5 transition hover:border-black/15"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-findmi-50 text-findmi-700">
@@ -221,19 +226,24 @@ export default function BusinessHome({
 
 /** Home's Opportunities section — directly under the greeting/actions.
  * With recommendations: ONE compact preview of the most current
- * relationship (a new Recommendation first, then Confirmed, then
- * Interested) plus an "N New" count; View All opens Opportunities. Without:
- * a productive Explore card and a Tell Findmi What You Need action, never a
- * bare empty box. */
+ * relationship (a still-unanswered Recommendation first, then Confirmed,
+ * then Interested) plus a count of how many are awaiting a response; View
+ * All opens Opportunities. Without: a productive Explore card and a Tell
+ * Findmi What You Need action, never a bare empty box.
+ *
+ * Opportunities Cleanup Pass A — the count badge used to read "N New",
+ * which measured "offered + open + no response yet," not "arrived since
+ * you last looked" (there is no seen/viewed timestamp in the schema).
+ * Relabeled to describe exactly what it counts. */
 function HomeOpportunities({ basePath, items }: { basePath: string; items: BusinessOpportunityItem[] }) {
-  const newOnes = items.filter((i) => i.view.group === "for_you");
-  const top = newOnes[0] ?? items.find((i) => i.view.group === "confirmed") ?? items.find((i) => i.view.group === "interested") ?? null;
+  const awaitingResponse = items.filter((i) => i.view.group === "for_you");
+  const top = awaitingResponse[0] ?? items.find((i) => i.view.group === "confirmed") ?? items.find((i) => i.view.group === "interested") ?? null;
   return (
     <section aria-labelledby="home-opportunities">
       <div className="flex items-baseline justify-between gap-3">
         <h2 id="home-opportunities" className="flex items-center gap-2 font-display text-section-title font-bold text-primary">
           Opportunities
-          {newOnes.length > 0 && <Chip tone="aqua">{newOnes.length} New</Chip>}
+          {awaitingResponse.length > 0 && <Chip tone="aqua">{awaitingResponse.length} Needs Response</Chip>}
         </h2>
         <Link href={`${basePath}?tab=opportunities`} className="flex shrink-0 items-center gap-1 text-metadata font-semibold text-accent hover:underline">
           View All
@@ -278,7 +288,7 @@ function HomeOpportunities({ basePath, items }: { basePath: string; items: Busin
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-card-title font-semibold text-primary">Tell Findmi What You Need</span>
-                <span className="mt-0.5 block text-metadata text-muted">Share your goals and we&rsquo;ll surface relevant Opportunities.</span>
+                <span className="mt-0.5 block text-metadata text-muted">Tell Findmi what your Business is looking for, so our team can recommend the right Opportunities.</span>
               </span>
               <ChevronIcon direction="right" className="h-4 w-4 shrink-0 text-ink/30" />
             </Link>

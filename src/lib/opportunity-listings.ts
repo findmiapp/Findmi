@@ -3,6 +3,7 @@ import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { requireAdmin } from "@/lib/admin/auth";
 import { isEmailVerified, requireBusinessMember } from "@/lib/permissions";
 import { getCurrentUserId } from "@/lib/journal";
+import { notifyAdmin } from "@/lib/notifications/adminNotify";
 import {
   BUSINESS_LISTING_COLUMNS,
   BUSINESS_RECIPIENT_COLUMNS,
@@ -185,7 +186,12 @@ export type BusinessResponseResult = { ok: true; status: BusinessResponseStatus 
  * admin Manage-As, listing open, own row, permitted transition (domain
  * checkBusinessResponse). Records responded_at / responded_by_user_id —
  * the ONLY place those are ever written. The update is conditional on the
- * status it was read in, so a concurrent Admin change can't be overwritten. */
+ * status it was read in, so a concurrent Admin change can't be overwritten.
+ *
+ * Opportunities Cleanup Pass A — a response also sends Admin a best-effort
+ * notifyAdmin() (the only way Admin would otherwise learn of it, since
+ * there's no messaging/reply thread here). Never blocks or changes the
+ * response result: notifyAdmin never throws. */
 export async function respondToOpportunityListing(args: {
   businessId: string;
   recipientId: string;
@@ -200,13 +206,19 @@ export async function respondToOpportunityListing(args: {
 
   const { data } = await admin
     .from("opportunity_recipients")
-    .select("id, business_id, status, listing:opportunity_listings!inner(status)")
+    .select("id, business_id, listing_id, status, listing:opportunity_listings!inner(status, title), business:businesses(name)")
     .eq("id", args.recipientId)
     .eq("business_id", args.businessId)
     .maybeSingle();
   if (!data) return { ok: false, error: "This Opportunity isn't available." };
-  const row = data as unknown as { status: RecipientStatus; listing: { status: ListingStatus } | { status: ListingStatus }[] };
-  const listingStatus = (Array.isArray(row.listing) ? row.listing[0] : row.listing)?.status;
+  const row = data as unknown as {
+    status: RecipientStatus;
+    listing_id: string;
+    listing: { status: ListingStatus; title: string } | { status: ListingStatus; title: string }[];
+    business: { name: string } | { name: string }[] | null;
+  };
+  const listingRow = Array.isArray(row.listing) ? row.listing[0] : row.listing;
+  const listingStatus = listingRow?.status;
   if (!listingStatus || getBusinessVisibility(listingStatus, row.status) === "hidden") return { ok: false, error: "This Opportunity isn't available." };
 
   const check = checkBusinessResponse({
@@ -229,6 +241,17 @@ export async function respondToOpportunityListing(args: {
     .select("id")
     .maybeSingle();
   if (error || !updated) return { ok: false, error: "Couldn't save your response. Please try again." };
+
+  const businessName = (Array.isArray(row.business) ? row.business[0] : row.business)?.name ?? "A Business";
+  const listingTitle = listingRow?.title ?? "an Opportunity";
+  await notifyAdmin({
+    subject: args.response === "interested" ? `${businessName} is interested: ${listingTitle}` : `${businessName} passed: ${listingTitle}`,
+    heading: args.response === "interested" ? "A Business is interested in an Opportunity" : "A Business passed on an Opportunity",
+    body: [`${businessName} marked "${listingTitle}" as ${args.response === "interested" ? "Interested" : "Not Interested"}.`],
+    actionLabel: "Review Opportunity",
+    actionUrl: `/admin/opportunities/${row.listing_id}#recipient-${args.recipientId}`,
+  });
+
   return { ok: true, status: args.response };
 }
 
@@ -507,9 +530,11 @@ export async function getExploreItem(businessId: string, listingId: string): Pro
 /** "I'm Interested" on an Explore listing the Business has no relationship
  * with yet: owner/manager, real verified user, never Admin Manage-As,
  * listing still explorable, no existing row. Creates the Business's own
- * recipient row as `interested` with a real response record. No email or
- * notification. The unique (listing_id, business_id) key prevents
- * duplicates under a race. */
+ * recipient row as `interested` with a real response record. The unique
+ * (listing_id, business_id) key prevents duplicates under a race.
+ *
+ * Opportunities Cleanup Pass A — sends Admin a best-effort notifyAdmin(),
+ * same as respondToOpportunityListing's own response notification. */
 export async function expressExploreInterest(args: { businessId: string; listingId: string }): Promise<{ ok: true; recipientId: string } | { ok: false; error: string }> {
   const membership = await requireBusinessMember(args.businessId);
   const userId = await getCurrentUserId();
@@ -526,5 +551,17 @@ export async function expressExploreInterest(args: { businessId: string; listing
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: "Couldn't save your interest. Please try again." };
+
+  const { data: businessRow } = await admin.from("businesses").select("name").eq("id", args.businessId).maybeSingle();
+  const businessName = (businessRow as { name: string } | null)?.name ?? "A Business";
+  const listingTitle = item?.opportunity.title ?? "an Opportunity";
+  await notifyAdmin({
+    subject: `${businessName} is interested: ${listingTitle}`,
+    heading: "A Business is interested in an Opportunity",
+    body: [`${businessName} expressed interest in "${listingTitle}" from Explore.`],
+    actionLabel: "Review Opportunity",
+    actionUrl: `/admin/opportunities/${args.listingId}#recipient-${data.id}`,
+  });
+
   return { ok: true, recipientId: data.id as string };
 }

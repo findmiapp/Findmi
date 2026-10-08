@@ -104,10 +104,14 @@ function Fact({ icon, title, detail, children }: { icon: ReactNode; title: React
 
 // ---------------------------------------------------------------- hero
 
-/** Key commercial facts: investment, credits, place/host, timing, deadline. */
+/** Key commercial facts: investment, credits, place/host, timing, deadline.
+ * `showCredits` (default true) gates the Credits Eligible fact — Opportunity
+ * Credits are dormant infrastructure with no working redemption mechanism
+ * (Opportunities Cleanup Pass A), so Business-facing call sites pass
+ * `showCredits={false}` while Admin keeps seeing it. */
 export { placeLine as formatPlaceLine };
 
-export function OpportunityFacts({ o, place }: { o: PresentableOpportunity; place: PresentablePlace | null }) {
+export function OpportunityFacts({ o, place, showCredits = true }: { o: PresentableOpportunity; place: PresentablePlace | null; showCredits?: boolean }) {
   const price = opportunityPriceParts(o);
   const placeName = place?.name ?? o.place_text;
   const placeDetail = [o.host_name ? `Hosted by ${o.host_name}` : null, place ? placeLine(place) : null].filter(Boolean).join(" · ");
@@ -115,7 +119,7 @@ export function OpportunityFacts({ o, place }: { o: PresentableOpportunity; plac
   return (
     <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
       <Fact icon={<TagIcon />} title={price.amount} detail={price.qualifier ? `${price.qualifier}${o.pricing_mode !== "custom" && o.currency !== "USD" ? ` · ${o.currency}` : ""}` : null} />
-      {o.credits_eligible && <Fact icon={<CreditIcon />} title="Credits Eligible" detail="Opportunity Credits can be applied" />}
+      {showCredits && o.credits_eligible && <Fact icon={<CreditIcon />} title="Credits Eligible" detail="Opportunity Credits can be applied" />}
       {(placeName || o.host_name) && <Fact icon={<PinIcon />} title={placeName ?? `Hosted by ${o.host_name}`} detail={placeName ? placeDetail || null : null} />}
       {timing && <Fact icon={<ClockIcon />} title={timing} detail={o.timing_note && dateRange(o) ? dateRange(o) : null} />}
       {o.response_deadline && <Fact icon={<DeadlineIcon />} title={`Respond by ${formatOpportunityDate(o.response_deadline)}`} />}
@@ -131,11 +135,13 @@ export function OpportunityHero({
   place,
   badges,
   actions,
+  showCredits = true,
 }: {
   o: PresentableOpportunity;
   place: PresentablePlace | null;
   badges?: ReactNode;
   actions?: ReactNode;
+  showCredits?: boolean;
 }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-black/[0.08] bg-white">
@@ -159,7 +165,7 @@ export function OpportunityHero({
             <h1 className="mt-2 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-[1.75rem]">{o.title}</h1>
             {o.summary && <p className="mt-1.5 break-words text-[15px] leading-relaxed text-ink/65">{o.summary}</p>}
           </div>
-          <OpportunityFacts o={o} place={place} />
+          <OpportunityFacts o={o} place={place} showCredits={showCredits} />
           {actions}
         </div>
       </div>
@@ -226,12 +232,14 @@ export function OpportunityAsideSections({
   locationHref,
   event,
   eventHref,
+  showCredits = true,
 }: {
   o: PresentableOpportunity;
   place: PresentablePlace | null;
   locationHref?: string | null;
   event: PresentableEvent | null;
   eventHref?: string | null;
+  showCredits?: boolean;
 }) {
   const price = opportunityPriceParts(o);
   const range = dateRange(o);
@@ -274,7 +282,7 @@ export function OpportunityAsideSections({
           {o.price_cents != null && <span className="ml-1 text-xs font-semibold text-ink/45">{o.currency}</span>}
         </p>
         {price.qualifier && <p className="text-xs text-ink/55">{price.qualifier}</p>}
-        {o.credits_eligible && (
+        {showCredits && o.credits_eligible && (
           <span className="mt-2 inline-block rounded-full border border-findmi/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-findmi-700">
             Credits Eligible
           </span>

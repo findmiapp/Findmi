@@ -8,7 +8,7 @@ import {
   type PresentableOpportunity,
 } from "@/lib/opportunity-listings-domain";
 import { formatOpportunityDate } from "@/lib/opportunity-format";
-import { ClockIcon, CreditIcon, PinIcon, TagIcon, type PresentablePlace } from "./OpportunityPresentation";
+import { ClockIcon, PinIcon, TagIcon, type PresentablePlace } from "./OpportunityPresentation";
 import { imageVariantUrl } from "@/lib/image-variants";
 
 // Business-facing cards for commercial Opportunities. They only ever
@@ -104,12 +104,6 @@ export function OpportunityCard({
                 {price.qualifier && <span className="text-muted"> · {price.qualifier}</span>}
               </p>
             </div>
-            {o.credits_eligible && (
-              <div className="flex items-center gap-2">
-                <CreditIcon size="sm" />
-                <p className="text-metadata font-semibold text-primary">Credits Eligible</p>
-              </div>
-            )}
           </div>
         </div>
 

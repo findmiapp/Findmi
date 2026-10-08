@@ -51,6 +51,7 @@ export default async function ExploreOpportunityPage({
         <OpportunityHero
           o={o}
           place={item.place}
+          showCredits={false}
           actions={
             <div className="flex flex-col gap-3 border-t border-black/5 pt-4">
               {mayRespond && (
@@ -79,6 +80,7 @@ export default async function ExploreOpportunityPage({
               locationHref={item.place?.slug ? `/location/${item.place.slug}` : null}
               event={item.event}
               eventHref={item.event?.slug ? `/event/${item.event.slug}` : null}
+              showCredits={false}
             />
           </div>
         </div>

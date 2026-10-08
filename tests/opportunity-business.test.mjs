@@ -91,8 +91,18 @@ test("the response action only accepts the two Business responses and defers to 
   assert.equal(/getAdminSupabase|\.update\(|\.insert\(/.test(strip(ACTION)), false, "no direct writes in the action");
 });
 
-test("no email or notification is sent by the Business response path", () => {
-  for (const src of [ACTION, DETAIL]) assert.equal(/resend|sendEmail|notify|notification/i.test(strip(src)), false);
+test("Opportunities Cleanup Pass A — a response notifies Admin (never the Business) via the canonical notifyAdmin, not a new email path", () => {
+  // The ACTION/DETAIL files themselves stay thin — the notification lives
+  // in the canonical LIB write path, same layering as every other
+  // responsibility of respondToOpportunityListing/expressExploreInterest.
+  for (const src of [ACTION, DETAIL]) assert.equal(/resend|sendEmail|sendProductNotification/i.test(strip(src)), false);
+  assert.match(LIB, /import \{ notifyAdmin \} from "@\/lib\/notifications\/adminNotify";/);
+  const respond = LIB.slice(LIB.indexOf("export async function respondToOpportunityListing("), LIB.indexOf("\n}\n", LIB.indexOf("export async function respondToOpportunityListing(")));
+  const explore = LIB.slice(LIB.indexOf("export async function expressExploreInterest("), LIB.indexOf("\n}\n", LIB.indexOf("export async function expressExploreInterest(")));
+  for (const [name, body] of [["respondToOpportunityListing", respond], ["expressExploreInterest", explore]]) {
+    assert.match(body, /await notifyAdmin\(\{/, name);
+    assert.equal(/sendProductNotification|getEntityManagerEmails/.test(body), false, `${name} never emails the Business`);
+  }
 });
 
 // ---------------------------------------------------------------- privacy
@@ -139,15 +149,30 @@ test("Business files never touch Admin-only data or Admin reads", () => {
   assert.match(DETAIL, /if \(!item\) notFound\(\)/);
 });
 
-test("credits are informational only", () => {
+test("credits are informational only, and removed entirely from business-facing presentation", () => {
   for (const src of [DETAIL, VIEW, CARD]) assert.equal(/balance|deduct|redeem|checkout|ledger/i.test(strip(src)), false);
+  // Opportunities Cleanup Pass A — "Credits Eligible" is dormant
+  // infrastructure with no working redemption mechanism; the business
+  // detail/explore pages opt out of the shared component's Credits fact
+  // via showCredits={false}, and the business-only card component never
+  // renders it at all (CreditIcon import removed entirely).
+  const EXPLORE_DETAIL = read(`${B}/opportunities/explore/[listingId]/page.tsx`);
+  for (const src of [DETAIL, EXPLORE_DETAIL]) assert.match(src, /showCredits=\{false\}/);
+  assert.equal(/Credits Eligible|CreditIcon/.test(CARD), false);
 });
 
 // ---------------------------------------------------------------- event participation preserved
-test("Event Invitations & Applications stay on the existing workflow", () => {
-  assert.match(VIEW, /Event Invitations &amp; Applications/);
-  assert.match(VIEW, /respondToEventInvitation\.bind\(null, businessId, o\.id, "accepted"\)/);
-  assert.match(VIEW, /respondToEventInvitation\.bind\(null, businessId, o\.id, "declined"\)/);
+test("Opportunities Cleanup Pass A — commercial Opportunities no longer embed Event Invitations & Applications", () => {
+  // That section (and respondToEventInvitation) used to be rendered
+  // unconditionally at the bottom of every commercial Opportunities view —
+  // removed per the Product Decision that Event participation is not a
+  // commercial "Opportunity." The underlying Event-participation system
+  // (lib/opportunities.ts, event_businesses/event_occurrence_businesses,
+  // and the Inbox's own Event Invitations filter) is untouched — only this
+  // view no longer renders it.
+  assert.equal(/Event Invitations/.test(strip(VIEW)), false);
+  assert.equal(/respondToEventInvitation/.test(strip(VIEW)), false);
+  assert.equal(/EventParticipationSection/.test(VIEW), false);
   assert.match(VIEW, /Recommended For You/);
   assert.equal(/from\("opportunities"\)/.test(LIB), false);
 });

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { OpportunityListItem } from "@/lib/opportunities";
 import type { BusinessOpportunityItem, ExploreItem } from "@/lib/opportunity-listings";
 import type { BusinessGoal } from "@/lib/opportunity-goals";
 import {
@@ -21,9 +20,7 @@ import {
   formatGoalTiming,
   goalTransitionLabel,
 } from "@/lib/opportunity-goals-domain";
-import { formatDateShort } from "@/lib/format";
 import BusinessOpportunityCard, { OpportunityCard } from "@/components/opportunities/BusinessOpportunityCard";
-import { respondToEventInvitation } from "../../actions";
 import { changeGoalStatus } from "../opportunities/actions";
 import { GoalGlyph } from "@/components/opportunities/OpportunityGlyphs";
 
@@ -40,17 +37,20 @@ const VIEW_LABELS: Record<OpportunityView, string> = {
 const inputClass =
   "h-10 w-full min-w-0 rounded-xl border border-black/10 bg-white px-3 text-[15px] text-primary placeholder:text-ink/35 focus:border-ink/30 focus:outline-none";
 
-/** Business Opportunities — commercial Opportunities in four views (For
- * You · Explore · Your Opportunities · Your Goals), with the separate Event
- * participation workflow (Event Invitations & Applications) below. The two
- * systems never share data: commercial items come from opportunity_listings
- * / opportunity_recipients (Business-safe items only); Event items come
- * from lib/opportunities.ts, unchanged. */
+/** Opportunities Cleanup Pass A — commercial Opportunities ONLY, in four
+ * views (For You · Explore · Your Opportunities · Your Goals). The separate
+ * Event-participation workflow (Event Invitations & Applications) used to
+ * be embedded below these, but commercial Opportunities and Event
+ * participation are now intentionally kept apart at the terminology and
+ * navigation layer: Event invitations/applications are managed from the
+ * Inbox (/account/messages?filter=opportunities — route/query value
+ * unchanged, only its label is no longer "Opportunities") and from the
+ * Event's own participants screen. Nothing about the Event-participation
+ * data model changed; this view simply no longer renders it. */
 export default function OpportunitiesView({
   basePath,
   businessId,
   view,
-  opportunities,
   recommended,
   explore,
   filters,
@@ -62,7 +62,6 @@ export default function OpportunitiesView({
   basePath: string;
   businessId: string;
   view: OpportunityView;
-  opportunities: OpportunityListItem[];
   recommended: { active: BusinessOpportunityItem[]; past: BusinessOpportunityItem[] };
   explore: { available: boolean; items: ExploreItem[] } | null;
   filters: ExploreFilters;
@@ -112,7 +111,7 @@ export default function OpportunitiesView({
 
       {view === "for-you" && (
         <section aria-labelledby="for-you-heading" className="flex flex-col gap-3">
-          <SectionHeading id="for-you-heading" title="Recommended For You" copy="Opportunities Findmi thinks are a good fit for your Business." />
+          <SectionHeading id="for-you-heading" title="Recommended For You" copy="Opportunities Findmi selected for your Business." />
           {forYou.length > 0 ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {forYou.map((item) => (
@@ -123,7 +122,7 @@ export default function OpportunitiesView({
             <GrowPanel
               basePath={basePath}
               title="No new recommendations right now"
-              copy="Explore what's available, or tell Findmi what you're trying to accomplish so it can surface relevant Opportunities."
+              copy="Explore what's available, or tell Findmi what your Business is looking for — our team can match you with the right Opportunities."
             />
           )}
         </section>
@@ -131,7 +130,7 @@ export default function OpportunitiesView({
 
       {view === "explore" && (
         <section aria-labelledby="explore-heading" className="flex flex-col gap-3">
-          <SectionHeading id="explore-heading" title="Explore" copy="Opportunities available to Businesses like yours." />
+          <SectionHeading id="explore-heading" title="Explore" copy="Open Opportunities any Business can discover." />
           <form method="get" action={basePath} className="flex flex-col gap-2 rounded-2xl border border-black/[0.07] bg-white p-3">
             <input type="hidden" name="tab" value="opportunities" />
             <input type="hidden" name="view" value="explore" />
@@ -196,7 +195,7 @@ export default function OpportunitiesView({
               basePath={basePath}
               hideExplore
               title={filters.q || filters.type || filters.where || filters.timing || filters.budget ? "No Opportunities match those filters" : "No Opportunities to explore right now"}
-              copy="Tell Findmi what you're trying to accomplish and it will use your goals to surface relevant Opportunities."
+              copy="Tell Findmi what your Business is looking for, and our team can help match you with the right Opportunities."
             />
           )}
         </section>
@@ -219,7 +218,11 @@ export default function OpportunitiesView({
       {view === "goals" && (
         <section aria-labelledby="goals-heading" className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <SectionHeading id="goals-heading" title="Your Goals" copy="What you're trying to accomplish. Findmi uses your goals to surface relevant Opportunities." />
+            <SectionHeading
+              id="goals-heading"
+              title="Your Goals"
+              copy="Your Goals help the Findmi team understand the opportunities, places, partnerships, and experiences you're looking for."
+            />
             {canManage && goals?.available && (
               <Link href={`${basePath}/opportunities/goals/new`} className="flex h-10 shrink-0 items-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
                 + Add Goal
@@ -235,7 +238,7 @@ export default function OpportunitiesView({
                 <GoalGlyph className="h-5 w-5" />
               </span>
               <p className="mt-2 text-card-title font-semibold text-primary">Tell Findmi what you need</p>
-              <p className="mx-auto mt-1 max-w-sm text-metadata text-muted">Share your goals and Findmi will use them to surface relevant Opportunities.</p>
+              <p className="mx-auto mt-1 max-w-sm text-metadata text-muted">Your Goals help the Findmi team understand what you&rsquo;re looking for, so we can recommend the right Opportunities.</p>
               {canManage && (
                 <Link href={`${basePath}/opportunities/goals/new`} className="mx-auto mt-3 flex h-10 w-fit items-center rounded-xl bg-findmi px-4 text-button font-bold text-white transition hover:bg-findmi-600">
                   Share Your Goals
@@ -251,8 +254,6 @@ export default function OpportunitiesView({
           )}
         </section>
       )}
-
-      <EventParticipationSection basePath={basePath} businessId={businessId} opportunities={opportunities} />
     </div>
   );
 }
@@ -363,76 +364,5 @@ function GoalCard({ goal: g, businessId, basePath, canManage }: { goal: Business
         </div>
       )}
     </li>
-  );
-}
-
-/** Event participation — the existing workflow, unchanged (same loaders,
- * same respondToEventInvitation action). Kept separate from commercial
- * Opportunities. */
-function EventParticipationSection({ basePath, businessId, opportunities }: { basePath: string; businessId: string; opportunities: OpportunityListItem[] }) {
-  return (
-    <section aria-labelledby="event-participation-heading" className="mt-2 flex flex-col gap-3 border-t border-black/[0.06] pt-6">
-      <div>
-        <h2 id="event-participation-heading" className="text-section-title font-bold text-primary">
-          Event Invitations &amp; Applications
-        </h2>
-        <p className="mt-0.5 text-metadata text-muted">Invitations to take part in Events, and the Events you&rsquo;ve applied to.</p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={`${basePath}?tab=findmi-here&compose=1`}
-          className="flex h-10 items-center rounded-full border border-black/10 bg-white px-4 text-button font-semibold text-secondary transition hover:border-black/20"
-        >
-          Find an event to join
-        </Link>
-        <Link
-          href="/account/messages?filter=opportunities"
-          className="flex h-10 items-center rounded-full border border-black/10 bg-white px-4 text-button font-semibold text-secondary transition hover:border-black/20"
-        >
-          Open in Inbox
-        </Link>
-      </div>
-
-      {opportunities.length === 0 ? (
-        <p className="text-body text-muted">No invitations or applications right now.</p>
-      ) : (
-        <ul className="divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.07] bg-white">
-          {opportunities.map((o) => (
-            <li key={o.id} className="px-4 py-3.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <Link href={`/event/${o.eventSlug}`} className="block truncate text-card-title font-semibold text-primary hover:underline">
-                    {o.eventName}
-                  </Link>
-                  <p className="mt-0.5 truncate text-metadata text-muted">
-                    {o.type === "event_invitation" ? "Invitation" : "Application"}
-                    {o.occurrenceStartAt ? ` · ${formatDateShort(o.occurrenceStartAt)}` : ""}
-                    {o.occurrenceLocationName ? ` · ${o.occurrenceLocationName}` : ""}
-                  </p>
-                </div>
-                <span className={`shrink-0 text-label font-bold uppercase ${o.status === "pending" ? "text-accent" : "text-subtle"}`}>
-                  {o.status === "pending" ? "Pending" : o.status === "accepted" ? "Approved" : o.status === "declined" ? "Declined" : "Withdrawn"}
-                </span>
-              </div>
-              {o.type === "event_invitation" && o.status === "pending" && (
-                <div className="mt-2.5 flex items-center gap-2">
-                  <form action={respondToEventInvitation.bind(null, businessId, o.id, "accepted")}>
-                    <button type="submit" className="flex h-9 items-center rounded-full bg-findmi px-4 text-metadata font-bold text-white transition hover:bg-findmi-600">
-                      Accept
-                    </button>
-                  </form>
-                  <form action={respondToEventInvitation.bind(null, businessId, o.id, "declined")}>
-                    <button type="submit" className="flex h-9 items-center rounded-full border border-black/10 px-4 text-metadata font-semibold text-muted transition hover:border-black/20">
-                      Decline
-                    </button>
-                  </form>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }

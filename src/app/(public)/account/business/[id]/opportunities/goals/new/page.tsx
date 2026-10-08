@@ -30,7 +30,9 @@ export default async function NewGoalPage({ params, searchParams }: { params: Pr
               <GoalGlyph className="h-6 w-6" />
             </span>
             <h1 className="mt-3 font-display text-page-title font-bold text-primary">We know what you&rsquo;re looking for.</h1>
-            <p className="mx-auto mt-2 max-w-sm text-body text-muted">Findmi will use these goals to surface relevant Opportunities for your Business.</p>
+            <p className="mx-auto mt-2 max-w-sm text-body text-muted">
+              Your Goals help the Findmi team understand what you&rsquo;re looking for, so we can recommend the right Opportunities for your Business.
+            </p>
             <p className="mt-3 text-metadata font-semibold text-secondary">{createdGoal.title}</p>
             <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
               <Link href={`${shell.basePath}?tab=opportunities`} className="flex h-12 items-center justify-center gap-1.5 rounded-xl bg-findmi px-5 text-button font-bold text-white transition hover:bg-findmi-600">

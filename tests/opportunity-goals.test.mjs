@@ -252,10 +252,14 @@ test("business groups: For You / Interested / Confirmed / Past", () => {
   for (const s of ["not_interested", "completed", "cancelled"]) assert.equal(businessOpportunityGroup("open", s), "past", s);
 });
 
-test("Opportunities page has the four views and keeps Event participation separate", () => {
+test("Opportunities page has the four views and no longer embeds Event participation", () => {
   for (const label of ['"For You"', '"Explore"', '"Your Opportunities"', '"Your Goals"']) assert.ok(VIEW.includes(label), label);
-  assert.match(VIEW, /Event Invitations &amp; Applications/);
-  assert.match(VIEW, /respondToEventInvitation\.bind\(null, businessId, o\.id, "accepted"\)/);
+  // Opportunities Cleanup Pass A — Event participation moved out of this
+  // view entirely (it's managed from the Inbox/Event participants screen
+  // instead); commercial Opportunities and Event participation are no
+  // longer rendered on the same page.
+  assert.equal(/Event Invitations/.test(strip(VIEW)), false);
+  assert.equal(/respondToEventInvitation/.test(strip(VIEW)), false);
   assert.equal(/Event Opportunities/.test(VIEW), false);
 });
 

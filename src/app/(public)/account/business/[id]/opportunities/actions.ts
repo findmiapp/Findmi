@@ -12,7 +12,8 @@ import { isGoalStatus, type GoalFormInput } from "@/lib/opportunity-goals-domain
  * respondToOpportunityListing: membership of THIS Business, owner/manager
  * only, never Admin Manage-As, verified email, the recipient row must
  * belong to this Business, listing open, canonical transition. Nothing
- * here trusts the bound ids beyond that. No email/notification is sent. */
+ * here trusts the bound ids beyond that. Sends Admin a best-effort
+ * notification (Opportunities Cleanup Pass A) — never a Business email. */
 export async function respondToOpportunity(businessId: string, recipientId: string, response: string) {
   const detail = `/account/business/${businessId}/opportunities/${recipientId}`;
   if (!isBusinessResponseStatus(response)) redirect(`${detail}?error=${encodeURIComponent("That response isn't available.")}`);
@@ -31,7 +32,9 @@ export async function respondToOpportunity(businessId: string, recipientId: stri
 }
 
 /** "I'm Interested" on an Explore listing (no existing relationship).
- * Every rule is enforced by expressExploreInterest. No email/notification. */
+ * Every rule is enforced by expressExploreInterest. Sends Admin a
+ * best-effort notification (Opportunities Cleanup Pass A) — never a
+ * Business email. */
 export async function expressInterestFromExplore(businessId: string, listingId: string) {
   const back = `/account/business/${businessId}/opportunities/explore/${listingId}`;
   let result: Awaited<ReturnType<typeof expressExploreInterest>>;

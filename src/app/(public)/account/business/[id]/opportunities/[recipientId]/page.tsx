@@ -152,6 +152,7 @@ export default async function BusinessOpportunityDetailPage({
         <OpportunityHero
           o={o}
           place={place}
+          showCredits={false}
           badges={<BusinessStateBadge tone={view.state.tone} label={view.state.label} />}
           actions={<DecisionArea state={view.state} action={action} mayRespond={mayRespond} viaAdmin={Boolean(membership.viaAdmin)} />}
         />
@@ -167,6 +168,7 @@ export default async function BusinessOpportunityDetailPage({
               locationHref={place?.slug ? `/location/${place.slug}` : null}
               event={event}
               eventHref={event?.slug ? `/event/${event.slug}` : null}
+              showCredits={false}
             />
           </div>
         </div>

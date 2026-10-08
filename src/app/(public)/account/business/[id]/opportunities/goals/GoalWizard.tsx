@@ -43,7 +43,7 @@ const QUESTIONS: Record<Step, { title: string; copy: string }> = {
   interests: { title: "What kind of Opportunities interest you?", copy: "Choose everything that applies." },
   audience: { title: "Who are you trying to reach?", copy: "Optional. Describe the customers or audience you have in mind." },
   where: { title: "Where?", copy: "Choose the markets you're interested in, or describe the area." },
-  budget: { title: "What's your budget?", copy: "A rough range helps Findmi surface the right Opportunities." },
+  budget: { title: "What's your budget?", copy: "A rough range helps the Findmi team recommend the right Opportunities." },
   when: { title: "When?", copy: "When would you like this to happen?" },
   notes: { title: "Anything else Findmi should know?", copy: "Optional." },
   review: { title: "Review your goal", copy: "Give it a short name you'll recognize, then submit." },
@@ -179,8 +179,14 @@ export default function GoalWizard({
         <p className="mt-1 text-body text-muted">{QUESTIONS[current].copy}</p>
       </div>
 
+      {/* Opportunities Cleanup Pass A — these two steps have 11 and 13
+          choices respectively (every other step has far fewer), so they get
+          a lower 2-column breakpoint than the rest of the wizard: at
+          360-379px widths the previous 380px breakpoint left them stacked
+          single-column, nearly doubling how far a phone has to scroll
+          before reaching Continue. */}
       {current === "objectives" && (
-        <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
           {GOAL_OBJECTIVES.map((o) => (
             <Choice key={o} label={GOAL_OBJECTIVE_LABELS[o]} selected={v.objectives.includes(o)} onClick={() => set("objectives", toggle(v.objectives, o))} />
           ))}
@@ -188,7 +194,7 @@ export default function GoalWizard({
       )}
 
       {current === "interests" && (
-        <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
           {GOAL_INTERESTS.map((i) => (
             <Choice
               key={i}
@@ -314,7 +320,11 @@ export default function GoalWizard({
 
       {state.error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{state.error}</p>}
 
-      <div className="flex items-center gap-2 pt-1">
+      {/* Opportunities Cleanup Pass A — sticky on mobile so Continue stays
+          reachable without scrolling past the longer steps, same sticky-
+          above-the-bottom-nav offset SubmitBar.tsx already established for
+          Admin forms; collapses back to normal flow at sm: and up. */}
+      <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-30 -mx-4 flex items-center gap-2 border-t border-black/5 bg-paper/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:pt-1">
         {step > 0 && (
           <button
             type="button"

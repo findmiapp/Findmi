@@ -92,7 +92,7 @@ export default async function InboxPage({
   return (
     <PersonalAppShell displayName={displayName}>
       <h1 className="font-display text-page-title font-bold text-primary">Inbox</h1>
-      <p className="mt-1.5 text-body text-muted">Customers, organizers and opportunities that need your attention.</p>
+      <p className="mt-1.5 text-body text-muted">Customers, organizers and event invitations that need your attention.</p>
 
       <div className="mt-5 flex gap-1.5">
         {(["all", "customers", "opportunities"] as const).map((f) => (
@@ -103,11 +103,15 @@ export default async function InboxPage({
               filter === f ? "bg-ink text-white" : "bg-black/[0.04] text-muted hover:bg-black/[0.07]"
             }`}
           >
-            {/* Query value stays "customers" (no filter/route contract
-                change) — only the visible label becomes "Messages", since
-                CUSTOMER_SUBJECT_TYPES already covers direct messages too,
-                not just inquiries. */}
-            {f === "all" ? "All" : f === "customers" ? "Messages" : "Opportunities"}
+            {/* Query value stays "customers"/"opportunities" (no filter/
+                route contract change) — only the visible labels change:
+                "Messages" since CUSTOMER_SUBJECT_TYPES already covers direct
+                messages too, not just inquiries; "Event Invitations" since
+                this filter contains ONLY Event invitations/applications
+                (the unrelated commercial Opportunities system) — calling
+                this filter "Opportunities" let it collide with that other,
+                commercial system (Opportunities Cleanup Pass A). */}
+            {f === "all" ? "All" : f === "customers" ? "Messages" : "Event Invitations"}
           </Link>
         ))}
       </div>
@@ -115,7 +119,7 @@ export default async function InboxPage({
       <div className="mt-6">
         {totalCount === 0 ? (
           <p className="text-body text-muted">
-            {filter === "opportunities" ? "No opportunities right now." : filter === "customers" ? "No messages yet." : "Nothing here yet."}
+            {filter === "opportunities" ? "No event invitations right now." : filter === "customers" ? "No messages yet." : "Nothing here yet."}
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-black/[0.06]">

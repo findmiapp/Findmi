@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getAdminSupabase } from "@/lib/admin/supabase-admin";
 import { bool, localDateTimeToIso, str } from "@/lib/admin/form-helpers";
+import { getEntityManagerEmails } from "@/lib/notifications/recipients";
+import { sendProductNotification } from "@/lib/notifications/productNotify";
 import {
   buildAdminRecipientUpdate,
   canListingTransition,
@@ -25,6 +27,10 @@ import {
 // Nothing here ever deletes a row, ever writes a Business response
 // (responded_at / responded_by_user_id / response_note), or touches the
 // Event participation `opportunities` table.
+//
+// Opportunities Cleanup Pass A — sendOpportunity now notifies each
+// genuinely-newly-added recipient's Business (the handoff gap the audit
+// found: a sent Opportunity previously had no notification at all).
 
 const LIST = "/admin/opportunities";
 const detail = (id: string) => `${LIST}/${id}`;
@@ -163,7 +169,7 @@ export async function sendOpportunity(id: string, formData: FormData) {
   }
 
   const [{ data: listing }, { data: existing }, { data: businesses }] = await Promise.all([
-    supabase.from("opportunity_listings").select("status").eq("id", id).maybeSingle(),
+    supabase.from("opportunity_listings").select("status, title").eq("id", id).maybeSingle(),
     supabase.from("opportunity_recipients").select("business_id").eq("listing_id", id),
     businessIds.length ? supabase.from("businesses").select("id, name").in("id", businessIds) : Promise.resolve({ data: [] }),
   ]);
@@ -187,12 +193,36 @@ export async function sendOpportunity(id: string, formData: FormData) {
     const { data: inserted, error } = await supabase
       .from("opportunity_recipients")
       .upsert(rows, { onConflict: "listing_id,business_id", ignoreDuplicates: true })
-      .select("business_id");
+      .select("id, business_id");
     if (error) fail(base, error.message);
-    const insertedIds = new Set(((inserted ?? []) as { business_id: string }[]).map((r) => r.business_id));
+    const insertedRows = (inserted ?? []) as { id: string; business_id: string }[];
+    const insertedIds = new Set(insertedRows.map((r) => r.business_id));
     sent = insertedIds.size;
     // A row that lost a race to a concurrent send is a skip, not a failure.
     for (const r of rows) if (!insertedIds.has(r.business_id)) skippedBusinessIds.push(r.business_id);
+
+    // Opportunities Cleanup Pass A — notify only the Businesses a row was
+    // genuinely just created for. A repeat send against an
+    // already-existing recipient never reaches this loop (it was filtered
+    // into skippedBusinessIds above instead), so re-sending can never
+    // duplicate this notification. Recipient resolution is the same
+    // canonical getEntityManagerEmails("business", ...) helper every other
+    // product notification already uses — not a new ad-hoc "every member"
+    // scan.
+    await Promise.all(
+      insertedRows.map(async (r) => {
+        const to = await getEntityManagerEmails(supabase, "business", r.business_id);
+        await sendProductNotification({
+          to,
+          type: "opportunity_listing_sent",
+          subject: `New Opportunity from Findmi: ${listing!.title}`,
+          heading: "Findmi selected an Opportunity for your Business",
+          body: [`Findmi sent "${listing!.title}" to your Business. Review it and let us know if you're interested.`],
+          actionLabel: "Review Opportunity",
+          actionUrl: `/account/business/${r.business_id}/opportunities/${r.id}`,
+        });
+      })
+    );
   }
 
   revalidateListing(id);

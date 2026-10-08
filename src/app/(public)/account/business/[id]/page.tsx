@@ -45,7 +45,7 @@ import OpportunitiesView, { OPPORTUNITY_VIEWS, type OpportunityView } from "./v2
 import { LocationsPresence, PastPresence, PresenceHeader, parsePresenceView } from "./v2/PresenceViews";
 import AddToPresence from "./v2/AddToPresence";
 import { getLinkedLocationIds, getLocationsForBusiness, getManagedLocationsForUser, isManagingRole } from "@/lib/business-locations";
-import { getApplicationsForBusiness, getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
+import { getPendingInvitationsForBusiness, type OpportunityListItem } from "@/lib/opportunities";
 import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
 import { getBusinessGoals } from "@/lib/opportunity-goals";
 import { canManageGoals, type GoalRole } from "@/lib/opportunity-goals-domain";
@@ -718,13 +718,11 @@ export default async function ManageBusinessPage({
           };
         })()
       : null;
-  const [pendingInvitations, businessApplications] =
-    activeTab === "opportunities" || activeTab === "overview"
-      ? await Promise.all([
-          getPendingInvitationsForBusiness(admin, id),
-          activeTab === "opportunities" ? getApplicationsForBusiness(admin, id) : Promise.resolve([] as OpportunityListItem[]),
-        ])
-      : [[] as OpportunityListItem[], [] as OpportunityListItem[]];
+  // Opportunities Cleanup Pass A — the commercial Opportunities tab no
+  // longer embeds Event invitations/applications (that system now lives
+  // only in the Inbox and on the Event's own participants screen), so this
+  // is only needed for the Home "N Event Invitation(s)" tile count.
+  const pendingInvitations: OpportunityListItem[] = activeTab === "overview" ? await getPendingInvitationsForBusiness(admin, id) : [];
   // Business-Facing Opportunities — commercial Opportunities Findmi
   // recommended to THIS Business (separate system from the Event
   // invitations/applications above). Business-safe items only; any member
@@ -766,9 +764,6 @@ export default async function ManageBusinessPage({
           : rawSearchParams.goal === "active"
             ? "Goal is active."
             : null;
-  const businessOpportunities = [...pendingInvitations, ...businessApplications].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
   const pastAppearances =
     activeTab === "findmi-here" && presenceView === "past" ? await getPastAppearancesForBusiness(id, 30) : [];
 
@@ -3167,7 +3162,6 @@ export default async function ManageBusinessPage({
             basePath={basePath}
             businessId={id}
             view={opportunityView}
-            opportunities={businessOpportunities}
             recommended={recommendedOpportunities}
             explore={exploreData}
             filters={exploreFilters}
