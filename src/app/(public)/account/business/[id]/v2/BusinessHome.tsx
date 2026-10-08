@@ -18,11 +18,18 @@ import { GoalGlyph } from "@/components/opportunities/OpportunityGlyphs";
 const APP_TIMEZONE = "America/New_York";
 
 /** /account V2, Pass 1 — Business Home: an operating overview, not an
- * analytics dashboard. Answers, in order: what's happening now, what's
- * coming up, what needs attention, how it's going, what to do next.
- * Every section is built only from data this page already loads (no new
- * query, metric or notification); a section with nothing truthful to say
- * is omitted instead of rendered empty. */
+ * analytics dashboard. Every section is built only from data this page
+ * already loads (no new query, metric or notification); a section with
+ * nothing truthful to say is omitted instead of rendered empty.
+ *
+ * Business Overview Information-Hierarchy pass — render order is now,
+ * after Greeting/Quick Actions: Happening Now, Needs Attention, Coming
+ * Up, pending Invitation/Order tiles, Performance, Opportunities, Your
+ * Findmi Link. Opportunities (recommendations/Explore/Goals) moved below
+ * Performance — its own empty state (Explore Opportunities / Tell Findmi
+ * What You Need) was previously the first substantive section, outranking
+ * the business's own live/attention/schedule/performance state. Same
+ * component, same props, same internal logic — presentation order only. */
 
 export interface HomeMetric {
   value: number;
@@ -79,8 +86,6 @@ export default function BusinessHome({
         <AddToPresence basePath={basePath} businessId={businessId} variant="chip" />
         <QuickAction href={`${basePath}?tab=products&compose=1`} icon={<NavIcon name="tag" className="h-[18px] w-[18px]" />} label="Product" />
       </nav>
-
-      <HomeOpportunities basePath={basePath} items={opportunityItems} />
 
       {liveNow.length > 0 && (
         <section aria-labelledby="happening-now">
@@ -197,6 +202,8 @@ export default function BusinessHome({
           </div>
         </section>
       )}
+
+      <HomeOpportunities basePath={basePath} items={opportunityItems} />
 
       {/* Your Findmi link — previously only on the old Overview; kept on
           Home so the handle editor stays reachable. */}
