@@ -215,8 +215,10 @@ interface QuantityUnitFields {
 /** Shared quantity/unit parsing + validation — both-or-neither, a real
  * unit from the vocabulary (or custom + a label), quantity > 0. Used by
  * BOTH monetary (purely descriptive) and In-Kind (measurable) Components
- * so the two never drift into different rules for the same two fields. */
-function validateQuantityUnit(input: QuantityUnitInput): { ok: true; value: QuantityUnitFields } | { ok: false; error: string } {
+ * so the two never drift into different rules for the same two fields.
+ * Exported (Builder UX pass) so the Admin builder can show the exact same
+ * wording inline before submit — the server still re-runs it on save. */
+export function validateQuantityUnit(input: QuantityUnitInput): { ok: true; value: QuantityUnitFields } | { ok: false; error: string } {
   const hasQuantity = input.quantity != null;
   const hasUnit = input.unit != null && input.unit !== "";
   if (hasQuantity !== hasUnit) return { ok: false, error: "Enter both a quantity and a unit, or leave both blank." };

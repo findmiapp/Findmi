@@ -12,13 +12,19 @@ export default function SubmitBar({
    * show it (never on an edit form, where "add another" doesn't apply). */
   showAddAnother = false,
   addAnotherLabel = "Save & Add Another",
+  /** For a form that submits through onSubmit rather than the <form
+   * action> prop (useFormStatus can't see that), the caller passes its
+   * own pending state. Omitted everywhere else — unchanged behavior. */
+  pending: pendingOverride,
 }: {
   cancelHref: string;
   saveLabel?: string;
   showAddAnother?: boolean;
   addAnotherLabel?: string;
+  pending?: boolean;
 }) {
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  const pending = pendingOverride ?? status.pending;
   return (
     <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-30 -mx-4 mt-6 flex items-center justify-between gap-3 border-t border-black/5 bg-paper/95 px-4 py-3 backdrop-blur sm:mx-0 sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
       <Link href={cancelHref} className="text-sm font-semibold text-ink/60 hover:text-ink">

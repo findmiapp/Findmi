@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import {
   AMOUNT_MODES,
   AMOUNT_MODE_LABELS,
@@ -14,8 +14,12 @@ import {
   MONETARY_COMPONENT_TYPES,
   OPTION_COMMERCIAL_MODES,
   OPTION_COMMERCIAL_MODE_LABELS,
-  calculateUnitValueCents,
+  calculateInKindEstimatedValueCents,
+  formatMonetaryPerUnitEquivalent,
   isMonetaryComponentType,
+  validateComponent,
+  validateOption,
+  validateQuantityUnit,
   type AmountMode,
   type ComponentType,
   type ContributionUnit,
@@ -24,19 +28,49 @@ import {
   type MonetaryComponentType,
   type OptionCommercialMode,
 } from "@/lib/opportunity-commercial-terms-domain";
+import { parsePriceToCents } from "@/lib/opportunity-listings-domain";
+import {
+  DEFAULT_CURRENCY,
+  MONETARY_HEADINGS,
+  amountFieldsFor,
+  closeCover,
+  clearQuantityUnit,
+  collectCommercialTermsIssues,
+  componentPrefix,
+  defaultInKindComponent,
+  defaultMonetaryComponent,
+  defaultOptionState,
+  fieldId,
+  hasQuantityUnit,
+  openValuation,
+  optionChrome,
+  parseQuantityInput,
+  optionPrefix,
+  optionToState,
+  removeValuation,
+  selectValuation,
+  submittedComponentValues,
+  submittedOptionValues,
+  toComponentInput,
+  type CommercialTermsIssue,
+  type CommercialTermsValidators,
+  type ComponentState,
+  type InitialOption,
+  type IssueField,
+  type OptionState,
+} from "@/lib/opportunity-commercial-terms-builder";
 
-// Opportunities Commercial Terms Admin Builder (Pass 2). Replaces the old
-// "Investment" pricing-mode dropdown inside OpportunityForm with the full
-// Option -> Component authoring surface. Fully CONTROLLED (every value
-// lives in React state) rather than uncontrolled inputs read back out of
-// the DOM — Duplicate/Remove/Reorder all operate on that same state array,
-// and the visible inputs ARE the submitted form fields (name={...}),
-// giving the server typed, individually-named fields (ct_{i}_*, ct_{i}_c_
-// {j}_*) rather than one opaque JSON blob through a hidden input. The
-// server (parseCommercialTermsForm, src/lib/opportunity-commercial-terms-
-// form.ts) re-validates every value through validateOption()/
-// validateComponent() exactly as committed in Pass 1 — nothing here is
-// trusted as pre-validated.
+export type { InitialComponent, InitialOption } from "@/lib/opportunity-commercial-terms-builder";
+
+// Opportunities Commercial Terms Admin Builder. Fully CONTROLLED (every
+// value lives in React state); the submitted ct_{i}_* / ct_{i}_c_{j}_*
+// fields are hidden inputs rendered from submittedOptionValues()/
+// submittedComponentValues() (src/lib/opportunity-commercial-terms-
+// builder.ts), so visible controls can use progressive disclosure without
+// ever changing what the server's parseCommercialTermsForm reads. The
+// server re-validates every value through validateOption()/
+// validateComponent() — the pre-submit checks here run those same
+// validators only to point the admin at the right field before saving.
 //
 // No drag-and-drop anywhere (Options reorder via Move Up/Down only,
 // Components order deterministically: any monetary term first, then
@@ -45,181 +79,41 @@ import {
 let keySeq = 0;
 const newKey = () => `k${++keySeq}`;
 
-export interface InitialComponent {
-  component_type: ComponentType;
-  amount_mode: AmountMode | null;
-  amount_min_cents: number | null;
-  amount_max_cents: number | null;
-  currency: string | null;
-  in_kind_category: InKindCategory | null;
-  in_kind_description: string | null;
-  in_kind_provider: InKindProvider | null;
-  in_kind_required: boolean;
-  estimated_value_cents: number | null;
-  quantity: number | null;
-  unit: ContributionUnit | null;
-  custom_unit_label: string | null;
-  unit_value_cents: number | null;
+const VALIDATORS: CommercialTermsValidators = {
+  validateQuantityUnit,
+  validateComponent,
+  validateOption,
+  parseMoney: parsePriceToCents,
+};
+
+/** OpportunityForm calls validateForSubmit() before Save: false means a
+ * known Commercial Terms problem is now shown and focused. */
+export interface CommercialTermsBuilderHandle {
+  validateForSubmit: () => boolean;
 }
 
-export interface InitialOption {
-  id: string | null;
-  name: string | null;
-  description: string | null;
-  commercial_mode: OptionCommercialMode;
-  custom_terms_note: string | null;
-  components: InitialComponent[];
-}
-
-interface ComponentState {
-  key: string;
-  component_type: ComponentType | "";
-  amount_mode: AmountMode | "";
-  amount_min: string;
-  amount_max: string;
-  currency: string;
-  in_kind_category: InKindCategory | "";
-  in_kind_description: string;
-  in_kind_provider: InKindProvider | "";
-  in_kind_required: boolean;
-  estimated_value: string;
-  // Pass 2.5 — unit-based contribution fields. Shared by monetary
-  // (descriptive only) and In-Kind (measurable); unit_value is In-Kind
-  // only. estimated_value/unit_value are mutually exclusive by
-  // construction (see valuationModeOf below) — the UI never lets both
-  // hold a value at once.
-  quantity: string;
-  unit: ContributionUnit | "";
-  custom_unit_label: string;
-  unit_value: string;
-}
-
-interface OptionState {
-  key: string;
-  id: string | null;
-  name: string;
-  description: string;
-  commercial_mode: OptionCommercialMode;
-  custom_terms_note: string;
-  components: ComponentState[];
-}
-
-const centsToStr = (c: number | null): string => (c == null ? "" : c % 100 === 0 ? String(c / 100) : (c / 100).toFixed(2));
-
-/** Client-side-only preview helpers (the "Equivalent to $X/unit" and
- * "Calculated Estimated Value" lines) — never authoritative. The server
- * (validateComponent/calculateUnitValueCents, src/lib/opportunity-
- * commercial-terms-domain.ts) is the one source of truth re-computed on
- * every save; these exist only so the admin sees a live number while
- * typing. */
-function dollarsToCentsPreview(raw: string): number | null {
-  const n = Number(raw.replace(/[$,\s]/g, ""));
-  return Number.isFinite(n) ? Math.round(n * 100) : null;
-}
-
-function formatDollars(cents: number): string {
+function formatUsd(cents: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
 }
 
-function componentToState(c: InitialComponent): ComponentState {
-  return {
-    key: newKey(),
-    component_type: c.component_type,
-    amount_mode: c.amount_mode ?? "",
-    amount_min: centsToStr(c.amount_min_cents),
-    amount_max: centsToStr(c.amount_max_cents),
-    currency: c.currency ?? "USD",
-    in_kind_category: c.in_kind_category ?? "",
-    in_kind_description: c.in_kind_description ?? "",
-    in_kind_provider: c.in_kind_provider ?? "",
-    in_kind_required: c.in_kind_required,
-    estimated_value: centsToStr(c.estimated_value_cents),
-    quantity: c.quantity == null ? "" : String(c.quantity),
-    unit: c.unit ?? "",
-    custom_unit_label: c.custom_unit_label ?? "",
-    unit_value: centsToStr(c.unit_value_cents),
-  };
-}
-
-function optionToState(o: InitialOption): OptionState {
-  return {
-    key: newKey(),
-    id: o.id,
-    name: o.name ?? "",
-    description: o.description ?? "",
-    commercial_mode: o.commercial_mode,
-    custom_terms_note: o.custom_terms_note ?? "",
-    components: o.components.map(componentToState),
-  };
-}
-
-function defaultOptionState(): OptionState {
-  return { key: newKey(), id: null, name: "", description: "", commercial_mode: "structured", custom_terms_note: "", components: [] };
-}
-
-function defaultMonetaryComponent(type: MonetaryComponentType): ComponentState {
-  return {
-    key: newKey(),
-    component_type: type,
-    amount_mode: "fixed",
-    amount_min: "",
-    amount_max: "",
-    currency: "USD",
-    in_kind_category: "",
-    in_kind_description: "",
-    in_kind_provider: "",
-    in_kind_required: true,
-    estimated_value: "",
-    quantity: "",
-    unit: "",
-    custom_unit_label: "",
-    unit_value: "",
-  };
-}
-
-function defaultInKindComponent(required: boolean): ComponentState {
-  return {
-    key: newKey(),
-    component_type: "in_kind",
-    amount_mode: "",
-    amount_min: "",
-    amount_max: "",
-    currency: "",
-    in_kind_category: "",
-    in_kind_description: "",
-    in_kind_provider: "",
-    in_kind_required: required,
-    estimated_value: "",
-    quantity: "",
-    unit: "",
-    custom_unit_label: "",
-    unit_value: "",
-  };
-}
-
-type ValuationMode = "none" | "total" | "per_unit";
-
-/** Derived, never stored separately — mutual exclusion lives in which of
- * the two string fields is non-empty, exactly mirroring the DB/domain
- * invariant that only one of estimated_value_cents/unit_value_cents may
- * be set. */
-function valuationModeOf(c: ComponentState): ValuationMode {
-  if (c.unit_value) return "per_unit";
-  if (c.estimated_value) return "total";
-  return "none";
-}
-
-const UNIT_LABEL_SINGULAR = (unit: ContributionUnit | "", customLabel: string): string => {
+const singularUnit = (unit: ContributionUnit | "", customLabel: string): string => {
   if (unit === "") return "unit";
-  if (unit === "custom") return customLabel || "unit";
+  if (unit === "custom") return customLabel.trim() || "unit";
   return CONTRIBUTION_UNIT_LABELS[unit].replace(/s$/, "").toLowerCase();
 };
 
-const inputClass = "w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none";
+const inputClass = "w-full min-w-0 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none aria-[invalid=true]:border-red-300";
+const labelClass = "mb-1 block text-xs font-medium text-ink/60";
 const smallBtn = "rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40";
 const dangerBtn = "rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40";
+const linkBtn = "text-xs font-semibold text-findmi-700 underline-offset-2 hover:underline";
+const quietBtn = "text-xs font-semibold text-ink/50 underline-offset-2 hover:text-ink hover:underline";
 const modeBtn = (active: boolean) =>
   `rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wide transition ${active ? "bg-findmi text-white" : "border border-black/10 bg-white text-ink/60 hover:text-ink"}`;
+const chipClass = (active: boolean) =>
+  `min-h-[2.25rem] rounded-full border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+    active ? "border-findmi bg-findmi text-white" : "border-black/10 bg-white text-ink/65 hover:border-ink/30 hover:text-ink"
+  }`;
 
 /** Would switching `option` to `next` discard real data? Used to gate a
  * confirm() before a destructive mode change — never a silent clear. */
@@ -231,8 +125,421 @@ function wouldDiscard(option: OptionState, next: OptionCommercialMode): boolean 
   return false;
 }
 
-function Hidden({ name, value }: { name: string; value: string | number | boolean }) {
-  return <input type="hidden" name={name} value={typeof value === "boolean" ? (value ? "on" : "") : value} />;
+function Hidden({ name, value }: { name: string; value: string | number }) {
+  return <input type="hidden" name={name} value={value} />;
+}
+
+function FieldError({ message }: { message: string | undefined }) {
+  if (!message) return null;
+  return <p className="mt-1 text-xs font-medium text-red-700">{message}</p>;
+}
+
+/** Compact single-choice control for short, fixed lists (≤4 choices). */
+function Chips<T extends string>({
+  id,
+  label,
+  choices,
+  value,
+  onChange,
+  invalid,
+}: {
+  id: string;
+  label: string;
+  choices: readonly (readonly [T, string])[];
+  value: T | "";
+  onChange: (next: T) => void;
+  invalid?: boolean;
+}) {
+  return (
+    <div id={id} tabIndex={-1} role="radiogroup" aria-label={label} aria-invalid={invalid || undefined} className="flex flex-wrap gap-1.5 focus:outline-none">
+      {choices.map(([v, text]) => (
+        <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)} className={chipClass(value === v)}>
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MoneyInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  showDollar,
+  invalid,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  showDollar: boolean;
+  invalid?: boolean;
+}) {
+  return (
+    <div className="relative">
+      {showDollar && <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink/45">$</span>}
+      <input
+        id={id}
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-invalid={invalid || undefined}
+        className={`${inputClass} ${showDollar ? "pl-7" : ""}`}
+      />
+    </div>
+  );
+}
+
+/** Quantity + Unit as ONE logical pair: they clear together, and a half-
+ * filled pair is flagged inline straight away (never a guessed unit). */
+function QuantityUnitPair({
+  prefix,
+  component,
+  onChange,
+  errors,
+  quantityPlaceholder,
+}: {
+  prefix: string;
+  component: ComponentState;
+  onChange: (patch: Partial<ComponentState>) => void;
+  errors: Partial<Record<IssueField, string>>;
+  quantityPlaceholder: string;
+}) {
+  const filled = component.quantity !== "" || component.unit !== "";
+  return (
+    <div>
+      <div className="grid grid-cols-[minmax(0,6rem)_minmax(0,1fr)] gap-2">
+        <input
+          id={fieldId(prefix, "quantity")}
+          type="text"
+          inputMode="decimal"
+          aria-label="Quantity"
+          value={component.quantity}
+          onChange={(e) => onChange({ quantity: e.target.value })}
+          placeholder={quantityPlaceholder}
+          aria-invalid={Boolean(errors.quantity) || undefined}
+          className={inputClass}
+        />
+        <select
+          id={fieldId(prefix, "unit")}
+          aria-label="Unit"
+          value={component.unit}
+          onChange={(e) => onChange({ unit: e.target.value as ContributionUnit | "" })}
+          aria-invalid={Boolean(errors.unit) || undefined}
+          className={inputClass}
+        >
+          <option value="">Choose unit…</option>
+          {CONTRIBUTION_UNITS.map((u) => (
+            <option key={u} value={u}>
+              {u === "custom" ? "Custom…" : CONTRIBUTION_UNIT_LABELS[u]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <FieldError message={errors.quantity ?? errors.unit} />
+      {component.unit === "custom" && (
+        <div className="mt-2">
+          <input
+            id={fieldId(prefix, "custom_unit_label")}
+            type="text"
+            aria-label="Custom unit"
+            value={component.custom_unit_label}
+            onChange={(e) => onChange({ custom_unit_label: e.target.value })}
+            placeholder="Name the unit (e.g. Bottles)"
+            aria-invalid={Boolean(errors.custom_unit_label) || undefined}
+            className={inputClass}
+          />
+          <FieldError message={errors.custom_unit_label} />
+        </div>
+      )}
+      {filled && (
+        <button type="button" onClick={() => onChange(clearQuantityUnit())} className={`mt-1.5 ${quietBtn}`}>
+          Clear
+        </button>
+      )}
+    </div>
+  );
+}
+
+function MonetaryFields({
+  prefix,
+  component,
+  optionMode,
+  onChange,
+  errors,
+}: {
+  prefix: string;
+  component: ComponentState;
+  optionMode: OptionCommercialMode;
+  onChange: (patch: Partial<ComponentState>) => void;
+  errors: Partial<Record<IssueField, string>>;
+}) {
+  const fields = amountFieldsFor(component.amount_mode);
+  const isUsd = (component.currency.trim() || DEFAULT_CURRENCY).toUpperCase() === DEFAULT_CURRENCY;
+  const showDollar = isUsd && !component.currency_open;
+  const preview = useMemo(() => {
+    if (!component.cover_open || !hasQuantityUnit(component)) return null;
+    const r = validateComponent(toComponentInput(component, optionMode, parsePriceToCents));
+    return r.ok ? formatMonetaryPerUnitEquivalent(r.value) : null;
+  }, [component, optionMode]);
+
+  return (
+    <>
+      {fields.min && (
+        <div className={fields.max ? "grid grid-cols-2 gap-2" : ""}>
+          <label className="block min-w-0">
+            {fields.max && <span className={labelClass}>{fields.minLabel}</span>}
+            <MoneyInput
+              id={fieldId(prefix, "amount_min")}
+              value={component.amount_min}
+              onChange={(v) => onChange({ amount_min: v })}
+              placeholder="750"
+              showDollar={showDollar}
+              invalid={Boolean(errors.amount_min)}
+            />
+          </label>
+          {fields.max && (
+            <label className="block min-w-0">
+              <span className={labelClass}>To</span>
+              <MoneyInput
+                id={fieldId(prefix, "amount_max")}
+                value={component.amount_max}
+                onChange={(v) => onChange({ amount_max: v })}
+                placeholder="1500"
+                showDollar={showDollar}
+                invalid={Boolean(errors.amount_max)}
+              />
+            </label>
+          )}
+        </div>
+      )}
+      <FieldError message={errors.amount_min ?? errors.amount_max} />
+
+      <Chips<AmountMode>
+        id={fieldId(prefix, "amount_mode")}
+        label="Amount type"
+        choices={AMOUNT_MODES.map((m) => [m, AMOUNT_MODE_LABELS[m]] as const)}
+        value={component.amount_mode}
+        onChange={(m) => onChange({ amount_mode: m })}
+        invalid={Boolean(errors.amount_mode)}
+      />
+      <FieldError message={errors.amount_mode} />
+
+      {/* Currency stays submitted exactly as before (USD default) — just
+         out of the way on the normal USD path. */}
+      {component.currency_open ? (
+        <label className="block">
+          <span className={labelClass}>Currency</span>
+          <input
+            id={fieldId(prefix, "currency")}
+            type="text"
+            value={component.currency}
+            onChange={(e) => onChange({ currency: e.target.value.toUpperCase() })}
+            maxLength={3}
+            aria-invalid={Boolean(errors.currency) || undefined}
+            className={`${inputClass} w-24`}
+          />
+          <FieldError message={errors.currency} />
+        </label>
+      ) : (
+        <p className="text-xs text-ink/45">
+          {(component.currency.trim() || DEFAULT_CURRENCY).toUpperCase()} ·{" "}
+          <button type="button" onClick={() => onChange({ currency_open: true })} className={linkBtn}>
+            Change
+          </button>
+        </p>
+      )}
+
+      {/* quantity/unit are purely DESCRIPTIVE on a monetary term: the amount
+         above stays the one authoritative total. */}
+      {component.cover_open ? (
+        <div className="rounded-xl bg-black/[0.03] p-2.5">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-ink/60">What Does This Cover?</span>
+            <button type="button" onClick={() => onChange(closeCover())} className={quietBtn}>
+              Remove
+            </button>
+          </div>
+          <QuantityUnitPair prefix={prefix} component={component} onChange={onChange} errors={errors} quantityPlaceholder="3" />
+          {preview && <p className="mt-1.5 text-xs text-ink/50">{preview}</p>}
+        </div>
+      ) : (
+        <button type="button" onClick={() => onChange({ cover_open: true })} className={`self-start ${linkBtn}`}>
+          + What Does This Cover? <span className="font-normal text-ink/45">(optional)</span>
+        </button>
+      )}
+    </>
+  );
+}
+
+function InKindFields({
+  prefix,
+  component,
+  optionMode,
+  onChange,
+  errors,
+}: {
+  prefix: string;
+  component: ComponentState;
+  optionMode: OptionCommercialMode;
+  onChange: (patch: Partial<ComponentState>) => void;
+  errors: Partial<Record<IssueField, string>>;
+}) {
+  const pairReady = hasQuantityUnit(component);
+  // Live preview only (never posted): depends on just quantity × value
+  // per unit, so it shows before unrelated fields (e.g. Type) are filled.
+  const calculated = useMemo(() => {
+    if (component.valuation !== "per_unit" || !pairReady) return null;
+    const quantity = parseQuantityInput(component.quantity);
+    const unitValueCents = parsePriceToCents(component.unit_value);
+    if (quantity == null || unitValueCents == null || !Number.isInteger(unitValueCents) || unitValueCents <= 0) return null;
+    const cents = calculateInKindEstimatedValueCents({ quantity, unit_value_cents: unitValueCents, estimated_value_cents: null });
+    return cents == null ? null : formatUsd(cents);
+  }, [component.valuation, component.quantity, component.unit_value, pairReady]);
+
+  return (
+    <>
+      <label className="block">
+        <span className={labelClass}>
+          What Is Being Provided?{component.in_kind_category === "other" ? " (required for Other)" : ""}
+        </span>
+        <input
+          id={fieldId(prefix, "in_kind_description")}
+          type="text"
+          value={component.in_kind_description}
+          onChange={(e) => onChange({ in_kind_description: e.target.value })}
+          placeholder="e.g. Bottles of Tost, Brand Ambassador, Venue Space"
+          aria-invalid={Boolean(errors.in_kind_description) || undefined}
+          className={inputClass}
+        />
+        <FieldError message={errors.in_kind_description} />
+      </label>
+
+      {/* quantity/unit are optional measurement metadata ("24 Bottles"). */}
+      <div>
+        <span className={labelClass}>Amount (optional)</span>
+        <QuantityUnitPair prefix={prefix} component={component} onChange={onChange} errors={errors} quantityPlaceholder="24" />
+      </div>
+
+      <div>
+        <span className={labelClass}>Provided By</span>
+        <Chips<InKindProvider>
+          id={fieldId(prefix, "in_kind_provider")}
+          label="Provided By"
+          choices={IN_KIND_PROVIDERS.map((p) => [p, IN_KIND_PROVIDER_LABELS[p]] as const)}
+          value={component.in_kind_provider}
+          onChange={(p) => onChange({ in_kind_provider: p })}
+          invalid={Boolean(errors.in_kind_provider)}
+        />
+        <FieldError message={errors.in_kind_provider} />
+      </div>
+
+      <label className="block">
+        <span className={labelClass}>Type</span>
+        <select
+          id={fieldId(prefix, "in_kind_category")}
+          value={component.in_kind_category}
+          onChange={(e) => onChange({ in_kind_category: e.target.value as InKindCategory })}
+          aria-invalid={Boolean(errors.in_kind_category) || undefined}
+          className={inputClass}
+        >
+          <option value="" disabled>
+            Choose…
+          </option>
+          {IN_KIND_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {IN_KIND_CATEGORY_LABELS[c]}
+            </option>
+          ))}
+        </select>
+        <FieldError message={errors.in_kind_category} />
+      </label>
+
+      {optionMode === "structured" ? (
+        <Chips<"required" | "optional">
+          id={fieldId(prefix, "in_kind_required")}
+          label="Required or optional"
+          choices={[
+            ["required", "Required"],
+            ["optional", "Optional"],
+          ]}
+          value={component.in_kind_required ? "required" : "optional"}
+          onChange={(v) => onChange({ in_kind_required: v === "required" })}
+        />
+      ) : (
+        <p className="text-xs text-ink/45">Optional — a Complimentary Option never requires In-Kind.</p>
+      )}
+
+      {/* Estimated value: none by default. Choosing a method is real state,
+         so its input appears even while still empty; the other method's
+         value is cleared (exactly one valuation, or none). */}
+      {component.valuation_open ? (
+        <div className="rounded-xl bg-black/[0.03] p-2.5">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-ink/60">Estimated Value</span>
+            <button type="button" onClick={() => onChange(removeValuation())} className={quietBtn}>
+              Remove Value
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button type="button" onClick={() => onChange(selectValuation("total"))} className={chipClass(component.valuation === "total")} aria-pressed={component.valuation === "total"}>
+              Estimated Total
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange(selectValuation("per_unit"))}
+              disabled={!pairReady && component.valuation !== "per_unit"}
+              className={chipClass(component.valuation === "per_unit")}
+              aria-pressed={component.valuation === "per_unit"}
+            >
+              Value Per Unit
+            </button>
+          </div>
+          {!pairReady && <p className="mt-1.5 text-xs text-ink/45">Value Per Unit needs an Amount and unit above.</p>}
+          {component.valuation === "total" && (
+            <label className="mt-2 block">
+              <span className={labelClass}>Estimated Total</span>
+              <div className="w-40 max-w-full">
+                <MoneyInput
+                  id={fieldId(prefix, "estimated_value")}
+                  value={component.estimated_value}
+                  onChange={(v) => onChange({ estimated_value: v })}
+                  placeholder="2500"
+                  showDollar
+                  invalid={Boolean(errors.estimated_value)}
+                />
+              </div>
+              <FieldError message={errors.estimated_value} />
+            </label>
+          )}
+          {component.valuation === "per_unit" && (
+            <label className="mt-2 block">
+              <span className={labelClass}>Value Per {singularUnit(component.unit, component.custom_unit_label)}</span>
+              <div className="w-40 max-w-full">
+                <MoneyInput
+                  id={fieldId(prefix, "unit_value")}
+                  value={component.unit_value}
+                  onChange={(v) => onChange({ unit_value: v })}
+                  placeholder="2.00"
+                  showDollar
+                  invalid={Boolean(errors.unit_value)}
+                />
+              </div>
+              <FieldError message={errors.unit_value} />
+              {calculated && <p className="mt-1 text-xs text-ink/50">Calculated Estimated Value: {calculated}</p>}
+            </label>
+          )}
+        </div>
+      ) : (
+        <button type="button" onClick={() => onChange(openValuation())} className={`self-start ${linkBtn}`}>
+          + Add Estimated Value
+        </button>
+      )}
+    </>
+  );
 }
 
 function ComponentRow({
@@ -241,319 +548,40 @@ function ComponentRow({
   onChange,
   onRemove,
   optionMode,
+  errors,
 }: {
   prefix: string;
   component: ComponentState;
   onChange: (patch: Partial<ComponentState>) => void;
   onRemove: () => void;
   optionMode: OptionCommercialMode;
+  errors: Partial<Record<IssueField, string>>;
 }) {
   const monetary = isMonetaryComponentType(component.component_type);
+  const submitted = submittedComponentValues(component, optionMode);
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-black/10 bg-white/70 p-3">
-      <Hidden name={`${prefix}_type`} value={component.component_type} />
+    <div id={fieldId(prefix, "card")} tabIndex={-1} className="flex min-w-0 flex-col gap-3 rounded-xl border border-black/10 bg-white/70 p-3 focus:outline-none">
+      {Object.entries(submitted).map(([field, value]) => (
+        <Hidden key={field} name={`${prefix}_${field}`} value={value} />
+      ))}
       <div className="flex items-start justify-between gap-2">
-        <span className="text-xs font-bold uppercase tracking-wide text-ink/50">
-          {monetary ? COMPONENT_TYPE_LABELS[component.component_type as ComponentType] : "In-Kind Term"}
-        </span>
+        <div className="min-w-0">
+          <span className="block text-xs font-bold uppercase tracking-wide text-ink/50">
+            {monetary ? MONETARY_HEADINGS[component.component_type as MonetaryComponentType] : COMPONENT_TYPE_LABELS.in_kind}
+          </span>
+          {monetary && component.component_type !== "project_budget" && (
+            <span className="block text-xs text-ink/40">{COMPONENT_TYPE_LABELS[component.component_type as ComponentType]}</span>
+          )}
+        </div>
         <button type="button" onClick={onRemove} className={dangerBtn}>
           Remove Term
         </button>
       </div>
-
+      <FieldError message={errors.card} />
       {monetary ? (
-        <>
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink/60">Amount</span>
-            <select
-              name={`${prefix}_amount_mode`}
-              value={component.amount_mode}
-              onChange={(e) => onChange({ amount_mode: e.target.value as AmountMode })}
-              className={inputClass}
-            >
-              {AMOUNT_MODES.map((m) => (
-                <option key={m} value={m}>
-                  {AMOUNT_MODE_LABELS[m]}
-                </option>
-              ))}
-            </select>
-          </label>
-          {component.amount_mode !== "undisclosed" && (
-            <div className="grid grid-cols-[1fr_1fr_4.5rem] gap-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-ink/60">{component.amount_mode === "range" ? "From" : "Amount"}</span>
-                <input
-                  type="text"
-                  name={`${prefix}_amount_min`}
-                  value={component.amount_min}
-                  onChange={(e) => onChange({ amount_min: e.target.value })}
-                  placeholder="750"
-                  className={inputClass}
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-ink/60">{component.amount_mode === "range" ? "To" : ""}</span>
-                <input
-                  type="text"
-                  name={`${prefix}_amount_max`}
-                  value={component.amount_max}
-                  onChange={(e) => onChange({ amount_max: e.target.value })}
-                  disabled={component.amount_mode !== "range"}
-                  placeholder={component.amount_mode === "range" ? "1500" : ""}
-                  className={`${inputClass} disabled:bg-black/[0.03]`}
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-ink/60">Currency</span>
-                <input
-                  type="text"
-                  name={`${prefix}_currency`}
-                  value={component.currency}
-                  onChange={(e) => onChange({ currency: e.target.value.toUpperCase() })}
-                  className={inputClass}
-                />
-              </label>
-            </div>
-          )}
-          {component.amount_mode === "undisclosed" && <Hidden name={`${prefix}_currency`} value={component.currency || "USD"} />}
-
-          {/* Pass 2.5 — quantity/unit are purely DESCRIPTIVE on a monetary
-             term: the amount above stays the one authoritative total; a
-             per-unit figure is calculated for display only, never stored,
-             never shown for Range/Undisclosed (no single number to divide). */}
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink/60">Quantity (optional)</span>
-              <input
-                type="text"
-                name={`${prefix}_quantity`}
-                value={component.quantity}
-                onChange={(e) => onChange({ quantity: e.target.value })}
-                placeholder="3"
-                className={inputClass}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink/60">Unit</span>
-              <select
-                name={`${prefix}_unit`}
-                value={component.unit}
-                onChange={(e) => onChange({ unit: e.target.value as ContributionUnit })}
-                className={inputClass}
-              >
-                <option value="">No unit</option>
-                {CONTRIBUTION_UNITS.map((u) => (
-                  <option key={u} value={u}>
-                    {CONTRIBUTION_UNIT_LABELS[u]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {component.unit === "custom" ? (
-            <input
-              type="text"
-              name={`${prefix}_custom_unit_label`}
-              value={component.custom_unit_label}
-              onChange={(e) => onChange({ custom_unit_label: e.target.value })}
-              placeholder="Describe the unit (e.g. Road Trips)"
-              className={inputClass}
-            />
-          ) : (
-            <Hidden name={`${prefix}_custom_unit_label`} value={component.custom_unit_label} />
-          )}
-          {component.quantity &&
-            component.unit &&
-            (component.amount_mode === "fixed" || component.amount_mode === "starting_at") &&
-            component.amount_min &&
-            (() => {
-              const qty = Number(component.quantity);
-              const totalCents = dollarsToCentsPreview(component.amount_min);
-              if (!Number.isFinite(qty) || qty <= 0 || totalCents == null) return null;
-              const perUnit = formatDollars(Math.round(totalCents / qty));
-              return (
-                <p className="text-xs text-ink/50">
-                  Equivalent to {perUnit} / {UNIT_LABEL_SINGULAR(component.unit, component.custom_unit_label)} (for display only — not stored)
-                </p>
-              );
-            })()}
-        </>
+        <MonetaryFields prefix={prefix} component={component} optionMode={optionMode} onChange={onChange} errors={errors} />
       ) : (
-        <>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink/60">Category</span>
-              <select
-                name={`${prefix}_in_kind_category`}
-                value={component.in_kind_category}
-                onChange={(e) => onChange({ in_kind_category: e.target.value as InKindCategory })}
-                className={inputClass}
-              >
-                <option value="" disabled>
-                  Choose…
-                </option>
-                {IN_KIND_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {IN_KIND_CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink/60">Provided By</span>
-              <select
-                name={`${prefix}_in_kind_provider`}
-                value={component.in_kind_provider}
-                onChange={(e) => onChange({ in_kind_provider: e.target.value as InKindProvider })}
-                className={inputClass}
-              >
-                <option value="" disabled>
-                  Choose…
-                </option>
-                {IN_KIND_PROVIDERS.map((p) => (
-                  <option key={p} value={p}>
-                    {IN_KIND_PROVIDER_LABELS[p]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink/60">
-              Description{component.in_kind_category === "other" ? " (required for Other)" : " (optional)"}
-            </span>
-            <input
-              type="text"
-              name={`${prefix}_in_kind_description`}
-              value={component.in_kind_description}
-              onChange={(e) => onChange({ in_kind_description: e.target.value })}
-              className={inputClass}
-            />
-          </label>
-
-          {/* Pass 2.5 — quantity/unit are a real measurable fact here
-             ("200 samples"). Never required. */}
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink/60">Quantity (optional)</span>
-              <input
-                type="text"
-                name={`${prefix}_quantity`}
-                value={component.quantity}
-                onChange={(e) => onChange({ quantity: e.target.value })}
-                placeholder="200"
-                className={inputClass}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink/60">Unit</span>
-              <select
-                name={`${prefix}_unit`}
-                value={component.unit}
-                onChange={(e) => onChange({ unit: e.target.value as ContributionUnit })}
-                className={inputClass}
-              >
-                <option value="">No unit</option>
-                {CONTRIBUTION_UNITS.map((u) => (
-                  <option key={u} value={u}>
-                    {CONTRIBUTION_UNIT_LABELS[u]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {component.unit === "custom" && (
-            <input
-              type="text"
-              name={`${prefix}_custom_unit_label`}
-              value={component.custom_unit_label}
-              onChange={(e) => onChange({ custom_unit_label: e.target.value })}
-              placeholder="Describe the unit (e.g. Road Trips)"
-              className={inputClass}
-            />
-          )}
-          {component.unit !== "custom" && <Hidden name={`${prefix}_custom_unit_label`} value={component.custom_unit_label} />}
-
-          {/* Pass 2.5 — exactly one valuation method, or none. Switching
-             clears whichever field is leaving, so the two stay mutually
-             exclusive by construction (mirroring the DB/domain invariant)
-             rather than relying on the admin to clear it manually. */}
-          <div>
-            <span className="mb-1 block text-xs font-medium text-ink/60">Valuation (optional)</span>
-            <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  ["none", "No Value"],
-                  ["total", "Estimated Total"],
-                  ["per_unit", "Value Per Unit"],
-                ] as const
-              ).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => onChange(mode === "none" ? { estimated_value: "", unit_value: "" } : mode === "total" ? { estimated_value: component.estimated_value || "", unit_value: "" } : { unit_value: component.unit_value || "", estimated_value: "" })}
-                  className={modeBtn(valuationModeOf(component) === mode)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {valuationModeOf(component) === "total" && (
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink/60">Estimated Total</span>
-              <input
-                type="text"
-                name={`${prefix}_estimated_value`}
-                value={component.estimated_value}
-                onChange={(e) => onChange({ estimated_value: e.target.value })}
-                placeholder="2500"
-                className={`${inputClass} w-32`}
-              />
-            </label>
-          )}
-          {valuationModeOf(component) !== "total" && <Hidden name={`${prefix}_estimated_value`} value={component.estimated_value} />}
-          {valuationModeOf(component) === "per_unit" && (
-            <>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-ink/60">Value Per {UNIT_LABEL_SINGULAR(component.unit, component.custom_unit_label)}</span>
-                <input
-                  type="text"
-                  name={`${prefix}_unit_value`}
-                  value={component.unit_value}
-                  onChange={(e) => onChange({ unit_value: e.target.value })}
-                  placeholder="2.00"
-                  className={`${inputClass} w-32`}
-                />
-              </label>
-              {component.quantity &&
-                component.unit_value &&
-                (() => {
-                  const qty = Number(component.quantity);
-                  const unitCents = dollarsToCentsPreview(component.unit_value);
-                  if (!Number.isFinite(qty) || qty <= 0 || unitCents == null) return null;
-                  return <p className="text-xs text-ink/50">Calculated Estimated Value: {formatDollars(calculateUnitValueCents(qty, unitCents))}</p>;
-                })()}
-            </>
-          )}
-          {valuationModeOf(component) !== "per_unit" && <Hidden name={`${prefix}_unit_value`} value={component.unit_value} />}
-
-          <div className="flex flex-wrap items-center gap-4">
-            {optionMode === "structured" && (
-              <label className="flex items-center gap-2 text-sm text-ink/70">
-                <input
-                  type="checkbox"
-                  name={`${prefix}_in_kind_required`}
-                  checked={component.in_kind_required}
-                  onChange={(e) => onChange({ in_kind_required: e.target.checked })}
-                  className="h-5 w-5 accent-findmi"
-                />
-                Required
-              </label>
-            )}
-            {optionMode === "complimentary" && <Hidden name={`${prefix}_in_kind_required`} value={false} />}
-          </div>
-        </>
+        <InKindFields prefix={prefix} component={component} optionMode={optionMode} onChange={onChange} errors={errors} />
       )}
     </div>
   );
@@ -563,6 +591,7 @@ function OptionCard({
   index,
   total,
   option,
+  errorsByPrefix,
   onPatch,
   onPatchComponent,
   onAddComponent,
@@ -574,6 +603,7 @@ function OptionCard({
   index: number;
   total: number;
   option: OptionState;
+  errorsByPrefix: Map<string, Partial<Record<IssueField, string>>>;
   onPatch: (patch: Partial<OptionState>) => void;
   onPatchComponent: (compKey: string, patch: Partial<ComponentState>) => void;
   onAddComponent: (type: ComponentType) => void;
@@ -582,8 +612,11 @@ function OptionCard({
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
 }) {
-  const prefix = `ct_${index}`;
+  const prefix = optionPrefix(index);
+  const chrome = optionChrome(total);
   const usedMonetary = option.components.find((c) => isMonetaryComponentType(c.component_type))?.component_type ?? null;
+  const submitted = submittedOptionValues(option);
+  const optionError = errorsByPrefix.get(prefix)?.option;
 
   function setMode(next: OptionCommercialMode) {
     if (wouldDiscard(option, next)) {
@@ -600,25 +633,27 @@ function OptionCard({
   }
 
   return (
-    <div className="rounded-2xl border border-black/10 bg-white/60 p-4">
-      <Hidden name={`${prefix}_id`} value={option.id ?? ""} />
+    <div className={chrome.showHeader ? "min-w-0 rounded-2xl border border-black/10 bg-white/60 p-3 sm:p-4" : "min-w-0"}>
+      <Hidden name={`${prefix}_id`} value={submitted.id} />
       <Hidden name={`${prefix}_comp_count`} value={option.components.length} />
+      <Hidden name={`${prefix}_name`} value={submitted.name} />
+      <Hidden name={`${prefix}_description`} value={submitted.description} />
+      <Hidden name={`${prefix}_commercial_mode`} value={submitted.commercial_mode} />
+      <Hidden name={`${prefix}_custom_terms_note`} value={submitted.custom_terms_note} />
 
-      {total > 1 && (
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <span className="rounded-full bg-black/5 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-ink/50">Option {index + 1}</span>
+      {chrome.showHeader && (
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <span className="self-start rounded-full bg-black/5 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-ink/50">Option {index + 1}</span>
           <input
             type="text"
-            name={`${prefix}_name`}
+            aria-label={`Option ${index + 1} name`}
             value={option.name}
             onChange={(e) => onPatch({ name: e.target.value })}
             placeholder="Option name (e.g. Resident Demo + Content)"
-            className={`${inputClass} max-w-xs`}
+            className={`${inputClass} sm:max-w-xs`}
           />
         </div>
       )}
-      {total === 1 && <Hidden name={`${prefix}_name`} value={option.name} />}
-      <Hidden name={`${prefix}_description`} value={option.description} />
 
       <div className="flex flex-wrap items-center gap-2">
         {OPTION_COMMERCIAL_MODES.map((m) => (
@@ -627,12 +662,11 @@ function OptionCard({
           </button>
         ))}
       </div>
-      <Hidden name={`${prefix}_commercial_mode`} value={option.commercial_mode} />
 
       {option.commercial_mode === "custom" && (
         <div className="mt-3">
           <textarea
-            name={`${prefix}_custom_terms_note`}
+            aria-label="Custom terms"
             value={option.custom_terms_note}
             onChange={(e) => onPatch({ custom_terms_note: e.target.value })}
             rows={3}
@@ -641,20 +675,27 @@ function OptionCard({
           />
         </div>
       )}
-      {option.commercial_mode !== "custom" && <Hidden name={`${prefix}_custom_terms_note`} value={option.custom_terms_note} />}
+
+      <div id={fieldId(prefix, "option")} tabIndex={-1} className="focus:outline-none">
+        <FieldError message={optionError} />
+      </div>
 
       {option.commercial_mode !== "custom" && (
         <div className="mt-3 flex flex-col gap-2">
-          {option.components.map((c) => (
-            <ComponentRow
-              key={c.key}
-              prefix={`${prefix}_c_${option.components.indexOf(c)}`}
-              component={c}
-              optionMode={option.commercial_mode}
-              onChange={(patch) => onPatchComponent(c.key, patch)}
-              onRemove={() => onRemoveComponent(c.key)}
-            />
-          ))}
+          {option.components.map((c, j) => {
+            const compPrefix = componentPrefix(index, j);
+            return (
+              <ComponentRow
+                key={c.key}
+                prefix={compPrefix}
+                component={c}
+                optionMode={option.commercial_mode}
+                errors={errorsByPrefix.get(compPrefix) ?? {}}
+                onChange={(patch) => onPatchComponent(c.key, patch)}
+                onRemove={() => onRemoveComponent(c.key)}
+              />
+            );
+          })}
 
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold text-ink/50">+ Add Term:</span>
@@ -671,38 +712,84 @@ function OptionCard({
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-black/5 pt-3">
-        <button type="button" onClick={() => onMove(-1)} disabled={index === 0} className={smallBtn}>
-          Move Up
-        </button>
-        <button type="button" onClick={() => onMove(1)} disabled={index === total - 1} className={smallBtn}>
-          Move Down
-        </button>
-        <button type="button" onClick={onDuplicate} className={smallBtn}>
-          Duplicate Option
-        </button>
-        <button type="button" onClick={onRemove} disabled={total <= 1} className={dangerBtn} title={total <= 1 ? "An Opportunity needs at least one Option" : undefined}>
-          Remove Option
-        </button>
-      </div>
+      {(chrome.showMove || chrome.showDuplicate || chrome.showRemove) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-black/5 pt-3">
+          {chrome.showMove && (
+            <>
+              <button type="button" onClick={() => onMove(-1)} disabled={index === 0} className={smallBtn}>
+                Move Up
+              </button>
+              <button type="button" onClick={() => onMove(1)} disabled={index === total - 1} className={smallBtn}>
+                Move Down
+              </button>
+            </>
+          )}
+          {chrome.showDuplicate && (
+            <button type="button" onClick={onDuplicate} className={smallBtn}>
+              Duplicate Option
+            </button>
+          )}
+          {chrome.showRemove && (
+            <button type="button" onClick={onRemove} disabled={total <= 1} className={dangerBtn}>
+              Remove Option
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-export default function CommercialTermsBuilder({
-  initialOptions,
-  onFirstOptionModeChange,
-}: {
-  initialOptions: InitialOption[];
-  /** Fires whenever the FIRST Option's commercial_mode changes, so a
-   * parent form can keep its own unrelated Credits Eligible control in
-   * sync (legacy credits_eligible has no meaning without an amount to
-   * apply credits to — the same rule the old Pricing Mode dropdown
-   * enforced for 'complimentary'). Optional — the builder works standalone
-   * without it. */
-  onFirstOptionModeChange?: (firstOptionComplimentary: boolean) => void;
-}) {
-  const [options, setOptions] = useState<OptionState[]>(() => (initialOptions.length ? initialOptions.map(optionToState) : [defaultOptionState()]));
+function groupIssues(issues: CommercialTermsIssue[]): Map<string, Partial<Record<IssueField, string>>> {
+  const map = new Map<string, Partial<Record<IssueField, string>>>();
+  for (const issue of issues) {
+    const prefix = issue.componentIndex == null ? optionPrefix(issue.optionIndex) : componentPrefix(issue.optionIndex, issue.componentIndex);
+    const entry = map.get(prefix) ?? {};
+    if (!entry[issue.field]) entry[issue.field] = issue.message;
+    map.set(prefix, entry);
+  }
+  return map;
+}
+
+const CommercialTermsBuilder = forwardRef<
+  CommercialTermsBuilderHandle,
+  {
+    initialOptions: InitialOption[];
+    /** Fires whenever the FIRST Option's commercial_mode changes, so a
+     * parent form can keep its own unrelated Credits Eligible control in
+     * sync (legacy credits_eligible has no meaning without an amount to
+     * apply credits to — the same rule the old Pricing Mode dropdown
+     * enforced for 'complimentary'). Optional — the builder works
+     * standalone without it. */
+    onFirstOptionModeChange?: (firstOptionComplimentary: boolean) => void;
+  }
+>(function CommercialTermsBuilder({ initialOptions, onFirstOptionModeChange }, ref) {
+  const [options, setOptions] = useState<OptionState[]>(() =>
+    initialOptions.length ? initialOptions.map((o) => optionToState(o, newKey)) : [defaultOptionState(newKey())]
+  );
+  /** After a Save attempt, every known issue is shown (not just the
+   * half-filled quantity/unit pairs shown while typing). */
+  const [showAll, setShowAll] = useState(false);
+  const issues = useMemo(() => collectCommercialTermsIssues(options, VALIDATORS), [options]);
+  const visible = useMemo(() => groupIssues(showAll ? issues : issues.filter((i) => i.immediate)), [issues, showAll]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      validateForSubmit() {
+        if (issues.length === 0) return true;
+        setShowAll(true);
+        const firstId = issues[0].id;
+        requestAnimationFrame(() => {
+          const el = document.getElementById(firstId) ?? document.getElementById(fieldId(componentPrefix(issues[0].optionIndex, issues[0].componentIndex ?? 0), "card"));
+          el?.scrollIntoView({ block: "center", behavior: "smooth" });
+          el?.focus({ preventScroll: true });
+        });
+        return false;
+      },
+    }),
+    [issues]
+  );
 
   useEffect(() => {
     onFirstOptionModeChange?.(options[0]?.commercial_mode === "complimentary");
@@ -722,9 +809,9 @@ export default function CommercialTermsBuilder({
         if (isMonetaryComponentType(type)) {
           // Mutual exclusivity enforced here too, not just by disabling the
           // picker button — a monetary term always REPLACES any existing one.
-          return { ...o, components: [defaultMonetaryComponent(type), ...o.components.filter((c) => !isMonetaryComponentType(c.component_type))] };
+          return { ...o, components: [defaultMonetaryComponent(type, newKey()), ...o.components.filter((c) => !isMonetaryComponentType(c.component_type))] };
         }
-        return { ...o, components: [...o.components, defaultInKindComponent(o.commercial_mode !== "complimentary")] };
+        return { ...o, components: [...o.components, defaultInKindComponent(o.commercial_mode !== "complimentary", newKey())] };
       })
     );
   }
@@ -732,7 +819,7 @@ export default function CommercialTermsBuilder({
     setOptions((prev) => prev.map((o) => (o.key !== optKey ? o : { ...o, components: o.components.filter((c) => c.key !== compKey) })));
   }
   function addOption() {
-    setOptions((prev) => [...prev, defaultOptionState()]);
+    setOptions((prev) => [...prev, defaultOptionState(newKey())]);
   }
   function removeOption(key: string) {
     setOptions((prev) => (prev.length <= 1 ? prev : prev.filter((o) => o.key !== key)));
@@ -756,8 +843,9 @@ export default function CommercialTermsBuilder({
     });
   }
 
+  const chrome = optionChrome(options.length);
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <Hidden name="ct_count" value={options.length} />
       {options.map((o, i) => (
         <OptionCard
@@ -765,6 +853,7 @@ export default function CommercialTermsBuilder({
           index={i}
           total={options.length}
           option={o}
+          errorsByPrefix={visible}
           onPatch={(patch) => patchOption(o.key, patch)}
           onPatchComponent={(compKey, patch) => patchComponent(o.key, compKey, patch)}
           onAddComponent={(type) => addComponent(o.key, type)}
@@ -774,9 +863,17 @@ export default function CommercialTermsBuilder({
           onMove={(dir) => moveOption(o.key, dir)}
         />
       ))}
-      <button type="button" onClick={addOption} className="self-start rounded-full border border-dashed border-black/15 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/50 transition hover:border-ink/30 hover:text-ink">
-        + Add Option
-      </button>
+      {chrome.showHeader ? (
+        <button type="button" onClick={addOption} className="self-start rounded-full border border-dashed border-black/15 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/50 transition hover:border-ink/30 hover:text-ink">
+          {chrome.addLabel}
+        </button>
+      ) : (
+        <button type="button" onClick={addOption} className={`self-start border-t border-black/5 pt-3 ${quietBtn}`}>
+          {chrome.addLabel}
+        </button>
+      )}
     </div>
   );
-}
+});
+
+export default CommercialTermsBuilder;

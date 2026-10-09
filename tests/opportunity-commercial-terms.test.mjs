@@ -55,6 +55,7 @@ const FORM_MODULE = read("src/lib/opportunity-commercial-terms-form.ts");
 const ACTIONS = read("src/app/admin/(protected)/opportunities/actions.ts");
 const OPPORTUNITY_FORM = read("src/app/admin/(protected)/opportunities/OpportunityForm.tsx");
 const BUILDER = read("src/app/admin/(protected)/opportunities/CommercialTermsBuilder.tsx");
+const BUILDER_STATE = read("src/lib/opportunity-commercial-terms-builder.ts");
 const DETAIL_PAGE = read("src/app/admin/(protected)/opportunities/[id]/page.tsx");
 
 const fee = (over = {}) => ({ component_type: "participation_fee", amount_mode: "fixed", amount_min_cents: 75000, currency: "USD", ...over });
@@ -834,7 +835,7 @@ test("Pass 2 / 27. no reference to the real production Tabli listing anywhere in
 
 test("Pass 2 / 28. createOpportunity parses+validates Commercial Terms BEFORE the listing insert — a bad Option never gets as far as creating a row", () => {
   const createFn = ACTIONS.match(/export async function createOpportunity[\s\S]*?\n}\n/)[0];
-  const termsIdx = createFn.indexOf("readCommercialTerms(");
+  const termsIdx = createFn.indexOf("parseCommercialTermsForm(");
   const insertIdx = createFn.search(/\.insert\(/);
   assert.ok(termsIdx > -1 && insertIdx > termsIdx, "Commercial Terms must be parsed/validated before the insert");
 });
@@ -842,10 +843,10 @@ test("Pass 2 / 28. createOpportunity parses+validates Commercial Terms BEFORE th
 test("Pass 2 / 28b. (review correction) saveOpportunity gates Commercial Terms parsing behind the listing's OWN current Option count — it never unconditionally parses/touches ct_* fields", () => {
   const saveFn = ACTIONS.match(/export async function saveOpportunity[\s\S]*?\n}\n/)[0];
   assert.match(saveFn, /const hasCommercialTerms = \(existingOptionRows\?\.length \?\? 0\) > 0;/);
-  assert.match(saveFn, /if \(hasCommercialTerms\) \{\s*\n\s*options = readCommercialTerms\(base, formData\);/);
+  assert.match(saveFn, /if \(hasCommercialTerms\) \{\s*\n\s*const terms = parseCommercialTermsForm\(formData\);/);
   // The unconditional parse the old (unsafe) version did is gone.
   const beforeBranch = saveFn.slice(0, saveFn.indexOf("if (hasCommercialTerms)"));
-  assert.equal(beforeBranch.includes("readCommercialTerms("), false, "must not parse Commercial Terms before knowing whether this listing even has any");
+  assert.equal(beforeBranch.includes("parseCommercialTermsForm("), false, "must not parse Commercial Terms before knowing whether this listing even has any");
 });
 
 test("Pass 2 / 29. legacy pricing_mode/price/currency are PROJECTED (safely) from the submitted Options when Commercial Terms exist, never read directly from the form", () => {
@@ -860,15 +861,16 @@ test("Pass 2 / 29b. (review correction) an unconverted (legacy-unclassified) lis
   const saveFn = ACTIONS.match(/export async function saveOpportunity[\s\S]*?\n}\n/)[0];
   const elseBranch = saveFn.match(/\} else \{[\s\S]*?\n  \}/)[0];
   assert.match(elseBranch, /select\("pricing_mode, price_cents, currency"\)/);
-  assert.match(elseBranch, /pricing_mode: current!\.pricing_mode/);
-  assert.match(elseBranch, /price: current!\.price_cents != null \? centsToDollarString\(current!\.price_cents\) : null/);
-  assert.match(elseBranch, /currency: current!\.currency/);
+  assert.match(elseBranch, /pricing_mode: current\.pricing_mode/);
+  assert.match(elseBranch, /price: current\.price_cents != null \? centsToDollarString\(current\.price_cents\) : null/);
+  assert.match(elseBranch, /currency: current\.currency/);
   assert.equal(/projectSafeLegacyPricing/.test(elseBranch), false, "no projection is computed for an unconverted listing — only its own existing value is reused");
 });
 
 test("Pass 2 / 29c. (review correction) an unrelated edit to an unconverted listing never calls the aggregate-write RPC — no Option row is created as a side effect of saving an unrelated field", () => {
   const saveFn = ACTIONS.match(/export async function saveOpportunity[\s\S]*?\n}\n/)[0];
-  assert.match(saveFn, /if \(hasCommercialTerms && options\) \{\s*\n\s*const rpcError = await persistCommercialTerms/);
+  assert.match(saveFn, /if \(hasCommercialTerms && options\) \{[\s\S]*?const rpcError = await persistCommercialTerms/);
+  assert.equal((saveFn.match(/persistCommercialTerms\(/g) ?? []).length, 1, "the RPC is only ever reached inside that guarded branch");
 });
 
 test("Pass 2 / 30. credits_eligible stays its own independent form field, untouched by the Commercial Terms model", () => {
@@ -924,7 +926,7 @@ test("Pass 2 / 35c. (review correction) a brand-new Opportunity (createOpportuni
 
 test("Pass 2 / 36. the old Pricing Mode dropdown/Amount inputs are gone — CommercialTermsBuilder replaces them, Credits Eligible is now independent", () => {
   assert.equal(/name="pricing_mode"|name="price"\s/.test(OPPORTUNITY_FORM), false);
-  assert.match(OPPORTUNITY_FORM, /<CommercialTermsBuilder initialOptions=\{initialOptions\} onFirstOptionModeChange=\{setComplimentary\} \/>/);
+  assert.match(OPPORTUNITY_FORM, /<CommercialTermsBuilder ref=\{builderRef\} initialOptions=\{initialOptions\} onFirstOptionModeChange=\{setComplimentary\} \/>/);
   assert.match(OPPORTUNITY_FORM, /name="credits_eligible"/);
 });
 
@@ -971,7 +973,7 @@ test("Pass 2 / 41. the +Add Term picker enforces monetary mutual exclusivity in 
 });
 
 test("Pass 2 / 42. adding a monetary term always REPLACES any existing one in state, defense-in-depth beyond the disabled picker button", () => {
-  assert.match(BUILDER, /components: \[defaultMonetaryComponent\(type\), \.\.\.o\.components\.filter\(\(c\) => !isMonetaryComponentType\(c\.component_type\)\)\]/);
+  assert.match(BUILDER, /components: \[defaultMonetaryComponent\(type, newKey\(\)\), \.\.\.o\.components\.filter\(\(c\) => !isMonetaryComponentType\(c\.component_type\)\)\]/);
 });
 
 test("Pass 2 / 43. Complimentary's Add Term picker offers ONLY In-Kind — no monetary picker is ever rendered for a Complimentary Option", () => {
@@ -979,8 +981,13 @@ test("Pass 2 / 43. Complimentary's Add Term picker offers ONLY In-Kind — no mo
 });
 
 test("Pass 2 / 44. a newly-added In-Kind term on a Complimentary Option is always optional (in_kind_required forced false, never user-togglable there)", () => {
-  assert.match(BUILDER, /defaultInKindComponent\(o\.commercial_mode !== "complimentary"\)/);
-  assert.match(BUILDER, /optionMode === "complimentary" && <Hidden name=\{`\$\{prefix\}_in_kind_required`\} value=\{false\} \/>/);
+  assert.match(BUILDER, /defaultInKindComponent\(o\.commercial_mode !== "complimentary", newKey\(\)\)/);
+  // The posted value comes from submittedComponentValues(), which never
+  // posts "on" for a Complimentary Option (behavior-tested in
+  // tests/opportunity-commercial-terms-builder-ux.test.mjs), and the
+  // Required/Optional control only renders for a Structured Option.
+  assert.match(BUILDER_STATE, /in_kind_required: !monetary && optionMode !== "complimentary" && c\.in_kind_required \? "on" : ""/);
+  assert.match(BUILDER, /optionMode === "structured" \? \(\s*\n\s*<Chips<"required" \| "optional">/);
 });
 
 test("Pass 2 / 45. switching an Option to Custom, or to Complimentary while it owns a monetary/required-In-Kind term, asks for confirmation before discarding data", () => {
@@ -996,8 +1003,10 @@ test("Pass 2 / 46. switching a Complimentary Option back to Structured, or any n
 });
 
 test("Pass 2 / 47. Option naming (name/description inputs) only renders once a 2nd Option exists — no forced naming for the common single-Option case", () => {
-  assert.match(BUILDER, /\{total > 1 && \(/);
-  assert.match(BUILDER, /\{total === 1 && <Hidden name=\{`\$\{prefix\}_name`\} value=\{option\.name\} \/>\}/);
+  assert.match(BUILDER, /\{chrome\.showHeader && \(/);
+  assert.match(BUILDER_STATE, /const multi = total > 1;\s*\n\s*return \{ showHeader: multi,/);
+  // The name is always posted (hidden) so a single Option's stored name survives an edit.
+  assert.match(BUILDER, /<Hidden name=\{`\$\{prefix\}_name`\} value=\{submitted\.name\} \/>/);
 });
 
 test("Pass 2 / 48. every interactive control has a visible text label — no icon-only destructive buttons", () => {
@@ -1424,27 +1433,39 @@ test("2.5 / 46. parseCommercialTermsForm reads quantity/unit/custom_unit_label/u
 
 // ---------------------------------------------------------------- builder static guards
 
-test("2.5 / 47. the builder renders Quantity+Unit for BOTH monetary and In-Kind terms", () => {
-  assert.match(BUILDER, /Quantity \(optional\)/);
-  const matches = BUILDER.match(/name=\{`\$\{prefix\}_quantity`\}/g) ?? [];
-  assert.ok(matches.length >= 2, "quantity field must appear in both the monetary and the In-Kind branch");
+test("2.5 / 47 (updated, Builder UX pass). the builder renders the Quantity+Unit pair for BOTH monetary and In-Kind terms (monetary behind \"What Does This Cover?\")", () => {
+  const monetary = BUILDER.slice(BUILDER.indexOf("function MonetaryFields"), BUILDER.indexOf("function InKindFields"));
+  const inKind = BUILDER.slice(BUILDER.indexOf("function InKindFields"), BUILDER.indexOf("function ComponentRow"));
+  assert.match(monetary, /<QuantityUnitPair /);
+  assert.match(inKind, /<QuantityUnitPair /);
+  // Submitted under the same ct_{i}_c_{j}_quantity / _unit names as before.
+  assert.match(BUILDER, /<Hidden key=\{field\} name=\{`\$\{prefix\}_\$\{field\}`\} value=\{value\} \/>/);
+  assert.match(BUILDER_STATE, /quantity: showPair \? c\.quantity : ""/);
 });
 
 test("2.5 / 48. the builder NEVER renders an editable unit_value input for a monetary term (quantity/unit stay purely descriptive there)", () => {
-  const monetaryBranch = BUILDER.slice(BUILDER.indexOf("monetary ? ("), BUILDER.indexOf(") : ("));
-  assert.equal(/name=\{`\$\{prefix\}_unit_value`\}/.test(monetaryBranch), false);
+  const monetaryBranch = BUILDER.slice(BUILDER.indexOf("function MonetaryFields"), BUILDER.indexOf("function InKindFields"));
+  assert.equal(/unit_value/.test(monetaryBranch), false);
+  assert.match(BUILDER_STATE, /unit_value: !monetary && c\.valuation === "per_unit" \? c\.unit_value : ""/);
 });
 
-test("2.5 / 49. the builder's In-Kind Valuation control offers exactly the three approved modes and is mutually exclusive by construction (switching clears the other field)", () => {
-  assert.match(BUILDER, /No Value/);
+test("2.5 / 49 (updated, Builder UX pass). In-Kind valuation: no value by default (collapsed \"+ Add Estimated Value\"), then Estimated Total or Value Per Unit — mutually exclusive by construction (switching clears the other field)", () => {
+  assert.match(BUILDER, /\+ Add Estimated Value/);
   assert.match(BUILDER, /Estimated Total/);
   assert.match(BUILDER, /Value Per Unit/);
-  assert.match(BUILDER, /valuationModeOf/);
-  assert.match(BUILDER, /estimated_value: "", unit_value: ""/);
+  assert.match(BUILDER, /Remove Value/);
+  assert.equal(/No Value/.test(BUILDER), false, "No Value is the implicit default, never a prominent selected control");
+  assert.match(BUILDER_STATE, /valuation: "total", unit_value: ""/);
+  assert.match(BUILDER_STATE, /valuation: "per_unit", estimated_value: ""/);
+  assert.match(BUILDER_STATE, /valuation: "none", estimated_value: "", unit_value: ""/);
 });
 
-test("2.5 / 50. the equivalent-per-unit and calculated-estimated-value previews are explicitly labeled as display-only / not stored", () => {
-  assert.match(BUILDER, /for display only — not stored/);
+test("2.5 / 50 (updated, Builder UX pass). the equivalent-per-unit and calculated-estimated-value previews come from the domain's own display helpers over validated values — never posted", () => {
+  assert.match(BUILDER, /formatMonetaryPerUnitEquivalent\(r\.value\)/);
+  assert.match(BUILDER, /calculateInKindEstimatedValueCents\(\{ quantity, unit_value_cents: unitValueCents, estimated_value_cents: null \}\)/);
+  assert.match(BUILDER, /Calculated Estimated Value:/);
+  // Nothing calculated is ever submitted: every posted value comes from submittedComponentValues().
+  assert.equal(/calculate|formatMonetary/.test(BUILDER_STATE.slice(BUILDER_STATE.indexOf("export function submittedComponentValues"), BUILDER_STATE.indexOf("export function submittedOptionValues"))), false);
 });
 
 // ---------------------------------------------------------------- Admin detail page guards

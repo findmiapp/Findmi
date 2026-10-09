@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import { DateTimeField, DateTimeRangeField, SelectField, TextField, TextareaField } from "@/components/admin/Fields";
 import ImageField from "@/components/admin/ImageField";
 import { RelationField, type SearchResult } from "@/components/admin/RelationPicker";
 import SubmitBar from "@/components/admin/SubmitBar";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { OPPORTUNITY_TYPES, OPPORTUNITY_TYPE_LABELS, type PricingMode } from "@/lib/opportunity-listings-domain";
-import CommercialTermsBuilder, { type InitialOption } from "./CommercialTermsBuilder";
+import CommercialTermsBuilder, { type CommercialTermsBuilderHandle, type InitialOption } from "./CommercialTermsBuilder";
+
+/** What createOpportunity/saveOpportunity return when a save is rejected.
+ * Success never returns — it redirects. */
+export type OpportunitySaveResult = { error: string } | undefined | void;
+
+interface SaveState {
+  error: string | null;
+  attempt: number;
+}
 
 /** The listing fields exactly as the form needs them (client-safe).
  * pricing_mode/price_cents/currency are still read (for a legacy-
@@ -62,7 +71,15 @@ function Section({ id, title, hint, children }: { id?: string; title: string; hi
  * without SOME amount to apply credits to, the same rule the old Pricing
  * Mode dropdown enforced). The server re-validates everything
  * (validateListingInput + validateOption/validateComponent, unchanged from
- * Pass 1). */
+ * Pass 1).
+ *
+ * Builder UX pass — a rejected save never reloads this form from the
+ * database. Save runs through useActionState dispatched from onSubmit
+ * (not the <form action> prop, whose automatic React form reset would
+ * wipe the uncontrolled fields): known Commercial Terms problems are caught
+ * and focused before anything is sent, and a server-side rejection comes
+ * back as { error } with every entered value — listing fields and builder
+ * state — still on screen. A successful save still redirects. */
 export default function OpportunityForm({
   listing,
   initialOptions,
@@ -82,7 +99,7 @@ export default function OpportunityForm({
   legacyUnclassified: boolean;
   initialLocation: SearchResult | null;
   initialEvent: SearchResult | null;
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => Promise<OpportunitySaveResult>;
   saveLabel: string;
   cancelHref: string;
 }) {
@@ -91,9 +108,31 @@ export default function OpportunityForm({
     ? listing?.pricing_mode === "complimentary"
     : (initialOptions[0]?.commercial_mode ?? "structured") === "complimentary";
   const [complimentary, setComplimentary] = useState<boolean>(firstOptionComplimentary);
+  const builderRef = useRef<CommercialTermsBuilderHandle>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const [state, dispatch, pending] = useActionState<SaveState, FormData>(async (prev, formData) => {
+    const result = await action(formData);
+    return { error: result?.error ?? null, attempt: prev.attempt + 1 };
+  }, { error: null, attempt: 0 });
+
+  useEffect(() => {
+    if (state.error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [state]);
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (pending) return;
+    // Known Commercial Terms problems never reach the server; the builder
+    // shows them inline and focuses the first one.
+    if (builderRef.current && !builderRef.current.validateForSubmit()) return;
+    const formData = new FormData(e.currentTarget);
+    startTransition(() => dispatch(formData));
+  }
+
+  const shownError = pending ? null : state.error;
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <Section title="Basics">
         <SelectField
           label="Type"
@@ -145,7 +184,7 @@ export default function OpportunityForm({
             Opportunity&rsquo;s detail page — this form never changes the original pricing on its own.
           </div>
         ) : (
-          <CommercialTermsBuilder initialOptions={initialOptions} onFirstOptionModeChange={setComplimentary} />
+          <CommercialTermsBuilder ref={builderRef} initialOptions={initialOptions} onFirstOptionModeChange={setComplimentary} />
         )}
         <label className={`flex items-start gap-3 rounded-xl border border-black/10 bg-white px-3.5 py-3 ${complimentary ? "opacity-60" : ""}`}>
           <input
@@ -188,7 +227,13 @@ export default function OpportunityForm({
         <TextareaField label="Internal Notes" name="internal_notes" defaultValue={listing?.internal_notes} rows={3} />
       </Section>
 
-      <SubmitBar cancelHref={cancelHref} saveLabel={saveLabel} />
+      {shownError && (
+        <p ref={errorRef} role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {shownError}
+        </p>
+      )}
+
+      <SubmitBar cancelHref={cancelHref} saveLabel={saveLabel} pending={pending} />
     </form>
   );
 }

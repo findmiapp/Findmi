@@ -94,14 +94,11 @@ function readListingForm(formData: FormData, legacy: LegacyBridgePricing) {
   });
 }
 
-/** Parses + validates the Commercial Terms builder submission, or fails
- * the whole save (same redirect-with-error pattern as every other
- * validation failure here) before anything is written. */
-function readCommercialTerms(base: string, formData: FormData): OptionForPersistence[] {
-  const parsed = parseCommercialTermsForm(formData);
-  if (!parsed.ok) fail(base, parsed.error);
-  return (parsed as { ok: true; value: OptionForPersistence[] }).value;
-}
+/** What createOpportunity/saveOpportunity return when a save is rejected.
+ * OpportunityForm keeps every entered value on screen and shows the error
+ * (Builder UX pass) — a rejected save never redirects back to a form
+ * rebuilt from the database. Success still redirects. */
+type SaveResult = { error: string };
 
 /** The one place createOpportunity/saveOpportunity call the aggregate-write
  * RPC. Never a second implementation of the Pass 1 persistence-contract
@@ -140,37 +137,41 @@ function revalidateListing(id?: string) {
  * never gets as far as creating a listing row. Every new Opportunity is
  * authored through the builder, so its legacy compatibility columns are
  * always the SAFE projection (never a raw first-Option amount). */
-export async function createOpportunity(formData: FormData) {
+export async function createOpportunity(formData: FormData): Promise<SaveResult | undefined> {
   await requireAdmin();
-  const base = `${LIST}/new`;
-  const options = readCommercialTerms(base, formData);
+  const terms = parseCommercialTermsForm(formData);
+  if (!terms.ok) return { error: terms.error };
+  const options = terms.value;
   const legacy = projectSafeLegacyPricing(options);
 
   const parsed = readListingForm(formData, legacy);
-  if (!parsed.ok) fail(base, parsed.error);
-  const fields = (parsed as { ok: true; value: ListingFields }).value;
-  const supabase = client(base);
+  if (!parsed.ok) return { error: parsed.error };
+  const fields = parsed.value;
+  const supabase = getAdminSupabase();
+  if (!supabase) return { error: "Storage isn't configured on the server." };
   const refError = await checkReferences(supabase, fields);
-  if (refError) fail(base, refError);
+  if (refError) return { error: refError };
 
   const { data, error } = await supabase
     .from("opportunity_listings")
     .insert({ ...fields, status: "draft" })
     .select("id")
     .single();
-  if (error || !data) fail(base, error?.message ?? "Couldn't create the Opportunity.");
+  if (error || !data) return { error: error?.message ?? "Couldn't create the Opportunity." };
 
-  const rpcError = await persistCommercialTerms(supabase, data!.id, options);
+  const rpcError = await persistCommercialTerms(supabase, data.id, options);
   if (rpcError) {
     // The listing itself was created; only the Commercial Terms aggregate
-    // write failed. Send the admin to the now-real edit page to retry,
-    // rather than reporting success for a listing with no Options.
+    // write failed (atomically — no partial Options). Send the admin to the
+    // now-real edit page to retry, rather than reporting success for a
+    // listing with no Options, or staying on /new where a resubmit would
+    // create a duplicate listing.
     revalidateListing();
-    redirect(`${detail(data!.id)}/edit?error=${encodeURIComponent("The Opportunity was created, but its Commercial Terms couldn't be saved. Please try again.")}`);
+    redirect(`${detail(data.id)}/edit?error=${encodeURIComponent("The Opportunity was created, but its Commercial Terms couldn't be saved. Please try again.")}`);
   }
 
   revalidateListing();
-  redirect(`${detail(data!.id)}?saved=created`);
+  redirect(`${detail(data.id)}?saved=created`);
 }
 
 /** Edit — every field except status. Errors return to the edit form;
@@ -187,10 +188,11 @@ export async function createOpportunity(formData: FormData) {
  * currency are read back from its OWN current row and written back
  * UNCHANGED — an ordinary edit to the title, timing, etc. never derives,
  * guesses, or silently converts them. */
-export async function saveOpportunity(id: string, formData: FormData) {
+export async function saveOpportunity(id: string, formData: FormData): Promise<SaveResult | undefined> {
   await requireAdmin();
   const base = `${detail(id)}/edit`;
-  const supabase = client(base);
+  const supabase = getAdminSupabase();
+  if (!supabase) return { error: "Storage isn't configured on the server." };
 
   const { data: existingOptionRows } = await supabase.from("opportunity_options").select("id").eq("listing_id", id).limit(1);
   const hasCommercialTerms = (existingOptionRows?.length ?? 0) > 0;
@@ -198,30 +200,37 @@ export async function saveOpportunity(id: string, formData: FormData) {
   let legacy: LegacyBridgePricing;
   let options: OptionForPersistence[] | null = null;
   if (hasCommercialTerms) {
-    options = readCommercialTerms(base, formData);
+    const terms = parseCommercialTermsForm(formData);
+    if (!terms.ok) return { error: terms.error };
+    options = terms.value;
     legacy = projectSafeLegacyPricing(options);
   } else {
     const { data: current } = await supabase.from("opportunity_listings").select("pricing_mode, price_cents, currency").eq("id", id).maybeSingle();
-    if (!current) fail(base, "Opportunity not found.");
+    if (!current) return { error: "Opportunity not found." };
     legacy = {
-      pricing_mode: current!.pricing_mode,
-      price: current!.price_cents != null ? centsToDollarString(current!.price_cents) : null,
-      currency: current!.currency,
+      pricing_mode: current.pricing_mode,
+      price: current.price_cents != null ? centsToDollarString(current.price_cents) : null,
+      currency: current.currency,
     };
   }
 
   const parsed = readListingForm(formData, legacy);
-  if (!parsed.ok) fail(base, parsed.error);
-  const fields = (parsed as { ok: true; value: ListingFields }).value;
+  if (!parsed.ok) return { error: parsed.error };
+  const fields = parsed.value;
   const refError = await checkReferences(supabase, fields);
-  if (refError) fail(base, refError);
+  if (refError) return { error: refError };
 
   const { data, error } = await supabase.from("opportunity_listings").update(fields).eq("id", id).select("id").maybeSingle();
-  if (error || !data) fail(base, error?.message ?? "Opportunity not found.");
+  if (error || !data) return { error: error?.message ?? "Opportunity not found." };
 
   if (hasCommercialTerms && options) {
+    // Atomic aggregate write — on failure no Option/Component changed; the
+    // admin stays on the form with everything still entered and can retry.
     const rpcError = await persistCommercialTerms(supabase, id, options);
-    if (rpcError) fail(base, "Changes were saved, but Commercial Terms couldn't be updated. Please try again.");
+    if (rpcError) {
+      revalidateListing(id);
+      return { error: "Changes were saved, but Commercial Terms couldn't be updated. Please try again." };
+    }
   }
 
   revalidateListing(id);
