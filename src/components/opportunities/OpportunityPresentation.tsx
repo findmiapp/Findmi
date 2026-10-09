@@ -9,23 +9,31 @@ import {
 import { formatOpportunityDate, formatOpportunityDateTime } from "@/lib/opportunity-format";
 import { imageVariantUrl } from "@/lib/image-variants";
 import type { AdminOpportunityOption } from "@/lib/opportunity-listings";
-import { summarizeOptionsForCard, type OptionFields } from "@/lib/opportunity-commercial-terms-domain";
 import {
-  buildBusinessCommercialTerms,
-  buildBusinessPrimaryTerm,
-  summarizeOptionForCard,
-  type BusinessContributionGroup,
-  type BusinessPrimaryTerm,
-} from "@/lib/opportunity-business-commercial-terms";
+  IN_KIND_CATEGORY_LABELS,
+  calculateInKindEstimatedValueCents,
+  formatMonetaryPerUnitEquivalent,
+  formatQuantityUnit,
+  type OptionFields,
+} from "@/lib/opportunity-commercial-terms-domain";
+import { buildBusinessDeal, businessDealSummary, type DealFormatters, type DealHeadline, type DealItem, type DealPackage } from "@/lib/opportunity-business-deal";
 
-// Pass 3 — every function below that takes `commercialOptions`/`options`
-// follows one rule: the prop being OMITTED (undefined) means "render the
-// legacy Investment block exactly as before" (Admin's call sites never
-// pass it); the prop being PRESENT, even as an empty array for a legacy-
-// unclassified listing, switches to the new Business-facing "Commercial
-// Terms" experience. This is the one presentation-boundary switch — never
-// a second copy of Admin's own rendering.
+// Business-facing presentation boundary: `commercialOptions` being OMITTED
+// (undefined) means "render the legacy Investment fact/block exactly as
+// before" (Admin's call sites never pass it). Business pages pass their
+// listing's Options (even [] for a listing that predates them) and render
+// The Deal (OpportunityDeal) — the Business never sees Admin's own
+// rendering, and Admin never sees the Business wording.
 const asOptionFields = (o: AdminOpportunityOption): OptionFields => o as unknown as OptionFields;
+
+/** The canonical domain formatters, handed to the import-free Deal view
+ * model (src/lib/opportunity-business-deal.ts). */
+const DEAL_FORMATTERS: DealFormatters = {
+  quantityUnit: formatQuantityUnit,
+  perUnitEquivalent: formatMonetaryPerUnitEquivalent,
+  estimatedValueCents: calculateInKindEstimatedValueCents,
+  categoryLabel: (category) => IN_KIND_CATEGORY_LABELS[category],
+};
 
 // Opportunities V1 — the READ-ONLY commercial presentation of one
 // Opportunity, shared by Admin (/admin/opportunities/[id]) and the future
@@ -107,22 +115,17 @@ function dateRange(o: PresentableOpportunity): string | null {
   return start && end ? `${start} – ${end}` : start || end;
 }
 
-/** The Hero quick-facts row's price-like tag, direction-aware once
- * Options exist — never the raw legacy projection for a Compensation/
- * Project Budget/multi-direction Option, which projectSafeLegacyPricing
- * never populates a comparable amount for anyway. `commercialOptions`
- * undefined/omitted (Admin) or empty (legacy-unclassified) both fall back
- * to the exact legacy price/qualifier. */
-export function commercialCardLine(commercialOptions: AdminOpportunityOption[] | undefined, legacy: { amount: string; qualifier: string | null }): { title: string; detail: string | null } {
-  if (!commercialOptions || commercialOptions.length === 0) return { title: legacy.amount, detail: legacy.qualifier };
-  if (commercialOptions.length === 1) {
-    const primary = buildBusinessPrimaryTerm(asOptionFields(commercialOptions[0]));
-    if (!primary) return { title: "Commercial Terms", detail: null };
-    if (primary.kind === "complimentary") return { title: "Complimentary", detail: primary.helper };
-    if (primary.kind === "custom") return { title: "Custom Terms", detail: null };
-    return { title: primary.amount, detail: primary.label };
-  }
-  return { title: summarizeOptionsForCard(commercialOptions.map(asOptionFields)), detail: null };
+/** The price-like line on a card / facts row. `commercialOptions`
+ * undefined (Admin) keeps the exact legacy price + qualifier. Present
+ * (Business, even []) uses the Business Deal summary — "$750
+ * Participation Fee", "Free to Participate", "Packages from $750"… */
+export function commercialCardLine(
+  commercialOptions: AdminOpportunityOption[] | undefined,
+  legacy: { amount: string; qualifier: string | null },
+  listing: Pick<PresentableOpportunity, "pricing_mode" | "price_cents" | "currency">
+): { title: string; detail: string | null } {
+  if (!commercialOptions) return { title: legacy.amount, detail: legacy.qualifier };
+  return { title: businessDealSummary(listing, commercialOptions.map(asOptionFields), DEAL_FORMATTERS), detail: null };
 }
 
 function Fact({ icon, title, detail, children }: { icon: ReactNode; title: ReactNode; detail?: ReactNode; children?: ReactNode }) {
@@ -152,23 +155,27 @@ export function OpportunityFacts({
   place,
   showCredits = true,
   commercialOptions,
+  showCommercialFact = true,
 }: {
   o: PresentableOpportunity;
   place: PresentablePlace | null;
   showCredits?: boolean;
-  /** Pass 3 — see the module-level comment on this prop's semantics. */
+  /** See the module-level comment on this prop's semantics. */
   commercialOptions?: AdminOpportunityOption[];
+  /** Business detail pages pass false: The Deal follows the introduction,
+   * so the price never appears twice. */
+  showCommercialFact?: boolean;
 }) {
   const price = opportunityPriceParts(o);
-  const fact = commercialCardLine(commercialOptions, price);
-  const isLegacyFact = !commercialOptions || commercialOptions.length === 0;
+  const fact = commercialCardLine(commercialOptions, price, o);
+  const isLegacyFact = !commercialOptions;
   const factDetail = fact.detail ? `${fact.detail}${isLegacyFact && o.pricing_mode !== "custom" && o.currency !== "USD" ? ` · ${o.currency}` : ""}` : null;
   const placeName = place?.name ?? o.place_text;
   const placeDetail = [o.host_name ? `Hosted by ${o.host_name}` : null, place ? placeLine(place) : null].filter(Boolean).join(" · ");
   const timing = o.timing_note ?? dateRange(o);
   return (
     <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
-      <Fact icon={<TagIcon />} title={fact.title} detail={factDetail} />
+      {showCommercialFact && <Fact icon={<TagIcon />} title={fact.title} detail={factDetail} />}
       {showCredits && o.credits_eligible && <Fact icon={<CreditIcon />} title="Credits Eligible" detail="Opportunity Credits can be applied" />}
       {(placeName || o.host_name) && <Fact icon={<PinIcon />} title={placeName ?? `Hosted by ${o.host_name}`} detail={placeName ? placeDetail || null : null} />}
       {timing && <Fact icon={<ClockIcon />} title={timing} detail={o.timing_note && dateRange(o) ? dateRange(o) : null} />}
@@ -187,14 +194,17 @@ export function OpportunityHero({
   actions,
   showCredits = true,
   commercialOptions,
+  showCommercialFact = true,
 }: {
   o: PresentableOpportunity;
   place: PresentablePlace | null;
   badges?: ReactNode;
   actions?: ReactNode;
   showCredits?: boolean;
-  /** Pass 3 — see the module-level comment on this prop's semantics. */
+  /** See the module-level comment on this prop's semantics. */
   commercialOptions?: AdminOpportunityOption[];
+  /** Business detail pages pass false (see OpportunityFacts). */
+  showCommercialFact?: boolean;
 }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-black/[0.08] bg-white">
@@ -218,7 +228,7 @@ export function OpportunityHero({
             <h1 className="mt-2 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-[1.75rem]">{o.title}</h1>
             {o.summary && <p className="mt-1.5 break-words text-[15px] leading-relaxed text-ink/65">{o.summary}</p>}
           </div>
-          <OpportunityFacts o={o} place={place} showCredits={showCredits} commercialOptions={commercialOptions} />
+          <OpportunityFacts o={o} place={place} showCredits={showCredits} commercialOptions={commercialOptions} showCommercialFact={showCommercialFact} />
           {actions}
         </div>
       </div>
@@ -246,8 +256,10 @@ function Prose({ text }: { text: string }) {
 
 /** Long-form content: About, What Findmi Provides (whats_included), What
  * Your Brand Provides (requirements). Empty sections are omitted. Text is
- * shown as written (multiline respected, never re-parsed into bullets). */
-export function OpportunityMainSections({ o }: { o: PresentableOpportunity }) {
+ * shown as written (multiline respected, never re-parsed into bullets).
+ * Business pages pass includeDealProse={false}: those two texts are then
+ * rendered inside The Deal (You Provide / Included) instead — never lost. */
+export function OpportunityMainSections({ o, includeDealProse = true }: { o: PresentableOpportunity; includeDealProse?: boolean }) {
   return (
     <>
       {o.description && (
@@ -255,12 +267,12 @@ export function OpportunityMainSections({ o }: { o: PresentableOpportunity }) {
           <Prose text={o.description} />
         </OpportunitySection>
       )}
-      {o.whats_included && (
+      {includeDealProse && o.whats_included && (
         <OpportunitySection title={OPPORTUNITY_SECTION_LABELS.whats_included}>
           <Prose text={o.whats_included} />
         </OpportunitySection>
       )}
-      {o.requirements && (
+      {includeDealProse && o.requirements && (
         <OpportunitySection title={OPPORTUNITY_SECTION_LABELS.requirements}>
           <Prose text={o.requirements} />
         </OpportunitySection>
@@ -278,153 +290,118 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// ---------------------------------------------------------------- Pass 3: Business Commercial Terms
+// ---------------------------------------------------------------- Business: The Deal
 
-/** One Option's safe headline for a multi-Option <summary> — never an
- * arbitrary-first-component guess, the same classification the card
- * summary uses. */
-function optionHeadline(option: AdminOpportunityOption): string {
-  const summary = summarizeOptionForCard(asOptionFields(option));
-  if (summary.kind === "monetary") return `${summary.label} · ${summary.amount}`;
-  if (summary.kind === "complimentary") return "Complimentary";
-  if (summary.kind === "custom") return "Custom Terms";
-  return "Commercial Terms";
-}
+const subheading = "text-xs font-semibold uppercase tracking-wide text-ink/50";
 
-function PrimaryTermBlock({ primary }: { primary: BusinessPrimaryTerm | null }) {
-  if (!primary) return null;
-  if (primary.kind === "complimentary") {
-    return (
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">Participation Cost</p>
-        <p className="text-xl font-semibold tracking-tight text-ink">Complimentary</p>
-        <p className="text-xs text-ink/55">{primary.helper}</p>
-      </div>
-    );
-  }
-  if (primary.kind === "custom") {
-    return (
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">Commercial Terms</p>
-        <p className="text-xl font-semibold tracking-tight text-ink">Custom</p>
-        {primary.note && <p className="mt-1 whitespace-pre-line break-words text-sm text-ink/70">{primary.note}</p>}
-      </div>
-    );
-  }
+function DealHeadlineBlock({ headline }: { headline: DealHeadline }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">{primary.label}</p>
-      <p className="text-xl font-semibold tracking-tight text-ink">{primary.amount}</p>
-      <p className="text-xs text-ink/55">{primary.helper}</p>
-      {primary.quantityUnit && (
-        <p className="mt-0.5 text-xs text-ink/55">
-          {primary.quantityUnit}
-          {primary.perUnitEquivalent ? ` · ${primary.perUnitEquivalent}` : ""}
-        </p>
-      )}
+      <p className="break-words text-xl font-semibold tracking-tight text-ink">{headline.text}</p>
+      {headline.detail && <p className="mt-0.5 text-xs text-ink/55">{headline.detail}</p>}
+      {headline.note && <p className="mt-1 whitespace-pre-line break-words text-sm text-ink/70">{headline.note}</p>}
     </div>
   );
 }
 
-function ContributionGroupBlock({ group }: { group: BusinessContributionGroup }) {
+function DealItems({ items }: { items: DealItem[] }) {
   return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">{group.heading}</p>
-      <ul className="mt-1.5 flex flex-col gap-2">
-        {group.items.map((item, i) => (
-          <li key={i} className="text-sm">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="break-words font-medium text-ink">{item.title}</span>
-              {!item.required && (
-                <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/45">Optional</span>
-              )}
-            </div>
-            {item.description && <p className="break-words text-xs text-ink/55">{item.description}</p>}
-            {item.estimatedValue && <p className="text-xs text-ink/55">{item.estimatedValue}</p>}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/** One Option's full hierarchy: primary monetary term (if any) -> provider-
- * grouped contributions, in render order (Your Contribution -> Provided by
- * Findmi -> Provided by Organizer -> Provided by Another Party). Never
- * renders an empty group; a Structured Option with no monetary component
- * and no In-Kind groups (shouldn't normally occur) falls back to one
- * neutral line rather than an empty section. */
-function StructuredOptionBody({ option }: { option: AdminOpportunityOption }) {
-  const terms = buildBusinessCommercialTerms(asOptionFields(option));
-  if (!terms.primary && terms.groups.length === 0) {
-    return <p className="text-sm text-ink/55">Commercial terms for this Opportunity haven&rsquo;t been set yet.</p>;
-  }
-  return (
-    <div className="flex flex-col gap-4">
-      <PrimaryTermBlock primary={terms.primary} />
-      {terms.groups.map((g) => (
-        <ContributionGroupBlock key={g.heading} group={g} />
+    <ul className="mt-1.5 flex flex-col gap-2">
+      {items.map((item, i) => (
+        <li key={i} className="text-sm">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="break-words font-medium text-ink">{item.title}</span>
+            {item.optional && <span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/45">Optional</span>}
+          </div>
+          {item.detail && <p className="break-words text-xs text-ink/55">{item.detail}</p>}
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
-/** The Business-facing "Commercial Terms" section — the opt-in replacement
- * for the legacy "Investment" block below. Zero Options (legacy-
- * unclassified): the exact legacy amount/qualifier, new heading only. One
- * Option: its hierarchy directly — no "Option 1" chrome. >1 Option: native
- * <details>/<summary> per Option, first one `open` as static markup (never
- * React state) so a user may still close it; no comparison matrix, no
- * custom accordion. */
-function OpportunityCommercialTerms({
-  options,
-  legacyAmount,
-  legacyQualifier,
-  currency,
-  priceCents,
-  showCredits,
-  creditsEligible,
-}: {
-  options: AdminOpportunityOption[];
-  legacyAmount: string;
-  legacyQualifier: string | null;
-  currency: string;
-  priceCents: number | null;
-  showCredits: boolean;
-  creditsEligible: boolean;
-}) {
+/** "You Provide" / "Included": structured items first, then the listing's
+ * own prose (requirements / whats_included) as supplemental content —
+ * under "More Details" when items exist, as the body when they don't.
+ * Renders nothing only when there is neither. */
+function DealSide({ title, items, note }: { title: string; items: DealItem[]; note: string | null }) {
+  if (items.length === 0 && !note) return null;
   return (
-    <OpportunitySection title="Commercial Terms">
-      {options.length === 0 && (
-        <>
-          <p className="text-xl font-semibold tracking-tight text-ink">
-            {legacyAmount}
-            {priceCents != null && <span className="ml-1 text-xs font-semibold text-ink/45">{currency}</span>}
-          </p>
-          {legacyQualifier && <p className="text-xs text-ink/55">{legacyQualifier}</p>}
-        </>
-      )}
-      {options.length === 1 && <StructuredOptionBody option={options[0]} />}
-      {options.length > 1 && (
-        <div className="flex flex-col gap-2">
-          {options.map((o, i) => (
-            <details key={o.id} open={i === 0} className="rounded-xl border border-black/10 bg-black/[0.02] p-3 open:bg-white">
-              <summary className="cursor-pointer break-words text-sm font-semibold text-ink [&::-webkit-details-marker]:hidden">
-                {(o.name || `Option ${i + 1}`) + " · " + optionHeadline(o)}
-              </summary>
-              <div className="mt-3">
-                <StructuredOptionBody option={o} />
-              </div>
-            </details>
-          ))}
+    <div>
+      <p className={subheading}>{title}</p>
+      {items.length > 0 && <DealItems items={items} />}
+      {note && (
+        <div className={items.length > 0 ? "mt-2.5" : "mt-1.5"}>
+          {items.length > 0 && <p className="text-[11px] font-semibold text-ink/45">More Details</p>}
+          <Prose text={note} />
         </div>
       )}
-      {showCredits && creditsEligible && (
-        <span className="mt-2 inline-block rounded-full border border-findmi/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-findmi-700">
-          Credits Eligible
-        </span>
-      )}
-    </OpportunitySection>
+    </div>
+  );
+}
+
+function DealPackageBody({ pkg, provideNote, includedNote }: { pkg: DealPackage; provideNote: string | null; includedNote: string | null }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <DealHeadlineBlock headline={pkg.headline} />
+      {pkg.description && <p className="-mt-2 break-words text-sm text-ink/65">{pkg.description}</p>}
+      <DealSide title="You Provide" items={pkg.youProvide} note={provideNote} />
+      <DealSide title="Included" items={pkg.included} note={includedNote} />
+    </div>
+  );
+}
+
+/** Business-facing "The Deal" — directly after the introduction and before
+ * any response control. One package: its terms directly (no package
+ * chrome). Several: "Packages" as comparable cards (no selection here —
+ * see opportunity-package-policy.ts). A listing that predates packages:
+ * its legacy price, plus its prose. */
+export function OpportunityDeal({ o, options }: { o: PresentableOpportunity; options: AdminOpportunityOption[] }) {
+  const deal = buildBusinessDeal(o, options.map(asOptionFields), DEAL_FORMATTERS);
+  return (
+    <section aria-labelledby="the-deal-heading" className="rounded-2xl border border-black/[0.08] bg-white p-4 sm:p-5">
+      <h2 id="the-deal-heading" className="text-base font-semibold text-ink">
+        The Deal
+      </h2>
+      <div className="mt-3">
+        {deal.kind === "single" && <DealPackageBody pkg={deal.package} provideNote={deal.provideNote} includedNote={deal.includedNote} />}
+        {deal.kind === "legacy" && (
+          <div className="flex flex-col gap-4">
+            <DealHeadlineBlock headline={deal.headline} />
+            <DealSide title="You Provide" items={[]} note={deal.provideNote} />
+            <DealSide title="Included" items={[]} note={deal.includedNote} />
+          </div>
+        )}
+        {deal.kind === "packages" && (
+          <div className="flex flex-col gap-4">
+            <p className={subheading}>Packages</p>
+            <div className="-mt-2 grid gap-3 sm:grid-cols-2">
+              {deal.packages.map((pkg, i) => (
+                <div key={i} className="min-w-0 rounded-xl border border-black/10 bg-black/[0.02] p-3.5">
+                  {/* A heading derived from the package's own terms would repeat its headline — the headline is the title then. */}
+                  {!pkg.headingFromTerms && <h3 className="mb-2 break-words text-sm font-semibold text-ink">{pkg.heading}</h3>}
+                  <DealPackageBody pkg={pkg} provideNote={null} includedNote={null} />
+                </div>
+              ))}
+            </div>
+            <DealSide title="You Provide" items={[]} note={deal.provideNote} />
+            <DealSide title="Included" items={[]} note={deal.includedNote} />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** The Business's response area, placed after The Deal. */
+export function OpportunityResponseSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby="opportunity-response-heading" className="rounded-2xl border border-black/[0.08] bg-white p-4 sm:p-5">
+      <h2 id="opportunity-response-heading" className="text-base font-semibold text-ink">
+        {title}
+      </h2>
+      <div className="mt-2">{children}</div>
+    </section>
   );
 }
 
@@ -436,7 +413,7 @@ export function OpportunityAsideSections({
   event,
   eventHref,
   showCredits = true,
-  commercialOptions,
+  showInvestment = true,
 }: {
   o: PresentableOpportunity;
   place: PresentablePlace | null;
@@ -444,11 +421,9 @@ export function OpportunityAsideSections({
   event: PresentableEvent | null;
   eventHref?: string | null;
   showCredits?: boolean;
-  /** Pass 3 — see the module-level comment on this prop's semantics.
-   * Omitted (undefined): Admin's existing legacy "Investment" block,
-   * completely unchanged. Provided (even `[]` for a legacy-unclassified
-   * listing): the new Business-facing "Commercial Terms" experience. */
-  commercialOptions?: AdminOpportunityOption[];
+  /** Admin keeps its legacy "Investment" block (default). Business pages
+   * pass false — their commercial content is The Deal (OpportunityDeal). */
+  showInvestment?: boolean;
 }) {
   const price = opportunityPriceParts(o);
   const range = dateRange(o);
@@ -485,7 +460,7 @@ export function OpportunityAsideSections({
         </OpportunitySection>
       )}
 
-      {commercialOptions === undefined ? (
+      {showInvestment && (
         <OpportunitySection title={OPPORTUNITY_SECTION_LABELS.investment}>
           <p className="text-xl font-semibold tracking-tight text-ink">
             {price.amount}
@@ -498,16 +473,6 @@ export function OpportunityAsideSections({
             </span>
           )}
         </OpportunitySection>
-      ) : (
-        <OpportunityCommercialTerms
-          options={commercialOptions}
-          legacyAmount={price.amount}
-          legacyQualifier={price.qualifier}
-          currency={o.currency}
-          priceCents={o.price_cents}
-          showCredits={showCredits}
-          creditsEligible={o.credits_eligible}
-        />
       )}
 
       {event && (

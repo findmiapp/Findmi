@@ -679,7 +679,7 @@ export function getBusinessOpportunityState(listingStatus: ListingStatus, recipi
   switch (recipientStatus) {
     case "offered":
       return open
-        ? { label: "Recommended", tone: "aqua", answerable: true, choices: ["interested", "not_interested"], message: "Let Findmi know if you'd like to pursue this. It's not a binding commitment." }
+        ? { label: "Recommended", tone: "aqua", answerable: true, choices: ["interested", "not_interested"], message: "This lets Findmi know you'd like to discuss participating. It is not a confirmation." }
         : { label: "No Longer Available", tone: "muted", answerable: false, choices: [], message: "This Opportunity is no longer taking responses." };
     case "interested":
       return open

@@ -35,7 +35,10 @@ const fnBody = (src, marker) => {
   return src.slice(at, end + 3);
 };
 
-const BUSINESS_TERMS = read("src/lib/opportunity-business-commercial-terms.ts");
+// First Business UX pass: the Pass 3 Business module was replaced by the
+// import-free Deal view model (live-tested in tests/opportunity-business-
+// deal.test.mjs); its static guards below now point at that module.
+const DEAL = read("src/lib/opportunity-business-deal.ts");
 const PRESENTATION = read("src/components/opportunities/OpportunityPresentation.tsx");
 const CARD = read("src/components/opportunities/BusinessOpportunityCard.tsx");
 const LISTINGS_LIB = read("src/lib/opportunity-listings.ts");
@@ -65,7 +68,8 @@ test("1. filter choices are exactly the four locked options — no 'No Maximum' 
   assert.deepEqual([...PARTICIPATION_COST_FILTERS], ["complimentary", "up_to_500", "up_to_1000", "up_to_2500"]);
   assert.equal(PARTICIPATION_COST_FILTERS.includes("no_maximum"), false);
   assert.equal(PARTICIPATION_COST_FILTERS.includes("2500_plus"), false);
-  assert.deepEqual(PARTICIPATION_COST_FILTER_LABELS, { complimentary: "Complimentary", up_to_500: "Up to $500", up_to_1000: "Up to $1,000", up_to_2500: "Up to $2,500" });
+  // First Business UX pass: the stored filter value stays "complimentary"; its Business label is "Free to Participate".
+  assert.deepEqual(PARTICIPATION_COST_FILTER_LABELS, { complimentary: "Free to Participate", up_to_500: "Up to $500", up_to_1000: "Up to $1,000", up_to_2500: "Up to $2,500" });
   for (const bad of ["no_maximum", "2500_plus", "", null, undefined, "any"]) assert.equal(isParticipationCostFilter(bad), false);
 });
 
@@ -193,150 +197,72 @@ test("19. mixed directions never blend into one number, even with the new prefix
 });
 
 // ============================================================================
-// SECTION C — opportunity-business-commercial-terms.ts (static guards)
+// SECTION C — Business Deal view model (static guards; behavior is live-
+// tested in tests/opportunity-business-deal.test.mjs)
 // ============================================================================
 
-test("20. reuses the canonical domain formatters — never reimplements quantity/unit or valuation math inline", () => {
-  assert.match(BUSINESS_TERMS, /import\s*\{[\s\S]*?formatQuantityUnit[\s\S]*?\}\s*from\s*"\.\/opportunity-commercial-terms-domain"/);
-  assert.match(BUSINESS_TERMS, /import\s*\{[\s\S]*?formatMonetaryPerUnitEquivalent[\s\S]*?\}\s*from\s*"\.\/opportunity-commercial-terms-domain"/);
-  assert.match(BUSINESS_TERMS, /import\s*\{[\s\S]*?calculateInKindEstimatedValueCents[\s\S]*?\}\s*from\s*"\.\/opportunity-commercial-terms-domain"/);
-  assert.equal(/quantity\s*\*|\*\s*unit_value_cents/.test(strip(BUSINESS_TERMS)), false, "no raw multiplication — that's calculateUnitValueCents'/calculateInKindEstimatedValueCents' job");
+test("20 (superseded by the Deal model). no runtime import of the domain module — the canonical formatters are injected, never reimplemented", () => {
+  assert.equal(/^import (?!type)[^;]*from/m.test(DEAL), false, "type-only imports only");
+  assert.match(PRESENTATION, /quantityUnit: formatQuantityUnit/);
+  assert.match(PRESENTATION, /perUnitEquivalent: formatMonetaryPerUnitEquivalent/);
+  assert.match(PRESENTATION, /estimatedValueCents: calculateInKindEstimatedValueCents/);
+  assert.equal(/quantity\s*\*|\*\s*unit_value_cents/.test(strip(DEAL)), false, "no raw valuation math in the Deal model");
 });
 
-test("21. Business-facing monetary vocabulary is direction-correct and never 'Participation Fee' or 'Investment'", () => {
-  assert.match(BUSINESS_TERMS, /participation_fee:\s*"Participation Cost"/);
-  assert.match(BUSINESS_TERMS, /compensation:\s*"Compensation"/);
-  assert.match(BUSINESS_TERMS, /project_budget:\s*"Project Budget"/);
-  assert.equal(/"Participation Fee"|"Investment"/.test(strip(BUSINESS_TERMS)), false);
+test("21 (superseded). Business money wording is direction-correct: Participation Fee / You Receive / Project Budget — never 'Investment' or 'Participation Cost'", () => {
+  assert.match(DEAL, /Participation Fee/);
+  assert.match(DEAL, /You Receive/);
+  assert.match(DEAL, /Project Budget: /);
+  assert.equal(/Investment|Participation Cost/.test(strip(DEAL)), false);
 });
 
-test("22. Business-facing helper copy matches the locked spec exactly", () => {
-  assert.match(BUSINESS_TERMS, /participation_fee:\s*"You pay to participate"/);
-  assert.match(BUSINESS_TERMS, /compensation:\s*"You receive payment"/);
-  assert.match(BUSINESS_TERMS, /project_budget:\s*"Budget available for this project"/);
+test("22-23 (superseded). an undisclosed amount says 'Contact Findmi', never Admin's 'Amount discussed with Findmi'", () => {
+  assert.match(DEAL, /Participation Fee: Contact Findmi/);
+  assert.equal(/Amount discussed with Findmi/.test(strip(DEAL)), false);
 });
 
-test("23. the no-amount fallback is 'Contact Findmi', matching legacy wording exactly (never Admin's own 'Amount discussed with Findmi')", () => {
-  assert.match(BUSINESS_TERMS, /return "Contact Findmi"/);
-  assert.equal(/Amount discussed with Findmi/.test(strip(BUSINESS_TERMS)), false);
+test("24 (superseded). there is ONE Included section with secondary attribution — no per-provider headings, never a fabricated party name", () => {
+  assert.equal(/Your Contribution|Provided by Organizer|Provided by Another Party/.test(strip(DEAL)), false);
+  assert.match(DEAL, /"Provided by Findmi"/);
+  assert.match(DEAL, /"Provided by the Host"/);
+  assert.match(DEAL, /"Provided by a Partner"/);
 });
 
-test("24. provider groups render in the locked order and never fabricate a third-party name for 'other'", () => {
-  const order = [...BUSINESS_TERMS.matchAll(/(recipient_business|findmi|organizer|other):\s*"([^"]+)"/g)].map((m) => [m[1], m[2]]);
-  assert.deepEqual(order, [
-    ["recipient_business", "Your Contribution"],
-    ["findmi", "Provided by Findmi"],
-    ["organizer", "Provided by Organizer"],
-    ["other", "Provided by Another Party"],
-  ]);
-});
-
-test("25. groupContributionsByProvider lists required contributions before optional ones within a group, and never renders an empty group", () => {
-  const fn = fnBody(BUSINESS_TERMS, "export function groupContributionsByProvider");
-  assert.match(fn, /inGroup\.length === 0\) continue/);
-  assert.match(fn, /c\.in_kind_required\)\.map\(buildContributionItem\)/);
-  assert.match(fn, /\[\.\.\.required, \.\.\.optional\]/);
-});
-
-test("26. In-Kind valuation shows only the estimated TOTAL, labeled 'Estimated value', never 'Price'/'Cost'/'Fee'", () => {
-  const fn = fnBody(BUSINESS_TERMS, "function buildContributionItem");
-  assert.match(fn, /`Estimated value: \$\{formatMoney\(valueCents, "USD"\)\}`/);
-  assert.equal(/"Price"|"Cost"|"Fee"/.test(fn), false);
-});
-
-test("27. Custom never fabricates an amount or invented explanatory copy — only the stored note, verbatim", () => {
-  const fn = fnBody(BUSINESS_TERMS, "export function buildBusinessPrimaryTerm");
-  const customBranch = fn.slice(fn.indexOf('"custom"'), fn.indexOf('"custom"') + 200);
-  assert.equal(/formatBusinessMonetaryAmount/.test(customBranch), false);
-  assert.match(fn, /note: option\.custom_terms_note/);
-});
-
-test("28. Complimentary never says 'Free' — matches the locked copy exactly", () => {
-  assert.match(BUSINESS_TERMS, /kind: "complimentary", helper: "No participation fee"/);
-  assert.equal(/"Free"/.test(BUSINESS_TERMS), false);
-});
-
-test("29. summarizeOptionForCard uses the real validated classification, never an arbitrary first component", () => {
-  const fn = fnBody(BUSINESS_TERMS, "export function summarizeOptionForCard");
-  assert.match(fn, /option\.commercial_mode === "complimentary"/);
-  assert.match(fn, /option\.commercial_mode === "custom"/);
-  assert.match(fn, /isMonetaryComponentType/);
-  assert.match(fn, /kind: "structured_no_amount"/);
+test("25-28 (superseded). required before optional; custom shows only the stored note; Free vs No Participation Fee keyed off required Business contributions", () => {
+  assert.match(DEAL, /Number\(a\.item\.optional\) - Number\(b\.item\.optional\)/);
+  assert.match(DEAL, /note: option\.custom_terms_note\?\.trim\(\) \|\| null/);
+  assert.match(DEAL, /option\.components\.some\(isRequiredBusinessContribution\)/);
 });
 
 // ============================================================================
 // SECTION D — OpportunityPresentation.tsx (static guards)
 // ============================================================================
 
-test("30. commercialOptions is opt-in on every shared component Admin uses — omitted keeps the legacy render path byte-identical", () => {
-  for (const fnName of ["OpportunityFacts", "OpportunityHero", "OpportunityAsideSections"]) {
-    const sig = PRESENTATION.slice(PRESENTATION.indexOf(`export function ${fnName}(`), PRESENTATION.indexOf(`export function ${fnName}(`) + 800);
-    assert.match(sig, /commercialOptions\?:/, fnName);
-  }
-  assert.match(PRESENTATION, /commercialOptions === undefined \? \(/);
+test("30-31 (updated). Admin's legacy render path is unchanged: commercialOptions omitted keeps the legacy price fact; showInvestment defaults true", () => {
+  assert.match(PRESENTATION, /if \(!commercialOptions\) return \{ title: legacy\.amount, detail: legacy\.qualifier \};/);
+  assert.match(PRESENTATION, /showInvestment = true/);
+  assert.match(PRESENTATION, /\{showInvestment && \(\s*<OpportunitySection title=\{OPPORTUNITY_SECTION_LABELS\.investment\}>/);
 });
 
-test("31. the legacy Investment heading/label is preserved byte-for-byte when commercialOptions is omitted", () => {
-  const legacyBranch = PRESENTATION.slice(PRESENTATION.indexOf("commercialOptions === undefined ? ("), PRESENTATION.indexOf(") : ("));
-  assert.match(legacyBranch, /OPPORTUNITY_SECTION_LABELS\.investment/);
+test("32-36 (superseded). the Business presentation never shows schema words: no 'Commercial Terms' heading, no 'Option N', no accordions", () => {
+  const business = PRESENTATION.slice(PRESENTATION.indexOf("// ---------------------------------------------------------------- Business: The Deal"), PRESENTATION.indexOf("/** Structured facts:"));
+  assert.ok(business.length > 0);
+  assert.equal(/Commercial Terms|In-Kind|Structured|Option \$\{|<details/.test(strip(business)), false);
+  assert.match(business, /The Deal/);
+  assert.match(business, /"You Provide"/);
+  assert.match(business, /"Included"/);
+  assert.match(business, />Packages</);
 });
 
-test("32. the Business-facing heading is the literal 'Commercial Terms', never 'Investment', for every Options shape (0/1/N)", () => {
-  const fn = fnBody(PRESENTATION, "function OpportunityCommercialTerms");
-  assert.match(fn, /title="Commercial Terms"/);
-  assert.equal(/"Investment"/.test(fn), false);
+test("37 (updated). Credits Eligible is still preserved in Admin's legacy Investment block", () => {
+  assert.match(PRESENTATION, /Credits Eligible/);
 });
 
-test("33. multiple Options use native <details>/<summary> — no accordion library, no React state for open/closed", () => {
-  const fn = fnBody(PRESENTATION, "function OpportunityCommercialTerms");
-  assert.match(fn, /<details key=\{o\.id\} open=\{i === 0\}/);
-  assert.match(fn, /<summary/);
-  assert.equal(/useState|Accordion/.test(PRESENTATION), false);
+test("39 (superseded). 'Optional' is shown only for non-required items", () => {
+  assert.match(PRESENTATION, /\{item\.optional && <span/);
 });
 
-test("34. the first Option's open attribute is static markup computed from array position, not stored/toggleable state", () => {
-  assert.equal(/useState|useReducer/.test(PRESENTATION), false, "this is a Server Component — no client state at all");
-  assert.match(PRESENTATION, /open=\{i === 0\}/);
-});
-
-test("35. a single Option renders directly — no 'Option 1' chrome; the numbered fallback name applies only inside the >1 branch", () => {
-  const fn = fnBody(PRESENTATION, "function OpportunityCommercialTerms");
-  const singleBranch = fn.slice(fn.indexOf("options.length === 1"), fn.indexOf("options.length > 1"));
-  assert.equal(/Option \$\{i \+ 1\}/.test(singleBranch), false);
-  const multiBranch = fn.slice(fn.indexOf("options.length > 1"));
-  assert.match(multiBranch, /`Option \$\{i \+ 1\}`/);
-});
-
-test("36. a multi-Option summary line never fabricates a name — falls back to the real card classification, never guessing a first component", () => {
-  assert.match(PRESENTATION, /function optionHeadline/);
-  assert.match(PRESENTATION, /summarizeOptionForCard\(asOptionFields\(option\)\)/);
-});
-
-test("37. Credits Eligible is preserved identically whether or not commercialOptions is provided", () => {
-  const occurrences = [...PRESENTATION.matchAll(/Credits Eligible/g)];
-  assert.ok(occurrences.length >= 2, "the badge text must appear in both the legacy branch and OpportunityCommercialTerms");
-});
-
-test("38. the hierarchy order is primary term, then provider groups in buildBusinessCommercialTerms's own order — never re-sorted here", () => {
-  const fn = fnBody(PRESENTATION, "function StructuredOptionBody");
-  assert.match(fn, /<PrimaryTermBlock primary=\{terms\.primary\} \/>/);
-  assert.match(fn, /terms\.groups\.map/);
-  assert.ok(fn.indexOf("PrimaryTermBlock") < fn.indexOf("terms.groups.map"));
-});
-
-test("39. required/optional is preserved per item — 'Optional' is shown only for non-required items, never implied for required ones", () => {
-  const fn = fnBody(PRESENTATION, "function ContributionGroupBlock");
-  assert.match(fn, /!item\.required &&/);
-  assert.equal(/Mandatory/i.test(fn), false);
-});
-
-test("40. monetary quantity shows the descriptive quantity/unit and the per-unit equivalent, never a derived rate stored or invented here", () => {
-  const fn = fnBody(PRESENTATION, "function PrimaryTermBlock");
-  assert.match(fn, /primary\.quantityUnit/);
-  assert.match(fn, /primary\.perUnitEquivalent/);
-});
-
-test("41. OptionPresentation never imports admin-only authoring/persistence modules", () => {
+test("41. OpportunityPresentation never imports admin-only authoring/persistence modules", () => {
   assert.equal(/CommercialTermsBuilder|toCommercialTermsRpcPayload|requireAdmin\(/.test(PRESENTATION), false);
 });
 
@@ -346,7 +272,7 @@ test("41. OptionPresentation never imports admin-only authoring/persistence modu
 
 test("42. OpportunityCard uses the direction-aware commercialCardLine, never the raw legacy price unconditionally", () => {
   assert.match(CARD, /import \{ ClockIcon, commercialCardLine, PinIcon, TagIcon/);
-  assert.match(CARD, /const commercial = commercialCardLine\(commercialOptions, price\)/);
+  assert.match(CARD, /const commercial = commercialCardLine\(commercialOptions, price, o\)/);
   assert.match(CARD, /\{commercial\.title\}/);
   assert.equal(/\{price\.amount\}/.test(CARD), false, "the old unconditional legacy-only render must be gone");
 });
@@ -462,9 +388,10 @@ test("57. the Admin detail page never opts into the new Business presentation on
   assert.match(ADMIN_DETAIL, /function CommercialTermsSection/, "Admin keeps its own, separate Commercial Terms authoring/detail section");
 });
 
-test("58. Admin's own legacy 'Investment' heading survives in the shared component's legacy branch, alongside (not replaced by) the new 'Commercial Terms' heading", () => {
+test("58 (updated). Admin's own legacy 'Investment' heading survives in the shared component; the Business heading is The Deal, never 'Commercial Terms'", () => {
   assert.match(PRESENTATION, /OPPORTUNITY_SECTION_LABELS\.investment/);
-  assert.match(PRESENTATION, /title="Commercial Terms"/);
+  assert.equal(/title="Commercial Terms"/.test(PRESENTATION), false);
+  assert.match(PRESENTATION, /The Deal/);
 });
 
 // ============================================================================
@@ -472,13 +399,15 @@ test("58. Admin's own legacy 'Investment' heading survives in the shared compone
 // ============================================================================
 
 test("59. Goals, Pro entitlements, Stripe checkout/webhooks and Event participation are never referenced by any Pass 3 file", () => {
-  for (const src of [BUSINESS_TERMS, PRESENTATION, CARD, VIEW, HOME]) {
+  for (const src of [DEAL, PRESENTATION, CARD, VIEW, HOME]) {
     assert.equal(/stripe|pro_access_request|redeem_pro_invite|event_businesses|respondToEventInvitation/i.test(src), false);
   }
 });
 
-test("60. the two Business detail routes both pass their fetched Options through to the shared presentation (hero fact + aside section alike)", () => {
+test("60 (updated). both Business detail routes pass their fetched Options to The Deal, hide the hero price fact, and hide Admin's Investment block", () => {
   for (const src of [DETAIL, EXPLORE_DETAIL]) {
-    assert.match(src, /commercialOptions=\{(item\.)?options\}/);
+    assert.match(src, /<OpportunityDeal o=\{o\} options=\{(item\.)?options\} \/>/);
+    assert.match(src, /showCommercialFact=\{false\}/);
+    assert.match(src, /showInvestment=\{false\}/);
   }
 });

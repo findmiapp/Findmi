@@ -46,7 +46,7 @@ export type ParticipationCostFilter = (typeof PARTICIPATION_COST_FILTERS)[number
 export const isParticipationCostFilter = isOneOf(PARTICIPATION_COST_FILTERS);
 
 export const PARTICIPATION_COST_FILTER_LABELS: Record<ParticipationCostFilter, string> = {
-  complimentary: "Complimentary",
+  complimentary: "Free to Participate",
   up_to_500: "Up to $500",
   up_to_1000: "Up to $1,000",
   up_to_2500: "Up to $2,500",

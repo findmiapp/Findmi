@@ -60,7 +60,7 @@ export function OpportunityCard({
   commercialOptions?: AdminOpportunityOption[];
 }) {
   const price = opportunityPriceParts(o);
-  const commercial = commercialCardLine(commercialOptions, price);
+  const commercial = commercialCardLine(commercialOptions, price, o);
   const placeName = place?.name ?? o.place_text;
   const placeDetail = place ? [place.city, place.state].filter(Boolean).join(", ") : null;
   const timing = o.timing_note ?? (o.starts_at ? formatOpportunityDate(o.starts_at) : null);

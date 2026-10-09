@@ -4,7 +4,7 @@ import BusinessAppShell from "../../../v2/BusinessAppShell";
 import ChevronIcon from "@/components/ChevronIcon";
 import { getExploreItem } from "@/lib/opportunity-listings";
 import { canMemberRespond } from "@/lib/opportunity-listings-domain";
-import { OpportunityAsideSections, OpportunityHero, OpportunityMainSections } from "@/components/opportunities/OpportunityPresentation";
+import { OpportunityAsideSections, OpportunityDeal, OpportunityHero, OpportunityMainSections, OpportunityResponseSection } from "@/components/opportunities/OpportunityPresentation";
 import { loadBusinessShell } from "../../loadBusinessShell";
 import { expressInterestFromExplore } from "../../actions";
 import { getSiteContactInfo } from "@/lib/contact-info";
@@ -54,36 +54,38 @@ export default async function ExploreOpportunityPage({
 
         {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body text-red-700">{error}</p>}
 
-        <OpportunityHero
-          o={o}
-          place={item.place}
-          showCredits={false}
-          commercialOptions={item.options}
-          actions={
-            <div className="flex flex-col gap-3 border-t border-black/5 pt-4">
-              {mayRespond &&
-                (choosePackageHref ? (
-                  <a href={choosePackageHref} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi px-3 text-center text-button font-bold text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6">
-                    Contact Findmi to Choose a Package
-                  </a>
-                ) : (
-                  <form action={expressInterestFromExplore.bind(null, id, listingId)}>
-                    <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6">
-                      I&rsquo;m Interested
-                    </button>
-                  </form>
-                ))}
-              <p className="rounded-xl bg-findmi-50/60 px-3.5 py-2.5 text-metadata text-findmi-700">
-                {choosePackageHref ? CHOOSE_PACKAGE_MESSAGE : <>Let Findmi know you&rsquo;d like to pursue this. It&rsquo;s not a binding commitment.</>}
-              </p>
-              {note && <p className="text-metadata text-muted">{note}</p>}
-            </div>
-          }
-        />
+        {/* 1. Introduction (no price fact, no response controls) */}
+        <OpportunityHero o={o} place={item.place} showCredits={false} showCommercialFact={false} commercialOptions={item.options} />
 
+        {/* 2. The Deal — understood BEFORE any response */}
+        <OpportunityDeal o={o} options={item.options} />
+
+        {/* 3. Response */}
+        <OpportunityResponseSection title="Interested?">
+          <div className="flex flex-col gap-3">
+            <p className="text-metadata text-secondary">
+              {choosePackageHref ? CHOOSE_PACKAGE_MESSAGE : <>This lets Findmi know you&rsquo;d like to discuss participating. It is not a confirmation.</>}
+            </p>
+            {mayRespond &&
+              (choosePackageHref ? (
+                <a href={choosePackageHref} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi px-3 text-center text-button font-bold text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6">
+                  Contact Findmi to Choose a Package
+                </a>
+              ) : (
+                <form action={expressInterestFromExplore.bind(null, id, listingId)}>
+                  <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6">
+                    I&rsquo;m Interested
+                  </button>
+                </form>
+              ))}
+            {note && <p className="text-metadata text-muted">{note}</p>}
+          </div>
+        </OpportunityResponseSection>
+
+        {/* 4. Details */}
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
           <div className="flex min-w-0 flex-col gap-4">
-            <OpportunityMainSections o={o} />
+            <OpportunityMainSections o={o} includeDealProse={false} />
           </div>
           <div className="flex min-w-0 flex-col gap-4">
             <OpportunityAsideSections
@@ -93,7 +95,7 @@ export default async function ExploreOpportunityPage({
               event={item.event}
               eventHref={item.event?.slug ? `/event/${item.event.slug}` : null}
               showCredits={false}
-              commercialOptions={item.options}
+              showInvestment={false}
             />
           </div>
         </div>

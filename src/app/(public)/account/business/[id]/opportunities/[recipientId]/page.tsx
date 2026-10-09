@@ -6,8 +6,10 @@ import { getBusinessOpportunityItem } from "@/lib/opportunity-listings";
 import { canMemberRespond, type BusinessOpportunityState, type BusinessResponseStatus } from "@/lib/opportunity-listings-domain";
 import {
   OpportunityAsideSections,
+  OpportunityDeal,
   OpportunityHero,
   OpportunityMainSections,
+  OpportunityResponseSection,
 } from "@/components/opportunities/OpportunityPresentation";
 import { BusinessStateBadge } from "@/components/opportunities/BusinessOpportunityCard";
 import { loadBusinessShell } from "../loadBusinessShell";
@@ -19,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 const RESPONDED: Record<BusinessResponseStatus, string> = {
   interested: "Thanks — Findmi now knows you're interested.",
-  not_interested: "Got it — you've passed on this Opportunity.",
+  not_interested: "Got it — this one isn't for you. You can change your mind while it's open.",
 };
 
 function CheckGlyph() {
@@ -37,7 +39,8 @@ function CrossGlyph() {
   );
 }
 
-/** The Business's decision area. Choices come from the canonical
+/** The Business's decision area — rendered in its own section AFTER The
+ * Deal, never in the introduction. Choices come from the canonical
  * getBusinessOpportunityState; who may press them from canMemberRespond.
  * The server action re-checks everything. */
 function DecisionArea({
@@ -67,7 +70,9 @@ function DecisionArea({
         : null;
 
   return (
-    <div className="flex flex-col gap-3 border-t border-black/5 pt-4">
+    <div className="flex flex-col gap-3">
+      {fresh && <p className="text-metadata text-secondary">{choosePackageHref ? CHOOSE_PACKAGE_MESSAGE : state.message}</p>}
+
       {fresh && mayRespond && (
         <div className="grid gap-2 sm:grid-cols-2">
           {choosePackageHref ? (
@@ -85,7 +90,7 @@ function DecisionArea({
           <form action={action("not_interested")}>
             <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white text-button font-semibold text-primary transition hover:border-black/20">
               <CrossGlyph />
-              Not Interested
+              Not for Us
             </button>
           </form>
         </div>
@@ -109,8 +114,6 @@ function DecisionArea({
         </div>
       )}
 
-      {fresh && <p className="rounded-xl bg-findmi-50/60 px-3.5 py-2.5 text-metadata text-findmi-700">{choosePackageHref ? CHOOSE_PACKAGE_MESSAGE : state.message}</p>}
-
       {!fresh && mayRespond && state.choices.length > 0 && choosePackageHref && state.choices[0] === "interested" && (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-metadata text-muted">Changed your mind?</span>
@@ -124,7 +127,7 @@ function DecisionArea({
         <form action={action(state.choices[0])} className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-metadata text-muted">Changed your mind?</span>
           <button type="submit" className="text-metadata font-bold text-accent hover:underline">
-            {state.choices[0] === "interested" ? "I'm Interested" : "Not Interested"}
+            {state.choices[0] === "interested" ? "I'm Interested" : "Not for Us"}
           </button>
         </form>
       )}
@@ -175,18 +178,28 @@ export default async function BusinessOpportunityDetailPage({
           <p className="rounded-xl border border-findmi/30 bg-findmi-50 px-4 py-3 text-body text-findmi-700">{respondedMessage}</p>
         )}
 
+        {/* 1. Introduction (no price fact, no response controls) */}
         <OpportunityHero
           o={o}
           place={place}
           showCredits={false}
+          showCommercialFact={false}
           badges={<BusinessStateBadge tone={view.state.tone} label={view.state.label} />}
-          actions={<DecisionArea state={view.state} action={action} mayRespond={mayRespond} viaAdmin={Boolean(membership.viaAdmin)} choosePackageHref={choosePackageHref} />}
           commercialOptions={options}
         />
 
+        {/* 2. The Deal — understood BEFORE any response */}
+        <OpportunityDeal o={o} options={options} />
+
+        {/* 3. Response */}
+        <OpportunityResponseSection title={view.state.choices.length === 2 ? "Interested?" : "Your Response"}>
+          <DecisionArea state={view.state} action={action} mayRespond={mayRespond} viaAdmin={Boolean(membership.viaAdmin)} choosePackageHref={choosePackageHref} />
+        </OpportunityResponseSection>
+
+        {/* 4. Details */}
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
           <div className="flex min-w-0 flex-col gap-4">
-            <OpportunityMainSections o={o} />
+            <OpportunityMainSections o={o} includeDealProse={false} />
           </div>
           <div className="flex min-w-0 flex-col gap-4">
             <OpportunityAsideSections
@@ -196,7 +209,7 @@ export default async function BusinessOpportunityDetailPage({
               event={event}
               eventHref={event?.slug ? `/event/${event.slug}` : null}
               showCredits={false}
-              commercialOptions={options}
+              showInvestment={false}
             />
           </div>
         </div>
