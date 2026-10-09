@@ -341,6 +341,57 @@ export interface OpportunityEventRef {
   start_at: string | null;
 }
 
+// ---------------------------------------------------------------- commercial terms (Pass 2)
+
+/** One Option + its Components exactly as stored — Admin only. Shaped to
+ * feed straight into OptionForPersistence (src/lib/
+ * opportunity-commercial-terms-bridge.ts) for the builder's initial state,
+ * and into formatOptionSummary/formatOptionalContributions for display. */
+export interface AdminOpportunityOption {
+  id: string;
+  listing_id: string;
+  name: string | null;
+  description: string | null;
+  commercial_mode: string;
+  custom_terms_note: string | null;
+  display_order: number;
+  components: AdminOpportunityComponent[];
+}
+
+export interface AdminOpportunityComponent {
+  id: string;
+  component_type: string;
+  amount_mode: string | null;
+  amount_min_cents: number | null;
+  amount_max_cents: number | null;
+  currency: string | null;
+  in_kind_category: string | null;
+  in_kind_description: string | null;
+  in_kind_provider: string | null;
+  in_kind_required: boolean;
+  estimated_value_cents: number | null;
+  display_order: number;
+}
+
+/** Every Option (+ its Components) for one listing, ordered the same way
+ * the builder and the detail view present them. An empty array is exactly
+ * how a not-yet-classified legacy listing is distinguished — see
+ * isLegacyUnclassified() in the bridge module. */
+export async function getAdminOpportunityOptions(listingId: string): Promise<AdminOpportunityOption[]> {
+  await requireAdmin();
+  const admin = requireAdminClient();
+  const { data, error } = await admin
+    .from("opportunity_options")
+    .select("*, components:opportunity_option_components(*)")
+    .eq("listing_id", listingId)
+    .order("display_order", { ascending: true });
+  if (error || !data) return [];
+  return (data as unknown as (AdminOpportunityOption & { components: AdminOpportunityComponent[] })[]).map((o) => ({
+    ...o,
+    components: [...o.components].sort((a, b) => a.display_order - b.display_order),
+  }));
+}
+
 /** The linked Location and Event for one listing — Admin only. */
 export async function getAdminOpportunityContext(listing: {
   location_id: string | null;

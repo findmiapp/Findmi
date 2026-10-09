@@ -1,6 +1,7 @@
-// Opportunities — Commercial Terms Foundation (Schema + Domain, Pass 1).
-// Pure domain functions plus static guards over the new migration. No
-// database, no production writes, nothing wired into any live UI yet.
+// Opportunities — Commercial Terms Foundation (Schema + Domain, Pass 1)
+// AND Admin Builder + Atomic Aggregate Persistence (Pass 2). Pure domain
+// functions plus static guards over the migrations/domain/form/bridge
+// modules and the Admin builder UI. No database, no production writes.
 // Run with `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -21,14 +22,31 @@ import {
   validateComponent,
   validateOption,
 } from "../src/lib/opportunity-commercial-terms-domain.ts";
+import { projectSafeLegacyPricing, isLegacyUnclassified, buildDefaultOption, toCommercialTermsRpcPayload } from "../src/lib/opportunity-commercial-terms-bridge.ts";
+// opportunity-commercial-terms-form.ts genuinely needs real (non-type-only)
+// imports from admin/form-helpers.ts, opportunity-listings-domain.ts and
+// opportunity-commercial-terms-domain.ts — importing validateOption is the
+// entire point (reuse, never duplicate, Pass 1's validation). Those
+// internal relative imports are extensionless (the one convention every
+// file in this codebase's build already relies on), which plain Node ESM
+// can't resolve directly the way it can a zero-import pure module — so,
+// exactly like actions.ts/opportunity-listings.ts elsewhere in this file,
+// it's covered by static source assertions below rather than a live
+// import.
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 const strip = (s) => s.replace(/--.*$/gm, "");
 const MIGRATION = read("supabase/migrations/20261009000000_opportunity_commercial_terms_foundation.sql");
+const PERSISTENCE_MIGRATION = read("supabase/migrations/20261010000000_opportunity_commercial_terms_persistence.sql");
 const LISTINGS_DOMAIN = read("src/lib/opportunity-listings-domain.ts");
 const LISTINGS_LIB = read("src/lib/opportunity-listings.ts");
 const GOALS_DOMAIN = read("src/lib/opportunity-goals-domain.ts");
 const LISTINGS_MIGRATION = read("supabase/migrations/20261006044707_opportunity_listings_v1.sql");
+const FORM_MODULE = read("src/lib/opportunity-commercial-terms-form.ts");
+const ACTIONS = read("src/app/admin/(protected)/opportunities/actions.ts");
+const OPPORTUNITY_FORM = read("src/app/admin/(protected)/opportunities/OpportunityForm.tsx");
+const BUILDER = read("src/app/admin/(protected)/opportunities/CommercialTermsBuilder.tsx");
+const DETAIL_PAGE = read("src/app/admin/(protected)/opportunities/[id]/page.tsx");
 
 const fee = (over = {}) => ({ component_type: "participation_fee", amount_mode: "fixed", amount_min_cents: 75000, currency: "USD", ...over });
 const inKind = (over = {}) => ({ component_type: "in_kind", in_kind_category: "product_samples", in_kind_provider: "recipient_business", ...over });
@@ -368,10 +386,22 @@ test("25. Goals behavior is unchanged", () => {
   assert.equal(/opportunity_option/i.test(GOALS_DOMAIN), false, "Goals domain module has no awareness of the new tables");
 });
 
-test("26. existing Opportunities authorization is untouched — nothing wired to the new tables yet", () => {
-  assert.equal(/opportunity_options|opportunity_option_components/i.test(LISTINGS_LIB), false);
+test("26. existing Opportunities authorization is unchanged; the new tables are wired ADMIN-ONLY (Pass 2), never into a Business-facing read", () => {
   assert.match(LISTINGS_LIB, /await requireBusinessMember\(businessId\)/);
   assert.match(LISTINGS_LIB, /await requireAdmin\(\)/);
+  // Pass 2 adds exactly one admin-only reader of the new tables.
+  assert.match(LISTINGS_LIB, /export async function getAdminOpportunityOptions/);
+  const adminFn = LISTINGS_LIB.match(/export async function getAdminOpportunityOptions[\s\S]*?\n}\n/)[0];
+  assert.match(adminFn, /await requireAdmin\(\)/);
+  assert.match(adminFn, /opportunity_options/);
+  // Every BUSINESS-facing read function is untouched — none of them
+  // mentions the new tables.
+  for (const fnName of ["getBusinessOpportunities", "getBusinessOpportunity", "getBusinessOpportunityItems", "getBusinessOpportunityItem", "getExploreItems", "getExploreItem", "expressExploreInterest", "respondToOpportunityListing"]) {
+    const re = new RegExp(`export async function ${fnName}\\([\\s\\S]*?\\n}\\n`);
+    const m = LISTINGS_LIB.match(re);
+    assert.ok(m, `${fnName} not found`);
+    assert.equal(/opportunity_options|opportunity_option_components/i.test(m[0]), false, `${fnName} must not reference the new tables`);
+  }
 });
 
 // ---------------------------------------------------------------- migration/domain drift guard
@@ -458,4 +488,575 @@ test("DB layer: updated_at triggers reuse the existing set_updated_at() function
 test("opportunity_recipients.option_id was deferred, not added, in this pass", () => {
   assert.equal(/alter table public\.opportunity_recipients/i.test(MIGRATION), false);
   assert.equal(/option_id/i.test(LISTINGS_MIGRATION), false);
+});
+
+// ============================================================================
+// Admin Builder + Atomic Aggregate Persistence (Pass 2)
+// ============================================================================
+
+// ---------------------------------------------------------------- bridge: SAFE legacy pricing projection (live)
+//
+// Correction (Pass 2 review): the original deriveLegacyPricing() projected
+// whichever Option happened to be first, regardless of commercial
+// direction — unsafe (Compensation/Project Budget could show as a
+// Business-pays "Investment" amount; a second Option's different price
+// was silently hidden). Renamed to projectSafeLegacyPricing(); the tests
+// below are the 17 required cases plus the explicit safety proofs.
+
+const NEUTRAL = { pricing_mode: "custom", price: null, currency: "USD" };
+const participationFee = (over = {}) => ({ component_type: "participation_fee", amount_mode: "fixed", amount_min_cents: 75000, currency: "USD", ...over });
+const compensation = (over = {}) => ({ component_type: "compensation", amount_mode: "fixed", amount_min_cents: 150000, currency: "USD", ...over });
+const projectBudget = (over = {}) => ({ component_type: "project_budget", amount_mode: "fixed", amount_min_cents: 1000000, currency: "USD", ...over });
+const structured = (component) => ({ commercial_mode: "structured", components: [component] });
+
+// 1. Single Participation Fee — Fixed
+test("Pass 2 / 1. case 1 — single Participation Fee, Fixed: projects 1:1 to legacy fixed", () => {
+  assert.deepEqual(projectSafeLegacyPricing([structured(participationFee())]), { pricing_mode: "fixed", price: "750", currency: "USD" });
+});
+
+// 2. Single Participation Fee — Starting At
+test("Pass 2 / 2. case 2 — single Participation Fee, Starting At: projects 1:1 to legacy starting_at", () => {
+  const r = projectSafeLegacyPricing([structured(participationFee({ amount_mode: "starting_at", amount_min_cents: 100000 }))]);
+  assert.deepEqual(r, { pricing_mode: "starting_at", price: "1000", currency: "USD" });
+});
+
+// 3. Single Participation Fee — Range
+test("Pass 2 / 3. case 3 — single Participation Fee, Range: NEUTRAL (no single honest floor to claim as the amount)", () => {
+  const r = projectSafeLegacyPricing([structured(participationFee({ amount_mode: "range", amount_min_cents: 50000, amount_max_cents: 100000 }))]);
+  assert.deepEqual(r, NEUTRAL);
+});
+
+// 4. Single Participation Fee — Undisclosed
+test("Pass 2 / 4. case 4 — single Participation Fee, Undisclosed: NEUTRAL (no amount to show)", () => {
+  const r = projectSafeLegacyPricing([structured(participationFee({ amount_mode: "undisclosed", amount_min_cents: null }))]);
+  assert.deepEqual(r, NEUTRAL);
+});
+
+// 5/6/7. Compensation (Fixed/Range/Undisclosed) — the Business RECEIVES this; NEVER a legacy "Investment" amount
+test("Pass 2 / 5. case 5 — single Compensation, Fixed: NEUTRAL, never a legacy amount (the Business RECEIVES this; legacy 'Investment' only ever means the Business PAYS)", () => {
+  assert.deepEqual(projectSafeLegacyPricing([structured(compensation())]), NEUTRAL);
+});
+test("Pass 2 / 6. case 6 — single Compensation, Range: NEUTRAL", () => {
+  assert.deepEqual(projectSafeLegacyPricing([structured(compensation({ amount_mode: "range", amount_min_cents: 100000, amount_max_cents: 200000 }))]), NEUTRAL);
+});
+test("Pass 2 / 7. case 7 — single Compensation, Undisclosed: NEUTRAL", () => {
+  assert.deepEqual(projectSafeLegacyPricing([structured(compensation({ amount_mode: "undisclosed", amount_min_cents: null }))]), NEUTRAL);
+});
+
+// 8/9/10. Project Budget (Fixed/Range/Undisclosed) — a budget figure is not a payment; NEVER a legacy "Investment" amount
+test("Pass 2 / 8. case 8 — single Project Budget, Fixed: NEUTRAL, never a legacy amount (a budget figure is not a payment)", () => {
+  assert.deepEqual(projectSafeLegacyPricing([structured(projectBudget())]), NEUTRAL);
+});
+test("Pass 2 / 9. case 9 — single Project Budget, Range: NEUTRAL", () => {
+  assert.deepEqual(projectSafeLegacyPricing([structured(projectBudget({ amount_mode: "range", amount_min_cents: 500000, amount_max_cents: 1500000 }))]), NEUTRAL);
+});
+test("Pass 2 / 10. case 10 — single Project Budget, Undisclosed: NEUTRAL", () => {
+  assert.deepEqual(projectSafeLegacyPricing([structured(projectBudget({ amount_mode: "undisclosed", amount_min_cents: null }))]), NEUTRAL);
+});
+
+// 11. Structured In-Kind only
+test("Pass 2 / 11. case 11 — Structured, In-Kind only (no monetary component): NEUTRAL, never invents a price", () => {
+  const r = projectSafeLegacyPricing([{ commercial_mode: "structured", components: [{ component_type: "in_kind", in_kind_category: "staffing", in_kind_provider: "findmi", in_kind_required: true }] }]);
+  assert.deepEqual(r, NEUTRAL);
+});
+
+// 12/13. Complimentary / Complimentary + optional In-Kind
+test("Pass 2 / 12. case 12 — Complimentary: projects to legacy complimentary", () => {
+  assert.deepEqual(projectSafeLegacyPricing([{ commercial_mode: "complimentary", components: [] }]), { pricing_mode: "complimentary", price: null, currency: "USD" });
+});
+test("Pass 2 / 13. case 13 — Complimentary + optional In-Kind: still legacy complimentary (the optional In-Kind doesn't change the fact it's free)", () => {
+  const r = projectSafeLegacyPricing([
+    { commercial_mode: "complimentary", components: [{ component_type: "in_kind", in_kind_category: "product_samples", in_kind_provider: "recipient_business", in_kind_required: false }] },
+  ]);
+  assert.deepEqual(r, { pricing_mode: "complimentary", price: null, currency: "USD" });
+});
+
+// 14. Custom
+test("Pass 2 / 14. case 14 — Custom: NEUTRAL (legacy custom, 'Contact Findmi')", () => {
+  assert.deepEqual(projectSafeLegacyPricing([{ commercial_mode: "custom", components: [] }]), NEUTRAL);
+});
+
+// 15. Multiple Options, same monetary direction
+test("Pass 2 / 15. case 15 — two Options, both Participation Fee Fixed/Starting At: projects the MINIMUM floor as starting_at (a true lower bound, never one arbitrary exact price)", () => {
+  const r = projectSafeLegacyPricing([structured(participationFee({ amount_min_cents: 150000 })), structured(participationFee({ amount_mode: "starting_at", amount_min_cents: 75000 }))]);
+  assert.deepEqual(r, { pricing_mode: "starting_at", price: "750", currency: "USD" });
+});
+test("Pass 2 / 15b. case 15 — order independence: the SAME two Options in the OPPOSITE order yield the identical projection (never 'whichever is first')", () => {
+  const a = structured(participationFee({ amount_min_cents: 150000 }));
+  const b = structured(participationFee({ amount_mode: "starting_at", amount_min_cents: 75000 }));
+  assert.deepEqual(projectSafeLegacyPricing([a, b]), projectSafeLegacyPricing([b, a]));
+});
+test("Pass 2 / 15c. case 15 — same direction but one uses Range: NEUTRAL (not every Option has a clean floor, so the set doesn't uniformly qualify)", () => {
+  const r = projectSafeLegacyPricing([structured(participationFee()), structured(participationFee({ amount_mode: "range", amount_min_cents: 50000, amount_max_cents: 100000 }))]);
+  assert.deepEqual(r, NEUTRAL);
+});
+
+// 16. Multiple Options, different monetary directions
+test("Pass 2 / 16. case 16 — one Participation Fee Option + one Compensation Option: NEUTRAL, never exposes the Participation Fee amount alone", () => {
+  const r = projectSafeLegacyPricing([structured(participationFee()), structured(compensation())]);
+  assert.deepEqual(r, NEUTRAL);
+});
+
+// 17. Multiple Options, no monetary component at all
+test("Pass 2 / 17. case 17 — one Complimentary Option + one Structured In-Kind-only Option (no monetary anywhere): NEUTRAL, never guesses 'complimentary' for a mix", () => {
+  const r = projectSafeLegacyPricing([
+    { commercial_mode: "complimentary", components: [] },
+    { commercial_mode: "structured", components: [{ component_type: "in_kind", in_kind_category: "staffing", in_kind_provider: "findmi", in_kind_required: true }] },
+  ]);
+  assert.deepEqual(r, NEUTRAL);
+});
+test("Pass 2 / 17b. case 17 — every Option Complimentary (no monetary anywhere, but uniformly free): legacy complimentary", () => {
+  const r = projectSafeLegacyPricing([{ commercial_mode: "complimentary", components: [] }, { commercial_mode: "complimentary", components: [] }]);
+  assert.deepEqual(r, { pricing_mode: "complimentary", price: null, currency: "USD" });
+});
+
+// ---------------------------------------------------------------- explicit safety proofs required by the review
+
+test("Pass 2 / proof-1. no first-Option / array-position semantics remain anywhere in the function's own source", () => {
+  const fn = read("src/lib/opportunity-commercial-terms-bridge.ts").match(/export function projectSafeLegacyPricing[\s\S]*?\n\}/)[0];
+  assert.equal(/options\[0\]|\bfirst\b/i.test(fn), false, "no indexing into options[0] or a 'first' variable anywhere in the real logic");
+});
+
+test("Pass 2 / proof-2. Compensation is NEVER projected as a legacy amount, for every amount_mode", () => {
+  for (const mode of ["fixed", "starting_at", "range", "undisclosed"]) {
+    const amounts = mode === "range" ? { amount_min_cents: 100000, amount_max_cents: 200000 } : mode === "undisclosed" ? { amount_min_cents: null } : { amount_min_cents: 100000 };
+    const r = projectSafeLegacyPricing([structured(compensation({ amount_mode: mode, ...amounts }))]);
+    assert.notEqual(r.pricing_mode, "fixed");
+    assert.notEqual(r.pricing_mode, "starting_at");
+  }
+});
+
+test("Pass 2 / proof-3. Project Budget is NEVER projected as a legacy amount, for every amount_mode", () => {
+  for (const mode of ["fixed", "starting_at", "range", "undisclosed"]) {
+    const amounts = mode === "range" ? { amount_min_cents: 100000, amount_max_cents: 200000 } : mode === "undisclosed" ? { amount_min_cents: null } : { amount_min_cents: 100000 };
+    const r = projectSafeLegacyPricing([structured(projectBudget({ amount_mode: mode, ...amounts }))]);
+    assert.notEqual(r.pricing_mode, "fixed");
+    assert.notEqual(r.pricing_mode, "starting_at");
+  }
+});
+
+test("Pass 2 / proof-4. a mixed-direction multi-Option arrangement never exposes one arbitrary amount, regardless of which Option is listed first", () => {
+  const fee = structured(participationFee({ amount_min_cents: 999999 }));
+  const comp = structured(compensation());
+  assert.deepEqual(projectSafeLegacyPricing([fee, comp]), NEUTRAL);
+  assert.deepEqual(projectSafeLegacyPricing([comp, fee]), NEUTRAL);
+});
+
+test("Pass 2 / proof-5. a same-direction multi-Option arrangement is flattened ONLY when every Option independently proves safe (Fixed/Starting At, same currency) — one disqualifying Option voids the whole projection", () => {
+  const safe = structured(participationFee());
+  const undisclosedOne = structured(participationFee({ amount_mode: "undisclosed", amount_min_cents: null }));
+  assert.notDeepEqual(projectSafeLegacyPricing([safe, safe]), NEUTRAL, "uniformly safe -> an amount IS projected");
+  assert.deepEqual(projectSafeLegacyPricing([safe, undisclosedOne]), NEUTRAL, "one unsafe Option voids the set");
+});
+
+test("Pass 2 / proof-6. Range is never flattened into a single invented amount, alone or mixed with a safe Option", () => {
+  const range = structured(participationFee({ amount_mode: "range", amount_min_cents: 50000, amount_max_cents: 150000 }));
+  assert.deepEqual(projectSafeLegacyPricing([range]), NEUTRAL);
+  assert.deepEqual(projectSafeLegacyPricing([range, structured(participationFee())]), NEUTRAL);
+});
+
+test("Pass 2 / proof-7. Undisclosed never invents an amount, alone or mixed with a safe Option", () => {
+  const undisclosed = structured(participationFee({ amount_mode: "undisclosed", amount_min_cents: null }));
+  assert.deepEqual(projectSafeLegacyPricing([undisclosed]), NEUTRAL);
+  assert.deepEqual(projectSafeLegacyPricing([undisclosed, structured(participationFee())]), NEUTRAL);
+});
+
+test("Pass 2 / proof-8. Complimentary remains truthful: projected only when EVERY Option is Complimentary, never as a side effect of a mixed arrangement", () => {
+  assert.deepEqual(projectSafeLegacyPricing([{ commercial_mode: "complimentary", components: [] }]).pricing_mode, "complimentary");
+  assert.notEqual(projectSafeLegacyPricing([{ commercial_mode: "complimentary", components: [] }, structured(participationFee())]).pricing_mode, "complimentary");
+});
+
+test("Pass 2 / proof-9. Complimentary + optional In-Kind remains truthful — optional In-Kind on any Option never flips the projection away from complimentary", () => {
+  const withOptionalInKind = { commercial_mode: "complimentary", components: [{ component_type: "in_kind", in_kind_category: "equipment", in_kind_provider: "findmi", in_kind_required: false }] };
+  assert.equal(projectSafeLegacyPricing([withOptionalInKind]).pricing_mode, "complimentary");
+});
+
+test("Pass 2 / proof-10. In-Kind-only never invents monetary pricing, Structured or mixed with Complimentary", () => {
+  const inKindOnly = { commercial_mode: "structured", components: [{ component_type: "in_kind", in_kind_category: "services", in_kind_provider: "organizer", in_kind_required: true }] };
+  assert.deepEqual(projectSafeLegacyPricing([inKindOnly]), NEUTRAL);
+  assert.deepEqual(projectSafeLegacyPricing([inKindOnly, { commercial_mode: "complimentary", components: [] }]), NEUTRAL);
+});
+
+test("Pass 2 / proof-11. Custom remains neutral, alone or mixed with anything else", () => {
+  assert.deepEqual(projectSafeLegacyPricing([{ commercial_mode: "custom", components: [] }]), NEUTRAL);
+  assert.deepEqual(projectSafeLegacyPricing([{ commercial_mode: "custom", components: [] }, structured(participationFee())]), NEUTRAL);
+});
+
+test("Pass 2 / proof: mixed currencies across safe-looking Options never get averaged/combined into one number", () => {
+  const usd = structured(participationFee({ currency: "USD" }));
+  const cad = structured(participationFee({ currency: "CAD" }));
+  assert.deepEqual(projectSafeLegacyPricing([usd, cad]), NEUTRAL);
+});
+
+test("Pass 2 / proof: an empty Options array is NEUTRAL, never throws", () => {
+  assert.deepEqual(projectSafeLegacyPricing([]), NEUTRAL);
+});
+
+// ---------------------------------------------------------------- bridge: legacy classification + default option (live)
+
+test("Pass 2 / 10. isLegacyUnclassified is true only for exactly zero Options", () => {
+  assert.equal(isLegacyUnclassified(0), true);
+  assert.equal(isLegacyUnclassified(1), false);
+  assert.equal(isLegacyUnclassified(5), false);
+});
+
+test("Pass 2 / 11. buildDefaultOption: a brand-new Opportunity defaults to Structured with zero Components (never auto-Complimentary)", () => {
+  const d = buildDefaultOption();
+  assert.equal(d.commercial_mode, "structured");
+  assert.deepEqual(d.components, []);
+  assert.equal(d.name, null);
+});
+
+// ---------------------------------------------------------------- bridge: RPC payload shaping (live)
+
+test("Pass 2 / 12. toCommercialTermsRpcPayload: reshapes Option+Components 1:1, preserving a given id and nulling a new one", () => {
+  const payload = toCommercialTermsRpcPayload([
+    { id: "existing-id", name: "Resident Demo", description: null, commercial_mode: "structured", custom_terms_note: null, components: [{ component_type: "participation_fee", amount_mode: "fixed", amount_min_cents: 75000, amount_max_cents: null, currency: "USD", in_kind_category: null, in_kind_description: null, in_kind_provider: null, in_kind_required: true, estimated_value_cents: null }] },
+    { id: null, name: null, description: null, commercial_mode: "complimentary", custom_terms_note: null, components: [] },
+  ]);
+  assert.equal(payload.length, 2);
+  assert.equal(payload[0].id, "existing-id");
+  assert.equal(payload[0].components.length, 1);
+  assert.equal(payload[0].components[0].component_type, "participation_fee");
+  assert.equal(payload[1].id, null);
+  assert.deepEqual(payload[1].components, []);
+});
+
+// ---------------------------------------------------------------- form.ts: static reuse guards (no divergent logic)
+
+test("Pass 2 / 13. parseCommercialTermsForm imports and calls the UNMODIFIED Pass 1 validateOption — never a second implementation", () => {
+  assert.match(FORM_MODULE, /import\s*\{[^}]*\bvalidateOption\b[^}]*\}\s*from\s*"\.\/opportunity-commercial-terms-domain"/);
+  assert.match(FORM_MODULE, /validateOption\(input\)/);
+  // No local re-derivation of the classification rules Pass 1 already owns.
+  assert.equal(/monetaryCount|requiredInKindCount/.test(FORM_MODULE), false, "classification math lives only in validateOption");
+});
+
+test("Pass 2 / 14. parseCommercialTermsForm uses typed, individually-named form fields — never one JSON blob through a hidden input", () => {
+  assert.equal(/JSON\.parse|JSON\.stringify/.test(FORM_MODULE), false);
+  assert.match(FORM_MODULE, /`\$\{prefix\}_type`/);
+  assert.match(FORM_MODULE, /"ct_count"/);
+  assert.match(FORM_MODULE, /`\$\{prefix\}_comp_count`/);
+});
+
+test("Pass 2 / 15. parseCommercialTermsForm rejects zero Options and caps both Option and Component counts", () => {
+  assert.match(FORM_MODULE, /optionCount < 1/);
+  assert.match(FORM_MODULE, /MAX_OPTIONS/);
+  assert.match(FORM_MODULE, /MAX_COMPONENTS_PER_OPTION/);
+});
+
+test("Pass 2 / 16. parseCommercialTermsForm reuses parsePriceToCents (the existing legacy dollar-string parser) rather than a second money parser", () => {
+  assert.match(FORM_MODULE, /import\s*\{\s*parsePriceToCents\s*\}\s*from\s*"\.\/opportunity-listings-domain"/);
+});
+
+// ---------------------------------------------------------------- RPC persistence migration (static structural — no DB access)
+
+test("Pass 2 / 17. replace_opportunity_options is SECURITY DEFINER, search_path pinned, service_role-only — same hardening as approve_pro_access_request", () => {
+  assert.match(PERSISTENCE_MIGRATION, /create or replace function public\.replace_opportunity_options/);
+  assert.match(PERSISTENCE_MIGRATION, /security definer/);
+  assert.match(PERSISTENCE_MIGRATION, /set search_path = ''/);
+  assert.match(PERSISTENCE_MIGRATION, /revoke execute on function public\.replace_opportunity_options\(uuid, jsonb\) from public, anon, authenticated/);
+  assert.match(PERSISTENCE_MIGRATION, /grant execute on function public\.replace_opportunity_options\(uuid, jsonb\) to service_role/);
+});
+
+test("Pass 2 / 18. the RPC's own comment explicitly corrects the Pass 1 report: a Postgres function cannot call TypeScript validateOption()", () => {
+  const prose = PERSISTENCE_MIGRATION.replace(/^\s*--\s?/gm, " ").replace(/\s+/g, " ");
+  assert.match(prose, /assumed a future Postgres RPC could "call validateOption\(\)"\. It cannot/);
+  assert.match(prose, /already have been checked in TypeScript, server-side, before this function is ever called/);
+});
+
+test("Pass 2 / 19. the RPC rejects an empty Options array and a listing that doesn't exist — defense-in-depth, not trust", () => {
+  assert.match(PERSISTENCE_MIGRATION, /raise exception 'listing_not_found'/);
+  assert.match(PERSISTENCE_MIGRATION, /raise exception 'no_options'/);
+  assert.match(PERSISTENCE_MIGRATION, /jsonb_array_length\(p_options\) = 0/);
+});
+
+test("Pass 2 / 20. the RPC rejects an incoming Option id that doesn't belong to p_listing_id (foreign_option_id)", () => {
+  assert.match(PERSISTENCE_MIGRATION, /raise exception 'foreign_option_id'/);
+  assert.match(PERSISTENCE_MIGRATION, /where id = v_option_id and listing_id = p_listing_id/);
+});
+
+test("Pass 2 / 21. the RPC is a single PL\\/pgSQL function body — one implicit transaction, no explicit BEGIN/COMMIT needed and none added", () => {
+  assert.equal(/\bbegin\s*;|\bcommit\s*;/i.test(PERSISTENCE_MIGRATION), false, "no second, manually-opened transaction — the function body IS the transaction");
+  assert.match(PERSISTENCE_MIGRATION, /language plpgsql/);
+});
+
+test("Pass 2 / 22. the RPC preserves a submitted Option's existing id (UPDATE), and only inserts fresh when no id is given — stable ids across ordinary edits", () => {
+  assert.match(PERSISTENCE_MIGRATION, /if v_option_id is not null then/);
+  assert.match(PERSISTENCE_MIGRATION, /update public\.opportunity_options/);
+  assert.match(PERSISTENCE_MIGRATION, /insert into public\.opportunity_options/);
+});
+
+test("Pass 2 / 23. the RPC clears an Option's Components BEFORE changing its commercial_mode, so the existing mode-change trigger is never blocked by stale rows", () => {
+  const body = PERSISTENCE_MIGRATION;
+  const deleteIdx = body.indexOf("delete from public.opportunity_option_components where option_id = v_option_id;");
+  const updateIdx = body.indexOf("update public.opportunity_options", deleteIdx);
+  assert.ok(deleteIdx > -1 && updateIdx > deleteIdx, "components must be cleared before the option's own mode UPDATE");
+});
+
+test("Pass 2 / 24. the RPC removes Options the admin dropped (absent from p_options) and relies on the Pass 1 cascade FK for their Components — no second delete loop", () => {
+  assert.match(PERSISTENCE_MIGRATION, /delete from public\.opportunity_options\s+where listing_id = p_listing_id\s+and id <> all \(v_incoming_ids\)/);
+  assert.equal(/delete from public\.opportunity_option_components where option_id in/i.test(PERSISTENCE_MIGRATION), false, "removed Options' Components are cascade-deleted, not manually re-deleted");
+});
+
+test("Pass 2 / 25. the RPC inserts real rows through the real tables — every Pass 1 CHECK constraint and trigger still applies, no bypass/disable of RLS or triggers", () => {
+  assert.equal(/disable trigger|alter table .* disable row level security|security definer.*bypassrls/i.test(PERSISTENCE_MIGRATION), false);
+  assert.match(PERSISTENCE_MIGRATION, /insert into public\.opportunity_option_components/);
+});
+
+test("Pass 2 / 26. the persistence migration is purely additive — no ALTER/DROP on any existing table, trigger, or constraint", () => {
+  assert.equal(/alter table public\.opportunity_(options|option_components|listings|recipients)/i.test(PERSISTENCE_MIGRATION), false);
+  assert.equal(/drop (table|trigger|function|constraint)/i.test(PERSISTENCE_MIGRATION.replace(/create or replace function/gi, "")), false);
+});
+
+test("Pass 2 / 27. no reference to the real production Tabli listing anywhere in the new persistence migration", () => {
+  assert.equal(/\btabli\b/i.test(PERSISTENCE_MIGRATION), false);
+});
+
+// ---------------------------------------------------------------- actions.ts: server wiring (static — "@/" aliases aren't live-importable)
+
+test("Pass 2 / 28. createOpportunity parses+validates Commercial Terms BEFORE the listing insert — a bad Option never gets as far as creating a row", () => {
+  const createFn = ACTIONS.match(/export async function createOpportunity[\s\S]*?\n}\n/)[0];
+  const termsIdx = createFn.indexOf("readCommercialTerms(");
+  const insertIdx = createFn.search(/\.insert\(/);
+  assert.ok(termsIdx > -1 && insertIdx > termsIdx, "Commercial Terms must be parsed/validated before the insert");
+});
+
+test("Pass 2 / 28b. (review correction) saveOpportunity gates Commercial Terms parsing behind the listing's OWN current Option count — it never unconditionally parses/touches ct_* fields", () => {
+  const saveFn = ACTIONS.match(/export async function saveOpportunity[\s\S]*?\n}\n/)[0];
+  assert.match(saveFn, /const hasCommercialTerms = \(existingOptionRows\?\.length \?\? 0\) > 0;/);
+  assert.match(saveFn, /if \(hasCommercialTerms\) \{\s*\n\s*options = readCommercialTerms\(base, formData\);/);
+  // The unconditional parse the old (unsafe) version did is gone.
+  const beforeBranch = saveFn.slice(0, saveFn.indexOf("if (hasCommercialTerms)"));
+  assert.equal(beforeBranch.includes("readCommercialTerms("), false, "must not parse Commercial Terms before knowing whether this listing even has any");
+});
+
+test("Pass 2 / 29. legacy pricing_mode/price/currency are PROJECTED (safely) from the submitted Options when Commercial Terms exist, never read directly from the form", () => {
+  assert.equal(/str\(formData, "pricing_mode"\)|str\(formData, "price"\)|str\(formData, "currency"\)/.test(ACTIONS), false);
+  assert.match(ACTIONS, /projectSafeLegacyPricing\(options\)/);
+  assert.match(ACTIONS, /pricing_mode: legacy\.pricing_mode/);
+  // The renamed, now-removed unsafe function must not reappear.
+  assert.equal(/\bderiveLegacyPricing\b/.test(ACTIONS), false);
+});
+
+test("Pass 2 / 29b. (review correction) an unconverted (legacy-unclassified) listing's existing legacy pricing_mode/price_cents/currency are read back from ITS OWN row and passed through unchanged — never derived, never guessed", () => {
+  const saveFn = ACTIONS.match(/export async function saveOpportunity[\s\S]*?\n}\n/)[0];
+  const elseBranch = saveFn.match(/\} else \{[\s\S]*?\n  \}/)[0];
+  assert.match(elseBranch, /select\("pricing_mode, price_cents, currency"\)/);
+  assert.match(elseBranch, /pricing_mode: current!\.pricing_mode/);
+  assert.match(elseBranch, /price: current!\.price_cents != null \? centsToDollarString\(current!\.price_cents\) : null/);
+  assert.match(elseBranch, /currency: current!\.currency/);
+  assert.equal(/projectSafeLegacyPricing/.test(elseBranch), false, "no projection is computed for an unconverted listing — only its own existing value is reused");
+});
+
+test("Pass 2 / 29c. (review correction) an unrelated edit to an unconverted listing never calls the aggregate-write RPC — no Option row is created as a side effect of saving an unrelated field", () => {
+  const saveFn = ACTIONS.match(/export async function saveOpportunity[\s\S]*?\n}\n/)[0];
+  assert.match(saveFn, /if \(hasCommercialTerms && options\) \{\s*\n\s*const rpcError = await persistCommercialTerms/);
+});
+
+test("Pass 2 / 30. credits_eligible stays its own independent form field, untouched by the Commercial Terms model", () => {
+  assert.match(ACTIONS, /credits_eligible: bool\(formData, "credits_eligible"\)/);
+});
+
+test("Pass 2 / 31. the aggregate write (Options + Components) goes through exactly one RPC call per save — replace_opportunity_options", () => {
+  const matches = ACTIONS.match(/\.rpc\("replace_opportunity_options"/g) ?? [];
+  assert.ok(matches.length >= 1);
+  assert.equal(/\.rpc\("[a-z_]*option[a-z_]*"/gi.test(ACTIONS.replace(/replace_opportunity_options/g, "")), false, "no second, divergent RPC for the same concern");
+});
+
+test("Pass 2 / 32. createOpportunity never reports success for a listing with no Options when the aggregate write fails — it redirects to the real edit page with an error instead", () => {
+  const createFn = ACTIONS.match(/export async function createOpportunity[\s\S]*?\n}\n/)[0];
+  assert.match(createFn, /if \(rpcError\) \{/);
+  assert.match(createFn, /\/edit\?error=/);
+});
+
+test("Pass 2 / 33. convertLegacyToCommercialTerms is requireAdmin-gated, refuses when the listing already has Options, and never guesses a Fixed/Starting-At amount's direction", () => {
+  const fn = ACTIONS.match(/export async function convertLegacyToCommercialTerms[\s\S]*?\n}\n/)[0];
+  assert.match(fn, /await requireAdmin\(\)/);
+  assert.match(fn, /existingOptions.*length > 0/);
+  assert.match(fn, /already has Commercial Terms/);
+  assert.match(fn, /isMonetaryComponentType\(componentType\)/);
+  assert.equal(/participation_fee['"]?\s*;?\s*\/\/\s*default/i.test(fn), false, "no hardcoded default direction");
+});
+
+test("Pass 2 / 34. convertLegacyToCommercialTerms is reachable ONLY from its own explicit action — not called from createOpportunity/saveOpportunity/setOpportunityStatus", () => {
+  const otherFns = ["createOpportunity", "saveOpportunity", "setOpportunityStatus", "sendOpportunity", "setRecipientStatus", "saveRecipientNotes", "setListingVisibility"];
+  for (const name of otherFns) {
+    const fn = ACTIONS.match(new RegExp(`export async function ${name}\\([\\s\\S]*?\\n}\\n`))[0];
+    assert.equal(fn.includes("convertLegacyToCommercialTerms"), false, `${name} must never call convertLegacyToCommercialTerms itself`);
+  }
+});
+
+test("Pass 2 / 35. Pro Access Requests, Stripe, Opportunity Credits payment logic and the Explore budget filter are untouched by this pass's actions.ts changes", () => {
+  assert.equal(/stripe|pro_access_request|approve_pro_access_request/i.test(ACTIONS), false);
+  assert.equal(/EXPLORE_BUDGET|matchesExploreFilters/i.test(ACTIONS), false);
+});
+
+test("Pass 2 / 35b. (review correction) convertLegacyToCommercialTerms never computes or writes a legacy pricing projection — it only ADDS the equivalent Option, leaving the listing's existing legacy columns exactly as they were", () => {
+  const fn = ACTIONS.match(/export async function convertLegacyToCommercialTerms[\s\S]*?\n}\n/)[0];
+  assert.equal(/projectSafeLegacyPricing/.test(fn), false);
+  assert.equal(/\.from\("opportunity_listings"\)\.update\(/.test(fn), false, "no write to opportunity_listings at all during conversion");
+});
+
+test("Pass 2 / 35c. (review correction) a brand-new Opportunity (createOpportunity) always runs its Options through the renamed SAFE projection, never the old unsafe one", () => {
+  const createFn = ACTIONS.match(/export async function createOpportunity[\s\S]*?\n}\n/)[0];
+  assert.match(createFn, /projectSafeLegacyPricing\(options\)/);
+});
+
+// ---------------------------------------------------------------- OpportunityForm.tsx: Investment -> Commercial Terms
+
+test("Pass 2 / 36. the old Pricing Mode dropdown/Amount inputs are gone — CommercialTermsBuilder replaces them, Credits Eligible is now independent", () => {
+  assert.equal(/name="pricing_mode"|name="price"\s/.test(OPPORTUNITY_FORM), false);
+  assert.match(OPPORTUNITY_FORM, /<CommercialTermsBuilder initialOptions=\{initialOptions\} onFirstOptionModeChange=\{setComplimentary\} \/>/);
+  assert.match(OPPORTUNITY_FORM, /name="credits_eligible"/);
+});
+
+test("Pass 2 / 37. Credits Eligible is disabled exactly when the FIRST Option is Complimentary — same rule the old dropdown enforced, now driven by the builder's callback", () => {
+  assert.match(OPPORTUNITY_FORM, /disabled=\{complimentary\}/);
+  assert.match(OPPORTUNITY_FORM, /onFirstOptionModeChange/);
+});
+
+test("Pass 2 / 37b. (review correction) the builder is rendered ONLY when `legacyUnclassified` is false — an unconverted legacy listing's edit form shows a read-only notice instead, never the builder", () => {
+  assert.match(OPPORTUNITY_FORM, /\{legacyUnclassified \? \(/);
+  assert.match(OPPORTUNITY_FORM, /hasn&rsquo;t been set up with structured Commercial Terms yet/);
+  assert.equal(/\blegacy\b/i.test(OPPORTUNITY_FORM.match(/>\s*This Opportunity[^<]*</)?.[0] ?? ""), false, "the read-only notice itself never uses the raw word 'legacy'");
+});
+
+test("Pass 2 / 37c. (review correction) the new/edit pages pass legacyUnclassified correctly: always false for a brand-new Opportunity, derived from the real Option count for an edit", () => {
+  const NEW_PAGE = read("src/app/admin/(protected)/opportunities/new/page.tsx");
+  const EDIT_PAGE = read("src/app/admin/(protected)/opportunities/[id]/edit/page.tsx");
+  assert.match(NEW_PAGE, /legacyUnclassified=\{false\}/);
+  assert.match(EDIT_PAGE, /legacyUnclassified=\{isLegacyUnclassified\(options\.length\)\}/);
+});
+
+// ---------------------------------------------------------------- CommercialTermsBuilder.tsx: UX behavior guards
+
+test("Pass 2 / 38. the builder uses no drag-and-drop library — reorder is Move Up/Down only (an unrelated @dnd-kit dependency pre-exists elsewhere in the repo; this pass never imports it)", () => {
+  assert.equal(/from\s+"@dnd-kit|react-beautiful-dnd|react-dnd(?!-)|sortablejs/i.test(BUILDER), false);
+  assert.match(BUILDER, /Move Up/);
+  assert.match(BUILDER, /Move Down/);
+});
+
+test("Pass 2 / 39. Duplicate/Remove Option exist; Remove is disabled at exactly one Option (never zero)", () => {
+  assert.match(BUILDER, /Duplicate Option/);
+  assert.match(BUILDER, /Remove Option/);
+  assert.match(BUILDER, /disabled=\{total <= 1\}/);
+  assert.match(BUILDER, /prev\.length <= 1 \? prev : prev\.filter/);
+});
+
+test("Pass 2 / 40. Duplicate clones every field with NEW client keys and a null id (a true copy, never the same persisted row)", () => {
+  assert.match(BUILDER, /key: newKey\(\), id: null, components: prev\[idx\]\.components\.map\(\(c\) => \(\{ \.\.\.c, key: newKey\(\) \}\)\)/);
+});
+
+test("Pass 2 / 41. the +Add Term picker enforces monetary mutual exclusivity in the picker itself (disabled, not just re-validated later)", () => {
+  assert.match(BUILDER, /disabled=\{usedMonetary != null\}/);
+  assert.match(BUILDER, /An Option can only have one monetary term/);
+});
+
+test("Pass 2 / 42. adding a monetary term always REPLACES any existing one in state, defense-in-depth beyond the disabled picker button", () => {
+  assert.match(BUILDER, /components: \[defaultMonetaryComponent\(type\), \.\.\.o\.components\.filter\(\(c\) => !isMonetaryComponentType\(c\.component_type\)\)\]/);
+});
+
+test("Pass 2 / 43. Complimentary's Add Term picker offers ONLY In-Kind — no monetary picker is ever rendered for a Complimentary Option", () => {
+  assert.match(BUILDER, /option\.commercial_mode === "structured" &&\s*\n\s*MONETARY_COMPONENT_TYPES\.map/);
+});
+
+test("Pass 2 / 44. a newly-added In-Kind term on a Complimentary Option is always optional (in_kind_required forced false, never user-togglable there)", () => {
+  assert.match(BUILDER, /defaultInKindComponent\(o\.commercial_mode !== "complimentary"\)/);
+  assert.match(BUILDER, /optionMode === "complimentary" && <Hidden name=\{`\$\{prefix\}_in_kind_required`\} value=\{false\} \/>/);
+});
+
+test("Pass 2 / 45. switching an Option to Custom, or to Complimentary while it owns a monetary/required-In-Kind term, asks for confirmation before discarding data", () => {
+  assert.match(BUILDER, /function wouldDiscard/);
+  assert.match(BUILDER, /window\.confirm\(/);
+  assert.match(BUILDER, /removes this Option's structured commercial terms/);
+});
+
+test("Pass 2 / 46. switching a Complimentary Option back to Structured, or any non-destructive switch, never calls confirm()", () => {
+  const fn = BUILDER.match(/function wouldDiscard[\s\S]*?\n\}/)[0];
+  assert.match(fn, /if \(next === option\.commercial_mode\) return false;/);
+  assert.match(fn, /if \(option\.components\.length === 0\) return false;/);
+});
+
+test("Pass 2 / 47. Option naming (name/description inputs) only renders once a 2nd Option exists — no forced naming for the common single-Option case", () => {
+  assert.match(BUILDER, /\{total > 1 && \(/);
+  assert.match(BUILDER, /\{total === 1 && <Hidden name=\{`\$\{prefix\}_name`\} value=\{option\.name\} \/>\}/);
+});
+
+test("Pass 2 / 48. every interactive control has a visible text label — no icon-only destructive buttons", () => {
+  assert.equal(/aria-label="(Remove|Delete|×|X)"/.test(BUILDER), false);
+  assert.match(BUILDER, />\s*Remove Term\s*</);
+  assert.match(BUILDER, />\s*Remove Option\s*</);
+});
+
+test("Pass 2 / 49. the builder's field names follow the documented flat ct_{i}/ct_{i}_c_{j} convention parseCommercialTermsForm expects — never a JSON blob", () => {
+  assert.equal(/JSON\.stringify/.test(BUILDER), false);
+  assert.match(BUILDER, /name="ct_count"/);
+  assert.match(BUILDER, /`\$\{prefix\}_id`/);
+  assert.match(BUILDER, /`\$\{prefix\}_comp_count`/);
+});
+
+// ---------------------------------------------------------------- Admin detail page: Commercial Terms display + legacy classification UX
+
+test("Pass 2 / 50. the legacy classification banner never shows the raw word 'legacy' as admin-facing copy — only in code comments/identifiers", () => {
+  const jsxStrings = [...DETAIL_PAGE.matchAll(/>\s*([^<{}\n]{10,400})\s*</g)].map((m) => m[1]);
+  const visibleLegacyText = jsxStrings.filter((s) => /legacy/i.test(s));
+  assert.deepEqual(visibleLegacyText, [], "no rendered JSX text node may contain the word 'legacy'");
+});
+
+test("Pass 2 / 51. the legacy banner requires an explicit admin choice of direction for a Fixed/Starting-At amount — never defaults the <select>", () => {
+  assert.match(DETAIL_PAGE, /defaultValue="" required/);
+  assert.match(DETAIL_PAGE, /This amount represents/);
+});
+
+test("Pass 2 / 52. converting a Complimentary/Custom legacy listing needs no extra input (no ambiguity to resolve)", () => {
+  const fn = DETAIL_PAGE.match(/function CommercialTermsSection[\s\S]*?\n\}/)[0];
+  assert.match(fn, /needsDirection = listing\.pricing_mode === "fixed" \|\| listing\.pricing_mode === "starting_at"/);
+});
+
+test("Pass 2 / 53. the Commercial Terms admin section never imports from or edits src/components/opportunities/OpportunityPresentation.tsx", () => {
+  assert.equal(DETAIL_PAGE.includes("OpportunityPresentation"), true, "the existing shared import must still be present, untouched");
+  const presentation = read("src/components/opportunities/OpportunityPresentation.tsx");
+  assert.equal(/opportunity_option|commercial_mode|CommercialTerms/i.test(presentation), false, "the shared business-facing-adjacent component was never touched");
+});
+
+// ---------------------------------------------------------------- business-facing / Explore / Goals / Pro / Stripe / option_id — reconfirmed untouched after Pass 2
+
+test("Pass 2 / 54. Explore's budget filter (matchesExploreFilters) is byte-for-byte unaffected — still reads only legacy pricing_mode/price_cents", () => {
+  const fn = LISTINGS_DOMAIN.match(/export function matchesExploreFilters[\s\S]*?\n\}/)[0];
+  assert.equal(/opportunity_option/i.test(fn), false);
+  assert.match(fn, /listing\.pricing_mode/);
+});
+
+test("Pass 2 / 55. Goals (src/lib/opportunity-goals-domain.ts) still has zero awareness of Options/Components after Pass 2", () => {
+  assert.equal(/opportunity_option|commercial_mode/i.test(GOALS_DOMAIN), false);
+});
+
+test("Pass 2 / 56. no file touched in this pass references Stripe, Pro Access Requests, or Opportunity Credits payment logic", () => {
+  for (const mod of [BUILDER, OPPORTUNITY_FORM, DETAIL_PAGE]) {
+    assert.equal(/stripe|pro_access_request|redeem_pro_invite/i.test(mod), false);
+  }
+});
+
+test("Pass 2 / 56b. Business-facing components/routes themselves remain byte-level untouched by this correction pass: BusinessOpportunityCard, the Business recipient detail route, BusinessHome, and OpportunitiesView (For You/Explore) have no awareness of Options/Components/the new builder", () => {
+  const businessFiles = [
+    "src/components/opportunities/BusinessOpportunityCard.tsx",
+    "src/app/(public)/account/business/[id]/opportunities/[recipientId]/page.tsx",
+    "src/app/(public)/account/business/[id]/v2/BusinessHome.tsx",
+    "src/app/(public)/account/business/[id]/v2/OpportunitiesView.tsx",
+  ];
+  for (const path of businessFiles) {
+    const content = read(path);
+    assert.equal(/opportunity_option|CommercialTermsBuilder|projectSafeLegacyPricing|commercial_mode/i.test(content), false, `${path} must remain unaware of the new model`);
+  }
+});
+
+test("Pass 2 / 57. opportunity_recipients.option_id is still not added anywhere in Pass 2's own new migration (the deferral is only explained in a comment, never acted on in real SQL; the pre-existing opportunity_option_components.option_id FK from Pass 1 is unrelated and expected to appear throughout this RPC)", () => {
+  assert.equal(/opportunity_recipients/i.test(strip(PERSISTENCE_MIGRATION)), false, "no real SQL statement touches opportunity_recipients");
+  assert.equal(/alter table public\.opportunity_recipients/i.test(PERSISTENCE_MIGRATION), false);
+});
+
+test("Pass 2 / 58. no NEW classification/persistence logic references the real production Tabli listing by name (OpportunityForm.tsx's pre-existing, unrelated 'e.g. Tabli...' placeholder text predates this pass and isn't a classification concern)", () => {
+  for (const mod of [FORM_MODULE, ACTIONS, BUILDER, DETAIL_PAGE]) {
+    assert.equal(/\btabli\b/i.test(mod), false);
+  }
 });

@@ -21,6 +21,8 @@ export default async function NewOpportunityPage({ searchParams }: { searchParam
       <div className="mt-5">
         <OpportunityForm
           listing={null}
+          initialOptions={[]}
+          legacyUnclassified={false}
           initialLocation={null}
           initialEvent={null}
           action={createOpportunity}

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAdminOpportunityListing } from "@/lib/opportunity-listings";
+import { getAdminOpportunityListing, getAdminOpportunityOptions } from "@/lib/opportunity-listings";
 import { getEventOptionById, getLocationOptionById } from "@/lib/admin/queries";
+import { isLegacyUnclassified } from "@/lib/opportunity-commercial-terms-bridge";
 import OpportunityForm from "../../OpportunityForm";
 import { saveOpportunity } from "../../actions";
+import type { InitialOption } from "../../CommercialTermsBuilder";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,30 @@ export default async function EditOpportunityPage({
   const result = await getAdminOpportunityListing(id);
   if (!result) notFound();
   const { listing } = result;
-  const [initialLocation, initialEvent] = await Promise.all([getLocationOptionById(listing.location_id), getEventOptionById(listing.event_id)]);
+  const [initialLocation, initialEvent, options] = await Promise.all([
+    getLocationOptionById(listing.location_id),
+    getEventOptionById(listing.event_id),
+    getAdminOpportunityOptions(listing.id),
+  ]);
+  const initialOptions: InitialOption[] = options.map((o) => ({
+    id: o.id,
+    name: o.name,
+    description: o.description,
+    commercial_mode: o.commercial_mode as InitialOption["commercial_mode"],
+    custom_terms_note: o.custom_terms_note,
+    components: o.components.map((c) => ({
+      component_type: c.component_type as InitialOption["components"][number]["component_type"],
+      amount_mode: c.amount_mode as InitialOption["components"][number]["amount_mode"],
+      amount_min_cents: c.amount_min_cents,
+      amount_max_cents: c.amount_max_cents,
+      currency: c.currency,
+      in_kind_category: c.in_kind_category as InitialOption["components"][number]["in_kind_category"],
+      in_kind_description: c.in_kind_description,
+      in_kind_provider: c.in_kind_provider as InitialOption["components"][number]["in_kind_provider"],
+      in_kind_required: c.in_kind_required,
+      estimated_value_cents: c.estimated_value_cents,
+    })),
+  }));
   const detailHref = `/admin/opportunities/${listing.id}`;
 
   return (
@@ -40,6 +65,8 @@ export default async function EditOpportunityPage({
       <div className="mt-5">
         <OpportunityForm
           listing={listing}
+          initialOptions={initialOptions}
+          legacyUnclassified={isLegacyUnclassified(options.length)}
           initialLocation={initialLocation}
           initialEvent={initialEvent}
           action={saveOpportunity.bind(null, listing.id)}

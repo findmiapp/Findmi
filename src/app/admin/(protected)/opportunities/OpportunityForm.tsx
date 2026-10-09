@@ -7,8 +7,15 @@ import { RelationField, type SearchResult } from "@/components/admin/RelationPic
 import SubmitBar from "@/components/admin/SubmitBar";
 import { isoToLocalDateTime } from "@/lib/admin/form-helpers";
 import { OPPORTUNITY_TYPES, OPPORTUNITY_TYPE_LABELS, type PricingMode } from "@/lib/opportunity-listings-domain";
+import CommercialTermsBuilder, { type InitialOption } from "./CommercialTermsBuilder";
 
-/** The listing fields exactly as the form needs them (client-safe). */
+/** The listing fields exactly as the form needs them (client-safe).
+ * pricing_mode/price_cents/currency are still read (for a legacy-
+ * unclassified listing's own read-only notice — see `legacyUnclassified`
+ * below — and because the server projects a SAFE compatibility value from
+ * Commercial Terms once Options exist; see
+ * src/lib/opportunity-commercial-terms-bridge.ts) but are never directly
+ * editable here; only credits_eligible keeps its own control. */
 export interface OpportunityFormValues {
   opportunity_type: string;
   title: string;
@@ -30,13 +37,6 @@ export interface OpportunityFormValues {
   internal_notes: string | null;
 }
 
-const PRICING_OPTIONS: { value: PricingMode; label: string }[] = [
-  { value: "fixed", label: "Fixed" },
-  { value: "starting_at", label: "Starting At" },
-  { value: "complimentary", label: "Complimentary" },
-  { value: "custom", label: "Custom" },
-];
-
 function Section({ id, title, hint, children }: { id?: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
     <section id={id} className="scroll-mt-20 rounded-2xl border border-black/10 bg-white/60 p-4">
@@ -47,17 +47,26 @@ function Section({ id, title, hint, children }: { id?: string; title: string; hi
   );
 }
 
-function centsToInput(cents: number | null): string {
-  if (cents == null) return "";
-  return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
-}
-
-/** Opportunities V1 Pass 2 — create/edit form (sections A–G). Pricing is
- * the only interactive part: the Amount only shows for Fixed / Starting
- * At, and Credits Eligible is forced off (and disabled) for Complimentary.
- * The server re-validates everything (validateListingInput). */
+/** Opportunities V1 Pass 2 — create/edit form (sections A–G). Commercial
+ * Terms Admin Builder (Pass 2) — Section F ("Investment") is now the
+ * CommercialTermsBuilder, shown only when this Opportunity already has
+ * Commercial Terms (`legacyUnclassified === false` — always true for a new
+ * Opportunity). A legacy-unclassified listing (zero Option rows) shows a
+ * read-only notice instead: editing its OTHER fields must never require
+ * filling in Commercial Terms, and must never write an Option row as a
+ * side effect — only the detail page's explicit "Add Commercial Terms"
+ * action does that (Pass 2 review correction). Credits Eligible is its own
+ * independent control (forced off/disabled when the FIRST Option is
+ * Complimentary — or, for a legacy-unclassified listing, when its existing
+ * legacy pricing_mode already is — since credits_eligible has no meaning
+ * without SOME amount to apply credits to, the same rule the old Pricing
+ * Mode dropdown enforced). The server re-validates everything
+ * (validateListingInput + validateOption/validateComponent, unchanged from
+ * Pass 1). */
 export default function OpportunityForm({
   listing,
+  initialOptions,
+  legacyUnclassified,
   initialLocation,
   initialEvent,
   action,
@@ -65,16 +74,23 @@ export default function OpportunityForm({
   cancelHref,
 }: {
   listing: OpportunityFormValues | null;
+  initialOptions: InitialOption[];
+  /** True only for an existing Opportunity with zero Option rows that has
+   * never been converted to the new Commercial Terms model. Always false
+   * for a new Opportunity (the builder always applies) and false once any
+   * Option exists. */
+  legacyUnclassified: boolean;
   initialLocation: SearchResult | null;
   initialEvent: SearchResult | null;
   action: (formData: FormData) => void | Promise<void>;
   saveLabel: string;
   cancelHref: string;
 }) {
-  const [pricingMode, setPricingMode] = useState<PricingMode>(listing?.pricing_mode ?? "fixed");
   const [credits, setCredits] = useState<boolean>(listing?.credits_eligible ?? false);
-  const needsAmount = pricingMode === "fixed" || pricingMode === "starting_at";
-  const complimentary = pricingMode === "complimentary";
+  const firstOptionComplimentary = legacyUnclassified
+    ? listing?.pricing_mode === "complimentary"
+    : (initialOptions[0]?.commercial_mode ?? "structured") === "complimentary";
+  const [complimentary, setComplimentary] = useState<boolean>(firstOptionComplimentary);
 
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -122,40 +138,15 @@ export default function OpportunityForm({
         />
       </Section>
 
-      <Section title="Investment">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">Pricing Mode</span>
-          <select
-            name="pricing_mode"
-            value={pricingMode}
-            onChange={(e) => {
-              const next = e.target.value as PricingMode;
-              setPricingMode(next);
-              if (next === "complimentary") setCredits(false);
-            }}
-            className="w-full rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-base text-ink focus:border-ink/30 focus:outline-none"
-          >
-            {PRICING_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {needsAmount && (
-          <div className="grid grid-cols-[1fr_6rem] gap-3">
-            <TextField
-              label={pricingMode === "starting_at" ? "Starting Amount" : "Amount"}
-              name="price"
-              defaultValue={centsToInput(listing?.price_cents ?? null)}
-              placeholder="750"
-              required
-              hint="In dollars, e.g. 750 or 1,500.00."
-            />
-            <TextField label="Currency" name="currency" defaultValue={listing?.currency ?? "USD"} />
+      <Section id="commercial-terms" title="Commercial Terms" hint="Structured amounts and/or In-Kind terms, or Complimentary, or a Custom negotiated arrangement.">
+        {legacyUnclassified ? (
+          <div className="rounded-xl border border-dashed border-black/15 bg-white/60 px-3.5 py-3 text-sm text-ink/60">
+            This Opportunity still uses its original pricing and hasn&rsquo;t been set up with structured Commercial Terms yet. Add Commercial Terms from the
+            Opportunity&rsquo;s detail page — this form never changes the original pricing on its own.
           </div>
+        ) : (
+          <CommercialTermsBuilder initialOptions={initialOptions} onFirstOptionModeChange={setComplimentary} />
         )}
-        {!needsAmount && <input type="hidden" name="currency" value={listing?.currency ?? "USD"} />}
         <label className={`flex items-start gap-3 rounded-xl border border-black/10 bg-white px-3.5 py-3 ${complimentary ? "opacity-60" : ""}`}>
           <input
             type="checkbox"

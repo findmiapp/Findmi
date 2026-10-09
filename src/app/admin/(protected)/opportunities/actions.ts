@@ -20,6 +20,9 @@ import {
   type ListingStatus,
   type RecipientStatus,
 } from "@/lib/opportunity-listings-domain";
+import { centsToDollarString, projectSafeLegacyPricing, toCommercialTermsRpcPayload, type LegacyBridgePricing, type OptionForPersistence } from "@/lib/opportunity-commercial-terms-bridge";
+import { parseCommercialTermsForm } from "@/lib/opportunity-commercial-terms-form";
+import { isMonetaryComponentType, validateOption, type MonetaryComponentType, type OptionFields, type OptionInput } from "@/lib/opportunity-commercial-terms-domain";
 
 // Opportunities V1 Pass 2 — Admin writes for opportunity_listings /
 // opportunity_recipients. Every action: requireAdmin() first, then the
@@ -31,6 +34,30 @@ import {
 // Opportunities Cleanup Pass A — sendOpportunity now notifies each
 // genuinely-newly-added recipient's Business (the handoff gap the audit
 // found: a sent Opportunity previously had no notification at all).
+//
+// Commercial Terms Admin Builder (Pass 2) — createOpportunity always, and
+// saveOpportunity ONLY WHEN THE LISTING ALREADY HAS >=1 OPTION ROW, also
+// parse + persist the new Option/Component model (parseCommercialTermsForm
+// -> validateOption, unchanged from Pass 1 -> the
+// replace_opportunity_options RPC). When that's the case, the legacy
+// pricing_mode/price_cents/currency columns are no longer taken directly
+// from the form — they're PROJECTED from the submitted Options via
+// projectSafeLegacyPricing (see opportunity-commercial-terms-bridge.ts for
+// the full safety rule: never show a wrong amount or the wrong commercial
+// direction, never flatten multiple Options by picking one arbitrarily).
+//
+// Pass 2 review correction — a listing with ZERO Option rows (never
+// explicitly converted) is "legacy-unclassified": OpportunityForm never
+// renders the builder for it (see its own `legacyUnclassified` prop), so
+// saveOpportunity must NOT parse/derive/touch Commercial Terms for it at
+// all. An ordinary, unrelated field edit (title, timing, etc.) preserves
+// that listing's EXISTING legacy pricing_mode/price_cents/currency
+// byte-for-byte — never derived, never guessed, never silently converted.
+// Only convertLegacyToCommercialTerms (one explicit admin action) ever
+// gives such a listing its first Option.
+//
+// credits_eligible stays its own independent form field, unrelated to the
+// new model either way.
 
 const LIST = "/admin/opportunities";
 const detail = (id: string) => `${LIST}/${id}`;
@@ -42,7 +69,7 @@ function client(base: string) {
   return supabase!;
 }
 
-function readListingForm(formData: FormData) {
+function readListingForm(formData: FormData, legacy: LegacyBridgePricing) {
   return validateListingInput({
     opportunity_type: str(formData, "opportunity_type"),
     title: str(formData, "title"),
@@ -57,14 +84,38 @@ function readListingForm(formData: FormData) {
     ends_at: localDateTimeToIso(str(formData, "ends_at")),
     timing_note: str(formData, "timing_note"),
     response_deadline: localDateTimeToIso(str(formData, "response_deadline")),
-    pricing_mode: str(formData, "pricing_mode"),
-    price: str(formData, "price"),
-    currency: str(formData, "currency"),
+    pricing_mode: legacy.pricing_mode,
+    price: legacy.price,
+    currency: legacy.currency,
     credits_eligible: bool(formData, "credits_eligible"),
     whats_included: str(formData, "whats_included"),
     requirements: str(formData, "requirements"),
     internal_notes: str(formData, "internal_notes"),
   });
+}
+
+/** Parses + validates the Commercial Terms builder submission, or fails
+ * the whole save (same redirect-with-error pattern as every other
+ * validation failure here) before anything is written. */
+function readCommercialTerms(base: string, formData: FormData): OptionForPersistence[] {
+  const parsed = parseCommercialTermsForm(formData);
+  if (!parsed.ok) fail(base, parsed.error);
+  return (parsed as { ok: true; value: OptionForPersistence[] }).value;
+}
+
+/** The one place createOpportunity/saveOpportunity call the aggregate-write
+ * RPC. Never a second implementation of the Pass 1 persistence-contract
+ * decision — see replace_opportunity_options' own migration comment. */
+async function persistCommercialTerms(
+  supabase: NonNullable<ReturnType<typeof getAdminSupabase>>,
+  listingId: string,
+  options: OptionForPersistence[]
+): Promise<string | null> {
+  const { error } = await supabase.rpc("replace_opportunity_options", {
+    p_listing_id: listingId,
+    p_options: toCommercialTermsRpcPayload(options),
+  });
+  return error ? error.message : null;
 }
 
 /** Referenced Location / Event must exist (a clear message instead of a
@@ -84,11 +135,18 @@ function revalidateListing(id?: string) {
   if (id) revalidatePath(detail(id));
 }
 
-/** Create — always starts as a Draft. */
+/** Create — always starts as a Draft. Commercial Terms are parsed and
+ * validated BEFORE the listing is inserted, so a bad Option/Component
+ * never gets as far as creating a listing row. Every new Opportunity is
+ * authored through the builder, so its legacy compatibility columns are
+ * always the SAFE projection (never a raw first-Option amount). */
 export async function createOpportunity(formData: FormData) {
   await requireAdmin();
   const base = `${LIST}/new`;
-  const parsed = readListingForm(formData);
+  const options = readCommercialTerms(base, formData);
+  const legacy = projectSafeLegacyPricing(options);
+
+  const parsed = readListingForm(formData, legacy);
   if (!parsed.ok) fail(base, parsed.error);
   const fields = (parsed as { ok: true; value: ListingFields }).value;
   const supabase = client(base);
@@ -102,28 +160,126 @@ export async function createOpportunity(formData: FormData) {
     .single();
   if (error || !data) fail(base, error?.message ?? "Couldn't create the Opportunity.");
 
+  const rpcError = await persistCommercialTerms(supabase, data!.id, options);
+  if (rpcError) {
+    // The listing itself was created; only the Commercial Terms aggregate
+    // write failed. Send the admin to the now-real edit page to retry,
+    // rather than reporting success for a listing with no Options.
+    revalidateListing();
+    redirect(`${detail(data!.id)}/edit?error=${encodeURIComponent("The Opportunity was created, but its Commercial Terms couldn't be saved. Please try again.")}`);
+  }
+
   revalidateListing();
   redirect(`${detail(data!.id)}?saved=created`);
 }
 
 /** Edit — every field except status. Errors return to the edit form;
- * success returns to the detail page. */
+ * success returns to the detail page. Existing Option ids submitted by the
+ * builder are preserved by the RPC (stable ids across ordinary edits);
+ * removed/added Options are reconciled in the same atomic call.
+ *
+ * Pass 2 review correction — whether this save touches Commercial Terms
+ * at all is decided by the DATABASE (does this listing already own >=1
+ * Option row?), never by trusting the submitted form: OpportunityForm
+ * never renders the builder for a legacy-unclassified listing, so there
+ * are no ct_* fields to read for one, and this function must not require
+ * or invent any. Such a listing's legacy pricing_mode/price_cents/
+ * currency are read back from its OWN current row and written back
+ * UNCHANGED — an ordinary edit to the title, timing, etc. never derives,
+ * guesses, or silently converts them. */
 export async function saveOpportunity(id: string, formData: FormData) {
   await requireAdmin();
   const base = `${detail(id)}/edit`;
-  const parsed = readListingForm(formData);
+  const supabase = client(base);
+
+  const { data: existingOptionRows } = await supabase.from("opportunity_options").select("id").eq("listing_id", id).limit(1);
+  const hasCommercialTerms = (existingOptionRows?.length ?? 0) > 0;
+
+  let legacy: LegacyBridgePricing;
+  let options: OptionForPersistence[] | null = null;
+  if (hasCommercialTerms) {
+    options = readCommercialTerms(base, formData);
+    legacy = projectSafeLegacyPricing(options);
+  } else {
+    const { data: current } = await supabase.from("opportunity_listings").select("pricing_mode, price_cents, currency").eq("id", id).maybeSingle();
+    if (!current) fail(base, "Opportunity not found.");
+    legacy = {
+      pricing_mode: current!.pricing_mode,
+      price: current!.price_cents != null ? centsToDollarString(current!.price_cents) : null,
+      currency: current!.currency,
+    };
+  }
+
+  const parsed = readListingForm(formData, legacy);
   if (!parsed.ok) fail(base, parsed.error);
   const fields = (parsed as { ok: true; value: ListingFields }).value;
-  const supabase = client(base);
   const refError = await checkReferences(supabase, fields);
   if (refError) fail(base, refError);
 
   const { data, error } = await supabase.from("opportunity_listings").update(fields).eq("id", id).select("id").maybeSingle();
   if (error || !data) fail(base, error?.message ?? "Opportunity not found.");
 
+  if (hasCommercialTerms && options) {
+    const rpcError = await persistCommercialTerms(supabase, id, options);
+    if (rpcError) fail(base, "Changes were saved, but Commercial Terms couldn't be updated. Please try again.");
+  }
+
   revalidateListing(id);
   revalidatePath(base);
   redirect(`${detail(id)}?saved=updated`);
+}
+
+/** Legacy classification — the ONE explicit way a pre-Pass-2 Opportunity
+ * (zero opportunity_options rows) gets its first Option. Never automatic:
+ * only reachable from the dedicated "Convert to Commercial Terms" control,
+ * never triggered by saving any other field. Refuses outright if the
+ * listing already has Options (classification happens exactly once; after
+ * that, the normal builder on the edit form is how it's changed). A
+ * Complimentary/Custom legacy row converts with no extra input (those
+ * modes carry no ambiguity); a Fixed/Starting At row requires the admin to
+ * say which monetary direction the amount represents — never guessed. */
+export async function convertLegacyToCommercialTerms(id: string, formData: FormData) {
+  await requireAdmin();
+  const base = detail(id);
+  const supabase = client(base);
+
+  const [{ data: listing }, { data: existingOptions }] = await Promise.all([
+    supabase.from("opportunity_listings").select("pricing_mode, price_cents, currency").eq("id", id).maybeSingle(),
+    supabase.from("opportunity_options").select("id").eq("listing_id", id).limit(1),
+  ]);
+  if (!listing) fail(base, "Opportunity not found.");
+  if (existingOptions && existingOptions.length > 0) fail(base, "This Opportunity already has Commercial Terms.");
+
+  let input: OptionInput;
+  if (listing!.pricing_mode === "complimentary") {
+    input = { commercial_mode: "complimentary", components: [] };
+  } else if (listing!.pricing_mode === "custom") {
+    input = { commercial_mode: "custom", components: [] };
+  } else {
+    const componentType = str(formData, "component_type");
+    if (!isMonetaryComponentType(componentType)) fail(base, "Choose what this amount represents.");
+    input = {
+      commercial_mode: "structured",
+      components: [
+        {
+          component_type: componentType as MonetaryComponentType,
+          amount_mode: listing!.pricing_mode,
+          amount_min_cents: listing!.price_cents,
+          currency: listing!.currency,
+        },
+      ],
+    };
+  }
+
+  const result = validateOption(input);
+  if (!result.ok) fail(base, result.error);
+  const value = (result as { ok: true; value: OptionFields }).value;
+
+  const rpcError = await persistCommercialTerms(supabase, id, [{ ...value, id: null }]);
+  if (rpcError) fail(base, "Couldn't convert this Opportunity's commercial terms. Please try again.");
+
+  revalidateListing(id);
+  redirect(`${base}?saved=converted#commercial-terms`);
 }
 
 /** Open / Close / Reopen / Archive / Unarchive. Canonical transitions only,
