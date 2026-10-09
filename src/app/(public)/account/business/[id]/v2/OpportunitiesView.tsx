@@ -3,14 +3,13 @@ import type { ReactNode } from "react";
 import type { BusinessOpportunityItem, ExploreItem } from "@/lib/opportunity-listings";
 import type { BusinessGoal } from "@/lib/opportunity-goals";
 import {
-  EXPLORE_BUDGETS,
-  EXPLORE_BUDGET_LABELS,
   EXPLORE_TIMINGS,
   EXPLORE_TIMING_LABELS,
   OPPORTUNITY_TYPES,
   OPPORTUNITY_TYPE_LABELS,
   type ExploreFilters,
 } from "@/lib/opportunity-listings-domain";
+import { PARTICIPATION_COST_FILTERS, PARTICIPATION_COST_FILTER_LABELS } from "@/lib/opportunity-participation-cost";
 import {
   GOAL_BUDGET,
   GOAL_INTEREST_LABELS,
@@ -115,7 +114,7 @@ export default function OpportunitiesView({
           {forYou.length > 0 ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {forYou.map((item) => (
-                <BusinessOpportunityCard key={item.view.recipientId} item={item.view} place={item.place} href={hrefFor(item)} />
+                <BusinessOpportunityCard key={item.view.recipientId} item={item.view} place={item.place} href={hrefFor(item)} commercialOptions={item.options} />
               ))}
             </div>
           ) : (
@@ -153,11 +152,11 @@ export default function OpportunitiesView({
                   </option>
                 ))}
               </select>
-              <select name="budget" defaultValue={filters.budget ?? ""} aria-label="Budget" className={inputClass}>
-                <option value="">Any Budget</option>
-                {EXPLORE_BUDGETS.map((b) => (
-                  <option key={b} value={b}>
-                    {EXPLORE_BUDGET_LABELS[b]}
+              <select name="participationCost" defaultValue={filters.participationCost ?? ""} aria-label="Participation Cost" className={inputClass}>
+                <option value="">Any Participation Cost</option>
+                {PARTICIPATION_COST_FILTERS.map((p) => (
+                  <option key={p} value={p}>
+                    {PARTICIPATION_COST_FILTER_LABELS[p]}
                   </option>
                 ))}
               </select>
@@ -166,7 +165,7 @@ export default function OpportunitiesView({
               <button type="submit" className="flex h-10 items-center rounded-xl bg-ink px-4 text-button font-bold text-white transition hover:bg-ink/85">
                 Search
               </button>
-              {(filters.q || filters.type || filters.where || filters.timing || filters.budget) && (
+              {(filters.q || filters.type || filters.where || filters.timing || filters.participationCost) && (
                 <Link href={viewHref("explore")} className="text-metadata font-semibold text-accent hover:underline">
                   Clear Filters
                 </Link>
@@ -182,6 +181,7 @@ export default function OpportunitiesView({
                   place={item.place}
                   href={item.linkedRecipientId ? `${basePath}/opportunities/${item.linkedRecipientId}` : `${basePath}/opportunities/explore/${item.listingId}`}
                   prominent={!item.linkedRecipientId}
+                  commercialOptions={item.options}
                   badge={
                     item.linkedRecipientId ? (
                       <span className="rounded-full bg-black/[0.05] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/55">In Your Opportunities</span>
@@ -194,7 +194,7 @@ export default function OpportunitiesView({
             <GrowPanel
               basePath={basePath}
               hideExplore
-              title={filters.q || filters.type || filters.where || filters.timing || filters.budget ? "No Opportunities match those filters" : "No Opportunities to explore right now"}
+              title={filters.q || filters.type || filters.where || filters.timing || filters.participationCost ? "No Opportunities match those filters" : "No Opportunities to explore right now"}
               copy="Tell Findmi what your Business is looking for, and our team can help match you with the right Opportunities."
             />
           )}
@@ -278,7 +278,7 @@ function CardGroup({ title, items, hrefFor }: { title: string; items: BusinessOp
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         {items.map((item) => (
-          <BusinessOpportunityCard key={item.view.recipientId} item={item.view} place={item.place} href={hrefFor(item)} />
+          <BusinessOpportunityCard key={item.view.recipientId} item={item.view} place={item.place} href={hrefFor(item)} commercialOptions={item.options} />
         ))}
       </div>
     </div>

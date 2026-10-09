@@ -27,6 +27,7 @@ import {
   type PricingMode,
   type RecipientStatus,
 } from "@/lib/opportunity-listings-domain";
+import { matchesParticipationCost } from "@/lib/opportunity-participation-cost";
 
 // Opportunities V1 — server data access for Findmi-authored commercial
 // Opportunities (opportunity_listings + opportunity_recipients).
@@ -377,23 +378,44 @@ export interface AdminOpportunityComponent {
   display_order: number;
 }
 
-/** Every Option (+ its Components) for one listing, ordered the same way
- * the builder and the detail view present them. An empty array is exactly
- * how a not-yet-classified legacy listing is distinguished — see
- * isLegacyUnclassified() in the bridge module. */
-export async function getAdminOpportunityOptions(listingId: string): Promise<AdminOpportunityOption[]> {
-  await requireAdmin();
+/** Options+Components for MANY listings in one query — the shared,
+ * UNGATED reader both Admin (single-listing) and Business (Pass 3) reads
+ * delegate to. No admin-only field exists on either table (unlike
+ * internal_notes/fit_note on listings/recipients), so there is no
+ * Business-safe column subset to carve out here — the caller's OWN
+ * authorization (requireAdmin or requireBusinessMember, already done one
+ * level up) is what gates reachability; this function trusts that and
+ * does no gating of its own, exactly like getAdminOpportunityContext's
+ * sibling reads. Returns a Map so a caller fetching many listings (Explore,
+ * a Business's own item list) does ONE query, never N+1. */
+export async function getOpportunityOptionsForListings(listingIds: readonly string[]): Promise<Map<string, AdminOpportunityOption[]>> {
+  const out = new Map<string, AdminOpportunityOption[]>();
+  if (listingIds.length === 0) return out;
   const admin = requireAdminClient();
   const { data, error } = await admin
     .from("opportunity_options")
     .select("*, components:opportunity_option_components(*)")
-    .eq("listing_id", listingId)
+    .in("listing_id", listingIds)
     .order("display_order", { ascending: true });
-  if (error || !data) return [];
-  return (data as unknown as (AdminOpportunityOption & { components: AdminOpportunityComponent[] })[]).map((o) => ({
-    ...o,
-    components: [...o.components].sort((a, b) => a.display_order - b.display_order),
-  }));
+  if (error || !data) return out;
+  for (const row of data as unknown as (AdminOpportunityOption & { components: AdminOpportunityComponent[] })[]) {
+    const option: AdminOpportunityOption = { ...row, components: [...row.components].sort((a, b) => a.display_order - b.display_order) };
+    const existing = out.get(row.listing_id) ?? [];
+    existing.push(option);
+    out.set(row.listing_id, existing);
+  }
+  return out;
+}
+
+/** Every Option (+ its Components) for one listing, ordered the same way
+ * the builder and the detail view present them. An empty array is exactly
+ * how a not-yet-classified legacy listing is distinguished — see
+ * isLegacyUnclassified() in the bridge module. Admin only (requireAdmin);
+ * delegates to the shared, ungated batched reader above. */
+export async function getAdminOpportunityOptions(listingId: string): Promise<AdminOpportunityOption[]> {
+  await requireAdmin();
+  const byListing = await getOpportunityOptionsForListings([listingId]);
+  return byListing.get(listingId) ?? [];
 }
 
 /** The linked Location and Event for one listing — Admin only. */
@@ -440,6 +462,11 @@ export interface BusinessOpportunityItem {
   visibility: Exclude<BusinessVisibility, "hidden">;
   place: BusinessOpportunityPlace | null;
   event: BusinessOpportunityEvent | null;
+  /** Pass 3 — this listing's structured Options (+Components), for the
+   * Business-facing commercial presentation. Empty array for a legacy-
+   * unclassified listing (zero opportunity_options rows) — the presentation
+   * layer then falls back to the legacy pricing_mode/price_cents view. */
+  options: AdminOpportunityOption[];
 }
 
 type BusinessRow = BusinessOpportunityRecipient & {
@@ -451,8 +478,9 @@ type BusinessRow = BusinessOpportunityRecipient & {
 const one = <T>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
 
 /** Raw row -> Business-safe item, or null when not visible. Location/Event
- * are re-picked to their public fields. */
-function toBusinessItem(row: BusinessRow): BusinessOpportunityItem | null {
+ * are re-picked to their public fields. `options` defaults to empty (legacy-
+ * unclassified) when the caller has no batched Options map for this row. */
+function toBusinessItem(row: BusinessRow, options: AdminOpportunityOption[] = []): BusinessOpportunityItem | null {
   const listing = one(row.listing);
   if (!listing) return null;
   const visibility = getBusinessVisibility(listing.status, row.status);
@@ -464,6 +492,7 @@ function toBusinessItem(row: BusinessRow): BusinessOpportunityItem | null {
     visibility,
     place: loc ? { name: loc.name, slug: loc.slug, address: loc.address, city: loc.city, state: loc.state } : null,
     event: ev ? { name: ev.name, slug: ev.slug, start_at: ev.start_at } : null,
+    options,
   };
 }
 
@@ -482,10 +511,12 @@ export async function getBusinessOpportunityItems(businessId: string): Promise<{
     .neq("listing.status", "draft")
     .order("offered_at", { ascending: false });
   if (error || !data) return { active: [], past: [] };
+  const rows = data as unknown as BusinessRow[];
+  const optionsByListing = await getOpportunityOptionsForListings(rows.map((r) => r.listing_id));
   const active: BusinessOpportunityItem[] = [];
   const past: BusinessOpportunityItem[] = [];
-  for (const row of data as unknown as BusinessRow[]) {
-    const item = toBusinessItem(row);
+  for (const row of rows) {
+    const item = toBusinessItem(row, optionsByListing.get(row.listing_id) ?? []);
     if (item) (item.visibility === "active" ? active : past).push(item);
   }
   return { active, past };
@@ -503,7 +534,10 @@ export async function getBusinessOpportunityItem(businessId: string, recipientId
     .eq("id", recipientId)
     .eq("business_id", businessId)
     .maybeSingle();
-  return data ? toBusinessItem(data as unknown as BusinessRow) : null;
+  if (!data) return null;
+  const row = data as unknown as BusinessRow;
+  const options = (await getOpportunityOptionsForListings([row.listing_id])).get(row.listing_id) ?? [];
+  return toBusinessItem(row, options);
 }
 
 // ---------------------------------------------------------------- explore (V2)
@@ -516,6 +550,9 @@ export interface ExploreItem {
   /** This Business's own recipient row for the listing, when one exists —
    * the card then opens that relationship instead. */
   linkedRecipientId: string | null;
+  /** Pass 3 — this listing's structured Options (+Components). Empty for a
+   * legacy-unclassified listing. */
+  options: AdminOpportunityOption[];
 }
 
 type ExploreRow = BusinessOpportunityListing & {
@@ -526,7 +563,7 @@ type ExploreRow = BusinessOpportunityListing & {
 
 const EXPLORE_COLUMNS = `${BUSINESS_LISTING_COLUMNS}, visibility, ${BUSINESS_CONTEXT_EMBEDS}`;
 
-function toExploreItem(row: ExploreRow, linked: Map<string, string>): ExploreItem {
+function toExploreItem(row: ExploreRow, linked: Map<string, string>, options: AdminOpportunityOption[] = []): ExploreItem {
   const loc = one(row.location);
   const ev = one(row.event);
   return {
@@ -535,6 +572,7 @@ function toExploreItem(row: ExploreRow, linked: Map<string, string>): ExploreIte
     place: loc ? { name: loc.name, slug: loc.slug, address: loc.address, city: loc.city, state: loc.state } : null,
     event: ev ? { name: ev.name, slug: ev.slug, start_at: ev.start_at } : null,
     linkedRecipientId: linked.get(row.id) ?? null,
+    options,
   };
 }
 
@@ -566,8 +604,12 @@ export async function getExploreItems(businessId: string, filters: ExploreFilter
   const rows = (data as unknown as ExploreRow[]).filter(
     (r) => isExplorable({ visibility: r.visibility, status: r.status, response_deadline: r.response_deadline }, now) && matchesExploreFilters({ ...r, location: one(r.location) }, filters, now)
   );
-  const linked = await linkedRecipients(admin, businessId, rows.map((r) => r.id));
-  return { available: true, items: rows.map((r) => toExploreItem(r, linked)) };
+  const optionsByListing = await getOpportunityOptionsForListings(rows.map((r) => r.id));
+  const matching = rows.filter((r) =>
+    matchesParticipationCost(filters.participationCost, { pricing_mode: r.pricing_mode, price_cents: r.price_cents }, optionsByListing.get(r.id) ?? [])
+  );
+  const linked = await linkedRecipients(admin, businessId, matching.map((r) => r.id));
+  return { available: true, items: matching.map((r) => toExploreItem(r, linked, optionsByListing.get(r.id) ?? [])) };
 }
 
 /** One explorable listing, or null when it isn't explorable (private,
@@ -579,7 +621,8 @@ export async function getExploreItem(businessId: string, listingId: string): Pro
   if (error || !data) return null;
   const row = data as unknown as ExploreRow;
   if (!isExplorable({ visibility: row.visibility, status: row.status, response_deadline: row.response_deadline }, new Date())) return null;
-  return toExploreItem(row, await linkedRecipients(admin, businessId, [row.id]));
+  const options = (await getOpportunityOptionsForListings([row.id])).get(row.id) ?? [];
+  return toExploreItem(row, await linkedRecipients(admin, businessId, [row.id]), options);
 }
 
 /** "I'm Interested" on an Explore listing the Business has no relationship

@@ -206,10 +206,10 @@ test("explore: filters", () => {
   assert.equal(f({ timing: "next_30_days" }), false);
   assert.equal(f({ timing: "next_30_days" }, { starts_at: "2026-10-20T00:00:00Z" }), true);
   assert.equal(f({ timing: "next_30_days" }, { starts_at: "2026-12-20T00:00:00Z" }), false);
-  assert.equal(f({ budget: "500_2500" }), true);
-  assert.equal(f({ budget: "under_500" }), false);
-  assert.equal(f({ budget: "complimentary" }, { pricing_mode: "complimentary", price_cents: null }), true);
-  assert.equal(f({ budget: "2500_plus" }, { pricing_mode: "custom", price_cents: null }), false);
+  // Pass 3 — commercial-terms filtering (Participation Cost) moved entirely
+  // to matchesParticipationCost() in opportunity-participation-cost.ts;
+  // matchesExploreFilters no longer inspects pricing_mode/price_cents at
+  // all (see tests/opportunity-business-commercial-terms.test.mjs).
 });
 
 test("explore interest: owner/manager only, explorable, no existing relationship", () => {

@@ -52,6 +52,7 @@ export default async function ExploreOpportunityPage({
           o={o}
           place={item.place}
           showCredits={false}
+          commercialOptions={item.options}
           actions={
             <div className="flex flex-col gap-3 border-t border-black/5 pt-4">
               {mayRespond && (
@@ -81,6 +82,7 @@ export default async function ExploreOpportunityPage({
               event={item.event}
               eventHref={item.event?.slug ? `/event/${item.event.slug}` : null}
               showCredits={false}
+              commercialOptions={item.options}
             />
           </div>
         </div>

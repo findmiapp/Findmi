@@ -395,21 +395,30 @@ test("25. Goals behavior is unchanged", () => {
   assert.equal(/opportunity_option/i.test(GOALS_DOMAIN), false, "Goals domain module has no awareness of the new tables");
 });
 
-test("26. existing Opportunities authorization is unchanged; the new tables are wired ADMIN-ONLY (Pass 2), never into a Business-facing read", () => {
+test("26. existing Opportunities authorization is unchanged; the new tables have exactly one direct-SQL reader, which every other caller (Admin and, since Pass 3, Business) delegates to", () => {
   assert.match(LISTINGS_LIB, /await requireBusinessMember\(businessId\)/);
   assert.match(LISTINGS_LIB, /await requireAdmin\(\)/);
-  // Pass 2 adds exactly one admin-only reader of the new tables.
+  // The one shared, ungated, batched reader is the sole direct-SQL touch of
+  // the new tables — Pass 2's single-listing Admin reader and Pass 3's
+  // Business-facing reads all delegate to it rather than re-querying.
+  assert.match(LISTINGS_LIB, /export async function getOpportunityOptionsForListings/);
+  const sharedFn = LISTINGS_LIB.match(/export async function getOpportunityOptionsForListings[\s\S]*?\n}\n/)[0];
+  assert.match(sharedFn, /opportunity_options/);
+  assert.match(sharedFn, /opportunity_option_components/);
   assert.match(LISTINGS_LIB, /export async function getAdminOpportunityOptions/);
   const adminFn = LISTINGS_LIB.match(/export async function getAdminOpportunityOptions[\s\S]*?\n}\n/)[0];
   assert.match(adminFn, /await requireAdmin\(\)/);
-  assert.match(adminFn, /opportunity_options/);
-  // Every BUSINESS-facing read function is untouched — none of them
-  // mentions the new tables.
+  assert.match(adminFn, /getOpportunityOptionsForListings/);
+  assert.equal(/opportunity_options|opportunity_option_components/.test(adminFn), false, "the admin-only reader delegates rather than re-querying");
+  // Pass 3 — Business-facing reads now DO carry Options data (see
+  // tests/opportunity-business-commercial-terms.test.mjs), but strictly
+  // through the shared reader above; none of them run their own direct SQL
+  // against the new tables.
   for (const fnName of ["getBusinessOpportunities", "getBusinessOpportunity", "getBusinessOpportunityItems", "getBusinessOpportunityItem", "getExploreItems", "getExploreItem", "expressExploreInterest", "respondToOpportunityListing"]) {
     const re = new RegExp(`export async function ${fnName}\\([\\s\\S]*?\\n}\\n`);
     const m = LISTINGS_LIB.match(re);
     assert.ok(m, `${fnName} not found`);
-    assert.equal(/opportunity_options|opportunity_option_components/i.test(m[0]), false, `${fnName} must not reference the new tables`);
+    assert.equal(/opportunity_options|opportunity_option_components/i.test(m[0]), false, `${fnName} must never run its own direct SQL against the new tables`);
   }
 });
 
@@ -1022,18 +1031,21 @@ test("Pass 2 / 52. converting a Complimentary/Custom legacy listing needs no ext
   assert.match(fn, /needsDirection = listing\.pricing_mode === "fixed" \|\| listing\.pricing_mode === "starting_at"/);
 });
 
-test("Pass 2 / 53. the Commercial Terms admin section never imports from or edits src/components/opportunities/OpportunityPresentation.tsx", () => {
+test("Pass 2 / 53 (superseded by Pass 3): the Admin detail page's OWN CommercialTermsSection stays independent of OpportunityPresentation.tsx's new opt-in Business Commercial Terms rendering (Pass 3, see opportunity-business-commercial-terms.test.mjs) — Admin passes no commercialOptions prop, so its legacy Investment block is untouched", () => {
   assert.equal(DETAIL_PAGE.includes("OpportunityPresentation"), true, "the existing shared import must still be present, untouched");
-  const presentation = read("src/components/opportunities/OpportunityPresentation.tsx");
-  assert.equal(/opportunity_option|commercial_mode|CommercialTerms/i.test(presentation), false, "the shared business-facing-adjacent component was never touched");
+  assert.equal(/function CommercialTermsSection/.test(DETAIL_PAGE), true, "Admin's own section is defined in the admin page, not the shared component");
+  assert.equal(/commercialOptions=/.test(DETAIL_PAGE), false, "Admin never opts into the shared component's new Business presentation");
+  assert.match(DETAIL_PAGE, /<OpportunityAsideSections[^>]*\/>/s);
+  const asideCall = DETAIL_PAGE.match(/<OpportunityAsideSections[\s\S]*?\/>/)[0];
+  assert.equal(/commercialOptions/.test(asideCall), false);
 });
 
 // ---------------------------------------------------------------- business-facing / Explore / Goals / Pro / Stripe / option_id — reconfirmed untouched after Pass 2
 
-test("Pass 2 / 54. Explore's budget filter (matchesExploreFilters) is byte-for-byte unaffected — still reads only legacy pricing_mode/price_cents", () => {
+test("Pass 2 / 54 (superseded by Pass 3): matchesExploreFilters no longer reads pricing_mode/price_cents at all — Participation Cost filtering moved entirely to matchesParticipationCost() in opportunity-participation-cost.ts (see tests/opportunity-business-commercial-terms.test.mjs)", () => {
   const fn = LISTINGS_DOMAIN.match(/export function matchesExploreFilters[\s\S]*?\n\}/)[0];
   assert.equal(/opportunity_option/i.test(fn), false);
-  assert.match(fn, /listing\.pricing_mode/);
+  assert.equal(/pricing_mode|price_cents/.test(fn), false);
 });
 
 test("Pass 2 / 55. Goals (src/lib/opportunity-goals-domain.ts) still has zero awareness of Options/Components after Pass 2", () => {
@@ -1046,16 +1058,21 @@ test("Pass 2 / 56. no file touched in this pass references Stripe, Pro Access Re
   }
 });
 
-test("Pass 2 / 56b. Business-facing components/routes themselves remain byte-level untouched by this correction pass: BusinessOpportunityCard, the Business recipient detail route, BusinessHome, and OpportunitiesView (For You/Explore) have no awareness of Options/Components/the new builder", () => {
+test("Pass 2 / 56b (superseded by Pass 3): Business-facing components/routes may now be structured-Options-aware (see opportunity-business-commercial-terms.test.mjs), but never reach into Admin-only internals — the builder, requireAdmin, direct opportunity_options/opportunity_option_components SQL, or projectSafeLegacyPricing", () => {
   const businessFiles = [
     "src/components/opportunities/BusinessOpportunityCard.tsx",
     "src/app/(public)/account/business/[id]/opportunities/[recipientId]/page.tsx",
+    "src/app/(public)/account/business/[id]/opportunities/explore/[listingId]/page.tsx",
     "src/app/(public)/account/business/[id]/v2/BusinessHome.tsx",
     "src/app/(public)/account/business/[id]/v2/OpportunitiesView.tsx",
   ];
   for (const path of businessFiles) {
     const content = read(path);
-    assert.equal(/opportunity_option|CommercialTermsBuilder|projectSafeLegacyPricing|commercial_mode/i.test(content), false, `${path} must remain unaware of the new model`);
+    assert.equal(
+      /CommercialTermsBuilder|requireAdmin\(|projectSafeLegacyPricing|\.from\("opportunity_options"\)|\.from\("opportunity_option_components"\)/i.test(content),
+      false,
+      `${path} must never reach into Admin-only internals`
+    );
   }
 });
 

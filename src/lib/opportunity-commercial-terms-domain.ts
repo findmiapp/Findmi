@@ -645,13 +645,25 @@ export function formatOptionalContributions(option: Pick<OptionFields, "componen
     .map((c) => `Optional: ${IN_KIND_CATEGORY_LABELS[c.in_kind_category]}`);
 }
 
+/** Pass 3 — the label prefix for summarizeOptionsForCard's uniform case,
+ * by monetary direction. participation_fee keeps the original "Options
+ * from $X" wording (unchanged, same string Pass 1 already shipped and
+ * tested); compensation/project_budget get their own direction-correct
+ * prefix — never "Options" generically, which would read as a
+ * Participation Fee to a Business. */
+const UNIFORM_CARD_PREFIX: Record<MonetaryComponentType, string> = {
+  participation_fee: "Options",
+  compensation: "Compensation options",
+  project_budget: "Project budgets",
+};
+
 /** The safe, never-misleading summary for MULTIPLE Options on one card.
- * Collapses to "Options from $X" ONLY when every Option is Structured
- * with exactly one Fixed/Starting-At monetary component, all sharing the
- * same monetary direction (never blends Participation Fee with
- * Compensation, never includes a Range/Undisclosed/Complimentary/Custom
- * Option in the "from" number). Anything less uniform falls back to a
- * neutral "N Options" with no dollar figure at all — deliberately
+ * Collapses to "<direction prefix> from $X" ONLY when every Option is
+ * Structured with exactly one Fixed/Starting-At monetary component, all
+ * sharing the same monetary direction (never blends Participation Fee
+ * with Compensation, never includes a Range/Undisclosed/Complimentary/
+ * Custom Option in the "from" number). Anything less uniform falls back
+ * to a neutral "N Options" with no dollar figure at all — deliberately
  * conservative rather than ever showing a number that could mean two
  * different things depending on which Option a Business picks. */
 export function summarizeOptionsForCard(options: readonly Pick<OptionFields, "commercial_mode" | "components">[]): string {
@@ -678,7 +690,8 @@ export function summarizeOptionsForCard(options: readonly Pick<OptionFields, "co
 
   if (uniform && directions.size === 1 && floors.length === options.length) {
     const lowest = floors.reduce((min, f) => (f.cents < min.cents ? f : min));
-    return `Options from ${formatMoney(lowest.cents, lowest.currency)}`;
+    const direction = [...directions][0];
+    return `${UNIFORM_CARD_PREFIX[direction]} from ${formatMoney(lowest.cents, lowest.currency)}`;
   }
   return `${options.length} Options`;
 }

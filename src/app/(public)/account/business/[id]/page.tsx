@@ -49,7 +49,8 @@ import { getPendingInvitationsForBusiness, type OpportunityListItem } from "@/li
 import { getBusinessOpportunityItems, getExploreItems } from "@/lib/opportunity-listings";
 import { getBusinessGoals } from "@/lib/opportunity-goals";
 import { canManageGoals, type GoalRole } from "@/lib/opportunity-goals-domain";
-import { isExploreBudget, isExploreTiming, isOpportunityType, type ExploreFilters } from "@/lib/opportunity-listings-domain";
+import { isExploreTiming, isOpportunityType, type ExploreFilters } from "@/lib/opportunity-listings-domain";
+import { isParticipationCostFilter } from "@/lib/opportunity-participation-cost";
 import {
   addAppearanceFromEvent,
   addManualAppearance,
@@ -355,7 +356,7 @@ export default async function ManageBusinessPage({
     type?: string;
     where?: string;
     timing?: string;
-    budget?: string;
+    participationCost?: string;
     goal?: string;
   }>;
 }) {
@@ -739,7 +740,7 @@ export default async function ManageBusinessPage({
     type: isOpportunityType(rawSearchParams.type) ? rawSearchParams.type : null,
     where: rawSearchParams.where?.slice(0, 100) ?? null,
     timing: isExploreTiming(rawSearchParams.timing) ? rawSearchParams.timing : null,
-    budget: isExploreBudget(rawSearchParams.budget) ? rawSearchParams.budget : null,
+    participationCost: isParticipationCostFilter(rawSearchParams.participationCost) ? rawSearchParams.participationCost : null,
   };
   const [exploreData, goalsData] =
     activeTab === "opportunities"

@@ -8,8 +8,9 @@ import {
   type PresentableOpportunity,
 } from "@/lib/opportunity-listings-domain";
 import { formatOpportunityDate } from "@/lib/opportunity-format";
-import { ClockIcon, PinIcon, TagIcon, type PresentablePlace } from "./OpportunityPresentation";
+import { ClockIcon, commercialCardLine, PinIcon, TagIcon, type PresentablePlace } from "./OpportunityPresentation";
 import { imageVariantUrl } from "@/lib/image-variants";
+import type { AdminOpportunityOption } from "@/lib/opportunity-listings";
 
 // Business-facing cards for commercial Opportunities. They only ever
 // receive Business-safe data: a PresentableOpportunity (field-picked, no
@@ -43,6 +44,7 @@ export function OpportunityCard({
   prominent,
   compact = false,
   corner,
+  commercialOptions,
 }: {
   o: PresentableOpportunity;
   place: PresentablePlace | null;
@@ -52,8 +54,13 @@ export function OpportunityCard({
   compact?: boolean;
   /** Optional top-right element on the image or header (e.g. "3 New"). */
   corner?: ReactNode;
+  /** Pass 3 — this listing's structured Options, for a direction-aware
+   * card summary (never the raw legacy projection once Options exist).
+   * Omitted/empty falls back to the exact legacy price/qualifier. */
+  commercialOptions?: AdminOpportunityOption[];
 }) {
   const price = opportunityPriceParts(o);
+  const commercial = commercialCardLine(commercialOptions, price);
   const placeName = place?.name ?? o.place_text;
   const placeDetail = place ? [place.city, place.state].filter(Boolean).join(", ") : null;
   const timing = o.timing_note ?? (o.starts_at ? formatOpportunityDate(o.starts_at) : null);
@@ -100,8 +107,8 @@ export function OpportunityCard({
             <div className="flex items-center gap-2">
               <TagIcon size="sm" />
               <p className="text-metadata leading-snug">
-                <span className="font-bold text-primary">{price.amount}</span>
-                {price.qualifier && <span className="text-muted"> · {price.qualifier}</span>}
+                <span className="font-bold text-primary">{commercial.title}</span>
+                {commercial.detail && <span className="text-muted"> · {commercial.detail}</span>}
               </p>
             </div>
           </div>
@@ -128,12 +135,15 @@ export default function BusinessOpportunityCard({
   href,
   compact,
   corner,
+  commercialOptions,
 }: {
   item: BusinessOpportunityView;
   place: PresentablePlace | null;
   href: string;
   compact?: boolean;
   corner?: ReactNode;
+  /** Pass 3 — see OpportunityCard's own prop comment. */
+  commercialOptions?: AdminOpportunityOption[];
 }) {
   return (
     <OpportunityCard
@@ -144,6 +154,7 @@ export default function BusinessOpportunityCard({
       prominent={item.state.answerable && item.status === "offered"}
       compact={compact}
       corner={corner}
+      commercialOptions={commercialOptions}
     />
   );
 }

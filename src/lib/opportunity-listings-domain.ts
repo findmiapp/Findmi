@@ -11,6 +11,14 @@
 // Every value list here mirrors a CHECK constraint in
 // supabase/migrations/20261006044707_opportunity_listings_v1.sql — change
 // both together.
+//
+// Pass 3 — ExploreFilters.participationCost references a type from
+// src/lib/opportunity-participation-cost.ts via `import type` only: fully
+// erased by both tsc and Node's type-stripping, so this file stays
+// zero-runtime-import and directly unit-testable. The actual Participation
+// Cost MATCHING logic lives entirely in that other (also zero-import)
+// module — matchesExploreFilters below keeps doing only q/type/where/
+// timing, exactly as before.
 
 // ---------------------------------------------------------------- types
 
@@ -751,15 +759,6 @@ export function isExplorable(listing: { visibility?: string | null; status: List
 
 // ---------------------------------------------------------------- explore filters
 
-export const EXPLORE_BUDGETS = ["complimentary", "under_500", "500_2500", "2500_plus"] as const;
-export type ExploreBudget = (typeof EXPLORE_BUDGETS)[number];
-export const EXPLORE_BUDGET_LABELS: Record<ExploreBudget, string> = {
-  complimentary: "Complimentary",
-  under_500: "Under $500",
-  "500_2500": "$500–$2.5K",
-  "2500_plus": "$2.5K+",
-};
-
 export const EXPLORE_TIMINGS = ["next_30_days", "next_90_days", "flexible"] as const;
 export type ExploreTiming = (typeof EXPLORE_TIMINGS)[number];
 export const EXPLORE_TIMING_LABELS: Record<ExploreTiming, string> = {
@@ -768,7 +767,6 @@ export const EXPLORE_TIMING_LABELS: Record<ExploreTiming, string> = {
   flexible: "Flexible Timing",
 };
 
-export const isExploreBudget = isOneOf(EXPLORE_BUDGETS);
 export const isExploreTiming = isOneOf(EXPLORE_TIMINGS);
 
 export interface ExploreFilters {
@@ -776,13 +774,23 @@ export interface ExploreFilters {
   type?: OpportunityType | null;
   where?: string | null;
   timing?: ExploreTiming | null;
-  budget?: ExploreBudget | null;
+  /** Pass 3 — matched by matchesParticipationCost() in
+   * src/lib/opportunity-participation-cost.ts, NOT by this file's own
+   * matchesExploreFilters (which no longer handles commercial terms at
+   * all — see that function's own comment on why). */
+  participationCost?: import("./opportunity-participation-cost").ParticipationCostFilter | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Pure filter for one explorable listing. Custom pricing never matches a
- * budget filter (no amount to compare). */
+/** Pure filter for one explorable listing — text/type/where/timing ONLY.
+ * Pass 3 — Participation Cost matching was moved OUT of this function
+ * entirely, into the dedicated matchesParticipationCost() predicate
+ * (src/lib/opportunity-participation-cost.ts), which can see a listing's
+ * real structured Options (this function only ever sees the single
+ * legacy pricing_mode/price_cents pair, which is no longer sufficient —
+ * a structured listing's commercial direction can only be read correctly
+ * from its Options). Callers (getExploreItems) compose both predicates. */
 export function matchesExploreFilters(
   listing: {
     opportunity_type: OpportunityType;
@@ -791,8 +799,6 @@ export function matchesExploreFilters(
     place_text: string | null;
     host_name: string | null;
     starts_at: string | null;
-    pricing_mode: PricingMode;
-    price_cents: number | null;
     location?: { name: string; city: string | null; state: string | null } | null;
   },
   filters: ExploreFilters,
@@ -813,14 +819,6 @@ export function matchesExploreFilters(
       const horizon = now.getTime() + (filters.timing === "next_30_days" ? 30 : 90) * DAY_MS;
       if (start > horizon) return false;
     }
-  }
-  if (filters.budget) {
-    if (filters.budget === "complimentary") return listing.pricing_mode === "complimentary";
-    if (listing.pricing_mode === "complimentary" || listing.pricing_mode === "custom" || listing.price_cents == null) return false;
-    const c = listing.price_cents;
-    if (filters.budget === "under_500" && c >= 50_000) return false;
-    if (filters.budget === "500_2500" && (c < 50_000 || c > 250_000)) return false;
-    if (filters.budget === "2500_plus" && c <= 250_000) return false;
   }
   return true;
 }

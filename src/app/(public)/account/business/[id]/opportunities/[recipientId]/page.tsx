@@ -130,7 +130,7 @@ export default async function BusinessOpportunityDetailPage({
 
   const item = await getBusinessOpportunityItem(id, recipientId);
   if (!item) notFound();
-  const { view, place, event } = item;
+  const { view, place, event, options } = item;
   const o = view.opportunity;
   const mayRespond = canMemberRespond(membership.role, membership.viaAdmin);
   const action = (response: BusinessResponseStatus) => respondToOpportunity.bind(null, id, view.recipientId, response);
@@ -155,6 +155,7 @@ export default async function BusinessOpportunityDetailPage({
           showCredits={false}
           badges={<BusinessStateBadge tone={view.state.tone} label={view.state.label} />}
           actions={<DecisionArea state={view.state} action={action} mayRespond={mayRespond} viaAdmin={Boolean(membership.viaAdmin)} />}
+          commercialOptions={options}
         />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
@@ -169,6 +170,7 @@ export default async function BusinessOpportunityDetailPage({
               event={event}
               eventHref={event?.slug ? `/event/${event.slug}` : null}
               showCredits={false}
+              commercialOptions={options}
             />
           </div>
         </div>

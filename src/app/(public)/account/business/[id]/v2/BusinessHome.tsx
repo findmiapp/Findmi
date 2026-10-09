@@ -254,7 +254,7 @@ function HomeOpportunities({ basePath, items }: { basePath: string; items: Busin
         <>
           <p className="mt-0.5 text-metadata text-muted">Opportunities Findmi recommends for your Business.</p>
           <div className="mt-3 sm:max-w-md">
-            <BusinessOpportunityCard item={top.view} place={top.place} href={`${basePath}/opportunities/${top.view.recipientId}`} compact />
+            <BusinessOpportunityCard item={top.view} place={top.place} href={`${basePath}/opportunities/${top.view.recipientId}`} compact commercialOptions={top.options} />
           </div>
         </>
       ) : (
