@@ -45,6 +45,10 @@ export default async function EditOpportunityPage({
       in_kind_provider: c.in_kind_provider as InitialOption["components"][number]["in_kind_provider"],
       in_kind_required: c.in_kind_required,
       estimated_value_cents: c.estimated_value_cents,
+      quantity: c.quantity,
+      unit: c.unit as InitialOption["components"][number]["unit"],
+      custom_unit_label: c.custom_unit_label,
+      unit_value_cents: c.unit_value_cents,
     })),
   }));
   const detailHref = `/admin/opportunities/${listing.id}`;

@@ -370,6 +370,10 @@ export interface AdminOpportunityComponent {
   in_kind_provider: string | null;
   in_kind_required: boolean;
   estimated_value_cents: number | null;
+  quantity: number | null;
+  unit: string | null;
+  custom_unit_label: string | null;
+  unit_value_cents: number | null;
   display_order: number;
 }
 

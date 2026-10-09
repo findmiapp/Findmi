@@ -9,15 +9,23 @@ import { readFileSync } from "node:fs";
 import {
   AMOUNT_MODES,
   COMPONENT_TYPES,
+  CONTRIBUTION_UNITS,
+  CONTRIBUTION_UNIT_LABELS,
   IN_KIND_CATEGORIES,
   IN_KIND_PROVIDERS,
   OPTION_COMMERCIAL_MODES,
+  calculateInKindEstimatedValueCents,
+  calculateUnitValueCents,
   countMonetaryComponents,
   formatComponentAmount,
   formatComponentSummary,
+  formatMonetaryPerUnitEquivalent,
   formatOptionSummary,
   formatOptionalContributions,
+  formatQuantityUnit,
+  isContributionUnit,
   isMonetaryComponentType,
+  summarizeOptionEstimatedInKindValue,
   summarizeOptionsForCard,
   validateComponent,
   validateOption,
@@ -38,6 +46,7 @@ const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 const strip = (s) => s.replace(/--.*$/gm, "");
 const MIGRATION = read("supabase/migrations/20261009000000_opportunity_commercial_terms_foundation.sql");
 const PERSISTENCE_MIGRATION = read("supabase/migrations/20261010000000_opportunity_commercial_terms_persistence.sql");
+const UNIT_VALUE_MIGRATION = read("supabase/migrations/20261011000000_opportunity_commercial_terms_unit_value.sql");
 const LISTINGS_DOMAIN = read("src/lib/opportunity-listings-domain.ts");
 const LISTINGS_LIB = read("src/lib/opportunity-listings.ts");
 const GOALS_DOMAIN = read("src/lib/opportunity-goals-domain.ts");
@@ -1059,4 +1068,395 @@ test("Pass 2 / 58. no NEW classification/persistence logic references the real p
   for (const mod of [FORM_MODULE, ACTIONS, BUILDER, DETAIL_PAGE]) {
     assert.equal(/\btabli\b/i.test(mod), false);
   }
+});
+
+// ============================================================================
+// Unit-Based Commercial Value Model (Pass 2.5)
+// ============================================================================
+
+// ---------------------------------------------------------------- shared quantity/unit validation (live)
+
+const monetaryFee = (over = {}) => ({ component_type: "participation_fee", amount_mode: "fixed", amount_min_cents: 150000, currency: "USD", ...over });
+const inKindNoValue = (over = {}) => ({ component_type: "in_kind", in_kind_category: "product_samples", in_kind_provider: "recipient_business", ...over });
+
+test("2.5 / 1. In-Kind: quantity+unit with NO valuation at all is valid ('200 samples', no estimated_value_cents, no unit_value_cents)", () => {
+  const r = validateComponent(inKindNoValue({ quantity: 200, unit: "samples" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.value.quantity, 200);
+  assert.equal(r.value.unit, "samples");
+  assert.equal(r.value.estimated_value_cents, null);
+  assert.equal(r.value.unit_value_cents, null);
+});
+
+test("2.5 / 2. In-Kind: a DIRECT total is valid with NO quantity/unit ('Venue Space, $2,500')", () => {
+  const r = validateComponent(inKindNoValue({ in_kind_category: "space_venue", estimated_value_cents: 250000 }));
+  assert.equal(r.ok, true);
+  assert.equal(r.value.quantity, null);
+  assert.equal(r.value.unit, null);
+  assert.equal(r.value.estimated_value_cents, 250000);
+  assert.equal(r.value.unit_value_cents, null);
+});
+
+test("2.5 / 3. In-Kind: a DIRECT total is ALSO valid WITH quantity/unit present ('200 samples, Estimated Total $400')", () => {
+  const r = validateComponent(inKindNoValue({ quantity: 200, unit: "samples", estimated_value_cents: 40000 }));
+  assert.equal(r.ok, true);
+  assert.equal(r.value.quantity, 200);
+  assert.equal(r.value.estimated_value_cents, 40000);
+  assert.equal(r.value.unit_value_cents, null);
+});
+
+test("2.5 / 4. In-Kind: a PER-UNIT rate is valid with quantity+unit ('200 samples, $2/sample')", () => {
+  const r = validateComponent(inKindNoValue({ quantity: 200, unit: "samples", unit_value_cents: 200 }));
+  assert.equal(r.ok, true);
+  assert.equal(r.value.quantity, 200);
+  assert.equal(r.value.unit_value_cents, 200);
+  assert.equal(r.value.estimated_value_cents, null);
+});
+
+test("2.5 / 5. In-Kind: estimated_value_cents AND unit_value_cents together is REJECTED (mutual exclusion)", () => {
+  const r = validateComponent(inKindNoValue({ quantity: 200, unit: "samples", estimated_value_cents: 40000, unit_value_cents: 200 }));
+  assert.equal(r.ok, false);
+  assert.match(r.error, /either an estimated total or a value per unit, not both/);
+});
+
+test("2.5 / 6. In-Kind: unit_value_cents without quantity/unit is REJECTED", () => {
+  const r = validateComponent(inKindNoValue({ unit_value_cents: 200 }));
+  assert.equal(r.ok, false);
+  assert.match(r.error, /needs a quantity and a unit/);
+});
+
+test("2.5 / 7. quantity without unit, or unit without quantity, is REJECTED (both-or-neither) -- true for both monetary and In-Kind", () => {
+  assert.equal(validateComponent(inKindNoValue({ quantity: 200 })).ok, false);
+  assert.equal(validateComponent(inKindNoValue({ unit: "samples" })).ok, false);
+  assert.equal(validateComponent(monetaryFee({ quantity: 3 })).ok, false);
+  assert.equal(validateComponent(monetaryFee({ unit: "appearances" })).ok, false);
+});
+
+test("2.5 / 8. unit = 'custom' without custom_unit_label is REJECTED; with a label it's valid", () => {
+  const missing = validateComponent(inKindNoValue({ quantity: 4, unit: "custom" }));
+  assert.equal(missing.ok, false);
+  const withLabel = validateComponent(inKindNoValue({ quantity: 4, unit: "custom", custom_unit_label: "Road Trips" }));
+  assert.equal(withLabel.ok, true);
+  assert.equal(withLabel.value.custom_unit_label, "Road Trips");
+});
+
+test("2.5 / 9. an unrecognized unit string is REJECTED (closed vocabulary + custom escape only)", () => {
+  const r = validateComponent(inKindNoValue({ quantity: 4, unit: "widgets" }));
+  assert.equal(r.ok, false);
+});
+
+test("2.5 / 10. quantity <= 0 is REJECTED; decimals are accepted (2.5 hours is real)", () => {
+  assert.equal(validateComponent(inKindNoValue({ quantity: 0, unit: "hours" })).ok, false);
+  assert.equal(validateComponent(inKindNoValue({ quantity: -3, unit: "hours" })).ok, false);
+  const decimal = validateComponent(inKindNoValue({ quantity: 2.5, unit: "hours" }));
+  assert.equal(decimal.ok, true);
+  assert.equal(decimal.value.quantity, 2.5);
+});
+
+// ---------------------------------------------------------------- monetary components: descriptive quantity only
+
+test("2.5 / 11. monetary: quantity+unit are accepted as purely DESCRIPTIVE metadata; amount_min_cents is untouched", () => {
+  const r = validateComponent(monetaryFee({ component_type: "compensation", amount_min_cents: 150000, quantity: 3, unit: "appearances" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.value.amount_min_cents, 150000, "the authoritative amount is never derived from quantity");
+  assert.equal(r.value.quantity, 3);
+  assert.equal(r.value.unit, "appearances");
+});
+
+test("2.5 / 12. monetary: unit_value_cents is REJECTED outright ('a value per unit doesn't apply here')", () => {
+  const r = validateComponent(monetaryFee({ quantity: 3, unit: "appearances", unit_value_cents: 50000 }));
+  assert.equal(r.ok, false);
+  assert.match(r.error, /value per unit doesn't apply here/);
+});
+
+test("2.5 / 13. monetary: estimated_value_cents is REJECTED outright", () => {
+  const r = validateComponent(monetaryFee({ estimated_value_cents: 50000 }));
+  assert.equal(r.ok, false);
+  assert.match(r.error, /estimated value doesn't apply here/);
+});
+
+test("2.5 / 14. monetary: quantity/unit are valid with Range and Undisclosed too (purely descriptive, no rate implied)", () => {
+  const range = validateComponent({ component_type: "compensation", amount_mode: "range", amount_min_cents: 100000, amount_max_cents: 200000, currency: "USD", quantity: 3, unit: "appearances" });
+  assert.equal(range.ok, true);
+  const undisclosed = validateComponent({ component_type: "participation_fee", amount_mode: "undisclosed", currency: "USD", quantity: 4, unit: "days" });
+  assert.equal(undisclosed.ok, true);
+});
+
+// ---------------------------------------------------------------- calculation (live, deterministic rounding)
+
+test("2.5 / 15. calculateUnitValueCents: the exact fractional-quantity example from the spec (2.5 x 3333 -> 8333, half-up, no float drift)", () => {
+  assert.equal(calculateUnitValueCents(2.5, 3333), 8333);
+});
+
+test("2.5 / 16. calculateUnitValueCents: 200 samples x $2 = $400", () => {
+  assert.equal(calculateUnitValueCents(200, 200), 40000);
+});
+
+test("2.5 / 17. calculateUnitValueCents: 6 staffing hours x $50 = $300", () => {
+  assert.equal(calculateUnitValueCents(6, 5000), 30000);
+});
+
+test("2.5 / 18. calculateUnitValueCents: 3 videos x $250 = $750", () => {
+  assert.equal(calculateUnitValueCents(3, 25000), 75000);
+});
+
+test("2.5 / 19. calculateUnitValueCents: repeated fractional cases never drift off the true integer-cent value", () => {
+  // 0.1 + 0.2 !== 0.3 in naive floating point -- these are the classic
+  // trouble cases, confirming the integer-hundredths scaling trick holds.
+  assert.equal(calculateUnitValueCents(0.1, 1000), 100);
+  assert.equal(calculateUnitValueCents(1.1, 999), 1099);
+  assert.equal(calculateUnitValueCents(0.3, 100), 30);
+});
+
+test("2.5 / 20. calculateInKindEstimatedValueCents: per-unit wins when set; falls back to the direct total; null when neither", () => {
+  assert.equal(calculateInKindEstimatedValueCents({ quantity: 200, unit_value_cents: 200, estimated_value_cents: null }), 40000);
+  assert.equal(calculateInKindEstimatedValueCents({ quantity: null, unit_value_cents: null, estimated_value_cents: 250000 }), 250000);
+  assert.equal(calculateInKindEstimatedValueCents({ quantity: null, unit_value_cents: null, estimated_value_cents: null }), null);
+});
+
+// ---------------------------------------------------------------- monetary per-unit DISPLAY (never stored)
+
+test("2.5 / 21. formatMonetaryPerUnitEquivalent: Fixed + quantity -> a real equivalent string ($1,500 compensation / 3 appearances)", () => {
+  const s = formatMonetaryPerUnitEquivalent({ amount_mode: "fixed", amount_min_cents: 150000, currency: "USD", quantity: 3, unit: "appearances", custom_unit_label: null });
+  assert.match(s, /\$500/);
+  assert.match(s, /appearance/);
+});
+
+test("2.5 / 22. formatMonetaryPerUnitEquivalent: Starting At + quantity also computes an equivalent", () => {
+  const s = formatMonetaryPerUnitEquivalent({ amount_mode: "starting_at", amount_min_cents: 300000, currency: "USD", quantity: 4, unit: "days", custom_unit_label: null });
+  assert.match(s, /\$750/);
+  assert.match(s, /day/);
+});
+
+test("2.5 / 23. formatMonetaryPerUnitEquivalent: Range NEVER gets a fabricated rate ('$1,000-$2,000 / 3 appearances' stays just the range)", () => {
+  const s = formatMonetaryPerUnitEquivalent({ amount_mode: "range", amount_min_cents: 100000, currency: "USD", quantity: 3, unit: "appearances", custom_unit_label: null });
+  assert.equal(s, null);
+});
+
+test("2.5 / 24. formatMonetaryPerUnitEquivalent: Undisclosed never gets a rate; no quantity/unit never gets a rate", () => {
+  assert.equal(formatMonetaryPerUnitEquivalent({ amount_mode: "undisclosed", amount_min_cents: null, currency: "USD", quantity: 3, unit: "appearances", custom_unit_label: null }), null);
+  assert.equal(formatMonetaryPerUnitEquivalent({ amount_mode: "fixed", amount_min_cents: 150000, currency: "USD", quantity: null, unit: null, custom_unit_label: null }), null);
+});
+
+// ---------------------------------------------------------------- Option-level Estimated In-Kind Value (never includes cash)
+
+test("2.5 / 25. summarizeOptionEstimatedInKindValue: sums valued In-Kind contributions, flags unvalued ones, EXCLUDES any monetary component", () => {
+  const components = [
+    validateComponent(monetaryFee()).value, // $1,500 -- must never be summed in
+    validateComponent(inKindNoValue({ quantity: 200, unit: "samples", unit_value_cents: 200 })).value, // $400
+    validateComponent(inKindNoValue({ in_kind_category: "staffing", quantity: 6, unit: "hours", unit_value_cents: 5000 })).value, // $300
+    validateComponent(inKindNoValue({ in_kind_category: "promotion" })).value, // unvalued
+  ];
+  const { totalCents, hasUnvalued } = summarizeOptionEstimatedInKindValue(components);
+  assert.equal(totalCents, 70000, "$400 + $300 -- never the $1,500 Participation Fee");
+  assert.equal(hasUnvalued, true);
+});
+
+test("2.5 / 26. summarizeOptionEstimatedInKindValue: zero In-Kind components -> totalCents null (never 0), hasUnvalued false", () => {
+  const { totalCents, hasUnvalued } = summarizeOptionEstimatedInKindValue([validateComponent(monetaryFee()).value]);
+  assert.equal(totalCents, null);
+  assert.equal(hasUnvalued, false);
+});
+
+// ---------------------------------------------------------------- formatting backward-compatibility
+
+test("2.5 / 27. formatComponentSummary: an In-Kind Component with no quantity/unit/value is byte-identical to the Pass 1 format", () => {
+  const c = validateComponent(inKindNoValue()).value;
+  assert.equal(formatComponentSummary(c), "In-Kind — Product / Samples");
+});
+
+test("2.5 / 28. formatComponentSummary: quantity/unit and a calculated value are appended when present", () => {
+  const c = validateComponent(inKindNoValue({ quantity: 200, unit: "samples", unit_value_cents: 200 })).value;
+  const s = formatComponentSummary(c);
+  assert.match(s, /200 Samples/);
+  assert.match(s, /\$400/);
+});
+
+test("2.5 / 29. formatQuantityUnit: standard unit uses its label; custom unit uses custom_unit_label; null when absent", () => {
+  assert.equal(formatQuantityUnit({ quantity: 200, unit: "samples", custom_unit_label: null }), "200 Samples");
+  assert.equal(formatQuantityUnit({ quantity: 4, unit: "custom", custom_unit_label: "Road Trips" }), "4 Road Trips");
+  assert.equal(formatQuantityUnit({ quantity: null, unit: null, custom_unit_label: null }), null);
+});
+
+// ---------------------------------------------------------------- Complimentary interaction (unchanged by valuation)
+
+test("2.5 / 30. Complimentary + optional In-Kind may use ANY valuation mode (No Value / Estimated Total / Value Per Unit)", () => {
+  for (const extra of [{}, { estimated_value_cents: 25000 }, { quantity: 100, unit: "samples", unit_value_cents: 150 }]) {
+    const r = validateOption({ commercial_mode: "complimentary", components: [inKindNoValue({ in_kind_required: false, ...extra })] });
+    assert.equal(r.ok, true, JSON.stringify(extra));
+  }
+});
+
+test("2.5 / 31. Complimentary + REQUIRED In-Kind is still rejected regardless of valuation (unaffected by this pass)", () => {
+  const r = validateOption({ commercial_mode: "complimentary", components: [inKindNoValue({ in_kind_required: true, quantity: 100, unit: "samples", unit_value_cents: 150 })] });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /can't require an In-Kind contribution/);
+});
+
+// ---------------------------------------------------------------- the 5 example cases from the spec, end to end
+
+test("2.5 / 32. '3 appearances x $500 compensation' -> Compensation, Fixed, $1,500 total, quantity=3/unit=appearances, no unit_value", () => {
+  const r = validateComponent({ component_type: "compensation", amount_mode: "fixed", amount_min_cents: 150000, currency: "USD", quantity: 3, unit: "appearances" });
+  assert.equal(r.ok, true);
+  assert.deepEqual(
+    { amount_min_cents: r.value.amount_min_cents, quantity: r.value.quantity, unit: r.value.unit, unit_value_cents: r.value.unit_value_cents },
+    { amount_min_cents: 150000, quantity: 3, unit: "appearances", unit_value_cents: null }
+  );
+});
+
+test("2.5 / 33. '4 activation days x $750 participation fee' -> Participation Fee, Fixed, $3,000 total, quantity=4/unit=days", () => {
+  const r = validateComponent({ component_type: "participation_fee", amount_mode: "fixed", amount_min_cents: 300000, currency: "USD", quantity: 4, unit: "days" });
+  assert.equal(r.ok, true);
+  assert.equal(r.value.amount_min_cents, 300000);
+  assert.equal(formatMonetaryPerUnitEquivalent(r.value).includes("750"), true);
+});
+
+test("2.5 / 34. '200 samples x $2' -> In-Kind, Value Per Unit, calculated $400", () => {
+  const r = validateComponent(inKindNoValue({ quantity: 200, unit: "samples", unit_value_cents: 200 }));
+  assert.equal(r.ok, true);
+  assert.equal(calculateInKindEstimatedValueCents(r.value), 40000);
+});
+
+test("2.5 / 35. '6 staffing hours x $50' -> In-Kind, Value Per Unit, calculated $300", () => {
+  const r = validateComponent(inKindNoValue({ in_kind_category: "staffing", quantity: 6, unit: "hours", unit_value_cents: 5000 }));
+  assert.equal(r.ok, true);
+  assert.equal(calculateInKindEstimatedValueCents(r.value), 30000);
+});
+
+test("2.5 / 36. '3 videos x $250, provided by Findmi' -> In-Kind, content_media, provider=findmi, Value Per Unit, calculated $750", () => {
+  const r = validateComponent(inKindNoValue({ in_kind_category: "content_media", in_kind_provider: "findmi", quantity: 3, unit: "videos", unit_value_cents: 25000 }));
+  assert.equal(r.ok, true);
+  assert.equal(r.value.in_kind_provider, "findmi");
+  assert.equal(calculateInKindEstimatedValueCents(r.value), 75000);
+});
+
+// ---------------------------------------------------------------- "No silent override" / no divergent derivation
+
+test("2.5 / 37. validateComponent never derives amount_min_cents from quantity * unit_value_cents anywhere (grep-style source guard)", () => {
+  assert.equal(/amount_min_cents\s*=.*quantity/.test(DOMAIN), false, "the authoritative cash amount is never computed from quantity in source");
+});
+
+test("2.5 / 38. the calculated In-Kind total is never assigned back into estimated_value_cents/unit_value_cents anywhere in the domain module (never materialized)", () => {
+  const fn = DOMAIN.match(/export function calculateInKindEstimatedValueCents[\s\S]*?\n\}/)[0];
+  assert.equal(/estimated_value_cents\s*=/.test(fn), false);
+  assert.equal(/unit_value_cents\s*=/.test(fn), false);
+});
+
+// ---------------------------------------------------------------- migration structural guards (static)
+
+test("2.5 / 39. the new migration is purely additive to opportunity_option_components -- adds exactly the four new columns, keeps estimated_value_cents", () => {
+  assert.match(UNIT_VALUE_MIGRATION, /add column quantity numeric\(10, 2\)/);
+  assert.match(UNIT_VALUE_MIGRATION, /add column unit text/);
+  assert.match(UNIT_VALUE_MIGRATION, /add column custom_unit_label text/);
+  assert.match(UNIT_VALUE_MIGRATION, /add column unit_value_cents integer/);
+  assert.equal(/drop column estimated_value_cents/i.test(UNIT_VALUE_MIGRATION), false, "estimated_value_cents is explicitly KEPT, not dropped");
+});
+
+test("2.5 / 40. the unit vocabulary CHECK constraint matches CONTRIBUTION_UNITS exactly (drift guard)", () => {
+  const m = UNIT_VALUE_MIGRATION.match(/constraint opportunity_option_components_unit_vocabulary_check[\s\S]*?check \(\s*unit is null or unit in \(([\s\S]*?)\)\s*\)/);
+  assert.ok(m, "unit vocabulary constraint not found");
+  const dbUnits = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+  assert.deepEqual(dbUnits, [...CONTRIBUTION_UNITS]);
+});
+
+test("2.5 / 41. quantity/unit both-or-neither, quantity > 0, custom-label-required, and unit_value_cents-requires-quantity-and-unit are all real CHECK constraints", () => {
+  assert.match(UNIT_VALUE_MIGRATION, /constraint opportunity_option_components_quantity_unit_check\s+check \(\(quantity is null\) = \(unit is null\)\)/);
+  assert.match(UNIT_VALUE_MIGRATION, /constraint opportunity_option_components_quantity_positive_check\s+check \(quantity is null or quantity > 0\)/);
+  assert.match(UNIT_VALUE_MIGRATION, /constraint opportunity_option_components_custom_unit_label_check\s+check \(unit <> 'custom' or custom_unit_label is not null\)/);
+  assert.match(UNIT_VALUE_MIGRATION, /constraint opportunity_option_components_unit_value_requires_unit_check\s+check \(unit_value_cents is null or \(quantity is not null and unit is not null\)\)/);
+});
+
+test("2.5 / 42. the valuation mutual-exclusion invariant is a real DB CHECK constraint (not just a TypeScript-layer rule)", () => {
+  assert.match(
+    UNIT_VALUE_MIGRATION,
+    /constraint opportunity_option_components_valuation_exclusive_check\s+check \(not \(estimated_value_cents is not null and unit_value_cents is not null\)\)/
+  );
+});
+
+test("2.5 / 43. the revised shape_check still prohibits BOTH valuation fields on monetary components, and still requires every in_kind field on In-Kind -- same named constraint, dropped and re-added, never the Pass 1 migration file edited", () => {
+  assert.match(UNIT_VALUE_MIGRATION, /drop constraint opportunity_option_components_shape_check/);
+  assert.match(UNIT_VALUE_MIGRATION, /add constraint\s+opportunity_option_components_shape_check/);
+  const revised = UNIT_VALUE_MIGRATION.match(/add constraint\s+opportunity_option_components_shape_check[\s\S]*?\);/)[0];
+  assert.match(revised, /and estimated_value_cents is null\s*\n\s*and unit_value_cents is null/);
+  assert.equal(/alter table public\.opportunity_option_components\b[\s\S]{0,40}drop column/i.test(strip(MIGRATION)), false, "the Pass 1 migration file itself is never edited by this pass");
+});
+
+test("2.5 / 44. the RPC (replace_opportunity_options) is CREATE OR REPLACEd with the four new columns added to the per-Component INSERT -- same function name, same hardening", () => {
+  assert.match(UNIT_VALUE_MIGRATION, /create or replace function public\.replace_opportunity_options/);
+  assert.match(UNIT_VALUE_MIGRATION, /security definer/);
+  assert.match(UNIT_VALUE_MIGRATION, /set search_path = ''/);
+  assert.match(UNIT_VALUE_MIGRATION, /raise exception 'foreign_option_id'/);
+  assert.match(UNIT_VALUE_MIGRATION, /quantity, unit, custom_unit_label, unit_value_cents, display_order/);
+  assert.match(UNIT_VALUE_MIGRATION, /nullif\(v_component->>'quantity', ''\)::numeric\(10, 2\)/);
+  assert.match(UNIT_VALUE_MIGRATION, /grant execute on function public\.replace_opportunity_options\(uuid, jsonb\) to service_role/);
+});
+
+test("2.5 / 45. no reference to the real production Tabli listing in the new migration", () => {
+  assert.equal(/\btabli\b/i.test(UNIT_VALUE_MIGRATION), false);
+});
+
+// ---------------------------------------------------------------- form.ts static guards
+
+test("2.5 / 46. parseCommercialTermsForm reads quantity/unit/custom_unit_label/unit_value through the same typed parsers -- no divergent logic", () => {
+  assert.match(FORM_MODULE, /`\$\{prefix\}_quantity`/);
+  assert.match(FORM_MODULE, /`\$\{prefix\}_unit`/);
+  assert.match(FORM_MODULE, /`\$\{prefix\}_custom_unit_label`/);
+  assert.match(FORM_MODULE, /`\$\{prefix\}_unit_value`/);
+  assert.equal(/quantity\s*\*\s*unit_value|unit_value.*\*.*quantity/.test(FORM_MODULE), false, "no calculation logic lives in the parser -- that's the domain module's job");
+});
+
+// ---------------------------------------------------------------- builder static guards
+
+test("2.5 / 47. the builder renders Quantity+Unit for BOTH monetary and In-Kind terms", () => {
+  assert.match(BUILDER, /Quantity \(optional\)/);
+  const matches = BUILDER.match(/name=\{`\$\{prefix\}_quantity`\}/g) ?? [];
+  assert.ok(matches.length >= 2, "quantity field must appear in both the monetary and the In-Kind branch");
+});
+
+test("2.5 / 48. the builder NEVER renders an editable unit_value input for a monetary term (quantity/unit stay purely descriptive there)", () => {
+  const monetaryBranch = BUILDER.slice(BUILDER.indexOf("monetary ? ("), BUILDER.indexOf(") : ("));
+  assert.equal(/name=\{`\$\{prefix\}_unit_value`\}/.test(monetaryBranch), false);
+});
+
+test("2.5 / 49. the builder's In-Kind Valuation control offers exactly the three approved modes and is mutually exclusive by construction (switching clears the other field)", () => {
+  assert.match(BUILDER, /No Value/);
+  assert.match(BUILDER, /Estimated Total/);
+  assert.match(BUILDER, /Value Per Unit/);
+  assert.match(BUILDER, /valuationModeOf/);
+  assert.match(BUILDER, /estimated_value: "", unit_value: ""/);
+});
+
+test("2.5 / 50. the equivalent-per-unit and calculated-estimated-value previews are explicitly labeled as display-only / not stored", () => {
+  assert.match(BUILDER, /for display only — not stored/);
+});
+
+// ---------------------------------------------------------------- Admin detail page guards
+
+test("2.5 / 51. the Admin detail page shows the Option-level Estimated In-Kind Value and the monetary per-unit equivalent, both imported from the domain module (no reimplementation)", () => {
+  assert.match(DETAIL_PAGE, /import\s*\{[^}]*\bformatMonetaryPerUnitEquivalent\b[^}]*\}\s*from\s*"@\/lib\/opportunity-commercial-terms-domain"/s);
+  assert.match(DETAIL_PAGE, /import\s*\{[^}]*\bsummarizeOptionEstimatedInKindValue\b[^}]*\}\s*from\s*"@\/lib\/opportunity-commercial-terms-domain"/s);
+  assert.match(DETAIL_PAGE, /Estimated In-Kind Value/);
+});
+
+// ---------------------------------------------------------------- business-facing / scope guards, reconfirmed after Pass 2.5
+
+test("2.5 / 52. Business-facing files remain untouched by Pass 2.5's unit-value additions", () => {
+  const businessFiles = [
+    "src/components/opportunities/BusinessOpportunityCard.tsx",
+    "src/components/opportunities/OpportunityPresentation.tsx",
+    "src/app/(public)/account/business/[id]/opportunities/[recipientId]/page.tsx",
+    "src/app/(public)/account/business/[id]/v2/BusinessHome.tsx",
+    "src/app/(public)/account/business/[id]/v2/OpportunitiesView.tsx",
+  ];
+  for (const path of businessFiles) {
+    assert.equal(/unit_value_cents|CONTRIBUTION_UNITS|calculateUnitValueCents/i.test(read(path)), false, `${path} must remain unaware of the unit-value model`);
+  }
+});
+
+test("2.5 / 53. opportunity_recipients.option_id, Explore, Goals, Pro, Stripe remain untouched by this pass's new files (the pre-existing opportunity_option_components.option_id FK is unrelated and expected to appear throughout the copied RPC body)", () => {
+  assert.equal(/opportunity_recipients/i.test(strip(UNIT_VALUE_MIGRATION)), false, "no real SQL statement touches opportunity_recipients");
+  for (const mod of [UNIT_VALUE_MIGRATION, FORM_MODULE]) {
+    assert.equal(/EXPLORE_BUDGET|stripe|pro_access_request/i.test(mod), false);
+  }
+  assert.equal(/opportunity_option|commercial_mode/i.test(GOALS_DOMAIN), false);
 });

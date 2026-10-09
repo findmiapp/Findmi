@@ -5,6 +5,8 @@ import {
   AMOUNT_MODES,
   AMOUNT_MODE_LABELS,
   COMPONENT_TYPE_LABELS,
+  CONTRIBUTION_UNITS,
+  CONTRIBUTION_UNIT_LABELS,
   IN_KIND_CATEGORIES,
   IN_KIND_CATEGORY_LABELS,
   IN_KIND_PROVIDERS,
@@ -12,9 +14,11 @@ import {
   MONETARY_COMPONENT_TYPES,
   OPTION_COMMERCIAL_MODES,
   OPTION_COMMERCIAL_MODE_LABELS,
+  calculateUnitValueCents,
   isMonetaryComponentType,
   type AmountMode,
   type ComponentType,
+  type ContributionUnit,
   type InKindCategory,
   type InKindProvider,
   type MonetaryComponentType,
@@ -52,6 +56,10 @@ export interface InitialComponent {
   in_kind_provider: InKindProvider | null;
   in_kind_required: boolean;
   estimated_value_cents: number | null;
+  quantity: number | null;
+  unit: ContributionUnit | null;
+  custom_unit_label: string | null;
+  unit_value_cents: number | null;
 }
 
 export interface InitialOption {
@@ -75,6 +83,15 @@ interface ComponentState {
   in_kind_provider: InKindProvider | "";
   in_kind_required: boolean;
   estimated_value: string;
+  // Pass 2.5 — unit-based contribution fields. Shared by monetary
+  // (descriptive only) and In-Kind (measurable); unit_value is In-Kind
+  // only. estimated_value/unit_value are mutually exclusive by
+  // construction (see valuationModeOf below) — the UI never lets both
+  // hold a value at once.
+  quantity: string;
+  unit: ContributionUnit | "";
+  custom_unit_label: string;
+  unit_value: string;
 }
 
 interface OptionState {
@@ -89,6 +106,21 @@ interface OptionState {
 
 const centsToStr = (c: number | null): string => (c == null ? "" : c % 100 === 0 ? String(c / 100) : (c / 100).toFixed(2));
 
+/** Client-side-only preview helpers (the "Equivalent to $X/unit" and
+ * "Calculated Estimated Value" lines) — never authoritative. The server
+ * (validateComponent/calculateUnitValueCents, src/lib/opportunity-
+ * commercial-terms-domain.ts) is the one source of truth re-computed on
+ * every save; these exist only so the admin sees a live number while
+ * typing. */
+function dollarsToCentsPreview(raw: string): number | null {
+  const n = Number(raw.replace(/[$,\s]/g, ""));
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+
+function formatDollars(cents: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
+}
+
 function componentToState(c: InitialComponent): ComponentState {
   return {
     key: newKey(),
@@ -102,6 +134,10 @@ function componentToState(c: InitialComponent): ComponentState {
     in_kind_provider: c.in_kind_provider ?? "",
     in_kind_required: c.in_kind_required,
     estimated_value: centsToStr(c.estimated_value_cents),
+    quantity: c.quantity == null ? "" : String(c.quantity),
+    unit: c.unit ?? "",
+    custom_unit_label: c.custom_unit_label ?? "",
+    unit_value: centsToStr(c.unit_value_cents),
   };
 }
 
@@ -122,12 +158,62 @@ function defaultOptionState(): OptionState {
 }
 
 function defaultMonetaryComponent(type: MonetaryComponentType): ComponentState {
-  return { key: newKey(), component_type: type, amount_mode: "fixed", amount_min: "", amount_max: "", currency: "USD", in_kind_category: "", in_kind_description: "", in_kind_provider: "", in_kind_required: true, estimated_value: "" };
+  return {
+    key: newKey(),
+    component_type: type,
+    amount_mode: "fixed",
+    amount_min: "",
+    amount_max: "",
+    currency: "USD",
+    in_kind_category: "",
+    in_kind_description: "",
+    in_kind_provider: "",
+    in_kind_required: true,
+    estimated_value: "",
+    quantity: "",
+    unit: "",
+    custom_unit_label: "",
+    unit_value: "",
+  };
 }
 
 function defaultInKindComponent(required: boolean): ComponentState {
-  return { key: newKey(), component_type: "in_kind", amount_mode: "", amount_min: "", amount_max: "", currency: "", in_kind_category: "", in_kind_description: "", in_kind_provider: "", in_kind_required: required, estimated_value: "" };
+  return {
+    key: newKey(),
+    component_type: "in_kind",
+    amount_mode: "",
+    amount_min: "",
+    amount_max: "",
+    currency: "",
+    in_kind_category: "",
+    in_kind_description: "",
+    in_kind_provider: "",
+    in_kind_required: required,
+    estimated_value: "",
+    quantity: "",
+    unit: "",
+    custom_unit_label: "",
+    unit_value: "",
+  };
 }
+
+type ValuationMode = "none" | "total" | "per_unit";
+
+/** Derived, never stored separately — mutual exclusion lives in which of
+ * the two string fields is non-empty, exactly mirroring the DB/domain
+ * invariant that only one of estimated_value_cents/unit_value_cents may
+ * be set. */
+function valuationModeOf(c: ComponentState): ValuationMode {
+  if (c.unit_value) return "per_unit";
+  if (c.estimated_value) return "total";
+  return "none";
+}
+
+const UNIT_LABEL_SINGULAR = (unit: ContributionUnit | "", customLabel: string): string => {
+  if (unit === "") return "unit";
+  if (unit === "custom") return customLabel || "unit";
+  return CONTRIBUTION_UNIT_LABELS[unit].replace(/s$/, "").toLowerCase();
+};
 
 const inputClass = "w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink focus:border-ink/30 focus:outline-none";
 const smallBtn = "rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40";
@@ -230,6 +316,67 @@ function ComponentRow({
             </div>
           )}
           {component.amount_mode === "undisclosed" && <Hidden name={`${prefix}_currency`} value={component.currency || "USD"} />}
+
+          {/* Pass 2.5 — quantity/unit are purely DESCRIPTIVE on a monetary
+             term: the amount above stays the one authoritative total; a
+             per-unit figure is calculated for display only, never stored,
+             never shown for Range/Undisclosed (no single number to divide). */}
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-ink/60">Quantity (optional)</span>
+              <input
+                type="text"
+                name={`${prefix}_quantity`}
+                value={component.quantity}
+                onChange={(e) => onChange({ quantity: e.target.value })}
+                placeholder="3"
+                className={inputClass}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-ink/60">Unit</span>
+              <select
+                name={`${prefix}_unit`}
+                value={component.unit}
+                onChange={(e) => onChange({ unit: e.target.value as ContributionUnit })}
+                className={inputClass}
+              >
+                <option value="">No unit</option>
+                {CONTRIBUTION_UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {CONTRIBUTION_UNIT_LABELS[u]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {component.unit === "custom" ? (
+            <input
+              type="text"
+              name={`${prefix}_custom_unit_label`}
+              value={component.custom_unit_label}
+              onChange={(e) => onChange({ custom_unit_label: e.target.value })}
+              placeholder="Describe the unit (e.g. Road Trips)"
+              className={inputClass}
+            />
+          ) : (
+            <Hidden name={`${prefix}_custom_unit_label`} value={component.custom_unit_label} />
+          )}
+          {component.quantity &&
+            component.unit &&
+            (component.amount_mode === "fixed" || component.amount_mode === "starting_at") &&
+            component.amount_min &&
+            (() => {
+              const qty = Number(component.quantity);
+              const totalCents = dollarsToCentsPreview(component.amount_min);
+              if (!Number.isFinite(qty) || qty <= 0 || totalCents == null) return null;
+              const perUnit = formatDollars(Math.round(totalCents / qty));
+              return (
+                <p className="text-xs text-ink/50">
+                  Equivalent to {perUnit} / {UNIT_LABEL_SINGULAR(component.unit, component.custom_unit_label)} (for display only — not stored)
+                </p>
+              );
+            })()}
         </>
       ) : (
         <>
@@ -283,18 +430,115 @@ function ComponentRow({
               className={inputClass}
             />
           </label>
-          <div className="flex flex-wrap items-center gap-4">
+
+          {/* Pass 2.5 — quantity/unit are a real measurable fact here
+             ("200 samples"). Never required. */}
+          <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-ink/60">Estimated Value (optional)</span>
+              <span className="mb-1 block text-xs font-medium text-ink/60">Quantity (optional)</span>
+              <input
+                type="text"
+                name={`${prefix}_quantity`}
+                value={component.quantity}
+                onChange={(e) => onChange({ quantity: e.target.value })}
+                placeholder="200"
+                className={inputClass}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-ink/60">Unit</span>
+              <select
+                name={`${prefix}_unit`}
+                value={component.unit}
+                onChange={(e) => onChange({ unit: e.target.value as ContributionUnit })}
+                className={inputClass}
+              >
+                <option value="">No unit</option>
+                {CONTRIBUTION_UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {CONTRIBUTION_UNIT_LABELS[u]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {component.unit === "custom" && (
+            <input
+              type="text"
+              name={`${prefix}_custom_unit_label`}
+              value={component.custom_unit_label}
+              onChange={(e) => onChange({ custom_unit_label: e.target.value })}
+              placeholder="Describe the unit (e.g. Road Trips)"
+              className={inputClass}
+            />
+          )}
+          {component.unit !== "custom" && <Hidden name={`${prefix}_custom_unit_label`} value={component.custom_unit_label} />}
+
+          {/* Pass 2.5 — exactly one valuation method, or none. Switching
+             clears whichever field is leaving, so the two stay mutually
+             exclusive by construction (mirroring the DB/domain invariant)
+             rather than relying on the admin to clear it manually. */}
+          <div>
+            <span className="mb-1 block text-xs font-medium text-ink/60">Valuation (optional)</span>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["none", "No Value"],
+                  ["total", "Estimated Total"],
+                  ["per_unit", "Value Per Unit"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onChange(mode === "none" ? { estimated_value: "", unit_value: "" } : mode === "total" ? { estimated_value: component.estimated_value || "", unit_value: "" } : { unit_value: component.unit_value || "", estimated_value: "" })}
+                  className={modeBtn(valuationModeOf(component) === mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {valuationModeOf(component) === "total" && (
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-ink/60">Estimated Total</span>
               <input
                 type="text"
                 name={`${prefix}_estimated_value`}
                 value={component.estimated_value}
                 onChange={(e) => onChange({ estimated_value: e.target.value })}
-                placeholder="200"
+                placeholder="2500"
                 className={`${inputClass} w-32`}
               />
             </label>
+          )}
+          {valuationModeOf(component) !== "total" && <Hidden name={`${prefix}_estimated_value`} value={component.estimated_value} />}
+          {valuationModeOf(component) === "per_unit" && (
+            <>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink/60">Value Per {UNIT_LABEL_SINGULAR(component.unit, component.custom_unit_label)}</span>
+                <input
+                  type="text"
+                  name={`${prefix}_unit_value`}
+                  value={component.unit_value}
+                  onChange={(e) => onChange({ unit_value: e.target.value })}
+                  placeholder="2.00"
+                  className={`${inputClass} w-32`}
+                />
+              </label>
+              {component.quantity &&
+                component.unit_value &&
+                (() => {
+                  const qty = Number(component.quantity);
+                  const unitCents = dollarsToCentsPreview(component.unit_value);
+                  if (!Number.isFinite(qty) || qty <= 0 || unitCents == null) return null;
+                  return <p className="text-xs text-ink/50">Calculated Estimated Value: {formatDollars(calculateUnitValueCents(qty, unitCents))}</p>;
+                })()}
+            </>
+          )}
+          {valuationModeOf(component) !== "per_unit" && <Hidden name={`${prefix}_unit_value`} value={component.unit_value} />}
+
+          <div className="flex flex-wrap items-center gap-4">
             {optionMode === "structured" && (
               <label className="flex items-center gap-2 text-sm text-ink/70">
                 <input

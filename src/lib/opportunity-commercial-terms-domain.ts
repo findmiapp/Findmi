@@ -138,6 +138,103 @@ export const IN_KIND_PROVIDER_LABELS: Record<InKindProvider, string> = {
   other: "Other",
 };
 
+// ---------------------------------------------------------------- contribution unit (Pass 2.5)
+
+/** The unit quantity is measured in. A fixed common vocabulary (every noun
+ * a real Findmi Opportunity structure has needed so far) plus a `custom`
+ * escape hatch (custom_unit_label) so a new noun never requires a schema
+ * change. Shared by monetary Components (purely descriptive — "$1,500
+ * compensation, 3 appearances") and In-Kind Components (a real measurable
+ * fact — "200 samples"). */
+export const CONTRIBUTION_UNITS = [
+  "units",
+  "samples",
+  "cases",
+  "hours",
+  "days",
+  "staff",
+  "locations",
+  "events",
+  "activations",
+  "appearances",
+  "posts",
+  "videos",
+  "photos",
+  "deliverables",
+  "attendees",
+  "impressions",
+  "custom",
+] as const;
+export type ContributionUnit = (typeof CONTRIBUTION_UNITS)[number];
+export const isContributionUnit = isOneOf(CONTRIBUTION_UNITS);
+
+export const CONTRIBUTION_UNIT_LABELS: Record<ContributionUnit, string> = {
+  units: "Units",
+  samples: "Samples",
+  cases: "Cases",
+  hours: "Hours",
+  days: "Days",
+  staff: "Staff",
+  locations: "Locations",
+  events: "Events",
+  activations: "Activations",
+  appearances: "Appearances",
+  posts: "Posts",
+  videos: "Videos",
+  photos: "Photos",
+  deliverables: "Deliverables",
+  attendees: "Attendees",
+  impressions: "Impressions",
+  custom: "Custom",
+};
+
+/** "200 Samples" / "2.5 Hours" / "4 Road Trips" (custom). Shared display
+ * helper for monetary (descriptive) and In-Kind (measurable) quantity —
+ * null when no quantity/unit is set (always valid; never forced). */
+export function formatQuantityUnit(c: { quantity: number | null; unit: ContributionUnit | null; custom_unit_label: string | null }): string | null {
+  if (c.quantity == null || c.unit == null) return null;
+  const label = c.unit === "custom" ? (c.custom_unit_label ?? "Custom") : CONTRIBUTION_UNIT_LABELS[c.unit];
+  const qty = Number.isInteger(c.quantity) ? String(c.quantity) : c.quantity.toFixed(2);
+  return `${qty} ${label}`;
+}
+
+const QUANTITY_UNIT_LIMITS = { custom_unit_label: 60 } as const;
+
+interface QuantityUnitInput {
+  quantity?: number | null;
+  unit?: string | null;
+  custom_unit_label?: string | null;
+}
+
+interface QuantityUnitFields {
+  quantity: number | null;
+  unit: ContributionUnit | null;
+  custom_unit_label: string | null;
+}
+
+/** Shared quantity/unit parsing + validation — both-or-neither, a real
+ * unit from the vocabulary (or custom + a label), quantity > 0. Used by
+ * BOTH monetary (purely descriptive) and In-Kind (measurable) Components
+ * so the two never drift into different rules for the same two fields. */
+function validateQuantityUnit(input: QuantityUnitInput): { ok: true; value: QuantityUnitFields } | { ok: false; error: string } {
+  const hasQuantity = input.quantity != null;
+  const hasUnit = input.unit != null && input.unit !== "";
+  if (hasQuantity !== hasUnit) return { ok: false, error: "Enter both a quantity and a unit, or leave both blank." };
+  if (!hasQuantity) return { ok: true, value: { quantity: null, unit: null, custom_unit_label: null } };
+
+  const quantity = Math.round((input.quantity as number) * 100) / 100;
+  if (!Number.isFinite(quantity) || quantity <= 0) return { ok: false, error: "Enter a quantity greater than 0." };
+  if (!isContributionUnit(input.unit)) return { ok: false, error: "Choose a unit." };
+
+  const custom_unit_label = blank(input.custom_unit_label ?? null);
+  if (input.unit === "custom" && !custom_unit_label) return { ok: false, error: "Describe the custom unit." };
+  if (custom_unit_label && custom_unit_label.length > QUANTITY_UNIT_LIMITS.custom_unit_label) {
+    return { ok: false, error: "Keep the custom unit label shorter." };
+  }
+
+  return { ok: true, value: { quantity, unit: input.unit, custom_unit_label: input.unit === "custom" ? custom_unit_label : null } };
+}
+
 // ---------------------------------------------------------------- component input/validation
 
 export const COMPONENT_LIMITS = { in_kind_description: 1000 } as const;
@@ -155,6 +252,14 @@ export interface ComponentInput {
   in_kind_provider?: string | null;
   in_kind_required?: boolean;
   estimated_value_cents?: number | null;
+  // Contribution unit (Pass 2.5) — quantity/unit are shared by both kinds
+  // (descriptive on monetary, measurable on In-Kind); unit_value_cents is
+  // In-Kind ONLY — a monetary Component's cash amount is never derived
+  // from quantity (see validateComponent's own comment below).
+  quantity?: number | null;
+  unit?: string | null;
+  custom_unit_label?: string | null;
+  unit_value_cents?: number | null;
 }
 
 export interface ComponentFields {
@@ -168,6 +273,10 @@ export interface ComponentFields {
   in_kind_provider: InKindProvider | null;
   in_kind_required: boolean;
   estimated_value_cents: number | null;
+  quantity: number | null;
+  unit: ContributionUnit | null;
+  custom_unit_label: string | null;
+  unit_value_cents: number | null;
 }
 
 /** Same rules as opportunity_option_components' own CHECK constraints, as
@@ -208,6 +317,21 @@ export function validateComponent(input: ComponentInput): { ok: true; value: Com
     const currency = (blank(input.currency) ?? "USD").toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) return { ok: false, error: "Currency must be a 3-letter code, like USD." };
 
+    // Pass 2.5 correction: a monetary term's amount_min_cents/amount_max_cents
+    // remain the ONLY authoritative financial terms — never derived from or
+    // overwritten by quantity. unit_value_cents/estimated_value_cents are
+    // In-Kind valuation concepts and are rejected outright here rather than
+    // silently ignored, so a caller can never believe it set a per-unit rate
+    // or an estimated value on a monetary term.
+    if (input.unit_value_cents != null) {
+      return { ok: false, error: "A monetary term's amount is set directly — a value per unit doesn't apply here." };
+    }
+    if (input.estimated_value_cents != null) {
+      return { ok: false, error: "A monetary term's amount is set directly — an estimated value doesn't apply here." };
+    }
+    const quantityResult = validateQuantityUnit(input);
+    if (!quantityResult.ok) return quantityResult;
+
     return {
       ok: true,
       value: {
@@ -221,6 +345,10 @@ export function validateComponent(input: ComponentInput): { ok: true; value: Com
         in_kind_provider: null,
         in_kind_required: true,
         estimated_value_cents: null,
+        quantity: quantityResult.value.quantity,
+        unit: quantityResult.value.unit,
+        custom_unit_label: quantityResult.value.custom_unit_label,
+        unit_value_cents: null,
       },
     };
   }
@@ -233,9 +361,30 @@ export function validateComponent(input: ComponentInput): { ok: true; value: Com
   if (in_kind_description && in_kind_description.length > COMPONENT_LIMITS.in_kind_description) {
     return { ok: false, error: "Keep the In-Kind description shorter." };
   }
+
+  const quantityResult = validateQuantityUnit(input);
+  if (!quantityResult.ok) return quantityResult;
+
   const estimated_value_cents = input.estimated_value_cents ?? null;
   if (estimated_value_cents != null && (!Number.isInteger(estimated_value_cents) || estimated_value_cents <= 0)) {
     return { ok: false, error: "Estimated value must be greater than $0, or left blank." };
+  }
+
+  // Pass 2.5: In-Kind supports exactly two valuation methods, mutually
+  // exclusive on one Component — a direct total (estimated_value_cents) or
+  // a per-unit rate (unit_value_cents, requires quantity+unit) — or
+  // neither ("No Value" is always valid; never a required input).
+  const unit_value_cents = input.unit_value_cents ?? null;
+  if (unit_value_cents != null) {
+    if (!Number.isInteger(unit_value_cents) || unit_value_cents <= 0) {
+      return { ok: false, error: "Value per unit must be greater than $0, or left blank." };
+    }
+    if (quantityResult.value.quantity == null) {
+      return { ok: false, error: "A value per unit needs a quantity and a unit." };
+    }
+  }
+  if (estimated_value_cents != null && unit_value_cents != null) {
+    return { ok: false, error: "Choose either an estimated total or a value per unit, not both." };
   }
 
   return {
@@ -251,6 +400,10 @@ export function validateComponent(input: ComponentInput): { ok: true; value: Com
       in_kind_provider: input.in_kind_provider,
       in_kind_required: input.in_kind_required ?? true,
       estimated_value_cents,
+      quantity: quantityResult.value.quantity,
+      unit: quantityResult.value.unit,
+      custom_unit_label: quantityResult.value.custom_unit_label,
+      unit_value_cents,
     },
   };
 }
@@ -378,11 +531,91 @@ export function formatComponentAmount(c: Pick<ComponentFields, "amount_mode" | "
   return c.amount_mode === "starting_at" ? `Starting at ${amount}` : amount;
 }
 
-/** "Participation Fee — $750" / "In-Kind — Product / Samples". */
+// ---------------------------------------------------------------- unit-value calculation (Pass 2.5)
+
+/** quantity (numeric(10,2), always a clean 2-decimal value by the time it
+ * reaches here — validateQuantityUnit already rounds it) * unit_value_cents
+ * (integer cents) -> one deterministic integer-cent result, half-up.
+ * Scales quantity to an exact integer of hundredths first so the
+ * multiplication never touches binary floating-point error (e.g. naively
+ * computing 2.5 * 3333 / 100 can drift a fraction of a cent off the true
+ * value) — qHundredths * unitValueCents is an exact integer product (both
+ * operands are safe integers), then dividing by 100 and rounding gives the
+ * half-up cent result. Example: quantity=2.5, unit_value_cents=3333 ->
+ * 8333 (not 8332, not 8332.5). Never stored — computed here, on demand,
+ * every time a value is needed. */
+export function calculateUnitValueCents(quantity: number, unitValueCents: number): number {
+  const qHundredths = Math.round(quantity * 100);
+  const productHundredths = qHundredths * unitValueCents;
+  return Math.round(productHundredths / 100);
+}
+
+/** The one estimated value for an In-Kind Component, by whichever
+ * valuation method it actually used (the two are mutually exclusive —
+ * validateComponent never lets both be set): the calculated quantity *
+ * unit_value_cents total (never stored), or the direct estimated_value_
+ * cents, or null when unvalued ("No Value" is always a valid state). */
+export function calculateInKindEstimatedValueCents(
+  c: Pick<ComponentFields, "quantity" | "unit_value_cents" | "estimated_value_cents">
+): number | null {
+  if (c.unit_value_cents != null && c.quantity != null) return calculateUnitValueCents(c.quantity, c.unit_value_cents);
+  return c.estimated_value_cents;
+}
+
+/** "Equivalent to $500 / appearance" — PRESENTATION ONLY, never stored and
+ * never fed back into amount_min_cents. Only meaningful when the
+ * authoritative amount is a single number (Fixed or Starting At) and a
+ * quantity/unit is present — Range and Undisclosed never get a derived
+ * rate (there's no single number to divide, and inventing one would
+ * misrepresent the real commercial terms — "$1,000–$2,000 / 3
+ * appearances" shows the range and the count, with no fake per-appearance
+ * figure). */
+export function formatMonetaryPerUnitEquivalent(
+  c: Pick<ComponentFields, "amount_mode" | "amount_min_cents" | "currency" | "quantity" | "unit" | "custom_unit_label">
+): string | null {
+  if (c.quantity == null || c.unit == null) return null;
+  if (c.amount_mode !== "fixed" && c.amount_mode !== "starting_at") return null;
+  if (c.amount_min_cents == null) return null;
+  const perUnitCents = Math.round(c.amount_min_cents / c.quantity);
+  const label = c.unit === "custom" ? (c.custom_unit_label ?? "unit") : CONTRIBUTION_UNIT_LABELS[c.unit].replace(/s$/, "");
+  return `Equivalent to ${formatMoney(perUnitCents, c.currency ?? "USD")} / ${label.toLowerCase()}`;
+}
+
+/** Option-level aggregate: the sum of every In-Kind Component's own
+ * calculated/direct value (calculateInKindEstimatedValueCents), and
+ * whether at least one In-Kind Component on this Option carries NO value
+ * at all — so a summary can honestly say "+ unvalued contribution(s)"
+ * instead of silently treating an unvalued contribution as worth $0.
+ * NEVER includes Participation Fee / Compensation / Project Budget — cash
+ * and estimated non-cash value are always kept separate. totalCents is
+ * null when NO In-Kind Component on the Option has a value at all
+ * (distinct from "the total happens to be $0", which can't occur since
+ * every stored value is > 0). */
+export function summarizeOptionEstimatedInKindValue(
+  components: readonly Pick<ComponentFields, "component_type" | "quantity" | "unit_value_cents" | "estimated_value_cents">[]
+): { totalCents: number | null; hasUnvalued: boolean } {
+  let totalCents: number | null = null;
+  let hasUnvalued = false;
+  for (const c of components) {
+    if (c.component_type !== "in_kind") continue;
+    const value = calculateInKindEstimatedValueCents(c);
+    if (value == null) hasUnvalued = true;
+    else totalCents = (totalCents ?? 0) + value;
+  }
+  return { totalCents, hasUnvalued };
+}
+
+/** "Participation Fee — $750" / "In-Kind — Product / Samples, 200
+ * Samples (~$400 estimated)". Quantity/unit/value are appended only when
+ * present — the Pass 1 shape ("In-Kind — Product / Samples") is byte-
+ * identical when none of them are set. */
 export function formatComponentSummary(c: ComponentFields): string {
   if (c.component_type === "in_kind") {
     const category = c.in_kind_category ? IN_KIND_CATEGORY_LABELS[c.in_kind_category] : "";
-    return `${COMPONENT_TYPE_LABELS.in_kind} — ${category}`;
+    const qty = formatQuantityUnit(c);
+    const base = `${COMPONENT_TYPE_LABELS.in_kind} — ${[category, qty].filter(Boolean).join(", ")}`;
+    const value = calculateInKindEstimatedValueCents(c);
+    return value != null ? `${base} (~${formatMoney(value, "USD")} estimated)` : base;
   }
   return `${COMPONENT_TYPE_LABELS[c.component_type]} — ${formatComponentAmount(c)}`;
 }

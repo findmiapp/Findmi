@@ -36,6 +36,15 @@ function dollarsToCents(raw: string | null): number | null {
   return parsePriceToCents(raw);
 }
 
+/** Decimal quantity (numeric(10,2) — "2.5" is legitimate). Blank -> null;
+ * anything non-numeric -> NaN, which validateComponent's own Number.
+ * isFinite check rejects with a friendly message — never trusted as-is. */
+function parseQuantity(raw: string | null): number | null {
+  if (raw == null || raw.trim() === "") return null;
+  const n = Number(raw.trim());
+  return Number.isFinite(n) ? n : Number.NaN;
+}
+
 function readComponent(fd: FormData, prefix: string): ComponentInput {
   return {
     component_type: str(fd, `${prefix}_type`),
@@ -48,6 +57,14 @@ function readComponent(fd: FormData, prefix: string): ComponentInput {
     in_kind_provider: str(fd, `${prefix}_in_kind_provider`),
     in_kind_required: bool(fd, `${prefix}_in_kind_required`),
     estimated_value_cents: dollarsToCents(str(fd, `${prefix}_estimated_value`)),
+    // Pass 2.5 — unit-based contribution fields. unit_value_cents is parsed
+    // from the same dollars-to-cents helper as every other money field in
+    // this file; it's validateComponent() (not this file) that rejects it
+    // on a monetary component.
+    quantity: parseQuantity(str(fd, `${prefix}_quantity`)),
+    unit: str(fd, `${prefix}_unit`),
+    custom_unit_label: str(fd, `${prefix}_custom_unit_label`),
+    unit_value_cents: dollarsToCents(str(fd, `${prefix}_unit_value`)),
   };
 }
 

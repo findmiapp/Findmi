@@ -6,8 +6,10 @@ import {
   MONETARY_COMPONENT_TYPES,
   OPTION_COMMERCIAL_MODE_LABELS,
   formatComponentSummary,
+  formatMonetaryPerUnitEquivalent,
   formatOptionSummary,
   formatOptionalContributions,
+  summarizeOptionEstimatedInKindValue,
   type ComponentFields,
   type OptionFields,
 } from "@/lib/opportunity-commercial-terms-domain";
@@ -46,6 +48,13 @@ const primaryBtn =
 const secondaryBtn =
   "inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink/75 transition hover:border-ink/30 hover:text-ink";
 const quietBtn = "rounded-full px-2 py-2 text-xs font-semibold text-ink/45 transition hover:text-ink";
+
+/** Estimated In-Kind Value display — always USD-formatted, since In-Kind
+ * Components never carry their own currency column (shape_check nulls it
+ * out) and this codebase's default currency assumption is USD throughout. */
+function formatInKindValue(cents: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
+}
 
 function savedMessage(saved: string, sent?: string): string {
   if (saved === "created") return "Draft saved. Open it when it's ready to send.";
@@ -140,12 +149,29 @@ function CommercialTermsSection({ listing, options, editHref }: { listing: { id:
               {o.commercial_mode === "custom" && o.custom_terms_note && <p className="mt-1 text-xs text-ink/55">{o.custom_terms_note}</p>}
               {o.commercial_mode !== "custom" && o.components.length > 0 && (
                 <ul className="mt-1.5 flex flex-col gap-0.5 text-xs text-ink/55">
-                  {o.components.map((c) => (
-                    <li key={c.id}>{formatComponentSummary(c as unknown as ComponentFields)}</li>
-                  ))}
+                  {o.components.map((c) => {
+                    const cf = c as unknown as ComponentFields;
+                    const equivalent = formatMonetaryPerUnitEquivalent(cf);
+                    return (
+                      <li key={c.id}>
+                        {formatComponentSummary(cf)}
+                        {equivalent && <span className="text-ink/40"> ({equivalent})</span>}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               {optional.length > 0 && <p className="mt-1 text-xs text-ink/45">{optional.join(" · ")}</p>}
+              {(() => {
+                const { totalCents, hasUnvalued } = summarizeOptionEstimatedInKindValue(fields.components);
+                if (totalCents == null && !hasUnvalued) return null;
+                return (
+                  <p className="mt-1.5 text-xs font-medium text-ink/60">
+                    {totalCents != null ? `Estimated In-Kind Value: ${formatInKindValue(totalCents)}` : "Estimated In-Kind Value: —"}
+                    {hasUnvalued && <span className="text-ink/40"> + unvalued contribution(s)</span>}
+                  </p>
+                );
+              })()}
             </li>
           );
         })}

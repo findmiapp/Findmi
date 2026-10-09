@@ -183,6 +183,11 @@ interface PersistableComponent {
   in_kind_provider: string | null;
   in_kind_required: boolean;
   estimated_value_cents: number | null;
+  // Pass 2.5 — unit-based contribution fields.
+  quantity: number | null;
+  unit: string | null;
+  custom_unit_label: string | null;
+  unit_value_cents: number | null;
 }
 
 /** Structurally compatible with OptionFields (src/lib/
@@ -224,6 +229,10 @@ export function toCommercialTermsRpcPayload(options: readonly OptionForPersisten
       in_kind_provider: c.in_kind_provider,
       in_kind_required: c.in_kind_required,
       estimated_value_cents: c.estimated_value_cents,
+      quantity: c.quantity,
+      unit: c.unit,
+      custom_unit_label: c.custom_unit_label,
+      unit_value_cents: c.unit_value_cents,
     })),
   }));
 }
