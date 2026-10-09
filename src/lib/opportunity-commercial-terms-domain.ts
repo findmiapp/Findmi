@@ -434,6 +434,16 @@ export interface OptionFields {
   components: ComponentFields[];
 }
 
+/** True only for an In-Kind contribution REQUIRED FROM THE RECIPIENT
+ * BUSINESS — the one kind of non-cash item that shapes the Business's
+ * side of the deal. A missing provider counts as the recipient Business
+ * (the strict side), exactly like the DB triggers'
+ * coalesce(in_kind_provider, 'recipient_business'); the Admin UI still
+ * requires an explicit provider choice. */
+export function isRequiredBrandContribution(c: Pick<ComponentFields, "component_type" | "in_kind_required" | "in_kind_provider">): boolean {
+  return c.component_type === "in_kind" && c.in_kind_required && (c.in_kind_provider ?? "recipient_business") === "recipient_business";
+}
+
 /** Same rules as opportunity_options' own CHECK constraints and the
  * commercial_mode-consistency triggers, as friendly messages — this
  * function is the single pre-write gate the future Admin builder's
@@ -443,15 +453,21 @@ export interface OptionFields {
  * misclassified Option is never observable in the database, not even
  * transiently.
  *
- * commercial_mode is a true classification, derived from (and checked
- * against) the actual component content, not an independent label:
- *   STRUCTURED    — monetaryCount >= 1 OR requiredInKindCount >= 1.
- *                   Optional In-Kind may additionally coexist.
- *   COMPLIMENTARY — monetaryCount === 0 AND requiredInKindCount === 0.
- *                   Zero or more OPTIONAL In-Kind components are fine —
- *                   "Complimentary + optional product support" is valid.
- *                   An Option with ONLY optional In-Kind and nothing else
- *                   must be Complimentary, never Structured.
+ * commercial_mode is a true classification of the BUSINESS's side of the
+ * deal, derived from (and checked against) the actual component content,
+ * not an independent label. Only money (any of the three monetary types)
+ * and contributions REQUIRED FROM THE RECIPIENT BUSINESS count — what
+ * Findmi, an organizer or another party provides is an inclusion and
+ * never makes a deal Structured (classification correction, see
+ * 20261012000000_commercial_terms_brand_contribution_classification.sql):
+ *   STRUCTURED    — monetaryCount >= 1 OR requiredBrandCount >= 1.
+ *                   Optional brand items and any inclusions may coexist.
+ *   COMPLIMENTARY — monetaryCount === 0 AND requiredBrandCount === 0.
+ *                   Optional brand items and any inclusions (required or
+ *                   not) are fine — "free, Findmi provides staff + space"
+ *                   is Complimentary. An Option whose only items are
+ *                   optional brand items and/or inclusions must be
+ *                   Complimentary, never Structured.
  *   CUSTOM        — zero components of any kind, optional custom_terms_note. */
 export function validateOption(input: OptionInput): { ok: true; value: OptionFields } | { ok: false; error: string } {
   if (!isOptionCommercialMode(input.commercial_mode)) return { ok: false, error: "Choose a commercial mode for this Option." };
@@ -488,21 +504,21 @@ export function validateOption(input: OptionInput): { ok: true; value: OptionFie
       error: "An Option can have at most one monetary term (Participation Fee, Compensation, or Project Budget) — add anything else as In-Kind, or create a separate Option.",
     };
   }
-  const requiredInKindCount = components.filter((c) => c.component_type === "in_kind" && c.in_kind_required).length;
+  const requiredBrandCount = components.filter(isRequiredBrandContribution).length;
 
   if (input.commercial_mode === "complimentary") {
     if (monetaryCount > 0) return { ok: false, error: "A Complimentary Option can't include a monetary term — remove it, or switch to Structured." };
-    if (requiredInKindCount > 0) {
-      return { ok: false, error: "A Complimentary Option can't require an In-Kind contribution — mark it optional, or switch to Structured." };
+    if (requiredBrandCount > 0) {
+      return { ok: false, error: "A Complimentary Option can't require anything from the Business — mark it optional, or switch to Structured." };
     }
     return { ok: true, value: { name, description, commercial_mode: "complimentary", custom_terms_note: null, components } };
   }
 
   // structured
-  if (monetaryCount === 0 && requiredInKindCount === 0) {
+  if (monetaryCount === 0 && requiredBrandCount === 0) {
     return {
       ok: false,
-      error: "A Structured Option needs a monetary term or a required In-Kind contribution — an Option with only optional In-Kind should be Complimentary instead.",
+      error: "A Structured Option needs a monetary term or a required contribution from the Business — an Option with only optional or included items should be Complimentary instead.",
     };
   }
   return { ok: true, value: { name, description, commercial_mode: "structured", custom_terms_note: null, components } };

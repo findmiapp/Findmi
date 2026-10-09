@@ -307,7 +307,7 @@ test("UX / 23. Option-level rules surface only once the terms themselves are cle
   assert.equal(issues.length, 1);
   assert.equal(issues[0].field, "option");
   assert.equal(issues[0].id, "ct_0__option");
-  assert.match(issues[0].message, /Structured Option needs a monetary term or a required In-Kind contribution/);
+  assert.match(issues[0].message, /Structured Option needs a monetary term or a required contribution from the Business/);
 });
 
 test("UX / 24. (bug fix) a Custom terms note left behind after switching to Structured is never posted (it used to fail the whole save)", () => {
@@ -337,7 +337,8 @@ test("UX / 26. Complimentary still forces In-Kind optional on what is posted", (
 // ---------------------------------------------------------------- Option chrome
 
 test("UX / 27. a single Option shows no management chrome — no Move Up/Down, Duplicate, Remove, or 'Option 1' header — just a quiet '+ Add Another Option'", () => {
-  assert.deepEqual(optionChrome(1), { showHeader: false, showMove: false, showDuplicate: false, showRemove: false, addLabel: "+ Add Another Option" });
+  // With packages enabled (the eventual behavior); the temporary single-package limit is covered in tests/opportunity-package-policy.test.mjs.
+  assert.deepEqual(optionChrome(1, true), { showHeader: false, showMove: false, showDuplicate: false, showRemove: false, showAdd: true, addLabel: "+ Add Another Option" });
   assert.match(BUILDER, /\{chrome\.showMove && \(/);
   assert.match(BUILDER, /\{chrome\.showDuplicate && \(/);
   assert.match(BUILDER, /\{chrome\.showRemove && \(/);
@@ -345,7 +346,7 @@ test("UX / 27. a single Option shows no management chrome — no Move Up/Down, D
 });
 
 test("UX / 28. multiple Options keep every management capability (Move Up/Down, Duplicate, Remove, naming); Duplicate still makes a new, id-less copy", () => {
-  assert.deepEqual(optionChrome(2), { showHeader: true, showMove: true, showDuplicate: true, showRemove: true, addLabel: "+ Add Option" });
+  assert.deepEqual(optionChrome(2, true), { showHeader: true, showMove: true, showDuplicate: true, showRemove: true, showAdd: true, addLabel: "+ Add Option" });
   for (const label of ["Move Up", "Move Down", "Duplicate Option", "Remove Option"]) assert.match(BUILDER, new RegExp(`>\\s*${label}\\s*<`));
   assert.match(BUILDER, /key: newKey\(\), id: null, components: prev\[idx\]\.components\.map\(\(c\) => \(\{ \.\.\.c, key: newKey\(\) \}\)\)/);
 });

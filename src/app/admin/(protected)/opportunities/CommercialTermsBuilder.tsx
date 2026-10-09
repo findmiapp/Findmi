@@ -29,10 +29,12 @@ import {
   type OptionCommercialMode,
 } from "@/lib/opportunity-commercial-terms-domain";
 import { parsePriceToCents } from "@/lib/opportunity-listings-domain";
+import { PACKAGES_ENABLED } from "@/lib/opportunity-package-policy";
 import {
   DEFAULT_CURRENCY,
   MONETARY_HEADINGS,
   amountFieldsFor,
+  blocksComplimentary,
   closeCover,
   clearQuantityUnit,
   collectCommercialTermsIssues,
@@ -42,6 +44,7 @@ import {
   defaultOptionState,
   fieldId,
   hasQuantityUnit,
+  isBrandItem,
   openValuation,
   optionChrome,
   parseQuantityInput,
@@ -121,7 +124,7 @@ function wouldDiscard(option: OptionState, next: OptionCommercialMode): boolean 
   if (next === option.commercial_mode) return false;
   if (option.components.length === 0) return false;
   if (next === "custom") return true;
-  if (next === "complimentary") return option.components.some((c) => c.component_type !== "in_kind" || c.in_kind_required);
+  if (next === "complimentary") return option.components.some(blocksComplimentary);
   return false;
 }
 
@@ -458,7 +461,7 @@ function InKindFields({
         <FieldError message={errors.in_kind_category} />
       </label>
 
-      {optionMode === "structured" ? (
+      {optionMode === "structured" || !isBrandItem(component) ? (
         <Chips<"required" | "optional">
           id={fieldId(prefix, "in_kind_required")}
           label="Required or optional"
@@ -470,7 +473,7 @@ function InKindFields({
           onChange={(v) => onChange({ in_kind_required: v === "required" })}
         />
       ) : (
-        <p className="text-xs text-ink/45">Optional — a Complimentary Option never requires In-Kind.</p>
+        <p className="text-xs text-ink/45">Optional — a Complimentary Option never requires anything from the Business.</p>
       )}
 
       {/* Estimated value: none by default. Choosing a method is real state,
@@ -613,7 +616,7 @@ function OptionCard({
   onMove: (dir: -1 | 1) => void;
 }) {
   const prefix = optionPrefix(index);
-  const chrome = optionChrome(total);
+  const chrome = optionChrome(total, PACKAGES_ENABLED);
   const usedMonetary = option.components.find((c) => isMonetaryComponentType(c.component_type))?.component_type ?? null;
   const submitted = submittedOptionValues(option);
   const optionError = errorsByPrefix.get(prefix)?.option;
@@ -623,12 +626,12 @@ function OptionCard({
       const ok = window.confirm(
         next === "custom"
           ? "Switching to Custom Terms removes this Option's structured commercial terms. Continue?"
-          : "Switching to Complimentary removes this Option's monetary and required In-Kind terms. Continue?"
+          : "Switching to Complimentary removes this Option's monetary terms and anything required from the Business. Continue?"
       );
       if (!ok) return;
     }
     if (next === "custom") onPatch({ commercial_mode: next, components: [] });
-    else if (next === "complimentary") onPatch({ commercial_mode: next, components: option.components.filter((c) => c.component_type === "in_kind" && !c.in_kind_required) });
+    else if (next === "complimentary") onPatch({ commercial_mode: next, components: option.components.filter((c) => !blocksComplimentary(c)) });
     else onPatch({ commercial_mode: next });
   }
 
@@ -843,7 +846,7 @@ const CommercialTermsBuilder = forwardRef<
     });
   }
 
-  const chrome = optionChrome(options.length);
+  const chrome = optionChrome(options.length, PACKAGES_ENABLED);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <Hidden name="ct_count" value={options.length} />
@@ -863,15 +866,22 @@ const CommercialTermsBuilder = forwardRef<
           onMove={(dir) => moveOption(o.key, dir)}
         />
       ))}
-      {chrome.showHeader ? (
-        <button type="button" onClick={addOption} className="self-start rounded-full border border-dashed border-black/15 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/50 transition hover:border-ink/30 hover:text-ink">
-          {chrome.addLabel}
-        </button>
-      ) : (
-        <button type="button" onClick={addOption} className={`self-start border-t border-black/5 pt-3 ${quietBtn}`}>
-          {chrome.addLabel}
-        </button>
+      {!chrome.showAdd && options.length > 1 && (
+        <p className="rounded-xl bg-black/[0.03] px-3.5 py-2.5 text-xs text-ink/55">
+          This Opportunity has {options.length} packages. They can be edited or removed, but new packages can&rsquo;t be added yet — and Businesses are asked to
+          contact Findmi to choose a package rather than responding here.
+        </p>
       )}
+      {chrome.showAdd &&
+        (chrome.showHeader ? (
+          <button type="button" onClick={addOption} className="self-start rounded-full border border-dashed border-black/15 px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink/50 transition hover:border-ink/30 hover:text-ink">
+            {chrome.addLabel}
+          </button>
+        ) : (
+          <button type="button" onClick={addOption} className={`self-start border-t border-black/5 pt-3 ${quietBtn}`}>
+            {chrome.addLabel}
+          </button>
+        ))}
     </div>
   );
 });

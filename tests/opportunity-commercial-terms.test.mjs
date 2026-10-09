@@ -421,6 +421,11 @@ test("26. existing Opportunities authorization is unchanged; the new tables have
     assert.ok(m, `${fnName} not found`);
     assert.equal(/opportunity_options|opportunity_option_components/i.test(m[0]), false, `${fnName} must never run its own direct SQL against the new tables`);
   }
+  // Phase 2 — the one additional, count-only reader used by the temporary
+  // single-package response gate (fail-closed), shared by both response paths.
+  const countFn = LISTINGS_LIB.match(/async function countOpportunityPackages[\s\S]*?\n}\n/)[0];
+  assert.match(countFn, /from\("opportunity_options"\)\.select\("id", \{ count: "exact", head: true \}\)/);
+  assert.equal(/opportunity_option_components/.test(countFn), false);
 });
 
 // ---------------------------------------------------------------- migration/domain drift guard
@@ -980,14 +985,11 @@ test("Pass 2 / 43. Complimentary's Add Term picker offers ONLY In-Kind — no mo
   assert.match(BUILDER, /option\.commercial_mode === "structured" &&\s*\n\s*MONETARY_COMPONENT_TYPES\.map/);
 });
 
-test("Pass 2 / 44. a newly-added In-Kind term on a Complimentary Option is always optional (in_kind_required forced false, never user-togglable there)", () => {
+test("Pass 2 / 44 (updated, classification correction). on a Complimentary Option, anything provided by the Business is always optional; inclusions from Findmi/organizer/other keep their own Required flag", () => {
   assert.match(BUILDER, /defaultInKindComponent\(o\.commercial_mode !== "complimentary", newKey\(\)\)/);
-  // The posted value comes from submittedComponentValues(), which never
-  // posts "on" for a Complimentary Option (behavior-tested in
-  // tests/opportunity-commercial-terms-builder-ux.test.mjs), and the
-  // Required/Optional control only renders for a Structured Option.
-  assert.match(BUILDER_STATE, /in_kind_required: !monetary && optionMode !== "complimentary" && c\.in_kind_required \? "on" : ""/);
-  assert.match(BUILDER, /optionMode === "structured" \? \(\s*\n\s*<Chips<"required" \| "optional">/);
+  // Behavior-tested in tests/opportunity-commercial-terms-classification.test.mjs.
+  assert.match(BUILDER_STATE, /in_kind_required: !monetary && c\.in_kind_required && !\(optionMode === "complimentary" && isBrandItem\(c\)\) \? "on" : ""/);
+  assert.match(BUILDER, /optionMode === "structured" \|\| !isBrandItem\(component\) \? \(\s*\n\s*<Chips<"required" \| "optional">/);
 });
 
 test("Pass 2 / 45. switching an Option to Custom, or to Complimentary while it owns a monetary/required-In-Kind term, asks for confirmation before discarding data", () => {
@@ -1004,7 +1006,7 @@ test("Pass 2 / 46. switching a Complimentary Option back to Structured, or any n
 
 test("Pass 2 / 47. Option naming (name/description inputs) only renders once a 2nd Option exists — no forced naming for the common single-Option case", () => {
   assert.match(BUILDER, /\{chrome\.showHeader && \(/);
-  assert.match(BUILDER_STATE, /const multi = total > 1;\s*\n\s*return \{ showHeader: multi,/);
+  assert.match(BUILDER_STATE, /const multi = total > 1;\s*\n\s*return \{\s*showHeader: multi,/);
   // The name is always posted (hidden) so a single Option's stored name survives an edit.
   assert.match(BUILDER, /<Hidden name=\{`\$\{prefix\}_name`\} value=\{submitted\.name\} \/>/);
 });
@@ -1313,10 +1315,10 @@ test("2.5 / 30. Complimentary + optional In-Kind may use ANY valuation mode (No 
   }
 });
 
-test("2.5 / 31. Complimentary + REQUIRED In-Kind is still rejected regardless of valuation (unaffected by this pass)", () => {
+test("2.5 / 31 (updated, classification correction). Complimentary + something REQUIRED FROM THE BUSINESS is still rejected regardless of valuation", () => {
   const r = validateOption({ commercial_mode: "complimentary", components: [inKindNoValue({ in_kind_required: true, quantity: 100, unit: "samples", unit_value_cents: 150 })] });
   assert.equal(r.ok, false);
-  assert.match(r.error, /can't require an In-Kind contribution/);
+  assert.match(r.error, /can't require anything from the Business/);
 });
 
 // ---------------------------------------------------------------- the 5 example cases from the spec, end to end

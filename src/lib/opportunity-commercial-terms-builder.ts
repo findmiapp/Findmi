@@ -187,6 +187,22 @@ export function defaultInKindComponent(required: boolean, key: string): Componen
   return { ...EMPTY_COMPONENT, key, component_type: "in_kind", in_kind_provider: DEFAULT_IN_KIND_PROVIDER, in_kind_required: required };
 }
 
+// ---------------------------------------------------------------- brand contribution vs inclusion
+
+/** Provided by the recipient Business. A blank provider counts as the
+ * Business — the same strict rule as isRequiredBrandContribution() in the
+ * domain module and the DB triggers (the UI still requires a choice). */
+export function isBrandItem(c: Pick<ComponentState, "in_kind_provider">): boolean {
+  return c.in_kind_provider === "" || c.in_kind_provider === "recipient_business";
+}
+
+/** Terms a Complimentary Option can't keep: any money, or something
+ * REQUIRED from the Business. Inclusions and optional brand items stay. */
+export function blocksComplimentary(c: Pick<ComponentState, "component_type" | "in_kind_required" | "in_kind_provider">): boolean {
+  if (c.component_type !== "in_kind") return true;
+  return c.in_kind_required && isBrandItem(c);
+}
+
 // ---------------------------------------------------------------- disclosure / valuation transitions
 
 /** Choosing a valuation method is real state; the OTHER method's value is
@@ -224,16 +240,30 @@ export function amountFieldsFor(mode: AmountMode | ""): { min: boolean; max: boo
 }
 
 /** Option-management chrome. A single Option shows none of it — just a
- * quiet "+ Add Another Option". */
-export function optionChrome(total: number): {
+ * quiet "+ Add Another Option". `packagesEnabled` is PACKAGES_ENABLED from
+ * opportunity-package-policy.ts (passed in to keep this module import-
+ * free): while false, nothing can ADD a package (no Add, no Duplicate),
+ * but an existing multi-package listing keeps naming, Move and Remove. */
+export function optionChrome(
+  total: number,
+  packagesEnabled: boolean
+): {
   showHeader: boolean;
   showMove: boolean;
   showDuplicate: boolean;
   showRemove: boolean;
+  showAdd: boolean;
   addLabel: string;
 } {
   const multi = total > 1;
-  return { showHeader: multi, showMove: multi, showDuplicate: multi, showRemove: multi, addLabel: multi ? "+ Add Option" : "+ Add Another Option" };
+  return {
+    showHeader: multi,
+    showMove: multi,
+    showDuplicate: multi && packagesEnabled,
+    showRemove: multi,
+    showAdd: packagesEnabled,
+    addLabel: multi ? "+ Add Option" : "+ Add Another Option",
+  };
 }
 
 // ---------------------------------------------------------------- what is submitted
@@ -285,7 +315,9 @@ export function submittedComponentValues(c: ComponentState, optionMode: OptionCo
     in_kind_category: monetary ? "" : c.in_kind_category,
     in_kind_description: monetary ? "" : c.in_kind_description,
     in_kind_provider: monetary ? "" : c.in_kind_provider,
-    in_kind_required: !monetary && optionMode !== "complimentary" && c.in_kind_required ? "on" : "",
+    // A Complimentary Option never requires anything from the Business;
+    // inclusions (Findmi / organizer / other) keep their own flag.
+    in_kind_required: !monetary && c.in_kind_required && !(optionMode === "complimentary" && isBrandItem(c)) ? "on" : "",
     estimated_value: !monetary && c.valuation === "total" ? c.estimated_value : "",
     quantity: showPair ? c.quantity : "",
     unit: showPair ? c.unit : "",

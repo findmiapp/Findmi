@@ -12,6 +12,8 @@ import {
 import { BusinessStateBadge } from "@/components/opportunities/BusinessOpportunityCard";
 import { loadBusinessShell } from "../loadBusinessShell";
 import { respondToOpportunity } from "../actions";
+import { getSiteContactInfo } from "@/lib/contact-info";
+import { CHOOSE_PACKAGE_MESSAGE, choosePackageMailto, requiresPackageChoice } from "@/lib/opportunity-package-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -43,11 +45,17 @@ function DecisionArea({
   action,
   mayRespond,
   viaAdmin,
+  choosePackageHref,
 }: {
   state: BusinessOpportunityState;
   action: (response: BusinessResponseStatus) => (formData: FormData) => void | Promise<void>;
   mayRespond: boolean;
   viaAdmin: boolean;
+  /** Set only for a multi-package listing while package-specific responses
+   * don't exist yet (opportunity-package-policy.ts): replaces the
+   * Opportunity-level "I'm Interested" with a working contact action. The
+   * server refuses that Interested regardless of this UI. */
+  choosePackageHref: string | null;
 }) {
   const fresh = state.choices.length === 2;
   const permissionNote = !state.answerable
@@ -62,12 +70,18 @@ function DecisionArea({
     <div className="flex flex-col gap-3 border-t border-black/5 pt-4">
       {fresh && mayRespond && (
         <div className="grid gap-2 sm:grid-cols-2">
-          <form action={action("interested")}>
-            <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi text-button font-bold text-white transition hover:bg-findmi-600">
-              <CheckGlyph />
-              I&rsquo;m Interested
-            </button>
-          </form>
+          {choosePackageHref ? (
+            <a href={choosePackageHref} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi px-3 text-center text-button font-bold text-white transition hover:bg-findmi-600">
+              Contact Findmi to Choose a Package
+            </a>
+          ) : (
+            <form action={action("interested")}>
+              <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi text-button font-bold text-white transition hover:bg-findmi-600">
+                <CheckGlyph />
+                I&rsquo;m Interested
+              </button>
+            </form>
+          )}
           <form action={action("not_interested")}>
             <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white text-button font-semibold text-primary transition hover:border-black/20">
               <CrossGlyph />
@@ -95,9 +109,18 @@ function DecisionArea({
         </div>
       )}
 
-      {fresh && <p className="rounded-xl bg-findmi-50/60 px-3.5 py-2.5 text-metadata text-findmi-700">{state.message}</p>}
+      {fresh && <p className="rounded-xl bg-findmi-50/60 px-3.5 py-2.5 text-metadata text-findmi-700">{choosePackageHref ? CHOOSE_PACKAGE_MESSAGE : state.message}</p>}
 
-      {!fresh && mayRespond && state.choices.length > 0 && (
+      {!fresh && mayRespond && state.choices.length > 0 && choosePackageHref && state.choices[0] === "interested" && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-metadata text-muted">Changed your mind?</span>
+          <a href={choosePackageHref} className="text-metadata font-bold text-accent hover:underline">
+            Contact Findmi to Choose a Package
+          </a>
+        </p>
+      )}
+
+      {!fresh && mayRespond && state.choices.length > 0 && !(choosePackageHref && state.choices[0] === "interested") && (
         <form action={action(state.choices[0])} className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-metadata text-muted">Changed your mind?</span>
           <button type="submit" className="text-metadata font-bold text-accent hover:underline">
@@ -135,6 +158,9 @@ export default async function BusinessOpportunityDetailPage({
   const mayRespond = canMemberRespond(membership.role, membership.viaAdmin);
   const action = (response: BusinessResponseStatus) => respondToOpportunity.bind(null, id, view.recipientId, response);
   const respondedMessage = responded === "interested" || responded === "not_interested" ? RESPONDED[responded] : null;
+  const choosePackageHref = requiresPackageChoice(options.length)
+    ? choosePackageMailto({ email: (await getSiteContactInfo()).email, opportunityTitle: o.title, businessName: shell.business.name })
+    : null;
 
   return (
     <BusinessAppShell {...shell} activeSection="opportunities">
@@ -154,7 +180,7 @@ export default async function BusinessOpportunityDetailPage({
           place={place}
           showCredits={false}
           badges={<BusinessStateBadge tone={view.state.tone} label={view.state.label} />}
-          actions={<DecisionArea state={view.state} action={action} mayRespond={mayRespond} viaAdmin={Boolean(membership.viaAdmin)} />}
+          actions={<DecisionArea state={view.state} action={action} mayRespond={mayRespond} viaAdmin={Boolean(membership.viaAdmin)} choosePackageHref={choosePackageHref} />}
           commercialOptions={options}
         />
 

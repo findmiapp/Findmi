@@ -7,6 +7,8 @@ import { canMemberRespond } from "@/lib/opportunity-listings-domain";
 import { OpportunityAsideSections, OpportunityHero, OpportunityMainSections } from "@/components/opportunities/OpportunityPresentation";
 import { loadBusinessShell } from "../../loadBusinessShell";
 import { expressInterestFromExplore } from "../../actions";
+import { getSiteContactInfo } from "@/lib/contact-info";
+import { CHOOSE_PACKAGE_MESSAGE, choosePackageMailto, requiresPackageChoice } from "@/lib/opportunity-package-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,10 @@ export default async function ExploreOpportunityPage({
   if (item.linkedRecipientId) redirect(`/account/business/${id}/opportunities/${item.linkedRecipientId}`);
 
   const o = item.opportunity;
+  // Temporary single-package policy — the server refuses this Interested too.
+  const choosePackageHref = requiresPackageChoice(item.options.length)
+    ? choosePackageMailto({ email: (await getSiteContactInfo()).email, opportunityTitle: o.title, businessName: shell.business.name })
+    : null;
   const mayRespond = canMemberRespond(membership.role, membership.viaAdmin);
   const note = membership.viaAdmin
     ? "Viewing as a Findmi Admin. Responses come from the Business; manage Opportunities from Admin."
@@ -55,15 +61,20 @@ export default async function ExploreOpportunityPage({
           commercialOptions={item.options}
           actions={
             <div className="flex flex-col gap-3 border-t border-black/5 pt-4">
-              {mayRespond && (
-                <form action={expressInterestFromExplore.bind(null, id, listingId)}>
-                  <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6">
-                    I&rsquo;m Interested
-                  </button>
-                </form>
-              )}
+              {mayRespond &&
+                (choosePackageHref ? (
+                  <a href={choosePackageHref} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi px-3 text-center text-button font-bold text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6">
+                    Contact Findmi to Choose a Package
+                  </a>
+                ) : (
+                  <form action={expressInterestFromExplore.bind(null, id, listingId)}>
+                    <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-findmi text-button font-bold text-white transition hover:bg-findmi-600 sm:w-auto sm:px-6">
+                      I&rsquo;m Interested
+                    </button>
+                  </form>
+                ))}
               <p className="rounded-xl bg-findmi-50/60 px-3.5 py-2.5 text-metadata text-findmi-700">
-                Let Findmi know you&rsquo;d like to pursue this. It&rsquo;s not a binding commitment.
+                {choosePackageHref ? CHOOSE_PACKAGE_MESSAGE : <>Let Findmi know you&rsquo;d like to pursue this. It&rsquo;s not a binding commitment.</>}
               </p>
               {note && <p className="text-metadata text-muted">{note}</p>}
             </div>

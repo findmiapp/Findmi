@@ -28,6 +28,7 @@ import {
   type RecipientStatus,
 } from "@/lib/opportunity-listings-domain";
 import { matchesParticipationCost } from "@/lib/opportunity-participation-cost";
+import { CHOOSE_PACKAGE_MESSAGE, requiresPackageChoice } from "@/lib/opportunity-package-policy";
 
 // Opportunities V1 — server data access for Findmi-authored commercial
 // Opportunities (opportunity_listings + opportunity_recipients).
@@ -231,6 +232,15 @@ export async function respondToOpportunityListing(args: {
   });
   if (!check.ok) return { ok: false, error: check.reason };
 
+  // Temporary single-package policy: an Opportunity-level "I'm Interested"
+  // on a multi-package listing would not say which package — refused here,
+  // server-side, not just hidden in the UI. Not Interested stays allowed.
+  if (args.response === "interested") {
+    const packages = await countOpportunityPackages(admin, row.listing_id);
+    if (packages == null) return { ok: false, error: "Couldn't save your response. Please try again." };
+    if (requiresPackageChoice(packages)) return { ok: false, error: CHOOSE_PACKAGE_MESSAGE };
+  }
+
   const note = args.note?.trim() ? args.note.trim().slice(0, 1000) : null;
   const now = new Date().toISOString();
   const { data: updated, error } = await admin
@@ -376,6 +386,16 @@ export interface AdminOpportunityComponent {
   custom_unit_label: string | null;
   unit_value_cents: number | null;
   display_order: number;
+}
+
+/** How many packages (opportunity_options rows) a listing has, or null on
+ * a read error — FAIL-CLOSED for the temporary single-package response
+ * gate (opportunity-package-policy.ts): a caller treats null as "can't
+ * verify", never as zero. The only other direct read of the Options table
+ * besides getOpportunityOptionsForListings, and count-only. */
+async function countOpportunityPackages(admin: ReturnType<typeof requireAdminClient>, listingId: string): Promise<number | null> {
+  const { count, error } = await admin.from("opportunity_options").select("id", { count: "exact", head: true }).eq("listing_id", listingId);
+  return error ? null : (count ?? 0);
 }
 
 /** Options+Components for MANY listings in one query — the shared,
@@ -641,6 +661,12 @@ export async function expressExploreInterest(args: { businessId: string; listing
   const item = await getExploreItem(args.businessId, args.listingId);
   const check = checkExploreInterest({ role: membership.role, viaAdmin: membership.viaAdmin, explorable: Boolean(item), alreadyLinked: Boolean(item?.linkedRecipientId) });
   if (!check.ok) return { ok: false, error: check.reason };
+  // Temporary single-package policy (see respondToOpportunityListing) —
+  // its own fail-closed count, never the display loader (which returns an
+  // empty list on a read error).
+  const packageCount = await countOpportunityPackages(admin, args.listingId);
+  if (packageCount == null) return { ok: false, error: "Couldn't save your interest. Please try again." };
+  if (requiresPackageChoice(packageCount)) return { ok: false, error: CHOOSE_PACKAGE_MESSAGE };
   if (!userId || !(await isEmailVerified(admin, userId))) return { ok: false, error: "Verify your email to respond to Opportunities." };
   const now = new Date().toISOString();
   const { data, error } = await admin

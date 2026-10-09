@@ -22,6 +22,7 @@ import {
 } from "@/lib/opportunity-listings-domain";
 import { centsToDollarString, projectSafeLegacyPricing, toCommercialTermsRpcPayload, type LegacyBridgePricing, type OptionForPersistence } from "@/lib/opportunity-commercial-terms-bridge";
 import { parseCommercialTermsForm } from "@/lib/opportunity-commercial-terms-form";
+import { packageEditError } from "@/lib/opportunity-package-policy";
 import { isMonetaryComponentType, validateOption, type MonetaryComponentType, type OptionFields, type OptionInput } from "@/lib/opportunity-commercial-terms-domain";
 
 // Opportunities V1 Pass 2 — Admin writes for opportunity_listings /
@@ -142,6 +143,8 @@ export async function createOpportunity(formData: FormData): Promise<SaveResult 
   const terms = parseCommercialTermsForm(formData);
   if (!terms.ok) return { error: terms.error };
   const options = terms.value;
+  const packageError = packageEditError([], options);
+  if (packageError) return { error: packageError };
   const legacy = projectSafeLegacyPricing(options);
 
   const parsed = readListingForm(formData, legacy);
@@ -194,7 +197,7 @@ export async function saveOpportunity(id: string, formData: FormData): Promise<S
   const supabase = getAdminSupabase();
   if (!supabase) return { error: "Storage isn't configured on the server." };
 
-  const { data: existingOptionRows } = await supabase.from("opportunity_options").select("id").eq("listing_id", id).limit(1);
+  const { data: existingOptionRows } = await supabase.from("opportunity_options").select("id").eq("listing_id", id);
   const hasCommercialTerms = (existingOptionRows?.length ?? 0) > 0;
 
   let legacy: LegacyBridgePricing;
@@ -203,6 +206,13 @@ export async function saveOpportunity(id: string, formData: FormData): Promise<S
     const terms = parseCommercialTermsForm(formData);
     if (!terms.ok) return { error: terms.error };
     options = terms.value;
+    // Temporary single-package policy — existing packages stay editable;
+    // nothing can add one (see opportunity-package-policy.ts).
+    const packageError = packageEditError(
+      (existingOptionRows ?? []).map((r) => r.id as string),
+      options
+    );
+    if (packageError) return { error: packageError };
     legacy = projectSafeLegacyPricing(options);
   } else {
     const { data: current } = await supabase.from("opportunity_listings").select("pricing_mode, price_cents, currency").eq("id", id).maybeSingle();
